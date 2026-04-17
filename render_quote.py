@@ -10,6 +10,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
@@ -25,13 +27,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--time", required=True, help="Time in HH:MM 24-hour format")
     parser.add_argument(
         "--picker",
-        default="projects/author-clock/pick_quote.py",
+        default="pick_quote.py",
         help="Path to quote picker script",
     )
     parser.add_argument(
         "--output",
         default=None,
-        help="Output PNG path. Defaults to projects/author-clock/output/render-HHMM.png",
+        help="Output PNG path. Defaults to output/render-HHMM.png",
     )
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
@@ -39,7 +41,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def pick_quote(time_str: str, picker_path: str) -> dict:
-    output = subprocess.check_output(["python3", picker_path, "--time", time_str], text=True)
+    picker = str((BASE_DIR / picker_path).resolve()) if not Path(picker_path).is_absolute() else picker_path
+    output = subprocess.check_output(["python3", picker, "--time", time_str], text=True)
     return json.loads(output)
 
 
@@ -182,7 +185,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
 def main() -> int:
     args = parse_args()
     quote_row = pick_quote(args.time, args.picker)
-    output_path = Path(args.output) if args.output else Path(f"projects/author-clock/output/render-{args.time.replace(':', '')}.png")
+    output_path = Path(args.output) if args.output else Path(f"output/render-{args.time.replace(':', '')}.png")
+    if not output_path.is_absolute():
+        output_path = BASE_DIR / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image = render(args.time, quote_row, args.width, args.height)
     image.save(output_path)

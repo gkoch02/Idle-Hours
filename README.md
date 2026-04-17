@@ -16,21 +16,21 @@ This is a harvesting tool, not a final editorial system. Expect false positives,
 
 ```bash
 cd ~/workspace
-python3 projects/author-clock/gutenberg_time_miner.py \
+python3 gutenberg_time_miner.py \
   --gutenberg-id 1342 \
   --gutenberg-id 98 \
   --strict \
-  --output projects/author-clock/output/candidates.jsonl \
+  --output output/candidates.jsonl \
   --print-sample 10
 ```
 
 Example with a local folder of texts:
 
 ```bash
-python3 projects/author-clock/gutenberg_time_miner.py \
+python3 gutenberg_time_miner.py \
   --input ~/books/public-domain \
   --format csv \
-  --output projects/author-clock/output/candidates.csv
+  --output output/candidates.csv
 ```
 
 ## Output fields
@@ -87,55 +87,55 @@ Daypart buckets are inferred separately when possible:
 After multiple harvest runs, merge them like this:
 
 ```bash
-python3 projects/author-clock/merge_candidates.py \
-  projects/author-clock/output/raw-candidates-strict.jsonl \
-  projects/author-clock/output/raw-candidates-strict-batch2.jsonl
+python3 merge_candidates.py \
+  output/raw-candidates-strict.jsonl \
+  output/raw-candidates-strict-batch2.jsonl
 ```
 
 This writes:
 
-- `projects/author-clock/output/candidates-merged.jsonl`
-- `projects/author-clock/output/candidates-merged-summary.json`
+- `output/candidates-merged.jsonl`
+- `output/candidates-merged-summary.json`
 
 ## Bucket coverage
 
 To see which fuzzy-clock buckets are strong or starved:
 
 ```bash
-python3 projects/author-clock/bucket_coverage.py \
-  projects/author-clock/output/candidates-merged.jsonl
+python3 bucket_coverage.py \
+  output/candidates-merged.jsonl
 ```
 
 This writes:
 
-- `projects/author-clock/output/bucket-coverage.json`
-- `projects/author-clock/output/bucket-coverage.md`
+- `output/bucket-coverage.json`
+- `output/bucket-coverage.md`
 
 ## Target sparse buckets
 
 To hunt the emptiest/sparsest buckets with explicit phrase searches against the cached Gutenberg texts:
 
 ```bash
-python3 projects/author-clock/target_sparse_buckets.py \
-  projects/author-clock/output/bucket-coverage.json
+python3 target_sparse_buckets.py \
+  output/bucket-coverage.json
 ```
 
 This writes:
 
-- `projects/author-clock/output/targeted-candidates.jsonl`
+- `output/targeted-candidates.jsonl`
 
 ## Clean display quotes
 
 To turn raw harvested excerpts into better display-ready quotes:
 
 ```bash
-python3 projects/author-clock/clean_display_quotes.py \
-  projects/author-clock/output/candidates-merged-plus-targeted.jsonl
+python3 clean_display_quotes.py \
+  output/candidates-merged-plus-targeted.jsonl
 ```
 
 This writes:
 
-- `projects/author-clock/output/candidates-cleaned.jsonl`
+- `output/candidates-cleaned.jsonl`
 
 Each row gets:
 
@@ -148,26 +148,26 @@ Each row gets:
 To add lightweight quality heuristics before picking quotes:
 
 ```bash
-python3 projects/author-clock/quality_filter.py \
-  projects/author-clock/output/candidates-cleaned.jsonl
+python3 quality_filter.py \
+  output/candidates-cleaned.jsonl
 ```
 
 This writes:
 
-- `projects/author-clock/output/candidates-quality.jsonl`
+- `output/candidates-quality.jsonl`
 
 ## Pick a quote
 
 To demo what the clock would show for a given time:
 
 ```bash
-python3 projects/author-clock/pick_quote.py --time 22:54
+python3 pick_quote.py --time 22:54
 ```
 
 Or for a specific bucket:
 
 ```bash
-python3 projects/author-clock/pick_quote.py --bucket h10_just_before
+python3 pick_quote.py --bucket h10_just_before
 ```
 
 ## Enrich attribution metadata
@@ -175,59 +175,59 @@ python3 projects/author-clock/pick_quote.py --bucket h10_just_before
 To add author/title metadata from cached Gutenberg headers:
 
 ```bash
-python3 projects/author-clock/enrich_metadata.py \
-  projects/author-clock/output/candidates-quality.jsonl
+python3 enrich_metadata.py \
+  output/candidates-quality.jsonl
 ```
 
 This writes:
 
-- `projects/author-clock/output/candidates-attributed.jsonl`
+- `output/candidates-attributed.jsonl`
 
 ## Render a display image
 
 To render a PNG prototype for a given time:
 
 ```bash
-python3 projects/author-clock/render_quote.py \
+python3 render_quote.py \
   --time 22:54 \
-  --picker projects/author-clock/pick_quote.py
+  --picker pick_quote.py
 ```
 
 This writes a PNG like:
 
-- `projects/author-clock/output/render-2254.png`
+- `output/render-2254.png`
 
 ## Run the clock loop
 
 To run it like a simple appliance that always rewrites the current display image:
 
 ```bash
-python3 projects/author-clock/run_clock.py --once
+python3 run_clock.py --once
 ```
 
 Or continuously:
 
 ```bash
-python3 projects/author-clock/run_clock.py
+python3 run_clock.py
 ```
 
 This keeps refreshing:
 
-- `projects/author-clock/output/current.png`
+- `output/current.png`
 
 To also push the image to an Inky display each refresh:
 
 ```bash
-python3 projects/author-clock/run_clock.py \
-  --display-script projects/author-clock/display_inky.py
+python3 run_clock.py \
+  --display-script display_inky.py
 ```
 
 ## Inky Impression 7.3 Spectra 6
 
 Notes for the target testing display are in:
 
-- `projects/author-clock/inky_impression_notes.md`
-- `projects/author-clock/pi_setup_inky_impression.md`
+- `inky_impression_notes.md`
+- `pi_setup_inky_impression.md`
 
 If Inky is **already installed and working** on the Pi, the shortest path is:
 
@@ -243,14 +243,14 @@ python3 run_clock.py --display-script display_inky.py
 Bootstrap script for a fresh Pi:
 
 ```bash
-bash projects/author-clock/bootstrap_pi_inky.sh
+bash bootstrap_pi_inky.sh
 ```
 
 To display an already-rendered image on Inky:
 
 ```bash
-python3 projects/author-clock/display_inky.py \
-  projects/author-clock/output/current.png
+python3 display_inky.py \
+  output/current.png
 ```
 
 ## Notes

@@ -8,6 +8,8 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
 from typing import Iterable
 
 
@@ -23,12 +25,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("inputs", nargs="+", help="Input JSONL files.")
     parser.add_argument(
         "--output",
-        default="projects/author-clock/output/candidates-merged.jsonl",
+        default="output/candidates-merged.jsonl",
         help="Output JSONL path for deduped records.",
     )
     parser.add_argument(
         "--summary",
-        default="projects/author-clock/output/candidates-merged-summary.json",
+        default="output/candidates-merged-summary.json",
         help="Where to write summary stats.",
     )
     return parser.parse_args()
@@ -122,8 +124,8 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 def main() -> int:
     args = parse_args()
     merged, summary = dedupe(iter_records(args.inputs))
-    output_path = Path(args.output).expanduser()
-    summary_path = Path(args.summary).expanduser()
+    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    summary_path = (BASE_DIR / args.summary).expanduser() if not Path(args.summary).is_absolute() else Path(args.summary).expanduser()
     write_jsonl(output_path, merged)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 TERMINAL_PUNCT = ".!?\"'”’)]"
 LEADING_JUNK = re.compile(r'^[\s\[\("“”‘’\-,:;]+')
@@ -18,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="Merged candidate JSONL input")
     parser.add_argument(
         "--output",
-        default="projects/author-clock/output/candidates-cleaned.jsonl",
+        default="output/candidates-cleaned.jsonl",
         help="Output JSONL path",
     )
     return parser.parse_args()
@@ -84,8 +86,8 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
 
 def main() -> int:
     args = parse_args()
-    input_path = Path(args.input).expanduser()
-    output_path = Path(args.output).expanduser()
+    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
+    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
     rows = []
     for line in input_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():

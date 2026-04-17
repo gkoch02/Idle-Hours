@@ -8,6 +8,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 HOUR_WORDS = {
     1: "one",
@@ -71,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-buckets", type=int, default=24, help="How many sparse/empty buckets to target.")
     parser.add_argument(
         "--output",
-        default="projects/author-clock/output/targeted-candidates.jsonl",
+        default="output/targeted-candidates.jsonl",
         help="Output JSONL for targeted candidate matches.",
     )
     return parser.parse_args()
@@ -158,7 +160,7 @@ def search_bucket(bucket: str, search_dir: Path) -> list[dict]:
 
 def main() -> int:
     args = parse_args()
-    coverage = json.loads(Path(args.coverage_json).expanduser().read_text(encoding="utf-8"))
+    coverage = json.loads((BASE_DIR / args.coverage_json).expanduser() if not Path(args.coverage_json).is_absolute() else Path(args.coverage_json).expanduser().read_text(encoding="utf-8"))
     targets = expected_targets(coverage, args.max_buckets)
     search_dir = Path(args.search_dir).expanduser()
 
@@ -172,7 +174,7 @@ def main() -> int:
         for row in bucket_results:
             resolved_counts[row["resolved_bucket"]] += 1
 
-    output_path = Path(args.output).expanduser()
+    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
         for row in all_results:

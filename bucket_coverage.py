@@ -7,6 +7,8 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 HOURS = list(range(1, 13))
 STATES = [
@@ -29,12 +31,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-json",
-        default="projects/author-clock/output/bucket-coverage.json",
+        default="output/bucket-coverage.json",
         help="Coverage summary JSON output path.",
     )
     parser.add_argument(
         "--output-md",
-        default="projects/author-clock/output/bucket-coverage.md",
+        default="output/bucket-coverage.md",
         help="Coverage markdown output path.",
     )
     return parser.parse_args()
@@ -140,11 +142,11 @@ def render_markdown(summary: dict) -> str:
 
 def main() -> int:
     args = parse_args()
-    rows = load_rows(Path(args.input).expanduser())
+    rows = load_rows((BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser())
     summary = build_summary(rows)
 
-    output_json = Path(args.output_json).expanduser()
-    output_md = Path(args.output_md).expanduser()
+    output_json = (BASE_DIR / args.output_json).expanduser() if not Path(args.output_json).is_absolute() else Path(args.output_json).expanduser()
+    output_md = (BASE_DIR / args.output_md).expanduser() if not Path(args.output_md).is_absolute() else Path(args.output_md).expanduser()
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_md.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

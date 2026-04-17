@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 NUMBER_WORDS = {
     "one": 1,
@@ -103,8 +105,8 @@ def infer_time_from_quote(display_quote: str):
 
 def main() -> int:
     args = parse_args()
-    input_path = Path(args.input).expanduser()
-    output_path = Path(args.output).expanduser() if args.output else input_path
+    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
+    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser() if args.output else input_path
     rows = []
     fixed = 0
     for line in input_path.read_text(encoding='utf-8').splitlines():

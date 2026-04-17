@@ -7,12 +7,14 @@ import json
 import random
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pick the best author-clock quote for a time.")
     parser.add_argument(
         "--input",
-        default="projects/author-clock/output/candidates-quality.jsonl",
+        default="output/candidates-quality.jsonl",
         help="Quality-scored candidate JSONL file.",
     )
     parser.add_argument(
@@ -136,7 +138,7 @@ def main() -> int:
     if not args.time and not args.bucket:
         raise SystemExit("Provide --time or --bucket")
     bucket = args.bucket or bucket_for_time(args.time)
-    rows = load_rows(Path(args.input).expanduser())
+    rows = load_rows((BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser())
     best, resolved_bucket = pick_best(rows, bucket, args.seed, args.min_quality)
     output = {
         "requested_time": args.time,
@@ -147,6 +149,8 @@ def main() -> int:
         "matched_text": best.get("matched_text"),
         "source_id": best.get("source_id"),
         "source_path": best.get("source_path"),
+        "author": best.get("author"),
+        "title": best.get("title"),
         "display_fragment": best.get("display_fragment"),
         "cleanup_status": best.get("cleanup_status"),
         "normalized_time": best.get("normalized_time"),

@@ -6,6 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
 
 STATE_TO_MINUTE = {
     "exact": 0,
@@ -40,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="targeted-candidates.jsonl path")
     parser.add_argument(
         "--output",
-        default="projects/author-clock/output/targeted-candidates-importable.jsonl",
+        default="output/targeted-candidates-importable.jsonl",
         help="Output JSONL path",
     )
     return parser.parse_args()
@@ -81,8 +83,8 @@ def row_from_targeted(raw: dict) -> dict:
 
 def main() -> int:
     args = parse_args()
-    input_path = Path(args.input).expanduser()
-    output_path = Path(args.output).expanduser()
+    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
+    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
     rows = []
     for line in input_path.read_text(encoding="utf-8").splitlines():
         if line.strip():

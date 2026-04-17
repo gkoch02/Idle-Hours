@@ -23,6 +23,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
 from typing import Iterable, Iterator, Sequence
 
 
@@ -196,7 +198,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default="projects/author-clock/output/candidates.jsonl",
+        default="output/candidates.jsonl",
         help="Output path for JSONL or CSV.",
     )
     parser.add_argument(
@@ -532,7 +534,7 @@ def print_sample(candidates: Sequence[Candidate], limit: int) -> None:
 def main() -> int:
     args = parse_args()
     candidates = mine(args)
-    output_path = Path(args.output).expanduser()
+    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
 
     if args.format == "jsonl":
         count = write_jsonl(output_path, candidates)
