@@ -215,7 +215,32 @@ This keeps refreshing:
 
 - `projects/author-clock/output/current.png`
 
-That output path is the handoff point for a future eInk driver or display push script.
+To also push the image to an Inky display each refresh:
+
+```bash
+python3 projects/author-clock/run_clock.py \
+  --display-script projects/author-clock/display_inky.py
+```
+
+## Inky Impression 7.3 Spectra 6
+
+Notes for the target testing display are in:
+
+- `projects/author-clock/inky_impression_notes.md`
+- `projects/author-clock/pi_setup_inky_impression.md`
+
+Bootstrap script for a Pi:
+
+```bash
+bash projects/author-clock/bootstrap_pi_inky.sh
+```
+
+To display an already-rendered image on Inky:
+
+```bash
+python3 projects/author-clock/display_inky.py \
+  projects/author-clock/output/current.png
+```
 
 ## Notes
 
