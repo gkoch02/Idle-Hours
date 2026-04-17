@@ -14,8 +14,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pick the best LitClock quote for a time.")
     parser.add_argument(
         "--input",
-        default="output/candidates-quality.jsonl",
-        help="Quality-scored candidate JSONL file.",
+        default="output/candidates-attributed.jsonl",
+        help="Attributed and quality-scored candidate JSONL file.",
     )
     parser.add_argument(
         "--time",
