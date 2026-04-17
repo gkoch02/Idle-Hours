@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # Quote Clock Corpus Miner
+=======
+# LitClock
+>>>>>>> 8642df3 (Rename Author Clock references to LitClock)
 
 First-pass tooling for harvesting time-related quote candidates from Project Gutenberg or local plaintext files.
 

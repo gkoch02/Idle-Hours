@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report fuzzy bucket coverage for harvested author-clock candidates."""
+"""Report fuzzy bucket coverage for harvested LitClock candidates."""
 from __future__ import annotations
 
 import argparse

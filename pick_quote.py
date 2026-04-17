@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Pick the best author-clock quote for a time.")
+    parser = argparse.ArgumentParser(description="Pick the best LitClock quote for a time.")
     parser.add_argument(
         "--input",
         default="output/candidates-quality.jsonl",

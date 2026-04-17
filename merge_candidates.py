@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge and dedupe harvested author-clock candidates."""
+"""Merge and dedupe harvested LitClock candidates."""
 from __future__ import annotations
 
 import argparse
