@@ -268,8 +268,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     )
     quote_block_height = len(wrapped_quote) * line_height
     author_size = max(13, int(chosen_size * 0.52))
+    source_size = max(12, int(chosen_size * 0.44))
     attribution_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=author_size)
-    attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["title_size"])
+    attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=source_size)
 
     author_text = quote_row.get("author") or quote_row.get("source_id") or None
     title_text = quote_row.get("title") or quote_row.get("source_path") or None
@@ -280,7 +281,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     if author_lines:
         attrib_height += author_size
     if title_lines:
-        attrib_height += layout["author_gap"] + len(title_lines) * layout["title_size"]
+        attrib_height += layout["author_gap"] + len(title_lines) * source_size
         if len(title_lines) > 1:
             attrib_height += (len(title_lines) - 1) * layout["title_gap"]
 
@@ -338,7 +339,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     for line in title_lines:
         title_w = draw.textbbox((0, 0), line, font=attribution_title_font)[2]
         draw_text(draw, ((width - title_w) // 2, y), line, font=attribution_title_font, fill=SOURCE_BLUE)
-        y += layout["title_size"] + layout["title_gap"]
+        y += source_size + layout["title_gap"]
 
     if show_debug:
         footer_parts = [f"layout {layout_name}"]
