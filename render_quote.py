@@ -43,17 +43,49 @@ def pick_quote(time_str: str, picker_path: str) -> dict:
     return json.loads(output)
 
 
-def fit_quote(draw: ImageDraw.ImageDraw, text: str, max_width: int, max_height: int) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
-    for size in range(34, 19, -2):
-        font = ImageFont.truetype(QUOTE_FONT_PATH, size=size)
-        wrapped = wrap_text(draw, text, font, max_width)
-        line_height = int(size * 1.45)
-        total_height = len(wrapped) * line_height
-        if total_height <= max_height:
-            return font, wrapped, line_height
-    font = ImageFont.truetype(QUOTE_FONT_PATH, size=20)
-    wrapped = wrap_text(draw, text, font, max_width)
-    return font, wrapped, int(20 * 1.45)
+def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
+    normalized_match = " ".join((match_text or "").split()).strip()
+    if not normalized_match:
+        return [(text, False)]
+    lowered_text = text.lower()
+    lowered_match = normalized_match.lower()
+    idx = lowered_text.find(lowered_match)
+    if idx == -1:
+        return [(text, False)]
+    return [
+        (text[:idx], False),
+        (text[idx:idx + len(normalized_match)], True),
+        (text[idx + len(normalized_match):], False),
+    ]
+
+
+def wrap_styled_text(draw: ImageDraw.ImageDraw, segments: list[tuple[str, bool]], regular_font: ImageFont.FreeTypeFont, bold_font: ImageFont.FreeTypeFont, max_width: int) -> list[list[tuple[str, bool]]]:
+    tokens: list[tuple[str, bool]] = []
+    for text, is_bold in segments:
+        parts = text.split(' ')
+        for i, part in enumerate(parts):
+            if part:
+                tokens.append((part, is_bold))
+            if i < len(parts) - 1:
+                tokens.append((' ', is_bold))
+
+    lines: list[list[tuple[str, bool]]] = []
+    current: list[tuple[str, bool]] = []
+    current_width = 0
+    for token, is_bold in tokens:
+        font = bold_font if is_bold else regular_font
+        token_width = draw.textbbox((0, 0), token, font=font)[2]
+        if current and current_width + token_width > max_width and token != ' ':
+            lines.append(current)
+            current = []
+            current_width = 0
+            if token == ' ':
+                continue
+        current.append((token, is_bold))
+        current_width += token_width
+    if current:
+        lines.append(current)
+    return lines
 
 
 def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
@@ -73,6 +105,22 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont
     return lines
 
 
+def fit_quote(draw: ImageDraw.ImageDraw, text: str, match_text: str, max_width: int, max_height: int) -> tuple[ImageFont.FreeTypeFont, ImageFont.FreeTypeFont, list[list[tuple[str, bool]]], int]:
+    segments = tokenize_quote(text, match_text)
+    for size in range(34, 19, -2):
+        regular_font = ImageFont.truetype(QUOTE_FONT_PATH, size=size)
+        bold_font = ImageFont.truetype(QUOTE_FONT_BOLD_PATH, size=size)
+        wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
+        line_height = int(size * 1.45)
+        total_height = len(wrapped) * line_height
+        if total_height <= max_height:
+            return regular_font, bold_font, wrapped, line_height
+    regular_font = ImageFont.truetype(QUOTE_FONT_PATH, size=20)
+    bold_font = ImageFont.truetype(QUOTE_FONT_BOLD_PATH, size=20)
+    wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
+    return regular_font, bold_font, wrapped, int(20 * 1.45)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     image = Image.new("L", (width, height), color=245)
     draw = ImageDraw.Draw(image)
@@ -89,23 +137,44 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     quote_top = MARGIN_Y + 88
     quote_max_width = width - (MARGIN_X * 2)
     quote_max_height = height - quote_top - 90
-    quote_font, wrapped_quote, line_height = fit_quote(draw, quote_row['display_quote'], quote_max_width, quote_max_height)
+    quote_font, quote_font_bold, wrapped_quote, line_height = fit_quote(
+        draw,
+        quote_row['display_quote'],
+        quote_row.get('matched_text') or '',
+        quote_max_width,
+        quote_max_height,
+    )
 
     y = quote_top
     for line in wrapped_quote:
-        draw.text((MARGIN_X, y), line, font=quote_font, fill=20)
+        x = MARGIN_X
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            draw.text((x, y), chunk, font=font, fill=20)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
         y += line_height
 
+    attribution_parts = []
+    if quote_row.get('author'):
+        attribution_parts.append(quote_row['author'])
+    if quote_row.get('title'):
+        attribution_parts.append(quote_row['title'])
+    attribution = " — ".join(attribution_parts) if attribution_parts else None
+    if attribution:
+        attrib_wrapped = wrap_text(draw, attribution, meta_font, width - (MARGIN_X * 2))
+        attrib_y = height - 62
+        for line in attrib_wrapped[:2]:
+            draw.text((MARGIN_X, attrib_y), line, font=meta_font, fill=80)
+            attrib_y += 20
+
     source_bits = []
-    if quote_row.get('source_id'):
-        source_bits.append(f"source {quote_row['source_id']}")
     if quote_row.get('used_fallback'):
         source_bits.append("fallback")
     if quote_row.get('quality_score') is not None:
         source_bits.append(f"quality {quote_row['quality_score']}")
     footer = " • ".join(source_bits)
     if footer:
-        draw.text((MARGIN_X, height - 36), footer, font=meta_font, fill=110)
+        draw.text((width - MARGIN_X - draw.textbbox((0, 0), footer, font=meta_font)[2], height - 28), footer, font=meta_font, fill=110)
 
     return image
 

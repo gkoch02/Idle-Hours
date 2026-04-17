@@ -170,12 +170,27 @@ Or for a specific bucket:
 python3 projects/author-clock/pick_quote.py --bucket h10_just_before
 ```
 
+## Enrich attribution metadata
+
+To add author/title metadata from cached Gutenberg headers:
+
+```bash
+python3 projects/author-clock/enrich_metadata.py \
+  projects/author-clock/output/candidates-quality.jsonl
+```
+
+This writes:
+
+- `projects/author-clock/output/candidates-attributed.jsonl`
+
 ## Render a display image
 
 To render a PNG prototype for a given time:
 
 ```bash
-python3 projects/author-clock/render_quote.py --time 22:54
+python3 projects/author-clock/render_quote.py \
+  --time 22:54 \
+  --picker projects/author-clock/pick_quote.py
 ```
 
 This writes a PNG like:
