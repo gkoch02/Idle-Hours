@@ -29,8 +29,8 @@ FAINT = SPECTRA6["black"]
 ACCENT = SPECTRA6["red"]
 ORNAMENT = SPECTRA6["green"]
 SOURCE_BLUE = SPECTRA6["blue"]
-TOP_MARGIN = 12
-SIDE_MARGIN = 20
+TOP_MARGIN = 8
+SIDE_MARGIN = 10
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
     str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
@@ -81,9 +81,9 @@ META_FONT_CANDIDATES = [
 
 LAYOUTS = {
     "hero": {
-        "max_width": 640,
-        "quote_height": 248,
-        "font_max": 66,
+        "max_width": 720,
+        "quote_height": 286,
+        "font_max": 74,
         "font_min": 32,
         "line_height_mult": 1.12,
         "mark_scale": 3.0,
@@ -94,9 +94,9 @@ LAYOUTS = {
         "title_gap": 6,
     },
     "standard": {
-        "max_width": 660,
-        "quote_height": 258,
-        "font_max": 58,
+        "max_width": 730,
+        "quote_height": 292,
+        "font_max": 64,
         "font_min": 28,
         "line_height_mult": 1.14,
         "mark_scale": 2.8,
@@ -107,9 +107,9 @@ LAYOUTS = {
         "title_gap": 6,
     },
     "dense": {
-        "max_width": 680,
-        "quote_height": 276,
-        "font_max": 48,
+        "max_width": 740,
+        "quote_height": 306,
+        "font_max": 54,
         "font_min": 24,
         "line_height_mult": 1.18,
         "mark_scale": 2.5,
@@ -349,7 +349,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             attrib_height += (len(title_lines) - 1) * layout["title_gap"]
 
     total_h = quote_block_height + (layout["author_gap"] if (author_lines or title_lines) else 0) + attrib_height
-    block_top = max(72, (height - total_h) // 2)
+    block_top = max(40, (height - total_h) // 2)
     block_bottom = block_top + total_h
     quote_top = block_top
 
@@ -365,7 +365,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     open_bb = draw.textbbox((0, 0), "“", font=mark_font)
     open_w = open_bb[2] - open_bb[0]
     open_h = open_bb[3] - open_bb[1]
-    open_x = SIDE_MARGIN + 8
+    open_x = SIDE_MARGIN + 2
     open_y = quote_top - open_h // 3
     draw_text(draw, (open_x - open_bb[0], open_y - open_bb[1]), "“", font=mark_font, fill=ORNAMENT)
 
@@ -384,7 +384,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     close_bb = draw.textbbox((0, 0), "”", font=mark_font)
     close_w = close_bb[2] - close_bb[0]
     close_h = close_bb[3] - close_bb[1]
-    close_x = width - SIDE_MARGIN - 8 - close_w
+    close_x = width - SIDE_MARGIN - 2 - close_w
     close_y = block_bottom - close_h * 2 // 3
     draw_text(draw, (close_x - close_bb[0], close_y - close_bb[1]), "”", font=mark_font, fill=ORNAMENT)
 
