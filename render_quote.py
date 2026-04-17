@@ -24,6 +24,7 @@ TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
+    str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
     "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Regular.ttf",
     "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Regular.ttf",
     "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Regular.ttf",
@@ -32,6 +33,7 @@ QUOTE_FONT_REGULAR_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
 ]
 QUOTE_FONT_BOLD_CANDIDATES = [
+    str(BASE_DIR / "fonts/PlayfairDisplay-Bold.ttf"),
     "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Bold.ttf",
@@ -201,8 +203,8 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult)
 
 
-def draw_text(draw, xy, text, font, fill, stroke_width=0, stroke_fill=None):
-    draw.text(xy, text, font=font, fill=fill, stroke_width=stroke_width, stroke_fill=stroke_fill or fill)
+def draw_text(draw, xy, text, font, fill):
+    draw.text(xy, text, font=font, fill=fill)
 
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug") -> Image.Image:
@@ -248,13 +250,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     show_debug = mode == "debug"
     if show_debug:
-        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE, stroke_width=1)
+        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE)
         subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get('used_fallback') else quote_row['bucket']
-        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT, stroke_width=1)
+        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
 
     ornament_bbox = draw.textbbox((0, 0), "“", font=ornament_font)
     ornament_width = ornament_bbox[2] - ornament_bbox[0]
-    draw_text(draw, (column_x - ornament_width - 10, quote_top - 16), "“", font=ornament_font, fill=ORNAMENT, stroke_width=1)
+    draw_text(draw, (column_x - ornament_width - 10, quote_top - 16), "“", font=ornament_font, fill=ORNAMENT)
 
     y = quote_top
     for line in wrapped_quote:
@@ -262,22 +264,22 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         for chunk, is_bold in line:
             font = quote_font_bold if is_bold else quote_font
             fill = ACCENT if is_bold else TEXT
-            draw_text(draw, (x, y), chunk, font=font, fill=fill, stroke_width=1)
+            draw_text(draw, (x, y), chunk, font=font, fill=fill)
             x += draw.textbbox((0, 0), chunk, font=font)[2]
         y += line_height
 
     quote_end_y = y - line_height + 4
     closing_bbox = draw.textbbox((0, 0), "”", font=ornament_font)
     closing_width = closing_bbox[2] - closing_bbox[0]
-    draw_text(draw, (column_x + column_width - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT, stroke_width=1)
+    draw_text(draw, (column_x + column_width - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
 
     if author_lines or title_lines:
         y += layout['attrib_gap']
         if author_lines:
-            draw_text(draw, (column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT, stroke_width=1)
+            draw_text(draw, (column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT)
             y += layout['author_size'] + 6
         for line in title_lines:
-            draw_text(draw, (column_x + 18, y), line, font=attribution_title_font, fill=SOURCE_BLUE, stroke_width=1)
+            draw_text(draw, (column_x + 18, y), line, font=attribution_title_font, fill=SOURCE_BLUE)
             y += layout['title_size'] + 4
 
     if show_debug:
@@ -289,7 +291,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         footer_parts.append(f"shown {time_str}")
         footer = " • ".join(footer_parts)
         footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
-        draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT, stroke_width=1)
+        draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
 
     return image
 
