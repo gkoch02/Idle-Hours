@@ -1,22 +1,19 @@
-<<<<<<< HEAD
-# Quote Clock Corpus Miner
-=======
 # LitClock
->>>>>>> 8642df3 (Rename Author Clock references to LitClock)
 
-First-pass tooling for harvesting time-related quote candidates from Project Gutenberg or local plaintext files.
+A literary clock built from public-domain text, designed to render elegant time-matched quotes and display them on eInk hardware like the Pimoroni Inky Impression 7.3.
 
 ![Current LitClock render preview](output/preview-current-design.png)
 
 ## What it does
 
-- downloads Gutenberg plaintext books by ebook id
-- scans local `.txt` files or directories
-- detects exact and fuzzy time phrases
-- normalizes hits into fuzzy clock buckets
-- writes review output as JSONL or CSV
+- mines public-domain books for time-related quotes
+- cleans, scores, and attributes candidate passages
+- maps quotes into a fuzzy literary-clock bucket model
+- picks the best quote for the current time
+- renders a display-ready image
+- can push the rendered image to an Inky eInk display
 
-This is a harvesting tool, not a final editorial system. Expect false positives, duplicates, and occasional weirdness from literary text.
+The repo still includes the corpus-mining pipeline, but it now also contains the full LitClock runtime, renderer, and Pi display path.
 
 ## Quick start
 
