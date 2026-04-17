@@ -13,11 +13,12 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
-PAGE_BG = 245
-TEXT = 15
-SUBTLE = 95
-FAINT = 135
-ACCENT = 55
+PAGE_BG = (250, 247, 238)
+TEXT = (28, 28, 32)
+SUBTLE = (78, 84, 96)
+FAINT = (145, 134, 118)
+ACCENT = (167, 54, 43)
+ORNAMENT = (94, 109, 122)
 TOP_MARGIN = 26
 SIDE_MARGIN = 58
 QUOTE_COLUMN_WIDTH = 520
@@ -144,7 +145,7 @@ def fit_quote(draw, text, match_text, max_width, max_height):
 
 
 def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    image = Image.new("L", (width, height), color=PAGE_BG)
+    image = Image.new("RGB", (width, height), color=PAGE_BG)
     draw = ImageDraw.Draw(image)
 
     time_font = load_font(META_FONT_CANDIDATES, size=20)
@@ -182,7 +183,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
 
     ornament_bbox = draw.textbbox((0, 0), "“", font=ornament_font)
     ornament_width = ornament_bbox[2] - ornament_bbox[0]
-    draw.text((column_x - ornament_width - 12, quote_top - 18), "“", font=ornament_font, fill=FAINT)
+    draw.text((column_x - ornament_width - 12, quote_top - 18), "“", font=ornament_font, fill=ORNAMENT)
 
     y = quote_top
     for line in wrapped_quote:
@@ -197,7 +198,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     quote_end_y = y - line_height + 4
     closing_bbox = draw.textbbox((0, 0), "”", font=ornament_font)
     closing_width = closing_bbox[2] - closing_bbox[0]
-    draw.text((column_x + QUOTE_COLUMN_WIDTH - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=FAINT)
+    draw.text((column_x + QUOTE_COLUMN_WIDTH - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
 
     if attrib_lines:
         y += 18
