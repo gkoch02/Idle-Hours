@@ -269,14 +269,14 @@ def wrap_text(draw, text, font, max_width):
 def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min, line_height_mult):
     segments = tokenize_quote(text, match_text)
     for size in range(font_max, font_min - 1, -2):
-        regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=size)
+        regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=size)
         bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=size)
         wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
         line_height = int(size * line_height_mult)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
             return regular_font, bold_font, wrapped, line_height, size
-    regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=font_min)
+    regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=font_min)
     bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=font_min)
     wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult), font_min
@@ -333,7 +333,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     author_size = max(13, int(chosen_size * 0.52))
     source_size = max(12, int(chosen_size * 0.44))
     attribution_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=author_size)
-    attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=source_size)
+    attribution_title_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=source_size)
 
     author_text = quote_row.get("author") or quote_row.get("source_id") or None
     title_text = quote_row.get("title") or quote_row.get("source_path") or None
