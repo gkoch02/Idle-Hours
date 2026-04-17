@@ -2,7 +2,7 @@
 
 A literary clock built from public-domain text, designed to render elegant time-matched quotes and display them on eInk hardware like the Pimoroni Inky Impression 7.3.
 
-![Current LitClock render preview](output/preview-current-design.png)
+![Current LitClock render preview](output/preview-current-design-v2.png)
 
 ## What it does
 
