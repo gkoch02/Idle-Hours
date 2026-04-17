@@ -29,8 +29,8 @@ FAINT = SPECTRA6["black"]
 ACCENT = SPECTRA6["red"]
 ORNAMENT = SPECTRA6["green"]
 SOURCE_BLUE = SPECTRA6["blue"]
-TOP_MARGIN = 26
-SIDE_MARGIN = 58
+TOP_MARGIN = 12
+SIDE_MARGIN = 20
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
     str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
@@ -365,7 +365,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     open_bb = draw.textbbox((0, 0), "“", font=mark_font)
     open_w = open_bb[2] - open_bb[0]
     open_h = open_bb[3] - open_bb[1]
-    open_x = SIDE_MARGIN + 18
+    open_x = SIDE_MARGIN + 8
     open_y = quote_top - open_h // 3
     draw_text(draw, (open_x - open_bb[0], open_y - open_bb[1]), "“", font=mark_font, fill=ORNAMENT)
 
@@ -384,7 +384,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     close_bb = draw.textbbox((0, 0), "”", font=mark_font)
     close_w = close_bb[2] - close_bb[0]
     close_h = close_bb[3] - close_bb[1]
-    close_x = width - SIDE_MARGIN - 18 - close_w
+    close_x = width - SIDE_MARGIN - 8 - close_w
     close_y = block_bottom - close_h * 2 // 3
     draw_text(draw, (close_x - close_bb[0], close_y - close_bb[1]), "”", font=mark_font, fill=ORNAMENT)
 
