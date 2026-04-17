@@ -194,8 +194,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
             x += draw.textbbox((0, 0), chunk, font=font)[2]
         y += line_height
 
+    quote_end_y = y - line_height + 4
+    closing_bbox = draw.textbbox((0, 0), "”", font=ornament_font)
+    closing_width = closing_bbox[2] - closing_bbox[0]
+    draw.text((column_x + QUOTE_COLUMN_WIDTH - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=FAINT)
+
     if attrib_lines:
-        y += 10
+        y += 18
         for idx, line in enumerate(attrib_lines):
             prefix = "— " if idx == 0 else "  "
             draw.text((column_x, y), prefix + line, font=attribution_font, fill=SUBTLE)
