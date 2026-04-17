@@ -156,8 +156,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
-    attribution_font = load_font(META_FONT_CANDIDATES, size=18)
-    attribution_title_font = load_font(META_FONT_CANDIDATES, size=16)
+    attribution_font = load_font(META_FONT_CANDIDATES, size=20)
+    attribution_title_font = load_font(META_FONT_CANDIDATES, size=18)
     ornament_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=72)
 
     column_x = (width - QUOTE_COLUMN_WIDTH) // 2
@@ -211,13 +211,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     draw.text((column_x + QUOTE_COLUMN_WIDTH - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
 
     if author_lines or title_lines:
-        y += 20
+        y += 14
         if author_lines:
-            draw.text((column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=SUBTLE)
-            y += 24
+            draw.text((column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT)
+            y += 26
         for line in title_lines:
-            draw.text((column_x + 18, y), line, font=attribution_title_font, fill=FAINT)
-            y += 20
+            draw.text((column_x + 18, y), line, font=attribution_title_font, fill=SUBTLE)
+            y += 22
 
     if show_debug:
         footer_parts = []
