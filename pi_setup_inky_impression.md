@@ -2,6 +2,27 @@
 
 This is the practical path for turning the literary clock prototype into a personal appliance.
 
+## Choose your path
+
+### Path A: Inky is already installed and working
+
+If your Pi already has the Pimoroni Inky stack working in a virtualenv, this is the shortest path:
+
+```bash
+source ~/.virtualenvs/pimoroni/bin/activate
+git clone git@github.com:gkoch02/LitClock.git
+cd LitClock
+python3 run_clock.py --once
+python3 display_inky.py output/current.png
+python3 run_clock.py --display-script display_inky.py
+```
+
+If the one-shot render and one-shot display both work, you can move on to making it a boot-time service.
+
+### Path B: Fresh Inky setup
+
+Follow the rest of this document if you are starting from a fresh Pi or have not yet installed the Pimoroni Inky software.
+
 ## Hardware
 
 - Raspberry Pi Zero 2 W (headered)

@@ -229,7 +229,18 @@ Notes for the target testing display are in:
 - `projects/author-clock/inky_impression_notes.md`
 - `projects/author-clock/pi_setup_inky_impression.md`
 
-Bootstrap script for a Pi:
+If Inky is **already installed and working** on the Pi, the shortest path is:
+
+```bash
+source ~/.virtualenvs/pimoroni/bin/activate
+git clone git@github.com:gkoch02/LitClock.git
+cd LitClock
+python3 run_clock.py --once
+python3 display_inky.py output/current.png
+python3 run_clock.py --display-script display_inky.py
+```
+
+Bootstrap script for a fresh Pi:
 
 ```bash
 bash projects/author-clock/bootstrap_pi_inky.sh
