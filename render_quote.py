@@ -180,7 +180,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get('used_fallback') else quote_row['bucket']
     draw.text((SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
 
-    draw.text((column_x - 10, quote_top - 6), "“", font=ornament_font, fill=FAINT)
+    ornament_bbox = draw.textbbox((0, 0), "“", font=ornament_font)
+    ornament_width = ornament_bbox[2] - ornament_bbox[0]
+    draw.text((column_x - ornament_width - 12, quote_top - 18), "“", font=ornament_font, fill=FAINT)
 
     y = quote_top
     for line in wrapped_quote:
