@@ -19,7 +19,7 @@ SUBTLE = (78, 84, 96)
 FAINT = (145, 134, 118)
 ACCENT = (220, 40, 30)
 ORNAMENT = (94, 109, 122)
-SOURCE_BLUE = (78, 108, 156)
+SOURCE_BLUE = (45, 90, 170)
 TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
@@ -248,7 +248,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
-    attribution_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=layout["author_size"])
+    attribution_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["author_size"])
     attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["title_size"])
 
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
@@ -323,7 +323,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         prefix_w = draw.textbbox((0, 0), author_prefix, font=attribution_font)[2]
         author_w = draw.textbbox((0, 0), author_text_line, font=attribution_font)[2]
         author_x = (width - (prefix_w + author_w)) // 2
-        draw_text(draw, (author_x, y), author_prefix, font=attribution_font, fill=FAINT)
+        draw_text(draw, (author_x, y), author_prefix, font=attribution_font, fill=TEXT)
         draw_text(draw, (author_x + prefix_w, y), author_text_line, font=attribution_font, fill=TEXT)
         y += layout["author_size"] + layout["title_gap"]
 
