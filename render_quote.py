@@ -41,6 +41,17 @@ QUOTE_FONT_BOLD_CANDIDATES = [
     "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
     "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
 ]
+QUOTE_FONT_SEMIBOLD_CANDIDATES = [
+    str(BASE_DIR / "fonts/PlayfairDisplay-SemiBold.ttf"),
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-SemiBold.ttf",
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-SemiBold.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-SemiBold.ttf",
+    str(BASE_DIR / "fonts/PlayfairDisplay-Medium.ttf"),
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Medium.ttf",
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Medium.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Medium.ttf",
+    str(BASE_DIR / "fonts/PlayfairDisplay-Bold.ttf"),
+]
 ORNAMENT_FONT_CANDIDATES = [
     str(BASE_DIR / "fonts/PlayfairDisplay-Bold.ttf"),
     str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
@@ -69,7 +80,6 @@ LAYOUTS = {
         "mark_scale": 3.0,
         "mark_min": 76,
         "mark_max": 126,
-        "author_size": 22,
         "title_size": 17,
         "author_gap": 16,
         "title_gap": 6,
@@ -83,7 +93,6 @@ LAYOUTS = {
         "mark_scale": 2.8,
         "mark_min": 72,
         "mark_max": 118,
-        "author_size": 20,
         "title_size": 16,
         "author_gap": 14,
         "title_gap": 6,
@@ -97,7 +106,6 @@ LAYOUTS = {
         "mark_scale": 2.5,
         "mark_min": 64,
         "mark_max": 102,
-        "author_size": 18,
         "title_size": 15,
         "author_gap": 12,
         "title_gap": 5,
@@ -248,9 +256,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
-    attribution_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["author_size"])
-    attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["title_size"])
-
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
         quote_row["display_quote"],
@@ -262,6 +267,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         layout["line_height_mult"],
     )
     quote_block_height = len(wrapped_quote) * line_height
+    author_size = max(13, int(chosen_size * 0.52))
+    attribution_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=author_size)
+    attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["title_size"])
 
     author_text = quote_row.get("author") or quote_row.get("source_id") or None
     title_text = quote_row.get("title") or quote_row.get("source_path") or None
@@ -270,7 +278,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     attrib_height = 0
     if author_lines:
-        attrib_height += layout["author_size"]
+        attrib_height += author_size
     if title_lines:
         attrib_height += layout["author_gap"] + len(title_lines) * layout["title_size"]
         if len(title_lines) > 1:
@@ -325,7 +333,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         author_x = (width - (prefix_w + author_w)) // 2
         draw_text(draw, (author_x, y), author_prefix, font=attribution_font, fill=TEXT)
         draw_text(draw, (author_x + prefix_w, y), author_text_line, font=attribution_font, fill=TEXT)
-        y += layout["author_size"] + layout["title_gap"]
+        y += author_size + layout["title_gap"]
 
     for line in title_lines:
         title_w = draw.textbbox((0, 0), line, font=attribution_title_font)[2]
