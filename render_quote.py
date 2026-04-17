@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a picked literary clock quote to an image with a more editorial layout."""
+"""Render a picked literary clock quote to an image with an adaptive editorial layout."""
 from __future__ import annotations
 
 import argparse
@@ -22,7 +22,6 @@ ORNAMENT = (94, 109, 122)
 SOURCE_BLUE = (45, 90, 170)
 TOP_MARGIN = 26
 SIDE_MARGIN = 58
-QUOTE_COLUMN_WIDTH = 520
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
@@ -39,6 +38,42 @@ META_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
 ]
+
+LAYOUTS = {
+    "hero": {
+        "column_width": 440,
+        "quote_max_height": 270,
+        "font_max": 46,
+        "font_min": 26,
+        "line_height_mult": 1.5,
+        "ornament_size": 88,
+        "author_size": 22,
+        "title_size": 19,
+        "attrib_gap": 18,
+    },
+    "standard": {
+        "column_width": 520,
+        "quote_max_height": 250,
+        "font_max": 38,
+        "font_min": 22,
+        "line_height_mult": 1.42,
+        "ornament_size": 72,
+        "author_size": 20,
+        "title_size": 18,
+        "attrib_gap": 14,
+    },
+    "dense": {
+        "column_width": 600,
+        "quote_max_height": 265,
+        "font_max": 34,
+        "font_min": 20,
+        "line_height_mult": 1.34,
+        "ornament_size": 62,
+        "author_size": 18,
+        "title_size": 16,
+        "attrib_gap": 10,
+    },
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,6 +106,15 @@ def load_font(candidates: list[str], size: int):
             except OSError:
                 continue
     return ImageFont.load_default()
+
+
+def choose_layout(text: str) -> str:
+    length = len((text or "").strip())
+    if length <= 90:
+        return "hero"
+    if length <= 170:
+        return "standard"
+    return "dense"
 
 
 def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
@@ -135,56 +179,62 @@ def wrap_text(draw, text, font, max_width):
     return lines
 
 
-def fit_quote(draw, text, match_text, max_width, max_height):
+def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min, line_height_mult):
     segments = tokenize_quote(text, match_text)
-    for size in range(38, 21, -2):
+    for size in range(font_max, font_min - 1, -2):
         regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=size)
         bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=size)
         wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
-        line_height = int(size * 1.42)
+        line_height = int(size * line_height_mult)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
             return regular_font, bold_font, wrapped, line_height
-    regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=22)
-    bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=22)
+    regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=font_min)
+    bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=font_min)
     wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
-    return regular_font, bold_font, wrapped, int(22 * 1.42)
+    return regular_font, bold_font, wrapped, int(font_min * line_height_mult)
 
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug") -> Image.Image:
     image = Image.new("RGB", (width, height), color=PAGE_BG)
     draw = ImageDraw.Draw(image)
 
+    layout_name = choose_layout(quote_row['display_quote'])
+    layout = LAYOUTS[layout_name]
+
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
-    attribution_font = load_font(META_FONT_CANDIDATES, size=20)
-    attribution_title_font = load_font(META_FONT_CANDIDATES, size=18)
-    ornament_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=72)
+    attribution_font = load_font(META_FONT_CANDIDATES, size=layout['author_size'])
+    attribution_title_font = load_font(META_FONT_CANDIDATES, size=layout['title_size'])
+    ornament_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout['ornament_size'])
 
-    column_x = (width - QUOTE_COLUMN_WIDTH) // 2
-    quote_max_height = 250
+    column_width = layout['column_width']
+    column_x = (width - column_width) // 2
 
     quote_font, quote_font_bold, wrapped_quote, line_height = fit_quote(
         draw,
         quote_row['display_quote'],
         quote_row.get('matched_text') or '',
-        QUOTE_COLUMN_WIDTH,
-        quote_max_height,
+        column_width,
+        layout['quote_max_height'],
+        layout['font_max'],
+        layout['font_min'],
+        layout['line_height_mult'],
     )
     quote_block_height = len(wrapped_quote) * line_height
 
     author_text = quote_row.get('author') or quote_row.get('source_id') or None
     title_text = quote_row.get('title') or quote_row.get('source_path') or None
-    author_lines = wrap_text(draw, author_text, attribution_font, QUOTE_COLUMN_WIDTH)[:1] if author_text else []
-    title_lines = wrap_text(draw, title_text, attribution_title_font, QUOTE_COLUMN_WIDTH - 18)[:2] if title_text else []
+    author_lines = wrap_text(draw, author_text, attribution_font, column_width)[:1] if author_text else []
+    title_lines = wrap_text(draw, title_text, attribution_title_font, column_width - 18)[:2] if title_text else []
     attrib_height = 0
     if author_lines:
-        attrib_height += 24
+        attrib_height += layout['author_size'] + 6
     if title_lines:
-        attrib_height += len(title_lines) * 20
+        attrib_height += len(title_lines) * (layout['title_size'] + 4)
 
-    block_height = quote_block_height + 28 + attrib_height
-    quote_top = max(96, (height - block_height) // 2)
+    block_height = quote_block_height + layout['attrib_gap'] + attrib_height
+    quote_top = max(78 if layout_name == 'hero' else 96, (height - block_height) // 2)
 
     show_debug = mode == "debug"
     if show_debug:
@@ -194,7 +244,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     ornament_bbox = draw.textbbox((0, 0), "“", font=ornament_font)
     ornament_width = ornament_bbox[2] - ornament_bbox[0]
-    draw.text((column_x - ornament_width - 12, quote_top - 18), "“", font=ornament_font, fill=ORNAMENT)
+    draw.text((column_x - ornament_width - 10, quote_top - 16), "“", font=ornament_font, fill=ORNAMENT)
 
     y = quote_top
     for line in wrapped_quote:
@@ -209,28 +259,27 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     quote_end_y = y - line_height + 4
     closing_bbox = draw.textbbox((0, 0), "”", font=ornament_font)
     closing_width = closing_bbox[2] - closing_bbox[0]
-    draw.text((column_x + QUOTE_COLUMN_WIDTH - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
+    draw.text((column_x + column_width - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
 
     if author_lines or title_lines:
-        y += 14
+        y += layout['attrib_gap']
         if author_lines:
             draw.text((column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT)
-            y += 26
+            y += layout['author_size'] + 6
         for line in title_lines:
             draw.text((column_x + 18, y), line, font=attribution_title_font, fill=SOURCE_BLUE)
-            y += 22
+            y += layout['title_size'] + 4
 
     if show_debug:
-        footer_parts = []
+        footer_parts = [f"layout {layout_name}"]
         if quote_row.get('used_fallback'):
             footer_parts.append("fallback")
         if quote_row.get('quality_score') is not None:
             footer_parts.append(f"quality {quote_row['quality_score']}")
         footer_parts.append(f"shown {time_str}")
         footer = " • ".join(footer_parts)
-        if footer:
-            footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
-            draw.text((width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
+        footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
+        draw.text((width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
 
     return image
 
