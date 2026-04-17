@@ -13,13 +13,22 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
-PAGE_BG = (250, 247, 238)
-TEXT = (28, 28, 32)
-SUBTLE = (78, 84, 96)
-FAINT = (145, 134, 118)
-ACCENT = (220, 40, 30)
-ORNAMENT = (94, 109, 122)
-SOURCE_BLUE = (45, 90, 170)
+SPECTRA6 = {
+    "white": (255, 255, 255),
+    "black": (0, 0, 0),
+    "red": (255, 0, 0),
+    "yellow": (255, 255, 0),
+    "blue": (0, 0, 255),
+    "green": (0, 255, 0),
+}
+SPECTRA6_PALETTE = list(SPECTRA6.values())
+PAGE_BG = SPECTRA6["white"]
+TEXT = SPECTRA6["black"]
+SUBTLE = SPECTRA6["black"]
+FAINT = SPECTRA6["black"]
+ACCENT = SPECTRA6["red"]
+ORNAMENT = SPECTRA6["black"]
+SOURCE_BLUE = SPECTRA6["blue"]
 TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
@@ -247,6 +256,21 @@ def draw_text(draw, xy, text, font, fill):
     draw.text(xy, text, font=font, fill=fill)
 
 
+def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
+    snapped = Image.new("RGB", image.size)
+    src = image.load()
+    dst = snapped.load()
+    for y in range(image.height):
+        for x in range(image.width):
+            pixel = src[x, y]
+            nearest = min(
+                palette,
+                key=lambda c: (pixel[0] - c[0]) ** 2 + (pixel[1] - c[1]) ** 2 + (pixel[2] - c[2]) ** 2,
+            )
+            dst[x, y] = nearest
+    return snapped
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug") -> Image.Image:
     image = Image.new("RGB", (width, height), color=PAGE_BG)
     draw = ImageDraw.Draw(image)
@@ -352,7 +376,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
         draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
 
-    return image
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
 def main() -> int:
