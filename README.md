@@ -1,4 +1,4 @@
-# Author Clock Corpus Miner
+# Quote Clock Corpus Miner
 
 First-pass tooling for harvesting time-related quote candidates from Project Gutenberg or local plaintext files.
 
