@@ -166,8 +166,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     )
     quote_block_height = len(wrapped_quote) * line_height
 
-    author_text = quote_row.get('author') or None
-    title_text = quote_row.get('title') or None
+    author_text = quote_row.get('author') or quote_row.get('source_id') or None
+    title_text = quote_row.get('title') or quote_row.get('source_path') or None
     author_lines = wrap_text(draw, author_text, attribution_font, QUOTE_COLUMN_WIDTH)[:1] if author_text else []
     title_lines = wrap_text(draw, title_text, attribution_title_font, QUOTE_COLUMN_WIDTH - 18)[:2] if title_text else []
     attrib_height = 0
