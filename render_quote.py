@@ -19,7 +19,7 @@ SUBTLE = (78, 84, 96)
 FAINT = (145, 134, 118)
 ACCENT = (220, 40, 30)
 ORNAMENT = (94, 109, 122)
-SOURCE_BLUE = (45, 90, 170)
+SOURCE_BLUE = (78, 108, 156)
 TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
@@ -69,10 +69,10 @@ LAYOUTS = {
         "mark_scale": 3.0,
         "mark_min": 76,
         "mark_max": 126,
-        "author_size": 23,
-        "title_size": 18,
-        "author_gap": 18,
-        "title_gap": 8,
+        "author_size": 22,
+        "title_size": 17,
+        "author_gap": 16,
+        "title_gap": 6,
     },
     "standard": {
         "max_width": 660,
@@ -83,10 +83,10 @@ LAYOUTS = {
         "mark_scale": 2.8,
         "mark_min": 72,
         "mark_max": 118,
-        "author_size": 21,
-        "title_size": 17,
-        "author_gap": 16,
-        "title_gap": 8,
+        "author_size": 20,
+        "title_size": 16,
+        "author_gap": 14,
+        "title_gap": 6,
     },
     "dense": {
         "max_width": 680,
@@ -97,10 +97,10 @@ LAYOUTS = {
         "mark_scale": 2.5,
         "mark_min": 64,
         "mark_max": 102,
-        "author_size": 19,
-        "title_size": 16,
-        "author_gap": 14,
-        "title_gap": 6,
+        "author_size": 18,
+        "title_size": 15,
+        "author_gap": 12,
+        "title_gap": 5,
     },
 }
 
@@ -249,7 +249,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
     attribution_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=layout["author_size"])
-    attribution_title_font = load_font(META_FONT_CANDIDATES, size=layout["title_size"])
+    attribution_title_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=layout["title_size"])
 
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
@@ -318,9 +318,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     y = quote_top + quote_block_height + layout["author_gap"]
     if author_lines:
-        author_text_line = f"— {author_lines[0]}"
+        author_text_line = author_lines[0]
+        author_prefix = "— "
+        prefix_w = draw.textbbox((0, 0), author_prefix, font=attribution_font)[2]
         author_w = draw.textbbox((0, 0), author_text_line, font=attribution_font)[2]
-        draw_text(draw, ((width - author_w) // 2, y), author_text_line, font=attribution_font, fill=TEXT)
+        author_x = (width - (prefix_w + author_w)) // 2
+        draw_text(draw, (author_x, y), author_prefix, font=attribution_font, fill=FAINT)
+        draw_text(draw, (author_x + prefix_w, y), author_text_line, font=attribution_font, fill=TEXT)
         y += layout["author_size"] + layout["title_gap"]
 
     for line in title_lines:
