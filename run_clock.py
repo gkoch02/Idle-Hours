@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -91,11 +92,12 @@ def current_bucket() -> str:
 
 def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug") -> None:
     time_str = current_time_str()
+    python_executable = sys.executable
     render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
     output_path_resolved = str((BASE_DIR / output_path).resolve()) if not Path(output_path).is_absolute() else output_path
     subprocess.check_call(
         [
-            "python3",
+            python_executable,
             render_script_path,
             "--time",
             time_str,
@@ -112,7 +114,7 @@ def render_now(render_script: str, output_path: str, width: int, height: int, di
     print(f"Rendered {time_str} -> {output_path_resolved}")
     if display_script:
         display_script_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
-        subprocess.check_call(["python3", display_script_path, output_path_resolved])
+        subprocess.check_call([python_executable, display_script_path, output_path_resolved])
         print(f"Displayed {output_path_resolved} via {display_script_path}")
 
 
