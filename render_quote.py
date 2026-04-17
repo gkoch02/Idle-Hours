@@ -151,6 +151,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
     attribution_font = load_font(META_FONT_CANDIDATES, size=18)
+    attribution_title_font = load_font(META_FONT_CANDIDATES, size=16)
     ornament_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=72)
 
     column_x = (width - QUOTE_COLUMN_WIDTH) // 2
@@ -165,16 +166,17 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     )
     quote_block_height = len(wrapped_quote) * line_height
 
-    attribution_parts = []
-    if quote_row.get('author'):
-        attribution_parts.append(quote_row['author'])
-    if quote_row.get('title'):
-        attribution_parts.append(quote_row['title'])
-    attribution = " — ".join(attribution_parts) if attribution_parts else None
-    attrib_lines = wrap_text(draw, attribution, attribution_font, QUOTE_COLUMN_WIDTH)[:2] if attribution else []
-    attrib_height = len(attrib_lines) * 22
+    author_text = quote_row.get('author') or None
+    title_text = quote_row.get('title') or None
+    author_lines = wrap_text(draw, author_text, attribution_font, QUOTE_COLUMN_WIDTH)[:1] if author_text else []
+    title_lines = wrap_text(draw, title_text, attribution_title_font, QUOTE_COLUMN_WIDTH - 18)[:2] if title_text else []
+    attrib_height = 0
+    if author_lines:
+        attrib_height += 24
+    if title_lines:
+        attrib_height += len(title_lines) * 20
 
-    block_height = quote_block_height + 24 + attrib_height
+    block_height = quote_block_height + 28 + attrib_height
     quote_top = max(96, (height - block_height) // 2)
 
     draw.text((SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE)
@@ -200,12 +202,14 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     closing_width = closing_bbox[2] - closing_bbox[0]
     draw.text((column_x + QUOTE_COLUMN_WIDTH - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
 
-    if attrib_lines:
-        y += 18
-        for idx, line in enumerate(attrib_lines):
-            prefix = "— " if idx == 0 else "  "
-            draw.text((column_x, y), prefix + line, font=attribution_font, fill=SUBTLE)
-            y += 22
+    if author_lines or title_lines:
+        y += 20
+        if author_lines:
+            draw.text((column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=SUBTLE)
+            y += 24
+        for line in title_lines:
+            draw.text((column_x + 18, y), line, font=attribution_title_font, fill=FAINT)
+            y += 20
 
     footer_parts = []
     if quote_row.get('used_fallback'):
