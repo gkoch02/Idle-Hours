@@ -170,6 +170,18 @@ Or for a specific bucket:
 python3 projects/author-clock/pick_quote.py --bucket h10_just_before
 ```
 
+## Render a display image
+
+To render a PNG prototype for a given time:
+
+```bash
+python3 projects/author-clock/render_quote.py --time 22:54
+```
+
+This writes a PNG like:
+
+- `projects/author-clock/output/render-2254.png`
+
 ## Notes
 
 - Gutenberg downloads are cached in `data/gutenberg/` by default.
