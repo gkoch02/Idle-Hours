@@ -24,6 +24,7 @@ TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Regular.ttf",
     "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Regular.ttf",
     "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
@@ -31,6 +32,7 @@ QUOTE_FONT_REGULAR_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
 ]
 QUOTE_FONT_BOLD_CANDIDATES = [
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
