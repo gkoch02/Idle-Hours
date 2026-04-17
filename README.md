@@ -2,6 +2,8 @@
 
 First-pass tooling for harvesting time-related quote candidates from Project Gutenberg or local plaintext files.
 
+![Current LitClock render preview](output/preview-current-design.png)
+
 ## What it does
 
 - downloads Gutenberg plaintext books by ebook id
