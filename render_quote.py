@@ -41,6 +41,18 @@ QUOTE_FONT_BOLD_CANDIDATES = [
     "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
     "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
 ]
+ORNAMENT_FONT_CANDIDATES = [
+    str(BASE_DIR / "fonts/PlayfairDisplay-Italic.ttf"),
+    str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Italic.ttf",
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Regular.ttf",
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Regular.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+]
 META_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
@@ -276,7 +288,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
-    mark_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=mark_size)
+    mark_font = load_font(ORNAMENT_FONT_CANDIDATES, size=mark_size)
 
     open_bb = draw.textbbox((0, 0), "“", font=mark_font)
     open_w = open_bb[2] - open_bb[0]
