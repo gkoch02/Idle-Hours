@@ -88,6 +88,12 @@ If that fails:
 - enable `I2C` and `SPI` in `sudo raspi-config`
 - reboot and retry
 
+If LitClock later errors on missing fonts, install these as a fallback:
+
+```bash
+sudo apt install -y fonts-noto-core fonts-dejavu-core
+```
+
 ## Literary clock setup
 
 Clone the project:

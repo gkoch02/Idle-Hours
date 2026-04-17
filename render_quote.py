@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import textwrap
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -17,9 +16,21 @@ DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
 MARGIN_X = 48
 MARGIN_Y = 36
-QUOTE_FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf"
-QUOTE_FONT_BOLD_PATH = "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf"
-META_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+QUOTE_FONT_REGULAR_CANDIDATES = [
+    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+]
+QUOTE_FONT_BOLD_CANDIDATES = [
+    "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+]
+META_FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +57,16 @@ def pick_quote(time_str: str, picker_path: str) -> dict:
     return json.loads(output)
 
 
+def load_font(candidates: list[str], size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for candidate in candidates:
+        if Path(candidate).exists():
+            try:
+                return ImageFont.truetype(candidate, size=size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
 def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     normalized_match = " ".join((match_text or "").split()).strip()
     if not normalized_match:
@@ -62,7 +83,7 @@ def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     ]
 
 
-def wrap_styled_text(draw: ImageDraw.ImageDraw, segments: list[tuple[str, bool]], regular_font: ImageFont.FreeTypeFont, bold_font: ImageFont.FreeTypeFont, max_width: int) -> list[list[tuple[str, bool]]]:
+def wrap_styled_text(draw: ImageDraw.ImageDraw, segments: list[tuple[str, bool]], regular_font, bold_font, max_width: int) -> list[list[tuple[str, bool]]]:
     tokens: list[tuple[str, bool]] = []
     for text, is_bold in segments:
         parts = text.split(' ')
@@ -91,7 +112,7 @@ def wrap_styled_text(draw: ImageDraw.ImageDraw, segments: list[tuple[str, bool]]
     return lines
 
 
-def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+def wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str]:
     words = text.split()
     lines: list[str] = []
     current = []
@@ -108,18 +129,18 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont
     return lines
 
 
-def fit_quote(draw: ImageDraw.ImageDraw, text: str, match_text: str, max_width: int, max_height: int) -> tuple[ImageFont.FreeTypeFont, ImageFont.FreeTypeFont, list[list[tuple[str, bool]]], int]:
+def fit_quote(draw: ImageDraw.ImageDraw, text: str, match_text: str, max_width: int, max_height: int):
     segments = tokenize_quote(text, match_text)
     for size in range(34, 19, -2):
-        regular_font = ImageFont.truetype(QUOTE_FONT_PATH, size=size)
-        bold_font = ImageFont.truetype(QUOTE_FONT_BOLD_PATH, size=size)
+        regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=size)
+        bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=size)
         wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
         line_height = int(size * 1.45)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
             return regular_font, bold_font, wrapped, line_height
-    regular_font = ImageFont.truetype(QUOTE_FONT_PATH, size=20)
-    bold_font = ImageFont.truetype(QUOTE_FONT_BOLD_PATH, size=20)
+    regular_font = load_font(QUOTE_FONT_REGULAR_CANDIDATES, size=20)
+    bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=20)
     wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
     return regular_font, bold_font, wrapped, int(20 * 1.45)
 
@@ -128,11 +149,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     image = Image.new("L", (width, height), color=245)
     draw = ImageDraw.Draw(image)
 
-    title_font = ImageFont.truetype(META_FONT_PATH, size=22)
-    quote_font_bold = ImageFont.truetype(QUOTE_FONT_BOLD_PATH, size=26)
-    meta_font = ImageFont.truetype(META_FONT_PATH, size=18)
+    title_font = load_font(META_FONT_CANDIDATES, size=22)
+    quote_font_bold_ui = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=26)
+    meta_font = load_font(META_FONT_CANDIDATES, size=18)
 
-    draw.text((MARGIN_X, MARGIN_Y), time_str, font=quote_font_bold, fill=10)
+    draw.text((MARGIN_X, MARGIN_Y), time_str, font=quote_font_bold_ui, fill=10)
 
     subtitle = f"bucket: {quote_row['resolved_bucket']}" if quote_row.get('used_fallback') else quote_row['bucket']
     draw.text((MARGIN_X, MARGIN_Y + 34), subtitle, font=meta_font, fill=90)
