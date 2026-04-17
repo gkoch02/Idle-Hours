@@ -163,8 +163,47 @@ def choose_layout(text: str) -> str:
     return "dense"
 
 
-def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
+TIME_PHRASE_PREFIXES = [
+    "five minutes past",
+    "ten minutes past",
+    "quarter past",
+    "twenty minutes past",
+    "twenty-five minutes past",
+    "half past",
+    "twenty-five minutes to",
+    "twenty minutes to",
+    "quarter to",
+    "ten minutes to",
+    "five minutes to",
+]
+
+
+def resolve_display_match(text: str, match_text: str) -> str:
     normalized_match = " ".join((match_text or "").split()).strip()
+    lowered_text = text.lower()
+    best_match = normalized_match
+
+    for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True):
+        start = 0
+        while True:
+            idx = lowered_text.find(prefix, start)
+            if idx == -1:
+                break
+            end = idx + len(prefix)
+            while end < len(text) and text[end] in " ,":
+                end += 1
+            while end < len(text) and text[end].isalnum():
+                end += 1
+            candidate = text[idx:end].strip(" ,.;:!?")
+            if len(candidate) > len(best_match):
+                best_match = candidate
+            start = idx + 1
+
+    return best_match
+
+
+def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
+    normalized_match = resolve_display_match(text, match_text)
     if not normalized_match:
         return [(text, False)]
     lowered_text = text.lower()
