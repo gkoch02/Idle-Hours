@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import subprocess
 import time
 from pathlib import Path
@@ -58,6 +59,31 @@ def current_time_str() -> str:
     return dt.datetime.now().strftime("%H:%M")
 
 
+def current_bucket() -> str:
+    time_str = current_time_str()
+    hour24, minute = [int(part) for part in time_str.split(":", 1)]
+    hour12 = hour24 % 12
+    if hour12 == 0:
+        hour12 = 12
+    if minute == 0:
+        state = "exact"
+    elif 1 <= minute <= 5:
+        state = "just_after"
+    elif 6 <= minute <= 14:
+        state = "early_past"
+    elif 15 <= minute <= 19:
+        state = "quarter_pastish"
+    elif 20 <= minute <= 39:
+        state = "half_pastish"
+    elif 40 <= minute <= 44:
+        state = "late_past"
+    elif 45 <= minute <= 49:
+        state = "quarter_toish"
+    else:
+        state = "just_before"
+    return f"h{hour12}_{state}"
+
+
 def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None) -> None:
     time_str = current_time_str()
     render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
@@ -94,13 +120,12 @@ def main() -> int:
         render_now(args.render_script, args.output, args.width, args.height, args.display_script)
         return 0
 
-    last_minute = None
+    last_bucket = None
     while True:
-        now = dt.datetime.now()
-        minute_key = now.strftime("%Y-%m-%d %H:%M")
-        if minute_key != last_minute:
+        bucket = current_bucket()
+        if bucket != last_bucket:
             render_now(args.render_script, args.output, args.width, args.height, args.display_script)
-            last_minute = minute_key
+            last_bucket = bucket
         time.sleep(max(1, args.interval_seconds))
 
 

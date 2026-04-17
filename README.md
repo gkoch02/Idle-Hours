@@ -215,6 +215,8 @@ This keeps refreshing:
 
 - `output/current.png`
 
+In continuous mode, the clock now rerenders only when the **fuzzy bucket changes**, not every minute. That means it updates when the displayed literary time meaning changes.
+
 To also push the image to an Inky display each refresh:
 
 ```bash
