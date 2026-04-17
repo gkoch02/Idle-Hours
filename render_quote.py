@@ -17,8 +17,9 @@ PAGE_BG = (250, 247, 238)
 TEXT = (28, 28, 32)
 SUBTLE = (78, 84, 96)
 FAINT = (145, 134, 118)
-ACCENT = (167, 54, 43)
+ACCENT = (220, 40, 30)
 ORNAMENT = (94, 109, 122)
+SOURCE_BLUE = (45, 90, 170)
 TOP_MARGIN = 26
 SIDE_MARGIN = 58
 QUOTE_COLUMN_WIDTH = 520
@@ -216,7 +217,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             draw.text((column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT)
             y += 26
         for line in title_lines:
-            draw.text((column_x + 18, y), line, font=attribution_title_font, fill=SUBTLE)
+            draw.text((column_x + 18, y), line, font=attribution_title_font, fill=SOURCE_BLUE)
             y += 22
 
     if show_debug:
