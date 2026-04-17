@@ -24,11 +24,15 @@ TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Regular.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
 ]
 QUOTE_FONT_BOLD_CANDIDATES = [
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Bold.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
     "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
@@ -195,7 +199,7 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult)
 
 
-def draw_text(draw, xy, text, font, fill, stroke_width=1, stroke_fill=None):
+def draw_text(draw, xy, text, font, fill, stroke_width=0, stroke_fill=None):
     draw.text(xy, text, font=font, fill=fill, stroke_width=stroke_width, stroke_fill=stroke_fill or fill)
 
 
