@@ -197,6 +197,26 @@ This writes a PNG like:
 
 - `projects/author-clock/output/render-2254.png`
 
+## Run the clock loop
+
+To run it like a simple appliance that always rewrites the current display image:
+
+```bash
+python3 projects/author-clock/run_clock.py --once
+```
+
+Or continuously:
+
+```bash
+python3 projects/author-clock/run_clock.py
+```
+
+This keeps refreshing:
+
+- `projects/author-clock/output/current.png`
+
+That output path is the handoff point for a future eInk driver or display push script.
+
 ## Notes
 
 - Gutenberg downloads are cached in `data/gutenberg/` by default.
