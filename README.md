@@ -80,3 +80,4 @@ For mining/backfill work and corpus expansion notes, see:
 - The clock refreshes when the fuzzy bucket changes, not every minute.
 - The default picker now uses the attributed dataset: `output/candidates-attributed.jsonl`.
 - Production mode hides debug metadata for a cleaner display.
+- One bucket currently remains unfilled (`h3_late_past`), so that time falls back to the nearest neighboring bucket rather than leaving the display blank.
