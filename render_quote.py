@@ -22,7 +22,7 @@ SPECTRA6 = {
     "green": (0, 255, 0),
 }
 SPECTRA6_PALETTE = list(SPECTRA6.values())
-PAGE_BG = SPECTRA6["white"]
+PAGE_BG = SPECTRA6["yellow"]
 TEXT = SPECTRA6["black"]
 SUBTLE = SPECTRA6["black"]
 FAINT = SPECTRA6["black"]
