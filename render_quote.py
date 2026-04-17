@@ -24,14 +24,14 @@ TOP_MARGIN = 26
 SIDE_MARGIN = 58
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
-    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",
 ]
 QUOTE_FONT_BOLD_CANDIDATES = [
-    "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
 ]
 META_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -195,6 +195,10 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult)
 
 
+def draw_text(draw, xy, text, font, fill, stroke_width=1, stroke_fill=None):
+    draw.text(xy, text, font=font, fill=fill, stroke_width=stroke_width, stroke_fill=stroke_fill or fill)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug") -> Image.Image:
     image = Image.new("RGB", (width, height), color=PAGE_BG)
     draw = ImageDraw.Draw(image)
@@ -238,13 +242,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     show_debug = mode == "debug"
     if show_debug:
-        draw.text((SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE)
+        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE, stroke_width=1)
         subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get('used_fallback') else quote_row['bucket']
-        draw.text((SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
+        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT, stroke_width=1)
 
     ornament_bbox = draw.textbbox((0, 0), "“", font=ornament_font)
     ornament_width = ornament_bbox[2] - ornament_bbox[0]
-    draw.text((column_x - ornament_width - 10, quote_top - 16), "“", font=ornament_font, fill=ORNAMENT)
+    draw_text(draw, (column_x - ornament_width - 10, quote_top - 16), "“", font=ornament_font, fill=ORNAMENT, stroke_width=1)
 
     y = quote_top
     for line in wrapped_quote:
@@ -252,22 +256,22 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         for chunk, is_bold in line:
             font = quote_font_bold if is_bold else quote_font
             fill = ACCENT if is_bold else TEXT
-            draw.text((x, y), chunk, font=font, fill=fill)
+            draw_text(draw, (x, y), chunk, font=font, fill=fill, stroke_width=1)
             x += draw.textbbox((0, 0), chunk, font=font)[2]
         y += line_height
 
     quote_end_y = y - line_height + 4
     closing_bbox = draw.textbbox((0, 0), "”", font=ornament_font)
     closing_width = closing_bbox[2] - closing_bbox[0]
-    draw.text((column_x + column_width - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT)
+    draw_text(draw, (column_x + column_width - closing_width + 8, quote_end_y - 6), "”", font=ornament_font, fill=ORNAMENT, stroke_width=1)
 
     if author_lines or title_lines:
         y += layout['attrib_gap']
         if author_lines:
-            draw.text((column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT)
+            draw_text(draw, (column_x, y), f"— {author_lines[0]}", font=attribution_font, fill=TEXT, stroke_width=1)
             y += layout['author_size'] + 6
         for line in title_lines:
-            draw.text((column_x + 18, y), line, font=attribution_title_font, fill=SOURCE_BLUE)
+            draw_text(draw, (column_x + 18, y), line, font=attribution_title_font, fill=SOURCE_BLUE, stroke_width=1)
             y += layout['title_size'] + 4
 
     if show_debug:
@@ -279,7 +283,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         footer_parts.append(f"shown {time_str}")
         footer = " • ".join(footer_parts)
         footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
-        draw.text((width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
+        draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT, stroke_width=1)
 
     return image
 
