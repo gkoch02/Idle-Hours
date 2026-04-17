@@ -19,7 +19,29 @@ python3 run_clock.py --display-script display_inky.py
 
 If the one-shot render and one-shot display both work, you can move on to making it a boot-time service.
 
-### Path B: Fresh Inky setup
+### Optional: Run LitClock as an appliance at boot
+
+A sample systemd unit is included at:
+
+- `litclock.service.example`
+
+Typical install on the Pi:
+
+```bash
+cd ~/LitClock
+sudo cp litclock.service.example /etc/systemd/system/litclock.service
+sudo systemctl daemon-reload
+sudo systemctl enable litclock.service
+sudo systemctl start litclock.service
+sudo systemctl status litclock.service
+```
+
+Notes:
+- the sample runs `run_clock.py` in `--mode production`
+- edit `User=`, `WorkingDirectory=`, and `ExecStart=` if your Pi paths differ
+- if `inky-photo-frame.service` is still enabled, stop/disable it first so LitClock can own the display
+
+## Path B: Fresh Inky setup
 
 Follow the rest of this document if you are starting from a fresh Pi or have not yet installed the Pimoroni Inky software.
 

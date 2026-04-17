@@ -12,6 +12,7 @@ A literary clock built from public-domain text, designed to render elegant time-
 - picks the best quote for the current time
 - renders a display-ready image
 - can push the rendered image to an Inky eInk display
+- supports `debug` and cleaner `production` render modes
 
 The repo still includes the corpus-mining pipeline, but it now also contains the full LitClock runtime, renderer, and Pi display path.
 
@@ -243,6 +244,7 @@ cd LitClock
 python3 run_clock.py --once
 python3 display_inky.py output/current.png
 python3 run_clock.py --display-script display_inky.py
+python3 run_clock.py --display-script display_inky.py --mode production
 ```
 
 Bootstrap script for a fresh Pi:

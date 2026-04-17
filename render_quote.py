@@ -47,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default=None, help="Output PNG path. Defaults to output/render-HHMM.png")
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
+    parser.add_argument(
+        "--mode",
+        choices=["production", "debug"],
+        default="debug",
+        help="Render mode. Production hides debug UI, debug shows bucket/quality/time metadata.",
+    )
     return parser.parse_args()
 
 
@@ -144,7 +150,7 @@ def fit_quote(draw, text, match_text, max_width, max_height):
     return regular_font, bold_font, wrapped, int(22 * 1.42)
 
 
-def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug") -> Image.Image:
     image = Image.new("RGB", (width, height), color=PAGE_BG)
     draw = ImageDraw.Draw(image)
 
@@ -179,9 +185,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
     block_height = quote_block_height + 28 + attrib_height
     quote_top = max(96, (height - block_height) // 2)
 
-    draw.text((SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE)
-    subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get('used_fallback') else quote_row['bucket']
-    draw.text((SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
+    show_debug = mode == "debug"
+    if show_debug:
+        draw.text((SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE)
+        subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get('used_fallback') else quote_row['bucket']
+        draw.text((SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
 
     ornament_bbox = draw.textbbox((0, 0), "“", font=ornament_font)
     ornament_width = ornament_bbox[2] - ornament_bbox[0]
@@ -211,16 +219,17 @@ def render(time_str: str, quote_row: dict, width: int, height: int) -> Image.Ima
             draw.text((column_x + 18, y), line, font=attribution_title_font, fill=FAINT)
             y += 20
 
-    footer_parts = []
-    if quote_row.get('used_fallback'):
-        footer_parts.append("fallback")
-    if quote_row.get('quality_score') is not None:
-        footer_parts.append(f"quality {quote_row['quality_score']}")
-    footer_parts.append(f"shown {time_str}")
-    footer = " • ".join(footer_parts)
-    if footer:
-        footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
-        draw.text((width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
+    if show_debug:
+        footer_parts = []
+        if quote_row.get('used_fallback'):
+            footer_parts.append("fallback")
+        if quote_row.get('quality_score') is not None:
+            footer_parts.append(f"quality {quote_row['quality_score']}")
+        footer_parts.append(f"shown {time_str}")
+        footer = " • ".join(footer_parts)
+        if footer:
+            footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
+            draw.text((width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
 
     return image
 
@@ -232,7 +241,7 @@ def main() -> int:
     if not output_path.is_absolute():
         output_path = BASE_DIR / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    image = render(args.time, quote_row, args.width, args.height)
+    image = render(args.time, quote_row, args.width, args.height, mode=args.mode)
     image.save(output_path)
     print(output_path)
     return 0

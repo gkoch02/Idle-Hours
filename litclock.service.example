@@ -1,0 +1,15 @@
+[Unit]
+Description=LitClock eInk display service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/LitClock
+ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py --display-script display_inky.py --mode production
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

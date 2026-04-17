@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import json
 import subprocess
 import time
 from pathlib import Path
@@ -52,6 +51,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional script to push the rendered image to hardware, e.g. display_inky.py",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["production", "debug"],
+        default="debug",
+        help="Render mode passed through to render_quote.py",
+    )
     return parser.parse_args()
 
 
@@ -84,7 +89,7 @@ def current_bucket() -> str:
     return f"h{hour12}_{state}"
 
 
-def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None) -> None:
+def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug") -> None:
     time_str = current_time_str()
     render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
     output_path_resolved = str((BASE_DIR / output_path).resolve()) if not Path(output_path).is_absolute() else output_path
@@ -100,6 +105,8 @@ def render_now(render_script: str, output_path: str, width: int, height: int, di
             str(width),
             "--height",
             str(height),
+            "--mode",
+            mode,
         ]
     )
     print(f"Rendered {time_str} -> {output_path_resolved}")
@@ -117,14 +124,14 @@ def main() -> int:
     output_target.expanduser().parent.mkdir(parents=True, exist_ok=True)
 
     if args.once:
-        render_now(args.render_script, args.output, args.width, args.height, args.display_script)
+        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode)
         return 0
 
     last_bucket = None
     while True:
         bucket = current_bucket()
         if bucket != last_bucket:
-            render_now(args.render_script, args.output, args.width, args.height, args.display_script)
+            render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode)
             last_bucket = bucket
         time.sleep(max(1, args.interval_seconds))
 
