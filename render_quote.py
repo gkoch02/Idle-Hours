@@ -42,15 +42,15 @@ QUOTE_FONT_BOLD_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
 ]
 ORNAMENT_FONT_CANDIDATES = [
-    str(BASE_DIR / "fonts/PlayfairDisplay-Italic.ttf"),
+    str(BASE_DIR / "fonts/PlayfairDisplay-Bold.ttf"),
     str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
-    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Italic.ttf",
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Bold.ttf",
     "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Regular.ttf",
-    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Regular.ttf",
-    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Bold.ttf",
     "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Regular.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
 ]
 META_FONT_CANDIDATES = [
