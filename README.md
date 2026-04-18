@@ -112,4 +112,4 @@ For mining/backfill work and corpus expansion notes, see:
 - Production mode hides debug metadata for a cleaner display.
 - The render pipeline now snaps output to the exact Spectra 6 palette, which materially improves color fidelity on hardware.
 - The current renderer is tuned specifically for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 panel.
-- One bucket currently remains unfilled (`h3_late_past`), so that time falls back to the nearest neighboring bucket rather than leaving the display blank.
+- If a bucket has no usable quote above the quality threshold, `pick_quote` walks outward through the neighboring minute-states of the same hour and reports the fallback via `resolved_bucket` / `used_fallback` so the display never goes blank.
