@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Sequence
 
+from buckets import minute_bucket
+
 BASE_DIR = Path(__file__).resolve().parent
 
 NUMBER_WORDS = {
@@ -306,28 +308,6 @@ def sentence_window(text: str, start: int, end: int, context_chars: int) -> tupl
     quote = text[sentence_start + 1 : sentence_end + 1].strip() if sentence_end > sentence_start else context
     line_number = text.count("\n", 0, start) + 1
     return quote, context, line_number
-
-
-def minute_bucket(minute: int) -> str:
-    if not 0 <= minute <= 59:
-        return "unknown"
-    rounded = ((minute + 2) // 5) * 5
-    if rounded == 60:
-        rounded = 0
-    return {
-        0: "exact",
-        5: "five_past",
-        10: "ten_past",
-        15: "quarter_past",
-        20: "twenty_past",
-        25: "twenty_five_past",
-        30: "half_past",
-        35: "twenty_five_to",
-        40: "twenty_to",
-        45: "quarter_to",
-        50: "ten_to",
-        55: "five_to",
-    }[rounded]
 
 
 def daypart_for_hour(hour: int | None) -> str | None:

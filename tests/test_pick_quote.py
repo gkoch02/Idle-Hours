@@ -1,66 +1,15 @@
-"""Tests for pick_quote.py — scoring, selection, and fallback logic."""
+"""Tests for pick_quote.py — scoring, selection, and fallback logic.
+
+The primitives (minute_bucket, bucket_for_time, neighbor_buckets) are owned by
+``buckets`` and exercised in ``test_buckets.py``. This file tests pick_quote's
+own selection logic.
+"""
 from __future__ import annotations
 
 import pytest
 
 import pick_quote as pq
 from tests.conftest import make_row
-
-
-class TestMinuteBucket:
-    def test_exact(self):
-        assert pq.minute_bucket(0) == "exact"
-
-    def test_rounding_windows(self):
-        assert pq.minute_bucket(2) == "exact"
-        assert pq.minute_bucket(3) == "five_past"
-        assert pq.minute_bucket(7) == "five_past"
-        assert pq.minute_bucket(8) == "ten_past"
-        assert pq.minute_bucket(12) == "ten_past"
-        assert pq.minute_bucket(13) == "quarter_past"
-        assert pq.minute_bucket(17) == "quarter_past"
-        assert pq.minute_bucket(18) == "twenty_past"
-        assert pq.minute_bucket(22) == "twenty_past"
-        assert pq.minute_bucket(23) == "twenty_five_past"
-        assert pq.minute_bucket(27) == "twenty_five_past"
-        assert pq.minute_bucket(28) == "half_past"
-        assert pq.minute_bucket(32) == "half_past"
-        assert pq.minute_bucket(33) == "twenty_five_to"
-        assert pq.minute_bucket(37) == "twenty_five_to"
-        assert pq.minute_bucket(38) == "twenty_to"
-        assert pq.minute_bucket(42) == "twenty_to"
-        assert pq.minute_bucket(43) == "quarter_to"
-        assert pq.minute_bucket(47) == "quarter_to"
-        assert pq.minute_bucket(48) == "ten_to"
-        assert pq.minute_bucket(52) == "ten_to"
-        assert pq.minute_bucket(53) == "five_to"
-        assert pq.minute_bucket(57) == "five_to"
-        assert pq.minute_bucket(58) == "exact"
-        assert pq.minute_bucket(59) == "exact"
-
-    def test_invalid_minute_raises(self):
-        with pytest.raises(ValueError):
-            pq.minute_bucket(60)
-
-
-class TestBucketForTime:
-    def test_midnight_exact(self):
-        assert pq.bucket_for_time("00:00") == "h12_exact"
-
-    def test_noon_exact(self):
-        assert pq.bucket_for_time("12:00") == "h12_exact"
-
-    def test_hour12_wraps(self):
-        assert pq.bucket_for_time("13:00") == "h1_exact"
-
-    def test_23_59_rolls_to_midnight(self):
-        assert pq.bucket_for_time("23:59") == "h12_exact"
-
-    def test_3_30(self):
-        assert pq.bucket_for_time("03:30") == "h3_half_past"
-
-    def test_14_45(self):
-        assert pq.bucket_for_time("14:45") == "h2_quarter_to"
 
 
 class TestMetadataBonus:
@@ -195,28 +144,6 @@ class TestScoreRow:
         far = make_row(normalized_time="11:25", matched_text="twenty-five minutes past eleven", quality_score=90,
                        display_quote="It was twenty-five minutes past eleven.")
         assert pq.score_row(near, "h11_twenty_past", overrides, "11:20") < pq.score_row(far, "h11_twenty_past", overrides, "11:20")
-
-
-class TestNeighborBuckets:
-    def test_first_bucket_expands_forward_only(self):
-        neighbors = pq.neighbor_buckets("h3_exact")
-        assert neighbors[0] == "h3_exact"
-        assert "h3_five_past" in neighbors
-        assert all(n.startswith("h3_") for n in neighbors)
-
-    def test_last_bucket_expands_backward_only(self):
-        neighbors = pq.neighbor_buckets("h3_five_to")
-        assert neighbors[0] == "h3_five_to"
-        assert "h3_ten_to" in neighbors
-
-    def test_middle_bucket_expands_both_ways(self):
-        neighbors = pq.neighbor_buckets("h3_half_past")
-        assert "h3_twenty_five_past" in neighbors
-        assert "h3_twenty_five_to" in neighbors
-
-    def test_returns_all_states_eventually(self):
-        neighbors = pq.neighbor_buckets("h3_exact")
-        assert len(neighbors) == 12
 
 
 class TestPickBest:

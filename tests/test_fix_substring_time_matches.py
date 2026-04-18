@@ -49,56 +49,17 @@ class TestParseNumberWord:
 
 
 class TestBucketForMinute:
-    def test_exact(self):
+    # Full behavior of the underlying primitive is exercised in tests/test_buckets.py.
+    # These smoke tests confirm this module still exposes it under the historical
+    # ``bucket_for_minute`` name for backward compatibility.
+    def test_alias_resolves_to_shared_primitive(self):
+        from buckets import minute_bucket as shared
+        assert bucket_for_minute is shared
+
+    def test_smoke(self):
         assert bucket_for_minute(0) == "exact"
-        assert bucket_for_minute(1) == "exact"
-        assert bucket_for_minute(2) == "exact"
-
-    def test_five_past(self):
-        assert bucket_for_minute(3) == "five_past"
-        assert bucket_for_minute(5) == "five_past"
-        assert bucket_for_minute(7) == "five_past"
-
-    def test_ten_past(self):
-        assert bucket_for_minute(8) == "ten_past"
-        assert bucket_for_minute(10) == "ten_past"
-        assert bucket_for_minute(12) == "ten_past"
-
-    def test_quarter_past(self):
-        assert bucket_for_minute(13) == "quarter_past"
-        assert bucket_for_minute(15) == "quarter_past"
-        assert bucket_for_minute(17) == "quarter_past"
-
-    def test_half_past(self):
-        assert bucket_for_minute(28) == "half_past"
         assert bucket_for_minute(30) == "half_past"
-        assert bucket_for_minute(32) == "half_past"
-
-    def test_twenty_five_to(self):
-        assert bucket_for_minute(33) == "twenty_five_to"
-        assert bucket_for_minute(35) == "twenty_five_to"
-        assert bucket_for_minute(37) == "twenty_five_to"
-
-    def test_quarter_to(self):
-        assert bucket_for_minute(43) == "quarter_to"
-        assert bucket_for_minute(45) == "quarter_to"
-        assert bucket_for_minute(47) == "quarter_to"
-
-    def test_five_to(self):
-        assert bucket_for_minute(53) == "five_to"
-        assert bucket_for_minute(55) == "five_to"
-        assert bucket_for_minute(57) == "five_to"
-
-    def test_rollover_to_exact(self):
-        # 58 and 59 round up to 60 → "exact" (hour rollover handled by caller).
-        assert bucket_for_minute(58) == "exact"
         assert bucket_for_minute(59) == "exact"
-
-    def test_matches_miner_scheme(self):
-        # Parity with gutenberg_time_miner.minute_bucket — the corpus depends on identical names.
-        from gutenberg_time_miner import minute_bucket
-        for m in range(0, 60):
-            assert bucket_for_minute(m) == minute_bucket(m), f"mismatch at minute={m}"
 
 
 class TestInferTimeFromQuote:

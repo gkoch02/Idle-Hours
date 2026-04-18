@@ -1,7 +1,10 @@
 """Tests for run_clock.py"""
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import patch
+
+import pytest
 
 import run_clock
 
@@ -105,3 +108,64 @@ class TestRenderNow:
                 display_script=None,
             )
         assert mock_call.call_count == 1
+
+
+class TestMainLoopResilience:
+    """A render failure must not kill the clock loop."""
+
+    def _drive_loop(self, tmp_path, render_side_effects: list, tick_count: int):
+        """Drive run_clock.main for ``tick_count`` ticks then bail out via KeyboardInterrupt.
+
+        Each tick sees a different ``current_bucket`` so render_now is always invoked.
+        Returns the ordered list of render_now invocation arguments.
+        """
+        render_calls: list = []
+
+        def fake_render(*args, **kwargs):
+            idx = len(render_calls)
+            render_calls.append((args, kwargs))
+            side = render_side_effects[idx] if idx < len(render_side_effects) else None
+            if isinstance(side, Exception):
+                raise side
+
+        # Distinct bucket per tick, followed by a KeyboardInterrupt on the next call
+        # so the infinite loop terminates for the test.
+        buckets = [f"h{i}_exact" for i in range(1, tick_count + 1)]
+
+        sleep_count = {"n": 0}
+
+        def stop_after_ticks(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= tick_count:
+                raise KeyboardInterrupt
+
+        argv = ["run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0"]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("time.sleep", side_effect=stop_after_ticks):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        return render_calls
+
+    def test_render_exception_keeps_loop_alive(self, tmp_path, capsys):
+        # First render raises CalledProcessError; second and third succeed.
+        err = subprocess.CalledProcessError(1, ["render_quote.py"])
+        calls = self._drive_loop(tmp_path, [err, None, None], tick_count=3)
+        assert len(calls) == 3, "loop must keep invoking render after a failure"
+        assert "render/display failed" in capsys.readouterr().err
+
+    def test_generic_exception_keeps_loop_alive(self, tmp_path, capsys):
+        # Anything (not just CalledProcessError) must be caught.
+        calls = self._drive_loop(tmp_path, [RuntimeError("boom"), None], tick_count=2)
+        assert len(calls) == 2
+        assert "render/display failed" in capsys.readouterr().err
+
+    def test_once_mode_still_propagates_failure(self, tmp_path):
+        # --once must NOT swallow errors — cron/smoke tests need a non-zero exit.
+        argv = ["run_clock.py", "--once", "--output", str(tmp_path / "current.png")]
+        err = subprocess.CalledProcessError(1, ["render_quote.py"])
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=err):
+            with pytest.raises(subprocess.CalledProcessError):
+                run_clock.main()

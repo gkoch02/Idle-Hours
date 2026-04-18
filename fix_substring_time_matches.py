@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 
+from buckets import minute_bucket as bucket_for_minute
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -41,22 +43,6 @@ TIME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-STATE_NAMES = {
-    0: "exact",
-    5: "five_past",
-    10: "ten_past",
-    15: "quarter_past",
-    20: "twenty_past",
-    25: "twenty_five_past",
-    30: "half_past",
-    35: "twenty_five_to",
-    40: "twenty_to",
-    45: "quarter_to",
-    50: "ten_to",
-    55: "five_to",
-}
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fix substring-collision time matches in JSONL corpus rows.")
     parser.add_argument("input", help="Input JSONL file")
@@ -72,15 +58,6 @@ def parse_number_word(text: str) -> int | None:
     if len(parts) == 2 and parts[0] in NUMBER_WORDS and parts[1] in NUMBER_WORDS:
         return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[1]]
     return None
-
-
-def bucket_for_minute(minute: int) -> str:
-    if not 0 <= minute <= 59:
-        return "unknown"
-    rounded = ((minute + 2) // 5) * 5
-    if rounded == 60:
-        rounded = 0
-    return STATE_NAMES[rounded]
 
 
 def infer_time_from_quote(display_quote: str):

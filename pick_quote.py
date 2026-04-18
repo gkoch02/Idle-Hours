@@ -7,6 +7,8 @@ import json
 import random
 from pathlib import Path
 
+from buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
+
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
     5: ["five minutes past", "five minutes after", "five past"],
@@ -20,23 +22,6 @@ EXACT_MINUTE_PATTERNS = {
     45: ["quarter to"],
     50: ["ten minutes to", "ten to"],
     55: ["five minutes to", "five to"],
-}
-
-BUCKET_ORDER = ["exact", "five_past", "ten_past", "quarter_past", "twenty_past", "twenty_five_past", "half_past", "twenty_five_to", "twenty_to", "quarter_to", "ten_to", "five_to"]
-
-DEFAULT_BUCKET_MINUTES = {
-    "exact": 0,
-    "five_past": 5,
-    "ten_past": 10,
-    "quarter_past": 15,
-    "twenty_past": 20,
-    "twenty_five_past": 25,
-    "half_past": 30,
-    "twenty_five_to": 35,
-    "twenty_to": 40,
-    "quarter_to": 45,
-    "ten_to": 50,
-    "five_to": 55,
 }
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -105,40 +90,6 @@ def parse_args() -> argparse.Namespace:
         help="JSON overrides for manual boosts/bans/preferred bucket picks.",
     )
     return parser.parse_args()
-
-
-def minute_bucket(minute: int) -> str:
-    if not 0 <= minute <= 59:
-        raise ValueError(f"Unexpected minute: {minute}")
-    bucket = ((minute + 2) // 5) * 5
-    if bucket == 60:
-        return "exact"
-    return {
-        0: "exact",
-        5: "five_past",
-        10: "ten_past",
-        15: "quarter_past",
-        20: "twenty_past",
-        25: "twenty_five_past",
-        30: "half_past",
-        35: "twenty_five_to",
-        40: "twenty_to",
-        45: "quarter_to",
-        50: "ten_to",
-        55: "five_to",
-    }[bucket]
-
-
-def bucket_for_time(time_str: str) -> str:
-    hour24, minute = [int(part) for part in time_str.split(":", 1)]
-    rounded_minute = ((minute + 2) // 5) * 5
-    if rounded_minute == 60:
-        rounded_minute = 0
-        hour24 = (hour24 + 1) % 24
-    hour12 = hour24 % 12
-    if hour12 == 0:
-        hour12 = 12
-    return f"h{hour12}_{minute_bucket(rounded_minute)}"
 
 
 def resolve_path(path_str: str) -> Path:
@@ -266,18 +217,6 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
         length_penalty + exactness_bonus,
         len(display),
     )
-
-
-def neighbor_buckets(bucket: str) -> list[str]:
-    hour_part, state = bucket.split("_", 1)
-    idx = BUCKET_ORDER.index(state)
-    neighbors = [bucket]
-    for distance in range(1, len(BUCKET_ORDER)):
-        if idx - distance >= 0:
-            neighbors.append(f"{hour_part}_{BUCKET_ORDER[idx - distance]}")
-        if idx + distance < len(BUCKET_ORDER):
-            neighbors.append(f"{hour_part}_{BUCKET_ORDER[idx + distance]}")
-    return neighbors
 
 
 def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overrides: dict, requested_time: str | None = None) -> tuple[dict, str]:
