@@ -140,37 +140,26 @@ Inky Impression eInk panel
 
 ### Fuzzy Bucket System
 
-The core abstraction. Each of 12 hours is divided into 8 minute-state buckets (96 total), named `h{HOUR}_{STATE}`. Plus `daypart` buckets (midnight, small_hours, dawn, morning, noon, afternoon, dusk, evening, night) for time references that don't specify an hour.
+The core abstraction. Each of 12 hours is divided into 12 minute-state buckets (144 total), named `h{HOUR}_{STATE}`. Plus `daypart` buckets (midnight, small_hours, dawn, morning, noon, afternoon, dusk, evening, night) for time references that don't specify an hour.
 
-**Heads-up: the minute→bucket mapping is redefined in four places, and two definitions disagree.**
+The miner (`gutenberg_time_miner.py::minute_bucket`) and runtime (`run_clock.py::current_bucket`, `pick_quote.py::BUCKET_ORDER`) all use the same 5-minute rounding scheme: `rounded = ((minute + 2) // 5) * 5`.
 
-Miner-side (`gutenberg_time_miner.py::minute_bucket` and `fix_substring_time_matches.py::BUCKET_ORDER`):
-
-| State | Minutes |
+| Rounded minute | State |
 |---|---|
-| `exact` | 0 |
-| `just_after` | 1–5 |
-| `early_past` | 6–14 |
-| `quarter_pastish` | 15–19 |
-| `half_pastish` | 20–39 |
-| `late_past` | 40–44 |
-| `quarter_toish` | 45–49 |
-| `just_before` | 50–59 |
+| 0 | `exact` |
+| 5 | `five_past` |
+| 10 | `ten_past` |
+| 15 | `quarter_past` |
+| 20 | `twenty_past` |
+| 25 | `twenty_five_past` |
+| 30 | `half_past` |
+| 35 | `twenty_five_to` |
+| 40 | `twenty_to` |
+| 45 | `quarter_to` |
+| 50 | `ten_to` |
+| 55 | `five_to` |
 
-Runtime-side (`pick_quote.py::minute_bucket` and `run_clock.py::current_bucket`):
-
-| State | Minutes |
-|---|---|
-| `exact` | 0 |
-| `just_after` | 1–5 |
-| `early_past` | 6–14 |
-| `quarter_pastish` | 15–19 |
-| `half_pastish` | 20–34 |
-| `late_past` | 35–39 |
-| `quarter_toish` | 40–49 |
-| `just_before` | 50–59 |
-
-Rows are *tagged* with the miner-side boundaries at harvest time, but *queried* with the runtime-side boundaries at display time. The picker's neighbor-walk fallback (see below) papers over the mismatch in practice, but if you change either table you must change all four sites and consider re-running the miner.
+**Note:** `fix_substring_time_matches.py::BUCKET_ORDER` still uses the old 8-state boundary table (`just_after`, `early_past`, `quarter_pastish`, etc.) for its internal `bucket_for_minute` repair logic. This is a legacy holdover; the active corpus uses the 12-state names above. If you extend or re-harvest, ensure all four sites stay consistent.
 
 ### Match Types
 
@@ -242,6 +231,7 @@ Candidates in a bucket are ranked by a long lexicographic tuple (lower is better
 ```
 (fragment_penalty,           # 0 if display_fragment is False, else 1
  cleanup_penalty,             # 0 if cleanup_status == "complete_sentence", else 1
+ minute_penalty,              # abs(requested_minute - inferred_quote_minute); 99 if either is None
  metadata_bonus,              # -3 both author+title, -1 one, +2 neither
  dialogue_penalty,            # +2 if text contains "he said" / "she said" / etc.
  opening_penalty,             # +2 weak opener (and/but/so/…), +1 pronoun opener
@@ -301,7 +291,7 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 13 test modules covering every pipeline script plus the runtime components — roughly 200 tests total.
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 12 test modules covering every pipeline script plus the runtime components — roughly 288 tests total. (`display_inky.py` is not tested; it requires Pi hardware.)
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
@@ -312,7 +302,7 @@ The test suite lives in `tests/` and uses pytest with pytest-cov. There are 13 t
 - coverage: source = `.`, omits `tests/` and `bootstrap_pi_inky.sh`
 - ruff: line-length 130, target Python 3.11, rules E / W / F / I
 
-**CI:** `.github/workflows/ci.yml` runs on every push and PR against Python 3.11 and 3.12. It installs `pytest pytest-cov ruff Pillow`, runs `ruff check .` then `pytest --cov`, and uploads a coverage artifact. Keep the lint clean — ruff enforces import ordering (rule I) so imports must be sorted.
+**CI:** `.github/workflows/ci.yml` runs on every push and PR against Python 3.11 and 3.12. It installs `pytest pytest-cov ruff Pillow`, runs `pytest --cov=. --cov-report=term-missing --cov-report=xml -v`, and uploads a coverage artifact. The ruff lint step is currently commented out in CI, but keep imports sorted (rule I) — run `ruff check .` locally before pushing.
 
 ### Repo Layout
 
