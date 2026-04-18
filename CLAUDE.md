@@ -4,15 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-LitClock is a pipeline for harvesting time-related literary quotes from Project Gutenberg texts to populate a "literary clock" display (a quote per clock time). Every stage is a standalone Python 3 CLI script that reads/writes JSONL. The mining/selection pipeline is stdlib-only; only `render_quote.py` pulls in a third-party dep (Pillow) for PNG output.
+LitClock is an end-to-end literary-clock system: it harvests time-related quotes from Project Gutenberg, scores and cleans them, then picks and renders a quote for any clock time. The render is designed for a Pimoroni Inky Impression 7.3 Spectra 6 eInk panel (800×480, 6-color palette) but writes a plain PNG first, so it runs fine on any machine.
+
+Every stage is a standalone Python 3 CLI script that reads/writes JSONL. The mining/selection pipeline is stdlib-only; `render_quote.py` pulls in Pillow, and `display_inky.py` additionally needs the Pimoroni `inky` package (Pi only).
 
 ## Common Commands
 
+### Runtime (render + optional display)
+
 ```bash
-# Mine a Gutenberg ebook by ID
+# One-shot render of the current wall-clock time to output/current.png
+python3 run_clock.py --once
+
+# Loop: re-renders whenever the fuzzy bucket changes (not every minute)
+python3 run_clock.py
+
+# Loop + push each new render to a connected Inky Impression
+python3 run_clock.py --display-script display_inky.py
+
+# Appliance / production mode (hides debug bucket/quality/time footer)
+python3 run_clock.py --display-script display_inky.py --mode production
+
+# Render a specific time directly (bypasses the loop)
+python3 render_quote.py --time 22:54
+
+# Show the picker's JSON for a given time or explicit bucket
+python3 pick_quote.py --time 14:30
+python3 pick_quote.py --bucket h2_half_pastish
+
+# Push a rendered PNG to the Inky panel (Pi only)
+python3 display_inky.py output/current.png
+```
+
+### Corpus / mining pipeline
+
+```bash
+# Mine a single Gutenberg ebook by ID
 python3 gutenberg_time_miner.py --gutenberg-id 1342 --strict --output output/candidates.jsonl
 
-# Mine multiple IDs (batch script — references projects/author-clock/ paths)
+# Mine multiple IDs
 bash run_batch2.sh
 
 # Mine local text files
@@ -46,21 +76,16 @@ python3 quality_filter.py output/candidates-cleaned.jsonl
 # (e.g. "five minutes past two" mis-captured inside "thirty-five minutes past two")
 python3 fix_substring_time_matches.py output/candidates-quality.jsonl
 
-# Demo: pick a quote for a given time
-python3 pick_quote.py --time 14:30
-python3 pick_quote.py --bucket h2_half_pastish
-
-# Render a PNG for a given time (requires Pillow + Noto/DejaVu fonts on disk)
-python3 render_quote.py --time 22:54 --picker pick_quote.py
+# Attach title/author from Gutenberg headers — produces the picker's default input
+python3 enrich_metadata.py output/candidates-quality.jsonl
+# → output/candidates-attributed.jsonl
 ```
 
 ## Default paths
 
-Every script's `--output`/`--input` defaults hardcode `projects/author-clock/...` paths (from when this lived inside a larger `~/workspace` tree). This repo is the author-clock project in isolation, so in practice you either:
-- run from a parent dir that has `projects/author-clock/` symlinked/copied, or
-- pass explicit `--input`/`--output` pointing at the top-level `output/` directory in this repo.
+Most pipeline scripts resolve relative `--input`/`--output` paths against the repo root (they anchor on `BASE_DIR = Path(__file__).resolve().parent`), so commands work from anywhere. Gutenberg downloads are cached in `data/gutenberg/` (relative to CWD); `enrich_metadata.py` reads from there by default.
 
-Gutenberg downloads are cached in `data/gutenberg/` (relative to CWD). The batch list in `gutenberg_batch_ids.txt` mirrors the `--gutenberg-id` args baked into `run_batch2.sh`.
+Historical note: `run_batch2.sh` and some defaults still reference `projects/author-clock/...` paths from when this code lived inside a larger workspace. When running those, either symlink that path into place or pass explicit `--input`/`--output`. The batch list in `gutenberg_batch_ids.txt` mirrors the `--gutenberg-id` args baked into `run_batch2.sh`.
 
 ## Pipeline Flow
 
@@ -81,21 +106,30 @@ candidates-cleaned.jsonl
   ↓ quality_filter.py
 candidates-quality.jsonl
   ↓ fix_substring_time_matches.py (in place)
+  ↓ enrich_metadata.py
+candidates-attributed.jsonl    ← pick_quote.py --input default
   ↓ pick_quote.py
 JSON quote for requested time
   ↓ render_quote.py (shells out to pick_quote.py)
-render-HHMM.png
+render-HHMM.png  or  output/current.png
+  ↓ display_inky.py (optional, Pi-only)
+Inky Impression eInk panel
+  ↑ run_clock.py orchestrates the render→display loop
 ```
 
 ## Architecture
 
 ### Fuzzy Bucket System
 
-The core abstraction. Each of 12 hours is divided into 8 minute-state buckets (96 total), named `h{HOUR}_{STATE}`:
+The core abstraction. Each of 12 hours is divided into 8 minute-state buckets (96 total), named `h{HOUR}_{STATE}`. Plus `daypart` buckets (midnight, small_hours, dawn, morning, noon, afternoon, dusk, evening, night) for time references that don't specify an hour.
 
-| State | Minute range |
+**Heads-up: the minute→bucket mapping is redefined in four places, and two definitions disagree.**
+
+Miner-side (`gutenberg_time_miner.py::minute_bucket` and `fix_substring_time_matches.py::BUCKET_ORDER`):
+
+| State | Minutes |
 |---|---|
-| `exact` | :00 |
+| `exact` | 0 |
 | `just_after` | 1–5 |
 | `early_past` | 6–14 |
 | `quarter_pastish` | 15–19 |
@@ -104,9 +138,20 @@ The core abstraction. Each of 12 hours is divided into 8 minute-state buckets (9
 | `quarter_toish` | 45–49 |
 | `just_before` | 50–59 |
 
-Plus `daypart` buckets (midnight, small_hours, dawn, morning, noon, afternoon, dusk, evening, night) for time references that don't specify an hour.
+Runtime-side (`pick_quote.py::minute_bucket` and `run_clock.py::current_bucket`):
 
-The same bucket boundaries are redefined inline in `pick_quote.py`, `fix_substring_time_matches.py`, and `gutenberg_time_miner.py` — changing the scheme means editing all three.
+| State | Minutes |
+|---|---|
+| `exact` | 0 |
+| `just_after` | 1–5 |
+| `early_past` | 6–14 |
+| `quarter_pastish` | 15–19 |
+| `half_pastish` | 20–34 |
+| `late_past` | 35–39 |
+| `quarter_toish` | 40–49 |
+| `just_before` | 50–59 |
+
+Rows are *tagged* with the miner-side boundaries at harvest time, but *queried* with the runtime-side boundaries at display time. The picker's neighbor-walk fallback (see below) papers over the mismatch in practice, but if you change either table you must change all four sites and consider re-running the miner.
 
 ### Match Types
 
@@ -140,8 +185,8 @@ display_quote, display_fragment (bool), cleanup_status ("complete_sentence" | "f
 # Added by quality_filter.py
 quality_score (0–100), quality_flags (list of penalty reasons)
 
-# Optional downstream (consumed but not produced by any committed script)
-author, title  # read by render_quote.py if present on the row
+# Added by enrich_metadata.py
+author, title  # parsed from the cached Gutenberg header when available
 ```
 
 ### Deduplication Key
@@ -165,17 +210,99 @@ Penalty reasons are appended to `quality_flags`. The score is floored at 0.
 
 `fix_substring_time_matches.py` scans `display_quote` for the full pattern `<minute-word> minutes (past|to) <hour-word>`; if the row's stored `matched_text` is a strict substring of that longer phrase, the row's `matched_text`, `hour`, `minute`, `normalized_time`, and `fuzzy_bucket` are rewritten. Writes in-place by default (pass `--output` to redirect).
 
+### Metadata Enrichment
+
+`enrich_metadata.py` walks each row's `source_id`, opens the cached `data/gutenberg/pg<id>.txt`, and scans the first 120 lines for `Title: ` and `Author: ` headers. Results are cached per `source_id` so each file is parsed once. Fills `title`/`author` only when missing — existing values on a row are preserved. Output: `output/candidates-attributed.jsonl`, which `pick_quote.py` consumes by default.
+
 ### Quote Selection (`pick_quote.py`)
 
-Ranks candidates in a bucket by the tuple:
-`(fragment?, not complete sentence?, no source_id?, −quality_score, |len − 140| + exactness_bonus, len)`
+Default input: `output/candidates-attributed.jsonl`. Rows below `--min-quality` (default 60) are filtered out before scoring; banned `source_id`s (from `selection_overrides.json`) are dropped entirely.
 
-Lower is better at every position. `exactness_bonus` is −2 when `matched_text` mentions "five/ten minutes to" or "fifty-five minutes past", and −1 for "quarter"/"half" matches — so these are preferred over vaguer matches at the same quality.
+Candidates in a bucket are ranked by a long lexicographic tuple (lower is better at every position):
 
-If no candidate in the target bucket clears `--min-quality` (default 60), it walks outward through sibling minute-states of the same hour in alternating ±distance order (see `neighbor_buckets`) until one is found; the chosen bucket is returned as `resolved_bucket` with `used_fallback: true`.
+```
+(fragment_penalty,           # 0 if display_fragment is False, else 1
+ cleanup_penalty,             # 0 if cleanup_status == "complete_sentence", else 1
+ metadata_bonus,              # -3 both author+title, -1 one, +2 neither
+ dialogue_penalty,            # +2 if text contains "he said" / "she said" / etc.
+ opening_penalty,             # +2 weak opener (and/but/so/…), +1 pronoun opener
+ source_bonus,                # +1 if no source_id
+ override_bonus,              # -5 preferred_buckets[bucket] hit, -3 boost_source_ids hit
+ -quality_score,              # higher quality wins
+ length_penalty + exactness_bonus,
+                              # |len(display_quote) - 140| plus:
+                              #   -2 for "five/ten minutes to" or "fifty-five minutes past"
+                              #   -1 for "quarter"/"half" matches
+ len(display_quote))          # final tiebreak
+```
+
+If no candidate in the target bucket qualifies, it walks outward through sibling minute-states of the same hour in alternating ±distance order (see `neighbor_buckets`); the chosen bucket is returned as `resolved_bucket` with `used_fallback: true`.
 
 Among equally top-scoring rows, a seeded `random.Random(seed)` picks one so results are stable for a given `--seed`.
 
+### Selection Overrides (`selection_overrides.json`)
+
+A small editable JSON doc consulted by `pick_quote.py`:
+
+```json
+{
+  "ban_source_ids": [],        // source_ids excluded entirely
+  "boost_source_ids": [],      // −3 in the ranking tuple
+  "preferred_buckets": {}      // { "h3_late_past": 12345 } → that source_id wins in that bucket (−5)
+}
+```
+
+IDs are compared as strings. Edit this file rather than editing the scorer when you want to manually curate a specific bucket.
+
 ### Rendering (`render_quote.py`)
 
-Shells out to `pick_quote.py` via `subprocess`, parses the JSON, then lays out an 800×480 grayscale PNG with Noto Serif + DejaVu Sans (hardcoded Linux font paths at `/usr/share/fonts/...`). The matched time phrase inside the quote is rendered in bold via a token-by-token styled wrapper (`tokenize_quote` + `wrap_styled_text`). Quote font size auto-shrinks from 34pt down to 20pt to fit the box. Bottom strip shows `author — title` when those fields exist on the picked row, plus a "fallback • quality N" footer.
+Shells out to `pick_quote.py` via `subprocess`, parses the returned JSON, and lays out an 800×480 RGB PNG. Key details:
+
+- **Palette.** Colors are drawn from the 6-color Spectra 6 palette (white/black/red/yellow/blue/green) and the final image is re-snapped to that palette via `snap_image_to_palette` so the Inky dithering stays predictable. The matched time phrase is rendered in `ACCENT` (red), everything else in black on white.
+- **Fonts.** Prefers Playfair Display (from the repo-local `fonts/` directory, then common Pi/Linux paths) with Noto Serif / DejaVu Serif / Liberation Serif as fallbacks, and DejaVu/Noto/Liberation Sans for metadata. Install via `apt install fonts-noto-core fonts-dejavu-core` if the bundled fonts aren't found.
+- **Layouts.** Three named layouts (`hero` ≤90 chars, `standard` ≤170, `dense` otherwise) each define their own `max_width`, `quote_height`, font size range, line-height multiplier, and quote-mark sizing. See the `LAYOUTS` dict.
+- **Bold time phrase.** `resolve_display_match` tries to grow a multi-word time phrase ("five minutes past", etc.) inside the display text, then `tokenize_quote`/`wrap_styled_text` render it in bold + accent color while keeping word wrap correct across the bold boundary.
+- **Fit loop.** `fit_quote` shrinks the quote font in 2pt steps from the layout's `font_max` down to `font_min` until all lines fit within `quote_height`.
+- **Modes.** `--mode debug` (default) shows wall-clock time top-left, the resolved bucket, and a bottom-right footer (`layout • fallback? • quality N • shown HH:MM`). `--mode production` hides all of that for a clean appliance look.
+- **Outputs.** `--output` defaults to `output/render-HHMM.png`; `run_clock.py` overrides this to `output/current.png` so the Inky bridge has a stable filename.
+
+### Runtime Loop (`run_clock.py`)
+
+Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it re-invoke `render_quote.py` with the current time, and then optionally hand the image to `--display-script` (e.g. `display_inky.py`). `--once` renders a single frame and exits — useful for cron, smoke tests, or first bring-up. `--mode` is passed through to the renderer.
+
+### Inky Display Bridge (`display_inky.py`)
+
+Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi.
+
+### Appliance / Pi Setup
+
+- **Fresh Pi:** `bootstrap_pi_inky.sh` automates apt setup, clones the Pimoroni `inky` installer, and (with `CONTINUE_AFTER_REBOOT=1` on the second run) clones this repo and does a first render + display push.
+- **Manual Pi notes:** `pi_setup_inky_impression.md` is the long-form guide (hardware list, OS baseline, Pimoroni install, troubleshooting).
+- **Boot-time service:** `litclock.service.example` is a sample systemd unit that runs `run_clock.py --display-script display_inky.py --mode production` as `pi` from `/home/pi/LitClock` under the `~/.virtualenvs/pimoroni` Python. Edit paths to match your install before copying into `/etc/systemd/system/`.
+
+### Repo Layout
+
+```
+gutenberg_time_miner.py      harvest regex-matched time phrases from .txt
+merge_candidates.py          dedupe harvested JSONL rows
+bucket_coverage.py           coverage report per (hour, minute-state) bucket
+target_sparse_buckets.py     targeted regex sweep for empty buckets
+import_targeted_hits.py      reshape targeted hits for merge
+clean_display_quotes.py      pick a displayable excerpt from each row
+quality_filter.py            score + flag rows
+fix_substring_time_matches.py  repair substring-collision time tags
+enrich_metadata.py           attach author/title from Gutenberg headers
+pick_quote.py                rank candidates, honor overrides, fall back to neighbors
+selection_overrides.json     manual bans/boosts/per-bucket preferences
+render_quote.py              Pillow layout → 800×480 Spectra-6 PNG
+run_clock.py                 runtime loop (bucket-change-triggered)
+display_inky.py              Pi-only image → Inky Impression bridge
+bootstrap_pi_inky.sh         first-time Pi setup helper
+litclock.service.example     sample systemd unit
+pi_setup_inky_impression.md  long-form Pi setup doc
+fonts/                       bundled Playfair Display family
+output/                      JSONL pipeline artifacts + rendered PNGs
+data/gutenberg/              cached Gutenberg text downloads (gitignored)
+gutenberg_batch_ids.txt      batch list of Gutenberg IDs
+run_batch2.sh                bulk harvest driver
+```
