@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -180,24 +181,14 @@ TIME_PHRASE_PREFIXES = [
 
 def resolve_display_match(text: str, match_text: str) -> str:
     normalized_match = " ".join((match_text or "").split()).strip()
-    lowered_text = text.lower()
     best_match = normalized_match
 
     for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True):
-        start = 0
-        while True:
-            idx = lowered_text.find(prefix, start)
-            if idx == -1:
-                break
-            end = idx + len(prefix)
-            while end < len(text) and text[end] in " ,":
-                end += 1
-            while end < len(text) and text[end].isalnum():
-                end += 1
-            candidate = text[idx:end].strip(" ,.;:!?")
+        pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(prefix)}(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9-])", re.IGNORECASE)
+        for m in pattern.finditer(text):
+            candidate = m.group(0).strip(" ,.;:!?")
             if len(candidate) > len(best_match):
                 best_match = candidate
-            start = idx + 1
 
     return best_match
 
@@ -206,13 +197,13 @@ def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     normalized_match = resolve_display_match(text, match_text)
     if not normalized_match:
         return [(text, False)]
-    lowered_text = text.lower()
-    lowered_match = normalized_match.lower()
-    idx = lowered_text.find(lowered_match)
-    if idx == -1:
+    pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(normalized_match)}(?![A-Za-z0-9-])", re.IGNORECASE)
+    match = pattern.search(text)
+    if not match:
         return [(text, False)]
 
-    match_end = idx + len(normalized_match)
+    idx = match.start()
+    match_end = match.end()
     while match_end < len(text) and text[match_end] in '”"\'’.,;:!?':
         match_end += 1
 
