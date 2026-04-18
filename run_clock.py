@@ -79,11 +79,11 @@ def current_bucket() -> str:
         state = "early_past"
     elif 15 <= minute <= 19:
         state = "quarter_pastish"
-    elif 20 <= minute <= 39:
+    elif 20 <= minute <= 34:
         state = "half_pastish"
-    elif 40 <= minute <= 44:
+    elif 35 <= minute <= 39:
         state = "late_past"
-    elif 45 <= minute <= 49:
+    elif 40 <= minute <= 49:
         state = "quarter_toish"
     else:
         state = "just_before"

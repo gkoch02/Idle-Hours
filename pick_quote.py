@@ -84,11 +84,11 @@ def minute_bucket(minute: int) -> str:
         return "early_past"
     if 15 <= minute <= 19:
         return "quarter_pastish"
-    if 20 <= minute <= 39:
+    if 20 <= minute <= 34:
         return "half_pastish"
-    if 40 <= minute <= 44:
+    if 35 <= minute <= 39:
         return "late_past"
-    if 45 <= minute <= 49:
+    if 40 <= minute <= 49:
         return "quarter_toish"
     if 50 <= minute <= 59:
         return "just_before"
