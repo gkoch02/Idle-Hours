@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import re
-import pytest
 
 import gutenberg_time_miner as gtm
-
 
 # ---------------------------------------------------------------------------
 # normalize_number_phrase

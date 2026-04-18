@@ -1,7 +1,6 @@
 """Tests for quality_filter.py — penalty scoring logic."""
 from __future__ import annotations
 
-import pytest
 import quality_filter as qf
 
 

@@ -1,7 +1,6 @@
 """Tests for bucket_coverage.py"""
 from __future__ import annotations
 
-import pytest
 from bucket_coverage import build_summary, expected_buckets, render_markdown
 
 

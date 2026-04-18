@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 import json
-import pytest
-from pathlib import Path
+
 from enrich_metadata import parse_header
 
 
@@ -81,8 +80,9 @@ class TestParseHeader:
 
 class TestMain:
     def test_enriches_rows_with_metadata(self, tmp_path):
-        from enrich_metadata import main
         import sys
+
+        from enrich_metadata import main
 
         gutenberg_dir = tmp_path / "gutenberg"
         gutenberg_dir.mkdir()
@@ -108,8 +108,9 @@ class TestMain:
         assert result["author"] == "Jane Austen"
 
     def test_preserves_existing_title_author(self, tmp_path):
-        from enrich_metadata import main
         import sys
+
+        from enrich_metadata import main
 
         gutenberg_dir = tmp_path / "gutenberg"
         gutenberg_dir.mkdir()
@@ -140,8 +141,9 @@ class TestMain:
         assert result["author"] == "Custom Author"
 
     def test_no_source_id_leaves_nulls(self, tmp_path):
-        from enrich_metadata import main
         import sys
+
+        from enrich_metadata import main
 
         gutenberg_dir = tmp_path / "gutenberg"
         gutenberg_dir.mkdir()

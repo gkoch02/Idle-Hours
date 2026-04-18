@@ -1,7 +1,6 @@
 """Tests for target_sparse_buckets.py"""
 from __future__ import annotations
 
-import pytest
 from target_sparse_buckets import expected_targets, sentence_window, templates_for_bucket
 
 

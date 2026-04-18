@@ -3,16 +3,15 @@ from __future__ import annotations
 
 import pytest
 
+import render_quote as rq
+
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed")
-
-import render_quote as rq
-
 
 # ---------------------------------------------------------------------------
 # choose_layout

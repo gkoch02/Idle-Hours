@@ -8,9 +8,9 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 BASE_DIR = Path(__file__).resolve().parent
-from typing import Iterable
 
 
 @dataclass

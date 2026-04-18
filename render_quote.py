@@ -398,7 +398,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     mark_font = load_font(ORNAMENT_FONT_CANDIDATES, size=mark_size)
 
     open_bb = draw.textbbox((0, 0), "“", font=mark_font)
-    open_w = open_bb[2] - open_bb[0]
+    open_bb[2] - open_bb[0]
     open_h = open_bb[3] - open_bb[1]
     open_x = SIDE_MARGIN + 18
     open_y = quote_top - open_h // 3

@@ -13,3 +13,11 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "raise SystemExit",
 ]
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
+ignore = ["E501"]  # Line too long (handled separately if needed)
