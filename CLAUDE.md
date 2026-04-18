@@ -129,7 +129,7 @@ candidates-quality.jsonl
 candidates-attributed.jsonl    ← pick_quote.py --input default
   ↓ pick_quote.py
 JSON quote for requested time
-  ↓ render_quote.py (shells out to pick_quote.py)
+  ↓ render_quote.py (imports pick_quote in-process)
 render-HHMM.png  or  output/current.png
   ↓ display_inky.py (optional, Pi-only)
 Inky Impression eInk panel
@@ -142,7 +142,7 @@ Inky Impression eInk panel
 
 The core abstraction. Each of 12 hours is divided into 12 minute-state buckets (144 total), named `h{HOUR}_{STATE}`. Plus `daypart` buckets (midnight, small_hours, dawn, morning, noon, afternoon, dusk, evening, night) for time references that don't specify an hour.
 
-The miner (`gutenberg_time_miner.py::minute_bucket`) and runtime (`run_clock.py::current_bucket`, `pick_quote.py::BUCKET_ORDER`) all use the same 5-minute rounding scheme: `rounded = ((minute + 2) // 5) * 5`.
+`buckets.py` is the single source of truth (`BUCKET_ORDER`, `DEFAULT_BUCKET_MINUTES`, `minute_bucket`, `bucket_for_time`, `neighbor_buckets`); `gutenberg_time_miner.py`, `run_clock.py`, `pick_quote.py`, `bucket_coverage.py`, and `fix_substring_time_matches.py` all import from it, so the rounding rule `rounded = ((minute + 2) // 5) * 5` only lives in one place.
 
 | Rounded minute | State |
 |---|---|
@@ -159,7 +159,7 @@ The miner (`gutenberg_time_miner.py::minute_bucket`) and runtime (`run_clock.py:
 | 50 | `ten_to` |
 | 55 | `five_to` |
 
-**Note:** `fix_substring_time_matches.py::BUCKET_ORDER` still uses the old 8-state boundary table (`just_after`, `early_past`, `quarter_pastish`, etc.) for its internal `bucket_for_minute` repair logic. This is a legacy holdover; the active corpus uses the 12-state names above. If you extend or re-harvest, ensure all four sites stay consistent.
+**History:** An earlier revision of `fix_substring_time_matches.py` kept a private copy of the state names in the legacy 8-state form (`just_after`, `early_past`, etc.), which silently produced invalid `fuzzy_bucket` values no downstream consumer could match. The shared `buckets.py` module was extracted specifically to kill that class of drift — avoid reintroducing a second state table.
 
 ### Match Types
 
@@ -261,14 +261,14 @@ A small editable JSON doc consulted by `pick_quote.py`:
 }
 ```
 
-IDs are compared as strings. Edit this file rather than editing the scorer when you want to manually curate a specific bucket.
+IDs are compared as strings. Edit this file rather than editing the scorer when you want to manually curate a specific bucket. `pick_quote.load_overrides` warns on stderr if any `preferred_buckets` key is not a valid `h{1..12}_{state}` bucket, so typos surface loudly instead of silently never firing.
 
 ### Rendering (`render_quote.py`)
 
-Shells out to `pick_quote.py` via `subprocess`, parses the returned JSON, and lays out an 800×480 RGB PNG. Key details:
+Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out an 800×480 RGB PNG — no subprocess, no stdout-JSON contract. Key details:
 
 - **Palette.** Colors are drawn from the 6-color Spectra 6 palette (white/black/red/yellow/blue/green) and the final image is re-snapped to that palette via `snap_image_to_palette` so the Inky dithering stays predictable. The matched time phrase is rendered in `ACCENT` (red), everything else in black on white.
-- **Fonts.** Prefers Playfair Display (from the repo-local `fonts/` directory, then common Pi/Linux paths) with Noto Serif / DejaVu Serif / Liberation Serif as fallbacks, and DejaVu/Noto/Liberation Sans for metadata. Install via `apt install fonts-noto-core fonts-dejavu-core` if the bundled fonts aren't found.
+- **Fonts.** Prefers Playfair Display (from the repo-local `fonts/` directory, then common Pi/Linux paths) with Noto Serif / DejaVu Serif / Liberation Serif as fallbacks, and DejaVu/Noto/Liberation Sans for metadata. Install via `apt install fonts-noto-core fonts-dejavu-core` if the bundled fonts aren't found. When every TTF candidate is missing, `load_font` logs a one-shot warning to stderr before returning `ImageFont.load_default()` so a misconfigured install surfaces instead of silently producing an 8-pixel bitmap render.
 - **Layouts.** Three named layouts (`hero` ≤90 chars, `standard` ≤170, `dense` otherwise) each define their own `max_width`, `quote_height`, font size range, line-height multiplier, and quote-mark sizing. See the `LAYOUTS` dict.
 - **Bold time phrase.** `resolve_display_match` tries to grow a multi-word time phrase ("five minutes past", etc.) inside the display text, then `tokenize_quote`/`wrap_styled_text` render it in bold + accent color while keeping word wrap correct across the bold boundary.
 - **Fit loop.** `fit_quote` shrinks the quote font in 2pt steps from the layout's `font_max` down to `font_min` until all lines fit within `quote_height`.
@@ -277,11 +277,11 @@ Shells out to `pick_quote.py` via `subprocess`, parses the returned JSON, and la
 
 ### Runtime Loop (`run_clock.py`)
 
-Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it re-invoke `render_quote.py` with the current time, and then optionally hand the image to `--display-script` (e.g. `display_inky.py`). `--once` renders a single frame and exits — useful for cron, smoke tests, or first bring-up. `--mode` is passed through to the renderer.
+Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it re-invoke `render_quote.py` with the current time, and then optionally hand the image to `--display-script` (e.g. `display_inky.py`). `--once` renders a single frame and exits — useful for cron, smoke tests, or first bring-up. `--mode` is passed through to the renderer. In loop mode `render_now` is wrapped in `try/except` with timestamped stderr logging so a transient failure (missing corpus row, Pillow blow-up, Inky disconnect) no longer kills the process — the loop just logs and waits for the next tick. `--once` stays strict so cron callers still fail loudly.
 
 ### Inky Display Bridge (`display_inky.py`)
 
-Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi.
+Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. A single bounded retry wraps `auto()` + `set_image()/show()` so a momentary I/O hiccup doesn't crash the caller.
 
 ### Appliance / Pi Setup
 
@@ -291,22 +291,25 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 12 test modules covering every pipeline script plus the runtime components — roughly 288 tests total. (`display_inky.py` is not tested; it requires Pi hardware.)
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 12 test modules covering every pipeline script plus the runtime components — 310 tests at last count. (`display_inky.py` is not tested; it requires Pi hardware.)
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
 - One `test_<script>.py` module per main script; tests are class-based (e.g., `TestCurrentBucket`, `TestRenderNow`)
 
 **pyproject.toml** configures:
+- `[project]`: name `litclock`, version, `requires-python >= 3.11`, runtime dep `Pillow`, optional extras `dev = [pytest, pytest-cov, ruff]` and `pi = [inky]`. `pip install -e .[dev]` is the intended developer setup.
 - pytest: `testpaths = ["tests"]`, `python_files = ["test_*.py"]`
-- coverage: source = `.`, omits `tests/` and `bootstrap_pi_inky.sh`
-- ruff: line-length 130, target Python 3.11, rules E / W / F / I
+- coverage: source = `.`, omits `tests/`, `bootstrap_pi_inky.sh`, and `display_inky.py`
+- ruff: line-length 130, target Python 3.11, rules E / W / F / I (E501 ignored)
 
-**CI:** `.github/workflows/ci.yml` runs on every push and PR against Python 3.11 and 3.12. It installs `pytest pytest-cov ruff Pillow`, runs `pytest --cov=. --cov-report=term-missing --cov-report=xml -v`, and uploads a coverage artifact. The ruff lint step is currently commented out in CI, but keep imports sorted (rule I) — run `ruff check .` locally before pushing.
+**CI:** `.github/workflows/ci.yml` runs on every push and PR against Python 3.11 and 3.12. It installs `pytest pytest-cov ruff Pillow`, runs `ruff check .` as a dedicated lint step, then `pytest --cov=. --cov-report=term-missing --cov-report=xml -v`, and uploads a coverage artifact. Keep imports sorted (rule I) — run `ruff check .` locally before pushing.
 
 ### Repo Layout
 
 ```
+buckets.py                   shared bucket primitives (BUCKET_ORDER, minute_bucket, bucket_for_time, neighbor_buckets)
+jsonl_io.py                  streaming JSONL reader that logs + skips malformed lines
 gutenberg_time_miner.py      harvest regex-matched time phrases from .txt
 merge_candidates.py          dedupe harvested JSONL rows
 bucket_coverage.py           coverage report per (hour, minute-state) bucket
@@ -316,15 +319,15 @@ clean_display_quotes.py      pick a displayable excerpt from each row
 quality_filter.py            score + flag rows
 fix_substring_time_matches.py  repair substring-collision time tags
 enrich_metadata.py           attach author/title from Gutenberg headers
-pick_quote.py                rank candidates, honor overrides, fall back to neighbors
+pick_quote.py                rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 selection_overrides.json     manual bans/boosts/per-bucket preferences
-render_quote.py              Pillow layout → 800×480 Spectra-6 PNG
-run_clock.py                 runtime loop (bucket-change-triggered)
-display_inky.py              Pi-only image → Inky Impression bridge
+render_quote.py              Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
+run_clock.py                 runtime loop (bucket-change-triggered, error-tolerant)
+display_inky.py              Pi-only image → Inky Impression bridge (with retry)
 bootstrap_pi_inky.sh         first-time Pi setup helper
 litclock.service.example     sample systemd unit
 pi_setup_inky_impression.md  long-form Pi setup doc
-pyproject.toml               pytest / coverage / ruff configuration
+pyproject.toml               project metadata + pytest / coverage / ruff configuration
 fonts/                       bundled Playfair Display family
 tests/                       pytest suite — one module per script + conftest.py
 output/                      JSONL pipeline artifacts + rendered PNGs
