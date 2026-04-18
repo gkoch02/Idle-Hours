@@ -300,6 +300,19 @@ def draw_text(draw, xy, text, font, fill):
     draw.text(xy, text, font=font, fill=fill)
 
 
+def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), light=(255, 255, 255), pattern_offset=(0, 0)):
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.text(xy, text, font=font, fill=255)
+    px = image.load()
+    mx = mask.load()
+    ox, oy = pattern_offset
+    for y in range(image.height):
+        for x in range(image.width):
+            if mx[x, y]:
+                px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
+
+
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
     snapped = Image.new("RGB", image.size)
     src = image.load()
@@ -372,7 +385,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     open_h = open_bb[3] - open_bb[1]
     open_x = SIDE_MARGIN + 18
     open_y = quote_top - open_h // 3
-    draw_text(draw, (open_x - open_bb[0], open_y - open_bb[1]), "“", font=mark_font, fill=ORNAMENT)
+    draw_faux_gray_text(image, (open_x - open_bb[0], open_y - open_bb[1]), "“", font=mark_font, pattern_offset=(0, 0))
 
     y = quote_top
     for line in wrapped_quote:
@@ -390,7 +403,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     close_h = close_bb[3] - close_bb[1]
     close_x = width - SIDE_MARGIN - 18 - close_w
     close_y = block_bottom - close_h * 2 // 3
-    draw_text(draw, (close_x - close_bb[0], close_y - close_bb[1]), "”", font=mark_font, fill=ORNAMENT)
+    draw_faux_gray_text(image, (close_x - close_bb[0], close_y - close_bb[1]), "”", font=mark_font, pattern_offset=(1, 0))
 
     y = quote_top + quote_block_height + layout["author_gap"]
     if author_lines:
