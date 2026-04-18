@@ -13,13 +13,17 @@ BASE_DIR = Path(__file__).resolve().parent
 HOURS = list(range(1, 13))
 STATES = [
     "exact",
-    "just_after",
-    "early_past",
-    "quarter_pastish",
-    "half_pastish",
-    "late_past",
-    "quarter_toish",
-    "just_before",
+    "five_past",
+    "ten_past",
+    "quarter_past",
+    "twenty_past",
+    "twenty_five_past",
+    "half_past",
+    "twenty_five_to",
+    "twenty_to",
+    "quarter_to",
+    "ten_to",
+    "five_to",
 ]
 
 
@@ -45,8 +49,35 @@ def parse_args() -> argparse.Namespace:
 def load_rows(path: Path) -> list[dict]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        normalized = row.get("normalized_time")
+        if isinstance(normalized, str) and ":" in normalized:
+            hour24, minute = [int(part) for part in normalized.split(":", 1)]
+            rounded_minute = ((minute + 2) // 5) * 5
+            if rounded_minute == 60:
+                rounded_minute = 0
+                hour24 = (hour24 + 1) % 24
+            hour12 = hour24 % 12
+            if hour12 == 0:
+                hour12 = 12
+            state = {
+                0: "exact",
+                5: "five_past",
+                10: "ten_past",
+                15: "quarter_past",
+                20: "twenty_past",
+                25: "twenty_five_past",
+                30: "half_past",
+                35: "twenty_five_to",
+                40: "twenty_to",
+                45: "quarter_to",
+                50: "ten_to",
+                55: "five_to",
+            }[rounded_minute]
+            row["fuzzy_bucket"] = f"h{hour12}_{state}"
+        rows.append(row)
     return rows
 
 

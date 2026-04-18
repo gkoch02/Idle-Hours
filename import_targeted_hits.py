@@ -11,13 +11,17 @@ BASE_DIR = Path(__file__).resolve().parent
 
 STATE_TO_MINUTE = {
     "exact": 0,
-    "just_after": 3,
-    "early_past": 8,
-    "quarter_pastish": 15,
-    "half_pastish": 30,
-    "late_past": 25,
-    "quarter_toish": 45,
-    "just_before": 57,
+    "five_past": 5,
+    "ten_past": 10,
+    "quarter_past": 15,
+    "twenty_past": 20,
+    "twenty_five_past": 25,
+    "half_past": 30,
+    "twenty_five_to": 35,
+    "twenty_to": 40,
+    "quarter_to": 45,
+    "ten_to": 50,
+    "five_to": 55,
 }
 
 DAYPARTS = {

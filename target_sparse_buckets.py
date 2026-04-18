@@ -27,41 +27,63 @@ HOUR_WORDS = {
 }
 
 STATE_TEMPLATES = {
-    "just_after": [
-        ("just after {hour}", "just_after"),
-        ("just after {hour} o'clock", "just_after"),
-        ("a little after {hour}", "just_after"),
-        ("shortly after {hour}", "just_after"),
+    "five_past": [
+        ("five past {hour}", "five_past"),
+        ("five minutes past {hour}", "five_past"),
+        ("five minutes after {hour}", "five_past"),
     ],
-    "early_past": [
-        ("five minutes past {hour}", "early_past"),
-        ("ten minutes past {hour}", "early_past"),
-        ("a few minutes past {hour}", "early_past"),
+    "ten_past": [
+        ("ten past {hour}", "ten_past"),
+        ("ten minutes past {hour}", "ten_past"),
+        ("ten minutes after {hour}", "ten_past"),
     ],
-    "quarter_pastish": [
-        ("quarter past {hour}", "quarter_pastish"),
-        ("fifteen minutes past {hour}", "quarter_pastish"),
+    "quarter_past": [
+        ("quarter past {hour}", "quarter_past"),
+        ("fifteen minutes past {hour}", "quarter_past"),
     ],
-    "half_pastish": [
-        ("half past {hour}", "half_pastish"),
-        ("half-past {hour}", "half_pastish"),
-        ("thirty minutes past {hour}", "half_pastish"),
+    "twenty_past": [
+        ("twenty past {hour}", "twenty_past"),
+        ("twenty minutes past {hour}", "twenty_past"),
     ],
-    "late_past": [
-        ("twenty minutes to {next_hour}", "late_past"),
-        ("eighteen minutes to {next_hour}", "late_past"),
-        ("twenty-five minutes past {hour}", "late_past"),
-        ("thirty-five minutes past {hour}", "late_past"),
+    "twenty_five_past": [
+        ("twenty-five past {hour}", "twenty_five_past"),
+        ("twenty five past {hour}", "twenty_five_past"),
+        ("twenty-five minutes past {hour}", "twenty_five_past"),
+        ("twenty five minutes past {hour}", "twenty_five_past"),
     ],
-    "quarter_toish": [
-        ("quarter to {next_hour}", "quarter_toish"),
-        ("fifteen minutes to {next_hour}", "quarter_toish"),
+    "half_past": [
+        ("half past {hour}", "half_past"),
+        ("half-past {hour}", "half_past"),
+        ("thirty minutes past {hour}", "half_past"),
     ],
-    "just_before": [
-        ("just before {next_hour}", "just_before"),
-        ("almost {next_hour}", "just_before"),
-        ("nearly {next_hour}", "just_before"),
-        ("close on {next_hour}", "just_before"),
+    "twenty_five_to": [
+        ("twenty-five to {next_hour}", "twenty_five_to"),
+        ("twenty five to {next_hour}", "twenty_five_to"),
+        ("twenty-five minutes to {next_hour}", "twenty_five_to"),
+        ("twenty five minutes to {next_hour}", "twenty_five_to"),
+        ("thirty-five minutes past {hour}", "twenty_five_to"),
+        ("thirty five minutes past {hour}", "twenty_five_to"),
+    ],
+    "twenty_to": [
+        ("twenty to {next_hour}", "twenty_to"),
+        ("twenty minutes to {next_hour}", "twenty_to"),
+        ("forty minutes past {hour}", "twenty_to"),
+    ],
+    "quarter_to": [
+        ("quarter to {next_hour}", "quarter_to"),
+        ("fifteen minutes to {next_hour}", "quarter_to"),
+    ],
+    "ten_to": [
+        ("ten to {next_hour}", "ten_to"),
+        ("ten minutes to {next_hour}", "ten_to"),
+        ("fifty minutes past {hour}", "ten_to"),
+    ],
+    "five_to": [
+        ("five to {next_hour}", "five_to"),
+        ("five minutes to {next_hour}", "five_to"),
+        ("fifty-five minutes past {hour}", "five_to"),
+        ("almost {next_hour}", "five_to"),
+        ("nearly {next_hour}", "five_to"),
     ],
 }
 

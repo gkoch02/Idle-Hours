@@ -309,23 +309,25 @@ def sentence_window(text: str, start: int, end: int, context_chars: int) -> tupl
 
 
 def minute_bucket(minute: int) -> str:
-    if minute == 0:
-        return "exact"
-    if 1 <= minute <= 5:
-        return "just_after"
-    if 6 <= minute <= 14:
-        return "early_past"
-    if 15 <= minute <= 19:
-        return "quarter_pastish"
-    if 20 <= minute <= 39:
-        return "half_pastish"
-    if 40 <= minute <= 44:
-        return "late_past"
-    if 45 <= minute <= 49:
-        return "quarter_toish"
-    if 50 <= minute <= 59:
-        return "just_before"
-    return "unknown"
+    if not 0 <= minute <= 59:
+        return "unknown"
+    rounded = ((minute + 2) // 5) * 5
+    if rounded == 60:
+        rounded = 0
+    return {
+        0: "exact",
+        5: "five_past",
+        10: "ten_past",
+        15: "quarter_past",
+        20: "twenty_past",
+        25: "twenty_five_past",
+        30: "half_past",
+        35: "twenty_five_to",
+        40: "twenty_to",
+        45: "quarter_to",
+        50: "ten_to",
+        55: "five_to",
+    }[rounded]
 
 
 def daypart_for_hour(hour: int | None) -> str | None:
@@ -356,7 +358,12 @@ def build_bucket(hour: int | None, minute: int | None, explicit_daypart: str | N
     if hour is None or minute is None:
         return None, None, None
     normalized_time = f"{hour:02d}:{minute:02d}"
-    fuzzy = f"h{((hour - 1) % 12) + 1}_{minute_bucket(minute)}"
+    rounded = ((minute + 2) // 5) * 5
+    bucket_hour = hour
+    if rounded == 60:
+        rounded = 0
+        bucket_hour = (hour + 1) % 24
+    fuzzy = f"h{((bucket_hour - 1) % 12) + 1}_{minute_bucket(minute)}"
     daypart = daypart_for_hour(hour)
     return normalized_time, fuzzy, daypart
 
