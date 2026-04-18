@@ -22,13 +22,13 @@ SPECTRA6 = {
     "green": (0, 255, 0),
 }
 SPECTRA6_PALETTE = list(SPECTRA6.values())
-PAGE_BG = SPECTRA6["black"]
-TEXT = SPECTRA6["white"]
-SUBTLE = SPECTRA6["white"]
-FAINT = SPECTRA6["white"]
-ACCENT = SPECTRA6["yellow"]
+PAGE_BG = SPECTRA6["white"]
+TEXT = SPECTRA6["black"]
+SUBTLE = SPECTRA6["black"]
+FAINT = SPECTRA6["black"]
+ACCENT = SPECTRA6["red"]
 ORNAMENT = SPECTRA6["green"]
-SOURCE_BLUE = SPECTRA6["white"]
+SOURCE_BLUE = SPECTRA6["black"]
 TOP_MARGIN = 8
 SIDE_MARGIN = 10
 
