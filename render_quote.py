@@ -128,7 +128,6 @@ LAYOUTS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render a literary clock quote for a given time.")
     parser.add_argument("--time", required=True, help="Time in HH:MM 24-hour format")
-    parser.add_argument("--picker", default=None, help="(Deprecated) Ignored; pick_quote is imported in-process.")
     parser.add_argument("--output", default=None, help="Output PNG path. Defaults to output/render-HHMM.png")
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
@@ -141,7 +140,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def pick_quote(time_str: str, picker_path: str | None = None) -> dict:
+def pick_quote(time_str: str) -> dict:
     return pick_quote_module.select_quote(time_str=time_str)
 
 
