@@ -211,10 +211,15 @@ def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     idx = lowered_text.find(lowered_match)
     if idx == -1:
         return [(text, False)]
+
+    match_end = idx + len(normalized_match)
+    while match_end < len(text) and text[match_end] in '”"\'’.,;:!?':
+        match_end += 1
+
     return [
         (text[:idx], False),
-        (text[idx:idx + len(normalized_match)], True),
-        (text[idx + len(normalized_match):], False),
+        (text[idx:match_end], True),
+        (text[match_end:], False),
     ]
 
 
