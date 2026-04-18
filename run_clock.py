@@ -7,9 +7,17 @@ import datetime as dt
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
+from buckets import bucket_for_time
+
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _log(msg: str, *, err: bool = False) -> None:
+    stream = sys.stderr if err else sys.stdout
+    print(f"[{dt.datetime.now().isoformat(timespec='seconds')}] {msg}", file=stream, flush=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,30 +74,7 @@ def current_time_str() -> str:
 
 
 def current_bucket() -> str:
-    time_str = current_time_str()
-    hour24, minute = [int(part) for part in time_str.split(":", 1)]
-    rounded_minute = ((minute + 2) // 5) * 5
-    if rounded_minute == 60:
-        rounded_minute = 0
-        hour24 = (hour24 + 1) % 24
-    hour12 = hour24 % 12
-    if hour12 == 0:
-        hour12 = 12
-    state = {
-        0: "exact",
-        5: "five_past",
-        10: "ten_past",
-        15: "quarter_past",
-        20: "twenty_past",
-        25: "twenty_five_past",
-        30: "half_past",
-        35: "twenty_five_to",
-        40: "twenty_to",
-        45: "quarter_to",
-        50: "ten_to",
-        55: "five_to",
-    }[rounded_minute]
-    return f"h{hour12}_{state}"
+    return bucket_for_time(current_time_str())
 
 
 def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug") -> None:
@@ -113,11 +98,11 @@ def render_now(render_script: str, output_path: str, width: int, height: int, di
             mode,
         ]
     )
-    print(f"Rendered {time_str} -> {output_path_resolved}")
+    _log(f"Rendered {time_str} -> {output_path_resolved}")
     if display_script:
         display_script_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
         subprocess.check_call([python_executable, display_script_path, output_path_resolved])
-        print(f"Displayed {output_path_resolved} via {display_script_path}")
+        _log(f"Displayed {output_path_resolved} via {display_script_path}")
 
 
 def main() -> int:
@@ -135,8 +120,15 @@ def main() -> int:
     while True:
         bucket = current_bucket()
         if bucket != last_bucket:
-            render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode)
-            last_bucket = bucket
+            try:
+                render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode)
+                last_bucket = bucket
+            except Exception as exc:
+                # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
+                # missing corpus row, etc.) does not kill the appliance. last_bucket stays
+                # stale so the next tick retries.
+                _log(f"render/display failed for bucket {bucket}: {exc!r}", err=True)
+                traceback.print_exc(file=sys.stderr)
         time.sleep(max(1, args.interval_seconds))
 
 

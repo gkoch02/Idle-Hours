@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from jsonl_io import iter_jsonl
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -47,10 +49,7 @@ def normalize_text(text: str) -> str:
 def iter_records(paths: Iterable[str]) -> Iterable[Record]:
     for raw_path in paths:
         path = Path(raw_path).expanduser()
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            raw = json.loads(line)
+        for raw in iter_jsonl(path):
             quote = raw.get("quote_text") or ""
             context = raw.get("context_text") or ""
             yield Record(raw=raw, canonical_quote=normalize_text(quote), canonical_context=normalize_text(context))

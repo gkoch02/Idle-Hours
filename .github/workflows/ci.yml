@@ -27,8 +27,8 @@ jobs:
           # Pillow is needed by render_quote.py (imported at test time)
           pip install Pillow
 
-      # - name: Run linter
-      #   run: ruff check . --ignore=E501
+      - name: Run linter
+        run: ruff check .
 
       - name: Run tests with coverage
         run: |

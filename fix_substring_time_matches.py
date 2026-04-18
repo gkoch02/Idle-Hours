@@ -7,6 +7,9 @@ import json
 import re
 from pathlib import Path
 
+from buckets import minute_bucket as bucket_for_minute
+from jsonl_io import iter_jsonl
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -41,18 +44,6 @@ TIME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-BUCKET_ORDER = [
-    (0, "exact"),
-    (5, "just_after"),
-    (14, "early_past"),
-    (19, "quarter_pastish"),
-    (39, "half_pastish"),
-    (44, "late_past"),
-    (49, "quarter_toish"),
-    (59, "just_before"),
-]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fix substring-collision time matches in JSONL corpus rows.")
     parser.add_argument("input", help="Input JSONL file")
@@ -68,13 +59,6 @@ def parse_number_word(text: str) -> int | None:
     if len(parts) == 2 and parts[0] in NUMBER_WORDS and parts[1] in NUMBER_WORDS:
         return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[1]]
     return None
-
-
-def bucket_for_minute(minute: int) -> str:
-    for upper, bucket in BUCKET_ORDER:
-        if minute <= upper:
-            return bucket
-    return "just_before"
 
 
 def infer_time_from_quote(display_quote: str):
@@ -94,12 +78,15 @@ def infer_time_from_quote(display_quote: str):
     else:
         hour = 12 if hour_value == 1 else hour_value - 1
         minute = 60 - minute_value
+    bucket_hour = hour
+    if ((minute + 2) // 5) * 5 == 60:
+        bucket_hour = (hour % 12) + 1
     return {
         'matched_text': match.group(0),
         'hour': hour,
         'minute': minute,
         'normalized_time': f"{hour:02d}:{minute:02d}",
-        'fuzzy_bucket': f"h{hour}_{bucket_for_minute(minute)}",
+        'fuzzy_bucket': f"h{bucket_hour}_{bucket_for_minute(minute)}",
     }
 
 
@@ -109,10 +96,7 @@ def main() -> int:
     output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser() if args.output else input_path
     rows = []
     fixed = 0
-    for line in input_path.read_text(encoding='utf-8').splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in iter_jsonl(input_path):
         display_quote = row.get('display_quote') or ''
         inferred = infer_time_from_quote(display_quote)
         if inferred:

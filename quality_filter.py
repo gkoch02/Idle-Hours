@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 
+from jsonl_io import iter_jsonl
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -85,10 +87,7 @@ def main() -> int:
     input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
     output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
     rows = []
-    for line in input_path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in iter_jsonl(input_path):
         display_quote = row.get("display_quote") or ""
         quality_score, quality_flags = score_quote(
             display_quote,

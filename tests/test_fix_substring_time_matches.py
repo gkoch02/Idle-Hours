@@ -49,37 +49,17 @@ class TestParseNumberWord:
 
 
 class TestBucketForMinute:
-    def test_exact(self):
+    # Full behavior of the underlying primitive is exercised in tests/test_buckets.py.
+    # These smoke tests confirm this module still exposes it under the historical
+    # ``bucket_for_minute`` name for backward compatibility.
+    def test_alias_resolves_to_shared_primitive(self):
+        from buckets import minute_bucket as shared
+        assert bucket_for_minute is shared
+
+    def test_smoke(self):
         assert bucket_for_minute(0) == "exact"
-
-    def test_just_after_boundaries(self):
-        assert bucket_for_minute(1) == "just_after"
-        assert bucket_for_minute(5) == "just_after"
-
-    def test_early_past_boundaries(self):
-        assert bucket_for_minute(6) == "early_past"
-        assert bucket_for_minute(14) == "early_past"
-
-    def test_quarter_pastish_boundaries(self):
-        assert bucket_for_minute(15) == "quarter_pastish"
-        assert bucket_for_minute(19) == "quarter_pastish"
-
-    def test_half_pastish_boundaries(self):
-        # miner-side definition: 20–39
-        assert bucket_for_minute(20) == "half_pastish"
-        assert bucket_for_minute(39) == "half_pastish"
-
-    def test_late_past_boundaries(self):
-        assert bucket_for_minute(40) == "late_past"
-        assert bucket_for_minute(44) == "late_past"
-
-    def test_quarter_toish_boundaries(self):
-        assert bucket_for_minute(45) == "quarter_toish"
-        assert bucket_for_minute(49) == "quarter_toish"
-
-    def test_just_before_boundaries(self):
-        assert bucket_for_minute(50) == "just_before"
-        assert bucket_for_minute(59) == "just_before"
+        assert bucket_for_minute(30) == "half_past"
+        assert bucket_for_minute(59) == "exact"
 
 
 class TestInferTimeFromQuote:
@@ -89,7 +69,7 @@ class TestInferTimeFromQuote:
         assert result["hour"] == 3
         assert result["minute"] == 10
         assert result["normalized_time"] == "03:10"
-        assert result["fuzzy_bucket"] == "h3_early_past"
+        assert result["fuzzy_bucket"] == "h3_ten_past"
 
     def test_minutes_to(self):
         result = infer_time_from_quote("The clock read twenty minutes to six.")
@@ -97,7 +77,7 @@ class TestInferTimeFromQuote:
         assert result["hour"] == 5
         assert result["minute"] == 40
         assert result["normalized_time"] == "05:40"
-        assert result["fuzzy_bucket"] == "h5_late_past"
+        assert result["fuzzy_bucket"] == "h5_twenty_to"
 
     def test_compound_minute_word(self):
         result = infer_time_from_quote("It was thirty-five minutes past two.")
@@ -154,7 +134,7 @@ class TestMain:
             "hour": 2,
             "minute": 5,
             "normalized_time": "02:05",
-            "fuzzy_bucket": "h2_just_after",
+            "fuzzy_bucket": "h2_five_past",
         }
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
@@ -166,7 +146,7 @@ class TestMain:
         result = json.loads(output_file.read_text(encoding="utf-8").strip())
         assert result["minute"] == 35
         assert result["hour"] == 2
-        assert result["fuzzy_bucket"] == "h2_half_pastish"
+        assert result["fuzzy_bucket"] == "h2_twenty_five_to"
 
     def test_leaves_non_collision_rows_unchanged(self, tmp_path):
         import sys
@@ -179,7 +159,7 @@ class TestMain:
             "hour": 3,
             "minute": 10,
             "normalized_time": "03:10",
-            "fuzzy_bucket": "h3_early_past",
+            "fuzzy_bucket": "h3_ten_past",
         }
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
@@ -190,4 +170,4 @@ class TestMain:
 
         result = json.loads(output_file.read_text(encoding="utf-8").strip())
         assert result["minute"] == 10
-        assert result["fuzzy_bucket"] == "h3_early_past"
+        assert result["fuzzy_bucket"] == "h3_ten_past"

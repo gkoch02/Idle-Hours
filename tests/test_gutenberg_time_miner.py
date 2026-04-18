@@ -57,63 +57,6 @@ class TestHourWordToInt:
 
 
 # ---------------------------------------------------------------------------
-# minute_bucket (miner-side now matches 5-minute runtime rounding)
-# ---------------------------------------------------------------------------
-
-class TestMinerMinuteBucket:
-    def test_exact(self):
-        assert gtm.minute_bucket(0) == "exact"
-        assert gtm.minute_bucket(1) == "exact"
-        assert gtm.minute_bucket(2) == "exact"
-        assert gtm.minute_bucket(58) == "exact"
-        assert gtm.minute_bucket(59) == "exact"
-
-    def test_five_past_boundaries(self):
-        assert gtm.minute_bucket(3) == "five_past"
-        assert gtm.minute_bucket(7) == "five_past"
-
-    def test_ten_past_boundaries(self):
-        assert gtm.minute_bucket(8) == "ten_past"
-        assert gtm.minute_bucket(12) == "ten_past"
-
-    def test_quarter_past_boundaries(self):
-        assert gtm.minute_bucket(13) == "quarter_past"
-        assert gtm.minute_bucket(17) == "quarter_past"
-
-    def test_twenty_past_boundaries(self):
-        assert gtm.minute_bucket(18) == "twenty_past"
-        assert gtm.minute_bucket(22) == "twenty_past"
-
-    def test_twenty_five_past_boundaries(self):
-        assert gtm.minute_bucket(23) == "twenty_five_past"
-        assert gtm.minute_bucket(27) == "twenty_five_past"
-
-    def test_half_past_boundaries(self):
-        assert gtm.minute_bucket(28) == "half_past"
-        assert gtm.minute_bucket(32) == "half_past"
-
-    def test_twenty_five_to_boundaries(self):
-        assert gtm.minute_bucket(33) == "twenty_five_to"
-        assert gtm.minute_bucket(37) == "twenty_five_to"
-
-    def test_twenty_to_boundaries(self):
-        assert gtm.minute_bucket(38) == "twenty_to"
-        assert gtm.minute_bucket(42) == "twenty_to"
-
-    def test_quarter_to_boundaries(self):
-        assert gtm.minute_bucket(43) == "quarter_to"
-        assert gtm.minute_bucket(47) == "quarter_to"
-
-    def test_ten_to_boundaries(self):
-        assert gtm.minute_bucket(48) == "ten_to"
-        assert gtm.minute_bucket(52) == "ten_to"
-
-    def test_five_to_boundaries(self):
-        assert gtm.minute_bucket(53) == "five_to"
-        assert gtm.minute_bucket(57) == "five_to"
-
-
-# ---------------------------------------------------------------------------
 # daypart_for_hour
 # ---------------------------------------------------------------------------
 

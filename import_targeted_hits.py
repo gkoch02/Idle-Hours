@@ -6,6 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
+from jsonl_io import iter_jsonl
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -90,9 +92,8 @@ def main() -> int:
     input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
     output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
     rows = []
-    for line in input_path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(row_from_targeted(json.loads(line)))
+    for raw in iter_jsonl(input_path):
+        rows.append(row_from_targeted(raw))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
         for row in rows:
