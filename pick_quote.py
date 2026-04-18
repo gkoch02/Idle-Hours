@@ -7,7 +7,6 @@ import json
 import random
 from pathlib import Path
 
-
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
     5: ["five minutes past", "five minutes after", "five past"],

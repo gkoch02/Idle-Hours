@@ -41,16 +41,20 @@ TIME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-BUCKET_ORDER = [
-    (0, "exact"),
-    (5, "just_after"),
-    (14, "early_past"),
-    (19, "quarter_pastish"),
-    (39, "half_pastish"),
-    (44, "late_past"),
-    (49, "quarter_toish"),
-    (59, "just_before"),
-]
+STATE_NAMES = {
+    0: "exact",
+    5: "five_past",
+    10: "ten_past",
+    15: "quarter_past",
+    20: "twenty_past",
+    25: "twenty_five_past",
+    30: "half_past",
+    35: "twenty_five_to",
+    40: "twenty_to",
+    45: "quarter_to",
+    50: "ten_to",
+    55: "five_to",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,10 +75,12 @@ def parse_number_word(text: str) -> int | None:
 
 
 def bucket_for_minute(minute: int) -> str:
-    for upper, bucket in BUCKET_ORDER:
-        if minute <= upper:
-            return bucket
-    return "just_before"
+    if not 0 <= minute <= 59:
+        return "unknown"
+    rounded = ((minute + 2) // 5) * 5
+    if rounded == 60:
+        rounded = 0
+    return STATE_NAMES[rounded]
 
 
 def infer_time_from_quote(display_quote: str):
@@ -94,12 +100,15 @@ def infer_time_from_quote(display_quote: str):
     else:
         hour = 12 if hour_value == 1 else hour_value - 1
         minute = 60 - minute_value
+    bucket_hour = hour
+    if ((minute + 2) // 5) * 5 == 60:
+        bucket_hour = (hour % 12) + 1
     return {
         'matched_text': match.group(0),
         'hour': hour,
         'minute': minute,
         'normalized_time': f"{hour:02d}:{minute:02d}",
-        'fuzzy_bucket': f"h{hour}_{bucket_for_minute(minute)}",
+        'fuzzy_bucket': f"h{bucket_hour}_{bucket_for_minute(minute)}",
     }
 
 
