@@ -10,17 +10,34 @@ from pathlib import Path
 
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
-    5: ["five minutes past", "five minutes after"],
-    10: ["ten minutes past", "ten minutes after"],
+    5: ["five minutes past", "five minutes after", "five past"],
+    10: ["ten minutes past", "ten minutes after", "ten past"],
     15: ["quarter past"],
-    20: ["twenty minutes past"],
-    25: ["twenty-five minutes past", "twenty five minutes past"],
-    30: ["half past", "half-past"],
-    35: ["thirty-five minutes past", "thirty five minutes past"],
-    40: ["twenty minutes to"],
+    20: ["twenty minutes past", "twenty past"],
+    25: ["twenty-five minutes past", "twenty five minutes past", "twenty-five past", "twenty five past"],
+    30: ["half past", "half-past", "11:30", "12:30"],
+    35: ["thirty-five minutes past", "thirty five minutes past", "twenty-five minutes to", "twenty five minutes to", "twenty-five to", "twenty five to"],
+    40: ["twenty minutes to", "twenty to"],
     45: ["quarter to"],
-    50: ["ten minutes to"],
-    55: ["five minutes to"],
+    50: ["ten minutes to", "ten to"],
+    55: ["five minutes to", "five to"],
+}
+
+BUCKET_ORDER = ["exact", "five_past", "ten_past", "quarter_past", "twenty_past", "twenty_five_past", "half_past", "twenty_five_to", "twenty_to", "quarter_to", "ten_to", "five_to"]
+
+DEFAULT_BUCKET_MINUTES = {
+    "exact": 0,
+    "five_past": 5,
+    "ten_past": 10,
+    "quarter_past": 15,
+    "twenty_past": 20,
+    "twenty_five_past": 25,
+    "half_past": 30,
+    "twenty_five_to": 35,
+    "twenty_to": 40,
+    "quarter_to": 45,
+    "ten_to": 50,
+    "five_to": 55,
 }
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -92,31 +109,37 @@ def parse_args() -> argparse.Namespace:
 
 
 def minute_bucket(minute: int) -> str:
-    if minute == 0:
+    if not 0 <= minute <= 59:
+        raise ValueError(f"Unexpected minute: {minute}")
+    bucket = ((minute + 2) // 5) * 5
+    if bucket == 60:
         return "exact"
-    if 1 <= minute <= 5:
-        return "just_after"
-    if 6 <= minute <= 14:
-        return "early_past"
-    if 15 <= minute <= 19:
-        return "quarter_pastish"
-    if 20 <= minute <= 34:
-        return "half_pastish"
-    if 35 <= minute <= 39:
-        return "late_past"
-    if 40 <= minute <= 49:
-        return "quarter_toish"
-    if 50 <= minute <= 59:
-        return "just_before"
-    raise ValueError(f"Unexpected minute: {minute}")
+    return {
+        0: "exact",
+        5: "five_past",
+        10: "ten_past",
+        15: "quarter_past",
+        20: "twenty_past",
+        25: "twenty_five_past",
+        30: "half_past",
+        35: "twenty_five_to",
+        40: "twenty_to",
+        45: "quarter_to",
+        50: "ten_to",
+        55: "five_to",
+    }[bucket]
 
 
 def bucket_for_time(time_str: str) -> str:
     hour24, minute = [int(part) for part in time_str.split(":", 1)]
+    rounded_minute = ((minute + 2) // 5) * 5
+    if rounded_minute == 60:
+        rounded_minute = 0
+        hour24 = (hour24 + 1) % 24
     hour12 = hour24 % 12
     if hour12 == 0:
         hour12 = 12
-    return f"h{hour12}_{minute_bucket(minute)}"
+    return f"h{hour12}_{minute_bucket(rounded_minute)}"
 
 
 def resolve_path(path_str: str) -> Path:
@@ -129,8 +152,13 @@ def resolve_path(path_str: str) -> Path:
 def load_rows(path: Path) -> list[dict]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        normalized = row.get("normalized_time")
+        if isinstance(normalized, str) and ":" in normalized:
+            row["fuzzy_bucket"] = bucket_for_time(normalized)
+        rows.append(row)
     return rows
 
 
@@ -181,19 +209,11 @@ def is_banned(row: dict, overrides: dict) -> bool:
 
 def parse_requested_minute(bucket: str, requested_time: str | None) -> int | None:
     if requested_time:
-        return int(requested_time.split(":", 1)[1])
+        minute = int(requested_time.split(":", 1)[1])
+        rounded_minute = ((minute + 2) // 5) * 5
+        return 0 if rounded_minute == 60 else rounded_minute
     state = bucket.split("_", 1)[1]
-    default_minutes = {
-        "exact": 0,
-        "just_after": 3,
-        "early_past": 10,
-        "quarter_pastish": 15,
-        "half_pastish": 27,
-        "late_past": 37,
-        "quarter_toish": 45,
-        "just_before": 55,
-    }
-    return default_minutes.get(state)
+    return DEFAULT_BUCKET_MINUTES.get(state)
 
 
 def infer_quote_minute(row: dict) -> int | None:
@@ -251,23 +271,13 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
 
 def neighbor_buckets(bucket: str) -> list[str]:
     hour_part, state = bucket.split("_", 1)
-    order = [
-        "exact",
-        "just_after",
-        "early_past",
-        "quarter_pastish",
-        "half_pastish",
-        "late_past",
-        "quarter_toish",
-        "just_before",
-    ]
-    idx = order.index(state)
+    idx = BUCKET_ORDER.index(state)
     neighbors = [bucket]
-    for distance in range(1, len(order)):
+    for distance in range(1, len(BUCKET_ORDER)):
         if idx - distance >= 0:
-            neighbors.append(f"{hour_part}_{order[idx - distance]}")
-        if idx + distance < len(order):
-            neighbors.append(f"{hour_part}_{order[idx + distance]}")
+            neighbors.append(f"{hour_part}_{BUCKET_ORDER[idx - distance]}")
+        if idx + distance < len(BUCKET_ORDER):
+            neighbors.append(f"{hour_part}_{BUCKET_ORDER[idx + distance]}")
     return neighbors
 
 

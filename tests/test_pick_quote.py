@@ -6,50 +6,42 @@ import pytest
 import pick_quote as pq
 from tests.conftest import make_row
 
-# ---------------------------------------------------------------------------
-# minute_bucket
-# ---------------------------------------------------------------------------
 
 class TestMinuteBucket:
     def test_exact(self):
         assert pq.minute_bucket(0) == "exact"
 
-    def test_just_after_boundaries(self):
-        assert pq.minute_bucket(1) == "just_after"
-        assert pq.minute_bucket(5) == "just_after"
-
-    def test_early_past_boundaries(self):
-        assert pq.minute_bucket(6) == "early_past"
-        assert pq.minute_bucket(14) == "early_past"
-
-    def test_quarter_pastish_boundaries(self):
-        assert pq.minute_bucket(15) == "quarter_pastish"
-        assert pq.minute_bucket(19) == "quarter_pastish"
-
-    def test_half_pastish_boundaries(self):
-        assert pq.minute_bucket(20) == "half_pastish"
-        assert pq.minute_bucket(34) == "half_pastish"
-
-    def test_late_past_boundaries(self):
-        assert pq.minute_bucket(35) == "late_past"
-        assert pq.minute_bucket(39) == "late_past"
-
-    def test_quarter_toish_boundaries(self):
-        assert pq.minute_bucket(40) == "quarter_toish"
-        assert pq.minute_bucket(49) == "quarter_toish"
-
-    def test_just_before_boundaries(self):
-        assert pq.minute_bucket(50) == "just_before"
-        assert pq.minute_bucket(59) == "just_before"
+    def test_rounding_windows(self):
+        assert pq.minute_bucket(2) == "exact"
+        assert pq.minute_bucket(3) == "five_past"
+        assert pq.minute_bucket(7) == "five_past"
+        assert pq.minute_bucket(8) == "ten_past"
+        assert pq.minute_bucket(12) == "ten_past"
+        assert pq.minute_bucket(13) == "quarter_past"
+        assert pq.minute_bucket(17) == "quarter_past"
+        assert pq.minute_bucket(18) == "twenty_past"
+        assert pq.minute_bucket(22) == "twenty_past"
+        assert pq.minute_bucket(23) == "twenty_five_past"
+        assert pq.minute_bucket(27) == "twenty_five_past"
+        assert pq.minute_bucket(28) == "half_past"
+        assert pq.minute_bucket(32) == "half_past"
+        assert pq.minute_bucket(33) == "twenty_five_to"
+        assert pq.minute_bucket(37) == "twenty_five_to"
+        assert pq.minute_bucket(38) == "twenty_to"
+        assert pq.minute_bucket(42) == "twenty_to"
+        assert pq.minute_bucket(43) == "quarter_to"
+        assert pq.minute_bucket(47) == "quarter_to"
+        assert pq.minute_bucket(48) == "ten_to"
+        assert pq.minute_bucket(52) == "ten_to"
+        assert pq.minute_bucket(53) == "five_to"
+        assert pq.minute_bucket(57) == "five_to"
+        assert pq.minute_bucket(58) == "exact"
+        assert pq.minute_bucket(59) == "exact"
 
     def test_invalid_minute_raises(self):
         with pytest.raises(ValueError):
             pq.minute_bucket(60)
 
-
-# ---------------------------------------------------------------------------
-# bucket_for_time
-# ---------------------------------------------------------------------------
 
 class TestBucketForTime:
     def test_midnight_exact(self):
@@ -59,22 +51,17 @@ class TestBucketForTime:
         assert pq.bucket_for_time("12:00") == "h12_exact"
 
     def test_hour12_wraps(self):
-        # 13:00 -> hour12=1
         assert pq.bucket_for_time("13:00") == "h1_exact"
 
-    def test_23_59(self):
-        assert pq.bucket_for_time("23:59") == "h11_just_before"
+    def test_23_59_rolls_to_midnight(self):
+        assert pq.bucket_for_time("23:59") == "h12_exact"
 
     def test_3_30(self):
-        assert pq.bucket_for_time("03:30") == "h3_half_pastish"
+        assert pq.bucket_for_time("03:30") == "h3_half_past"
 
     def test_14_45(self):
-        assert pq.bucket_for_time("14:45") == "h2_quarter_toish"
+        assert pq.bucket_for_time("14:45") == "h2_quarter_to"
 
-
-# ---------------------------------------------------------------------------
-# metadata_bonus
-# ---------------------------------------------------------------------------
 
 class TestMetadataBonus:
     def test_both_present(self):
@@ -89,10 +76,6 @@ class TestMetadataBonus:
     def test_neither(self):
         assert pq.metadata_bonus({}) == 2
 
-
-# ---------------------------------------------------------------------------
-# dialogue_penalty
-# ---------------------------------------------------------------------------
 
 class TestDialoguePenalty:
     def test_no_dialogue(self):
@@ -110,10 +93,6 @@ class TestDialoguePenalty:
     def test_empty_quote(self):
         assert pq.dialogue_penalty({}) == 0
 
-
-# ---------------------------------------------------------------------------
-# opening_penalty
-# ---------------------------------------------------------------------------
 
 class TestOpeningPenalty:
     def test_neutral_opening(self):
@@ -134,10 +113,6 @@ class TestOpeningPenalty:
     def test_empty(self):
         assert pq.opening_penalty({}) == 0
 
-
-# ---------------------------------------------------------------------------
-# override_bonus / is_banned
-# ---------------------------------------------------------------------------
 
 class TestOverrides:
     def test_no_override(self):
@@ -171,10 +146,6 @@ class TestOverrides:
         assert pq.is_banned(row, overrides) is False
 
 
-# ---------------------------------------------------------------------------
-# score_row
-# ---------------------------------------------------------------------------
-
 class TestScoreRow:
     def _overrides(self):
         return {"preferred_buckets": {}, "boost_source_ids": [], "ban_source_ids": []}
@@ -198,56 +169,55 @@ class TestScoreRow:
                        display_quote="It was five minutes to three.")
         overrides = self._overrides()
         score = pq.score_row(row, "h3_exact", overrides)
-        # exactness_bonus = -2, so length_penalty + exactness_bonus < length_penalty alone
         row_no_bonus = make_row(matched_text="three o'clock", quality_score=80,
                                 display_quote="It was five minutes to three.")
         score_no_bonus = pq.score_row(row_no_bonus, "h3_exact", overrides)
-        assert score[8] < score_no_bonus[8]
+        assert score[9] < score_no_bonus[9]
 
     def test_exactness_bonus_quarter(self):
         row = make_row(matched_text="quarter past three", quality_score=80,
                        display_quote="It was quarter past three.")
         overrides = self._overrides()
         score = pq.score_row(row, "h3_exact", overrides)
-        assert score[8] < abs(len("It was quarter past three.") - 140)
+        assert score[9] < abs(len("It was quarter past three.") - 140)
 
     def test_no_source_id_penalty(self):
         with_id = make_row(source_id="1234")
         without_id = make_row(source_id=None)
         overrides = self._overrides()
-        assert pq.score_row(with_id, "h3_exact", overrides)[5] == 0
-        assert pq.score_row(without_id, "h3_exact", overrides)[5] == 1
+        assert pq.score_row(with_id, "h3_exact", overrides)[6] == 0
+        assert pq.score_row(without_id, "h3_exact", overrides)[6] == 1
 
+    def test_nearer_minute_wins_within_bucket(self):
+        overrides = self._overrides()
+        near = make_row(normalized_time="11:20", matched_text="twenty minutes past eleven", quality_score=90,
+                        display_quote="It was twenty minutes past eleven.")
+        far = make_row(normalized_time="11:25", matched_text="twenty-five minutes past eleven", quality_score=90,
+                       display_quote="It was twenty-five minutes past eleven.")
+        assert pq.score_row(near, "h11_twenty_past", overrides, "11:20") < pq.score_row(far, "h11_twenty_past", overrides, "11:20")
 
-# ---------------------------------------------------------------------------
-# neighbor_buckets
-# ---------------------------------------------------------------------------
 
 class TestNeighborBuckets:
     def test_first_bucket_expands_forward_only(self):
         neighbors = pq.neighbor_buckets("h3_exact")
         assert neighbors[0] == "h3_exact"
-        assert "h3_just_after" in neighbors
+        assert "h3_five_past" in neighbors
         assert all(n.startswith("h3_") for n in neighbors)
 
     def test_last_bucket_expands_backward_only(self):
-        neighbors = pq.neighbor_buckets("h3_just_before")
-        assert neighbors[0] == "h3_just_before"
-        assert "h3_quarter_toish" in neighbors
+        neighbors = pq.neighbor_buckets("h3_five_to")
+        assert neighbors[0] == "h3_five_to"
+        assert "h3_ten_to" in neighbors
 
     def test_middle_bucket_expands_both_ways(self):
-        neighbors = pq.neighbor_buckets("h3_half_pastish")
-        assert "h3_quarter_pastish" in neighbors
-        assert "h3_late_past" in neighbors
+        neighbors = pq.neighbor_buckets("h3_half_past")
+        assert "h3_twenty_five_past" in neighbors
+        assert "h3_twenty_five_to" in neighbors
 
     def test_returns_all_states_eventually(self):
         neighbors = pq.neighbor_buckets("h3_exact")
-        assert len(neighbors) == 8
+        assert len(neighbors) == 12
 
-
-# ---------------------------------------------------------------------------
-# pick_best
-# ---------------------------------------------------------------------------
 
 class TestPickBest:
     def _overrides(self):
@@ -264,19 +234,19 @@ class TestPickBest:
 
     def test_falls_back_to_neighbor_when_empty(self):
         rows = [
-            make_row(fuzzy_bucket="h3_just_after", quality_score=80, display_quote="A few minutes past three."),
+            make_row(fuzzy_bucket="h3_five_past", quality_score=80, display_quote="A few minutes past three."),
         ]
         best, bucket = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
-        assert bucket == "h3_just_after"
-        assert best["fuzzy_bucket"] == "h3_just_after"
+        assert bucket == "h3_five_past"
+        assert best["fuzzy_bucket"] == "h3_five_past"
 
     def test_respects_min_quality(self):
         rows = [
             make_row(fuzzy_bucket="h3_exact", quality_score=40, display_quote="Three."),
-            make_row(fuzzy_bucket="h3_just_after", quality_score=70, display_quote="Just after three the bell rang."),
+            make_row(fuzzy_bucket="h3_five_past", quality_score=70, display_quote="Just after three the bell rang."),
         ]
         best, bucket = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
-        assert bucket == "h3_just_after"
+        assert bucket == "h3_five_past"
         assert best["quality_score"] == 70
 
     def test_excludes_banned_source(self):
@@ -306,7 +276,7 @@ class TestPickBest:
         assert best1["display_quote"] == best2["display_quote"]
 
     def test_used_fallback_flag_reflected_in_returned_bucket(self):
-        rows = [make_row(fuzzy_bucket="h3_early_past", quality_score=80,
+        rows = [make_row(fuzzy_bucket="h3_ten_past", quality_score=80,
                          display_quote="It was about ten past three.")]
         _, resolved = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
-        assert resolved == "h3_early_past"
+        assert resolved == "h3_ten_past"

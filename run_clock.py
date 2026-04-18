@@ -68,25 +68,27 @@ def current_time_str() -> str:
 def current_bucket() -> str:
     time_str = current_time_str()
     hour24, minute = [int(part) for part in time_str.split(":", 1)]
+    rounded_minute = ((minute + 2) // 5) * 5
+    if rounded_minute == 60:
+        rounded_minute = 0
+        hour24 = (hour24 + 1) % 24
     hour12 = hour24 % 12
     if hour12 == 0:
         hour12 = 12
-    if minute == 0:
-        state = "exact"
-    elif 1 <= minute <= 5:
-        state = "just_after"
-    elif 6 <= minute <= 14:
-        state = "early_past"
-    elif 15 <= minute <= 19:
-        state = "quarter_pastish"
-    elif 20 <= minute <= 34:
-        state = "half_pastish"
-    elif 35 <= minute <= 39:
-        state = "late_past"
-    elif 40 <= minute <= 49:
-        state = "quarter_toish"
-    else:
-        state = "just_before"
+    state = {
+        0: "exact",
+        5: "five_past",
+        10: "ten_past",
+        15: "quarter_past",
+        20: "twenty_past",
+        25: "twenty_five_past",
+        30: "half_past",
+        35: "twenty_five_to",
+        40: "twenty_to",
+        45: "quarter_to",
+        50: "ten_to",
+        55: "five_to",
+    }[rounded_minute]
     return f"h{hour12}_{state}"
 
 
