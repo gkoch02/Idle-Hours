@@ -91,7 +91,7 @@ LAYOUTS = {
         "mark_max": 126,
         "title_size": 17,
         "author_gap": 16,
-        "title_gap": 6,
+        "title_gap": 4,
     },
     "standard": {
         "max_width": 730,
@@ -104,7 +104,7 @@ LAYOUTS = {
         "mark_max": 118,
         "title_size": 16,
         "author_gap": 14,
-        "title_gap": 6,
+        "title_gap": 4,
     },
     "dense": {
         "max_width": 740,
@@ -117,7 +117,7 @@ LAYOUTS = {
         "mark_max": 102,
         "title_size": 15,
         "author_gap": 12,
-        "title_gap": 5,
+        "title_gap": 4,
     },
 }
 
@@ -336,7 +336,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     )
     quote_block_height = len(wrapped_quote) * line_height
     author_size = max(13, int(chosen_size * 0.52))
-    source_size = max(12, int(chosen_size * 0.44))
+    source_size = max(13, int(chosen_size * 0.47))
     attribution_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=author_size)
     attribution_title_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=source_size)
 
