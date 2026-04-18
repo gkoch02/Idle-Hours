@@ -7,6 +7,22 @@ import json
 import random
 from pathlib import Path
 
+
+EXACT_MINUTE_PATTERNS = {
+    "zero": ["o’clock", "oclock", "struck"],
+    5: ["five minutes past", "five minutes after"],
+    10: ["ten minutes past", "ten minutes after"],
+    15: ["quarter past"],
+    20: ["twenty minutes past"],
+    25: ["twenty-five minutes past", "twenty five minutes past"],
+    30: ["half past", "half-past"],
+    35: ["thirty-five minutes past", "thirty five minutes past"],
+    40: ["twenty minutes to"],
+    45: ["quarter to"],
+    50: ["ten minutes to"],
+    55: ["five minutes to"],
+}
+
 BASE_DIR = Path(__file__).resolve().parent
 
 DIALOGUE_FILLER_PATTERNS = [
@@ -163,7 +179,47 @@ def is_banned(row: dict, overrides: dict) -> bool:
     return source_id in {str(x) for x in overrides.get("ban_source_ids", [])}
 
 
-def score_row(row: dict, bucket: str, overrides: dict) -> tuple:
+def parse_requested_minute(bucket: str, requested_time: str | None) -> int | None:
+    if requested_time:
+        return int(requested_time.split(":", 1)[1])
+    state = bucket.split("_", 1)[1]
+    default_minutes = {
+        "exact": 0,
+        "just_after": 3,
+        "early_past": 10,
+        "quarter_pastish": 15,
+        "half_pastish": 27,
+        "late_past": 37,
+        "quarter_toish": 45,
+        "just_before": 55,
+    }
+    return default_minutes.get(state)
+
+
+def infer_quote_minute(row: dict) -> int | None:
+    normalized = row.get("normalized_time")
+    if isinstance(normalized, str) and ":" in normalized:
+        try:
+            return int(normalized.split(":", 1)[1])
+        except ValueError:
+            pass
+
+    lowered = (row.get("matched_text") or "").lower().replace("\n", " ")
+    for minute, patterns in EXACT_MINUTE_PATTERNS.items():
+        if any(pattern in lowered for pattern in patterns):
+            return 0 if minute == "zero" else minute
+    return None
+
+
+def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) -> int:
+    requested_minute = parse_requested_minute(bucket, requested_time)
+    quote_minute = infer_quote_minute(row)
+    if requested_minute is None or quote_minute is None:
+        return 99
+    return abs(requested_minute - quote_minute)
+
+
+def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None) -> tuple:
     display = row.get("display_quote") or ""
     fragment_penalty = 1 if row.get("display_fragment") else 0
     cleanup_penalty = 0 if row.get("cleanup_status") == "complete_sentence" else 1
@@ -177,9 +233,11 @@ def score_row(row: dict, bucket: str, overrides: dict) -> tuple:
         exactness_bonus = -1
     source_bonus = 0 if row.get("source_id") else 1
     quality_component = -(row.get("quality_score") or 0)
+    minute_penalty = minute_distance_penalty(row, bucket, requested_time)
     return (
         fragment_penalty,
         cleanup_penalty,
+        minute_penalty,
         metadata_bonus(row),
         dialogue_penalty(row),
         opening_penalty(row),
@@ -213,7 +271,7 @@ def neighbor_buckets(bucket: str) -> list[str]:
     return neighbors
 
 
-def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overrides: dict) -> tuple[dict, str]:
+def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overrides: dict, requested_time: str | None = None) -> tuple[dict, str]:
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
             row for row in rows
@@ -224,9 +282,9 @@ def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overri
         ]
         if not candidates:
             continue
-        candidates.sort(key=lambda row: score_row(row, candidate_bucket, overrides))
-        top_score = score_row(candidates[0], candidate_bucket, overrides)
-        top = [row for row in candidates if score_row(row, candidate_bucket, overrides) == top_score]
+        candidates.sort(key=lambda row: score_row(row, candidate_bucket, overrides, requested_time))
+        top_score = score_row(candidates[0], candidate_bucket, overrides, requested_time)
+        top = [row for row in candidates if score_row(row, candidate_bucket, overrides, requested_time) == top_score]
         rng = random.Random(seed)
         return rng.choice(top), candidate_bucket
     raise SystemExit(f"No candidates found for bucket {bucket} or nearby buckets above quality {min_quality}")
@@ -239,7 +297,7 @@ def main() -> int:
     bucket = args.bucket or bucket_for_time(args.time)
     rows = load_rows(resolve_path(args.input))
     overrides = load_overrides(resolve_path(args.overrides))
-    best, resolved_bucket = pick_best(rows, bucket, args.seed, args.min_quality, overrides)
+    best, resolved_bucket = pick_best(rows, bucket, args.seed, args.min_quality, overrides, args.time)
     output = {
         "requested_time": args.time,
         "bucket": bucket,
