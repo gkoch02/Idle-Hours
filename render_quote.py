@@ -399,9 +399,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         author_prefix = "— "
         prefix_w = draw.textbbox((0, 0), author_prefix, font=attribution_font)[2]
         author_w = draw.textbbox((0, 0), author_text_line, font=attribution_font)[2]
-        author_x = (width - (prefix_w + author_w)) // 2
-        draw_text(draw, (author_x, y), author_prefix, font=attribution_font, fill=TEXT)
-        draw_text(draw, (author_x + prefix_w, y), author_text_line, font=attribution_font, fill=TEXT)
+        author_name_x = (width - author_w) // 2
+        draw_text(draw, (author_name_x - prefix_w, y), author_prefix, font=attribution_font, fill=TEXT)
+        draw_text(draw, (author_name_x, y), author_text_line, font=attribution_font, fill=TEXT)
         y += author_size + layout["title_gap"]
 
     for line in title_lines:
