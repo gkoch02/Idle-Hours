@@ -23,10 +23,9 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent
 from typing import Iterable, Iterator, Sequence
 
+BASE_DIR = Path(__file__).resolve().parent
 
 NUMBER_WORDS = {
     "zero": 0,

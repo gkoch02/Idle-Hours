@@ -1,9 +1,7 @@
 """Tests for clean_display_quotes.py — sentence extraction and fragment detection."""
 from __future__ import annotations
 
-import pytest
 import clean_display_quotes as cdq
-
 
 # ---------------------------------------------------------------------------
 # split_sentences

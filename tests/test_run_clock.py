@@ -1,11 +1,7 @@
 """Tests for run_clock.py"""
 from __future__ import annotations
 
-import subprocess
-import sys
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import patch
 
 import run_clock
 

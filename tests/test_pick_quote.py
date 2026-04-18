@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import pytest
-from tests.conftest import make_row
 
 import pick_quote as pq
-
+from tests.conftest import make_row
 
 # ---------------------------------------------------------------------------
 # minute_bucket

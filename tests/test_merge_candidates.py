@@ -1,11 +1,8 @@
 """Tests for merge_candidates.py — text normalization and deduplication."""
 from __future__ import annotations
 
-import pytest
-from tests.conftest import make_row
-
 import merge_candidates as mc
-
+from tests.conftest import make_row
 
 # ---------------------------------------------------------------------------
 # normalize_text

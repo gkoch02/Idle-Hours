@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import pytest
+
 from import_targeted_hits import minute_for_bucket, row_from_targeted
 
 
@@ -98,7 +98,7 @@ class TestRowFromTargeted:
         assert row["daypart_bucket"] == "noon"
 
     def test_daypart_midnight(self):
-        row = row_from_targeted(self._raw(resolved_bucket="h12_half_pastish"))
+        row_from_targeted(self._raw(resolved_bucket="h12_half_pastish"))
         # h12 maps to noon in DAYPARTS
         row2 = row_from_targeted(self._raw(resolved_bucket="h1_exact"))
         assert row2["daypart_bucket"] == "night"
@@ -126,8 +126,9 @@ class TestRowFromTargeted:
 
 class TestMain:
     def test_converts_rows(self, tmp_path):
-        from import_targeted_hits import main
         import sys
+
+        from import_targeted_hits import main
 
         raw = {
             "resolved_bucket": "h3_exact",

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import pytest
+
 from fix_substring_time_matches import (
     bucket_for_minute,
     infer_time_from_quote,
@@ -144,8 +144,9 @@ class TestInferTimeFromQuote:
 class TestMain:
     def test_fixes_substring_collision(self, tmp_path):
         """A row whose matched_text is a sub-string of the longer phrase gets updated."""
-        from fix_substring_time_matches import main
         import sys
+
+        from fix_substring_time_matches import main
 
         row = {
             "display_quote": "It was thirty-five minutes past two in the afternoon.",
@@ -168,8 +169,9 @@ class TestMain:
         assert result["fuzzy_bucket"] == "h2_half_pastish"
 
     def test_leaves_non_collision_rows_unchanged(self, tmp_path):
-        from fix_substring_time_matches import main
         import sys
+
+        from fix_substring_time_matches import main
 
         row = {
             "display_quote": "It was ten minutes past three.",
