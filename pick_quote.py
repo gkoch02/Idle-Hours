@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from pathlib import Path
 
-from buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
+from buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
+from jsonl_io import iter_jsonl
 
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
@@ -101,21 +103,41 @@ def resolve_path(path_str: str) -> Path:
 
 def load_rows(path: Path) -> list[dict]:
     rows = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in iter_jsonl(path):
         normalized = row.get("normalized_time")
         if isinstance(normalized, str) and ":" in normalized:
-            row["fuzzy_bucket"] = bucket_for_time(normalized)
+            try:
+                row["fuzzy_bucket"] = bucket_for_time(normalized)
+            except (ValueError, KeyError):
+                pass
         rows.append(row)
     return rows
+
+
+def _valid_bucket_names() -> set[str]:
+    return {f"h{hour}_{state}" for hour in range(1, 13) for state in BUCKET_ORDER}
+
+
+def _warn_unknown_preferred_buckets(overrides: dict) -> None:
+    preferred = overrides.get("preferred_buckets") or {}
+    if not isinstance(preferred, dict):
+        return
+    valid = _valid_bucket_names()
+    unknown = sorted(key for key in preferred if key not in valid)
+    if unknown:
+        print(
+            f"warning: selection_overrides.json preferred_buckets has unknown buckets: {', '.join(unknown)}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def load_overrides(path: Path) -> dict:
     if not path.exists():
         return {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
-    return json.loads(path.read_text(encoding="utf-8"))
+    overrides = json.loads(path.read_text(encoding="utf-8"))
+    _warn_unknown_preferred_buckets(overrides)
+    return overrides
 
 
 def metadata_bonus(row: dict) -> int:
@@ -238,19 +260,30 @@ def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overri
     raise SystemExit(f"No candidates found for bucket {bucket} or nearby buckets above quality {min_quality}")
 
 
-def main() -> int:
-    args = parse_args()
-    if not args.time and not args.bucket:
-        raise SystemExit("Provide --time or --bucket")
-    bucket = args.bucket or bucket_for_time(args.time)
-    rows = load_rows(resolve_path(args.input))
-    overrides = load_overrides(resolve_path(args.overrides))
-    best, resolved_bucket = pick_best(rows, bucket, args.seed, args.min_quality, overrides, args.time)
-    output = {
-        "requested_time": args.time,
-        "bucket": bucket,
+def select_quote(
+    time_str: str | None = None,
+    bucket: str | None = None,
+    input_path: str = "output/candidates-attributed.jsonl",
+    overrides_path: str = "selection_overrides.json",
+    seed: int = 0,
+    min_quality: int = 60,
+) -> dict:
+    """Pick the best quote for a time or bucket and return the result dict.
+
+    Mirrors the JSON printed by ``main`` so ``render_quote`` can call this in-process
+    instead of shelling out and re-parsing stdout.
+    """
+    if not time_str and not bucket:
+        raise ValueError("select_quote requires time_str or bucket")
+    target_bucket = bucket or bucket_for_time(time_str)
+    rows = load_rows(resolve_path(input_path))
+    overrides = load_overrides(resolve_path(overrides_path))
+    best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str)
+    return {
+        "requested_time": time_str,
+        "bucket": target_bucket,
         "resolved_bucket": resolved_bucket,
-        "used_fallback": resolved_bucket != bucket,
+        "used_fallback": resolved_bucket != target_bucket,
         "display_quote": best.get("display_quote"),
         "matched_text": best.get("matched_text"),
         "source_id": best.get("source_id"),
@@ -263,6 +296,20 @@ def main() -> int:
         "quality_score": best.get("quality_score"),
         "quality_flags": best.get("quality_flags"),
     }
+
+
+def main() -> int:
+    args = parse_args()
+    if not args.time and not args.bucket:
+        raise SystemExit("Provide --time or --bucket")
+    output = select_quote(
+        time_str=args.time,
+        bucket=args.bucket,
+        input_path=args.input,
+        overrides_path=args.overrides,
+        seed=args.seed,
+        min_quality=args.min_quality,
+    )
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0
 

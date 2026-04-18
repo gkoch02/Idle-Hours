@@ -1,3 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "litclock"
+version = "0.1.0"
+description = "Literary clock: harvest time phrases from Project Gutenberg and render a matching quote on an Inky Impression eInk display."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "Pillow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff"]
+pi = ["inky"]
+
+[tool.setuptools]
+py-modules = [
+    "buckets",
+    "bucket_coverage",
+    "clean_display_quotes",
+    "display_inky",
+    "enrich_metadata",
+    "fix_substring_time_matches",
+    "gutenberg_time_miner",
+    "import_targeted_hits",
+    "jsonl_io",
+    "merge_candidates",
+    "pick_quote",
+    "quality_filter",
+    "render_quote",
+    "run_clock",
+    "target_sparse_buckets",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

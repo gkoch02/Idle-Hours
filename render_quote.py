@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
-import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+import pick_quote as pick_quote_module
+
 BASE_DIR = Path(__file__).resolve().parent
+_FONT_FALLBACK_WARNED = False
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
@@ -126,7 +128,7 @@ LAYOUTS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render a literary clock quote for a given time.")
     parser.add_argument("--time", required=True, help="Time in HH:MM 24-hour format")
-    parser.add_argument("--picker", default="pick_quote.py", help="Path to quote picker script")
+    parser.add_argument("--picker", default=None, help="(Deprecated) Ignored; pick_quote is imported in-process.")
     parser.add_argument("--output", default=None, help="Output PNG path. Defaults to output/render-HHMM.png")
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
@@ -139,19 +141,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def pick_quote(time_str: str, picker_path: str) -> dict:
-    picker = str((BASE_DIR / picker_path).resolve()) if not Path(picker_path).is_absolute() else picker_path
-    output = subprocess.check_output(["python3", picker, "--time", time_str], text=True)
-    return json.loads(output)
+def pick_quote(time_str: str, picker_path: str | None = None) -> dict:
+    return pick_quote_module.select_quote(time_str=time_str)
 
 
 def load_font(candidates: list[str], size: int):
+    global _FONT_FALLBACK_WARNED
     for candidate in candidates:
         if Path(candidate).exists():
             try:
                 return ImageFont.truetype(candidate, size=size)
             except OSError:
                 continue
+    if not _FONT_FALLBACK_WARNED:
+        print(
+            "warning: no TrueType font found; falling back to PIL bitmap default. "
+            "Install fonts-noto-core or the bundled fonts/ directory.",
+            file=sys.stderr,
+            flush=True,
+        )
+        _FONT_FALLBACK_WARNED = True
     return ImageFont.load_default()
 
 
@@ -449,7 +458,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
 def main() -> int:
     args = parse_args()
-    quote_row = pick_quote(args.time, args.picker)
+    quote_row = pick_quote(args.time)
     output_path = Path(args.output) if args.output else Path(f"output/render-{args.time.replace(':', '')}.png")
     if not output_path.is_absolute():
         output_path = BASE_DIR / output_path

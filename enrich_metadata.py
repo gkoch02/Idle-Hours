@@ -6,6 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
+from jsonl_io import iter_jsonl
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -52,10 +54,7 @@ def main() -> int:
 
     rows = []
     metadata_cache: dict[str, tuple[str | None, str | None]] = {}
-    for line in input_path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in iter_jsonl(input_path):
         source_id = row.get("source_id")
         title = row.get("title")
         author = row.get("author")

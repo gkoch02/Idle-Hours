@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from buckets import minute_bucket as bucket_for_minute
+from jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -95,10 +96,7 @@ def main() -> int:
     output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser() if args.output else input_path
     rows = []
     fixed = 0
-    for line in input_path.read_text(encoding='utf-8').splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for row in iter_jsonl(input_path):
         display_quote = row.get('display_quote') or ''
         inferred = infer_time_from_quote(display_quote)
         if inferred:
