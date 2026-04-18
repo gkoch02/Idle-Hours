@@ -317,6 +317,65 @@ class TestCandidateFromMatch:
 # iter_candidates — integration smoke test
 # ---------------------------------------------------------------------------
 
+class TestSentenceWindow:
+    def test_basic_mid_text(self):
+        text = "She arrived early. It was three o'clock. She sat down."
+        start = text.index("three")
+        end = start + len("three o'clock")
+        quote, context, line_no = gtm.sentence_window(text, start, end, context_chars=100)
+        assert "three o'clock" in quote
+        assert line_no == 1
+
+    def test_quote_starts_after_period(self):
+        text = "First sentence. It was noon. Another sentence."
+        start = text.index("noon")
+        end = start + 4
+        quote, _, _ = gtm.sentence_window(text, start, end, context_chars=50)
+        assert quote.startswith("It")
+
+    def test_quote_ends_at_sentence_boundary(self):
+        text = "Before. It was midnight. After sentence."
+        start = text.index("midnight")
+        end = start + len("midnight")
+        quote, _, _ = gtm.sentence_window(text, start, end, context_chars=50)
+        assert quote.endswith(".")
+        assert "After" not in quote
+
+    def test_context_respects_context_chars(self):
+        text = "A" * 100 + "TARGET" + "B" * 100
+        start = 100
+        end = 106
+        _, context, _ = gtm.sentence_window(text, start, end, context_chars=10)
+        assert "TARGET" in context
+        # Should not include all 100 A's
+        assert len(context) < 50
+
+    def test_line_number_first_line(self):
+        text = "It was three o'clock in the morning."
+        _, _, line_no = gtm.sentence_window(text, 7, 20, context_chars=50)
+        assert line_no == 1
+
+    def test_line_number_multiline(self):
+        text = "Line one.\nLine two.\nIt was three o'clock."
+        start = text.index("three")
+        _, _, line_no = gtm.sentence_window(text, start, start + 5, context_chars=50)
+        assert line_no == 3
+
+    def test_no_sentence_boundary_before_match(self):
+        text = "It was three o'clock in the morning"
+        start = text.index("three")
+        quote, context, _ = gtm.sentence_window(text, start, start + 5, context_chars=50)
+        # No prior period, but should still return something
+        assert "three" in quote or "three" in context
+
+    def test_exclamation_and_question_as_boundaries(self):
+        text = "How strange! It was noon! Was it really?"
+        start = text.index("noon")
+        end = start + 4
+        quote, _, _ = gtm.sentence_window(text, start, end, context_chars=50)
+        assert "It was noon" in quote
+
+
 class TestIterCandidates:
     def test_finds_multiple_match_types_in_text(self):
         text = (
