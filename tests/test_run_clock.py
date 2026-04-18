@@ -20,44 +20,29 @@ class TestCurrentBucket:
     def test_1pm_exact(self):
         assert self._bucket_for("13:00") == "h1_exact"
 
-    def test_just_after(self):
-        assert self._bucket_for("03:01") == "h3_just_after"
-        assert self._bucket_for("03:05") == "h3_just_after"
-
-    def test_early_past(self):
-        assert self._bucket_for("03:06") == "h3_early_past"
-        assert self._bucket_for("03:14") == "h3_early_past"
-
-    def test_quarter_pastish(self):
-        assert self._bucket_for("03:15") == "h3_quarter_pastish"
-        assert self._bucket_for("03:19") == "h3_quarter_pastish"
-
-    def test_half_pastish(self):
-        assert self._bucket_for("03:20") == "h3_half_pastish"
-        assert self._bucket_for("03:34") == "h3_half_pastish"
-
-    def test_late_past(self):
-        assert self._bucket_for("03:35") == "h3_late_past"
-        assert self._bucket_for("03:39") == "h3_late_past"
-
-    def test_quarter_toish(self):
-        assert self._bucket_for("03:40") == "h3_quarter_toish"
-        assert self._bucket_for("03:49") == "h3_quarter_toish"
-
-    def test_just_before(self):
-        assert self._bucket_for("03:50") == "h3_just_before"
-        assert self._bucket_for("03:59") == "h3_just_before"
+    def test_rounding_windows(self):
+        assert self._bucket_for("03:01") == "h3_exact"
+        assert self._bucket_for("03:03") == "h3_five_past"
+        assert self._bucket_for("03:08") == "h3_ten_past"
+        assert self._bucket_for("03:13") == "h3_quarter_past"
+        assert self._bucket_for("03:18") == "h3_twenty_past"
+        assert self._bucket_for("03:23") == "h3_twenty_five_past"
+        assert self._bucket_for("03:28") == "h3_half_past"
+        assert self._bucket_for("03:33") == "h3_twenty_five_to"
+        assert self._bucket_for("03:38") == "h3_twenty_to"
+        assert self._bucket_for("03:43") == "h3_quarter_to"
+        assert self._bucket_for("03:48") == "h3_ten_to"
+        assert self._bucket_for("03:53") == "h3_five_to"
+        assert self._bucket_for("03:58") == "h4_exact"
 
     def test_hour12_maps_correctly(self):
-        assert self._bucket_for("12:30") == "h12_half_pastish"
+        assert self._bucket_for("12:30") == "h12_half_past"
 
     def test_hour_wraps_at_24(self):
-        # 23:00 → hour24=23 → hour12=23%12=11
         assert self._bucket_for("23:00") == "h11_exact"
 
     def test_midnight_hour12(self):
-        # 00:30 → hour24=0 → hour12=0%12=0 → corrected to 12
-        assert self._bucket_for("00:30") == "h12_half_pastish"
+        assert self._bucket_for("00:30") == "h12_half_past"
 
 
 class TestRenderNow:

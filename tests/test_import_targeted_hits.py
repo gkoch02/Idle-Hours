@@ -13,41 +13,41 @@ class TestMinuteForBucket:
         assert minute == 0
         assert state == "exact"
 
-    def test_just_after(self):
-        hour, minute, state = minute_for_bucket("h5_just_after")
+    def test_five_past(self):
+        hour, minute, state = minute_for_bucket("h5_five_past")
         assert hour == 5
-        assert minute == 3
-        assert state == "just_after"
+        assert minute == 5
+        assert state == "five_past"
 
-    def test_early_past(self):
-        hour, minute, state = minute_for_bucket("h7_early_past")
+    def test_ten_past(self):
+        hour, minute, state = minute_for_bucket("h7_ten_past")
         assert hour == 7
-        assert minute == 8
+        assert minute == 10
 
-    def test_quarter_pastish(self):
-        hour, minute, state = minute_for_bucket("h1_quarter_pastish")
+    def test_quarter_past(self):
+        hour, minute, state = minute_for_bucket("h1_quarter_past")
         assert hour == 1
         assert minute == 15
 
-    def test_half_pastish(self):
-        hour, minute, state = minute_for_bucket("h12_half_pastish")
+    def test_half_past(self):
+        hour, minute, state = minute_for_bucket("h12_half_past")
         assert hour == 12
         assert minute == 30
 
-    def test_late_past(self):
-        hour, minute, state = minute_for_bucket("h4_late_past")
+    def test_twenty_five_to(self):
+        hour, minute, state = minute_for_bucket("h4_twenty_five_to")
         assert hour == 4
-        assert minute == 25
+        assert minute == 35
 
-    def test_quarter_toish(self):
-        hour, minute, state = minute_for_bucket("h9_quarter_toish")
+    def test_quarter_to(self):
+        hour, minute, state = minute_for_bucket("h9_quarter_to")
         assert hour == 9
         assert minute == 45
 
-    def test_just_before(self):
-        hour, minute, state = minute_for_bucket("h11_just_before")
+    def test_five_to(self):
+        hour, minute, state = minute_for_bucket("h11_five_to")
         assert hour == 11
-        assert minute == 57
+        assert minute == 55
 
     def test_all_hours_parse(self):
         for h in range(1, 13):
@@ -98,7 +98,7 @@ class TestRowFromTargeted:
         assert row["daypart_bucket"] == "noon"
 
     def test_daypart_midnight(self):
-        row_from_targeted(self._raw(resolved_bucket="h12_half_pastish"))
+        row_from_targeted(self._raw(resolved_bucket="h12_half_past"))
         # h12 maps to noon in DAYPARTS
         row2 = row_from_targeted(self._raw(resolved_bucket="h1_exact"))
         assert row2["daypart_bucket"] == "night"
@@ -119,7 +119,7 @@ class TestRowFromTargeted:
         assert row["normalized_time"] == "01:00"
 
     def test_half_past_minute_value(self):
-        row = row_from_targeted(self._raw(resolved_bucket="h6_half_pastish"))
+        row = row_from_targeted(self._raw(resolved_bucket="h6_half_past"))
         assert row["minute"] == 30
         assert row["normalized_time"] == "06:30"
 

@@ -7,12 +7,12 @@ from bucket_coverage import build_summary, expected_buckets, render_markdown
 class TestExpectedBuckets:
     def test_count(self):
         buckets = expected_buckets()
-        assert len(buckets) == 96  # 12 hours × 8 states
+        assert len(buckets) == 144  # 12 hours × 12 states
 
     def test_format(self):
         buckets = expected_buckets()
         assert "h1_exact" in buckets
-        assert "h12_just_before" in buckets
+        assert "h12_five_to" in buckets
 
     def test_all_hours_present(self):
         buckets = expected_buckets()
@@ -21,8 +21,9 @@ class TestExpectedBuckets:
 
     def test_all_states_present(self):
         states = [
-            "exact", "just_after", "early_past", "quarter_pastish",
-            "half_pastish", "late_past", "quarter_toish", "just_before",
+            "exact", "five_past", "ten_past", "quarter_past",
+            "twenty_past", "twenty_five_past", "half_past", "twenty_five_to",
+            "twenty_to", "quarter_to", "ten_to", "five_to",
         ]
         buckets = expected_buckets()
         for state in states:
@@ -45,7 +46,7 @@ class TestBuildSummary:
         summary = build_summary([])
         assert summary["total_rows"] == 0
         assert summary["populated_bucket_count"] == 0
-        assert summary["empty_bucket_count"] == 96
+        assert summary["empty_bucket_count"] == 144
         assert summary["coverage_percent"] == 0.0
 
     def test_single_row(self):
@@ -54,31 +55,31 @@ class TestBuildSummary:
         assert summary["total_rows"] == 1
         assert summary["populated_bucket_count"] == 1
         assert summary["bucket_counts"]["h3_exact"] == 1
-        assert summary["bucket_counts"]["h3_just_after"] == 0
+        assert summary["bucket_counts"]["h3_five_past"] == 0
 
     def test_coverage_percent(self):
         rows = [self._make_row(f"h{h}_exact") for h in range(1, 13)]
         summary = build_summary(rows)
-        # 12 populated out of 96 = 12.5%
-        assert summary["coverage_percent"] == 12.5
+        # 12 populated out of 144 = 8.33%
+        assert summary["coverage_percent"] == 8.33
 
     def test_empty_buckets_listed(self):
         rows = [self._make_row("h3_exact")]
         summary = build_summary(rows)
         assert "h3_exact" not in summary["empty_buckets"]
-        assert "h3_just_after" in summary["empty_buckets"]
+        assert "h3_five_past" in summary["empty_buckets"]
 
     def test_sparse_buckets(self):
-        rows = [self._make_row("h5_half_pastish")] * 2
+        rows = [self._make_row("h5_half_past")] * 2
         summary = build_summary(rows)
         sparse_names = [item["bucket"] for item in summary["sparse_buckets"]]
-        assert "h5_half_pastish" in sparse_names
+        assert "h5_half_past" in sparse_names
 
     def test_sparse_threshold_is_three(self):
-        rows = [self._make_row("h5_half_pastish")] * 4
+        rows = [self._make_row("h5_half_past")] * 4
         summary = build_summary(rows)
         sparse_names = [item["bucket"] for item in summary["sparse_buckets"]]
-        assert "h5_half_pastish" not in sparse_names
+        assert "h5_half_past" not in sparse_names
 
     def test_dense_buckets_sorted_descending(self):
         rows = (
@@ -106,20 +107,20 @@ class TestBuildSummary:
 
     def test_total_expected_buckets(self):
         summary = build_summary([])
-        assert summary["total_expected_buckets"] == 96
+        assert summary["total_expected_buckets"] == 144
 
 
 class TestRenderMarkdown:
     def _summary(self, **overrides):
         base = {
             "total_rows": 100,
-            "total_expected_buckets": 96,
+            "total_expected_buckets": 144,
             "populated_bucket_count": 80,
-            "empty_bucket_count": 16,
+            "empty_bucket_count": 64,
             "coverage_percent": 83.33,
             "dense_buckets": [{"bucket": "h3_exact", "count": 20}],
-            "sparse_buckets": [{"bucket": "h1_just_after", "count": 1}],
-            "empty_buckets": ["h2_late_past"],
+            "sparse_buckets": [{"bucket": "h1_five_past", "count": 1}],
+            "empty_buckets": ["h2_twenty_five_to"],
             "daypart_counts": {"morning": 30, "afternoon": 20},
         }
         base.update(overrides)
@@ -140,11 +141,11 @@ class TestRenderMarkdown:
 
     def test_contains_sparse_bucket(self):
         md = render_markdown(self._summary())
-        assert "h1_just_after" in md
+        assert "h1_five_past" in md
 
     def test_contains_empty_bucket(self):
         md = render_markdown(self._summary())
-        assert "h2_late_past" in md
+        assert "h2_twenty_five_to" in md
 
     def test_contains_daypart_section(self):
         md = render_markdown(self._summary())

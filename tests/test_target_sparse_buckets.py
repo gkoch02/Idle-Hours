@@ -40,50 +40,47 @@ class TestExpectedTargets:
 
 
 class TestTemplatesForBucket:
-    def test_just_after_contains_hour_word(self):
-        templates = templates_for_bucket("h3_just_after")
+    def test_five_past_contains_hour_word(self):
+        templates = templates_for_bucket("h3_five_past")
         phrases = [phrase for phrase, _ in templates]
         assert any("three" in p for p in phrases)
 
-    def test_just_after_no_next_hour_phrase(self):
-        templates = templates_for_bucket("h3_just_after")
+    def test_five_past_uses_current_hour(self):
+        templates = templates_for_bucket("h3_five_past")
         phrases = [phrase for phrase, _ in templates]
-        # just_after templates use {hour}, not {next_hour}
-        assert any("just after three" in p for p in phrases)
+        assert any("five past three" in p for p in phrases)
 
-    def test_quarter_toish_uses_next_hour(self):
-        templates = templates_for_bucket("h3_quarter_toish")
+    def test_quarter_to_uses_next_hour(self):
+        templates = templates_for_bucket("h3_quarter_to")
         phrases = [phrase for phrase, _ in templates]
-        # quarter to FOUR (next hour)
         assert any("four" in p for p in phrases)
         assert not any("three" in p for p in phrases)
 
     def test_h12_wraps_to_h1(self):
-        templates = templates_for_bucket("h12_quarter_toish")
+        templates = templates_for_bucket("h12_quarter_to")
         phrases = [phrase for phrase, _ in templates]
-        # quarter to ONE (next hour after twelve)
         assert any("one" in p for p in phrases)
 
-    def test_half_pastish_uses_current_hour(self):
-        templates = templates_for_bucket("h5_half_pastish")
+    def test_half_past_uses_current_hour(self):
+        templates = templates_for_bucket("h5_half_past")
         phrases = [phrase for phrase, _ in templates]
         assert any("five" in p for p in phrases)
         assert any("half past five" in p for p in phrases)
 
     def test_unknown_state_returns_empty(self):
-        # "exact" is not in STATE_TEMPLATES
         templates = templates_for_bucket("h3_exact")
         assert templates == []
 
     def test_implied_state_in_tuple(self):
-        templates = templates_for_bucket("h3_quarter_toish")
+        templates = templates_for_bucket("h3_quarter_to")
         for phrase, implied_state in templates:
-            assert implied_state == "quarter_toish"
+            assert implied_state == "quarter_to"
 
     def test_all_valid_states_return_templates(self):
         states_with_templates = [
-            "just_after", "early_past", "quarter_pastish",
-            "half_pastish", "late_past", "quarter_toish", "just_before",
+            "five_past", "ten_past", "quarter_past", "twenty_past",
+            "twenty_five_past", "half_past", "twenty_five_to", "twenty_to",
+            "quarter_to", "ten_to", "five_to",
         ]
         for state in states_with_templates:
             templates = templates_for_bucket(f"h6_{state}")

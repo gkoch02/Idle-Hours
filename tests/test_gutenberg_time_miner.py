@@ -57,43 +57,60 @@ class TestHourWordToInt:
 
 
 # ---------------------------------------------------------------------------
-# minute_bucket (miner-side — different boundaries from pick_quote!)
+# minute_bucket (miner-side now matches 5-minute runtime rounding)
 # ---------------------------------------------------------------------------
 
 class TestMinerMinuteBucket:
     def test_exact(self):
         assert gtm.minute_bucket(0) == "exact"
+        assert gtm.minute_bucket(1) == "exact"
+        assert gtm.minute_bucket(2) == "exact"
+        assert gtm.minute_bucket(58) == "exact"
+        assert gtm.minute_bucket(59) == "exact"
 
-    def test_just_after_boundaries(self):
-        assert gtm.minute_bucket(1) == "just_after"
-        assert gtm.minute_bucket(5) == "just_after"
+    def test_five_past_boundaries(self):
+        assert gtm.minute_bucket(3) == "five_past"
+        assert gtm.minute_bucket(7) == "five_past"
 
-    def test_early_past_boundaries(self):
-        assert gtm.minute_bucket(6) == "early_past"
-        assert gtm.minute_bucket(14) == "early_past"
+    def test_ten_past_boundaries(self):
+        assert gtm.minute_bucket(8) == "ten_past"
+        assert gtm.minute_bucket(12) == "ten_past"
 
-    def test_quarter_pastish_boundaries(self):
-        assert gtm.minute_bucket(15) == "quarter_pastish"
-        assert gtm.minute_bucket(19) == "quarter_pastish"
+    def test_quarter_past_boundaries(self):
+        assert gtm.minute_bucket(13) == "quarter_past"
+        assert gtm.minute_bucket(17) == "quarter_past"
 
-    def test_half_pastish_boundaries(self):
-        # Miner uses 20–39 for half_pastish (wider than runtime's 20–34)
-        assert gtm.minute_bucket(20) == "half_pastish"
-        assert gtm.minute_bucket(39) == "half_pastish"
+    def test_twenty_past_boundaries(self):
+        assert gtm.minute_bucket(18) == "twenty_past"
+        assert gtm.minute_bucket(22) == "twenty_past"
 
-    def test_late_past_boundaries(self):
-        # Miner uses 40–44 (runtime uses 35–39)
-        assert gtm.minute_bucket(40) == "late_past"
-        assert gtm.minute_bucket(44) == "late_past"
+    def test_twenty_five_past_boundaries(self):
+        assert gtm.minute_bucket(23) == "twenty_five_past"
+        assert gtm.minute_bucket(27) == "twenty_five_past"
 
-    def test_quarter_toish_boundaries(self):
-        # Miner uses 45–49
-        assert gtm.minute_bucket(45) == "quarter_toish"
-        assert gtm.minute_bucket(49) == "quarter_toish"
+    def test_half_past_boundaries(self):
+        assert gtm.minute_bucket(28) == "half_past"
+        assert gtm.minute_bucket(32) == "half_past"
 
-    def test_just_before_boundaries(self):
-        assert gtm.minute_bucket(50) == "just_before"
-        assert gtm.minute_bucket(59) == "just_before"
+    def test_twenty_five_to_boundaries(self):
+        assert gtm.minute_bucket(33) == "twenty_five_to"
+        assert gtm.minute_bucket(37) == "twenty_five_to"
+
+    def test_twenty_to_boundaries(self):
+        assert gtm.minute_bucket(38) == "twenty_to"
+        assert gtm.minute_bucket(42) == "twenty_to"
+
+    def test_quarter_to_boundaries(self):
+        assert gtm.minute_bucket(43) == "quarter_to"
+        assert gtm.minute_bucket(47) == "quarter_to"
+
+    def test_ten_to_boundaries(self):
+        assert gtm.minute_bucket(48) == "ten_to"
+        assert gtm.minute_bucket(52) == "ten_to"
+
+    def test_five_to_boundaries(self):
+        assert gtm.minute_bucket(53) == "five_to"
+        assert gtm.minute_bucket(57) == "five_to"
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +169,7 @@ class TestBuildBucket:
     def test_hour12_bucket(self):
         normalized, fuzzy, daypart = gtm.build_bucket(12, 30)
         assert normalized == "12:30"
-        assert fuzzy == "h12_half_pastish"
+        assert fuzzy == "h12_half_past"
         assert daypart == "noon"
 
     def test_explicit_daypart_ignores_hour_minute(self):
