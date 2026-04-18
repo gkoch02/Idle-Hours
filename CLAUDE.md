@@ -10,6 +10,25 @@ Every stage is a standalone Python 3 CLI script that reads/writes JSONL. The min
 
 ## Common Commands
 
+### Testing & linting
+
+```bash
+# Run the full test suite
+pytest
+
+# Run tests with coverage report
+pytest --cov
+
+# Run a specific test module
+pytest tests/test_pick_quote.py
+
+# Run ruff linter (checks E, W, F, I; line-length 130)
+ruff check .
+
+# Fix auto-fixable lint issues (mainly import ordering)
+ruff check --fix .
+```
+
 ### Runtime (render + optional display)
 
 ```bash
@@ -280,6 +299,21 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 - **Manual Pi notes:** `pi_setup_inky_impression.md` is the long-form guide (hardware list, OS baseline, Pimoroni install, troubleshooting).
 - **Boot-time service:** `litclock.service.example` is a sample systemd unit that runs `run_clock.py --display-script display_inky.py --mode production` as `pi` from `/home/pi/LitClock` under the `~/.virtualenvs/pimoroni` Python. Edit paths to match your install before copying into `/etc/systemd/system/`.
 
+### Testing
+
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 13 test modules covering every pipeline script plus the runtime components — roughly 200 tests total.
+
+**Test structure:**
+- `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
+- One `test_<script>.py` module per main script; tests are class-based (e.g., `TestCurrentBucket`, `TestRenderNow`)
+
+**pyproject.toml** configures:
+- pytest: `testpaths = ["tests"]`, `python_files = ["test_*.py"]`
+- coverage: source = `.`, omits `tests/` and `bootstrap_pi_inky.sh`
+- ruff: line-length 130, target Python 3.11, rules E / W / F / I
+
+**CI:** `.github/workflows/ci.yml` runs on every push and PR against Python 3.11 and 3.12. It installs `pytest pytest-cov ruff Pillow`, runs `ruff check .` then `pytest --cov`, and uploads a coverage artifact. Keep the lint clean — ruff enforces import ordering (rule I) so imports must be sorted.
+
 ### Repo Layout
 
 ```
@@ -300,10 +334,13 @@ display_inky.py              Pi-only image → Inky Impression bridge
 bootstrap_pi_inky.sh         first-time Pi setup helper
 litclock.service.example     sample systemd unit
 pi_setup_inky_impression.md  long-form Pi setup doc
+pyproject.toml               pytest / coverage / ruff configuration
 fonts/                       bundled Playfair Display family
+tests/                       pytest suite — one module per script + conftest.py
 output/                      JSONL pipeline artifacts + rendered PNGs
 research/output-archive/     historical pipeline outputs retained for reference
 data/gutenberg/              cached Gutenberg text downloads (gitignored)
+.github/workflows/ci.yml     GitHub Actions CI (lint + test, Python 3.11 & 3.12)
 gutenberg_batch_ids.txt      batch list of Gutenberg IDs
 run_batch2.sh                bulk harvest driver
 ```
