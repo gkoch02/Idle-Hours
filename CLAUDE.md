@@ -302,6 +302,7 @@ litclock.service.example     sample systemd unit
 pi_setup_inky_impression.md  long-form Pi setup doc
 fonts/                       bundled Playfair Display family
 output/                      JSONL pipeline artifacts + rendered PNGs
+research/output-archive/     historical pipeline outputs retained for reference
 data/gutenberg/              cached Gutenberg text downloads (gitignored)
 gutenberg_batch_ids.txt      batch list of Gutenberg IDs
 run_batch2.sh                bulk harvest driver
