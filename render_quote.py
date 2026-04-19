@@ -556,7 +556,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         debug_label = "DEBUG MODE"
         label_bbox = draw.textbbox((0, 0), debug_label, font=debug_label_font)
         label_w = label_bbox[2] - label_bbox[0]
-        label_h = label_bbox[3] - label_bbox[1]
         label_x = width - SIDE_MARGIN - label_w
         label_y = 14
 
