@@ -6,6 +6,9 @@ own selection logic.
 """
 from __future__ import annotations
 
+import datetime as dt
+import json
+
 import pytest
 
 import pick_quote as pq
@@ -245,3 +248,105 @@ class TestSourceRarityTiebreak:
         ]
         counts = pq.count_sources(rows)
         assert counts == {"111": 2, "222": 1}
+
+
+class TestRecentHistory:
+    def _write_ledger(self, path, entries):
+        with path.open("w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+    def test_empty_when_disabled(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        self._write_ledger(path, [{"ts": dt.datetime.now(dt.timezone.utc).isoformat(), "source_id": "1", "line_number": 1}])
+        assert pq.load_recent_history(str(path), 0) == set()
+        assert pq.load_recent_history("", 7) == set()
+        assert pq.load_recent_history(None, 7) == set()
+
+    def test_returns_empty_when_file_missing(self, tmp_path):
+        assert pq.load_recent_history(str(tmp_path / "nope.jsonl"), 7) == set()
+
+    def test_includes_recent_excludes_old(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        now = dt.datetime.now(dt.timezone.utc)
+        entries = [
+            {"ts": (now - dt.timedelta(days=1)).isoformat(), "source_id": "1", "line_number": 100},
+            {"ts": (now - dt.timedelta(days=30)).isoformat(), "source_id": "2", "line_number": 200},
+            {"ts": now.isoformat(), "source_id": "3", "line_number": 300},
+        ]
+        self._write_ledger(path, entries)
+        recent = pq.load_recent_history(str(path), 7)
+        assert ("1", 100) in recent
+        assert ("3", 300) in recent
+        assert ("2", 200) not in recent
+
+    def test_skips_malformed_lines(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        with path.open("w") as f:
+            f.write("not-json\n")
+            f.write(json.dumps({"ts": "bogus-date", "source_id": "1", "line_number": 1}) + "\n")
+            f.write(json.dumps({"ts": dt.datetime.now(dt.timezone.utc).isoformat(), "source_id": "ok", "line_number": 42}) + "\n")
+            f.write(json.dumps({"ts": dt.datetime.now(dt.timezone.utc).isoformat()}) + "\n")  # missing fields
+        recent = pq.load_recent_history(str(path), 7)
+        assert recent == {("ok", 42)}
+
+    def test_append_history_writes_entry(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1234", 5678)
+        lines = path.read_text().strip().splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["source_id"] == "1234"
+        assert entry["line_number"] == 5678
+        assert "ts" in entry
+
+    def test_append_history_is_noop_when_path_empty(self, tmp_path):
+        pq.append_history("", "1234", 5678)
+        pq.append_history(None, "1234", 5678)
+        # No file created, no exception.
+        assert not (tmp_path / "history.jsonl").exists()
+
+    def test_append_history_is_noop_for_missing_fields(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), None, 1)
+        pq.append_history(str(path), "1", None)
+        assert not path.exists()
+
+    def test_append_history_creates_parent_dir(self, tmp_path):
+        path = tmp_path / "sub" / "dir" / "history.jsonl"
+        pq.append_history(str(path), "1234", 5678)
+        assert path.exists()
+
+    def test_pick_best_filters_recently_shown(self):
+        overrides = {"preferred_buckets": {}, "boost_source_ids": [], "ban_source_ids": []}
+        fresh = make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=80,
+                         display_quote="It was three o'clock in the fresh place.")
+        stale = make_row(fuzzy_bucket="h3_exact", source_id="2", line_number=200, quality_score=95,
+                         display_quote="It was three o'clock in the stale place.")
+        # Stale would normally win (quality 95 > 80), but it's in recent history.
+        recent = {("2", 200)}
+        best, _ = pq.pick_best([fresh, stale], "h3_exact", 0, 60, overrides, recent_history=recent)
+        assert best["source_id"] == "1"
+
+    def test_pick_best_falls_back_to_recent_when_all_filtered(self):
+        overrides = {"preferred_buckets": {}, "boost_source_ids": [], "ban_source_ids": []}
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=80,
+                     display_quote="Three o'clock only quote."),
+        ]
+        # Even though the only candidate is recently shown, we still pick it rather than empty out.
+        recent = {("1", 100)}
+        best, _ = pq.pick_best(rows, "h3_exact", 0, 60, overrides, recent_history=recent)
+        assert best["source_id"] == "1"
+
+    def test_select_quote_disables_history_by_default(self, tmp_jsonl, monkeypatch, tmp_path):
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=80,
+                     display_quote="It was three o'clock in the fresh place."),
+        ]
+        corpus_path = tmp_jsonl(rows)
+        overrides_path = tmp_path / "overrides.json"
+        overrides_path.write_text('{"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}')
+        # No history_path passed → no file reads even if ~/.litclock exists.
+        result = pq.select_quote(bucket="h3_exact", input_path=str(corpus_path), overrides_path=str(overrides_path))
+        assert result["source_id"] == "1"

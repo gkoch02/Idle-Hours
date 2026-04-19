@@ -110,6 +110,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable quiet hours entirely and render around the clock.",
     )
+    parser.add_argument(
+        "--history-path",
+        default=pick_quote_module.DEFAULT_HISTORY_PATH,
+        help=(
+            "Path to the anti-repeat display history JSONL. "
+            "Each successful render appends (timestamp, source_id, line_number); "
+            "subsequent picks filter out entries within --history-days. "
+            "Pass an empty string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--history-days",
+        type=int,
+        default=pick_quote_module.DEFAULT_HISTORY_DAYS,
+        help="Number of days of history to consider when filtering repeats. 0 disables.",
+    )
     args = parser.parse_args()
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
@@ -153,7 +169,7 @@ def _display_quiet_image(quiet_image: str, output: str, display_script: str | No
         _log(f"Displayed {output_resolved} via {display_path}")
 
 
-def peek_quote_id(time_str: str) -> tuple | None:
+def peek_quote_id(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> tuple | None:
     """Return a stable identity tuple for the quote pick_quote would return, or None on failure.
 
     ``matched_text`` is part of the identity because the renderer uses it to choose which
@@ -161,12 +177,15 @@ def peek_quote_id(time_str: str) -> tuple | None:
     but differ in matched_text (e.g. ``02:50`` vs ``02:55`` landing on the same row) still
     produce visibly different frames, so they must not dedup together.
 
+    History params must match what the render subprocess will use so the peek's dedup
+    check stays consistent with the actual render's pick.
+
     ``pick_quote.select_quote`` raises ``SystemExit`` when no candidate survives the quality
     gate in the target bucket or its neighbours; we swallow that alongside ``Exception`` so
     the runtime loop keeps ticking instead of aborting.
     """
     try:
-        row = pick_quote_module.select_quote(time_str=time_str)
+        row = pick_quote_module.select_quote(time_str=time_str, history_path=history_path, history_days=history_days)
     except (Exception, SystemExit) as exc:
         _log(f"pick_quote failed for {time_str}: {exc!r}", err=True)
         return None
@@ -178,7 +197,18 @@ def peek_quote_id(time_str: str) -> tuple | None:
     )
 
 
-def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug", theme: str = "default", time_str: str | None = None) -> None:
+def render_now(
+    render_script: str,
+    output_path: str,
+    width: int,
+    height: int,
+    display_script: str | None = None,
+    mode: str = "debug",
+    theme: str = "default",
+    time_str: str | None = None,
+    history_path: str | None = None,
+    history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS,
+) -> None:
     if time_str is None:
         time_str = current_time_str()
     python_executable = sys.executable
@@ -200,6 +230,10 @@ def render_now(render_script: str, output_path: str, width: int, height: int, di
             mode,
             "--theme",
             theme,
+            "--history-path",
+            history_path or "",
+            "--history-days",
+            str(history_days),
         ]
     )
     _log(f"Rendered {time_str} -> {output_path_resolved}")
@@ -216,8 +250,16 @@ def main() -> int:
         output_target = BASE_DIR / output_target
     output_target.expanduser().parent.mkdir(parents=True, exist_ok=True)
 
+    history_path = args.history_path or None
+
     if args.once:
-        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme)
+        time_str = current_time_str()
+        # Peek before rendering so the ledger entry matches what render_quote picks.
+        # Both see the same ledger state because run_clock appends only after render succeeds.
+        quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=time_str, history_path=history_path, history_days=args.history_days)
+        if quote_id is not None:
+            pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
         return 0
 
     last_bucket = None
@@ -234,7 +276,7 @@ def main() -> int:
                     if args.quiet_image:
                         _display_quiet_image(args.quiet_image, args.output, args.display_script)
                     else:
-                        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=args.quiet_start)
+                        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=args.quiet_start, history_path=history_path, history_days=args.history_days)
                 except Exception as exc:
                     _log(f"quiet-hours display failed: {exc!r}", err=True)
                     traceback.print_exc(file=sys.stderr)
@@ -251,15 +293,16 @@ def main() -> int:
         bucket = current_bucket()
         if bucket != last_bucket:
             try:
-                quote_id = peek_quote_id(time_str)
+                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
                 if quote_id is not None and quote_id == last_quote_id:
                     _log(f"bucket {bucket}: quote unchanged, skipping redraw")
                     last_bucket = bucket
                 else:
-                    render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=time_str)
+                    render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=time_str, history_path=history_path, history_days=args.history_days)
                     last_bucket = bucket
                     if quote_id is not None:
                         last_quote_id = quote_id
+                        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
             except Exception as exc:
                 # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
                 # missing corpus row, etc.) does not kill the appliance. last_bucket stays
