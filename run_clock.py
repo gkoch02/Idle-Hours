@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import shutil
 import subprocess
 import sys
 import time
@@ -85,6 +86,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="End of quiet window in 24-hour time, e.g. 07:00. Requires --quiet-start.",
     )
+    parser.add_argument(
+        "--quiet-image",
+        metavar="PATH",
+        default=None,
+        help="PNG to display when quiet hours begin instead of rendering a corpus quote.",
+    )
     args = parser.parse_args()
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
@@ -114,6 +121,18 @@ def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
 
     cur, s, e = to_mins(time_str), to_mins(start), to_mins(end)
     return (cur >= s or cur < e) if s > e else (s <= cur < e)
+
+
+def _display_quiet_image(quiet_image: str, output: str, display_script: str | None) -> None:
+    """Copy quiet_image to the output path and optionally push it to the display script."""
+    quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
+    output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
+    shutil.copy2(str(quiet_path), output_resolved)
+    _log(f"quiet hours: {quiet_path.name} -> {output_resolved}")
+    if display_script:
+        display_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
+        subprocess.check_call([sys.executable, display_path, output_resolved])
+        _log(f"Displayed {output_resolved} via {display_path}")
 
 
 def peek_quote_id(time_str: str) -> tuple | None:
@@ -192,11 +211,14 @@ def main() -> int:
 
         if now_quiet:
             if not _was_quiet:
-                _log(f"quiet hours start ({args.quiet_start}–{args.quiet_end}), rendering quiet-hours frame")
+                _log(f"quiet hours start ({args.quiet_start}–{args.quiet_end})")
                 try:
-                    render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=args.quiet_start)
+                    if args.quiet_image:
+                        _display_quiet_image(args.quiet_image, args.output, args.display_script)
+                    else:
+                        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=args.quiet_start)
                 except Exception as exc:
-                    _log(f"quiet-hours render failed: {exc!r}", err=True)
+                    _log(f"quiet-hours display failed: {exc!r}", err=True)
                     traceback.print_exc(file=sys.stderr)
                 _was_quiet = True
             time.sleep(max(1, args.interval_seconds))

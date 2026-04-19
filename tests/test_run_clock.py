@@ -391,3 +391,63 @@ class TestQuietHours:
              patch("run_clock.current_time_str", return_value="12:00"):
             run_clock.main()
         assert mock_render.called
+
+
+class TestDisplayQuietImage:
+    def test_copies_file_to_output(self, tmp_path):
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        run_clock._display_quiet_image(str(src), str(out), display_script=None)
+        assert out.read_bytes() == b"\x89PNG"
+
+    def test_calls_display_script(self, tmp_path):
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        with patch("subprocess.check_call") as mock_call:
+            run_clock._display_quiet_image(str(src), str(out), display_script="display_inky.py")
+        assert mock_call.called
+        cmd = mock_call.call_args[0][0]
+        assert "display_inky.py" in " ".join(str(a) for a in cmd)
+        assert str(out) in cmd
+
+    def test_no_display_script_no_subprocess(self, tmp_path):
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        with patch("subprocess.check_call") as mock_call:
+            run_clock._display_quiet_image(str(src), str(out), display_script=None)
+        mock_call.assert_not_called()
+
+    def test_loop_uses_quiet_image_not_render_now(self, tmp_path):
+        """With --quiet-image set, the loop calls _display_quiet_image, not render_now."""
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+
+        display_calls = []
+        time_strs = iter(["22:00", "22:05"])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--quiet-start", "22:00", "--quiet-end", "07:00",
+            "--quiet-image", str(src),
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock._display_quiet_image", side_effect=lambda *a, **kw: display_calls.append(a)), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        mock_render.assert_not_called()
+        assert len(display_calls) == 1
+        assert display_calls[0][0] == str(src)
