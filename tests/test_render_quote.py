@@ -41,6 +41,50 @@ class TestChooseLayout:
 
 
 # ---------------------------------------------------------------------------
+# strip_underscore_emphasis
+# ---------------------------------------------------------------------------
+
+class TestStripUnderscoreEmphasis:
+    def test_removes_single_word_emphasis(self):
+        assert rq.strip_underscore_emphasis("my _Daily_ chronicle") == "my Daily chronicle"
+
+    def test_removes_multi_word_emphasis(self):
+        assert rq.strip_underscore_emphasis("my _Daily Chronicle_.") == "my Daily Chronicle."
+
+    def test_passes_through_plain_text(self):
+        assert rq.strip_underscore_emphasis("no markers here") == "no markers here"
+
+    def test_handles_empty_and_none(self):
+        assert rq.strip_underscore_emphasis("") == ""
+        assert rq.strip_underscore_emphasis(None) == ""
+
+    def test_preserves_intra_word_underscores(self):
+        assert rq.strip_underscore_emphasis("var_name stays") == "var_name stays"
+
+
+# ---------------------------------------------------------------------------
+# normalize_dashes
+# ---------------------------------------------------------------------------
+
+class TestNormalizeDashes:
+    def test_converts_double_dash_to_em_dash(self):
+        assert rq.normalize_dashes("a shadowy furtiveness--and recognized") == "a shadowy furtiveness\u2014and recognized"
+
+    def test_leaves_single_dash_alone(self):
+        assert rq.normalize_dashes("well-known fact") == "well-known fact"
+
+    def test_leaves_triple_dash_alone(self):
+        assert rq.normalize_dashes("mystery of the---") == "mystery of the---"
+
+    def test_passes_through_when_no_dashes(self):
+        assert rq.normalize_dashes("plain text") == "plain text"
+
+    def test_handles_empty_and_none(self):
+        assert rq.normalize_dashes("") == ""
+        assert rq.normalize_dashes(None) == ""
+
+
+# ---------------------------------------------------------------------------
 # resolve_display_match
 # ---------------------------------------------------------------------------
 
