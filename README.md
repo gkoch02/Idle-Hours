@@ -192,7 +192,7 @@ At that point, a fresh Pi should have everything needed to render locally and pu
 There is also a helper script for first-time setup:
 
 ```bash
-./bootstrap_pi_inky.sh
+bash bootstrap_pi_inky.sh
 ```
 
 That script installs base packages, launches the interactive Pimoroni installer, and then resumes LitClock setup after reboot.
@@ -225,11 +225,18 @@ Once manual render and display tests work on the Pi:
 ```bash
 cd ~/LitClock
 sudo cp litclock.service.example /etc/systemd/system/litclock.service
+sudoedit /etc/systemd/system/litclock.service
 sudo systemctl daemon-reload
 sudo systemctl enable litclock.service
 sudo systemctl start litclock.service
 sudo systemctl status litclock.service
 ```
+
+Before enabling the service, update these fields to match the actual account and install path on the Pi:
+
+- `User=`
+- `WorkingDirectory=`
+- `ExecStart=`
 
 If another display service is already running, disable it first so LitClock owns the panel.
 
