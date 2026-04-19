@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--overrides",
-        default="selection_overrides.json",
+        default="assets/selection_overrides.json",
         help="JSON overrides for manual boosts/bans/preferred bucket picks.",
     )
     return parser.parse_args()
@@ -126,7 +126,7 @@ def _warn_unknown_preferred_buckets(overrides: dict) -> None:
     unknown = sorted(key for key in preferred if key not in valid)
     if unknown:
         print(
-            f"warning: selection_overrides.json preferred_buckets has unknown buckets: {', '.join(unknown)}",
+            f"warning: assets/selection_overrides.json preferred_buckets has unknown buckets: {', '.join(unknown)}",
             file=sys.stderr,
             flush=True,
         )
@@ -264,7 +264,7 @@ def select_quote(
     time_str: str | None = None,
     bucket: str | None = None,
     input_path: str = "assets/candidates-attributed.jsonl",
-    overrides_path: str = "selection_overrides.json",
+    overrides_path: str = "assets/selection_overrides.json",
     seed: int = 0,
     min_quality: int = 60,
 ) -> dict:

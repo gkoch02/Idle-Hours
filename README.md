@@ -100,7 +100,8 @@ For full Pi setup and appliance boot instructions, see:
 
 ### Runtime data contract
 - The shipped runtime picker dataset is `assets/candidates-attributed.jsonl`.
-- Normal Pi deployments should treat that file as a prebuilt artifact and use it directly.
+- Runtime selection config lives in `assets/selection_overrides.json`.
+- Normal Pi deployments should treat those files as prebuilt runtime assets and use them directly.
 - `data/gutenberg/` exists to support corpus rebuilds and metadata regeneration, not because the render loop itself needs raw texts at runtime.
 - If you are only deploying or updating the clock, you should not need to rerun the enrichment pipeline on-device.
 
