@@ -13,6 +13,19 @@ This repo contains both:
 
 If you are deploying or operating the clock, you mostly care about the runtime and the prebuilt assets in `assets/`.
 
+## How LitClock was built
+
+At a high level, the project came together in stages:
+
+1. mine public-domain books for phrases like "quarter past seven" or "ten minutes to midnight"
+2. clean raw matches into displayable quotes
+3. enrich, attribute, and score the candidates
+4. organize them into fuzzy time buckets
+5. pick the best quote for the current bucket at runtime, with nearby fallback when needed
+6. render the result into an image tuned for the target eInk display
+
+That build pipeline is how the runtime quote set came to exist. The clock itself then uses the prebuilt dataset and render loop to turn that corpus work into a live display.
+
 ## Repo map
 
 ### Runtime
