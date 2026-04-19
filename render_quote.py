@@ -91,6 +91,15 @@ ORNAMENT_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
 ]
+QUOTE_FONT_ITALIC_CANDIDATES = [
+    str(BASE_DIR / "fonts/PlayfairDisplay-Italic.ttf"),
+    "/home/pi/.local/share/fonts/playfair-display/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/playfair-display/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/playfair/PlayfairDisplay-Italic.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSerif-Italic.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSerif-Italic.ttf",
+]
 META_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
@@ -229,77 +238,81 @@ def resolve_display_match(text: str, match_text: str) -> str:
     return normalized_match
 
 
-def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
+def split_emphasis_segments(text: str) -> list[tuple[str, bool]]:
+    segments: list[tuple[str, bool]] = []
+    pos = 0
+    for match in re.finditer(r"_([^_]+)_", text):
+        start, end = match.span()
+        if start > pos:
+            segments.append((text[pos:start], False))
+        segments.append((match.group(1), True))
+        pos = end
+    if pos < len(text):
+        segments.append((text[pos:], False))
+    return segments or [(text, False)]
+
+
+def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool, bool]]:
     normalized_match = resolve_display_match(text, match_text)
+    emphasis_segments = split_emphasis_segments(text)
+    plain_text = "".join(segment for segment, _ in emphasis_segments)
     if not normalized_match:
-        return [(text, False)]
+        return [(segment, False, is_italic) for segment, is_italic in emphasis_segments]
     pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(normalized_match)}(?![A-Za-z0-9-])", re.IGNORECASE)
-    match = pattern.search(text)
+    match = pattern.search(plain_text)
     if not match:
-        return [(text, False)]
+        return [(segment, False, is_italic) for segment, is_italic in emphasis_segments]
 
     idx = match.start()
     match_end = match.end()
-    while match_end < len(text) and text[match_end] in '”"\'’.,;:!?':
+    while match_end < len(plain_text) and plain_text[match_end] in '”"\'’.,;:!?':
         match_end += 1
 
-    return [
-        (text[:idx], False),
-        (text[idx:match_end], True),
-        (text[match_end:], False),
-    ]
+    styled: list[tuple[str, bool, bool]] = []
+    cursor = 0
+    plain_cursor = 0
+    for segment, is_italic in emphasis_segments:
+        seg_start = plain_cursor
+        seg_end = plain_cursor + len(segment)
+        if seg_end <= idx or seg_start >= match_end:
+            styled.append((segment, False, is_italic))
+        else:
+            local_start = max(0, idx - seg_start)
+            local_end = min(len(segment), match_end - seg_start)
+            if local_start > 0:
+                styled.append((segment[:local_start], False, is_italic))
+            styled.append((segment[local_start:local_end], True, is_italic))
+            if local_end < len(segment):
+                styled.append((segment[local_end:], False, is_italic))
+        plain_cursor = seg_end
+        cursor += len(segment)
+    return styled
 
 
-def wrap_styled_text(draw, segments, regular_font, bold_font, max_width):
+def wrap_styled_text(draw, segments, regular_font, bold_font, italic_font, max_width):
     lines = []
     current = []
     current_width = 0
 
-    for text, is_bold in segments:
-        if is_bold:
-            parts = text.split(" ")
-            bold_chunks = []
-            for i, part in enumerate(parts):
-                if part:
-                    bold_chunks.append((part, True))
-                if i < len(parts) - 1:
-                    bold_chunks.append((" ", True))
-            chunk_width = sum(
-                draw.textbbox((0, 0), token, font=bold_font)[2] - draw.textbbox((0, 0), token, font=bold_font)[0]
-                for token, _ in bold_chunks
-            )
-            if current and current_width + chunk_width > max_width:
-                lines.append(current)
-                current = []
-                current_width = 0
-            current.extend(bold_chunks)
-            current_width += chunk_width
-            continue
-
+    for text, is_bold, is_italic in segments:
         parts = text.split(" ")
+        chunks = []
         for i, part in enumerate(parts):
             if part:
-                token = part
-                font = regular_font
-                bbox = draw.textbbox((0, 0), token, font=font)
-                token_width = bbox[2] - bbox[0]
-                if current and current_width + token_width > max_width:
-                    lines.append(current)
-                    current = []
-                    current_width = 0
-                current.append((token, False))
-                current_width += token_width
+                chunks.append((part, is_bold, is_italic))
             if i < len(parts) - 1:
-                token = " "
-                font = regular_font
-                bbox = draw.textbbox((0, 0), token, font=font)
-                token_width = bbox[2] - bbox[0]
-                if current and current_width + token_width > max_width:
-                    lines.append(current)
-                    current = []
-                    current_width = 0
-                current.append((token, False))
-                current_width += token_width
+                chunks.append((" ", is_bold, is_italic))
+        font = bold_font if is_bold else italic_font if is_italic else regular_font
+        chunk_width = sum(
+            draw.textbbox((0, 0), token, font=font)[2] - draw.textbbox((0, 0), token, font=font)[0]
+            for token, _, _ in chunks
+        )
+        if current and current_width + chunk_width > max_width:
+            lines.append(current)
+            current = []
+            current_width = 0
+        current.extend(chunks)
+        current_width += chunk_width
 
     if current:
         lines.append(current)
@@ -329,21 +342,23 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
     for size in range(font_max, font_min - 1, -2):
         regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=size)
         bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=size)
-        wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
+        italic_font = load_font(QUOTE_FONT_ITALIC_CANDIDATES, size=size)
+        wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, italic_font, max_width)
         line_height = int(size * line_height_mult)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
             return regular_font, bold_font, wrapped, line_height, size
     regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=font_min)
     bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=font_min)
-    wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
-    return regular_font, bold_font, wrapped, int(font_min * line_height_mult), font_min
+    italic_font = load_font(QUOTE_FONT_ITALIC_CANDIDATES, size=font_min)
+    wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, italic_font, max_width)
+    return regular_font, bold_font, italic_font, wrapped, int(font_min * line_height_mult), font_min
 
 
-def line_width(draw, line, regular_font, bold_font):
+def line_width(draw, line, regular_font, bold_font, italic_font):
     width = 0
-    for chunk, is_bold in line:
-        font = bold_font if is_bold else regular_font
+    for chunk, is_bold, is_italic in line:
+        font = bold_font if is_bold else italic_font if is_italic else regular_font
         bbox = draw.textbbox((0, 0), chunk, font=font)
         width += bbox[2] - bbox[0]
     return width
@@ -420,7 +435,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
-    quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
+    quote_font, quote_font_bold, quote_font_italic, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
         quote_row["display_quote"],
         quote_row.get("matched_text") or "",
@@ -480,8 +495,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     y = quote_top
     for line in wrapped_quote:
         x = (width - layout["max_width"]) // 2
-        for chunk, is_bold in line:
-            font = quote_font_bold if is_bold else quote_font
+        for chunk, is_bold, is_italic in line:
+            font = quote_font_bold if is_bold else quote_font_italic if is_italic else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
             draw_text(draw, (x, y), chunk, font=font, fill=fill)
             bbox = draw.textbbox((0, 0), chunk, font=font)
