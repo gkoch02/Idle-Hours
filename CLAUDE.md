@@ -44,6 +44,13 @@ python3 run_clock.py --display-script display_inky.py
 # Appliance / production mode (hides debug bucket/quality/time footer)
 python3 run_clock.py --display-script display_inky.py --mode production
 
+# Dark theme (black background, white text, yellow accent) — both CLIs accept --theme
+python3 run_clock.py --display-script display_inky.py --theme dark
+
+# Disable the default quiet-hours blackout (defaults 22:00–06:00, shows assets/goodnight.png)
+python3 run_clock.py --quiet-off
+python3 run_clock.py --quiet-start 23:30 --quiet-end 07:00 --quiet-image assets/goodnight.png
+
 # Render a specific time directly (bypasses the loop)
 python3 render_quote.py --time 22:54
 
@@ -249,9 +256,9 @@ If no candidate in the target bucket qualifies, it walks outward through sibling
 
 Among equally top-scoring rows, a seeded `random.Random(seed)` picks one so results are stable for a given `--seed`.
 
-### Selection Overrides (`selection_overrides.json`)
+### Selection Overrides (`assets/selection_overrides.json`)
 
-A small editable JSON doc consulted by `pick_quote.py`:
+A small editable JSON doc consulted by `pick_quote.py` (its default `--overrides` path):
 
 ```json
 {
@@ -267,21 +274,26 @@ IDs are compared as strings. Edit this file rather than editing the scorer when 
 
 Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out an 800×480 RGB PNG — no subprocess, no stdout-JSON contract. Key details:
 
-- **Palette.** Colors are drawn from the 6-color Spectra 6 palette (white/black/red/yellow/blue/green) and the final image is re-snapped to that palette via `snap_image_to_palette` so the Inky dithering stays predictable. The matched time phrase is rendered in `ACCENT` (red), everything else in black on white.
+- **Palette.** Colors are drawn from the 6-color Spectra 6 palette (white/black/red/yellow/blue/green) and the final image is re-snapped to that palette via `snap_image_to_palette` so the Inky dithering stays predictable.
+- **Themes.** The `THEMES` dict defines two color sets: `default` (white page, black text, red accent) and `dark` (black page, white text, yellow accent). `--theme` selects one; `run_clock.py` forwards it via `--theme`. The matched time phrase is rendered in the theme's accent color; everything else uses the theme's text/source colors.
 - **Fonts.** Prefers Playfair Display (from the repo-local `fonts/` directory, then common Pi/Linux paths) with Noto Serif / DejaVu Serif / Liberation Serif as fallbacks, and DejaVu/Noto/Liberation Sans for metadata. Install via `apt install fonts-noto-core fonts-dejavu-core` if the bundled fonts aren't found. When every TTF candidate is missing, `load_font` logs a one-shot warning to stderr before returning `ImageFont.load_default()` so a misconfigured install surfaces instead of silently producing an 8-pixel bitmap render.
 - **Layouts.** Three named layouts (`hero` ≤90 chars, `standard` ≤170, `dense` otherwise) each define their own `max_width`, `quote_height`, font size range, line-height multiplier, and quote-mark sizing. See the `LAYOUTS` dict.
 - **Bold time phrase.** `resolve_display_match` tries to grow a multi-word time phrase ("five minutes past", etc.) inside the display text, then `tokenize_quote`/`wrap_styled_text` render it in bold + accent color while keeping word wrap correct across the bold boundary.
+- **Text cleanup.** `strip_underscore_emphasis` drops Gutenberg's `_emphasis_` markers and `normalize_dashes` converts bare `--` to em-dashes before layout.
 - **Fit loop.** `fit_quote` shrinks the quote font in 2pt steps from the layout's `font_max` down to `font_min` until all lines fit within `quote_height`.
-- **Modes.** `--mode debug` (default) shows wall-clock time top-left, the resolved bucket, and a bottom-right footer (`layout • fallback? • quality N • shown HH:MM`). `--mode production` hides all of that for a clean appliance look.
+- **Justification.** Non-last lines are fully justified by distributing leftover slack across inter-word spaces — but only when slack is ≤25% of the layout's `max_width`. Loose lines fall back to ragged-right because wide forced gaps look worse than uneven right edges.
+- **Modes.** `--mode debug` (default) draws a top-right `DEBUG MODE` banner in the accent color plus a centered bottom strip (`HH:MM · bucket[ → resolved] · layout X · quality N · id source:Lline`) separated from the quote block by a dotted horizontal rule. `--mode production` hides all of that for a clean appliance look.
 - **Outputs.** `--output` defaults to `output/render-HHMM.png`; `run_clock.py` overrides this to `output/current.png` so the Inky bridge has a stable filename.
 
 ### Runtime Loop (`run_clock.py`)
 
-Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it consider re-invoking `render_quote.py`. Before launching the renderer it calls `peek_quote_id` — which runs `pick_quote.select_quote` in-process and returns `(source_id, line_number, display_quote)` — and compares that identity tuple against `last_quote_id`. If the picked quote is unchanged from the previous render (e.g. the bucket walked to a neighbor that falls back to the same row, or the same phrase spans two buckets), the redraw is skipped entirely so the eInk panel is not refreshed for a visually-identical frame. Otherwise it re-renders and optionally hands the image to `--display-script` (e.g. `display_inky.py`). `--once` renders a single frame unconditionally and exits — useful for cron, smoke tests, or first bring-up. `--mode` is passed through to the renderer. In loop mode `render_now` is wrapped in `try/except` with timestamped stderr logging so a transient failure (missing corpus row, Pillow blow-up, Inky disconnect) no longer kills the process — the loop just logs and waits for the next tick. `--once` stays strict so cron callers still fail loudly.
+Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it consider re-invoking `render_quote.py`. Before launching the renderer it calls `peek_quote_id` — which runs `pick_quote.select_quote` in-process and returns `(source_id, line_number, display_quote, matched_text)` — and compares that identity tuple against `last_quote_id`. `matched_text` is part of the identity because the renderer uses it to choose which phrase gets bolded/coloured, so two picks that share source/line/quote but differ in the matched phrase (e.g. `02:50` vs `02:55` landing on the same row) still produce visibly different frames and must not dedupe together. If the picked quote is unchanged, the redraw is skipped so the eInk panel is not refreshed for a visually-identical frame. Otherwise it re-renders and optionally hands the image to `--display-script` (e.g. `display_inky.py`). `--mode` and `--theme` are passed through to the renderer. `--once` renders a single frame unconditionally and exits — useful for cron, smoke tests, or first bring-up. In loop mode `render_now` and quiet-hours handling are wrapped in `try/except` with timestamped stderr logging so a transient failure (missing corpus row, Pillow blow-up, Inky disconnect) no longer kills the process — the loop just logs and waits for the next tick. `--once` stays strict so cron callers still fail loudly.
+
+**Quiet hours.** Defaults to 22:00–06:00 (`--quiet-start` / `--quiet-end`, validated as `HH:MM` at parse time and supporting overnight ranges where `start > end`). When the loop first enters the window it either copies `--quiet-image` (default `assets/goodnight.png`, a pre-rendered dark-theme "good night / sleep" frame) to the output path and pushes it to the display, or — if `--quiet-image ""` is passed — re-renders the start time via `render_quote.py`. It then sits idle, skipping picks and renders, until the window ends; on exit it clears the bucket/quote-id state so the next normal tick is guaranteed to repaint. `--quiet-off` disables the feature entirely for 24/7 operation.
 
 ### Inky Display Bridge (`display_inky.py`)
 
-Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. A single bounded retry wraps `auto()` + `set_image()/show()` so a momentary I/O hiccup doesn't crash the caller.
+Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. Up to `MAX_ATTEMPTS` (3) calls are retried with `RETRY_BACKOFF_SECONDS = (1, 4)` between attempts so a momentary I/O hiccup doesn't crash the caller; if all attempts fail the script raises `SystemExit` so the loop in `run_clock.py` logs and moves on.
 
 ### Appliance / Pi Setup
 
@@ -291,7 +303,7 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 12 test modules covering every pipeline script plus the runtime components — 310 tests at last count. (`display_inky.py` is not tested; it requires Pi hardware.)
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 15 test modules covering every pipeline script plus the runtime components — 371 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches.
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
@@ -308,31 +320,34 @@ The test suite lives in `tests/` and uses pytest with pytest-cov. There are 12 t
 ### Repo Layout
 
 ```
-buckets.py                   shared bucket primitives (BUCKET_ORDER, minute_bucket, bucket_for_time, neighbor_buckets)
-jsonl_io.py                  streaming JSONL reader that logs + skips malformed lines
-gutenberg_time_miner.py      harvest regex-matched time phrases from .txt
-merge_candidates.py          dedupe harvested JSONL rows
-bucket_coverage.py           coverage report per (hour, minute-state) bucket
-target_sparse_buckets.py     targeted regex sweep for empty buckets
-import_targeted_hits.py      reshape targeted hits for merge
-clean_display_quotes.py      pick a displayable excerpt from each row
-quality_filter.py            score + flag rows
-fix_substring_time_matches.py  repair substring-collision time tags
-enrich_metadata.py           attach author/title from Gutenberg headers
-pick_quote.py                rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
-selection_overrides.json     manual bans/boosts/per-bucket preferences
-render_quote.py              Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
-run_clock.py                 runtime loop (bucket-change-triggered, error-tolerant)
-display_inky.py              Pi-only image → Inky Impression bridge (with retry)
-bootstrap_pi_inky.sh         first-time Pi setup helper
-litclock.service.example     sample systemd unit
-pi_setup_inky_impression.md  long-form Pi setup doc
-pyproject.toml               project metadata + pytest / coverage / ruff configuration
-fonts/                       bundled Playfair Display family
-tests/                       pytest suite — one module per script + conftest.py
-output/                      runtime render target (output/current.png); gitignored except .gitkeep
-data/gutenberg/              cached Gutenberg text downloads (gitignored)
-.github/workflows/ci.yml     GitHub Actions CI (lint + test, Python 3.11 & 3.12)
-gutenberg_batch_ids.txt      batch list of Gutenberg IDs
-run_batch2.sh                bulk harvest driver
+buckets.py                         shared bucket primitives (BUCKET_ORDER, minute_bucket, bucket_for_time, neighbor_buckets)
+jsonl_io.py                        streaming JSONL reader that logs + skips malformed lines
+gutenberg_time_miner.py            harvest regex-matched time phrases from .txt
+merge_candidates.py                dedupe harvested JSONL rows
+bucket_coverage.py                 coverage report per (hour, minute-state) bucket
+target_sparse_buckets.py           targeted regex sweep for empty buckets
+import_targeted_hits.py            reshape targeted hits for merge
+clean_display_quotes.py            pick a displayable excerpt from each row
+quality_filter.py                  score + flag rows
+fix_substring_time_matches.py      repair substring-collision time tags
+enrich_metadata.py                 attach author/title from Gutenberg headers
+pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
+render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
+run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware)
+display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff)
+bootstrap_pi_inky.sh               first-time Pi setup helper
+litclock.service.example           sample systemd unit
+pi_setup_inky_impression.md        long-form Pi setup doc
+pyproject.toml                     project metadata + pytest / coverage / ruff configuration
+fonts/                             bundled Playfair Display family
+assets/candidates-attributed.jsonl shipped runtime quote corpus (pick_quote default --input)
+assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
+assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
+assets/preview.png                 README hero image
+tests/                             pytest suite — one module per script + conftest.py
+output/                            runtime render target (output/current.png); gitignored except .gitkeep
+data/gutenberg/                    cached Gutenberg text downloads (gitignored)
+.github/workflows/ci.yml           GitHub Actions CI (lint + test, Python 3.11 & 3.12)
+gutenberg_batch_ids.txt            batch list of Gutenberg IDs
+run_batch2.sh                      bulk harvest driver
 ```

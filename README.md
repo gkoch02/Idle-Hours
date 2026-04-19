@@ -40,6 +40,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 - `assets/candidates-attributed.jsonl` - shipped runtime quote dataset
 - `assets/selection_overrides.json` - selection tweaks/overrides used at runtime
+- `assets/goodnight.png` - pre-rendered dark-theme "good night" frame shown during quiet hours
 - `assets/preview.png` - README preview image
 
 ### Build and corpus tools
@@ -101,6 +102,25 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ```bash
 python3 run_clock.py --display-script display_inky.py --mode production
+```
+
+### Themes
+
+Pass `--theme dark` to either `run_clock.py` or `render_quote.py` for a black-background / yellow-accent variant. `--theme default` is the white-background / red-accent original.
+
+### Quiet hours
+
+The loop defaults to quiet hours **22:00–06:00** and pushes `assets/goodnight.png` to the display during that window instead of rendering corpus quotes.
+
+```bash
+# Shift or tighten the window
+python3 run_clock.py --quiet-start 23:30 --quiet-end 07:00
+
+# Swap the quiet image
+python3 run_clock.py --quiet-image path/to/other.png
+
+# Disable quiet hours entirely (24/7 rendering)
+python3 run_clock.py --quiet-off
 ```
 
 ## Testing
@@ -256,9 +276,10 @@ That work is intentionally separate from the steady-state render loop.
 
 ## Operational notes
 
-- The clock refreshes when the fuzzy time bucket changes, not every minute.
+- The clock refreshes when the fuzzy time bucket changes, not every minute, and additionally skips a redraw when the picked quote is identical to the previous frame.
 - If the exact bucket is weak or empty, the picker walks nearby buckets and records fallback metadata.
-- `production` mode hides debug metadata for cleaner display output.
+- `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
+- Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.
