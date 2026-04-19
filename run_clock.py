@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import shutil
 import subprocess
 import sys
 import time
@@ -19,6 +20,17 @@ BASE_DIR = Path(__file__).resolve().parent
 def _log(msg: str, *, err: bool = False) -> None:
     stream = sys.stderr if err else sys.stdout
     print(f"[{dt.datetime.now().isoformat(timespec='seconds')}] {msg}", file=stream, flush=True)
+
+
+def _valid_hhmm(value: str) -> str:
+    parts = value.split(":")
+    try:
+        h, m = int(parts[0]), int(parts[1])
+        if not (len(parts) == 2 and 0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError
+    except (ValueError, IndexError):
+        raise argparse.ArgumentTypeError(f"{value!r} is not a valid HH:MM time (expected 00:00–23:59)")
+    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,7 +85,35 @@ def parse_args() -> argparse.Namespace:
         default="default",
         help="Render theme passed through to render_quote.py",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--quiet-start",
+        metavar="HH:MM",
+        default="22:00",
+        type=_valid_hhmm,
+        help="Start of quiet window in 24-hour time (default: 22:00). Requires --quiet-end.",
+    )
+    parser.add_argument(
+        "--quiet-end",
+        metavar="HH:MM",
+        default="06:00",
+        type=_valid_hhmm,
+        help="End of quiet window in 24-hour time (default: 06:00). Requires --quiet-start.",
+    )
+    parser.add_argument(
+        "--quiet-image",
+        metavar="PATH",
+        default="assets/goodnight.png",
+        help="PNG to display when quiet hours begin instead of rendering a corpus quote.",
+    )
+    parser.add_argument(
+        "--quiet-off",
+        action="store_true",
+        help="Disable quiet hours entirely and render around the clock.",
+    )
+    args = parser.parse_args()
+    if (args.quiet_start is None) != (args.quiet_end is None):
+        parser.error("--quiet-start and --quiet-end must be specified together")
+    return args
 
 
 def current_time_str() -> str:
@@ -82,6 +122,35 @@ def current_time_str() -> str:
 
 def current_bucket() -> str:
     return bucket_for_time(current_time_str())
+
+
+def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
+    """Return True if time_str falls within the [start, end) quiet window.
+
+    Handles overnight ranges (e.g. 22:00–07:00) where start > end.
+    Returns False when either bound is None (quiet hours disabled).
+    """
+    if start is None:
+        return False
+
+    def to_mins(t: str) -> int:
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+
+    cur, s, e = to_mins(time_str), to_mins(start), to_mins(end)
+    return (cur >= s or cur < e) if s > e else (s <= cur < e)
+
+
+def _display_quiet_image(quiet_image: str, output: str, display_script: str | None) -> None:
+    """Copy quiet_image to the output path and optionally push it to the display script."""
+    quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
+    output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
+    shutil.copy2(str(quiet_path), output_resolved)
+    _log(f"quiet hours: {quiet_path.name} -> {output_resolved}")
+    if display_script:
+        display_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
+        subprocess.check_call([sys.executable, display_path, output_resolved])
+        _log(f"Displayed {output_resolved} via {display_path}")
 
 
 def peek_quote_id(time_str: str) -> tuple | None:
@@ -153,11 +222,35 @@ def main() -> int:
 
     last_bucket = None
     last_quote_id = None
+    _was_quiet = False
     while True:
+        time_str = current_time_str()
+        now_quiet = in_quiet_hours(time_str, None if args.quiet_off else args.quiet_start, args.quiet_end)
+
+        if now_quiet:
+            if not _was_quiet:
+                _log(f"quiet hours start ({args.quiet_start}–{args.quiet_end})")
+                try:
+                    if args.quiet_image:
+                        _display_quiet_image(args.quiet_image, args.output, args.display_script)
+                    else:
+                        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=args.quiet_start)
+                except Exception as exc:
+                    _log(f"quiet-hours display failed: {exc!r}", err=True)
+                    traceback.print_exc(file=sys.stderr)
+                _was_quiet = True
+            time.sleep(max(1, args.interval_seconds))
+            continue
+
+        if _was_quiet:
+            _log("quiet hours end, resuming normal render cycle")
+            last_bucket = None
+            last_quote_id = None
+            _was_quiet = False
+
         bucket = current_bucket()
         if bucket != last_bucket:
             try:
-                time_str = current_time_str()
                 quote_id = peek_quote_id(time_str)
                 if quote_id is not None and quote_id == last_quote_id:
                     _log(f"bucket {bucket}: quote unchanged, skipping redraw")

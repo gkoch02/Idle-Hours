@@ -1,6 +1,7 @@
 """Tests for run_clock.py"""
 from __future__ import annotations
 
+import argparse
 import subprocess
 from unittest.mock import patch
 
@@ -277,3 +278,232 @@ class TestLoopQuoteDedup:
         peek_ids = [None, None]
         calls = self._drive(tmp_path, buckets, peek_ids, tick_count=2)
         assert len(calls) == 2
+
+
+class TestValidHhmm:
+    def test_valid_times(self):
+        for t in ("00:00", "22:00", "06:00", "23:59", "12:30"):
+            assert run_clock._valid_hhmm(t) == t
+
+    def test_rejects_non_numeric(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("nope")
+
+    def test_rejects_out_of_range_hour(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("24:00")
+
+    def test_rejects_out_of_range_minute(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("12:60")
+
+    def test_rejects_missing_colon(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("1200")
+
+
+class TestQuietHours:
+    # --- unit tests for in_quiet_hours ---
+
+    def test_same_day_range_inside(self):
+        assert run_clock.in_quiet_hours("03:00", "01:00", "06:00") is True
+
+    def test_same_day_range_outside_before(self):
+        assert run_clock.in_quiet_hours("00:30", "01:00", "06:00") is False
+
+    def test_same_day_range_outside_after(self):
+        assert run_clock.in_quiet_hours("08:00", "01:00", "06:00") is False
+
+    def test_overnight_range_inside_before_midnight(self):
+        assert run_clock.in_quiet_hours("23:00", "22:00", "07:00") is True
+
+    def test_overnight_range_inside_after_midnight(self):
+        assert run_clock.in_quiet_hours("03:00", "22:00", "07:00") is True
+
+    def test_overnight_range_outside(self):
+        assert run_clock.in_quiet_hours("12:00", "22:00", "07:00") is False
+
+    def test_no_quiet_hours_returns_false(self):
+        assert run_clock.in_quiet_hours("03:00", None, None) is False
+
+    def test_boundary_start_is_quiet(self):
+        assert run_clock.in_quiet_hours("22:00", "22:00", "07:00") is True
+
+    def test_boundary_end_is_not_quiet(self):
+        assert run_clock.in_quiet_hours("07:00", "22:00", "07:00") is False
+
+    # --- loop integration tests ---
+
+    def test_loop_renders_once_on_quiet_entry(self, tmp_path):
+        """Entering quiet hours renders once with quiet_start as the display time; subsequent quiet ticks skip."""
+        render_calls = []
+
+        def fake_render(*args, **kwargs):
+            render_calls.append(kwargs.get("time_str"))
+
+        time_strs = iter(["22:00", "22:05"])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--quiet-start", "22:00", "--quiet-end", "07:00", "--quiet-image", "",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        assert len(render_calls) == 1
+        assert render_calls[0] == "22:00"
+
+    def test_loop_rerenders_after_quiet_exit(self, tmp_path):
+        """After quiet hours end the first bucket change triggers a normal render."""
+        render_calls = []
+
+        def fake_render(*args, **kwargs):
+            render_calls.append(kwargs.get("time_str"))
+
+        # Tick 1: quiet (22:00) → quiet-start render
+        # Tick 2: active (08:00) → bucket changed → normal render
+        # Tick 3: active (08:05) → same bucket → no render
+        time_strs = iter(["22:00", "08:00", "08:05"])
+        bucket_seq = iter(["h8_exact", "h8_exact"])
+        peek_seq = iter([("id", 1, "q", "mt")])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 3:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--quiet-start", "22:00", "--quiet-end", "07:00", "--quiet-image", "",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _: next(peek_seq)), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        # quiet-start render + one normal render; third tick same bucket → no render
+        assert len(render_calls) == 2
+        assert render_calls[0] == "22:00"
+        assert render_calls[1] == "08:00"
+
+    def test_quiet_off_disables_quiet_hours(self, tmp_path):
+        """--quiet-off keeps the loop rendering even during the configured quiet window."""
+        render_calls = []
+
+        def fake_render(*args, **kwargs):
+            render_calls.append(kwargs.get("time_str"))
+
+        # Two ticks that would normally be inside the 22:00–06:00 window.
+        time_strs = iter(["23:00", "23:05"])
+        bucket_seq = iter(["h11_exact", "h11_five_past"])
+        peek_seq = iter([("id", 1, "q", "mt"), ("id", 2, "q2", "mt2")])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0", "--quiet-off",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _: next(peek_seq)), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        assert len(render_calls) == 2
+
+    def test_once_ignores_quiet_hours(self, tmp_path):
+        """--once renders immediately regardless of the quiet window."""
+        argv = [
+            "run_clock.py", "--once", "--output", str(tmp_path / "current.png"),
+            "--quiet-start", "00:00", "--quiet-end", "23:59",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.current_time_str", return_value="12:00"):
+            run_clock.main()
+        assert mock_render.called
+
+
+class TestDisplayQuietImage:
+    def test_copies_file_to_output(self, tmp_path):
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        run_clock._display_quiet_image(str(src), str(out), display_script=None)
+        assert out.read_bytes() == b"\x89PNG"
+
+    def test_calls_display_script(self, tmp_path):
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        with patch("subprocess.check_call") as mock_call:
+            run_clock._display_quiet_image(str(src), str(out), display_script="display_inky.py")
+        assert mock_call.called
+        cmd = mock_call.call_args[0][0]
+        assert "display_inky.py" in " ".join(str(a) for a in cmd)
+        assert str(out) in cmd
+
+    def test_no_display_script_no_subprocess(self, tmp_path):
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        with patch("subprocess.check_call") as mock_call:
+            run_clock._display_quiet_image(str(src), str(out), display_script=None)
+        mock_call.assert_not_called()
+
+    def test_loop_uses_quiet_image_not_render_now(self, tmp_path):
+        """With --quiet-image set, the loop calls _display_quiet_image, not render_now."""
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+
+        display_calls = []
+        time_strs = iter(["22:00", "22:05"])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--quiet-start", "22:00", "--quiet-end", "07:00",
+            "--quiet-image", str(src),
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock._display_quiet_image", side_effect=lambda *a, **kw: display_calls.append(a)), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        mock_render.assert_not_called()
+        assert len(display_calls) == 1
+        assert display_calls[0][0] == str(src)
