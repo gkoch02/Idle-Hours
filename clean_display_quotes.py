@@ -26,6 +26,8 @@ HEADING_PREFIX = re.compile(
     r"BOOK\s+[IVXLCDM0-9]+[.:]?"
     r"|"
     r"PART\s+[IVXLCDM0-9]+[.:]?"
+    r"|"
+    r"IN\s+WHICH\s+[A-Z ,'-]+?(?=\s+[A-Z][a-z])"
     r")\s*",
 )
 

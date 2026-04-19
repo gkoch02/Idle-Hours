@@ -69,6 +69,10 @@ class TestCleanEdges:
         text = "CHAPTER IV. IN WHICH PHILEAS FOGG ASTOUNDS PASSEPARTOUT, HIS SERVANT Having won twenty guineas at whist."
         assert cdq.clean_edges(text) == "Having won twenty guineas at whist."
 
+    def test_strips_bare_in_which_section_title(self):
+        text = "IN WHICH PHILEAS FOGG ASTOUNDS PASSEPARTOUT, HIS SERVANT Having won twenty guineas at whist."
+        assert cdq.clean_edges(text) == "Having won twenty guineas at whist."
+
 
 # ---------------------------------------------------------------------------
 # looks_fragment
