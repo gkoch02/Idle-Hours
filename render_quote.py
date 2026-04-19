@@ -267,50 +267,28 @@ def wrap_styled_text(draw, segments, regular_font, bold_font, max_width):
     current_width = 0
 
     for text, is_bold in segments:
-        if is_bold:
-            parts = text.split(" ")
-            bold_chunks = []
-            for i, part in enumerate(parts):
-                if part:
-                    bold_chunks.append((part, True))
-                if i < len(parts) - 1:
-                    bold_chunks.append((" ", True))
-            chunk_width = sum(
-                draw.textbbox((0, 0), token, font=bold_font)[2] - draw.textbbox((0, 0), token, font=bold_font)[0]
-                for token, _ in bold_chunks
-            )
-            if current and current_width + chunk_width > max_width:
-                lines.append(current)
-                current = []
-                current_width = 0
-            current.extend(bold_chunks)
-            current_width += chunk_width
-            continue
-
+        font = bold_font if is_bold else regular_font
         parts = text.split(" ")
         for i, part in enumerate(parts):
             if part:
-                token = part
-                font = regular_font
-                bbox = draw.textbbox((0, 0), token, font=font)
+                bbox = draw.textbbox((0, 0), part, font=font)
                 token_width = bbox[2] - bbox[0]
                 if current and current_width + token_width > max_width:
                     lines.append(current)
                     current = []
                     current_width = 0
-                current.append((token, False))
+                current.append((part, is_bold))
                 current_width += token_width
             if i < len(parts) - 1:
-                token = " "
-                font = regular_font
-                bbox = draw.textbbox((0, 0), token, font=font)
-                token_width = bbox[2] - bbox[0]
-                if current and current_width + token_width > max_width:
+                bbox = draw.textbbox((0, 0), " ", font=font)
+                space_width = bbox[2] - bbox[0]
+                if current and current_width + space_width > max_width:
                     lines.append(current)
                     current = []
                     current_width = 0
-                current.append((token, False))
-                current_width += token_width
+                else:
+                    current.append((" ", is_bold))
+                    current_width += space_width
 
     if current:
         lines.append(current)
