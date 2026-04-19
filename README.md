@@ -121,7 +121,85 @@ pytest tests/test_render_quote.py tests/test_run_clock.py
 
 The Pi should track `main` and use the prebuilt runtime assets already committed to the repo.
 
-### Example update flow
+### Fresh Pi setup
+
+For a brand-new Raspberry Pi, the setup has two phases:
+
+1. install the Pimoroni Inky stack and verify the panel works
+2. clone LitClock, render once, push once, then install the service
+
+#### OS baseline
+
+- Raspberry Pi OS Bookworm or later
+- SSH enabled
+- Wi-Fi configured
+
+Update the box first:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo reboot
+```
+
+#### Install system dependencies
+
+```bash
+sudo apt install -y git python3 python3-pip python3-venv python3-dev fonts-noto-core fonts-dejavu-core
+```
+
+#### Install Pimoroni Inky software
+
+Pimoroni's installer is the supported path:
+
+```bash
+git clone https://github.com/pimoroni/inky ~/inky
+cd ~/inky
+./install.sh
+```
+
+Suggested installer answers:
+
+- yes to virtualenv setup
+- yes to example dependencies
+- yes to copying examples
+- docs optional
+
+If the display does not work afterward, check `SPI` and `I2C` in `sudo raspi-config`, then reboot.
+
+#### Verify the Inky panel works
+
+```bash
+source ~/.virtualenvs/pimoroni/bin/activate
+cd ~/Pimoroni/inky/examples/spectra6
+python stripes.py
+```
+
+#### Install LitClock on the Pi
+
+```bash
+source ~/.virtualenvs/pimoroni/bin/activate
+git clone git@github.com:gkoch02/LitClock.git
+cd ~/LitClock
+python3 run_clock.py --once
+python3 display_inky.py output/current.png
+python3 run_clock.py --once --display-script display_inky.py --mode production
+```
+
+At that point, a fresh Pi should have everything needed to render locally and push to the display.
+
+#### Optional bootstrap helper
+
+There is also a helper script for first-time setup:
+
+```bash
+./bootstrap_pi_inky.sh
+```
+
+That script installs base packages, launches the interactive Pimoroni installer, and then resumes LitClock setup after reboot.
+
+### Existing Pi update flow
+
+If the Pi is already provisioned and LitClock is installed, updating is simple:
 
 ```bash
 git pull --ff-only origin main
@@ -139,6 +217,21 @@ Current service model:
 - optionally calls `display_inky.py` after each render
 - uses the prebuilt dataset in `assets/candidates-attributed.jsonl`
 - does not rebuild corpus artifacts at startup
+
+### Install the service
+
+Once manual render and display tests work on the Pi:
+
+```bash
+cd ~/LitClock
+sudo cp litclock.service.example /etc/systemd/system/litclock.service
+sudo systemctl daemon-reload
+sudo systemctl enable litclock.service
+sudo systemctl start litclock.service
+sudo systemctl status litclock.service
+```
+
+If another display service is already running, disable it first so LitClock owns the panel.
 
 ## Build pipeline notes
 
