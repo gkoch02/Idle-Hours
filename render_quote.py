@@ -381,6 +381,25 @@ def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]
     return snapped
 
 
+def debug_quote_id(quote_row: dict) -> str | None:
+    source_id = quote_row.get("source_id")
+    source_path = quote_row.get("source_path") or ""
+    line_number = quote_row.get("line_number")
+
+    parts = []
+    if source_id:
+        parts.append(str(source_id))
+    elif source_path:
+        parts.append(Path(source_path).stem)
+
+    if line_number is not None:
+        parts.append(f"L{line_number}")
+
+    if not parts and source_path:
+        return Path(source_path).name
+    return ":".join(parts) if parts else None
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
@@ -492,6 +511,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             footer_parts.append("fallback")
         if quote_row.get("quality_score") is not None:
             footer_parts.append(f"quality {quote_row['quality_score']}")
+        quote_id = debug_quote_id(quote_row)
+        if quote_id:
+            footer_parts.append(f"id {quote_id}")
         footer_parts.append(f"shown {time_str}")
         footer = " • ".join(footer_parts)
         footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]

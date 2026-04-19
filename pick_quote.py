@@ -288,6 +288,7 @@ def select_quote(
         "matched_text": best.get("matched_text"),
         "source_id": best.get("source_id"),
         "source_path": best.get("source_path"),
+        "line_number": best.get("line_number"),
         "author": best.get("author"),
         "title": best.get("title"),
         "display_fragment": best.get("display_fragment"),

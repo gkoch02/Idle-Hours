@@ -163,6 +163,17 @@ class TestSnapImageToPalette:
 # render — smoke test (no assertion on pixels, just that it completes)
 # ---------------------------------------------------------------------------
 
+class TestDebugQuoteId:
+    def test_uses_source_id_when_present(self):
+        assert rq.debug_quote_id({"source_id": "1661"}) == "1661"
+
+    def test_uses_source_id_and_line_number_when_present(self):
+        assert rq.debug_quote_id({"source_id": "1661", "line_number": 12345}) == "1661:L12345"
+
+    def test_falls_back_to_source_stem(self):
+        assert rq.debug_quote_id({"source_path": "data/gutenberg/pg1661.txt"}) == "pg1661"
+
+
 class TestThemes:
     def test_dark_theme_palette_values(self):
         dark = rq.THEMES["dark"]
@@ -184,6 +195,7 @@ class TestRender:
             "resolved_bucket": "h3_exact",
             "used_fallback": False,
             "quality_score": 80,
+            "source_id": "141",
         }
 
     def test_render_returns_image_of_correct_size(self):
