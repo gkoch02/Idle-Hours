@@ -47,7 +47,6 @@ THEMES = {
         "source": SPECTRA6["white"],
     },
 }
-TOP_MARGIN = 12
 SIDE_MARGIN = 20
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
@@ -418,7 +417,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     layout_name = choose_layout(quote_row["display_quote"])
     layout = LAYOUTS[layout_name]
 
-    time_font = load_font(META_FONT_CANDIDATES, size=20)
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
@@ -455,10 +453,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     quote_top = block_top
 
     show_debug = mode == "debug"
-    if show_debug:
-        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=colors["subtle"])
-        subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get("used_fallback") else quote_row["bucket"]
-        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=colors["faint"])
 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
     mark_font = load_font(ORNAMENT_FONT_CANDIDATES, size=mark_size)
@@ -516,18 +510,37 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         y += source_size + layout["title_gap"]
 
     if show_debug:
-        footer_parts = [f"layout {layout_name}"]
-        if quote_row.get("used_fallback"):
-            footer_parts.append("fallback")
+        bucket_value = quote_row.get("bucket") or ""
+        resolved = quote_row.get("resolved_bucket") or bucket_value
+        if quote_row.get("used_fallback") and resolved and bucket_value and resolved != bucket_value:
+            bucket_piece = f"{bucket_value} → {resolved}"
+        else:
+            bucket_piece = resolved or bucket_value
+
+        debug_parts = [time_str]
+        if bucket_piece:
+            debug_parts.append(bucket_piece)
+        debug_parts.append(f"layout {layout_name}")
         if quote_row.get("quality_score") is not None:
-            footer_parts.append(f"quality {quote_row['quality_score']}")
+            debug_parts.append(f"quality {quote_row['quality_score']}")
         quote_id = debug_quote_id(quote_row)
         if quote_id:
-            footer_parts.append(f"id {quote_id}")
-        footer_parts.append(f"shown {time_str}")
-        footer = " • ".join(footer_parts)
-        footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
-        draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=colors["faint"])
+            debug_parts.append(f"id {quote_id}")
+        debug_strip = " · ".join(debug_parts)
+
+        strip_bbox = draw.textbbox((0, 0), debug_strip, font=debug_font)
+        strip_w = strip_bbox[2] - strip_bbox[0]
+        strip_h = strip_bbox[3] - strip_bbox[1]
+        strip_y = height - 14 - strip_h
+        strip_x = (width - strip_w) // 2
+
+        rule_y = strip_y - 8
+        rule_left = max(SIDE_MARGIN, (width - strip_w) // 2 - 24)
+        rule_right = min(width - SIDE_MARGIN, (width + strip_w) // 2 + 24)
+        for x in range(rule_left, rule_right, 5):
+            draw.point((x, rule_y), fill=colors["faint"])
+
+        draw_text(draw, (strip_x, strip_y), debug_strip, font=debug_font, fill=colors["faint"])
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
