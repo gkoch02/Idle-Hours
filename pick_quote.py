@@ -375,17 +375,25 @@ def select_quote(
     min_quality: int = 60,
     history_path: str | None = None,
     history_days: int = DEFAULT_HISTORY_DAYS,
+    rows: list[dict] | None = None,
+    overrides: dict | None = None,
 ) -> dict:
     """Pick the best quote for a time or bucket and return the result dict.
 
     Mirrors the JSON printed by ``main`` so ``render_quote`` can call this in-process
     instead of shelling out and re-parsing stdout.
+
+    Callers that invoke this many times in a tight loop (e.g. the contact-sheet
+    renderer) can pass pre-loaded ``rows`` and ``overrides`` to skip re-parsing
+    the JSONL/JSON files on every call.
     """
     if not time_str and not bucket:
         raise ValueError("select_quote requires time_str or bucket")
     target_bucket = bucket or bucket_for_time(time_str)
-    rows = load_rows(resolve_path(input_path))
-    overrides = load_overrides(resolve_path(overrides_path))
+    if rows is None:
+        rows = load_rows(resolve_path(input_path))
+    if overrides is None:
+        overrides = load_overrides(resolve_path(overrides_path))
     recent = load_recent_history(history_path, history_days)
     best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str, recent)
     return {

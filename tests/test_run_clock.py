@@ -158,9 +158,12 @@ class TestMainLoopResilience:
         # Return a distinct quote-identity per tick so the dedup path in main does not
         # swallow the render call this test is measuring.
         peek_ids = iter((f"id-{i}", i, f"q-{i}") for i in range(tick_count + 1))
+        # Pin wall clock outside the default 22:00–06:00 quiet window; otherwise the
+        # loop enters the quiet-hours branch when tests run in the evening.
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.current_time_str", return_value="12:00"), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
              patch("time.sleep", side_effect=stop_after_ticks):
             with pytest.raises(KeyboardInterrupt):
@@ -248,9 +251,12 @@ class TestLoopQuoteDedup:
 
         peek_iter = iter(peek_ids)
         argv = ["run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0"]
+        # Pin wall clock outside the default 22:00–06:00 quiet window; otherwise the
+        # loop enters the quiet-hours branch when tests run in the evening.
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.current_time_str", return_value="12:00"), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
              patch("time.sleep", side_effect=stop_after_ticks):
             with pytest.raises(KeyboardInterrupt):
