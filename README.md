@@ -75,7 +75,6 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 For full Pi setup and appliance boot instructions, see:
 
 - [pi_setup_inky_impression.md](pi_setup_inky_impression.md)
-- [inky_impression_notes.md](inky_impression_notes.md)
 - [`litclock.service.example`](litclock.service.example)
 - [`bootstrap_pi_inky.sh`](bootstrap_pi_inky.sh)
 
@@ -105,9 +104,6 @@ For full Pi setup and appliance boot instructions, see:
 
 For mining/backfill work and corpus expansion notes, see:
 
-- [gutenberg_expansion_plan.md](gutenberg_expansion_plan.md)
-- `gutenberg_expansion_batch1.sh`
-- `gutenberg_expansion_batch2.sh`
 - `run_batch2.sh`
 
 ## Notes
