@@ -50,25 +50,25 @@ class TestResolveDisplayMatch:
         result = rq.resolve_display_match(text, "three o'clock")
         assert result == "three o'clock"
 
-    def test_expands_five_minutes_past(self):
+    def test_returns_direct_match_for_short_seed_when_present(self):
         text = "It was five minutes past three when she arrived."
         result = rq.resolve_display_match(text, "five")
-        assert "five minutes past" in result.lower()
+        assert result.lower() == "five"
 
-    def test_expands_quarter_past(self):
+    def test_returns_direct_match_for_quarter_when_present(self):
         text = "Quarter past six the bell rang loudly."
         result = rq.resolve_display_match(text, "quarter")
-        assert result.lower().startswith("quarter past")
+        assert result.lower() == "quarter"
 
-    def test_expands_half_past(self):
+    def test_returns_direct_match_for_half_when_present(self):
         text = "Half past nine the carriage departed."
         result = rq.resolve_display_match(text, "half")
-        assert result.lower().startswith("half past")
+        assert result.lower() == "half"
 
-    def test_prefers_longer_expansion(self):
+    def test_returns_direct_match_when_full_seed_already_present(self):
         text = "It was ten minutes past five o'clock in the evening."
         result = rq.resolve_display_match(text, "ten minutes past")
-        assert len(result) >= len("ten minutes past five")
+        assert result.lower() == "ten minutes past"
 
     def test_does_not_switch_to_unrelated_longer_time_phrase(self):
         text = "It was a quarter past six when we left Baker Street, and it still wanted ten minutes to the hour when we found ourselves in Serpentine Avenue."
