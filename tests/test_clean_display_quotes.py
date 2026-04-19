@@ -61,6 +61,10 @@ class TestCleanEdges:
     def test_collapses_internal_whitespace(self):
         assert cdq.clean_edges("Hello   world.") == "Hello world."
 
+    def test_strips_narrative_heading_prefix(self):
+        text = "MR. WHYMPER'S NARRATIVE We started from Zermatt at half past five."
+        assert cdq.clean_edges(text) == "We started from Zermatt at half past five."
+
 
 # ---------------------------------------------------------------------------
 # looks_fragment
@@ -144,3 +148,15 @@ class TestBestDisplayQuote:
         text, _, status = cdq.best_display_quote(row)
         assert status == "complete_sentence"
         assert abs(len(text) - 140) <= abs(len(short) - 140)
+
+    def test_strips_heading_from_context_sentence(self):
+        row = self._row(
+            quote_text="half past five, on a brilliant and perfectly cloudless morning.",
+            context_text="MR. WHYMPER'S NARRATIVE We started from Zermatt on the 13th of July, at half past five, on a brilliant and perfectly cloudless morning.",
+            matched_text="half past five",
+        )
+        text, is_frag, status = cdq.best_display_quote(row)
+        assert text.startswith("We started from Zermatt")
+        assert "WHYMPER'S NARRATIVE" not in text
+        assert is_frag is False
+        assert status == "complete_sentence"

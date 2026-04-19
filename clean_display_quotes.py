@@ -15,6 +15,10 @@ BASE_DIR = Path(__file__).resolve().parent
 TERMINAL_PUNCT = ".!?\"'”’)]"
 LEADING_JUNK = re.compile(r'^[\s\[\("“”‘’\-,:;]+')
 TRAILING_JUNK = re.compile(r'[\s\[\("“”‘’\-,:;]+$')
+HEADING_PREFIX = re.compile(
+    r"^(?:[A-Z][A-Z'.-]+(?:\s+[A-Z][A-Z'.-]+){0,5})\s+"
+    r"(?:NARRATIVE|CHAPTER|BOOK|PART|SCENE|LETTER|PREFACE|INTRODUCTION)\b\s*",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +46,7 @@ def clean_edges(text: str) -> str:
     text = LEADING_JUNK.sub("", text)
     text = TRAILING_JUNK.sub("", text)
     text = re.sub(r"\s+", " ", text).strip()
+    text = HEADING_PREFIX.sub("", text)
     return text
 
 
