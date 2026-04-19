@@ -25,13 +25,28 @@ SPECTRA6 = {
     "green": (0, 255, 0),
 }
 SPECTRA6_PALETTE = list(SPECTRA6.values())
-PAGE_BG = SPECTRA6["white"]
-TEXT = SPECTRA6["black"]
-SUBTLE = SPECTRA6["black"]
-FAINT = SPECTRA6["black"]
-ACCENT = SPECTRA6["red"]
-ORNAMENT = SPECTRA6["green"]
-SOURCE_BLUE = SPECTRA6["black"]
+THEMES = {
+    "default": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    "dark": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+}
 TOP_MARGIN = 12
 SIDE_MARGIN = 20
 
@@ -136,6 +151,12 @@ def parse_args() -> argparse.Namespace:
         choices=["production", "debug"],
         default="debug",
         help="Render mode. Production hides debug UI, debug shows bucket/quality/time metadata.",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=sorted(THEMES),
+        default="default",
+        help="Color theme to use when rendering.",
     )
     return parser.parse_args()
 
@@ -353,8 +374,9 @@ def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]
     return snapped
 
 
-def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug") -> Image.Image:
-    image = Image.new("RGB", (width, height), color=PAGE_BG)
+def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
+    colors = THEMES[theme]
+    image = Image.new("RGB", (width, height), color=colors["page_bg"])
     draw = ImageDraw.Draw(image)
 
     layout_name = choose_layout(quote_row["display_quote"])
@@ -398,9 +420,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     show_debug = mode == "debug"
     if show_debug:
-        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=SUBTLE)
+        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN), time_str, font=time_font, fill=colors["subtle"])
         subtitle = f"bucket {quote_row['resolved_bucket']}" if quote_row.get("used_fallback") else quote_row["bucket"]
-        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=FAINT)
+        draw_text(draw, (SIDE_MARGIN, TOP_MARGIN + 24), subtitle, font=debug_font, fill=colors["faint"])
 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
     mark_font = load_font(ORNAMENT_FONT_CANDIDATES, size=mark_size)
@@ -409,14 +431,22 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     open_h = open_bb[3] - open_bb[1]
     open_x = SIDE_MARGIN + 18
     open_y = quote_top - open_h // 3
-    draw_faux_gray_text(image, (open_x - open_bb[0], open_y - open_bb[1]), "“", font=mark_font, pattern_offset=(0, 0))
+    draw_faux_gray_text(
+        image,
+        (open_x - open_bb[0], open_y - open_bb[1]),
+        "“",
+        font=mark_font,
+        dark=colors["ornament_dark"],
+        light=colors["ornament_light"],
+        pattern_offset=(0, 0),
+    )
 
     y = quote_top
     for line in wrapped_quote:
         x = (width - layout["max_width"]) // 2
         for chunk, is_bold in line:
             font = quote_font_bold if is_bold else quote_font
-            fill = ACCENT if is_bold else TEXT
+            fill = colors["accent"] if is_bold else colors["text"]
             draw_text(draw, (x, y), chunk, font=font, fill=fill)
             bbox = draw.textbbox((0, 0), chunk, font=font)
             x += bbox[2] - bbox[0]
@@ -427,18 +457,26 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     close_h = close_bb[3] - close_bb[1]
     close_x = width - SIDE_MARGIN - 18 - close_w
     close_y = block_bottom - close_h * 2 // 3
-    draw_faux_gray_text(image, (close_x - close_bb[0], close_y - close_bb[1]), "”", font=mark_font, pattern_offset=(1, 0))
+    draw_faux_gray_text(
+        image,
+        (close_x - close_bb[0], close_y - close_bb[1]),
+        "”",
+        font=mark_font,
+        dark=colors["ornament_dark"],
+        light=colors["ornament_light"],
+        pattern_offset=(1, 0),
+    )
 
     y = quote_top + quote_block_height + layout["author_gap"]
     if author_lines:
         author_text_line = author_lines[0]
         author_x = (width - layout["max_width"]) // 2
-        draw_text(draw, (author_x, y), author_text_line, font=attribution_font, fill=TEXT)
+        draw_text(draw, (author_x, y), author_text_line, font=attribution_font, fill=colors["text"])
         y += author_size + layout["title_gap"]
 
     for line in title_lines:
         title_x = (width - layout["max_width"]) // 2
-        draw_text(draw, (title_x, y), line, font=attribution_title_font, fill=SOURCE_BLUE)
+        draw_text(draw, (title_x, y), line, font=attribution_title_font, fill=colors["source"])
         y += source_size + layout["title_gap"]
 
     if show_debug:
@@ -450,7 +488,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         footer_parts.append(f"shown {time_str}")
         footer = " • ".join(footer_parts)
         footer_width = draw.textbbox((0, 0), footer, font=debug_font)[2]
-        draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=FAINT)
+        draw_text(draw, (width - SIDE_MARGIN - footer_width, height - 24), footer, font=debug_font, fill=colors["faint"])
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
@@ -462,7 +500,7 @@ def main() -> int:
     if not output_path.is_absolute():
         output_path = BASE_DIR / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    image = render(args.time, quote_row, args.width, args.height, mode=args.mode)
+    image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
     image.save(output_path)
     print(output_path)
     return 0

@@ -66,6 +66,12 @@ def parse_args() -> argparse.Namespace:
         default="debug",
         help="Render mode passed through to render_quote.py",
     )
+    parser.add_argument(
+        "--theme",
+        choices=["default", "dark"],
+        default="default",
+        help="Render theme passed through to render_quote.py",
+    )
     return parser.parse_args()
 
 
@@ -77,7 +83,7 @@ def current_bucket() -> str:
     return bucket_for_time(current_time_str())
 
 
-def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug") -> None:
+def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug", theme: str = "default") -> None:
     time_str = current_time_str()
     python_executable = sys.executable
     render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
@@ -96,6 +102,8 @@ def render_now(render_script: str, output_path: str, width: int, height: int, di
             str(height),
             "--mode",
             mode,
+            "--theme",
+            theme,
         ]
     )
     _log(f"Rendered {time_str} -> {output_path_resolved}")
@@ -113,7 +121,7 @@ def main() -> int:
     output_target.expanduser().parent.mkdir(parents=True, exist_ok=True)
 
     if args.once:
-        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode)
+        render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme)
         return 0
 
     last_bucket = None
@@ -121,7 +129,7 @@ def main() -> int:
         bucket = current_bucket()
         if bucket != last_bucket:
             try:
-                render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode)
+                render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme)
                 last_bucket = bucket
             except Exception as exc:
                 # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,

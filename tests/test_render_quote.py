@@ -150,6 +150,16 @@ class TestSnapImageToPalette:
 # render — smoke test (no assertion on pixels, just that it completes)
 # ---------------------------------------------------------------------------
 
+class TestThemes:
+    def test_dark_theme_palette_values(self):
+        dark = rq.THEMES["dark"]
+        assert dark["page_bg"] == rq.SPECTRA6["black"]
+        assert dark["text"] == rq.SPECTRA6["white"]
+        assert dark["accent"] == rq.SPECTRA6["yellow"]
+        assert dark["ornament_dark"] == rq.SPECTRA6["black"]
+        assert dark["ornament_light"] == rq.SPECTRA6["white"]
+
+
 class TestRender:
     def _quote_row(self, text="It was three o'clock in the afternoon.", matched="three o'clock"):
         return {
@@ -171,6 +181,11 @@ class TestRender:
     def test_render_production_mode(self):
         row = self._quote_row()
         img = rq.render("03:00", row, 800, 480, mode="production")
+        assert img.size == (800, 480)
+
+    def test_render_dark_theme(self):
+        row = self._quote_row()
+        img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
         assert img.size == (800, 480)
 
     def test_render_with_fallback_flag(self):
@@ -197,3 +212,8 @@ class TestRender:
         palette = set(rq.SPECTRA6.values())
         pixels = set(img.convert("RGB").getdata())
         assert pixels.issubset(palette), f"Unexpected colors: {pixels - palette}"
+
+    def test_render_dark_theme_uses_black_background(self):
+        row = self._quote_row()
+        img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["black"]

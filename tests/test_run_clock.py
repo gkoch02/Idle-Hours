@@ -82,6 +82,20 @@ class TestRenderNow:
         assert "--mode" in cmd
         assert "production" in cmd
 
+    def test_theme_passed_through(self, tmp_path):
+        with patch("subprocess.check_call") as mock_call, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800,
+                height=480,
+                theme="dark",
+            )
+        cmd = mock_call.call_args[0][0]
+        assert "--theme" in cmd
+        assert "dark" in cmd
+
     def test_display_script_called_when_provided(self, tmp_path):
         calls = []
         with patch("subprocess.check_call", side_effect=lambda cmd: calls.append(cmd)), \
