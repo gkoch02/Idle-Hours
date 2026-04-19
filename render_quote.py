@@ -157,11 +157,22 @@ def parse_args() -> argparse.Namespace:
         default="default",
         help="Color theme to use when rendering.",
     )
+    parser.add_argument(
+        "--history-path",
+        default=pick_quote_module.DEFAULT_HISTORY_PATH,
+        help="Path to the anti-repeat display history JSONL. Pass an empty string to disable.",
+    )
+    parser.add_argument(
+        "--history-days",
+        type=int,
+        default=pick_quote_module.DEFAULT_HISTORY_DAYS,
+        help="Number of days of history to consider when filtering repeats. 0 disables.",
+    )
     return parser.parse_args()
 
 
-def pick_quote(time_str: str) -> dict:
-    return pick_quote_module.select_quote(time_str=time_str)
+def pick_quote(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> dict:
+    return pick_quote_module.select_quote(time_str=time_str, history_path=history_path, history_days=history_days)
 
 
 def load_font(candidates: list[str], size: int):
@@ -578,7 +589,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
 def main() -> int:
     args = parse_args()
-    quote_row = pick_quote(args.time)
+    quote_row = pick_quote(args.time, history_path=args.history_path, history_days=args.history_days)
     output_path = Path(args.output) if args.output else Path(f"output/render-{args.time.replace(':', '')}.png")
     if not output_path.is_absolute():
         output_path = BASE_DIR / output_path

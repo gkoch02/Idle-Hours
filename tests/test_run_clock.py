@@ -161,7 +161,7 @@ class TestMainLoopResilience:
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts: next(peek_ids)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
              patch("time.sleep", side_effect=stop_after_ticks):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
@@ -251,7 +251,7 @@ class TestLoopQuoteDedup:
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts: next(peek_iter)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
              patch("time.sleep", side_effect=stop_after_ticks):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
@@ -393,7 +393,7 @@ class TestQuietHours:
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
              patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _: next(peek_seq)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
              patch("time.sleep", side_effect=stop_after):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
@@ -429,7 +429,7 @@ class TestQuietHours:
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
              patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _: next(peek_seq)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
              patch("time.sleep", side_effect=stop_after):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
@@ -447,6 +447,209 @@ class TestQuietHours:
              patch("run_clock.current_time_str", return_value="12:00"):
             run_clock.main()
         assert mock_render.called
+
+
+class TestLedgerWrite:
+    """run_clock must append to the history ledger after a successful render."""
+
+    def test_once_appends_ledger_entry(self, tmp_path):
+        ledger = tmp_path / "history.jsonl"
+        argv = [
+            "run_clock.py", "--once",
+            "--output", str(tmp_path / "current.png"),
+            "--history-path", str(ledger),
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch(
+                 "run_clock.peek_quote_id",
+                 return_value=("src-42", 101, "quote text", "two thirty"),
+             ), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append:
+            run_clock.main()
+        mock_append.assert_called_once()
+        args, _kwargs = mock_append.call_args
+        assert args[0] == str(ledger)
+        assert args[1] == "src-42"
+        assert args[2] == 101
+
+    def test_once_no_append_when_peek_returns_none(self, tmp_path):
+        argv = [
+            "run_clock.py", "--once",
+            "--output", str(tmp_path / "current.png"),
+            "--history-path", str(tmp_path / "history.jsonl"),
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch("run_clock.peek_quote_id", return_value=None), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append:
+            run_clock.main()
+        mock_append.assert_not_called()
+
+    def test_once_empty_history_path_disables_append(self, tmp_path):
+        argv = [
+            "run_clock.py", "--once",
+            "--output", str(tmp_path / "current.png"),
+            "--history-path", "",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch(
+                 "run_clock.peek_quote_id",
+                 return_value=("src-42", 101, "quote text", "two thirty"),
+             ), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append:
+            run_clock.main()
+        # append_history is still called (to be safe), but with None as the path so it no-ops.
+        if mock_append.called:
+            assert mock_append.call_args[0][0] is None
+
+    def test_loop_appends_on_successful_render(self, tmp_path):
+        ledger = tmp_path / "history.jsonl"
+        buckets = ["h3_exact", "h3_five_past"]
+        peek_ids = [("src-1", 1, "q1", "mt1"), ("src-2", 2, "q2", "mt2")]
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        peek_iter = iter(peek_ids)
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--history-path", str(ledger),
+            "--quiet-off",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert mock_append.call_count == 2
+        first_call = mock_append.call_args_list[0][0]
+        assert first_call == (str(ledger), "src-1", 1)
+
+    def test_loop_no_append_during_quiet_hours(self, tmp_path):
+        """Quiet-hours entry shows the static image; no ledger write."""
+        src = tmp_path / "quiet.png"
+        src.write_bytes(b"\x89PNG")
+        time_strs = iter(["22:00", "22:05"])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--quiet-start", "22:00", "--quiet-end", "07:00",
+            "--quiet-image", str(src),
+            "--history-path", str(tmp_path / "history.jsonl"),
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock._display_quiet_image"), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        mock_append.assert_not_called()
+
+    def test_loop_no_append_on_render_failure(self, tmp_path):
+        """If render_now raises, the ledger must not grow."""
+        ledger = tmp_path / "history.jsonl"
+        buckets = ["h3_exact"]
+        peek_ids = iter([("src-1", 1, "q1", "mt1")])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 1:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--history-path", str(ledger),
+            "--quiet-off",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=RuntimeError("boom")), \
+             patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        mock_append.assert_not_called()
+
+    def test_loop_no_append_when_quote_unchanged(self, tmp_path):
+        """Dedup skip path must not append — no new render means no new entry."""
+        ledger = tmp_path / "history.jsonl"
+        buckets = ["h3_exact", "h3_five_past"]
+        # Same identity tuple across both ticks — dedup should trigger on tick 2.
+        peek_ids = iter([("src-1", 1, "q", "mt"), ("src-1", 1, "q", "mt")])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--history-path", str(ledger),
+            "--quiet-off",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        # Only the first render appends; second tick sees unchanged quote and skips.
+        assert mock_append.call_count == 1
+
+    def test_history_args_passed_to_render_subprocess(self, tmp_path):
+        """The --history-path and --history-days from run_clock must reach render_quote.py."""
+        argv = [
+            "run_clock.py", "--once",
+            "--output", str(tmp_path / "current.png"),
+            "--history-path", str(tmp_path / "history.jsonl"),
+            "--history-days", "14",
+        ]
+        with patch("sys.argv", argv), \
+             patch("subprocess.check_call") as mock_call, \
+             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch(
+                 "run_clock.peek_quote_id",
+                 return_value=("src-1", 1, "q", "mt"),
+             ), \
+             patch("run_clock.pick_quote_module.append_history"):
+            run_clock.main()
+        cmd = mock_call.call_args[0][0]
+        assert "--history-path" in cmd
+        assert str(tmp_path / "history.jsonl") in cmd
+        assert "--history-days" in cmd
+        assert "14" in cmd
 
 
 class TestDisplayQuietImage:

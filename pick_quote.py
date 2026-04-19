@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import random
 import sys
+from collections import Counter
 from pathlib import Path
 
 from buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
 from jsonl_io import iter_jsonl
+
+DEFAULT_HISTORY_PATH = "~/.litclock/history.jsonl"
+DEFAULT_HISTORY_DAYS = 7
 
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
@@ -90,6 +95,21 @@ def parse_args() -> argparse.Namespace:
         "--overrides",
         default="assets/selection_overrides.json",
         help="JSON overrides for manual boosts/bans/preferred bucket picks.",
+    )
+    parser.add_argument(
+        "--history-path",
+        default=DEFAULT_HISTORY_PATH,
+        help=(
+            "Path to the anti-repeat display history JSONL. "
+            "Recently-shown quotes are filtered out of the candidate pool. "
+            "Pass an empty string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--history-days",
+        type=int,
+        default=DEFAULT_HISTORY_DAYS,
+        help="Number of days of history to consider when filtering repeats. 0 disables the filter.",
     )
     return parser.parse_args()
 
@@ -211,7 +231,18 @@ def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) 
     return abs(requested_minute - quote_minute)
 
 
-def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None) -> tuple:
+def count_sources(rows: list[dict]) -> Counter:
+    return Counter(str(row.get("source_id")) for row in rows if row.get("source_id"))
+
+
+def source_rarity_penalty(row: dict, source_counts: Counter) -> int:
+    source_id = row.get("source_id")
+    if not source_id:
+        return 0
+    return source_counts.get(str(source_id), 0)
+
+
+def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None, source_counts: Counter | None = None) -> tuple:
     display = row.get("display_quote") or ""
     fragment_penalty = 1 if row.get("display_fragment") else 0
     cleanup_penalty = 0 if row.get("cleanup_status") == "complete_sentence" else 1
@@ -226,6 +257,7 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
     source_bonus = 0 if row.get("source_id") else 1
     quality_component = -(row.get("quality_score") or 0)
     minute_penalty = minute_distance_penalty(row, bucket, requested_time)
+    rarity_penalty = source_rarity_penalty(row, source_counts) if source_counts is not None else 0
     return (
         fragment_penalty,
         cleanup_penalty,
@@ -237,11 +269,81 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
         override_bonus(row, overrides, bucket),
         quality_component,
         length_penalty + exactness_bonus,
+        rarity_penalty,
         len(display),
     )
 
 
-def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overrides: dict, requested_time: str | None = None) -> tuple[dict, str]:
+def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
+    """Return the set of (source_id, line_number) tuples shown within the last ``days``.
+
+    Returns an empty set when the feature is disabled (``days <= 0`` or empty path)
+    or the ledger does not exist. Malformed lines are skipped silently.
+    Non-existent parent directories are treated as "no history yet" (empty set).
+    """
+    if not history_path or days <= 0:
+        return set()
+    path = Path(history_path).expanduser()
+    if not path.exists():
+        return set()
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
+    recent: set[tuple] = set()
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                ts = dt.datetime.fromisoformat(entry["ts"])
+            except (ValueError, KeyError, json.JSONDecodeError):
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=dt.timezone.utc)
+            if ts < cutoff:
+                continue
+            source_id = entry.get("source_id")
+            line_number = entry.get("line_number")
+            if source_id is None or line_number is None:
+                continue
+            recent.add((str(source_id), line_number))
+    return recent
+
+
+def append_history(history_path: str | None, source_id, line_number) -> None:
+    """Append one ledger entry. No-op if path is empty/None or required fields are missing."""
+    if not history_path or source_id is None or line_number is None:
+        return
+    path = Path(history_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "source_id": str(source_id),
+        "line_number": line_number,
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _row_history_key(row: dict) -> tuple | None:
+    source_id = row.get("source_id")
+    line_number = row.get("line_number")
+    if source_id is None or line_number is None:
+        return None
+    return (str(source_id), line_number)
+
+
+def pick_best(
+    rows: list[dict],
+    bucket: str,
+    seed: int,
+    min_quality: int,
+    overrides: dict,
+    requested_time: str | None = None,
+    recent_history: set[tuple] | None = None,
+) -> tuple[dict, str]:
+    source_counts = count_sources(rows)
+    recent = recent_history or set()
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
             row for row in rows
@@ -252,9 +354,13 @@ def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overri
         ]
         if not candidates:
             continue
-        candidates.sort(key=lambda row: score_row(row, candidate_bucket, overrides, requested_time))
-        top_score = score_row(candidates[0], candidate_bucket, overrides, requested_time)
-        top = [row for row in candidates if score_row(row, candidate_bucket, overrides, requested_time) == top_score]
+        # Strict fresh-first: exclude recently-shown rows. If that empties the pool,
+        # fall back to the full candidate list so a sparse bucket still renders.
+        fresh = [row for row in candidates if _row_history_key(row) not in recent] if recent else candidates
+        pool = fresh or candidates
+        pool.sort(key=lambda row: score_row(row, candidate_bucket, overrides, requested_time, source_counts))
+        top_score = score_row(pool[0], candidate_bucket, overrides, requested_time, source_counts)
+        top = [row for row in pool if score_row(row, candidate_bucket, overrides, requested_time, source_counts) == top_score]
         rng = random.Random(seed)
         return rng.choice(top), candidate_bucket
     raise SystemExit(f"No candidates found for bucket {bucket} or nearby buckets above quality {min_quality}")
@@ -267,6 +373,8 @@ def select_quote(
     overrides_path: str = "assets/selection_overrides.json",
     seed: int = 0,
     min_quality: int = 60,
+    history_path: str | None = None,
+    history_days: int = DEFAULT_HISTORY_DAYS,
 ) -> dict:
     """Pick the best quote for a time or bucket and return the result dict.
 
@@ -278,7 +386,8 @@ def select_quote(
     target_bucket = bucket or bucket_for_time(time_str)
     rows = load_rows(resolve_path(input_path))
     overrides = load_overrides(resolve_path(overrides_path))
-    best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str)
+    recent = load_recent_history(history_path, history_days)
+    best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str, recent)
     return {
         "requested_time": time_str,
         "bucket": target_bucket,
@@ -310,6 +419,8 @@ def main() -> int:
         overrides_path=args.overrides,
         seed=args.seed,
         min_quality=args.min_quality,
+        history_path=args.history_path,
+        history_days=args.history_days,
     )
     print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0

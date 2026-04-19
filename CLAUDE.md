@@ -249,6 +249,8 @@ Candidates in a bucket are ranked by a long lexicographic tuple (lower is better
                               # |len(display_quote) - 140| plus:
                               #   -2 for "five/ten minutes to" or "fifty-five minutes past"
                               #   -1 for "quarter"/"half" matches
+ source_rarity_penalty,       # count of this row's source_id in the full corpus;
+                              # ties between top-scored candidates go to rarer sources
  len(display_quote))          # final tiebreak
 ```
 
@@ -270,6 +272,21 @@ A small editable JSON doc consulted by `pick_quote.py` (its default `--overrides
 
 IDs are compared as strings. Edit this file rather than editing the scorer when you want to manually curate a specific bucket. `pick_quote.load_overrides` warns on stderr if any `preferred_buckets` key is not a valid `h{1..12}_{state}` bucket, so typos surface loudly instead of silently never firing.
 
+### Anti-Repeat History Ledger
+
+A display-history ledger filters recently-shown quotes out of the candidate pool so the clock doesn't replay the same line twice in the same week. Default path is `~/.litclock/history.jsonl`; default window is 7 days. One entry per successful render:
+
+```json
+{"ts": "2026-04-19T14:30:00+00:00", "source_id": "141", "line_number": 482}
+```
+
+`pick_quote.load_recent_history` reads the ledger, drops entries older than `--history-days`, and returns a set of `(source_id, line_number)` tuples. `pick_best` applies a strict fresh-first filter: rows whose key is in that set are excluded before scoring, and if the filter empties the candidate pool the full list is used so sparse buckets still render something. `pick_quote.append_history` writes one line per successful render.
+
+Disable the filter by passing `--history-path ""` or `--history-days 0`. `select_quote` (the library entry point) defaults to **disabled** so unit tests and one-off callers are not affected; `run_clock.py` and `pick_quote.py`'s CLI default to **enabled**. `run_clock.py`:
+- Calls `peek_quote_id` before `render_now` so the ledger snapshot both the peek and the subprocess see is identical (run_clock appends only after the subprocess returns 0).
+- Appends only after a successful render — never during quiet hours, never on failure, never when the dedup "quote unchanged" branch skips the redraw.
+- Forwards `--history-path` / `--history-days` to `render_quote.py` via subprocess args so both processes agree on which ledger to consult.
+
 ### Rendering (`render_quote.py`)
 
 Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out an 800×480 RGB PNG — no subprocess, no stdout-JSON contract. Key details:
@@ -290,6 +307,8 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it consider re-invoking `render_quote.py`. Before launching the renderer it calls `peek_quote_id` — which runs `pick_quote.select_quote` in-process and returns `(source_id, line_number, display_quote, matched_text)` — and compares that identity tuple against `last_quote_id`. `matched_text` is part of the identity because the renderer uses it to choose which phrase gets bolded/coloured, so two picks that share source/line/quote but differ in the matched phrase (e.g. `02:50` vs `02:55` landing on the same row) still produce visibly different frames and must not dedupe together. If the picked quote is unchanged, the redraw is skipped so the eInk panel is not refreshed for a visually-identical frame. Otherwise it re-renders and optionally hands the image to `--display-script` (e.g. `display_inky.py`). `--mode` and `--theme` are passed through to the renderer. `--once` renders a single frame unconditionally and exits — useful for cron, smoke tests, or first bring-up. In loop mode `render_now` and quiet-hours handling are wrapped in `try/except` with timestamped stderr logging so a transient failure (missing corpus row, Pillow blow-up, Inky disconnect) no longer kills the process — the loop just logs and waits for the next tick. `--once` stays strict so cron callers still fail loudly.
 
 **Quiet hours.** Defaults to 22:00–06:00 (`--quiet-start` / `--quiet-end`, validated as `HH:MM` at parse time and supporting overnight ranges where `start > end`). When the loop first enters the window it either copies `--quiet-image` (default `assets/goodnight.png`, a pre-rendered dark-theme "good night / sleep" frame) to the output path and pushes it to the display, or — if `--quiet-image ""` is passed — re-renders the start time via `render_quote.py`. It then sits idle, skipping picks and renders, until the window ends; on exit it clears the bucket/quote-id state so the next normal tick is guaranteed to repaint. `--quiet-off` disables the feature entirely for 24/7 operation.
+
+**Anti-repeat ledger.** After each successful render the loop appends `(timestamp, source_id, line_number)` to `--history-path` (default `~/.litclock/history.jsonl`, 7-day window via `--history-days`). The next `peek_quote_id` / `render_now` pair reads that ledger and filters out rows shown within the window, so the same quote is not repeated that week. The ledger write happens only after the render subprocess returns 0, so a crash mid-render leaves the ledger untouched; quiet-hours renders and dedup-skipped ticks also do not append. Pass `--history-path ""` or `--history-days 0` to disable.
 
 ### Inky Display Bridge (`display_inky.py`)
 
@@ -341,6 +360,8 @@ pi_setup_inky_impression.md        long-form Pi setup doc
 pyproject.toml                     project metadata + pytest / coverage / ruff configuration
 fonts/                             bundled Playfair Display family
 assets/candidates-attributed.jsonl shipped runtime quote corpus (pick_quote default --input)
+assets/bucket-coverage.md          committed snapshot of the current corpus's bucket coverage
+assets/bucket-coverage.json        machine-readable companion to bucket-coverage.md
 assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
 assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
 assets/preview.png                 README hero image

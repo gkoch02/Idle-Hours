@@ -182,7 +182,10 @@ def search_bucket(bucket: str, search_dir: Path) -> list[dict]:
 
 def main() -> int:
     args = parse_args()
-    coverage = json.loads((BASE_DIR / args.coverage_json).expanduser() if not Path(args.coverage_json).is_absolute() else Path(args.coverage_json).expanduser().read_text(encoding="utf-8"))
+    coverage_path = Path(args.coverage_json).expanduser()
+    if not coverage_path.is_absolute():
+        coverage_path = BASE_DIR / coverage_path
+    coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
     targets = expected_targets(coverage, args.max_buckets)
     search_dir = Path(args.search_dir).expanduser()
 
