@@ -472,14 +472,45 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     )
 
     y = quote_top
-    for line in wrapped_quote:
+    total_lines = len(wrapped_quote)
+    for line_index, line in enumerate(wrapped_quote):
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+
+        current_width = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            current_width += bbox[2] - bbox[0]
+
+        space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
+        is_last = line_index == total_lines - 1
+        slack = layout["max_width"] - current_width
+        space_bbox = draw.textbbox((0, 0), " ", font=quote_font)
+        normal_space_w = max(1, space_bbox[2] - space_bbox[0])
+
+        distribute = []
+        if not is_last and space_slots > 0 and 0 < slack <= normal_space_w * 2 * space_slots:
+            base = slack // space_slots
+            remainder = slack - base * space_slots
+            distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
+
         x = (width - layout["max_width"]) // 2
-        for chunk, is_bold in line:
+        space_idx = 0
+        for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
             draw_text(draw, (x, y), chunk, font=font, fill=fill)
             bbox = draw.textbbox((0, 0), chunk, font=font)
             x += bbox[2] - bbox[0]
+            if distribute and chunk == " ":
+                x += distribute[space_idx]
+                space_idx += 1
         y += line_height
 
     close_bb = draw.textbbox((0, 0), "”", font=mark_font)
