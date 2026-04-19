@@ -19,8 +19,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="Input JSONL corpus file")
     parser.add_argument(
         "--output",
-        default="output/candidates-attributed.jsonl",
-        help="Output JSONL path",
+        default="assets/candidates-attributed.jsonl",
+        help="Output JSONL path for the packaged runtime dataset",
     )
     parser.add_argument(
         "--gutenberg-dir",

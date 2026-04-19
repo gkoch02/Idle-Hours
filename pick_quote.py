@@ -63,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pick the best LitClock quote for a time.")
     parser.add_argument(
         "--input",
-        default="output/candidates-attributed.jsonl",
-        help="Attributed and quality-scored candidate JSONL file.",
+        default="assets/candidates-attributed.jsonl",
+        help="Attributed and quality-scored runtime candidate JSONL file.",
     )
     parser.add_argument(
         "--time",
@@ -263,7 +263,7 @@ def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overri
 def select_quote(
     time_str: str | None = None,
     bucket: str | None = None,
-    input_path: str = "output/candidates-attributed.jsonl",
+    input_path: str = "assets/candidates-attributed.jsonl",
     overrides_path: str = "selection_overrides.json",
     seed: int = 0,
     min_quality: int = 60,

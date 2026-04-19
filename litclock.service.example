@@ -8,7 +8,7 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/LitClock
 ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py --display-script display_inky.py --mode production
-# Uses the prebuilt runtime dataset in output/candidates-attributed.jsonl.
+# Uses the prebuilt runtime dataset in assets/candidates-attributed.jsonl.
 # Rebuilding corpus artifacts is a separate maintenance task, not part of service startup.
 Restart=always
 RestartSec=10
