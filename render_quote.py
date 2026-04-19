@@ -560,12 +560,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         label_x = width - SIDE_MARGIN - label_w
         label_y = 14
 
-        top_rule_y = label_y + label_h + 6
-        top_rule_left = max(SIDE_MARGIN, label_x - 24)
-        top_rule_right = width - SIDE_MARGIN
-        for x in range(top_rule_left, top_rule_right, 5):
-            draw.point((x, top_rule_y), fill=colors["accent"])
-
         draw_text(draw, (label_x, label_y), debug_label, font=debug_label_font, fill=colors["accent"])
 
         bucket_value = quote_row.get("bucket") or ""
