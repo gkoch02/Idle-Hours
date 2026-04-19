@@ -123,6 +123,16 @@ class TestResolveDisplayMatch:
         result = rq.resolve_display_match("Some text.", "")
         assert result == ""
 
+    def test_match_text_with_newline_normalizes_for_lookup(self):
+        text = "Do you think I should be standing here at five minutes to nine looking for it?"
+        result = rq.resolve_display_match(text, "five\nminutes to nine")
+        assert result.lower() == "five minutes to nine"
+
+    def test_display_text_with_underscore_emphasis_still_matches_time_phrase(self):
+        text = "I heard of it first about a quarter to nine when I went out to get my _Daily Chronicle_."
+        result = rq.resolve_display_match(rq.strip_underscore_emphasis(text), "quarter to nine")
+        assert result.lower() == "quarter to nine"
+
 
 # ---------------------------------------------------------------------------
 # tokenize_quote
@@ -161,6 +171,14 @@ class TestTokenizeQuote:
         )
         bold_parts = [t[0] for t in tokens if t[1]]
         assert bold_parts == ["quarter past six"]
+
+    def test_newline_in_matched_text_does_not_break_highlight(self):
+        tokens = rq.tokenize_quote(
+            "Do you think I should be standing here at five minutes to nine looking for it if I had it in my pocket all the while?",
+            "five\nminutes to nine",
+        )
+        bold_parts = [t[0] for t in tokens if t[1]]
+        assert bold_parts == ["five minutes to nine"]
 
 
 # ---------------------------------------------------------------------------
@@ -302,4 +320,20 @@ class TestRender:
         row["source_id"] = "119"
         row["source_path"] = "data/gutenberg/pg119.txt"
         img = rq.render("03:00", row, 800, 480, mode="production")
+        assert img.size == (800, 480)
+
+    def test_render_handles_newline_in_matched_text(self):
+        row = self._quote_row(
+            text="Do you think I should be standing here at five minutes to nine looking for it if I had it in my pocket all the while?",
+            matched="five\nminutes to nine",
+        )
+        img = rq.render("08:55", row, 800, 480, mode="debug")
+        assert img.size == (800, 480)
+
+    def test_render_handles_gutenberg_underscore_emphasis_without_crashing(self):
+        row = self._quote_row(
+            text="I heard of it first from my newspaper boy about a quarter to nine when I went out to get my _Daily Chronicle_.",
+            matched="quarter to nine",
+        )
+        img = rq.render("08:45", row, 800, 480, mode="debug")
         assert img.size == (800, 480)
