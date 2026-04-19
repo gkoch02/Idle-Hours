@@ -63,11 +63,25 @@ def _placeholder_tile(time_str: str, tile_w: int, tile_h: int, theme: str, messa
     return image
 
 
-def render_tile(time_str: str, tile_w: int, tile_h: int, theme: str, mode: str) -> Image.Image:
+def render_tile(
+    time_str: str,
+    tile_w: int,
+    tile_h: int,
+    theme: str,
+    mode: str,
+    rows: list[dict] | None = None,
+    overrides: dict | None = None,
+) -> Image.Image:
     """Render at native 800x480 then downscale; layout matches the real clock."""
     try:
         # history=disabled on purpose: the sheet is a full-corpus snapshot.
-        quote_row = pick_quote_module.select_quote(time_str=time_str, history_path=None, history_days=0)
+        quote_row = pick_quote_module.select_quote(
+            time_str=time_str,
+            history_path=None,
+            history_days=0,
+            rows=rows,
+            overrides=overrides,
+        )
     except SystemExit as exc:
         return _placeholder_tile(time_str, tile_w, tile_h, theme, str(exc))
     full = render_quote_module.render(time_str, quote_row, 800, 480, mode=mode, theme=theme)
@@ -82,11 +96,13 @@ def build_cell(
     caption_h: int,
     theme: str,
     mode: str,
+    rows: list[dict] | None = None,
+    overrides: dict | None = None,
 ) -> Image.Image:
     cell_h = tile_h + caption_h
     colors = render_quote_module.THEMES[theme]
     cell = Image.new("RGB", (tile_w, cell_h), color=colors["page_bg"])
-    tile = render_tile(time_str, tile_w, tile_h, theme, mode)
+    tile = render_tile(time_str, tile_w, tile_h, theme, mode, rows=rows, overrides=overrides)
     cell.paste(tile, (0, 0))
     if caption_h > 0:
         draw = ImageDraw.Draw(cell)
@@ -112,6 +128,9 @@ def build_sheet(
     sheet_h = ROWS * cell_h + (ROWS + 1) * margin
     colors = render_quote_module.THEMES[theme]
     sheet = Image.new("RGB", (sheet_w, sheet_h), color=colors["page_bg"])
+    # Load corpus + overrides once; 144 tiles would otherwise re-parse both per call.
+    rows = pick_quote_module.load_rows(pick_quote_module.resolve_path("assets/candidates-attributed.jsonl"))
+    overrides = pick_quote_module.load_overrides(pick_quote_module.resolve_path("assets/selection_overrides.json"))
     total = ROWS * COLS
     for row_idx, hour in enumerate(range(1, 13)):
         for col_idx, state in enumerate(BUCKET_ORDER):
@@ -119,7 +138,7 @@ def build_sheet(
             time_str = bucket_to_time(bucket)
             n = row_idx * COLS + col_idx + 1
             log(f"[{n:3d}/{total}] {bucket} -> {time_str}")
-            cell = build_cell(time_str, bucket, tile_w, tile_h, caption_h, theme, mode)
+            cell = build_cell(time_str, bucket, tile_w, tile_h, caption_h, theme, mode, rows=rows, overrides=overrides)
             x = margin + col_idx * (cell_w + margin)
             y = margin + row_idx * (cell_h + margin)
             sheet.paste(cell, (x, y))

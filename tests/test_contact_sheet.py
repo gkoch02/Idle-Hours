@@ -189,6 +189,43 @@ class TestBucketIteration:
         assert len(seen) == 144
         assert len(set(seen)) == 144
 
+    def test_corpus_is_loaded_only_once(self):
+        """Regression: 144 tiles must not each re-parse the JSONL + overrides."""
+        with patch("contact_sheet.pick_quote_module.load_rows", return_value=[]) as mock_rows, \
+             patch("contact_sheet.pick_quote_module.load_overrides", return_value={}) as mock_overrides, \
+             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+            contact_sheet.build_sheet(
+                tile_w=50, tile_h=30, caption_h=0, margin=0,
+                theme="default", mode="production",
+                log=lambda _msg: None,
+            )
+        assert mock_rows.call_count == 1
+        assert mock_overrides.call_count == 1
+
+    def test_preloaded_rows_are_passed_to_select_quote(self):
+        """build_sheet must thread pre-loaded rows/overrides into select_quote."""
+        preloaded_rows = [{"sentinel": "rows"}]
+        preloaded_overrides = {"sentinel": "overrides"}
+        captured: list[dict] = []
+
+        def capture(**kwargs):
+            captured.append(kwargs)
+            return _fake_select_quote(**kwargs)
+
+        with patch("contact_sheet.pick_quote_module.load_rows", return_value=preloaded_rows), \
+             patch("contact_sheet.pick_quote_module.load_overrides", return_value=preloaded_overrides), \
+             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("contact_sheet.pick_quote_module.select_quote", side_effect=capture):
+            contact_sheet.build_sheet(
+                tile_w=50, tile_h=30, caption_h=0, margin=0,
+                theme="default", mode="production",
+                log=lambda _msg: None,
+            )
+        assert len(captured) == 144
+        assert all(call.get("rows") is preloaded_rows for call in captured)
+        assert all(call.get("overrides") is preloaded_overrides for call in captured)
+
     @pytest.mark.parametrize("theme", ["default", "dark"])
     def test_theme_propagates(self, theme):
         seen_themes: list[str] = []
