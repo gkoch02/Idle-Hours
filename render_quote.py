@@ -183,6 +183,12 @@ def load_font(candidates: list[str], size: int):
     return ImageFont.load_default()
 
 
+def strip_underscore_emphasis(text: str) -> str:
+    if not text or "_" not in text:
+        return text or ""
+    return re.sub(r"(?<![A-Za-z0-9])_([^_\n]+?)_(?![A-Za-z0-9])", r"\1", text)
+
+
 def choose_layout(text: str) -> str:
     length = len((text or "").strip())
     if length <= 90:
@@ -414,13 +420,14 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     draw = ImageDraw.Draw(image)
 
-    layout_name = choose_layout(quote_row["display_quote"])
+    display_quote = strip_underscore_emphasis(quote_row["display_quote"])
+    layout_name = choose_layout(display_quote)
     layout = LAYOUTS[layout_name]
 
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
-        quote_row["display_quote"],
+        display_quote,
         quote_row.get("matched_text") or "",
         layout["max_width"],
         layout["quote_height"],

@@ -41,6 +41,28 @@ class TestChooseLayout:
 
 
 # ---------------------------------------------------------------------------
+# strip_underscore_emphasis
+# ---------------------------------------------------------------------------
+
+class TestStripUnderscoreEmphasis:
+    def test_removes_single_word_emphasis(self):
+        assert rq.strip_underscore_emphasis("my _Daily_ chronicle") == "my Daily chronicle"
+
+    def test_removes_multi_word_emphasis(self):
+        assert rq.strip_underscore_emphasis("my _Daily Chronicle_.") == "my Daily Chronicle."
+
+    def test_passes_through_plain_text(self):
+        assert rq.strip_underscore_emphasis("no markers here") == "no markers here"
+
+    def test_handles_empty_and_none(self):
+        assert rq.strip_underscore_emphasis("") == ""
+        assert rq.strip_underscore_emphasis(None) == ""
+
+    def test_preserves_intra_word_underscores(self):
+        assert rq.strip_underscore_emphasis("var_name stays") == "var_name stays"
+
+
+# ---------------------------------------------------------------------------
 # resolve_display_match
 # ---------------------------------------------------------------------------
 
