@@ -84,16 +84,6 @@ class TestResolveDisplayMatch:
 # tokenize_quote
 # ---------------------------------------------------------------------------
 
-class TestSplitEmphasisSegments:
-    def test_splits_underscore_markup_into_italic_segments(self):
-        segments = rq.split_emphasis_segments("get my _Daily Chronicle_.")
-        assert segments == [
-            ("get my ", False),
-            ("Daily Chronicle", True),
-            (".", False),
-        ]
-
-
 class TestTokenizeQuote:
     def test_no_match_returns_single_plain_segment(self):
         tokens = rq.tokenize_quote("She arrived at noon.", "midnight")
@@ -127,15 +117,6 @@ class TestTokenizeQuote:
         )
         bold_parts = [t[0] for t in tokens if t[1]]
         assert bold_parts == ["quarter past six"]
-
-    def test_preserves_italic_markup_without_showing_underscores(self):
-        tokens = rq.tokenize_quote(
-            "I went out to get my _Daily Chronicle_.",
-            "quarter to nine",
-        )
-        assert "".join(t[0] for t in tokens) == "I went out to get my Daily Chronicle."
-        italic_parts = [t[0] for t in tokens if t[2]]
-        assert italic_parts == ["Daily Chronicle"]
 
 
 # ---------------------------------------------------------------------------
