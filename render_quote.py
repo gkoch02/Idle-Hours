@@ -347,7 +347,7 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
         line_height = int(size * line_height_mult)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
-            return regular_font, bold_font, italic_font, wrapped, line_height, size
+            return regular_font, bold_font, wrapped, line_height, size
     regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=font_min)
     bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=font_min)
     italic_font = load_font(QUOTE_FONT_ITALIC_CANDIDATES, size=font_min)
