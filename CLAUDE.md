@@ -97,7 +97,7 @@ python3 fix_substring_time_matches.py output/candidates-quality.jsonl
 
 # Attach title/author from Gutenberg headers — produces the picker's default input
 python3 enrich_metadata.py output/candidates-quality.jsonl
-# → output/candidates-attributed.jsonl
+# → assets/candidates-attributed.jsonl
 ```
 
 ## Default paths
@@ -126,7 +126,7 @@ candidates-cleaned.jsonl
 candidates-quality.jsonl
   ↓ fix_substring_time_matches.py (in place)
   ↓ enrich_metadata.py
-candidates-attributed.jsonl    ← pick_quote.py --input default
+assets/candidates-attributed.jsonl    ← pick_quote.py --input default
   ↓ pick_quote.py
 JSON quote for requested time
   ↓ render_quote.py (imports pick_quote in-process)
@@ -220,11 +220,11 @@ Penalty reasons are appended to `quality_flags`. The score is floored at 0.
 
 ### Metadata Enrichment
 
-`enrich_metadata.py` walks each row's `source_id`, opens the cached `data/gutenberg/pg<id>.txt`, and scans the first 120 lines for `Title: ` and `Author: ` headers. Results are cached per `source_id` so each file is parsed once. Fills `title`/`author` only when missing — existing values on a row are preserved. Output: `output/candidates-attributed.jsonl`, which `pick_quote.py` consumes by default.
+`enrich_metadata.py` walks each row's `source_id`, opens the cached `data/gutenberg/pg<id>.txt`, and scans the first 120 lines for `Title: ` and `Author: ` headers. Results are cached per `source_id` so each file is parsed once. Fills `title`/`author` only when missing — existing values on a row are preserved. Output: `assets/candidates-attributed.jsonl`, which `pick_quote.py` consumes by default.
 
 ### Quote Selection (`pick_quote.py`)
 
-Default input: `output/candidates-attributed.jsonl`. Rows below `--min-quality` (default 60) are filtered out before scoring; banned `source_id`s (from `selection_overrides.json`) are dropped entirely.
+Default input: `assets/candidates-attributed.jsonl`. Rows below `--min-quality` (default 60) are filtered out before scoring; banned `source_id`s (from `selection_overrides.json`) are dropped entirely.
 
 Candidates in a bucket are ranked by a long lexicographic tuple (lower is better at every position):
 
@@ -330,8 +330,7 @@ pi_setup_inky_impression.md  long-form Pi setup doc
 pyproject.toml               project metadata + pytest / coverage / ruff configuration
 fonts/                       bundled Playfair Display family
 tests/                       pytest suite — one module per script + conftest.py
-output/                      JSONL pipeline artifacts + rendered PNGs
-research/output-archive/     historical pipeline outputs retained for reference
+output/                      runtime render target (output/current.png); gitignored except .gitkeep
 data/gutenberg/              cached Gutenberg text downloads (gitignored)
 .github/workflows/ci.yml     GitHub Actions CI (lint + test, Python 3.11 & 3.12)
 gutenberg_batch_ids.txt      batch list of Gutenberg IDs

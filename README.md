@@ -2,8 +2,6 @@
 
 LitClock is a literary clock built from public-domain text. It picks a time-matched quote, renders it as a designed image, and can display it on eInk hardware like the Pimoroni Inky Impression 7.3.
 
-![Current LitClock render preview](output/preview-current-design-v2.png)
-
 ## What it does
 
 - picks a quote for the current fuzzy time bucket
@@ -77,7 +75,6 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 For full Pi setup and appliance boot instructions, see:
 
 - [pi_setup_inky_impression.md](pi_setup_inky_impression.md)
-- [inky_impression_notes.md](inky_impression_notes.md)
 - [`litclock.service.example`](litclock.service.example)
 - [`bootstrap_pi_inky.sh`](bootstrap_pi_inky.sh)
 
@@ -107,9 +104,6 @@ For full Pi setup and appliance boot instructions, see:
 
 For mining/backfill work and corpus expansion notes, see:
 
-- [gutenberg_expansion_plan.md](gutenberg_expansion_plan.md)
-- `gutenberg_expansion_batch1.sh`
-- `gutenberg_expansion_batch2.sh`
 - `run_batch2.sh`
 
 ## Notes
