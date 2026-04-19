@@ -65,6 +65,10 @@ class TestCleanEdges:
         text = "MR. WHYMPER'S NARRATIVE We started from Zermatt at half past five."
         assert cdq.clean_edges(text) == "We started from Zermatt at half past five."
 
+    def test_strips_chapter_heading_and_all_caps_section_title(self):
+        text = "CHAPTER IV. IN WHICH PHILEAS FOGG ASTOUNDS PASSEPARTOUT, HIS SERVANT Having won twenty guineas at whist."
+        assert cdq.clean_edges(text) == "Having won twenty guineas at whist."
+
 
 # ---------------------------------------------------------------------------
 # looks_fragment
@@ -158,5 +162,18 @@ class TestBestDisplayQuote:
         text, is_frag, status = cdq.best_display_quote(row)
         assert text.startswith("We started from Zermatt")
         assert "WHYMPER'S NARRATIVE" not in text
+        assert is_frag is False
+        assert status == "complete_sentence"
+
+    def test_strips_chapter_heading_from_context_sentence(self):
+        row = self._row(
+            quote_text="Phileas Fogg, at twenty-five minutes past seven, left the Reform Club.",
+            context_text="CHAPTER IV. IN WHICH PHILEAS FOGG ASTOUNDS PASSEPARTOUT, HIS SERVANT Having won twenty guineas at whist, and taken leave of his friends, Phileas Fogg, at twenty-five minutes past seven, left the Reform Club.",
+            matched_text="twenty-five minutes past seven",
+        )
+        text, is_frag, status = cdq.best_display_quote(row)
+        assert text.startswith("Having won twenty guineas")
+        assert "CHAPTER IV" not in text
+        assert "IN WHICH PHILEAS FOGG ASTOUNDS PASSEPARTOUT" not in text
         assert is_frag is False
         assert status == "complete_sentence"

@@ -16,8 +16,17 @@ TERMINAL_PUNCT = ".!?\"'”’)]"
 LEADING_JUNK = re.compile(r'^[\s\[\("“”‘’\-,:;]+')
 TRAILING_JUNK = re.compile(r'[\s\[\("“”‘’\-,:;]+$')
 HEADING_PREFIX = re.compile(
-    r"^(?:[A-Z][A-Z'.-]+(?:\s+[A-Z][A-Z'.-]+){0,5})\s+"
-    r"(?:NARRATIVE|CHAPTER|BOOK|PART|SCENE|LETTER|PREFACE|INTRODUCTION)\b\s*",
+    r"^(?:"
+    r"(?:[A-Z][A-Z'.-]+(?:\s+[A-Z][A-Z'.-]+){0,5})\s+"
+    r"(?:NARRATIVE|CHAPTER|BOOK|PART|SCENE|LETTER|PREFACE|INTRODUCTION)\b"
+    r"|"
+    r"CHAPTER\s+[IVXLCDM0-9]+[.:]?"
+    r"(?:\s+IN\s+WHICH\s+[A-Z ,'-]+?(?=\s+[A-Z][a-z]))?"
+    r"|"
+    r"BOOK\s+[IVXLCDM0-9]+[.:]?"
+    r"|"
+    r"PART\s+[IVXLCDM0-9]+[.:]?"
+    r")\s*",
 )
 
 
@@ -46,7 +55,11 @@ def clean_edges(text: str) -> str:
     text = LEADING_JUNK.sub("", text)
     text = TRAILING_JUNK.sub("", text)
     text = re.sub(r"\s+", " ", text).strip()
-    text = HEADING_PREFIX.sub("", text)
+    while True:
+        stripped = HEADING_PREFIX.sub("", text).strip()
+        if stripped == text:
+            break
+        text = stripped
     return text
 
 
