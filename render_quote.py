@@ -431,6 +431,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     layout = LAYOUTS[layout_name]
 
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
+    debug_label_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=16)
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
         display_quote,
@@ -553,7 +554,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     if show_debug:
         debug_label = "DEBUG MODE"
-        label_bbox = draw.textbbox((0, 0), debug_label, font=debug_font)
+        label_bbox = draw.textbbox((0, 0), debug_label, font=debug_label_font)
         label_w = label_bbox[2] - label_bbox[0]
         label_h = label_bbox[3] - label_bbox[1]
         label_x = width - SIDE_MARGIN - label_w
@@ -563,9 +564,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         top_rule_left = max(SIDE_MARGIN, label_x - 24)
         top_rule_right = width - SIDE_MARGIN
         for x in range(top_rule_left, top_rule_right, 5):
-            draw.point((x, top_rule_y), fill=colors["faint"])
+            draw.point((x, top_rule_y), fill=colors["accent"])
 
-        draw_text(draw, (label_x, label_y), debug_label, font=debug_font, fill=colors["faint"])
+        draw_text(draw, (label_x, label_y), debug_label, font=debug_label_font, fill=colors["accent"])
 
         bucket_value = quote_row.get("bucket") or ""
         resolved = quote_row.get("resolved_bucket") or bucket_value
