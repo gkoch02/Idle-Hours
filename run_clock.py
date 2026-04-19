@@ -73,7 +73,22 @@ def parse_args() -> argparse.Namespace:
         default="default",
         help="Render theme passed through to render_quote.py",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--quiet-start",
+        metavar="HH:MM",
+        default=None,
+        help="Start of quiet window in 24-hour time, e.g. 22:00. Requires --quiet-end.",
+    )
+    parser.add_argument(
+        "--quiet-end",
+        metavar="HH:MM",
+        default=None,
+        help="End of quiet window in 24-hour time, e.g. 07:00. Requires --quiet-start.",
+    )
+    args = parser.parse_args()
+    if (args.quiet_start is None) != (args.quiet_end is None):
+        parser.error("--quiet-start and --quiet-end must be specified together")
+    return args
 
 
 def current_time_str() -> str:
@@ -82,6 +97,23 @@ def current_time_str() -> str:
 
 def current_bucket() -> str:
     return bucket_for_time(current_time_str())
+
+
+def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
+    """Return True if time_str falls within the [start, end) quiet window.
+
+    Handles overnight ranges (e.g. 22:00–07:00) where start > end.
+    Returns False when either bound is None (quiet hours disabled).
+    """
+    if start is None:
+        return False
+
+    def to_mins(t: str) -> int:
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+
+    cur, s, e = to_mins(time_str), to_mins(start), to_mins(end)
+    return (cur >= s or cur < e) if s > e else (s <= cur < e)
 
 
 def peek_quote_id(time_str: str) -> tuple | None:
@@ -153,11 +185,32 @@ def main() -> int:
 
     last_bucket = None
     last_quote_id = None
+    _was_quiet = False
     while True:
+        time_str = current_time_str()
+        now_quiet = in_quiet_hours(time_str, args.quiet_start, args.quiet_end)
+
+        if now_quiet:
+            if not _was_quiet:
+                _log(f"quiet hours start ({args.quiet_start}–{args.quiet_end}), rendering quiet-hours frame")
+                try:
+                    render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=args.quiet_start)
+                except Exception as exc:
+                    _log(f"quiet-hours render failed: {exc!r}", err=True)
+                    traceback.print_exc(file=sys.stderr)
+                _was_quiet = True
+            time.sleep(max(1, args.interval_seconds))
+            continue
+
+        if _was_quiet:
+            _log("quiet hours end, resuming normal render cycle")
+            last_bucket = None
+            last_quote_id = None
+            _was_quiet = False
+
         bucket = current_bucket()
         if bucket != last_bucket:
             try:
-                time_str = current_time_str()
                 quote_id = peek_quote_id(time_str)
                 if quote_id is not None and quote_id == last_quote_id:
                     _log(f"bucket {bucket}: quote unchanged, skipping redraw")
