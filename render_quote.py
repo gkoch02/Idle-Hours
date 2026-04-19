@@ -189,6 +189,12 @@ def strip_underscore_emphasis(text: str) -> str:
     return re.sub(r"(?<![A-Za-z0-9])_([^_\n]+?)_(?![A-Za-z0-9])", r"\1", text)
 
 
+def normalize_dashes(text: str) -> str:
+    if not text or "--" not in text:
+        return text or ""
+    return re.sub(r"(?<!-)--(?!-)", "\u2014", text)
+
+
 def choose_layout(text: str) -> str:
     length = len((text or "").strip())
     if length <= 90:
@@ -420,7 +426,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     draw = ImageDraw.Draw(image)
 
-    display_quote = strip_underscore_emphasis(quote_row["display_quote"])
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row["display_quote"]))
     layout_name = choose_layout(display_quote)
     layout = LAYOUTS[layout_name]
 
