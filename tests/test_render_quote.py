@@ -130,7 +130,7 @@ class TestResolveDisplayMatch:
 
     def test_display_text_with_underscore_emphasis_still_matches_time_phrase(self):
         text = "I heard of it first about a quarter to nine when I went out to get my _Daily Chronicle_."
-        result = rq.resolve_display_match(rq.strip_underscore_emphasis(text), "quarter to nine")
+        result = rq.resolve_display_match(text, "quarter to nine")
         assert result.lower() == "quarter to nine"
 
 
