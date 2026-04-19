@@ -1,0 +1,35 @@
+# Clock-precise authors curated to fill empty fuzzy buckets (mostly
+# twenty_*/ten_* minute-states in h3–h9). Run via run_dawn_expansion.sh
+# on a machine with network access to www.gutenberg.org.
+#
+# Dickens (chapter-dated scenes, struck-hour vocabulary)
+580
+766
+821
+883
+963
+967
+968
+700
+1023
+564
+# Conan Doyle (time-stamped deductions)
+221
+834
+2852
+3289
+8394
+# Brontë
+1260
+969
+# Wilkie Collins (clock-obsessed epistolary)
+583
+# Henry James
+209
+2833
+# George Eliot
+7469
+# Trollope (Barsetshire clock-precision)
+3746
+3790
+27680
