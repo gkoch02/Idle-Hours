@@ -330,8 +330,7 @@ pi_setup_inky_impression.md  long-form Pi setup doc
 pyproject.toml               project metadata + pytest / coverage / ruff configuration
 fonts/                       bundled Playfair Display family
 tests/                       pytest suite — one module per script + conftest.py
-output/                      JSONL pipeline artifacts + rendered PNGs
-research/output-archive/     historical pipeline outputs retained for reference
+output/                      runtime render target (output/current.png); gitignored except .gitkeep
 data/gutenberg/              cached Gutenberg text downloads (gitignored)
 .github/workflows/ci.yml     GitHub Actions CI (lint + test, Python 3.11 & 3.12)
 gutenberg_batch_ids.txt      batch list of Gutenberg IDs
