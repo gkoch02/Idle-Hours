@@ -491,11 +491,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
         is_last = line_index == total_lines - 1
         slack = layout["max_width"] - current_width
-        space_bbox = draw.textbbox((0, 0), " ", font=quote_font)
-        normal_space_w = max(1, space_bbox[2] - space_bbox[0])
 
         distribute = []
-        if not is_last and space_slots > 0 and 0 < slack <= normal_space_w * 2 * space_slots:
+        if not is_last and space_slots > 0 and slack > 0:
             base = slack // space_slots
             remainder = slack - base * space_slots
             distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
