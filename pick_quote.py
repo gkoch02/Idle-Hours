@@ -6,6 +6,7 @@ import argparse
 import json
 import random
 import sys
+from collections import Counter
 from pathlib import Path
 
 from buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
@@ -211,7 +212,18 @@ def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) 
     return abs(requested_minute - quote_minute)
 
 
-def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None) -> tuple:
+def count_sources(rows: list[dict]) -> Counter:
+    return Counter(str(row.get("source_id")) for row in rows if row.get("source_id"))
+
+
+def source_rarity_penalty(row: dict, source_counts: Counter) -> int:
+    source_id = row.get("source_id")
+    if not source_id:
+        return 0
+    return source_counts.get(str(source_id), 0)
+
+
+def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None, source_counts: Counter | None = None) -> tuple:
     display = row.get("display_quote") or ""
     fragment_penalty = 1 if row.get("display_fragment") else 0
     cleanup_penalty = 0 if row.get("cleanup_status") == "complete_sentence" else 1
@@ -226,6 +238,7 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
     source_bonus = 0 if row.get("source_id") else 1
     quality_component = -(row.get("quality_score") or 0)
     minute_penalty = minute_distance_penalty(row, bucket, requested_time)
+    rarity_penalty = source_rarity_penalty(row, source_counts) if source_counts is not None else 0
     return (
         fragment_penalty,
         cleanup_penalty,
@@ -237,11 +250,13 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
         override_bonus(row, overrides, bucket),
         quality_component,
         length_penalty + exactness_bonus,
+        rarity_penalty,
         len(display),
     )
 
 
 def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overrides: dict, requested_time: str | None = None) -> tuple[dict, str]:
+    source_counts = count_sources(rows)
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
             row for row in rows
@@ -252,9 +267,9 @@ def pick_best(rows: list[dict], bucket: str, seed: int, min_quality: int, overri
         ]
         if not candidates:
             continue
-        candidates.sort(key=lambda row: score_row(row, candidate_bucket, overrides, requested_time))
-        top_score = score_row(candidates[0], candidate_bucket, overrides, requested_time)
-        top = [row for row in candidates if score_row(row, candidate_bucket, overrides, requested_time) == top_score]
+        candidates.sort(key=lambda row: score_row(row, candidate_bucket, overrides, requested_time, source_counts))
+        top_score = score_row(candidates[0], candidate_bucket, overrides, requested_time, source_counts)
+        top = [row for row in candidates if score_row(row, candidate_bucket, overrides, requested_time, source_counts) == top_score]
         rng = random.Random(seed)
         return rng.choice(top), candidate_bucket
     raise SystemExit(f"No candidates found for bucket {bucket} or nearby buckets above quality {min_quality}")

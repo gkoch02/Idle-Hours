@@ -249,6 +249,8 @@ Candidates in a bucket are ranked by a long lexicographic tuple (lower is better
                               # |len(display_quote) - 140| plus:
                               #   -2 for "five/ten minutes to" or "fifty-five minutes past"
                               #   -1 for "quarter"/"half" matches
+ source_rarity_penalty,       # count of this row's source_id in the full corpus;
+                              # ties between top-scored candidates go to rarer sources
  len(display_quote))          # final tiebreak
 ```
 
@@ -341,6 +343,8 @@ pi_setup_inky_impression.md        long-form Pi setup doc
 pyproject.toml                     project metadata + pytest / coverage / ruff configuration
 fonts/                             bundled Playfair Display family
 assets/candidates-attributed.jsonl shipped runtime quote corpus (pick_quote default --input)
+assets/bucket-coverage.md          committed snapshot of the current corpus's bucket coverage
+assets/bucket-coverage.json        machine-readable companion to bucket-coverage.md
 assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
 assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
 assets/preview.png                 README hero image

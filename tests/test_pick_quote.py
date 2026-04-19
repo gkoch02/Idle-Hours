@@ -207,3 +207,41 @@ class TestPickBest:
                          display_quote="It was about ten past three.")]
         _, resolved = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
         assert resolved == "h3_ten_past"
+
+
+class TestSourceRarityTiebreak:
+    def _overrides(self):
+        return {"preferred_buckets": {}, "boost_source_ids": [], "ban_source_ids": []}
+
+    def test_rarer_source_wins_tie(self):
+        common = make_row(fuzzy_bucket="h3_exact", source_id="111", quality_score=80,
+                          display_quote="It was three o'clock in the hall.")
+        rare = make_row(fuzzy_bucket="h3_exact", source_id="999", quality_score=80,
+                        display_quote="It was three o'clock in the hall.")
+        # Pad the corpus with many rows from source 111 so it's heavily over-represented.
+        filler = [make_row(fuzzy_bucket="h5_exact", source_id="111", quality_score=50) for _ in range(20)]
+        rows = [common, rare, *filler]
+        best, _ = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides=self._overrides())
+        assert best["source_id"] == "999"
+
+    def test_rarity_penalty_is_cumulative_but_not_dominant(self):
+        # A rare-source row should still lose to a high-quality common-source row,
+        # because the rarity penalty is a tiebreak, not a primary ranking axis.
+        high_quality_common = make_row(fuzzy_bucket="h3_exact", source_id="111", quality_score=95,
+                                       display_quote="It was three o'clock in the hall.")
+        mediocre_rare = make_row(fuzzy_bucket="h3_exact", source_id="999", quality_score=65,
+                                 display_quote="It was three o'clock in the hall.")
+        filler = [make_row(fuzzy_bucket="h5_exact", source_id="111", quality_score=50) for _ in range(20)]
+        rows = [high_quality_common, mediocre_rare, *filler]
+        best, _ = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides=self._overrides())
+        assert best["source_id"] == "111"
+
+    def test_count_sources_ignores_rows_without_source_id(self):
+        rows = [
+            make_row(source_id="111"),
+            make_row(source_id="111"),
+            make_row(source_id=None),
+            make_row(source_id="222"),
+        ]
+        counts = pq.count_sources(rows)
+        assert counts == {"111": 2, "222": 1}
