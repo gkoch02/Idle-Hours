@@ -485,7 +485,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         slack = layout["max_width"] - current_width
 
         distribute = []
-        if not is_last and space_slots > 0 and slack > 0:
+        # Only full-justify when the line is at least 75% full; looser lines look
+        # worse justified than ragged-right due to excessive inter-word gaps.
+        if not is_last and space_slots > 0 and 0 < slack <= layout["max_width"] * 0.25:
             base = slack // space_slots
             remainder = slack - base * space_slots
             distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
