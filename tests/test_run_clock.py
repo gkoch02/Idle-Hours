@@ -380,6 +380,39 @@ class TestQuietHours:
         assert render_calls[0] == "22:00"
         assert render_calls[1] == "08:00"
 
+    def test_quiet_off_disables_quiet_hours(self, tmp_path):
+        """--quiet-off keeps the loop rendering even during the configured quiet window."""
+        render_calls = []
+
+        def fake_render(*args, **kwargs):
+            render_calls.append(kwargs.get("time_str"))
+
+        # Two ticks that would normally be inside the 22:00–06:00 window.
+        time_strs = iter(["23:00", "23:05"])
+        bucket_seq = iter(["h11_exact", "h11_five_past"])
+        peek_seq = iter([("id", 1, "q", "mt"), ("id", 2, "q2", "mt2")])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0", "--quiet-off",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _: next(peek_seq)), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        assert len(render_calls) == 2
+
     def test_once_ignores_quiet_hours(self, tmp_path):
         """--once renders immediately regardless of the quiet window."""
         argv = [

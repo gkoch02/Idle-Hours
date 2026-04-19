@@ -92,6 +92,11 @@ def parse_args() -> argparse.Namespace:
         default="assets/goodnight.png",
         help="PNG to display when quiet hours begin instead of rendering a corpus quote.",
     )
+    parser.add_argument(
+        "--quiet-off",
+        action="store_true",
+        help="Disable quiet hours entirely and render around the clock.",
+    )
     args = parser.parse_args()
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
@@ -207,7 +212,7 @@ def main() -> int:
     _was_quiet = False
     while True:
         time_str = current_time_str()
-        now_quiet = in_quiet_hours(time_str, args.quiet_start, args.quiet_end)
+        now_quiet = in_quiet_hours(time_str, None if args.quiet_off else args.quiet_start, args.quiet_end)
 
         if now_quiet:
             if not _was_quiet:
