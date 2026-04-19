@@ -217,12 +217,8 @@ TIME_PHRASE_PREFIXES = [
 ]
 
 
-def normalize_inline_whitespace(text: str) -> str:
-    return " ".join((text or "").split()).strip()
-
-
 def resolve_display_match(text: str, match_text: str) -> str:
-    normalized_match = normalize_inline_whitespace(match_text)
+    normalized_match = " ".join((match_text or "").split()).strip()
     if not normalized_match:
         return ""
 
@@ -243,7 +239,6 @@ def resolve_display_match(text: str, match_text: str) -> str:
 
 
 def split_emphasis_segments(text: str) -> list[tuple[str, bool]]:
-    text = normalize_inline_whitespace(text)
     segments: list[tuple[str, bool]] = []
     pos = 0
     for match in re.finditer(r"_([^_]+)_", text):
@@ -499,8 +494,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     y = quote_top
     for line in wrapped_quote:
-        actual_width = line_width(draw, line, quote_font, quote_font_bold, quote_font_italic)
-        x = max(SIDE_MARGIN + 18, (width - actual_width) // 2)
+        x = (width - layout["max_width"]) // 2
         for chunk, is_bold, is_italic in line:
             font = quote_font_bold if is_bold else quote_font_italic if is_italic else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
