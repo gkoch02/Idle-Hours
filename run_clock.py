@@ -85,13 +85,28 @@ def current_bucket() -> str:
 
 
 def peek_quote_id(time_str: str) -> tuple | None:
-    """Return a stable identity tuple for the quote pick_quote would return, or None on failure."""
+    """Return a stable identity tuple for the quote pick_quote would return, or None on failure.
+
+    ``matched_text`` is part of the identity because the renderer uses it to choose which
+    phrase is bolded and coloured. Two picks that share (source_id, line_number, display_quote)
+    but differ in matched_text (e.g. ``02:50`` vs ``02:55`` landing on the same row) still
+    produce visibly different frames, so they must not dedup together.
+
+    ``pick_quote.select_quote`` raises ``SystemExit`` when no candidate survives the quality
+    gate in the target bucket or its neighbours; we swallow that alongside ``Exception`` so
+    the runtime loop keeps ticking instead of aborting.
+    """
     try:
         row = pick_quote_module.select_quote(time_str=time_str)
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         _log(f"pick_quote failed for {time_str}: {exc!r}", err=True)
         return None
-    return (row.get("source_id"), row.get("line_number"), row.get("display_quote"))
+    return (
+        row.get("source_id"),
+        row.get("line_number"),
+        row.get("display_quote"),
+        row.get("matched_text"),
+    )
 
 
 def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug", theme: str = "default", time_str: str | None = None) -> None:

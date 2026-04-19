@@ -193,12 +193,38 @@ class TestPeekQuoteId:
     def test_returns_identity_tuple(self):
         with patch(
             "run_clock.pick_quote_module.select_quote",
-            return_value={"source_id": "141", "line_number": 482, "display_quote": "hello"},
+            return_value={
+                "source_id": "141",
+                "line_number": 482,
+                "display_quote": "hello",
+                "matched_text": "ten minutes to three",
+            },
         ):
-            assert run_clock.peek_quote_id("10:00") == ("141", 482, "hello")
+            assert run_clock.peek_quote_id("10:00") == ("141", 482, "hello", "ten minutes to three")
+
+    def test_identity_includes_matched_text(self):
+        # Two rows that share (source_id, line_number, display_quote) but differ in
+        # matched_text must NOT produce the same identity — the highlighted phrase differs
+        # on screen.
+        base = {"source_id": "6133", "line_number": 6906, "display_quote": "…"}
+        with patch("run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Ten minutes to three"}):
+            first = run_clock.peek_quote_id("02:50")
+        with patch("run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Five minutes to three"}):
+            second = run_clock.peek_quote_id("02:55")
+        assert first != second
 
     def test_returns_none_on_pick_failure(self, capsys):
         with patch("run_clock.pick_quote_module.select_quote", side_effect=RuntimeError("no corpus")):
+            assert run_clock.peek_quote_id("10:00") is None
+        assert "pick_quote failed" in capsys.readouterr().err
+
+    def test_returns_none_on_systemexit(self, capsys):
+        # pick_quote.pick_best raises SystemExit when no candidate clears the quality gate
+        # in the target bucket or its neighbours. The loop must survive that.
+        with patch(
+            "run_clock.pick_quote_module.select_quote",
+            side_effect=SystemExit("No candidates found"),
+        ):
             assert run_clock.peek_quote_id("10:00") is None
         assert "pick_quote failed" in capsys.readouterr().err
 
