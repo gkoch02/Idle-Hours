@@ -98,6 +98,12 @@ For full Pi setup and appliance boot instructions, see:
 - `bucket_coverage.py`
 - `fix_substring_time_matches.py`
 
+### Runtime data contract
+- The shipped runtime picker dataset is `output/candidates-attributed.jsonl`.
+- Normal Pi deployments should treat that file as a prebuilt artifact and use it directly.
+- `data/gutenberg/` exists to support corpus rebuilds and metadata regeneration, not because the render loop itself needs raw texts at runtime.
+- If you are only deploying or updating the clock, you should not need to rerun the enrichment pipeline on-device.
+
 For mining/backfill work and corpus expansion notes, see:
 
 - [gutenberg_expansion_plan.md](gutenberg_expansion_plan.md)
@@ -109,6 +115,7 @@ For mining/backfill work and corpus expansion notes, see:
 
 - The clock refreshes when the fuzzy bucket changes, not every minute.
 - The default picker uses the attributed dataset: `output/candidates-attributed.jsonl`.
+- Treat `output/candidates-attributed.jsonl` as the deployable runtime artifact.
 - Production mode hides debug metadata for a cleaner display.
 - The render pipeline now snaps output to the exact Spectra 6 palette, which materially improves color fidelity on hardware.
 - The current renderer is tuned specifically for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 panel.

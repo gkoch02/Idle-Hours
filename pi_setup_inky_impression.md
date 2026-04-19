@@ -17,6 +17,20 @@ python3 display_inky.py output/current.png
 python3 run_clock.py --display-script display_inky.py
 ```
 
+This works from the prebuilt runtime dataset already committed in the repo:
+- `output/candidates-attributed.jsonl`
+
+You do not need to rebuild corpus artifacts on the Pi just to run the clock.
+Only rerun the corpus pipeline when you are intentionally changing source data or quote selection behavior.
+
+```bash
+# optional maintenance-only rebuild path
+python3 clean_display_quotes.py output/candidates-merged.jsonl --output output/candidates-cleaned.jsonl
+python3 quality_filter.py output/candidates-cleaned.jsonl --output output/candidates-quality.jsonl
+python3 fix_substring_time_matches.py output/candidates-quality.jsonl --output output/candidates-quality.jsonl
+python3 enrich_metadata.py output/candidates-quality.jsonl --output output/candidates-attributed.jsonl
+```
+
 If the one-shot render and one-shot display both work, you can move on to making it a boot-time service.
 
 ### Optional: Run LitClock as an appliance at boot
