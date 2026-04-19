@@ -58,6 +58,10 @@ python3 render_quote.py --time 22:54
 python3 pick_quote.py --time 14:30
 python3 pick_quote.py --bucket h2_half_pastish
 
+# Render a 12x12 contact sheet of every fuzzy bucket for visual QA
+python3 contact_sheet.py --output output/contact-sheet.png
+python3 contact_sheet.py --theme dark --mode debug   # theme/mode flags flow through
+
 # Push a rendered PNG to the Inky panel (Pi only)
 python3 display_inky.py output/current.png
 ```
@@ -310,6 +314,10 @@ Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the 
 
 **Anti-repeat ledger.** After each successful render the loop appends `(timestamp, source_id, line_number)` to `--history-path` (default `~/.litclock/history.jsonl`, 7-day window via `--history-days`). The next `peek_quote_id` / `render_now` pair reads that ledger and filters out rows shown within the window, so the same quote is not repeated that week. The ledger write happens only after the render subprocess returns 0, so a crash mid-render leaves the ledger untouched; quiet-hours renders and dedup-skipped ticks also do not append. Pass `--history-path ""` or `--history-days 0` to disable.
 
+### Contact Sheet (`contact_sheet.py`)
+
+Offline QA tool. For each of the 144 `h{1..12}_{state}` buckets, calls `pick_quote.select_quote` at the bucket's canonical `HH:MM` (e.g. `h3_twenty_past` → `03:20`; `h12_*` maps to `00:MM`), renders the full 800×480 frame via `render_quote.render`, and downscales it into a tile on a 12×12 grid. Each tile gets a small `HH:MM  h{hour}_{state}` caption below so you can locate specific buckets at a glance. Flags: `--tile-width`/`--tile-height` (defaults 200×120), `--caption-height` (18), `--margin` (6), `--theme`, and `--mode` — defaults to `production` so the debug footer doesn't dominate small tiles. History filtering is forced off (snapshot of the whole corpus, not anti-repeated picks). Use this to spot regressions after a corpus change: layout bugs, malformed `matched_text`, repeat authors in adjacent buckets, or fallback-bucket frames that look visually wrong.
+
 ### Inky Display Bridge (`display_inky.py`)
 
 Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. Up to `MAX_ATTEMPTS` (3) calls are retried with `RETRY_BACKOFF_SECONDS = (1, 4)` between attempts so a momentary I/O hiccup doesn't crash the caller; if all attempts fail the script raises `SystemExit` so the loop in `run_clock.py` logs and moves on.
@@ -352,6 +360,7 @@ fix_substring_time_matches.py      repair substring-collision time tags
 enrich_metadata.py                 attach author/title from Gutenberg headers
 pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
+contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
 run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware)
 display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff)
 bootstrap_pi_inky.sh               first-time Pi setup helper
