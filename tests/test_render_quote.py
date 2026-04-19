@@ -174,6 +174,14 @@ class TestDebugQuoteId:
         assert rq.debug_quote_id({"source_path": "data/gutenberg/pg1661.txt"}) == "pg1661"
 
 
+class TestFallbackTitle:
+    def test_prefers_project_gutenberg_label_for_source_id(self):
+        assert rq.fallback_title({"source_id": "119"}) == "Project Gutenberg #119"
+
+    def test_falls_back_to_source_stem_without_source_id(self):
+        assert rq.fallback_title({"source_path": "data/gutenberg/pg1661.txt"}) == "pg1661"
+
+
 class TestThemes:
     def test_dark_theme_palette_values(self):
         dark = rq.THEMES["dark"]
@@ -242,3 +250,12 @@ class TestRender:
         row = self._quote_row()
         img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
         assert img.getpixel((0, 0)) == rq.SPECTRA6["black"]
+
+    def test_render_without_metadata_does_not_need_source_path_attribution(self):
+        row = self._quote_row()
+        row["author"] = None
+        row["title"] = None
+        row["source_id"] = "119"
+        row["source_path"] = "data/gutenberg/pg119.txt"
+        img = rq.render("03:00", row, 800, 480, mode="production")
+        assert img.size == (800, 480)

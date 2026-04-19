@@ -400,6 +400,16 @@ def debug_quote_id(quote_row: dict) -> str | None:
     return ":".join(parts) if parts else None
 
 
+def fallback_title(quote_row: dict) -> str | None:
+    source_id = quote_row.get("source_id")
+    if source_id:
+        return f"Project Gutenberg #{source_id}"
+    source_path = quote_row.get("source_path")
+    if source_path:
+        return Path(source_path).stem
+    return None
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
@@ -426,8 +436,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     attribution_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=author_size)
     attribution_title_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=source_size)
 
-    author_text = quote_row.get("author") or quote_row.get("source_id") or None
-    title_text = quote_row.get("title") or quote_row.get("source_path") or None
+    author_text = quote_row.get("author") or None
+    title_text = quote_row.get("title") or fallback_title(quote_row)
     author_lines = wrap_text(draw, author_text, attribution_font, width - 160)[:1] if author_text else []
     title_lines = wrap_text(draw, title_text, attribution_title_font, width - 200)[:2] if title_text else []
 
