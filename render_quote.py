@@ -210,16 +210,23 @@ TIME_PHRASE_PREFIXES = [
 
 def resolve_display_match(text: str, match_text: str) -> str:
     normalized_match = " ".join((match_text or "").split()).strip()
-    best_match = normalized_match
+    if not normalized_match:
+        return ""
+
+    direct = re.search(rf"(?<![A-Za-z0-9-]){re.escape(normalized_match)}(?![A-Za-z0-9-])", text, re.IGNORECASE)
+    if direct:
+        return direct.group(0)
 
     for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True):
+        if not normalized_match.lower().startswith(prefix):
+            continue
         pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(prefix)}(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9-])", re.IGNORECASE)
         for m in pattern.finditer(text):
             candidate = m.group(0).strip(" ,.;:!?")
-            if len(candidate) > len(best_match):
-                best_match = candidate
+            if candidate.lower().startswith(normalized_match.lower()):
+                return candidate
 
-    return best_match
+    return normalized_match
 
 
 def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:

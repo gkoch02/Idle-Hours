@@ -67,8 +67,13 @@ class TestResolveDisplayMatch:
 
     def test_prefers_longer_expansion(self):
         text = "It was ten minutes past five o'clock in the evening."
-        result = rq.resolve_display_match(text, "ten")
+        result = rq.resolve_display_match(text, "ten minutes past")
         assert len(result) >= len("ten minutes past five")
+
+    def test_does_not_switch_to_unrelated_longer_time_phrase(self):
+        text = "It was a quarter past six when we left Baker Street, and it still wanted ten minutes to the hour when we found ourselves in Serpentine Avenue."
+        result = rq.resolve_display_match(text, "quarter past six")
+        assert result.lower() == "quarter past six"
 
     def test_empty_match_text(self):
         result = rq.resolve_display_match("Some text.", "")
@@ -104,6 +109,14 @@ class TestTokenizeQuote:
         tokens = rq.tokenize_quote("It was THREE O'CLOCK.", "three o'clock")
         bold_parts = [t for t in tokens if t[1]]
         assert len(bold_parts) == 1
+
+    def test_prefers_actual_matched_phrase_when_multiple_time_phrases_exist(self):
+        tokens = rq.tokenize_quote(
+            "It was a quarter past six when we left Baker Street, and it still wanted ten minutes to the hour.",
+            "quarter past six",
+        )
+        bold_parts = [t[0] for t in tokens if t[1]]
+        assert bold_parts == ["quarter past six"]
 
 
 # ---------------------------------------------------------------------------
