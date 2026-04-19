@@ -77,19 +77,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--quiet-start",
         metavar="HH:MM",
-        default=None,
-        help="Start of quiet window in 24-hour time, e.g. 22:00. Requires --quiet-end.",
+        default="22:00",
+        help="Start of quiet window in 24-hour time (default: 22:00). Requires --quiet-end.",
     )
     parser.add_argument(
         "--quiet-end",
         metavar="HH:MM",
-        default=None,
-        help="End of quiet window in 24-hour time, e.g. 07:00. Requires --quiet-start.",
+        default="06:00",
+        help="End of quiet window in 24-hour time (default: 06:00). Requires --quiet-start.",
     )
     parser.add_argument(
         "--quiet-image",
         metavar="PATH",
-        default=None,
+        default="assets/goodnight.png",
         help="PNG to display when quiet hours begin instead of rendering a corpus quote.",
     )
     args = parser.parse_args()

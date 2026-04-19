@@ -329,7 +329,7 @@ class TestQuietHours:
         argv = [
             "run_clock.py", "--output", str(tmp_path / "current.png"),
             "--interval-seconds", "0",
-            "--quiet-start", "22:00", "--quiet-end", "07:00",
+            "--quiet-start", "22:00", "--quiet-end", "07:00", "--quiet-image", "",
         ]
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
@@ -364,7 +364,7 @@ class TestQuietHours:
         argv = [
             "run_clock.py", "--output", str(tmp_path / "current.png"),
             "--interval-seconds", "0",
-            "--quiet-start", "22:00", "--quiet-end", "07:00",
+            "--quiet-start", "22:00", "--quiet-end", "07:00", "--quiet-image", "",
         ]
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
