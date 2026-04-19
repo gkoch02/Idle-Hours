@@ -2,6 +2,8 @@
 
 LitClock is a literary clock built from public-domain text. It picks a time-matched quote, renders it as a designed image, and can display it on eInk hardware like the Pimoroni Inky Impression 7.3.
 
+![LitClock render preview](assets/preview.png)
+
 ## What it does
 
 - picks a quote for the current fuzzy time bucket

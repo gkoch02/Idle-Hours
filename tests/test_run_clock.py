@@ -154,9 +154,13 @@ class TestMainLoopResilience:
                 raise KeyboardInterrupt
 
         argv = ["run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0"]
+        # Return a distinct quote-identity per tick so the dedup path in main does not
+        # swallow the render call this test is measuring.
+        peek_ids = iter((f"id-{i}", i, f"q-{i}") for i in range(tick_count + 1))
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts: next(peek_ids)), \
              patch("time.sleep", side_effect=stop_after_ticks):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
@@ -183,3 +187,93 @@ class TestMainLoopResilience:
              patch("run_clock.render_now", side_effect=err):
             with pytest.raises(subprocess.CalledProcessError):
                 run_clock.main()
+
+
+class TestPeekQuoteId:
+    def test_returns_identity_tuple(self):
+        with patch(
+            "run_clock.pick_quote_module.select_quote",
+            return_value={
+                "source_id": "141",
+                "line_number": 482,
+                "display_quote": "hello",
+                "matched_text": "ten minutes to three",
+            },
+        ):
+            assert run_clock.peek_quote_id("10:00") == ("141", 482, "hello", "ten minutes to three")
+
+    def test_identity_includes_matched_text(self):
+        # Two rows that share (source_id, line_number, display_quote) but differ in
+        # matched_text must NOT produce the same identity — the highlighted phrase differs
+        # on screen.
+        base = {"source_id": "6133", "line_number": 6906, "display_quote": "…"}
+        with patch("run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Ten minutes to three"}):
+            first = run_clock.peek_quote_id("02:50")
+        with patch("run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Five minutes to three"}):
+            second = run_clock.peek_quote_id("02:55")
+        assert first != second
+
+    def test_returns_none_on_pick_failure(self, capsys):
+        with patch("run_clock.pick_quote_module.select_quote", side_effect=RuntimeError("no corpus")):
+            assert run_clock.peek_quote_id("10:00") is None
+        assert "pick_quote failed" in capsys.readouterr().err
+
+    def test_returns_none_on_systemexit(self, capsys):
+        # pick_quote.pick_best raises SystemExit when no candidate clears the quality gate
+        # in the target bucket or its neighbours. The loop must survive that.
+        with patch(
+            "run_clock.pick_quote_module.select_quote",
+            side_effect=SystemExit("No candidates found"),
+        ):
+            assert run_clock.peek_quote_id("10:00") is None
+        assert "pick_quote failed" in capsys.readouterr().err
+
+
+class TestLoopQuoteDedup:
+    """When the bucket changes but the picked quote doesn't, skip the redraw."""
+
+    def _drive(self, tmp_path, buckets, peek_ids, tick_count):
+        render_calls: list = []
+
+        def fake_render(*args, **kwargs):
+            render_calls.append((args, kwargs))
+
+        sleep_count = {"n": 0}
+
+        def stop_after_ticks(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= tick_count:
+                raise KeyboardInterrupt
+
+        peek_iter = iter(peek_ids)
+        argv = ["run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0"]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_bucket", side_effect=buckets), \
+             patch("run_clock.peek_quote_id", side_effect=lambda _ts: next(peek_iter)), \
+             patch("time.sleep", side_effect=stop_after_ticks):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        return render_calls
+
+    def test_bucket_change_same_quote_skips_render(self, tmp_path, capsys):
+        buckets = ["h3_exact", "h3_five_past", "h3_ten_past"]
+        peek_ids = [("141", 1, "q"), ("141", 1, "q"), ("141", 1, "q")]
+        calls = self._drive(tmp_path, buckets, peek_ids, tick_count=3)
+        # Only the first tick renders; subsequent ticks see unchanged quote and skip.
+        assert len(calls) == 1
+        assert "skipping redraw" in capsys.readouterr().out
+
+    def test_bucket_change_new_quote_triggers_render(self, tmp_path):
+        buckets = ["h3_exact", "h3_five_past", "h3_ten_past"]
+        peek_ids = [("141", 1, "a"), ("141", 2, "b"), ("141", 3, "c")]
+        calls = self._drive(tmp_path, buckets, peek_ids, tick_count=3)
+        assert len(calls) == 3
+
+    def test_pick_failure_does_not_block_render(self, tmp_path):
+        # peek returns None (pick failed); we should still try to render so the
+        # subprocess can surface its own error output.
+        buckets = ["h3_exact", "h3_five_past"]
+        peek_ids = [None, None]
+        calls = self._drive(tmp_path, buckets, peek_ids, tick_count=2)
+        assert len(calls) == 2
