@@ -22,6 +22,17 @@ def _log(msg: str, *, err: bool = False) -> None:
     print(f"[{dt.datetime.now().isoformat(timespec='seconds')}] {msg}", file=stream, flush=True)
 
 
+def _valid_hhmm(value: str) -> str:
+    parts = value.split(":")
+    try:
+        h, m = int(parts[0]), int(parts[1])
+        if not (len(parts) == 2 and 0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError
+    except (ValueError, IndexError):
+        raise argparse.ArgumentTypeError(f"{value!r} is not a valid HH:MM time (expected 00:00–23:59)")
+    return value
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the literary clock render loop.")
     parser.add_argument(
@@ -78,12 +89,14 @@ def parse_args() -> argparse.Namespace:
         "--quiet-start",
         metavar="HH:MM",
         default="22:00",
+        type=_valid_hhmm,
         help="Start of quiet window in 24-hour time (default: 22:00). Requires --quiet-end.",
     )
     parser.add_argument(
         "--quiet-end",
         metavar="HH:MM",
         default="06:00",
+        type=_valid_hhmm,
         help="End of quiet window in 24-hour time (default: 06:00). Requires --quiet-start.",
     )
     parser.add_argument(

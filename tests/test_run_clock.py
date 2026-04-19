@@ -1,6 +1,7 @@
 """Tests for run_clock.py"""
 from __future__ import annotations
 
+import argparse
 import subprocess
 from unittest.mock import patch
 
@@ -277,6 +278,28 @@ class TestLoopQuoteDedup:
         peek_ids = [None, None]
         calls = self._drive(tmp_path, buckets, peek_ids, tick_count=2)
         assert len(calls) == 2
+
+
+class TestValidHhmm:
+    def test_valid_times(self):
+        for t in ("00:00", "22:00", "06:00", "23:59", "12:30"):
+            assert run_clock._valid_hhmm(t) == t
+
+    def test_rejects_non_numeric(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("nope")
+
+    def test_rejects_out_of_range_hour(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("24:00")
+
+    def test_rejects_out_of_range_minute(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("12:60")
+
+    def test_rejects_missing_colon(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            run_clock._valid_hhmm("1200")
 
 
 class TestQuietHours:
