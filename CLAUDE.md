@@ -371,6 +371,7 @@ fonts/                             bundled Playfair Display family
 assets/candidates-attributed.jsonl shipped runtime quote corpus (pick_quote default --input)
 assets/bucket-coverage.md          committed snapshot of the current corpus's bucket coverage
 assets/bucket-coverage.json        machine-readable companion to bucket-coverage.md
+assets/contact-sheet.png           12×12 visual snapshot of every bucket's current pick (regenerate via contact_sheet.py)
 assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
 assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
 assets/preview.png                 README hero image
