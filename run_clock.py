@@ -10,6 +10,7 @@ import time
 import traceback
 from pathlib import Path
 
+import pick_quote as pick_quote_module
 from buckets import bucket_for_time
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -83,8 +84,19 @@ def current_bucket() -> str:
     return bucket_for_time(current_time_str())
 
 
-def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug", theme: str = "default") -> None:
-    time_str = current_time_str()
+def peek_quote_id(time_str: str) -> tuple | None:
+    """Return a stable identity tuple for the quote pick_quote would return, or None on failure."""
+    try:
+        row = pick_quote_module.select_quote(time_str=time_str)
+    except Exception as exc:
+        _log(f"pick_quote failed for {time_str}: {exc!r}", err=True)
+        return None
+    return (row.get("source_id"), row.get("line_number"), row.get("display_quote"))
+
+
+def render_now(render_script: str, output_path: str, width: int, height: int, display_script: str | None = None, mode: str = "debug", theme: str = "default", time_str: str | None = None) -> None:
+    if time_str is None:
+        time_str = current_time_str()
     python_executable = sys.executable
     render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
     output_path_resolved = str((BASE_DIR / output_path).resolve()) if not Path(output_path).is_absolute() else output_path
@@ -125,12 +137,21 @@ def main() -> int:
         return 0
 
     last_bucket = None
+    last_quote_id = None
     while True:
         bucket = current_bucket()
         if bucket != last_bucket:
             try:
-                render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme)
-                last_bucket = bucket
+                time_str = current_time_str()
+                quote_id = peek_quote_id(time_str)
+                if quote_id is not None and quote_id == last_quote_id:
+                    _log(f"bucket {bucket}: quote unchanged, skipping redraw")
+                    last_bucket = bucket
+                else:
+                    render_now(args.render_script, args.output, args.width, args.height, args.display_script, args.mode, args.theme, time_str=time_str)
+                    last_bucket = bucket
+                    if quote_id is not None:
+                        last_quote_id = quote_id
             except Exception as exc:
                 # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
                 # missing corpus row, etc.) does not kill the appliance. last_bucket stays
