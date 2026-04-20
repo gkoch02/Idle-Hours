@@ -16,6 +16,14 @@ from PIL import Image
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = (1, 4)  # sleeps between attempt 1→2 and 2→3
 
+# Per-theme saturation defaults. The Spectra 6 panel renders dark backgrounds with
+# a different waveform than light ones; pushing saturation slightly higher on the
+# dark theme keeps accent colours from looking muddy.
+THEME_SATURATION: dict[str, float] = {
+    "default": 0.5,
+    "dark": 0.7,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Display a rendered image on Inky Impression.")
@@ -23,10 +31,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--saturation",
         type=float,
-        default=0.5,
-        help="Saturation/quantization hint passed to Inky where supported.",
+        default=None,
+        help=(
+            "Saturation/quantization hint passed to Inky where supported. "
+            "Overrides the per-theme default if set."
+        ),
+    )
+    parser.add_argument(
+        "--theme",
+        choices=sorted(THEME_SATURATION),
+        default="default",
+        help="Theme being displayed; selects the default saturation when --saturation is unset.",
     )
     return parser.parse_args()
+
+
+def resolve_saturation(theme: str, override: float | None) -> float:
+    """Return the saturation value to push to the panel.
+
+    Explicit ``--saturation`` overrides the per-theme default. Unknown themes fall
+    back to the ``default`` theme's saturation.
+    """
+    if override is not None:
+        return override
+    return THEME_SATURATION.get(theme, THEME_SATURATION["default"])
 
 
 def _push_to_panel(image_path: Path, saturation: float) -> tuple[int, int]:
@@ -60,10 +88,11 @@ def main() -> int:
             f"Original error: {exc}"
         )
 
+    saturation = resolve_saturation(args.theme, args.saturation)
     last_error: Exception | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            width, height = _push_to_panel(image_path, args.saturation)
+            width, height = _push_to_panel(image_path, saturation)
         except Exception as exc:
             last_error = exc
             if attempt < MAX_ATTEMPTS:

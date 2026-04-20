@@ -14,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "ruff"]
-pi = ["inky"]
+pi = ["inky", "gpiozero"]
 
 [tool.setuptools]
 py-modules = [
@@ -26,7 +26,9 @@ py-modules = [
     "fix_substring_time_matches",
     "gutenberg_time_miner",
     "import_targeted_hits",
+    "inky_buttons",
     "jsonl_io",
+    "litclock_health",
     "merge_candidates",
     "pick_quote",
     "quality_filter",

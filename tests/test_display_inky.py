@@ -76,3 +76,46 @@ class TestRetry:
                 display_inky.main()
         assert push.call_count == 0
         assert "not found" in str(exc_info.value)
+
+
+class TestThemeSaturation:
+    def test_default_theme_uses_default_saturation(self):
+        assert display_inky.resolve_saturation("default", None) == display_inky.THEME_SATURATION["default"]
+
+    def test_dark_theme_uses_higher_saturation(self):
+        assert display_inky.resolve_saturation("dark", None) == display_inky.THEME_SATURATION["dark"]
+        assert display_inky.THEME_SATURATION["dark"] > display_inky.THEME_SATURATION["default"]
+
+    def test_explicit_override_wins_over_theme(self):
+        assert display_inky.resolve_saturation("dark", 0.25) == 0.25
+
+    def test_unknown_theme_falls_back_to_default(self):
+        assert display_inky.resolve_saturation("nope", None) == display_inky.THEME_SATURATION["default"]
+
+    def test_main_passes_theme_saturation_to_panel(self, fake_image):
+        captured: list[float] = []
+
+        def capture(image_path, saturation):
+            captured.append(saturation)
+            return (800, 480)
+
+        argv = ["display_inky.py", str(fake_image), "--theme", "dark"]
+        with patch("display_inky._push_to_panel", side_effect=capture), \
+             patch("sys.argv", argv), \
+             patch("time.sleep"):
+            display_inky.main()
+        assert captured == [display_inky.THEME_SATURATION["dark"]]
+
+    def test_explicit_saturation_overrides_theme(self, fake_image):
+        captured: list[float] = []
+
+        def capture(image_path, saturation):
+            captured.append(saturation)
+            return (800, 480)
+
+        argv = ["display_inky.py", str(fake_image), "--theme", "dark", "--saturation", "0.1"]
+        with patch("display_inky._push_to_panel", side_effect=capture), \
+             patch("sys.argv", argv), \
+             patch("time.sleep"):
+            display_inky.main()
+        assert captured == [0.1]
