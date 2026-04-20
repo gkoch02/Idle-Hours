@@ -1,6 +1,6 @@
 # Bucket Coverage Report
 
-- Total rows: **3055**
+- Total rows: **3053**
 - Expected buckets: **144**
 - Populated buckets: **122**
 - Empty buckets: **22**
@@ -26,7 +26,7 @@
 
 ## Sparse buckets (<=3 quotes)
 
-- `h2_twenty_five_to`: 1
+- `h12_twenty_past`: 1
 - `h3_ten_to`: 1
 - `h4_ten_to`: 1
 - `h4_twenty_five_to`: 1
@@ -35,6 +35,7 @@
 - `h6_twenty_to`: 1
 - `h7_ten_past`: 1
 - `h7_ten_to`: 1
+- `h7_twenty_past`: 1
 - `h9_five_past`: 1
 - `h9_quarter_past`: 1
 - `h9_twenty_five_to`: 1
@@ -45,13 +46,13 @@
 - `h11_twenty_five_past`: 2
 - `h11_twenty_to`: 2
 - `h12_quarter_past`: 2
-- `h12_twenty_past`: 2
 - `h1_five_past`: 2
 - `h1_quarter_past`: 2
 - `h1_ten_to`: 2
 - `h1_twenty_to`: 2
 - `h2_five_past`: 2
 - `h2_ten_past`: 2
+- `h2_twenty_five_to`: 2
 - `h3_quarter_past`: 2
 - `h4_five_past`: 2
 - `h4_twenty_five_past`: 2
@@ -60,7 +61,6 @@
 - `h6_ten_to`: 2
 - `h6_twenty_five_to`: 2
 - `h6_twenty_past`: 2
-- `h7_twenty_past`: 2
 - `h8_ten_past`: 2
 - `h8_twenty_five_to`: 2
 - `h8_twenty_past`: 2
@@ -75,7 +75,7 @@
 
 ## Daypart counts
 
-- `morning`: 1325
+- `morning`: 1323
 - `night`: 876
 - `dawn`: 456
 - `noon`: 289

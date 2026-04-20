@@ -142,9 +142,21 @@ python3 quality_filter.py output/candidates-cleaned.jsonl
 # (e.g. "five minutes past two" mis-captured inside "thirty-five minutes past two")
 python3 fix_substring_time_matches.py output/candidates-quality.jsonl
 
-# Attach title/author from Gutenberg headers — produces the picker's default input
+# Repair rows left tagged with legacy 8-state bucket names ("just_after",
+# "half_pastish", etc.) from the pre-buckets.py drift era; also normalises
+# embedded-newline matched_text back to a single clean phrase.
+python3 fix_legacy_buckets.py output/candidates-quality.jsonl
+
+# Attach title/author from Gutenberg headers
 python3 enrich_metadata.py output/candidates-quality.jsonl
 # → assets/candidates-attributed.jsonl
+
+# Final stage: layer durable hand-curated fixes from the sidecar on top.
+# No-op when the sidecar is empty; otherwise patches matching rows in place,
+# stamps override_applied=true, and re-derives fuzzy_bucket from any
+# time-affecting overrides. Warns on stderr for dangling keys.
+python3 apply_content_overrides.py assets/candidates-attributed.jsonl
+# → assets/candidates-attributed.jsonl (the picker's default input)
 ```
 
 ## Default paths
@@ -171,8 +183,11 @@ candidates-merged-plus-targeted.jsonl
 candidates-cleaned.jsonl
   ↓ quality_filter.py
 candidates-quality.jsonl
-  ↓ fix_substring_time_matches.py (in place)
+  ↓ fix_substring_time_matches.py (legacy; no-op on fresh harvests)
+  ↓ fix_legacy_buckets.py           (legacy; no-op on fresh harvests)
   ↓ enrich_metadata.py
+candidates-attributed.jsonl
+  ↓ apply_content_overrides.py (layer assets/content_overrides.json on top)
 assets/candidates-attributed.jsonl    ← pick_quote.py --input default
   ↓ pick_quote.py
 JSON quote for requested time
@@ -265,9 +280,34 @@ Penalty reasons are appended to `quality_flags`. The score is floored at 0.
 
 `fix_substring_time_matches.py` scans `display_quote` for the full pattern `<minute-word> minutes (past|to) <hour-word>`; if the row's stored `matched_text` is a strict substring of that longer phrase, the row's `matched_text`, `hour`, `minute`, `normalized_time`, and `fuzzy_bucket` are rewritten. Writes in-place by default (pass `--output` to redirect).
 
+### Legacy-Bucket Repair
+
+`fix_legacy_buckets.py` is the companion cleanup for rows tagged with the obsolete 8-state names (`just_after`, `early_past`, `quarter_pastish`, `half_pastish`, `late_past`, `just_before`, `quarter_toish`) harvested before `buckets.py` was extracted. For each such row with a valid `hour`/`minute`, it recomputes the canonical `h{hour}_{state}` bucket using the shared `minute_bucket` primitive (handling the top-of-hour rollover when `minute ≥ 58`). It also collapses runs of whitespace in `matched_text` back to a single space so phrases captured across a source line break (`"towards\ndusk"`) stay stored as a single clean phrase. `pick_quote.load_rows` already re-derives `fuzzy_bucket` from `normalized_time` so the stale values were not visibly broken at runtime, but storage should match the canonical schema so any future consumer reading `fuzzy_bucket` directly sees correct values and `merge_candidates` dedup keys stay stable. Writes in-place by default.
+
 ### Metadata Enrichment
 
-`enrich_metadata.py` walks each row's `source_id`, opens the cached `data/gutenberg/pg<id>.txt`, and scans the first 120 lines for `Title: ` and `Author: ` headers. Results are cached per `source_id` so each file is parsed once. Fills `title`/`author` only when missing — existing values on a row are preserved. Output: `assets/candidates-attributed.jsonl`, which `pick_quote.py` consumes by default.
+`enrich_metadata.py` walks each row's `source_id`, opens the cached `data/gutenberg/pg<id>.txt`, and scans the first 120 lines for `Title: ` and `Author: ` headers. Results are cached per `source_id` so each file is parsed once. Fills `title`/`author` only when missing — existing values on a row are preserved. Output: `assets/candidates-attributed.jsonl`, consumed by `apply_content_overrides.py` (the next stage) and then by `pick_quote.py`.
+
+### Content Overrides (`assets/content_overrides.json`)
+
+Per-row sidecar for durable hand-curated fixes, applied by `apply_content_overrides.py` as the final pipeline stage on top of `assets/candidates-attributed.jsonl`. Exists because earlier revisions accumulated growing repair scripts (`fix_substring_time_matches.py`, `fix_legacy_buckets.py`) that patched *derivable* artifacts in place — any subsequent miner re-run would silently clobber the patch, so the same display bug could resurrect later. The sidecar decouples hand curation from pipeline regeneration: the fix lives here, and every re-run of the pipeline ends by re-applying it.
+
+Keyed by `"<source_id>:<line_number>"` → partial row dict:
+
+```json
+{
+  "141:482":  {"display_quote": "…"},
+  "1342:99":  {"matched_text": "half past two", "normalized_time": "02:30"}
+}
+```
+
+Allowed override fields: `display_quote`, `matched_text`, `author`, `title`, `quality_score`, `hour`, `minute`, `normalized_time`. Unknown fields are ignored with a stderr warning. After patching, `fuzzy_bucket` is re-derived from the post-override `normalized_time` (and `normalized_time` itself is re-derived from `hour`/`minute` when those are overridden without an explicit `normalized_time`), so time-affecting overrides stay internally consistent. Patched rows are stamped `override_applied: true` for downstream debugging.
+
+`apply_content_overrides.apply_overrides` warns on stderr for **dangling keys** — sidecar entries that don't match any row in the input, typically caused by a typo or a row that later got dedup-dropped or filtered out. That's the intended replacement for *silent no-op* editing of `candidates-attributed.jsonl` by hand: fixes either apply (and are stamped) or loudly don't (and are logged).
+
+**Soft discipline:** if you find yourself overriding more than a handful of rows for the same reason, that's a signal the upstream stage has a bug — push the fix into the miner / cleaner / quality filter rather than accumulating per-row patches.
+
+**Legacy fix scripts.** `fix_substring_time_matches.py` and `fix_legacy_buckets.py` are retained as one-shot migration tools for corpus rows harvested by earlier miner revisions (the miner now collapses `matched_text` whitespace and the shared `buckets.py` prevents legacy 8-state names). Fresh mines should make them no-ops; see each script's docstring.
 
 ### Quote Selection (`pick_quote.py`)
 
@@ -455,8 +495,10 @@ target_sparse_buckets.py           targeted regex sweep for empty buckets
 import_targeted_hits.py            reshape targeted hits for merge
 clean_display_quotes.py            pick a displayable excerpt from each row
 quality_filter.py                  score + flag rows
-fix_substring_time_matches.py      repair substring-collision time tags
+fix_substring_time_matches.py      LEGACY migration tool — repair substring-collision time tags in pre-fix JSONL
+fix_legacy_buckets.py              LEGACY migration tool — repair pre-buckets.py legacy 8-state names + matched_text whitespace
 enrich_metadata.py                 attach author/title from Gutenberg headers
+apply_content_overrides.py         layer assets/content_overrides.json onto candidates-attributed.jsonl (final pipeline stage)
 pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
 contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
@@ -477,6 +519,7 @@ assets/bucket-coverage.md          committed snapshot of the current corpus's bu
 assets/bucket-coverage.json        machine-readable companion to bucket-coverage.md
 assets/contact-sheet.png           12×12 visual snapshot of every bucket's current pick (regenerate via contact_sheet.py)
 assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
+assets/content_overrides.json      per-row content fixes (apply_content_overrides default --overrides)
 assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
 assets/preview.png                 README hero image
 tests/                             pytest suite — one module per script + conftest.py

@@ -13,6 +13,29 @@ BASE_DIR = Path(__file__).resolve().parent
 
 HEADER_SCAN_LINES = 120
 
+# Gutenberg renders authors in Library-of-Congress form, which prepends lowercase
+# nobility titles to the name (e.g. "graf Leo Tolstoy" for Leo Tolstoy). Strip
+# them so the display metadata reads naturally.
+_LEADING_TITLE_PREFIXES = ("graf ",)
+
+# Exact-string fixups for Gutenberg headers that are malformed (duplicated
+# surname) or incomplete (missing first name) in ways no generic rule can
+# repair. Key = header as-written, value = preferred display form.
+_AUTHOR_FIXUPS = {
+    "Baroness Emmuska Orczy Orczy": "Baroness Emmuska Orczy",
+    "Mrs. Rowson": "Susanna Rowson",
+}
+
+
+def clean_author(author: str) -> str:
+    if author in _AUTHOR_FIXUPS:
+        return _AUTHOR_FIXUPS[author]
+    lowered = author.lower()
+    for prefix in _LEADING_TITLE_PREFIXES:
+        if lowered.startswith(prefix):
+            return author[len(prefix):].strip()
+    return author
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Add source metadata to corpus rows.")
@@ -40,7 +63,7 @@ def parse_header(path: Path) -> tuple[str | None, str | None]:
         if stripped.startswith("Title: ") and not title:
             title = stripped.replace("Title: ", "", 1).strip()
         elif stripped.startswith("Author: ") and not author:
-            author = stripped.replace("Author: ", "", 1).strip()
+            author = clean_author(stripped.replace("Author: ", "", 1).strip())
         if title and author:
             break
     return title, author

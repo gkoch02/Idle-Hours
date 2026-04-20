@@ -275,6 +275,15 @@ class TestCandidateFromMatch:
         assert c.hour == 9
         assert c.minute == 25
 
+    def test_matched_text_whitespace_collapsed_across_line_break(self):
+        # A time phrase split across a line break used to preserve the newline in
+        # matched_text; the miner now collapses internal whitespace so downstream
+        # consumers (render_quote, dedup) see a single clean phrase.
+        c = self._make("minutes_past_to", "Ten\nminutes past six she arrived.")
+        assert c is not None
+        assert c.matched_text == "Ten minutes past six"
+        assert "\n" not in c.matched_text
+
 
 # ---------------------------------------------------------------------------
 # iter_candidates — integration smoke test

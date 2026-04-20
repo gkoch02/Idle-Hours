@@ -1,5 +1,5 @@
 {
-  "ban_source_ids": [],
+  "ban_source_ids": ["48", "200"],
   "boost_source_ids": [],
   "preferred_buckets": {}
 }
