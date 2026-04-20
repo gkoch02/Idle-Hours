@@ -19,20 +19,19 @@ import argparse
 import json
 from pathlib import Path
 
-from buckets import BUCKET_ORDER, minute_bucket
+from buckets import BUCKET_ORDER, bucket_for_time
 from jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
 
 
 def canonical_bucket(hour: int, minute: int) -> str:
-    rounded = ((minute + 2) // 5) * 5
-    hour24 = hour
-    if rounded == 60:
-        rounded = 0
-        hour24 = (hour + 1) % 24
-    hour12 = hour24 % 12 or 12
-    return f"h{hour12}_{minute_bucket(minute)}"
+    """Canonical ``h{hour}_{state}`` bucket for a 24-hour ``(hour, minute)`` pair.
+
+    Delegates to :func:`buckets.bucket_for_time` so the rounding rule lives in
+    exactly one place (see the CLAUDE.md note about killing state-table drift).
+    """
+    return bucket_for_time(f"{hour:02d}:{minute:02d}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,7 +65,7 @@ def main() -> int:
                     bucket_fixes += 1
 
         matched_text = row.get("matched_text")
-        if matched_text and any(ch.isspace() and ch != " " for ch in matched_text):
+        if matched_text:
             normalised = " ".join(matched_text.split())
             if normalised != matched_text:
                 row["matched_text"] = normalised
