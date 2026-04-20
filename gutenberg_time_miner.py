@@ -350,7 +350,10 @@ def build_bucket(hour: int | None, minute: int | None, explicit_daypart: str | N
 
 def candidate_from_match(source_path: str, source_id: str | None, text: str, match_type: str, match: re.Match[str], context_chars: int) -> Candidate | None:
     groups = match.groupdict()
-    matched_text = match.group(0)
+    # Collapse any internal whitespace (e.g. a line break splitting "thirty-five\nminutes")
+    # so matched_text is always a single clean phrase. Previously handled post-hoc by
+    # fix_legacy_buckets.py.
+    matched_text = " ".join(match.group(0).split())
     hour: int | None = None
     minute: int | None = None
     explicit_daypart = groups.get("daypart")

@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Repair rows whose ``fuzzy_bucket`` uses legacy 8-state names.
 
-An earlier revision of the pipeline tagged rows with an obsolete set of state
-names (``just_after``, ``early_past``, ``quarter_pastish``, ``half_pastish``,
-``late_past``, ``just_before``, ``quarter_toish``). The shared ``buckets.py``
-module was extracted to stop new drift, but corpus rows harvested before the
-fix still carry the bad names and therefore never match any valid target
-bucket in ``pick_quote``. For each such row with a known ``hour`` and
-``minute``, recompute the canonical ``h{hour}_{state}`` bucket. Also
-normalises ``matched_text`` whitespace so quotes captured across a line break
-stay stored as a single clean phrase.
+LEGACY MIGRATION TOOL. Both classes of damage this script repairs are now
+prevented at the source: the shared ``buckets.py`` module means fresh mines
+cannot produce obsolete state names (``just_after``, ``early_past``,
+``quarter_pastish``, ``half_pastish``, ``late_past``, ``just_before``,
+``quarter_toish``), and ``gutenberg_time_miner.py`` now collapses whitespace
+in ``matched_text`` before writing the candidate row. This script is retained
+only to repair rows harvested by earlier revisions of the pipeline. New
+hand-curated content fixes should go in ``assets/content_overrides.json``
+(applied by ``apply_content_overrides.py``) so they survive pipeline re-runs.
+
+For each row with a known ``hour`` and ``minute`` whose ``fuzzy_bucket``
+carries a legacy state, recompute the canonical ``h{hour}_{state}`` bucket.
+Also normalises ``matched_text`` whitespace so quotes captured across a line
+break stay stored as a single clean phrase.
 
 Writes in-place by default (pass ``--output`` to redirect).
 """

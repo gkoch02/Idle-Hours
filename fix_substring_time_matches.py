@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Fix substring-collision time metadata like 'five minutes' inside 'thirty-five minutes'."""
+"""Fix substring-collision time metadata like 'five minutes' inside 'thirty-five minutes'.
+
+LEGACY MIGRATION TOOL. The current ``gutenberg_time_miner.py`` regex already
+captures the longest time phrase (regex alternation tries compound number
+forms like ``thirty-five`` before the bare ``five``), so fresh harvests should
+not produce substring-collision rows. This script is retained to repair rows
+harvested by earlier revisions of the miner. New hand-curated content fixes
+should go in ``assets/content_overrides.json`` (applied by
+``apply_content_overrides.py``) so they survive pipeline re-runs.
+"""
 from __future__ import annotations
 
 import argparse
