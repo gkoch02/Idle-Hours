@@ -182,6 +182,16 @@ chmod 640 ~/.litclock/web.token
 python3 run_clock.py --web-bind 0.0.0.0:8080 --web-token-file ~/.litclock/web.token
 ```
 
+The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. When you open it you get:
+
+- **Now showing** — live preview of `output/current.png`, the picked quote text, its attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
+- **Controls** — five buttons that mirror the physical Inky panel: `A · Skip`, `A-hold · Un-skip`, `B · Toggle theme`, `C · Re-render`, `D · Quiet / wake`. Each press returns `{ok: true}` or `{ok: false, error: "busy"}` and is appended to a small in-browser action log.
+- **Telemetry** — renders / errors / p50 / p95 latencies over the last 24h, reading the same date-rotated sidecar that `litclock_health.py` does.
+- **Coverage grid** — 144 bucket cells coloured by corpus depth (from `assets/bucket-coverage.json`); click-through feeds the inspector.
+- **Bucket inspector** — ranked candidate list for any bucket (or `HH:MM`), with every scorer component named so you can see *why* a different quote was not picked.
+- **Overrides editor** — edits `assets/selection_overrides.json` inline; the server validates and atomically rewrites the file, rejecting bad bucket keys with 400.
+- **History** — the anti-repeat ledger, newest first.
+
 The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, quiet, re-render, overrides save) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
 
 | Endpoint | Purpose |
@@ -377,6 +387,7 @@ That work is intentionally separate from the steady-state render loop.
 - Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
 - The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
 - If the Inky button listener dies mid-run (pin claim lost, background thread failed), the loop logs one loud warning plus a telemetry entry with `mode=buttons_dead` and stops retrying — restart the process to reclaim the pins.
+- The optional curator web UI (`--web-bind`) runs in-process on a daemon thread and shares the render lock with the button handlers; it's the safe remote alternative to SSHing in to tap the panel or edit `selection_overrides.json` by hand. LAN binds require `--web-token` / `--web-token-file`.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.
@@ -392,6 +403,7 @@ If the clock is behaving oddly, these are the first files to inspect:
 - button/long-press wiring -> `inky_buttons.py`
 - "which GPIO pin did that button actually fire?" -> `python3 probe_buttons.py` on the Pi
 - "is the appliance alive?" -> `python3 litclock_health.py --hours 24` (use `--json` from cron)
+- curator web UI / HTTP endpoints / overrides editor -> `web_server.py` + `web/` (enable with `--web-bind`)
 - telemetry log (one JSONL entry per render/error) -> `~/.litclock/telemetry.jsonl`
 - persisted manual theme / quiet override -> `~/.litclock/state.json`
 - anti-repeat ledger of recently-shown quotes -> `~/.litclock/history.jsonl`
