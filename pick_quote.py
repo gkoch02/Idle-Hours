@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import random
 import sys
 from collections import Counter
@@ -278,7 +279,9 @@ def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
     """Return the set of (source_id, line_number) tuples shown within the last ``days``.
 
     Returns an empty set when the feature is disabled (``days <= 0`` or empty path)
-    or the ledger does not exist. Malformed lines are skipped silently.
+    or the ledger does not exist. Malformed lines are skipped, and the first such
+    line per call is logged to stderr so corruption from a partial-write crash
+    surfaces instead of silently defeating the anti-repeat filter.
     Non-existent parent directories are treated as "no history yet" (empty set).
     """
     if not history_path or days <= 0:
@@ -288,6 +291,7 @@ def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
         return set()
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
     recent: set[tuple] = set()
+    warned = False
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
@@ -297,6 +301,14 @@ def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
                 entry = json.loads(line)
                 ts = dt.datetime.fromisoformat(entry["ts"])
             except (ValueError, KeyError, json.JSONDecodeError):
+                if not warned:
+                    print(
+                        f"history ledger {path}: malformed line skipped (corrupt or partial write); "
+                        f"subsequent bad lines in this read will be suppressed",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    warned = True
                 continue
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=dt.timezone.utc)
@@ -311,7 +323,16 @@ def load_recent_history(history_path: str | None, days: int) -> set[tuple]:
 
 
 def append_history(history_path: str | None, source_id, line_number) -> None:
-    """Append one ledger entry. No-op if path is empty/None or required fields are missing."""
+    """Append one ledger entry. No-op if path is empty/None or required fields are missing.
+
+    fsyncs before close so a power loss immediately after the call can't leave
+    the JSON line buffered in the kernel and lost. We keep the simple
+    append-only pattern (rather than tmp+rename) because the ledger is
+    append-heavy and read-tail-heavy; rewriting it on every entry would be
+    O(n) and defeat streaming reads. ``load_recent_history`` tolerates
+    (and warns about) half-written tails, so the worst case is one lost
+    entry instead of ledger-wide corruption.
+    """
     if not history_path or source_id is None or line_number is None:
         return
     path = Path(history_path).expanduser()
@@ -323,6 +344,8 @@ def append_history(history_path: str | None, source_id, line_number) -> None:
     }
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def remove_last_history_entry(history_path: str | None, source_id, line_number) -> bool:
