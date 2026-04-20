@@ -1572,3 +1572,73 @@ class TestStartupImage:
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert displayed == []
+
+
+class TestButtonRenderGate:
+    """Rapid presses must not queue behind an in-flight render.
+
+    The Spectra 6 refresh is 10–20 s per frame, so gpiozero's default
+    behavior (queue each press until the prior callback returns) makes the
+    clock feel unresponsive for up to a minute after a burst of taps. The
+    gate uses a non-blocking ``acquire`` so the first press wins and the
+    rest are logged and dropped.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="default",
+            history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="", shutdown_command="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_skip_dropped_when_render_lock_busy(self, tmp_path, capsys):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.render_lock.acquire()  # Simulate an in-flight render.
+        try:
+            with patch("run_clock.render_now") as mock_render, \
+                 patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+                 patch("run_clock.current_time_str", return_value="10:00"), \
+                 patch("run_clock.current_bucket", return_value="h10_exact"):
+                short, _hold = run_clock._build_button_handlers(args, state)
+                short["A"]()
+        finally:
+            state.render_lock.release()
+        assert not mock_render.called
+        assert "busy" in capsys.readouterr().out
+
+    def test_theme_dropped_when_render_lock_busy_leaves_state_untouched(self, tmp_path):
+        """A dropped press must not mutate persisted state — otherwise tapping
+        B during a render would silently flip manual_theme while the user sees
+        no change, and the next tick would re-render with a surprise theme."""
+        args = self._args(tmp_path, state_path=str(tmp_path / "state.json"))
+        state = run_clock.RuntimeState("default")
+        state.render_lock.acquire()
+        try:
+            with patch("run_clock.render_now"), \
+                 patch("run_clock.save_runtime_state") as mock_save, \
+                 patch("run_clock.current_time_str", return_value="10:00"):
+                short, _hold = run_clock._build_button_handlers(args, state)
+                short["B"]()
+        finally:
+            state.render_lock.release()
+        assert state.manual_theme is None
+        assert not mock_save.called
+
+    def test_release_is_released_even_if_handler_raises(self, tmp_path):
+        """Gate must release the lock on handler exception so subsequent presses work."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.peek_quote_id", side_effect=RuntimeError("boom")), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            short, _hold = run_clock._build_button_handlers(args, state)
+            short["A"]()  # Exception is caught by handler's try/except; gate must still release.
+        # Lock should be free now; acquiring non-blocking must succeed.
+        assert state.render_lock.acquire(blocking=False)
+        state.render_lock.release()
