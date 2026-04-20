@@ -155,3 +155,40 @@ class TestHoldDispatch:
         assert button.when_released is None
         button.when_pressed()
         assert short_calls == ["B"]
+
+
+class TestPressLogger:
+    """``press_logger`` fires on every hardware press regardless of short/long dispatch."""
+
+    def test_press_logger_fires_for_simple_button(self):
+        seen: list[tuple[str, int]] = []
+        buttons = inky_buttons.start_listener(
+            {"B": lambda: None},
+            press_logger=lambda label, pin: seen.append((label, pin)),
+        )
+        _button_for_label(buttons, "B").when_pressed()
+        assert seen == [("B", inky_buttons.BUTTON_GPIO["B"])]
+
+    def test_press_logger_fires_for_hold_enabled_button(self):
+        seen: list[tuple[str, int]] = []
+        buttons = inky_buttons.start_listener(
+            {"A": lambda: None},
+            hold_handlers={"A": lambda: None},
+            press_logger=lambda label, pin: seen.append((label, pin)),
+        )
+        _button_for_label(buttons, "A").when_pressed()
+        assert seen == [("A", inky_buttons.BUTTON_GPIO["A"])]
+
+    def test_press_logger_exception_does_not_suppress_handler(self):
+        """A broken press_logger must not prevent the real handler from running."""
+        fired: list[str] = []
+
+        def boom(label, pin):
+            raise RuntimeError("logger blew up")
+
+        buttons = inky_buttons.start_listener(
+            {"C": lambda: fired.append("C")},
+            press_logger=boom,
+        )
+        _button_for_label(buttons, "C").when_pressed()
+        assert fired == ["C"]

@@ -64,6 +64,7 @@ def start_listener(
     hold_handlers: Mapping[str, Callable[[], None]] | None = None,
     hold_time: float = DEFAULT_HOLD_SECONDS,
     bounce_time: float = DEBOUNCE_SECONDS,
+    press_logger: Callable[[str, int], None] | None = None,
 ) -> list:
     """Attach ``handlers[label]`` (short press) and optional ``hold_handlers[label]``
     (long press, ``hold_time`` seconds) to each Inky button.
@@ -75,6 +76,11 @@ def start_listener(
     dispatcher refs) so the caller can keep them alive for the lifetime of the
     process — ``gpiozero`` drops handlers when the ``Button`` is
     garbage-collected.
+
+    ``press_logger``, if provided, is called as ``press_logger(label, gpio_pin)``
+    on every hardware press — runs before the short/long dispatch and can't be
+    suppressed by handler exceptions. Use it to verify that a physical button
+    is actually wired to the expected GPIO pin before blaming the handler.
     """
     hold_handlers = dict(hold_handlers or {})
     labels = set(handlers) | set(hold_handlers)
@@ -90,19 +96,32 @@ def start_listener(
     for label in sorted(labels):
         short = handlers.get(label)
         long_ = hold_handlers.get(label)
+        pin = BUTTON_GPIO[label]
         button = Button(
-            BUTTON_GPIO[label],
+            pin,
             pull_up=True,
             bounce_time=bounce_time,
             hold_time=hold_time,
         )
+
+        def _make_press_cb(lbl: str, p: int, dispatch: Callable[[], None] | None):
+            def _cb() -> None:
+                if press_logger is not None:
+                    try:
+                        press_logger(lbl, p)
+                    except Exception:
+                        pass
+                if dispatch is not None:
+                    dispatch()
+            return _cb
+
         if long_ is None:
             # No hold handler: keep the simple press-fires-immediately path so
             # single-action buttons stay snappy.
-            button.when_pressed = short
+            button.when_pressed = _make_press_cb(label, pin, short)
         else:
             dispatcher = _HoldDispatcher(short, long_)
-            button.when_pressed = dispatcher.on_press
+            button.when_pressed = _make_press_cb(label, pin, dispatcher.on_press)
             button.when_held = dispatcher.on_hold
             button.when_released = dispatcher.on_release
             keepalive.append(dispatcher)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import json
 import shlex
@@ -445,31 +446,61 @@ def render_now(
         )
 
 
-def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
-               mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
-    """Render-and-push, holding the render lock so the main loop and button handlers don't collide.
+def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
+                     mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
+    """Core render-and-push. The caller MUST already hold ``state.render_lock``.
 
-    Updates ``state.last_bucket``/``last_quote_id``/``last_effective_theme`` to the values
-    actually rendered so the loop's next tick sees consistent state. The bucket is
-    derived from ``time_str`` rather than from a fresh wall-clock read so a handler
-    firing near a bucket boundary can't stamp the wrong bucket into state (which
-    would make the next loop tick wrongly skip the expected redraw).
+    Split out from :func:`_do_render` so a button handler can take the render
+    lock non-blocking via :func:`_button_render_gate`, hold it for the handler's
+    full duration (state mutations + render + display push), and drop follow-up
+    presses that land while a 10–20 s Spectra 6 refresh is still in flight
+    instead of queuing behind it.
     """
     effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
     actual_mode = mode or args.mode
     actual_bucket = bucket or bucket_for_time(time_str)
+    render_now(
+        args.render_script, args.output, args.width, args.height, args.display_script,
+        actual_mode, effective_theme, time_str=time_str,
+        history_path=history_path, history_days=args.history_days,
+        telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
+    )
+    with state.lock:
+        state.last_bucket = actual_bucket
+        state.last_effective_theme = effective_theme
+        if quote_id is not None:
+            state.last_quote_id = quote_id
+
+
+def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
+               mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
+    """Blocking render-and-push. Acquires ``state.render_lock`` and delegates to
+    :func:`_render_unlocked`. Used by the source-card restore timer (which must
+    not be dropped, or the card would stay up) and tests.
+    """
     with state.render_lock:
-        render_now(
-            args.render_script, args.output, args.width, args.height, args.display_script,
-            actual_mode, effective_theme, time_str=time_str,
-            history_path=history_path, history_days=args.history_days,
-            telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
-        )
-        with state.lock:
-            state.last_bucket = actual_bucket
-            state.last_effective_theme = effective_theme
-            if quote_id is not None:
-                state.last_quote_id = quote_id
+        _render_unlocked(args, state, time_str, history_path, mode=mode, bucket=bucket, quote_id=quote_id)
+
+
+@contextlib.contextmanager
+def _button_render_gate(state: RuntimeState, name: str):
+    """Try-acquire ``state.render_lock`` for a button handler.
+
+    Yields ``True`` if the lock was acquired (caller does its work; the gate
+    releases on exit) or ``False`` if a render is already in flight, in which
+    case the press is logged and dropped. This coalesces a rapid tap-tap-tap
+    down to "first wins, rest are no-ops" — without it, gpiozero queues
+    subsequent events behind the slow eInk refresh and the user sees
+    unpredictable multi-second delays.
+    """
+    if not state.render_lock.acquire(blocking=False):
+        _log(f"button {name}: busy (render in flight), press ignored")
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        state.render_lock.release()
 
 
 def _build_button_handlers(
@@ -489,26 +520,29 @@ def _build_button_handlers(
     telemetry_path = args.telemetry_path or None
 
     def on_skip() -> None:
-        _log("button A: skip")
-        try:
-            with state.lock:
-                previous = state.last_quote_id
-            if previous is not None:
-                # Ban the currently-shown quote so the next pick filters it out for the week.
-                with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, previous[0], previous[1])
+        with _button_render_gate(state, "A (skip)") as acquired:
+            if not acquired:
+                return
+            _log("button A: skip")
+            try:
                 with state.lock:
-                    # Remember what we just banned so A long-press can reverse it.
-                    state.last_skipped = previous
-            time_str = current_time_str()
-            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-            _do_render(args, state, time_str, history_path, quote_id=quote_id)
-            if quote_id is not None:
-                with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-        except Exception as exc:
-            _log(f"skip failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
+                    previous = state.last_quote_id
+                if previous is not None:
+                    # Ban the currently-shown quote so the next pick filters it out for the week.
+                    with state.ledger_lock:
+                        pick_quote_module.append_history(history_path, previous[0], previous[1])
+                    with state.lock:
+                        # Remember what we just banned so A long-press can reverse it.
+                        state.last_skipped = previous
+                time_str = current_time_str()
+                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+                if quote_id is not None:
+                    with state.ledger_lock:
+                        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+            except Exception as exc:
+                _log(f"skip failed: {exc!r}", err=True)
+                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
 
     def on_unskip() -> None:
         """Button A held 2s: reverse the most recent skip.
@@ -521,70 +555,80 @@ def _build_button_handlers(
         serialised against the main loop's ``append_history`` via
         ``state.ledger_lock`` so a concurrent append is not silently lost.
         """
-        _log("button A held: un-skip")
-        try:
-            with state.lock:
-                target = state.last_skipped
-                state.last_skipped = None
-            if target is None:
-                _log("un-skip: no recently-skipped quote recorded")
+        with _button_render_gate(state, "A (unskip)") as acquired:
+            if not acquired:
                 return
-            with state.ledger_lock:
-                removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
-            _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
-            time_str = current_time_str()
-            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-            _do_render(args, state, time_str, history_path, quote_id=quote_id)
-            if quote_id is not None:
+            _log("button A held: un-skip")
+            try:
+                with state.lock:
+                    target = state.last_skipped
+                    state.last_skipped = None
+                if target is None:
+                    _log("un-skip: no recently-skipped quote recorded")
+                    return
                 with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-        except Exception as exc:
-            _log(f"un-skip failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
+                    removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
+                _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
+                time_str = current_time_str()
+                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+                if quote_id is not None:
+                    with state.ledger_lock:
+                        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+            except Exception as exc:
+                _log(f"un-skip failed: {exc!r}", err=True)
+                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
 
     def on_toggle_theme() -> None:
-        try:
-            time_str = current_time_str()
-            with state.lock:
-                current = state.last_effective_theme or resolve_effective_theme(
-                    state.theme_arg, time_str, state.manual_theme,
-                )
-                state.manual_theme = "dark" if current == "default" else "default"
-                save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                quote_id = state.last_quote_id
-            _log(f"button B: theme -> {state.manual_theme}")
-            _do_render(args, state, time_str, history_path, quote_id=quote_id)
-        except Exception as exc:
-            _log(f"theme toggle failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "theme"})
+        with _button_render_gate(state, "B (theme)") as acquired:
+            if not acquired:
+                return
+            try:
+                time_str = current_time_str()
+                with state.lock:
+                    current = state.last_effective_theme or resolve_effective_theme(
+                        state.theme_arg, time_str, state.manual_theme,
+                    )
+                    state.manual_theme = "dark" if current == "default" else "default"
+                    save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                    quote_id = state.last_quote_id
+                _log(f"button B: theme -> {state.manual_theme}")
+                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            except Exception as exc:
+                _log(f"theme toggle failed: {exc!r}", err=True)
+                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "theme"})
 
     def on_source_card() -> None:
-        _log("button C: source card")
-        try:
-            time_str = current_time_str()
-            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-            _do_render(args, state, time_str, history_path, mode="card", quote_id=quote_id)
+        with _button_render_gate(state, "C (card)") as acquired:
+            if not acquired:
+                return
+            _log("button C: source card")
+            try:
+                time_str = current_time_str()
+                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                _render_unlocked(args, state, time_str, history_path, mode="card", quote_id=quote_id)
 
-            def restore() -> None:
-                # The card needs to come down at the 5-second mark — relying on the
-                # next loop tick would leave it up for up to --interval-seconds (60s
-                # default). Re-pick (the bucket may have moved during the 5s) and
-                # render the normal frame ourselves; render_lock serializes us
-                # against the loop.
-                try:
-                    rs_time = current_time_str()
-                    rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days)
-                    _do_render(args, state, rs_time, history_path, quote_id=rs_quote)
-                except Exception as restore_exc:
-                    _log(f"source card restore failed: {restore_exc!r}", err=True)
+                def restore() -> None:
+                    # The card needs to come down at the 5-second mark — relying on the
+                    # next loop tick would leave it up for up to --interval-seconds (60s
+                    # default). Re-pick (the bucket may have moved during the 5s) and
+                    # render the normal frame ourselves via the BLOCKING _do_render so
+                    # the card is guaranteed to be taken down even if another handler
+                    # has the render lock at the 5s mark.
+                    try:
+                        rs_time = current_time_str()
+                        rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days)
+                        _do_render(args, state, rs_time, history_path, quote_id=rs_quote)
+                    except Exception as restore_exc:
+                        _log(f"source card restore failed: {restore_exc!r}", err=True)
 
-            timer = threading.Timer(5.0, restore)
-            # Daemon so a pending restore doesn't block process exit on SIGTERM / KeyboardInterrupt.
-            timer.daemon = True
-            timer.start()
-        except Exception as exc:
-            _log(f"source card failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "card"})
+                timer = threading.Timer(5.0, restore)
+                # Daemon so a pending restore doesn't block process exit on SIGTERM / KeyboardInterrupt.
+                timer.daemon = True
+                timer.start()
+            except Exception as exc:
+                _log(f"source card failed: {exc!r}", err=True)
+                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "card"})
 
     def on_shutdown() -> None:
         """Button D held 2s: display the goodnight frame and invoke the shutdown command.
@@ -609,46 +653,50 @@ def _build_button_handlers(
         if not cmd:
             _log("button D held: --shutdown-command is empty, skipping system shutdown")
             return
-        _log("button D held: shutdown")
-        with state.lock:
-            state.manual_quiet = True
-            save_runtime_state(args.state_path, state.snapshot_for_persistence())
-        try:
-            if args.quiet_image:
-                with state.render_lock:
+        with _button_render_gate(state, "D (shutdown)") as acquired:
+            if not acquired:
+                return
+            _log("button D held: shutdown")
+            with state.lock:
+                state.manual_quiet = True
+                save_runtime_state(args.state_path, state.snapshot_for_persistence())
+            try:
+                if args.quiet_image:
                     _display_quiet_image(
                         args.quiet_image, args.output, args.display_script, reason="shutdown",
                     )
-        except Exception as exc:
-            _log(f"shutdown pre-frame failed: {exc!r}", err=True)
-        try:
-            subprocess.check_call(shlex.split(cmd))
-        except Exception as exc:
-            _log(f"shutdown command {cmd!r} failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "shutdown"})
+            except Exception as exc:
+                _log(f"shutdown pre-frame failed: {exc!r}", err=True)
+            try:
+                subprocess.check_call(shlex.split(cmd))
+            except Exception as exc:
+                _log(f"shutdown command {cmd!r} failed: {exc!r}", err=True)
+                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "shutdown"})
 
     def on_quiet_toggle() -> None:
-        try:
-            with state.lock:
-                state.manual_quiet = not state.manual_quiet
-                save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                state.last_bucket = None  # force the loop to repaint on exit
-                state.last_quote_id = None
-                # Snapshot inside the lock so a concurrent toggle can't flip the
-                # branch we take below.
-                quiet_now = state.manual_quiet
-            _log(f"button D: manual quiet -> {quiet_now}")
-            if quiet_now and args.quiet_image:
-                with state.render_lock:
+        with _button_render_gate(state, "D (quiet)") as acquired:
+            if not acquired:
+                return
+            try:
+                with state.lock:
+                    state.manual_quiet = not state.manual_quiet
+                    save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                    state.last_bucket = None  # force the loop to repaint on exit
+                    state.last_quote_id = None
+                    # Snapshot inside the lock so a concurrent toggle can't flip the
+                    # branch we take below.
+                    quiet_now = state.manual_quiet
+                _log(f"button D: manual quiet -> {quiet_now}")
+                if quiet_now and args.quiet_image:
                     _display_quiet_image(args.quiet_image, args.output, args.display_script)
-            elif not quiet_now:
-                # Wake to the current time so the user sees something immediately.
-                time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                _do_render(args, state, time_str, history_path, quote_id=quote_id)
-        except Exception as exc:
-            _log(f"quiet toggle failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "quiet"})
+                elif not quiet_now:
+                    # Wake to the current time so the user sees something immediately.
+                    time_str = current_time_str()
+                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                    _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            except Exception as exc:
+                _log(f"quiet toggle failed: {exc!r}", err=True)
+                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "quiet"})
 
     short_handlers = {
         "A": on_skip,
@@ -670,7 +718,13 @@ def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
     try:
         import inky_buttons
         short_handlers, hold_handlers = _build_button_handlers(args, state)
-        return inky_buttons.start_listener(short_handlers, hold_handlers=hold_handlers)
+
+        def _press_logger(label: str, pin: int) -> None:
+            _log(f"button {label} (GPIO {pin}): pressed")
+
+        return inky_buttons.start_listener(
+            short_handlers, hold_handlers=hold_handlers, press_logger=_press_logger,
+        )
     except Exception as exc:
         _log(f"button listener disabled ({exc!r}); pass --buttons-off to silence", err=True)
         return None
