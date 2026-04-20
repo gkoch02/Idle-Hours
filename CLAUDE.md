@@ -47,6 +47,17 @@ python3 run_clock.py --display-script display_inky.py --mode production
 # Dark theme (black background, white text, yellow accent) — both CLIs accept --theme
 python3 run_clock.py --display-script display_inky.py --theme dark
 
+# Auto theme: dark between 18:00–06:00, default otherwise
+# (button B toggles manually and overrides 'auto' until midnight)
+python3 run_clock.py --display-script display_inky.py --theme auto
+
+# Disable the Inky button listener (use on dev machines / headless smoke tests)
+python3 run_clock.py --buttons-off
+
+# Persisted runtime state (manual theme + manual quiet override) and telemetry sidecar
+python3 run_clock.py --state-path ~/.litclock/state.json --telemetry-path ~/.litclock/telemetry.jsonl
+python3 litclock_health.py --hours 24      # summary: render count, error count, p50/p95 latency
+
 # Disable the default quiet-hours blackout (defaults 22:00–06:00, shows assets/goodnight.png)
 python3 run_clock.py --quiet-off
 python3 run_clock.py --quiet-start 23:30 --quiet-end 07:00 --quiet-image assets/goodnight.png
@@ -314,13 +325,30 @@ Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the 
 
 **Anti-repeat ledger.** After each successful render the loop appends `(timestamp, source_id, line_number)` to `--history-path` (default `~/.litclock/history.jsonl`, 7-day window via `--history-days`). The next `peek_quote_id` / `render_now` pair reads that ledger and filters out rows shown within the window, so the same quote is not repeated that week. The ledger write happens only after the render subprocess returns 0, so a crash mid-render leaves the ledger untouched; quiet-hours renders and dedup-skipped ticks also do not append. Pass `--history-path ""` or `--history-days 0` to disable.
 
+**Auto-dark theme (`--theme auto`).** Picks `dark` between 18:00 and 06:00 (`AUTO_DARK_START_HOUR` / `AUTO_DARK_END_HOUR`) and `default` otherwise. Each tick re-derives the effective theme from the wall clock; a theme change is treated like a bucket change (forces a redraw even if the picked quote is unchanged). The button-B manual toggle wins until the next midnight rollover, when `_maybe_reset_manual_theme_at_midnight` clears it so `auto` resumes.
+
+**Inky buttons (`inky_buttons.py`).** The four capacitive buttons on the Inky Impression are wired to GPIO 5/6/16/24 (labels A/B/C/D) and dispatched by `inky_buttons.start_listener({label: callable})` using `gpiozero.Button` with a 0.3-second debounce. The hardware import is local to `start_listener` so the module is import-safe on dev hosts. `run_clock.py` builds the handler dict in `_build_button_handlers` and stashes the returned `Button` list in a local for the lifetime of the loop — `gpiozero` drops handlers when its `Button` is garbage-collected, so the reference must be held. Handlers act synchronously in the listener thread and serialize against the main loop via `state.render_lock`; mutations of theme/quiet flags are guarded by `state.lock`. Pass `--buttons-off` on dev machines or for headless runs.
+
+| Button | Action |
+|---|---|
+| **A** | Skip — bans the current quote in the history ledger, picks again, re-renders. |
+| **B** | Toggle theme — flips default ↔ dark, persists to `--state-path`, re-renders. |
+| **C** | Source card — renders a `--mode card` overlay (title / author / Gutenberg ID / matched phrase) for 5 seconds, then the timer thread itself re-renders the original frame (the next loop tick alone could be up to 60s away). |
+| **D** | Quiet now / wake — toggles `manual_quiet`, persists to `--state-path`. Going quiet pushes `--quiet-image` immediately; going active picks and renders the current time. |
+
+**Persisted runtime state (`--state-path`).** `~/.litclock/state.json` (default) holds `manual_theme` and `manual_quiet`. Loaded at loop startup so the user's last button-B / button-D choices survive a restart. Pass an empty string to disable.
+
+**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) gets one JSONL entry per successful render (`bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`) and one per loop-level error (`bucket`, `error`, `mode`). `litclock_health.py` summarises the last N hours: render count, error count, p50/p95 latency, last error message. Designed for "is the appliance healthy?" diagnosis without `journalctl` spelunking. Pass an empty string to disable.
+
 ### Contact Sheet (`contact_sheet.py`)
 
 Offline QA tool. For each of the 144 `h{1..12}_{state}` buckets, calls `pick_quote.select_quote` at the bucket's canonical `HH:MM` (e.g. `h3_twenty_past` → `03:20`; `h12_*` maps to `00:MM`), renders the full 800×480 frame via `render_quote.render`, and downscales it into a tile on a 12×12 grid. Each tile gets a small `HH:MM  h{hour}_{state}` caption below so you can locate specific buckets at a glance. Flags: `--tile-width`/`--tile-height` (defaults 200×120), `--caption-height` (18), `--margin` (6), `--theme`, and `--mode` — defaults to `production` so the debug footer doesn't dominate small tiles. History filtering is forced off (snapshot of the whole corpus, not anti-repeated picks). Use this to spot regressions after a corpus change: layout bugs, malformed `matched_text`, repeat authors in adjacent buckets, or fallback-bucket frames that look visually wrong.
 
 ### Inky Display Bridge (`display_inky.py`)
 
-Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=0.5).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. Up to `MAX_ATTEMPTS` (3) calls are retried with `RETRY_BACKOFF_SECONDS = (1, 4)` between attempts so a momentary I/O hiccup doesn't crash the caller; if all attempts fail the script raises `SystemExit` so the loop in `run_clock.py` logs and moves on.
+Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=...).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. Up to `MAX_ATTEMPTS` (3) calls are retried with `RETRY_BACKOFF_SECONDS = (1, 4)` between attempts so a momentary I/O hiccup doesn't crash the caller; if all attempts fail the script raises `SystemExit` so the loop in `run_clock.py` logs and moves on.
+
+**Per-theme saturation.** `THEME_SATURATION` defaults to `{default: 0.5, dark: 0.7}` — the Spectra 6 panel renders dark backgrounds with a different waveform than light ones, so pushing saturation slightly higher on dark keeps accent colours from looking muddy. `run_clock.render_now` forwards `--theme` to `display_inky.py`, which calls `resolve_saturation(theme, override)` to pick the value to push. An explicit `--saturation` always wins over the per-theme default.
 
 ### Appliance / Pi Setup
 
@@ -330,14 +358,14 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 15 test modules covering every pipeline script plus the runtime components — 371 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches.
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 17 test modules covering every pipeline script plus the runtime components — 485 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`.
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
 - One `test_<script>.py` module per main script; tests are class-based (e.g., `TestCurrentBucket`, `TestRenderNow`)
 
 **pyproject.toml** configures:
-- `[project]`: name `litclock`, version, `requires-python >= 3.11`, runtime dep `Pillow`, optional extras `dev = [pytest, pytest-cov, ruff]` and `pi = [inky]`. `pip install -e .[dev]` is the intended developer setup.
+- `[project]`: name `litclock`, version, `requires-python >= 3.11`, runtime dep `Pillow`, optional extras `dev = [pytest, pytest-cov, ruff]` and `pi = [inky, gpiozero]` (`gpiozero` is needed by `inky_buttons.py` on the Pi). `pip install -e .[dev]` is the intended developer setup.
 - pytest: `testpaths = ["tests"]`, `python_files = ["test_*.py"]`
 - coverage: source = `.`, omits `tests/`, `bootstrap_pi_inky.sh`, and `display_inky.py`
 - ruff: line-length 130, target Python 3.11, rules E / W / F / I (E501 ignored)
@@ -361,8 +389,10 @@ enrich_metadata.py                 attach author/title from Gutenberg headers
 pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
 contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
-run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware)
-display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff)
+run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry)
+display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff, per-theme saturation)
+inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D → run_clock handlers)
+litclock_health.py                 telemetry summariser (render count, p50/p95 latency, last error)
 bootstrap_pi_inky.sh               first-time Pi setup helper
 litclock.service.example           sample systemd unit
 pi_setup_inky_impression.md        long-form Pi setup doc

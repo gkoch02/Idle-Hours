@@ -464,10 +464,17 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             _do_render(args, state, time_str, history_path, mode="card", quote_id=quote_id)
 
             def restore() -> None:
-                # Force the next tick to repaint by invalidating the cached identity.
-                with state.lock:
-                    state.last_bucket = None
-                    state.last_quote_id = None
+                # The card needs to come down at the 5-second mark — relying on the
+                # next loop tick would leave it up for up to --interval-seconds (60s
+                # default). Re-pick (the bucket may have moved during the 5s) and
+                # render the normal frame ourselves; render_lock serializes us
+                # against the loop.
+                try:
+                    rs_time = current_time_str()
+                    rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days)
+                    _do_render(args, state, rs_time, history_path, quote_id=rs_quote)
+                except Exception as restore_exc:
+                    _log(f"source card restore failed: {restore_exc!r}", err=True)
 
             threading.Timer(5.0, restore).start()
         except Exception as exc:
@@ -481,11 +488,14 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
                 save_runtime_state(args.state_path, state.snapshot_for_persistence())
                 state.last_bucket = None  # force the loop to repaint on exit
                 state.last_quote_id = None
-            _log(f"button D: manual quiet -> {state.manual_quiet}")
-            if state.manual_quiet and args.quiet_image:
+                # Snapshot inside the lock so a concurrent toggle can't flip the
+                # branch we take below.
+                quiet_now = state.manual_quiet
+            _log(f"button D: manual quiet -> {quiet_now}")
+            if quiet_now and args.quiet_image:
                 with state.render_lock:
                     _display_quiet_image(args.quiet_image, args.output, args.display_script)
-            elif not state.manual_quiet:
+            elif not quiet_now:
                 # Wake to the current time so the user sees something immediately.
                 time_str = current_time_str()
                 quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
@@ -556,7 +566,9 @@ def main() -> int:
 
     persisted = load_runtime_state(args.state_path)
     state = RuntimeState(args.theme, persisted=persisted)
-    _maybe_start_buttons(args, state)
+    # Hold the returned button list as a local for the lifetime of the loop —
+    # gpiozero drops handlers when its Button objects are garbage-collected.
+    _buttons = _maybe_start_buttons(args, state)  # noqa: F841
 
     _was_quiet = False
     while True:

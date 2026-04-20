@@ -1128,14 +1128,32 @@ class TestButtonHandlers:
         assert used_mode == "card"
         assert mock_timer.called
         # The 5-second restore callback should be scheduled.
-        delay, callback = mock_timer.call_args[0][:2]
+        delay, _callback = mock_timer.call_args[0][:2]
         assert delay == 5.0
-        # Run the restore callback manually and confirm it invalidates state.
-        state.last_bucket = "h10_exact"
-        state.last_quote_id = ("src", 1, "q", "mt")
-        callback()
-        assert state.last_bucket is None
-        assert state.last_quote_id is None
+
+    def test_source_card_restore_re_renders_normal_frame(self, tmp_path):
+        """The restore callback at +5s must actually push a new render — relying on the
+        next loop tick would leave the card up for up to --interval-seconds (60s default).
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.threading.Timer") as mock_timer, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["C"]()
+            # First render is the card itself.
+            assert mock_render.call_count == 1
+            # Now invoke the restore callback manually (simulating the 5s timer firing).
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+            assert mock_render.call_count == 2
+            # Second call must be in the normal mode, not "card".
+            second_call = mock_render.call_args_list[1]
+            mode = second_call.kwargs.get("mode") or (second_call.args[5] if len(second_call.args) > 5 else None)
+            assert mode == "debug"
 
     def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
