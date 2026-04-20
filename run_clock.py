@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -285,6 +286,10 @@ class RuntimeState:
     def __init__(self, theme_arg: str, persisted: dict | None = None):
         self.lock = threading.Lock()
         self.render_lock = threading.Lock()
+        # Serialises read-modify-write of ~/.litclock/history.jsonl. Button A's
+        # long-press does a remove-last-entry that would otherwise race the main
+        # loop's post-render append and silently drop it.
+        self.ledger_lock = threading.Lock()
         self.theme_arg = theme_arg            # CLI value ('default'/'dark'/'auto')
         self.manual_theme: str | None = None  # set by button B until midnight
         self.manual_quiet = False             # toggled by button D
@@ -322,12 +327,23 @@ def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
     return (cur >= s or cur < e) if s > e else (s <= cur < e)
 
 
-def _display_quiet_image(quiet_image: str, output: str, display_script: str | None) -> None:
-    """Copy quiet_image to the output path and optionally push it to the display script."""
+def _display_quiet_image(
+    quiet_image: str,
+    output: str,
+    display_script: str | None,
+    *,
+    reason: str = "quiet hours",
+) -> None:
+    """Copy ``quiet_image`` to ``output`` and optionally push it to the display script.
+
+    ``reason`` is the label prefixed to the log message so the same helper can serve
+    the quiet-hours entry, the startup frame, and the button-D long-press
+    shutdown preamble without lying about why it ran.
+    """
     quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
     output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
     shutil.copy2(str(quiet_path), output_resolved)
-    _log(f"quiet hours: {quiet_path.name} -> {output_resolved}")
+    _log(f"{reason}: {quiet_path.name} -> {output_resolved}")
     if display_script:
         display_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
         subprocess.check_call([sys.executable, display_path, output_resolved])
@@ -456,12 +472,18 @@ def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, his
                 state.last_quote_id = quote_id
 
 
-def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dict:
-    """Return the {label: callable} dispatch map handed to the button listener.
+def _build_button_handlers(
+    args: argparse.Namespace, state: RuntimeState,
+) -> tuple[dict[str, "callable"], dict[str, "callable"]]:
+    """Return ``(short_handlers, hold_handlers)`` for ``inky_buttons.start_listener``.
 
-    Each handler does its work synchronously in the listener thread and serializes
-    against the loop via ``state.render_lock``. Mutations of theme/quiet state are
-    persisted to ``--state-path`` so they survive a process restart.
+    ``short_handlers`` covers quick taps on A/B/C/D; ``hold_handlers`` adds the
+    2-second long-press actions on A (un-skip) and D (shutdown). Each handler
+    does its work synchronously in the listener thread and serialises against
+    the loop via ``state.render_lock``. Mutations of theme/quiet state are
+    persisted to ``--state-path`` so they survive a process restart; ledger
+    appends/removes go through ``state.ledger_lock`` to prevent the main loop's
+    post-render append from racing the un-skip's read-modify-write.
     """
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
@@ -473,7 +495,8 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
                 previous = state.last_quote_id
             if previous is not None:
                 # Ban the currently-shown quote so the next pick filters it out for the week.
-                pick_quote_module.append_history(history_path, previous[0], previous[1])
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, previous[0], previous[1])
                 with state.lock:
                     # Remember what we just banned so A long-press can reverse it.
                     state.last_skipped = previous
@@ -481,7 +504,8 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
             _do_render(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
-                pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
         except Exception as exc:
             _log(f"skip failed: {exc!r}", err=True)
             append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
@@ -493,7 +517,9 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
         re-renders the current time. If the bucket hasn't moved since the skip,
         the un-banned quote is likely to be picked again. If the bucket has
         moved on, the user just sees a fresh render for the new time — the
-        ledger is still cleaned up either way.
+        ledger is still cleaned up either way. The ledger read-modify-write is
+        serialised against the main loop's ``append_history`` via
+        ``state.ledger_lock`` so a concurrent append is not silently lost.
         """
         _log("button A held: un-skip")
         try:
@@ -503,13 +529,15 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             if target is None:
                 _log("un-skip: no recently-skipped quote recorded")
                 return
-            removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
+            with state.ledger_lock:
+                removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
             _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
             time_str = current_time_str()
             quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
             _do_render(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
-                pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
         except Exception as exc:
             _log(f"un-skip failed: {exc!r}", err=True)
             append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
@@ -550,7 +578,10 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
                 except Exception as restore_exc:
                     _log(f"source card restore failed: {restore_exc!r}", err=True)
 
-            threading.Timer(5.0, restore).start()
+            timer = threading.Timer(5.0, restore)
+            # Daemon so a pending restore doesn't block process exit on SIGTERM / KeyboardInterrupt.
+            timer.daemon = True
+            timer.start()
         except Exception as exc:
             _log(f"source card failed: {exc!r}", err=True)
             append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "card"})
@@ -562,12 +593,23 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
         the failure is logged and the loop continues. A clean shutdown on the
         Pi requires passwordless sudo for the default ``sudo -n shutdown -h now``;
         users running without sudo can override via ``--shutdown-command``.
+
+        Order-of-operations: we flip ``state.manual_quiet`` BEFORE pushing the
+        goodnight frame so that even if the main loop wakes between our
+        ``_display_quiet_image`` call and the shutdown invocation, it takes the
+        quiet branch and (worst case) re-pushes goodnight — it can't slip a
+        normal quote onto the panel in the final seconds before poweroff.
         """
         _log("button D held: shutdown")
+        with state.lock:
+            state.manual_quiet = True
+            save_runtime_state(args.state_path, state.snapshot_for_persistence())
         try:
             if args.quiet_image:
                 with state.render_lock:
-                    _display_quiet_image(args.quiet_image, args.output, args.display_script)
+                    _display_quiet_image(
+                        args.quiet_image, args.output, args.display_script, reason="shutdown",
+                    )
         except Exception as exc:
             _log(f"shutdown pre-frame failed: {exc!r}", err=True)
         cmd = (args.shutdown_command or "").strip()
@@ -575,7 +617,6 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             _log("shutdown: --shutdown-command is empty, skipping system shutdown")
             return
         try:
-            import shlex
             subprocess.check_call(shlex.split(cmd))
         except Exception as exc:
             _log(f"shutdown command {cmd!r} failed: {exc!r}", err=True)
@@ -672,19 +713,24 @@ def main() -> int:
 
     persisted = load_runtime_state(args.state_path)
     state = RuntimeState(args.theme, persisted=persisted)
-    # Hold the returned button list as a local for the lifetime of the loop —
-    # gpiozero drops handlers when its Button objects are garbage-collected.
-    _buttons = _maybe_start_buttons(args, state)  # noqa: F841
 
     # Startup frame: push a static image to the panel before the first quote
     # renders so viewers see something intentional instead of yesterday's
     # ghosted frame during cold boot. Best-effort; a missing file is logged
-    # and the loop continues to the first real render.
+    # and the loop continues to the first real render. Runs BEFORE the button
+    # listener starts so a press during the (potentially slow) Inky push can't
+    # collide with the unlocked display call.
     if args.startup_image:
         try:
-            _display_quiet_image(args.startup_image, args.output, args.display_script)
+            _display_quiet_image(
+                args.startup_image, args.output, args.display_script, reason="startup",
+            )
         except Exception as exc:
             _log(f"startup image display failed: {exc!r}", err=True)
+
+    # Hold the returned button list as a local for the lifetime of the loop —
+    # gpiozero drops handlers when its Button objects are garbage-collected.
+    _buttons = _maybe_start_buttons(args, state)  # noqa: F841
 
     _was_quiet = False
     while True:
@@ -757,7 +803,8 @@ def main() -> int:
                         if quote_id is not None:
                             state.last_quote_id = quote_id
                     if quote_id is not None:
-                        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                        with state.ledger_lock:
+                            pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
             except Exception as exc:
                 # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
                 # missing corpus row, etc.) does not kill the appliance. last_bucket stays

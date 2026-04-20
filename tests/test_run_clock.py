@@ -1406,6 +1406,41 @@ class TestShutdownHandler:
             hold["D"]()
         assert "shutdown command" in capsys.readouterr().err
 
+    def test_shutdown_flips_manual_quiet_before_goodnight_push(self, tmp_path):
+        """P1 regression: manual_quiet must be set before the goodnight push
+        so a concurrent main-loop tick takes the quiet branch and cannot slip a
+        normal render between the goodnight frame and the shutdown invocation.
+        """
+        quiet = tmp_path / "goodnight.png"
+        quiet.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(quiet))
+        state = run_clock.RuntimeState("default")
+        seen_flag_at_display = []
+
+        def record_display(*a, **kw):
+            seen_flag_at_display.append(state.manual_quiet)
+
+        with patch("run_clock._display_quiet_image", side_effect=record_display), \
+             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert seen_flag_at_display == [True]
+
+    def test_shutdown_passes_reason_to_quiet_display(self, tmp_path):
+        """Log label for the goodnight push must distinguish shutdown from quiet hours."""
+        quiet = tmp_path / "goodnight.png"
+        quiet.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(quiet))
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock._display_quiet_image") as mock_display, \
+             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        kwargs = mock_display.call_args.kwargs
+        assert kwargs.get("reason") == "shutdown"
+
 
 class TestStartupImage:
     """--startup-image: push a static PNG before the first real render on boot."""
@@ -1445,8 +1480,8 @@ class TestStartupImage:
         ]
         calls = []
 
-        def fake_display(quiet_image, output, display_script):
-            calls.append(("display", quiet_image))
+        def fake_display(quiet_image, output, display_script, **kwargs):
+            calls.append(("display", quiet_image, kwargs.get("reason")))
 
         def fake_sleep(_):
             raise KeyboardInterrupt
@@ -1463,6 +1498,43 @@ class TestStartupImage:
         # And normal render still ran for the first tick.
         assert mock_render.called
 
+    def test_startup_image_pushed_before_buttons_start(self, tmp_path, monkeypatch):
+        """P1 regression: startup-frame push must happen BEFORE the button
+        listener starts, so a press during the (slow) Inky push cannot race
+        against the unlocked display call.
+        """
+        startup = tmp_path / "starting.png"
+        startup.write_bytes(b"\x89PNG")
+        argv = [
+            "run_clock.py",
+            "--startup-image", str(startup),
+            "--output", str(tmp_path / "out.png"),
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "", "--quiet-off",
+            "--interval-seconds", "1",
+        ]
+        order = []
+
+        def fake_display(*a, **kw):
+            order.append(("display", kw.get("reason")))
+
+        def fake_start_buttons(*a, **kw):
+            order.append(("buttons",))
+            return []
+
+        monkeypatch.setattr(run_clock, "_display_quiet_image", fake_display)
+        monkeypatch.setattr(run_clock, "_maybe_start_buttons", fake_start_buttons)
+        monkeypatch.setattr(run_clock.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.peek_quote_id", return_value=("s", 1, "q", "m")):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        # Startup display must precede button listener.
+        assert order[0] == ("display", "startup")
+        assert ("buttons",) in order
+        assert order.index(("display", "startup")) < order.index(("buttons",))
+
     def test_no_startup_image_when_flag_omitted(self, tmp_path, monkeypatch):
         argv = [
             "run_clock.py",
@@ -1475,7 +1547,7 @@ class TestStartupImage:
         displayed = []
         monkeypatch.setattr(
             run_clock, "_display_quiet_image",
-            lambda q, o, d: displayed.append(q),
+            lambda q, o, d, **kw: displayed.append(q),
         )
         monkeypatch.setattr(run_clock.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
         with patch("sys.argv", argv), \
