@@ -83,6 +83,31 @@ python3 litclock_health.py --hours 1 --json --fail-if-no-renders
 
 Wire the JSON form into a once-a-day cron / systemd timer if you want passive alerting without SSH journalctl spelunking.
 
+### Optional: curator web UI
+
+`run_clock.py` ships a small in-process HTTP surface for browsing telemetry / bucket coverage / the current frame and mirroring the four physical buttons from a phone or laptop. It is **off by default** and starts only when `--web-bind HOST:PORT` is passed.
+
+```bash
+# Loopback-only, no auth. Safe for SSH port-forward from your laptop.
+python3 run_clock.py --display-script display_inky.py --web-bind 127.0.0.1:8080
+# then on the laptop: ssh -L 8080:127.0.0.1:8080 pi@litclock
+# and open http://127.0.0.1:8080
+
+# LAN-exposed. POSTs (skip / theme / quiet / re-render / overrides save) require
+# a token; put it in a file so it doesn't show up in `ps` / journald.
+mkdir -p ~/.litclock
+python3 -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.litclock/web.token
+chmod 640 ~/.litclock/web.token
+python3 run_clock.py \
+  --display-script display_inky.py \
+  --web-bind 0.0.0.0:8080 \
+  --web-token-file ~/.litclock/web.token
+```
+
+To enable the UI under systemd, append the same flags to `ExecStart=` in `litclock.service` (commented examples are included in `litclock.service.example`). The UI shares `render_lock` with the button handlers, so a tap on the physical panel and a click in the browser will never render-race — the second one returns `409 busy` instead of queueing. GETs (the `current.png` preview, telemetry, coverage) stay open on all binds; only POSTs are token-gated.
+
+See the "Curator web UI" section in `README.md` for the full endpoint list, UI panel descriptions, and security model.
+
 ### Optional: verify which GPIO pin each button actually fires
 
 If button handling seems wrong on a particular Inky variant, run the standalone probe to confirm the wiring before blaming handler code:
