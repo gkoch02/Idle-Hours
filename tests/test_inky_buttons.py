@@ -47,6 +47,39 @@ def _button_for_label(buttons, label):
     raise AssertionError(f"no FakeButton for label {label}")
 
 
+class TestButtonsAlive:
+    def test_empty_and_none_report_alive(self):
+        """No listener means nothing to supervise — the main loop must not log
+        a spurious "buttons died" warning when the user passed --buttons-off
+        or gpiozero wasn't available at startup.
+        """
+        assert inky_buttons.buttons_alive(None) is True
+        assert inky_buttons.buttons_alive([]) is True
+
+    def test_all_open_reports_alive(self):
+        btns = [FakeButton(pin=5), FakeButton(pin=6)]
+        for b in btns:
+            b.closed = False
+        assert inky_buttons.buttons_alive(btns) is True
+
+    def test_one_closed_reports_dead(self):
+        alive = FakeButton(pin=5)
+        alive.closed = False
+        dead = FakeButton(pin=6)
+        dead.closed = True
+        assert inky_buttons.buttons_alive([alive, dead]) is False
+
+    def test_objects_without_closed_attr_are_ignored(self):
+        """Dispatcher helpers stashed alongside Button objects don't expose
+        ``.closed`` — they should be treated as alive, not crash the check.
+        """
+
+        class NotAButton:
+            pass
+
+        assert inky_buttons.buttons_alive([NotAButton()]) is True
+
+
 class TestStartListener:
     def test_attaches_handler_to_each_label(self):
         called: list[str] = []

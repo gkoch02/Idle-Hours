@@ -280,7 +280,7 @@ class TestRecentHistory:
         assert ("3", 300) in recent
         assert ("2", 200) not in recent
 
-    def test_skips_malformed_lines(self, tmp_path):
+    def test_skips_malformed_lines(self, tmp_path, capsys):
         path = tmp_path / "history.jsonl"
         with path.open("w") as f:
             f.write("not-json\n")
@@ -289,6 +289,23 @@ class TestRecentHistory:
             f.write(json.dumps({"ts": dt.datetime.now(dt.timezone.utc).isoformat()}) + "\n")  # missing fields
         recent = pq.load_recent_history(str(path), 7)
         assert recent == {("ok", 42)}
+        # We now log a single warning on stderr when a parse-error line is encountered
+        # so ledger corruption from a crashed write doesn't silently defeat anti-repeat.
+        err = capsys.readouterr().err
+        assert "malformed line skipped" in err
+        # "subsequent bad lines ... suppressed" is part of the one-shot message, so it
+        # appears exactly once even though there are two unparseable lines above.
+        assert err.count("malformed line skipped") == 1
+
+    def test_malformed_line_warning_is_suppressed_after_first(self, tmp_path, capsys):
+        path = tmp_path / "history.jsonl"
+        with path.open("w") as f:
+            for _ in range(5):
+                f.write("not-json\n")
+        pq.load_recent_history(str(path), 7)
+        err = capsys.readouterr().err
+        # All 5 bad lines, but only one warning — otherwise a fully-corrupt ledger would spam stderr.
+        assert err.count("malformed line skipped") == 1
 
     def test_append_history_writes_entry(self, tmp_path):
         path = tmp_path / "history.jsonl"
@@ -316,6 +333,23 @@ class TestRecentHistory:
         path = tmp_path / "sub" / "dir" / "history.jsonl"
         pq.append_history(str(path), "1234", 5678)
         assert path.exists()
+
+    def test_append_history_fsyncs_before_close(self, tmp_path):
+        """The write path must fsync so a power loss immediately after an
+        append can't leave the line in the kernel page cache and vanish."""
+        path = tmp_path / "history.jsonl"
+        from unittest.mock import patch
+        with patch("pick_quote.os.fsync") as mock_fsync:
+            pq.append_history(str(path), "1234", 5678)
+        # Exactly one fsync call per append.
+        assert mock_fsync.call_count == 1
+        # Targeted at a real, opened file descriptor (not stdin/stdout/stderr),
+        # so a future refactor that accidentally fsyncs the wrong fd fails here.
+        fd_arg = mock_fsync.call_args[0][0]
+        assert isinstance(fd_arg, int) and fd_arg >= 3
+        # Write still succeeded even though fsync was mocked to a no-op.
+        entry = json.loads(path.read_text().strip())
+        assert entry["source_id"] == "1234"
 
     def test_remove_last_history_entry_removes_most_recent_match(self, tmp_path):
         path = tmp_path / "history.jsonl"

@@ -58,6 +58,29 @@ class _HoldDispatcher:
             self._short()
 
 
+def buttons_alive(handles: list | None) -> bool:
+    """Return True if every ``gpiozero.Button`` in ``handles`` is still claiming its pin.
+
+    ``gpiozero.Button`` sets ``.closed = True`` when its pin factory releases
+    the GPIO (explicit ``close()``, garbage collection, or a fatal error in
+    the background thread that talks to the pin). If any listener-managed
+    button reports closed we treat the whole listener as dead and let the
+    main loop log loudly — silently-broken buttons are worse than no buttons,
+    because the user doesn't know why presses stopped doing anything.
+
+    ``None``/empty means the listener was never started (``--buttons-off``
+    or a gpiozero import failure). We report alive in that case so the
+    main loop doesn't log a spurious warning.
+    """
+    if not handles:
+        return True
+    for obj in handles:
+        closed = getattr(obj, "closed", None)
+        if closed is True:
+            return False
+    return True
+
+
 def start_listener(
     handlers: Mapping[str, Callable[[], None]],
     *,

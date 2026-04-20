@@ -39,7 +39,12 @@ class TestPercentile:
 
 class TestLoadEntries:
     def test_missing_path_returns_empty(self, tmp_path):
+        # The base path and its parent both exist (tmp_path itself), but no telemetry files.
         assert litclock_health.load_entries(tmp_path / "missing.jsonl", dt.datetime.now(dt.timezone.utc)) == []
+
+    def test_missing_parent_returns_empty(self, tmp_path):
+        # Parent dir itself is absent → should quietly return [] without blowing up on glob.
+        assert litclock_health.load_entries(tmp_path / "nope" / "telemetry.jsonl", dt.datetime.now(dt.timezone.utc)) == []
 
     def test_skips_malformed_lines(self, tmp_path):
         path = tmp_path / "log.jsonl"
@@ -140,6 +145,116 @@ class TestJsonOutput:
         out = capsys.readouterr().out.strip()
         parsed = json.loads(out)
         assert "error" in parsed
+
+
+class TestRotatedTelemetry:
+    """Verify that litclock_health reads across date-rotated telemetry files
+    written by run_clock.append_telemetry, and falls back to the legacy
+    unsuffixed file when older installations wrote directly to it.
+    """
+
+    def _write_daily(self, parent, date_str, entries):
+        path = parent / f"telemetry-{date_str}.jsonl"
+        with path.open("w", encoding="utf-8") as handle:
+            for entry in entries:
+                handle.write(json.dumps(entry) + "\n")
+        return path
+
+    def test_reads_across_rotated_files(self, tmp_path):
+        base = tmp_path / "telemetry.jsonl"
+        today = dt.datetime.now(dt.timezone.utc)
+        yesterday = today - dt.timedelta(days=1)
+        self._write_daily(tmp_path, yesterday.strftime("%Y%m%d"), [
+            {"ts": (today - dt.timedelta(hours=20)).isoformat(), "render_ms": 100},
+        ])
+        self._write_daily(tmp_path, today.strftime("%Y%m%d"), [
+            {"ts": today.isoformat(), "render_ms": 200},
+        ])
+        since = today - dt.timedelta(hours=48)
+        rows = litclock_health.load_entries(base, since)
+        render_ms_values = sorted(r["render_ms"] for r in rows)
+        assert render_ms_values == [100, 200]
+
+    def test_legacy_unsuffixed_file_still_read(self, tmp_path):
+        """Telemetry written by pre-rotation builds lives at the base path; include it."""
+        base = tmp_path / "telemetry.jsonl"
+        with base.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"ts": _ts(5), "render_ms": 77}) + "\n")
+        since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+        rows = litclock_health.load_entries(base, since)
+        assert [r["render_ms"] for r in rows] == [77]
+
+    def test_main_reports_no_log_when_no_files_at_all(self, tmp_path, capsys):
+        """If neither the base nor any rotated sibling exists, main() returns 1."""
+        argv = ["litclock_health.py", "--telemetry-path", str(tmp_path / "telemetry.jsonl")]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 1
+
+    def test_main_succeeds_when_only_rotated_file_exists(self, tmp_path, capsys):
+        """Rotation means the base path may be absent even on a healthy appliance."""
+        today = dt.datetime.now(dt.timezone.utc)
+        self._write_daily(tmp_path, today.strftime("%Y%m%d"), [
+            {"ts": today.isoformat(), "render_ms": 100, "bucket": "h2_exact"},
+        ])
+        argv = [
+            "litclock_health.py", "--telemetry-path", str(tmp_path / "telemetry.jsonl"),
+            "--hours", "1",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 0
+        assert "1 renders" in capsys.readouterr().out
+
+    def test_non_date_siblings_are_ignored(self, tmp_path):
+        """A non-rotated sibling like telemetry-backup.jsonl must not be
+        read forever just because it matches the glob — otherwise any stray
+        file in the telemetry dir becomes unbounded read overhead.
+        """
+        base = tmp_path / "telemetry.jsonl"
+        backup = tmp_path / "telemetry-backup.jsonl"
+        with backup.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"ts": _ts(5), "render_ms": 9999}) + "\n")
+        since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+        rows = litclock_health.load_entries(base, since)
+        assert rows == []
+        # Confirmed at the file-listing level too.
+        assert backup not in litclock_health.find_telemetry_files(base)
+
+    def test_prunes_old_dated_files_by_filename(self, tmp_path):
+        """Files dated well before the window are not opened — we prune by filename."""
+        base = tmp_path / "telemetry.jsonl"
+        today = dt.datetime.now(dt.timezone.utc)
+        old_date = (today - dt.timedelta(days=30)).strftime("%Y%m%d")
+        # Deliberately put a line that WOULD match the timestamp filter inside an old file —
+        # if the pruner opens the file it would be counted. (The timestamp is forged but the
+        # filename is old, so pruning relies on the filename.)
+        self._write_daily(tmp_path, old_date, [
+            {"ts": today.isoformat(), "render_ms": 999},
+        ])
+        since = today - dt.timedelta(hours=1)
+        rows = litclock_health.load_entries(base, since)
+        assert rows == []
+
+    def test_prune_includes_prior_day_to_tolerate_local_utc_skew(self, tmp_path):
+        """Filenames use local date; `since` is UTC. A west-of-UTC appliance
+        near UTC midnight can have today's active file dated "yesterday-UTC"
+        — pruning must keep a day of slack so the currently-active file is
+        still read. Without slack, `--hours 1` on a host in UTC-7 at 20:30
+        local (UTC=next day 03:30) produces a false "0 renders".
+        """
+        base = tmp_path / "telemetry.jsonl"
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        # Simulate the west-of-UTC boundary: the active file is dated one day
+        # before the UTC date embedded in `since`, but its entries' timestamps
+        # fall inside the requested window.
+        prior_day = (now_utc - dt.timedelta(days=1)).strftime("%Y%m%d")
+        self._write_daily(tmp_path, prior_day, [
+            {"ts": (now_utc - dt.timedelta(minutes=5)).isoformat(), "render_ms": 42},
+        ])
+        since = now_utc - dt.timedelta(hours=1)
+        rows = litclock_health.load_entries(base, since)
+        assert [r["render_ms"] for r in rows] == [42]
 
 
 class TestEvaluateHealth:

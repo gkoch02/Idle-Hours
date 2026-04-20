@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import datetime as dt
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -248,26 +249,77 @@ def load_runtime_state(state_path: str | None) -> dict:
 
 
 def save_runtime_state(state_path: str | None, state: dict) -> None:
-    """Persist runtime state. No-op when disabled."""
+    """Persist runtime state atomically. No-op when disabled.
+
+    Writes to a sibling ``*.tmp`` file, fsyncs the data, ``os.replace``s into
+    place, then fsyncs the parent directory so the rename itself is durable.
+    Without the final directory fsync the kernel can return from ``os.replace``
+    with the new dirent still in cache — a crash in that window leaves the old
+    (or missing) file even though ``os.replace`` succeeded. Directory fsync is
+    swallowed on platforms where it's not meaningful (notably Windows).
+    """
     path = _resolve_state_path(state_path)
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    payload = json.dumps(state, ensure_ascii=False, indent=2)
+    try:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink()
+        raise
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
+
+
+def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
+    """Return the date-suffixed sibling of ``base`` for ``today``.
+
+    Given ``~/.litclock/telemetry.jsonl`` and 2026-04-20, returns
+    ``~/.litclock/telemetry-20260420.jsonl``. This is how we rotate telemetry
+    by date so a multi-year-running appliance doesn't accumulate a single
+    unbounded JSONL file that eventually chokes ``litclock_health.py`` and
+    stalls append latency. Local date (not UTC) so an operator's ``grep`` /
+    ``ls`` groups entries by their wall-clock day.
+    """
+    if today is None:
+        today = dt.date.today()
+    suffix = base.suffix or ".jsonl"
+    return base.with_name(f"{base.stem}-{today.strftime('%Y%m%d')}{suffix}")
 
 
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
-    """Append one JSON line to the telemetry log. No-op when disabled.
+    """Append one JSON line to today's telemetry log. No-op when disabled.
 
-    Telemetry is best-effort: an I/O failure here (unwritable path, full disk,
-    path is a directory) must never surface to the caller, since this is called
-    from the loop's error-recovery path — turning telemetry into a fatal
-    failure mode would defeat its purpose.
+    Rotates by date: writes to ``<base-stem>-YYYYMMDD<suffix>`` in the base
+    path's directory so the file size stays bounded. ``litclock_health.py``
+    globs the directory for date-suffixed siblings (plus any legacy
+    unsuffixed file) so older entries are still summarised.
+
+    Telemetry is best-effort: an I/O failure here (unwritable path, full
+    disk, path is a directory) must never surface to the caller, since this
+    is called from the loop's error-recovery path — turning telemetry into
+    a fatal failure mode would defeat its purpose.
     """
     if not telemetry_path:
         return
     try:
-        path = Path(telemetry_path).expanduser()
+        base = Path(telemetry_path).expanduser()
+        path = daily_telemetry_path(base)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
         with path.open("a", encoding="utf-8") as handle:
@@ -301,6 +353,13 @@ class RuntimeState:
         # Populated when button A (skip) bans a quote; button A long-press
         # rolls that ban back and re-renders.
         self.last_skipped: tuple | None = None
+        # Button listener bookkeeping. ``button_handles`` is the keepalive list
+        # returned by ``inky_buttons.start_listener`` (we must hold the refs
+        # for the lifetime of the loop or gpiozero drops our callbacks).
+        # ``buttons_dead_logged`` latches the first "listener died" warning so
+        # the loop doesn't spam stderr every tick once a pin is released.
+        self.button_handles: list | None = None
+        self.buttons_dead_logged = False
         if persisted:
             mt = persisted.get("manual_theme")
             if mt in ("default", "dark"):
@@ -712,7 +771,13 @@ def _build_button_handlers(
 
 
 def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
-    """Start the Inky button listener if available; swallow gpiozero import errors."""
+    """Start the Inky button listener if available; swallow gpiozero import errors.
+
+    Stashes the keepalive handles on ``state.button_handles`` so the main loop
+    can call :func:`_check_button_liveness` each tick and surface a dead
+    listener (unexpected GPIO release, crashed background thread) instead of
+    silently dropping presses.
+    """
     if args.buttons_off:
         return None
     try:
@@ -722,12 +787,48 @@ def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
         def _press_logger(label: str, pin: int) -> None:
             _log(f"button {label} (GPIO {pin}): pressed")
 
-        return inky_buttons.start_listener(
+        handles = inky_buttons.start_listener(
             short_handlers, hold_handlers=hold_handlers, press_logger=_press_logger,
         )
+        state.button_handles = handles
+        return handles
     except Exception as exc:
         _log(f"button listener disabled ({exc!r}); pass --buttons-off to silence", err=True)
         return None
+
+
+def _check_button_liveness(state: RuntimeState, telemetry_path: str | None) -> None:
+    """If the button listener died, log loudly (once) and emit a telemetry entry.
+
+    gpiozero runs its event loop in a background thread; if that thread dies
+    or the pin claim is lost (flaky GPIO, post-reboot race, another process
+    grabs the pin), ``Button.closed`` flips to True and presses silently stop
+    working. The main loop has no other way to notice, so we check each tick.
+
+    We deliberately do NOT auto-restart. A button listener that died once may
+    die again immediately, and a restart loop would thrash GPIO claims. Log
+    the event, emit telemetry, and let the operator decide. The warning is
+    latched via ``state.buttons_dead_logged`` so stderr is not spammed every
+    tick for a persistent failure.
+    """
+    if state.buttons_dead_logged:
+        return
+    try:
+        import inky_buttons
+    except Exception:
+        return
+    if inky_buttons.buttons_alive(state.button_handles):
+        return
+    _log(
+        "button listener died: at least one GPIO pin has been released. "
+        "Presses will be ignored until the process restarts.",
+        err=True,
+    )
+    state.buttons_dead_logged = True
+    append_telemetry(
+        telemetry_path,
+        {"bucket": current_bucket(), "error": "button listener died", "mode": "buttons_dead"},
+    )
 
 
 def _maybe_reset_manual_theme_at_midnight(args: argparse.Namespace, state: RuntimeState) -> None:
@@ -787,14 +888,17 @@ def main() -> int:
         except Exception as exc:
             _log(f"startup image display failed: {exc!r}", err=True)
 
-    # Hold the returned button list as a local for the lifetime of the loop —
-    # gpiozero drops handlers when its Button objects are garbage-collected.
-    _buttons = _maybe_start_buttons(args, state)  # noqa: F841
+    # ``state.button_handles`` holds the keepalive list for the lifetime of
+    # the loop — gpiozero drops callbacks when its ``Button`` objects are
+    # garbage-collected, so the reference must live as long as ``state`` does.
+    # The liveness check below also reads from ``state.button_handles``.
+    _maybe_start_buttons(args, state)
 
     _was_quiet = False
     while True:
         time_str = current_time_str()
         _maybe_reset_manual_theme_at_midnight(args, state)
+        _check_button_liveness(state, telemetry_path)
 
         with state.lock:
             manual_quiet = state.manual_quiet

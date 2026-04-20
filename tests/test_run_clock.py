@@ -823,6 +823,75 @@ class TestRuntimeStatePersistence:
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
         assert s.snapshot_for_persistence() == {"manual_theme": "dark", "manual_quiet": True}
 
+    def test_save_is_atomic_leaves_old_file_on_replace_failure(self, tmp_path):
+        """A crash during os.replace must not corrupt the existing state file.
+
+        Simulate the crash by patching os.replace to raise; assert the original
+        contents survive and the tmp file is cleaned up (not left as debris).
+        """
+        path = tmp_path / "state.json"
+        run_clock.save_runtime_state(str(path), {"manual_theme": "default", "manual_quiet": False})
+        original = path.read_text(encoding="utf-8")
+
+        with patch("run_clock.os.replace", side_effect=OSError("simulated crash")):
+            with pytest.raises(OSError):
+                run_clock.save_runtime_state(str(path), {"manual_theme": "dark", "manual_quiet": True})
+
+        assert path.read_text(encoding="utf-8") == original
+        assert not (tmp_path / "state.json.tmp").exists()
+
+    def test_save_writes_via_tmp_file(self, tmp_path):
+        """Verify the tmp+rename path is actually used (not a direct write)."""
+        path = tmp_path / "state.json"
+        with patch("run_clock.os.replace") as mock_replace:
+            run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+            assert mock_replace.called
+            src, dst = mock_replace.call_args[0]
+            assert str(src).endswith(".json.tmp")
+            assert str(dst).endswith(".json")
+        # The tmp file is left behind because we patched replace; clean up.
+        tmp_path_file = tmp_path / "state.json.tmp"
+        assert tmp_path_file.exists()
+
+    def test_save_fsyncs_parent_directory_after_replace(self, tmp_path):
+        """Without a dirent fsync the rename itself isn't durable on ext4.
+        Assert the directory fd is opened and fsynced after ``os.replace``.
+        """
+        path = tmp_path / "state.json"
+        with patch("run_clock.os.fsync") as mock_fsync:
+            run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+        # Two fsyncs: one for the tmp file fd, one for the parent directory fd.
+        assert mock_fsync.call_count == 2
+        fds = [call.args[0] for call in mock_fsync.call_args_list]
+        # Both should be real file descriptors (ints ≥ 3).
+        assert all(isinstance(fd, int) and fd >= 3 for fd in fds)
+
+    def test_save_tolerates_directory_fsync_failure(self, tmp_path):
+        """On platforms where directory fsync is not meaningful (e.g. Windows),
+        opening or fsyncing the parent dir can raise OSError. The file must
+        still land in place and no exception must escape.
+        """
+        path = tmp_path / "state.json"
+        real_open = run_clock.os.open
+        real_fsync = run_clock.os.fsync
+
+        def flaky_open(pth, flags):
+            # Fail only for the directory handle; let the file-fd path through.
+            if str(pth) == str(tmp_path):
+                raise OSError("simulated no-op dir fsync")
+            return real_open(pth, flags)
+
+        with patch("run_clock.os.open", side_effect=flaky_open), \
+             patch("run_clock.os.fsync", side_effect=real_fsync):
+            # Must not raise.
+            run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+        assert json.loads(path.read_text()) == {"manual_theme": "dark"}
+
+
+def _today_telemetry_path(base):
+    """Return the date-suffixed sibling that append_telemetry would write to today."""
+    return run_clock.daily_telemetry_path(base)
+
 
 class TestAppendTelemetry:
     def test_disabled_path_is_noop(self, tmp_path):
@@ -832,52 +901,89 @@ class TestAppendTelemetry:
         assert list(tmp_path.iterdir()) == []
 
     def test_appends_one_line_with_ts(self, tmp_path):
-        path = tmp_path / "telemetry.jsonl"
-        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "render_ms": 500})
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        base = tmp_path / "telemetry.jsonl"
+        run_clock.append_telemetry(str(base), {"bucket": "h3_exact", "render_ms": 500})
+        daily = _today_telemetry_path(base)
+        lines = daily.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
         entry = json.loads(lines[0])
         assert entry["bucket"] == "h3_exact"
         assert entry["render_ms"] == 500
         assert "ts" in entry
+        # The base path itself is no longer written — telemetry is rotated.
+        assert not base.exists()
 
     def test_appends_multiple_lines(self, tmp_path):
-        path = tmp_path / "telemetry.jsonl"
-        run_clock.append_telemetry(str(path), {"bucket": "a"})
-        run_clock.append_telemetry(str(path), {"bucket": "b"})
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        base = tmp_path / "telemetry.jsonl"
+        run_clock.append_telemetry(str(base), {"bucket": "a"})
+        run_clock.append_telemetry(str(base), {"bucket": "b"})
+        daily = _today_telemetry_path(base)
+        lines = daily.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 2
 
     def test_creates_parent_directory(self, tmp_path):
-        path = tmp_path / "nested" / "telemetry.jsonl"
-        run_clock.append_telemetry(str(path), {"bucket": "h1_exact"})
-        assert path.exists()
+        base = tmp_path / "nested" / "telemetry.jsonl"
+        run_clock.append_telemetry(str(base), {"bucket": "h1_exact"})
+        assert _today_telemetry_path(base).exists()
+
+    def test_rotates_by_date(self, tmp_path):
+        """Two runs on different dates produce two separate files."""
+        base = tmp_path / "telemetry.jsonl"
+        import datetime as _dt
+        day1 = _dt.date(2026, 4, 19)
+        day2 = _dt.date(2026, 4, 20)
+        with patch("run_clock.dt") as mock_dt:
+            mock_dt.date.today.return_value = day1
+            mock_dt.datetime = dt.datetime
+            mock_dt.timezone = dt.timezone
+            run_clock.append_telemetry(str(base), {"bucket": "day1"})
+        with patch("run_clock.dt") as mock_dt:
+            mock_dt.date.today.return_value = day2
+            mock_dt.datetime = dt.datetime
+            mock_dt.timezone = dt.timezone
+            run_clock.append_telemetry(str(base), {"bucket": "day2"})
+        files = sorted(p.name for p in tmp_path.iterdir())
+        assert files == ["telemetry-20260419.jsonl", "telemetry-20260420.jsonl"]
 
     def test_io_failure_does_not_raise(self, tmp_path, capsys):
         """Telemetry is best-effort — an unwritable path must never crash the caller,
         since append_telemetry runs in the loop's error-recovery branch.
         """
         # Path collides with a directory → opening for append raises IsADirectoryError.
-        victim = tmp_path / "telemetry.jsonl"
-        victim.mkdir()
+        # We collide with the *daily* path because that's what the function now writes to.
+        base = tmp_path / "telemetry.jsonl"
+        _today_telemetry_path(base).mkdir()
         # Must not raise.
-        run_clock.append_telemetry(str(victim), {"bucket": "h3_exact"})
+        run_clock.append_telemetry(str(base), {"bucket": "h3_exact"})
         assert "telemetry write" in capsys.readouterr().err
 
     def test_unserialisable_payload_does_not_raise(self, tmp_path, capsys):
         """json.dumps blows up on non-serialisable values — swallow and log."""
-        path = tmp_path / "telemetry.jsonl"
+        base = tmp_path / "telemetry.jsonl"
 
         class NotSerialisable:
             pass
 
-        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "blob": NotSerialisable()})
+        run_clock.append_telemetry(str(base), {"bucket": "h3_exact", "blob": NotSerialisable()})
         assert "telemetry write" in capsys.readouterr().err
+
+
+class TestDailyTelemetryPath:
+    def test_standard_suffix(self, tmp_path):
+        base = tmp_path / "telemetry.jsonl"
+        out = run_clock.daily_telemetry_path(base, dt.date(2026, 4, 20))
+        assert out.name == "telemetry-20260420.jsonl"
+        assert out.parent == tmp_path
+
+    def test_missing_suffix_defaults_to_jsonl(self, tmp_path):
+        base = tmp_path / "telemetry"
+        out = run_clock.daily_telemetry_path(base, dt.date(2026, 1, 2))
+        assert out.name == "telemetry-20260102.jsonl"
 
 
 class TestRenderNowTelemetry:
     def test_writes_telemetry_after_successful_render(self, tmp_path):
-        telemetry = tmp_path / "telemetry.jsonl"
+        telemetry_base = tmp_path / "telemetry.jsonl"
         with patch("subprocess.check_call"), \
              patch("run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
@@ -887,11 +993,12 @@ class TestRenderNowTelemetry:
                 height=480,
                 mode="production",
                 theme="dark",
-                telemetry_path=str(telemetry),
+                telemetry_path=str(telemetry_base),
                 bucket="h2_half_past",
                 quote_id=("141", 482, "q", "mt"),
             )
-        entry = json.loads(telemetry.read_text(encoding="utf-8").strip())
+        daily = _today_telemetry_path(telemetry_base)
+        entry = json.loads(daily.read_text(encoding="utf-8").strip())
         assert entry["bucket"] == "h2_half_past"
         assert entry["mode"] == "production"
         assert entry["theme"] == "dark"
@@ -909,9 +1016,9 @@ class TestRenderNowTelemetry:
                 height=480,
                 telemetry_path=None,
             )
-        # No file created in tmp_path other than whatever subprocess wrote (we mocked it to nothing).
+        # No telemetry file created (neither legacy nor rotated).
         files = [p.name for p in tmp_path.iterdir()]
-        assert "telemetry.jsonl" not in files
+        assert not any("telemetry" in f for f in files)
 
     def test_display_script_passes_theme(self, tmp_path):
         calls = []
@@ -1280,6 +1387,60 @@ class TestMaybeStartButtons:
         assert set(captured["short"]) == {"A", "B", "C", "D"}
         # Long-press is only wired on A (un-skip) and D (shutdown).
         assert set(captured["hold"]) == {"A", "D"}
+
+    def test_successful_start_attaches_handles_to_state(self, tmp_path, monkeypatch):
+        """The liveness check relies on state.button_handles; make sure start wires it up."""
+        import inky_buttons as ib
+        monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: ["h1", "h2"])
+        args = argparse.Namespace(
+            buttons_off=False,
+            render_script="r", output=str(tmp_path / "out.png"),
+            width=800, height=480, display_script=None, mode="debug",
+            theme="default", history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="", shutdown_command="",
+        )
+        state = run_clock.RuntimeState("default")
+        run_clock._maybe_start_buttons(args, state)
+        assert state.button_handles == ["h1", "h2"]
+
+
+class TestCheckButtonLiveness:
+    """The main loop polls button liveness each tick. A dead listener must log
+    once and emit telemetry, never spam, and auto-restart is deliberately not
+    attempted (would thrash GPIO claims on a persistent failure)."""
+
+    def test_alive_is_noop(self, tmp_path, capsys):
+        state = run_clock.RuntimeState("default")
+        state.button_handles = []  # empty means "alive" per buttons_alive contract
+        run_clock._check_button_liveness(state, str(tmp_path / "telemetry.jsonl"))
+        assert state.buttons_dead_logged is False
+        assert capsys.readouterr().err == ""
+
+    def test_none_handles_is_noop(self, tmp_path, capsys):
+        """--buttons-off or a failed start leaves button_handles=None; no warning."""
+        state = run_clock.RuntimeState("default")
+        run_clock._check_button_liveness(state, str(tmp_path / "telemetry.jsonl"))
+        assert state.buttons_dead_logged is False
+        assert capsys.readouterr().err == ""
+
+    def test_dead_logs_once_and_latches(self, tmp_path, capsys, monkeypatch):
+        state = run_clock.RuntimeState("default")
+        state.button_handles = ["anything"]
+        monkeypatch.setattr("inky_buttons.buttons_alive", lambda _handles: False)
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        with patch("run_clock.current_bucket", return_value="h3_exact"):
+            run_clock._check_button_liveness(state, str(telemetry_base))
+            # Second call: already latched, must not log again.
+            run_clock._check_button_liveness(state, str(telemetry_base))
+        err = capsys.readouterr().err
+        assert err.count("button listener died") == 1
+        assert state.buttons_dead_logged is True
+        # One telemetry entry was written to today's rotated file.
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text().strip().splitlines()]
+        assert len(entries) == 1
+        assert entries[0]["mode"] == "buttons_dead"
+        assert entries[0]["error"] == "button listener died"
 
 
 class TestUnskipHandler:

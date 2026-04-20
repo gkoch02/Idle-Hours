@@ -61,26 +61,77 @@ def _percentile(sorted_values: list[int], p: float) -> int | None:
     return int(sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * frac)
 
 
+def find_telemetry_files(base: Path, since: dt.datetime | None = None) -> list[Path]:
+    """Return all telemetry files we should read for a given base path.
+
+    ``run_clock.append_telemetry`` rotates by date, writing to
+    ``<stem>-YYYYMMDD<suffix>`` in ``base.parent``. This helper globs for
+    those siblings plus the legacy unsuffixed file at ``base`` itself (so
+    telemetry written before rotation landed still summarises cleanly).
+
+    When ``since`` is provided, date-suffixed files older than ``since`` are
+    pruned by filename alone — no need to open and parse a week of old
+    JSONL just to discard it.
+    """
+    candidates: list[Path] = []
+    if base.exists() and base.is_file():
+        candidates.append(base)
+    parent = base.parent
+    if not parent.exists():
+        return candidates
+    stem = base.stem
+    suffix = base.suffix or ".jsonl"
+    # Filenames use the appliance's local date (append_telemetry uses date.today());
+    # `since` is UTC. A timezone east or west of UTC can shift the local date by ±1
+    # day relative to the UTC date at any instant, so subtract a full day of slack
+    # before pruning. Otherwise west-of-UTC hosts near midnight UTC would prune the
+    # currently-active file (e.g. 20:30 local in UTC-7 → UTC date is tomorrow, local
+    # filename says today → file_date < cutoff_date → active file dropped → false
+    # "0 renders"). The per-entry ts filter in load_entries handles the slack case.
+    cutoff_date = (since.date() - dt.timedelta(days=1)) if since is not None else None
+    for sibling in sorted(parent.glob(f"{stem}-*{suffix}")):
+        if not sibling.is_file():
+            continue
+        date_part = sibling.stem[len(stem) + 1:]
+        try:
+            file_date = dt.datetime.strptime(date_part, "%Y%m%d").date()
+        except ValueError:
+            # Sibling matches the glob (e.g. telemetry-backup.jsonl) but isn't
+            # a date-rotated file. Skip it — including it would mean we'd
+            # re-parse arbitrary unrelated JSONL on every health check.
+            # Operators who want those summarised should point --telemetry-path
+            # at the file directly.
+            continue
+        if cutoff_date is not None and file_date < cutoff_date:
+            continue
+        candidates.append(sibling)
+    return candidates
+
+
 def load_entries(path: Path, since: dt.datetime) -> list[dict]:
-    """Stream JSONL entries with ts >= since. Malformed lines are skipped."""
-    if not path.exists():
-        return []
-    rows = []
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-                ts = dt.datetime.fromisoformat(entry["ts"])
-            except (ValueError, KeyError, json.JSONDecodeError):
-                continue
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=dt.timezone.utc)
-            if ts < since:
-                continue
-            rows.append(entry)
+    """Stream JSONL entries with ts >= since across all rotated telemetry files.
+
+    Malformed lines are skipped. Files are read in sorted-filename order so
+    callers that care about ordering (e.g. ``last_error``) get deterministic
+    behaviour across day boundaries.
+    """
+    rows: list[dict] = []
+    for candidate in find_telemetry_files(path, since=since):
+        with candidate.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    ts = dt.datetime.fromisoformat(entry["ts"])
+                except (ValueError, KeyError, json.JSONDecodeError):
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=dt.timezone.utc)
+                if ts < since:
+                    continue
+                rows.append(entry)
     return rows
 
 
@@ -140,7 +191,9 @@ def main() -> int:
     path = Path(args.telemetry_path).expanduser()
     since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=args.hours)
     entries = load_entries(path, since)
-    if not entries and not path.exists():
+    # Absence-of-data is distinct from "silent window": we only report "no telemetry log"
+    # when there are genuinely zero candidate files (legacy or rotated) to read.
+    if not entries and not find_telemetry_files(path):
         if args.json:
             print(json.dumps({"error": f"No telemetry log at {path}", "hours": args.hours}))
         else:
