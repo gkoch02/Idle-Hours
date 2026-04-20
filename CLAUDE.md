@@ -461,6 +461,8 @@ POST /api/action/{skip,unskip,theme,quiet,rerender} → mirror physical buttons
 
 **Static assets.** `web/index.html` + `web/main.js` + `web/style.css` are plain HTML/JS/CSS, **no build step** and no framework. Resolved via `BASE_DIR / "web"` so the service file doesn't depend on CWD. `main.js` polls `/api/current` and `/api/telemetry` every 30s; the coverage grid and overrides editor load once and refresh on click.
 
+**Scope boundary — what the curator UI doesn't (yet) edit.** `POST /api/overrides` writes `assets/selection_overrides.json` (source-level bans/boosts/preferred buckets). It does **not** edit `assets/content_overrides.json` — the per-row content sidecar applied by `apply_content_overrides.py` at corpus-build time is still SSH-and-editor-only, because its fixes have to be re-applied through the pipeline rather than picked up at next render. A UI editor for per-`(source_id, line_number)` content patches (and a separate "permanent ban this exact row" action) is the natural v2.1 extension — `/api/bucket/<bucket>` already surfaces the `source_id:line_number` key that the sidecar is keyed on.
+
 ### Appliance / Pi Setup
 
 - **Fresh Pi:** `bootstrap_pi_inky.sh` automates apt setup, clones the Pimoroni `inky` installer, and (with `CONTINUE_AFTER_REBOOT=1` on the second run) clones this repo and does a first render + display push.
