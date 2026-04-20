@@ -71,7 +71,7 @@ If you prefer not to grant that, set `--shutdown-command ""` in the service `Exe
 
 ### Optional: health checks + telemetry
 
-The loop writes a JSONL telemetry sidecar to `~/.litclock/telemetry.jsonl` (one line per successful render, one per loop-level error) and `litclock_health.py` summarises the last N hours. Useful scripts for a quick Pi check:
+The loop writes a JSONL telemetry sidecar — one line per successful render, one per loop-level error — rotated by date. The `--telemetry-path` argument is a base path (default `~/.litclock/telemetry.jsonl`), and `run_clock.py` actually appends to a `telemetry-YYYYMMDD.jsonl` sibling so file size stays bounded on a long-running appliance. `litclock_health.py` summarises the last N hours and auto-discovers the rotated siblings.
 
 ```bash
 # Human-readable summary
@@ -82,6 +82,18 @@ python3 litclock_health.py --hours 1 --json --fail-if-no-renders
 ```
 
 Wire the JSON form into a once-a-day cron / systemd timer if you want passive alerting without SSH journalctl spelunking.
+
+### Optional: verify which GPIO pin each button actually fires
+
+If button handling seems wrong on a particular Inky variant, run the standalone probe to confirm the wiring before blaming handler code:
+
+```bash
+python3 probe_buttons.py
+# press each physical button on the panel;
+# each press prints a timestamped line showing which GPIO pin fired
+```
+
+Defaults cover the standard Inky Impression pins (5/6/16/24) plus a few common alternates (13/17/26). Override with `--pins` to probe arbitrary GPIOs, and `--pull-down` / `--bounce` for non-standard wiring.
 
 ## Path B: Fresh Inky setup
 
