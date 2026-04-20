@@ -51,6 +51,11 @@ python3 run_clock.py --display-script display_inky.py --theme dark
 # (button B toggles manually and overrides 'auto' until midnight)
 python3 run_clock.py --display-script display_inky.py --theme auto
 
+# Optional curator web UI (off by default). 127.0.0.1 binds skip auth entirely;
+# any other host requires --web-token (or --web-token-file for systemd).
+python3 run_clock.py --web-bind 127.0.0.1:8080
+python3 run_clock.py --web-bind 0.0.0.0:8080 --web-token-file ~/.litclock/web.token
+
 # Disable the Inky button listener (use on dev machines / headless smoke tests)
 python3 run_clock.py --buttons-off
 
@@ -382,6 +387,40 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 **Per-theme saturation.** `THEME_SATURATION` defaults to `{default: 0.5, dark: 0.7}` — the Spectra 6 panel renders dark backgrounds with a different waveform than light ones, so pushing saturation slightly higher on dark keeps accent colours from looking muddy. `run_clock.render_now` forwards `--theme` to `display_inky.py`, which calls `resolve_saturation(theme, override)` to pick the value to push. An explicit `--saturation` always wins over the per-theme default.
 
+### Curator Web UI (`web_server.py`, `web/`)
+
+Optional in-process HTTP surface for browsing telemetry/coverage/candidates and curating `selection_overrides.json` without SSHing into the appliance. **Off by default** — only starts when `run_clock.py --web-bind HOST:PORT` is passed. Served from a `ThreadingHTTPServer` on a daemon background thread so the main render loop doesn't share an event loop with HTTP, but the two threads share `state.render_lock` / `state.lock` / `state.ledger_lock` via the same `RuntimeState` instance. **In-process is non-negotiable**: every mutating POST routes through the same `_button_render_gate` (non-blocking `render_lock.acquire`) that GPIO button handlers use, and atomic state/override writes are only safe when one process owns the file.
+
+**Lifecycle.** `run_clock._maybe_start_web_server(args, state)` runs after `_maybe_start_buttons`, imports `web_server` lazily (so unit tests and `--buttons-off` dev hosts never pay for it), and calls `web_server.start_web_server(args, state, token=...)`. The `(server, thread)` handle is stashed so `stop_web_server` can be called by tests for deterministic teardown; the daemon thread flag means the process's own exit tears it down automatically under systemd. A startup failure (malformed bind, port busy, missing token on non-localhost bind) is **logged but not fatal** — the panel keeps rendering.
+
+**Action handlers are shared with buttons.** Each GPIO button's body has been hoisted from `_build_button_handlers` closures into module-level `run_clock.action_skip` / `action_unskip` / `action_theme` / `action_quiet` / `action_rerender` functions. The button dispatcher and the HTTP handler both call them with a `label="button A"` or `label="web"` attribution string. Each function returns `{"ok": True, ...}` on success, `{"ok": False, "error": "busy"}` when the render lock is held, or `{"ok": False, "error": "<repr>"}` on exception; the web handler maps that to 200 / 409 / 500. The source-card restore timer and the shutdown command remain inline in `_build_button_handlers` because neither fits the single-response return-dict contract.
+
+**Endpoints.**
+
+```
+GET  /                                → web/index.html
+GET  /main.js, /style.css             → web/main.js, web/style.css
+GET  /current.png                     → streams output/current.png
+GET  /api/current                     → {time, bucket, theme, source_id, line_number, ...}
+GET  /api/telemetry?hours=24          → {render_count, error_count, p50/p95 latencies, last_error}
+GET  /api/coverage                    → assets/bucket-coverage.json payload
+GET  /api/bucket/<bucket>?time=HH:MM&top=N → ranked candidates with named score components
+GET  /api/overrides                   → assets/selection_overrides.json
+GET  /api/history?limit=N             → anti-repeat ledger entries, newest-first
+POST /api/overrides                   → validate + atomic rewrite
+POST /api/action/{skip,unskip,theme,quiet,rerender} → mirror physical buttons
+```
+
+**Security model.** Loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) run without auth — the OS-level trust boundary is sufficient for a single-operator home appliance. Any other bind **requires** `--web-token` or `--web-token-file`; `start_web_server` raises `ValueError` if you try to bind `0.0.0.0` without one, so an operator can't accidentally expose a tokenless POST surface. Tokens are checked against the `X-LitClock-Token` header only — never query strings, which `BaseHTTPRequestHandler` logs to stderr and journald. `_check_token` uses `hmac.compare_digest` for timing-safety. Unknown POST routes return 404 **before** the auth check so a scanner's wrong-token probe doesn't learn the service exists. GETs stay open on every bind (telemetry + coverage + `current.png` are not sensitive and the UI fetches them without credentials). `--web-token-file` is preferred over `--web-token` in production so the secret doesn't show up in `ps`/journald.
+
+**Shared utilities, no duplication.**
+- Atomic writes go through `run_clock._atomic_write_text` (tmp → fsync → `os.replace` → dir fsync), which is now shared between `save_runtime_state` and `web_server.write_overrides_atomic`.
+- Bucket validation uses `pick_quote.valid_bucket_names()` so `POST /api/overrides` rejects the same bad keys that `load_overrides` warns about.
+- Telemetry summarisation reuses `litclock_health.load_entries` and `litclock_health.summarise` directly — the endpoint does not reimplement date-window globbing.
+- `pick_quote.pick_best(..., return_ranked=True)` and `pick_quote.select_candidates(...)` are the single entry point for the bucket-inspector view; the UI projects the raw `score_row` tuple into named fields via `SCORE_COMPONENTS` so the operator can see "lost by minute_penalty=8" rather than a mystery integer.
+
+**Static assets.** `web/index.html` + `web/main.js` + `web/style.css` are plain HTML/JS/CSS, **no build step** and no framework. Resolved via `BASE_DIR / "web"` so the service file doesn't depend on CWD. `main.js` polls `/api/current` and `/api/telemetry` every 30s; the coverage grid and overrides editor load once and refresh on click.
+
 ### Appliance / Pi Setup
 
 - **Fresh Pi:** `bootstrap_pi_inky.sh` automates apt setup, clones the Pimoroni `inky` installer, and (with `CONTINUE_AFTER_REBOOT=1` on the second run) clones this repo and does a first render + display push.
@@ -426,6 +465,8 @@ display_inky.py                    Pi-only image → Inky Impression bridge (ret
 inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D → run_clock handlers, press_logger + buttons_alive supervision)
 probe_buttons.py                   Pi-only GPIO press probe — confirms which pin each physical button actually fires
 litclock_health.py                 telemetry summariser (render count, p50/p95 latency, last error; reads date-rotated sidecar)
+web_server.py                      optional curator HTTP UI (off by default, --web-bind to enable; shares render_lock with button handlers)
+web/                               vanilla HTML/JS/CSS served by web_server (index.html, main.js, style.css — no build step)
 bootstrap_pi_inky.sh               first-time Pi setup helper
 litclock.service.example           sample systemd unit
 pi_setup_inky_impression.md        long-form Pi setup doc

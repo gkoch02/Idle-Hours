@@ -38,6 +38,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 - `probe_buttons.py` - standalone GPIO press probe for verifying which pin each physical button fires
 - `litclock_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`, reads date-rotated files
 - `buckets.py` - fuzzy time bucket mapping
+- `web_server.py` + `web/` - optional local curator UI (off by default; enable with `--web-bind`)
 
 ### Runtime assets
 
@@ -164,6 +165,39 @@ python3 run_clock.py --startup-image assets/goodnight.png
 ```
 
 The extra refresh costs a Spectra 6 cycle (~10–20s) so this is off by default; enable when you care more about clean boot visuals than time-to-first-quote.
+
+### Curator web UI
+
+Off by default. Pass `--web-bind` to expose a small local HTTP surface that mirrors the physical buttons and lets you browse the corpus:
+
+```bash
+# Loopback only: safe to run anywhere, no auth required.
+python3 run_clock.py --web-bind 127.0.0.1:8080
+# open http://127.0.0.1:8080 in a browser
+
+# LAN exposure: every POST requires a token supplied via X-LitClock-Token.
+# Prefer --web-token-file on production so the token doesn't show up in `ps`.
+echo "s0me-l0ng-random-string" > ~/.litclock/web.token
+chmod 640 ~/.litclock/web.token
+python3 run_clock.py --web-bind 0.0.0.0:8080 --web-token-file ~/.litclock/web.token
+```
+
+The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, quiet, re-render, overrides save) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | Curator HTML/JS/CSS |
+| `GET /current.png` | Streams the current rendered frame |
+| `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
+| `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `litclock_health`) |
+| `GET /api/coverage` | The 144-bucket coverage snapshot from `assets/bucket-coverage.json` |
+| `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |
+| `GET /api/overrides` | Current `assets/selection_overrides.json` |
+| `GET /api/history?limit=N` | Recent anti-repeat ledger entries |
+| `POST /api/overrides` | Validate + atomically rewrite overrides |
+| `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C |
+
+Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-LitClock-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
 
 ### Quiet hours
 
