@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from enrich_metadata import parse_header
+from enrich_metadata import clean_author, parse_header
 
 
 class TestParseHeader:
@@ -76,6 +76,24 @@ class TestParseHeader:
         title, author = parse_header(path)
         assert title == "War and Peace: A Novel"
         assert author == "Leo Tolstoy"
+
+    def test_strips_graf_nobility_title(self, tmp_path):
+        path = tmp_path / "pg2600.txt"
+        path.write_text("Title: War and Peace\nAuthor: graf Leo Tolstoy\n", encoding="utf-8")
+        title, author = parse_header(path)
+        assert title == "War and Peace"
+        assert author == "Leo Tolstoy"
+
+
+class TestCleanAuthor:
+    def test_strips_graf_prefix(self):
+        assert clean_author("graf Leo Tolstoy") == "Leo Tolstoy"
+
+    def test_leaves_plain_name_alone(self):
+        assert clean_author("Jane Austen") == "Jane Austen"
+
+    def test_only_matches_at_start_with_space(self):
+        assert clean_author("Count Graf of Somewhere") == "Count Graf of Somewhere"
 
 
 class TestMain:
