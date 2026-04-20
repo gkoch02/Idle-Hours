@@ -1,6 +1,8 @@
 """Tests for merge_candidates.py — text normalization and deduplication."""
 from __future__ import annotations
 
+import json
+
 import merge_candidates as mc
 from tests.conftest import make_row
 
@@ -122,3 +124,42 @@ class TestDedupe:
         merged, _ = mc.dedupe(records)
         assert "canonical_quote" in merged[0]
         assert "canonical_context" in merged[0]
+
+
+class TestIterRecords:
+    def test_yields_records_with_canonical_fields(self, tmp_jsonl):
+        path = tmp_jsonl([
+            make_row(quote_text="Hello World.", context_text="  Hello   World.  "),
+        ])
+        records = list(mc.iter_records([str(path)]))
+        assert len(records) == 1
+        assert records[0].canonical_quote == "hello world"
+        assert records[0].canonical_context == "hello world"
+
+
+class TestMainCLI:
+    def test_writes_merged_and_summary(self, tmp_path, tmp_jsonl, monkeypatch, capsys):
+        input_path = tmp_jsonl([
+            make_row(quote_text="A unique quote.", source_id="1"),
+            make_row(quote_text="Another quote.", source_id="2"),
+            make_row(quote_text="A unique quote.", source_id="1"),  # duplicate
+        ])
+        output_path = tmp_path / "merged.jsonl"
+        summary_path = tmp_path / "summary.json"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["merge_candidates.py", str(input_path), "--output", str(output_path), "--summary", str(summary_path)],
+        )
+        exit_code = mc.main()
+        assert exit_code == 0
+        assert output_path.exists()
+        assert summary_path.exists()
+        lines = output_path.read_text().strip().splitlines()
+        assert len(lines) == 2  # duplicate removed
+        summary = json.loads(summary_path.read_text())
+        assert summary["input_rows"] == 3
+        assert summary["deduped_rows"] == 2
+        assert summary["duplicates_removed"] == 1
+        out = capsys.readouterr().out
+        assert "Wrote 2 deduped" in out
+        assert "Removed 1 duplicates" in out

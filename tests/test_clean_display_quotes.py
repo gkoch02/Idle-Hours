@@ -1,7 +1,10 @@
 """Tests for clean_display_quotes.py — sentence extraction and fragment detection."""
 from __future__ import annotations
 
+import json
+
 import clean_display_quotes as cdq
+from tests.conftest import make_row
 
 # ---------------------------------------------------------------------------
 # split_sentences
@@ -181,3 +184,35 @@ class TestBestDisplayQuote:
         assert "IN WHICH PHILEAS FOGG ASTOUNDS PASSEPARTOUT" not in text
         assert is_frag is False
         assert status == "complete_sentence"
+
+
+class TestMainCLI:
+    def test_writes_cleaned_rows(self, tmp_path, tmp_jsonl, monkeypatch, capsys):
+        rows = [
+            make_row(
+                quote_text="It was three o'clock.",
+                context_text="She arrived. It was three o'clock. Everyone cheered.",
+                matched_text="three o'clock",
+            ),
+            make_row(
+                quote_text="",
+                context_text="",
+                matched_text="noon",
+            ),
+        ]
+        input_path = tmp_jsonl(rows)
+        output_path = tmp_path / "cleaned.jsonl"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["clean_display_quotes.py", str(input_path), "--output", str(output_path)],
+        )
+        assert cdq.main() == 0
+        written = [json.loads(line) for line in output_path.read_text().splitlines()]
+        assert len(written) == 2
+        assert written[0]["cleanup_status"] == "complete_sentence"
+        assert written[0]["display_fragment"] is False
+        assert written[1]["cleanup_status"] == "empty"
+        assert written[1]["display_fragment"] is True
+        out = capsys.readouterr().out
+        assert "Wrote 2 cleaned" in out
+        assert "Fragment fallbacks:" in out

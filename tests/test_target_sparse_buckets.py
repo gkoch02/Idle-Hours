@@ -1,6 +1,9 @@
 """Tests for target_sparse_buckets.py"""
 from __future__ import annotations
 
+import json
+
+import target_sparse_buckets as tsb
 from target_sparse_buckets import expected_targets, sentence_window, templates_for_bucket
 
 
@@ -129,3 +132,92 @@ class TestSentenceWindow:
         _, context, _ = sentence_window(text, start, start + 4, context_chars=20)
         # context should have normalized whitespace
         assert "  " not in context
+
+
+class TestSearchBucket:
+    def test_finds_matching_phrase(self, tmp_path):
+        pg = tmp_path / "pg1234.txt"
+        pg.write_text("The morning was quiet. It was five past three when she looked up.\n")
+        results = tsb.search_bucket("h3_five_past", tmp_path)
+        assert len(results) == 1
+        hit = results[0]
+        assert hit["source_id"] == "1234"
+        assert hit["target_bucket"] == "h3_five_past"
+        assert hit["resolved_bucket"] == "h3_five_past"
+        assert "five past three" in hit["matched_text"].lower()
+        assert "five past three" in hit["quote_text"].lower()
+        assert hit["line_number"] == 1
+
+    def test_empty_templates_returns_empty(self, tmp_path):
+        pg = tmp_path / "pg1.txt"
+        pg.write_text("Nothing interesting here.\n")
+        assert tsb.search_bucket("h3_exact", tmp_path) == []
+
+    def test_non_pg_stem_has_null_source_id(self, tmp_path):
+        book = tmp_path / "local_book.txt"
+        book.write_text("It was quarter to eight in the cold morning.\n")
+        results = tsb.search_bucket("h7_quarter_to", tmp_path)
+        assert len(results) == 1
+        assert results[0]["source_id"] is None
+        assert results[0]["source_path"].endswith("local_book.txt")
+
+    def test_dedupes_same_position(self, tmp_path):
+        # "five to three" appears in templates as both "five to {next_hour}"
+        # and "five minutes to {next_hour}" — the same text match should not fire twice.
+        pg = tmp_path / "pg2.txt"
+        pg.write_text("It was five to three.\n")
+        results = tsb.search_bucket("h2_five_to", tmp_path)
+        # Only one match per (start, end, implied_state) position
+        positions = {(r["match_start"], r["match_end"]) for r in results}
+        assert len(results) == len(positions)
+
+    def test_implied_state_differs_from_target_bucket(self, tmp_path):
+        # "fifty-five minutes past two" is templated under h2_five_to with implied_state=five_to;
+        # resolved bucket should still be h2_five_to.
+        pg = tmp_path / "pg3.txt"
+        pg.write_text("She arrived at fifty-five minutes past two precisely.\n")
+        results = tsb.search_bucket("h2_five_to", tmp_path)
+        assert len(results) == 1
+        assert results[0]["resolved_bucket"] == "h2_five_to"
+
+    def test_multiple_files_searched(self, tmp_path):
+        (tmp_path / "pg1.txt").write_text("It was half past four in the garden.\n")
+        (tmp_path / "pg2.txt").write_text("The clock chimed half past four downstairs.\n")
+        results = tsb.search_bucket("h4_half_past", tmp_path)
+        source_ids = {r["source_id"] for r in results}
+        assert source_ids == {"1", "2"}
+
+
+class TestMainCLI:
+    def test_writes_targeted_candidates(self, tmp_path, monkeypatch, capsys):
+        search_dir = tmp_path / "gutenberg"
+        search_dir.mkdir()
+        (search_dir / "pg1.txt").write_text("It was five past three when the letter came.\n")
+        (search_dir / "pg2.txt").write_text("The clock struck half past nine sharp.\n")
+
+        coverage_path = tmp_path / "coverage.json"
+        coverage_path.write_text(json.dumps({
+            "empty_buckets": ["h3_five_past"],
+            "sparse_buckets": [{"bucket": "h9_half_past", "count": 1}],
+        }))
+        output_path = tmp_path / "targeted.jsonl"
+
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "target_sparse_buckets.py",
+                str(coverage_path),
+                "--search-dir", str(search_dir),
+                "--output", str(output_path),
+                "--max-buckets", "10",
+            ],
+        )
+        assert tsb.main() == 0
+        assert output_path.exists()
+        lines = output_path.read_text().strip().splitlines()
+        assert len(lines) == 2
+        buckets = {json.loads(line)["target_bucket"] for line in lines}
+        assert buckets == {"h3_five_past", "h9_half_past"}
+        out = capsys.readouterr().out
+        assert "Targeted buckets searched: 2" in out
+        assert "Targeted candidates found: 2" in out

@@ -1,7 +1,10 @@
 """Tests for quality_filter.py — penalty scoring logic."""
 from __future__ import annotations
 
+import json
+
 import quality_filter as qf
+from tests.conftest import make_row
 
 
 def score(text, fragment=False, status="complete_sentence"):
@@ -181,3 +184,48 @@ class TestScoreFloor:
         text = "work chapter ebook 1:00-2:00 am pm"
         s, _ = score(text, fragment=True, status="empty")
         assert s == 0
+
+
+class TestMainCLI:
+    def test_annotates_rows_and_writes_output(self, tmp_path, tmp_jsonl, monkeypatch, capsys):
+        input_rows = [
+            make_row(
+                display_quote="It was exactly three o'clock when the carriage arrived at the door of Mansfield Park.",
+                display_fragment=False,
+                cleanup_status="complete_sentence",
+            ),
+            make_row(
+                display_quote="bad",  # fragment + too_short + weak_ending
+                display_fragment=True,
+                cleanup_status="fragment_fallback",
+            ),
+        ]
+        input_path = tmp_jsonl(input_rows)
+        output_path = tmp_path / "quality.jsonl"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["quality_filter.py", str(input_path), "--output", str(output_path)],
+        )
+        exit_code = qf.main()
+        assert exit_code == 0
+        written = [json.loads(line) for line in output_path.read_text().splitlines()]
+        assert len(written) == 2
+        assert written[0]["quality_score"] == 100
+        assert written[0]["quality_flags"] == []
+        assert written[1]["quality_score"] < 50
+        assert "fragment" in written[1]["quality_flags"]
+        out = capsys.readouterr().out
+        assert "Wrote 2 quality-scored" in out
+
+    def test_handles_missing_display_quote_field(self, tmp_path, tmp_jsonl, monkeypatch):
+        row = make_row()
+        del row["display_quote"]
+        input_path = tmp_jsonl([row])
+        output_path = tmp_path / "quality.jsonl"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["quality_filter.py", str(input_path), "--output", str(output_path)],
+        )
+        assert qf.main() == 0
+        written = json.loads(output_path.read_text().splitlines()[0])
+        assert "quality_score" in written
