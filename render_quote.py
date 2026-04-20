@@ -244,14 +244,14 @@ def resolve_display_match(text: str, match_text: str) -> str:
     if not normalized_match:
         return ""
 
-    direct = re.search(rf"(?<![A-Za-z0-9-]){re.escape(normalized_match)}(?![A-Za-z0-9-])", text, re.IGNORECASE)
+    direct = re.search(rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(normalized_match)}(?![A-Za-z0-9])(?!-[A-Za-z0-9])", text, re.IGNORECASE)
     if direct:
         return direct.group(0)
 
     for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True):
         if not normalized_match.lower().startswith(prefix):
             continue
-        pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(prefix)}(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9-])", re.IGNORECASE)
+        pattern = re.compile(rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(prefix)}(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9])(?!-[A-Za-z0-9])", re.IGNORECASE)
         for m in pattern.finditer(text):
             candidate = m.group(0).strip(" ,.;:!?")
             if candidate.lower().startswith(normalized_match.lower()):
@@ -264,7 +264,7 @@ def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     normalized_match = resolve_display_match(text, match_text)
     if not normalized_match:
         return [(text, False)]
-    pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(normalized_match)}(?![A-Za-z0-9-])", re.IGNORECASE)
+    pattern = re.compile(rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(normalized_match)}(?![A-Za-z0-9])(?!-[A-Za-z0-9])", re.IGNORECASE)
     match = pattern.search(text)
     if not match:
         return [(text, False)]

@@ -133,6 +133,18 @@ class TestResolveDisplayMatch:
         result = rq.resolve_display_match(text, "quarter to nine")
         assert result.lower() == "quarter to nine"
 
+    def test_em_dash_double_hyphen_is_valid_boundary(self):
+        text = "Eleven--twelve--one o'clock had struck."
+        result = rq.resolve_display_match(text, "one o'clock")
+        assert result.lower() == "one o'clock"
+
+    def test_compound_word_hyphen_still_blocks_substring_match(self):
+        text = "Towards night-time the lady roused."
+        # "night" on its own must not be picked up inside "night-time"
+        assert rq.resolve_display_match(text, "Towards night") == "Towards night"
+        tokens = rq.tokenize_quote(text, "Towards night")
+        assert tokens == [(text, False)]
+
 
 # ---------------------------------------------------------------------------
 # tokenize_quote
