@@ -504,6 +504,29 @@ class TestOverrideValidation:
         with pytest.raises(ValueError):
             web_server.validate_overrides_payload("string")
 
+    def test_reject_empty_object_payload(self):
+        """{} must NOT be treated as 'wipe everything' — guards against empty-body POSTs."""
+        with pytest.raises(ValueError, match="at least one"):
+            web_server.validate_overrides_payload({})
+
+    def test_explicit_empty_collections_are_allowed(self):
+        """Callers who really want to clear state spell it out explicitly."""
+        out = web_server.validate_overrides_payload({
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+        })
+        assert out == {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
+
+    def test_reject_bool_in_id_list(self):
+        """bool is a subclass of int — make sure we don't silently coerce True/False to strings."""
+        with pytest.raises(ValueError, match="ban_source_ids"):
+            web_server.validate_overrides_payload({"ban_source_ids": [True]})
+        with pytest.raises(ValueError, match="boost_source_ids"):
+            web_server.validate_overrides_payload({"boost_source_ids": [False]})
+        with pytest.raises(ValueError, match="must be a string/int"):
+            web_server.validate_overrides_payload({"preferred_buckets": {"h3_exact": True}})
+
     def test_reject_bad_bucket_key(self):
         with pytest.raises(ValueError, match="not a valid bucket"):
             web_server.validate_overrides_payload({"preferred_buckets": {"h13_exact": "141"}})
@@ -543,6 +566,23 @@ class TestOverrideValidation:
         status, body = _post(server, "/api/overrides", {"preferred_buckets": {"h13_exact": "141"}})
         assert status == 400
         assert "valid bucket" in _json_body(body)["error"]
+
+    def test_empty_body_post_does_not_wipe_overrides(self, tmp_path, live_server):
+        """Regression: POST with no body (Content-Length: 0) used to silently wipe the file."""
+        server, _, args = live_server
+        overrides_path = Path(args.overrides)
+        overrides_path.parent.mkdir(parents=True, exist_ok=True)
+        seed = {
+            "ban_source_ids": ["141"],
+            "boost_source_ids": ["1342"],
+            "preferred_buckets": {"h3_exact": "141"},
+        }
+        overrides_path.write_text(json.dumps(seed))
+        status, body = _post(server, "/api/overrides")  # no payload → Content-Length: 0
+        assert status == 400
+        assert "at least one" in _json_body(body)["error"]
+        # File is unchanged
+        assert json.loads(overrides_path.read_text()) == seed
 
     def test_body_too_large_returns_400(self, live_server):
         server, _, _ = live_server

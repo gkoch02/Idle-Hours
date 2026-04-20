@@ -114,21 +114,46 @@ class _LitClockHTTPServer(ThreadingHTTPServer):
 # Validation helpers
 # ----------------------------------------------------------------------------
 
+OVERRIDES_KEYS = ("ban_source_ids", "boost_source_ids", "preferred_buckets")
+
+
+def _is_id(value: object) -> bool:
+    """Accept string/int source IDs, but reject booleans.
+
+    ``bool`` is a subclass of ``int`` in Python, so a bare ``isinstance(..., int)``
+    would accept ``True`` and coerce it to ``"True"`` downstream. Explicitly
+    exclude it so the on-disk file only ever contains strings and ints.
+    """
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, (str, int))
+
+
 def validate_overrides_payload(payload: object) -> dict:
     """Return a cleaned overrides dict, or raise ``ValueError`` with a caller-safe message.
 
     Accepts the same schema as ``assets/selection_overrides.json`` and nothing
     else — any extra top-level keys are silently dropped so a malformed client
     can't sneak data into the on-disk file.
+
+    Rejects an empty object outright: a ``POST`` whose body is ``{}`` (or absent
+    entirely, which ``_read_json_body`` coerces to ``{}``) must not be treated
+    as "wipe everything". Callers who really want to clear state must spell it
+    out with explicit empty collections — ``{"ban_source_ids": [], ...}``.
     """
     if not isinstance(payload, dict):
         raise ValueError(f"expected JSON object, got {type(payload).__name__}")
+    if not any(k in payload for k in OVERRIDES_KEYS):
+        raise ValueError(
+            "payload must contain at least one of "
+            f"{OVERRIDES_KEYS} — refusing to treat empty body as a wipe"
+        )
     ban = payload.get("ban_source_ids", [])
     boost = payload.get("boost_source_ids", [])
     preferred = payload.get("preferred_buckets", {})
-    if not isinstance(ban, list) or not all(isinstance(x, (str, int)) for x in ban):
+    if not isinstance(ban, list) or not all(_is_id(x) for x in ban):
         raise ValueError("ban_source_ids must be a list of string/int ids")
-    if not isinstance(boost, list) or not all(isinstance(x, (str, int)) for x in boost):
+    if not isinstance(boost, list) or not all(_is_id(x) for x in boost):
         raise ValueError("boost_source_ids must be a list of string/int ids")
     if not isinstance(preferred, dict):
         raise ValueError("preferred_buckets must be an object")
@@ -136,7 +161,7 @@ def validate_overrides_payload(payload: object) -> dict:
     for key, value in preferred.items():
         if key not in valid_buckets:
             raise ValueError(f"preferred_buckets key {key!r} is not a valid bucket")
-        if not isinstance(value, (str, int)):
+        if not _is_id(value):
             raise ValueError(f"preferred_buckets[{key!r}] must be a string/int source id")
     return {
         "ban_source_ids": [str(x) for x in ban],
