@@ -791,6 +791,25 @@ class TestRuntimeStatePersistence:
         assert run_clock.load_runtime_state(str(path)) == {}
         assert "unreadable" in capsys.readouterr().err
 
+    def test_load_non_object_json_returns_empty(self, tmp_path, capsys):
+        """Valid JSON that isn't an object (bare string/number/list) must be rejected —
+        RuntimeState calls .get() on the result so a non-dict would otherwise crash startup.
+        """
+        path = tmp_path / "state.json"
+        path.write_text('"oops"', encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+        assert "not a JSON object" in capsys.readouterr().err
+
+    def test_load_number_json_returns_empty(self, tmp_path):
+        path = tmp_path / "state.json"
+        path.write_text("42", encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+
+    def test_load_list_json_returns_empty(self, tmp_path):
+        path = tmp_path / "state.json"
+        path.write_text("[]", encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+
     def test_runtime_state_seeds_from_persisted(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
         assert s.manual_theme == "dark"
@@ -833,6 +852,27 @@ class TestAppendTelemetry:
         path = tmp_path / "nested" / "telemetry.jsonl"
         run_clock.append_telemetry(str(path), {"bucket": "h1_exact"})
         assert path.exists()
+
+    def test_io_failure_does_not_raise(self, tmp_path, capsys):
+        """Telemetry is best-effort — an unwritable path must never crash the caller,
+        since append_telemetry runs in the loop's error-recovery branch.
+        """
+        # Path collides with a directory → opening for append raises IsADirectoryError.
+        victim = tmp_path / "telemetry.jsonl"
+        victim.mkdir()
+        # Must not raise.
+        run_clock.append_telemetry(str(victim), {"bucket": "h3_exact"})
+        assert "telemetry write" in capsys.readouterr().err
+
+    def test_unserialisable_payload_does_not_raise(self, tmp_path, capsys):
+        """json.dumps blows up on non-serialisable values — swallow and log."""
+        path = tmp_path / "telemetry.jsonl"
+
+        class NotSerialisable:
+            pass
+
+        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "blob": NotSerialisable()})
+        assert "telemetry write" in capsys.readouterr().err
 
 
 class TestRenderNowTelemetry:
@@ -1110,6 +1150,20 @@ class TestButtonHandlers:
             handlers = run_clock._build_button_handlers(args, state)
             handlers["B"]()
         assert state.manual_theme == "default"
+
+    def test_do_render_bucket_matches_time_str_near_boundary(self, tmp_path):
+        """_do_render stamps state.last_bucket from time_str, not a fresh clock read —
+        otherwise a handler firing at 03:02:59.900 could derive bucket h3_five_past from
+        a clock read at 03:03:00.001, then stamp that into state while the panel still
+        shows the h3_exact frame, causing the next loop tick to wrongly skip the redraw.
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.render_now"), \
+             patch("run_clock.current_bucket", side_effect=AssertionError("must not call current_bucket")), \
+             patch("run_clock.current_time_str", side_effect=AssertionError("must not call current_time_str")):
+            run_clock._do_render(args, state, "03:02", history_path=None, quote_id=("src", 1, "q", "mt"))
+        assert state.last_bucket == "h3_exact"
 
     def test_source_card_handler_renders_in_card_mode(self, tmp_path):
         args = self._args(tmp_path)

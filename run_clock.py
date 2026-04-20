@@ -206,15 +206,25 @@ def _resolve_state_path(state_path: str | None) -> Path | None:
 
 
 def load_runtime_state(state_path: str | None) -> dict:
-    """Load persisted runtime state. Returns ``{}`` when disabled or missing."""
+    """Load persisted runtime state. Returns ``{}`` when disabled, missing, or malformed.
+
+    We expect the file to contain a JSON object. Anything else (a bare string,
+    number, list, or parse error) is treated as unreadable and ignored rather
+    than bricking startup with ``AttributeError`` when ``RuntimeState.__init__``
+    later calls ``.get()`` on it.
+    """
     path = _resolve_state_path(state_path)
     if path is None or not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8")) or {}
+        parsed = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         _log(f"runtime state at {path} unreadable, ignoring: {exc!r}", err=True)
         return {}
+    if not isinstance(parsed, dict):
+        _log(f"runtime state at {path} is not a JSON object ({type(parsed).__name__}), ignoring", err=True)
+        return {}
+    return parsed
 
 
 def save_runtime_state(state_path: str | None, state: dict) -> None:
@@ -227,14 +237,23 @@ def save_runtime_state(state_path: str | None, state: dict) -> None:
 
 
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
-    """Append one JSON line to the telemetry log. No-op when disabled."""
+    """Append one JSON line to the telemetry log. No-op when disabled.
+
+    Telemetry is best-effort: an I/O failure here (unwritable path, full disk,
+    path is a directory) must never surface to the caller, since this is called
+    from the loop's error-recovery path — turning telemetry into a fatal
+    failure mode would defeat its purpose.
+    """
     if not telemetry_path:
         return
-    path = Path(telemetry_path).expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    try:
+        path = Path(telemetry_path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except (OSError, TypeError, ValueError) as exc:
+        _log(f"telemetry write to {telemetry_path!r} failed, dropping entry: {exc!r}", err=True)
 
 
 class RuntimeState:
@@ -394,11 +413,14 @@ def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, his
     """Render-and-push, holding the render lock so the main loop and button handlers don't collide.
 
     Updates ``state.last_bucket``/``last_quote_id``/``last_effective_theme`` to the values
-    actually rendered so the loop's next tick sees consistent state.
+    actually rendered so the loop's next tick sees consistent state. The bucket is
+    derived from ``time_str`` rather than from a fresh wall-clock read so a handler
+    firing near a bucket boundary can't stamp the wrong bucket into state (which
+    would make the next loop tick wrongly skip the expected redraw).
     """
     effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
     actual_mode = mode or args.mode
-    actual_bucket = bucket or current_bucket()
+    actual_bucket = bucket or bucket_for_time(time_str)
     with state.render_lock:
         render_now(
             args.render_script, args.output, args.width, args.height, args.display_script,
