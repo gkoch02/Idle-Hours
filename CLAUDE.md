@@ -137,6 +137,11 @@ python3 quality_filter.py output/candidates-cleaned.jsonl
 # (e.g. "five minutes past two" mis-captured inside "thirty-five minutes past two")
 python3 fix_substring_time_matches.py output/candidates-quality.jsonl
 
+# Repair rows left tagged with legacy 8-state bucket names ("just_after",
+# "half_pastish", etc.) from the pre-buckets.py drift era; also normalises
+# embedded-newline matched_text back to a single clean phrase.
+python3 fix_legacy_buckets.py output/candidates-quality.jsonl
+
 # Attach title/author from Gutenberg headers — produces the picker's default input
 python3 enrich_metadata.py output/candidates-quality.jsonl
 # → assets/candidates-attributed.jsonl
@@ -167,6 +172,7 @@ candidates-cleaned.jsonl
   ↓ quality_filter.py
 candidates-quality.jsonl
   ↓ fix_substring_time_matches.py (in place)
+  ↓ fix_legacy_buckets.py (in place)
   ↓ enrich_metadata.py
 assets/candidates-attributed.jsonl    ← pick_quote.py --input default
   ↓ pick_quote.py
@@ -259,6 +265,10 @@ Penalty reasons are appended to `quality_flags`. The score is floored at 0.
 ### Substring-Collision Fix
 
 `fix_substring_time_matches.py` scans `display_quote` for the full pattern `<minute-word> minutes (past|to) <hour-word>`; if the row's stored `matched_text` is a strict substring of that longer phrase, the row's `matched_text`, `hour`, `minute`, `normalized_time`, and `fuzzy_bucket` are rewritten. Writes in-place by default (pass `--output` to redirect).
+
+### Legacy-Bucket Repair
+
+`fix_legacy_buckets.py` is the companion cleanup for rows tagged with the obsolete 8-state names (`just_after`, `early_past`, `quarter_pastish`, `half_pastish`, `late_past`, `just_before`, `quarter_toish`) harvested before `buckets.py` was extracted. For each such row with a valid `hour`/`minute`, it recomputes the canonical `h{hour}_{state}` bucket using the shared `minute_bucket` primitive (handling the top-of-hour rollover when `minute ≥ 58`). It also collapses runs of whitespace in `matched_text` back to a single space so phrases captured across a source line break (`"towards\ndusk"`) stay stored as a single clean phrase. `pick_quote.load_rows` already re-derives `fuzzy_bucket` from `normalized_time` so the stale values were not visibly broken at runtime, but storage should match the canonical schema so any future consumer reading `fuzzy_bucket` directly sees correct values and `merge_candidates` dedup keys stay stable. Writes in-place by default.
 
 ### Metadata Enrichment
 
@@ -417,6 +427,7 @@ import_targeted_hits.py            reshape targeted hits for merge
 clean_display_quotes.py            pick a displayable excerpt from each row
 quality_filter.py                  score + flag rows
 fix_substring_time_matches.py      repair substring-collision time tags
+fix_legacy_buckets.py              repair pre-buckets.py legacy 8-state fuzzy_bucket names + whitespace in matched_text
 enrich_metadata.py                 attach author/title from Gutenberg headers
 pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
