@@ -18,8 +18,18 @@ HEADER_SCAN_LINES = 120
 # them so the display metadata reads naturally.
 _LEADING_TITLE_PREFIXES = ("graf ",)
 
+# Exact-string fixups for Gutenberg headers that are malformed (duplicated
+# surname) or incomplete (missing first name) in ways no generic rule can
+# repair. Key = header as-written, value = preferred display form.
+_AUTHOR_FIXUPS = {
+    "Baroness Emmuska Orczy Orczy": "Baroness Emmuska Orczy",
+    "Mrs. Rowson": "Susanna Rowson",
+}
+
 
 def clean_author(author: str) -> str:
+    if author in _AUTHOR_FIXUPS:
+        return _AUTHOR_FIXUPS[author]
     lowered = author.lower()
     for prefix in _LEADING_TITLE_PREFIXES:
         if lowered.startswith(prefix):

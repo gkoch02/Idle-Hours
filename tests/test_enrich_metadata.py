@@ -95,6 +95,12 @@ class TestCleanAuthor:
     def test_only_matches_at_start_with_space(self):
         assert clean_author("Count Graf of Somewhere") == "Count Graf of Somewhere"
 
+    def test_fixes_duplicated_surname(self):
+        assert clean_author("Baroness Emmuska Orczy Orczy") == "Baroness Emmuska Orczy"
+
+    def test_fills_in_rowson_first_name(self):
+        assert clean_author("Mrs. Rowson") == "Susanna Rowson"
+
 
 class TestMain:
     def test_enriches_rows_with_metadata(self, tmp_path):
