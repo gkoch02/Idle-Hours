@@ -1354,6 +1354,60 @@ class TestMaybeStartButtons:
         # Long-press is only wired on A (un-skip) and D (shutdown).
         assert set(captured["hold"]) == {"A", "D"}
 
+    def test_successful_start_attaches_handles_to_state(self, tmp_path, monkeypatch):
+        """The liveness check relies on state.button_handles; make sure start wires it up."""
+        import inky_buttons as ib
+        monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: ["h1", "h2"])
+        args = argparse.Namespace(
+            buttons_off=False,
+            render_script="r", output=str(tmp_path / "out.png"),
+            width=800, height=480, display_script=None, mode="debug",
+            theme="default", history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="", shutdown_command="",
+        )
+        state = run_clock.RuntimeState("default")
+        run_clock._maybe_start_buttons(args, state)
+        assert state.button_handles == ["h1", "h2"]
+
+
+class TestCheckButtonLiveness:
+    """The main loop polls button liveness each tick. A dead listener must log
+    once and emit telemetry, never spam, and auto-restart is deliberately not
+    attempted (would thrash GPIO claims on a persistent failure)."""
+
+    def test_alive_is_noop(self, tmp_path, capsys):
+        state = run_clock.RuntimeState("default")
+        state.button_handles = []  # empty means "alive" per buttons_alive contract
+        run_clock._check_button_liveness(state, str(tmp_path / "telemetry.jsonl"))
+        assert state.buttons_dead_logged is False
+        assert capsys.readouterr().err == ""
+
+    def test_none_handles_is_noop(self, tmp_path, capsys):
+        """--buttons-off or a failed start leaves button_handles=None; no warning."""
+        state = run_clock.RuntimeState("default")
+        run_clock._check_button_liveness(state, str(tmp_path / "telemetry.jsonl"))
+        assert state.buttons_dead_logged is False
+        assert capsys.readouterr().err == ""
+
+    def test_dead_logs_once_and_latches(self, tmp_path, capsys, monkeypatch):
+        state = run_clock.RuntimeState("default")
+        state.button_handles = ["anything"]
+        monkeypatch.setattr("inky_buttons.buttons_alive", lambda _handles: False)
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        with patch("run_clock.current_bucket", return_value="h3_exact"):
+            run_clock._check_button_liveness(state, str(telemetry_base))
+            # Second call: already latched, must not log again.
+            run_clock._check_button_liveness(state, str(telemetry_base))
+        err = capsys.readouterr().err
+        assert err.count("button listener died") == 1
+        assert state.buttons_dead_logged is True
+        # One telemetry entry was written to today's rotated file.
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text().strip().splitlines()]
+        assert len(entries) == 1
+        assert entries[0]["mode"] == "buttons_dead"
+        assert entries[0]["error"] == "button listener died"
+
 
 class TestUnskipHandler:
     """Button A held 2s: remove the last-skipped ban from the ledger and re-render."""

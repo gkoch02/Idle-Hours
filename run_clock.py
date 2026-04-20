@@ -342,6 +342,13 @@ class RuntimeState:
         # Populated when button A (skip) bans a quote; button A long-press
         # rolls that ban back and re-renders.
         self.last_skipped: tuple | None = None
+        # Button listener bookkeeping. ``button_handles`` is the keepalive list
+        # returned by ``inky_buttons.start_listener`` (we must hold the refs
+        # for the lifetime of the loop or gpiozero drops our callbacks).
+        # ``buttons_dead_logged`` latches the first "listener died" warning so
+        # the loop doesn't spam stderr every tick once a pin is released.
+        self.button_handles: list | None = None
+        self.buttons_dead_logged = False
         if persisted:
             mt = persisted.get("manual_theme")
             if mt in ("default", "dark"):
@@ -753,7 +760,13 @@ def _build_button_handlers(
 
 
 def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
-    """Start the Inky button listener if available; swallow gpiozero import errors."""
+    """Start the Inky button listener if available; swallow gpiozero import errors.
+
+    Stashes the keepalive handles on ``state.button_handles`` so the main loop
+    can call :func:`_check_button_liveness` each tick and surface a dead
+    listener (unexpected GPIO release, crashed background thread) instead of
+    silently dropping presses.
+    """
     if args.buttons_off:
         return None
     try:
@@ -763,12 +776,48 @@ def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
         def _press_logger(label: str, pin: int) -> None:
             _log(f"button {label} (GPIO {pin}): pressed")
 
-        return inky_buttons.start_listener(
+        handles = inky_buttons.start_listener(
             short_handlers, hold_handlers=hold_handlers, press_logger=_press_logger,
         )
+        state.button_handles = handles
+        return handles
     except Exception as exc:
         _log(f"button listener disabled ({exc!r}); pass --buttons-off to silence", err=True)
         return None
+
+
+def _check_button_liveness(state: RuntimeState, telemetry_path: str | None) -> None:
+    """If the button listener died, log loudly (once) and emit a telemetry entry.
+
+    gpiozero runs its event loop in a background thread; if that thread dies
+    or the pin claim is lost (flaky GPIO, post-reboot race, another process
+    grabs the pin), ``Button.closed`` flips to True and presses silently stop
+    working. The main loop has no other way to notice, so we check each tick.
+
+    We deliberately do NOT auto-restart. A button listener that died once may
+    die again immediately, and a restart loop would thrash GPIO claims. Log
+    the event, emit telemetry, and let the operator decide. The warning is
+    latched via ``state.buttons_dead_logged`` so stderr is not spammed every
+    tick for a persistent failure.
+    """
+    if state.buttons_dead_logged:
+        return
+    try:
+        import inky_buttons
+    except Exception:
+        return
+    if inky_buttons.buttons_alive(state.button_handles):
+        return
+    _log(
+        "button listener died: at least one GPIO pin has been released. "
+        "Presses will be ignored until the process restarts.",
+        err=True,
+    )
+    state.buttons_dead_logged = True
+    append_telemetry(
+        telemetry_path,
+        {"bucket": current_bucket(), "error": "button listener died", "mode": "buttons_dead"},
+    )
 
 
 def _maybe_reset_manual_theme_at_midnight(args: argparse.Namespace, state: RuntimeState) -> None:
@@ -836,6 +885,7 @@ def main() -> int:
     while True:
         time_str = current_time_str()
         _maybe_reset_manual_theme_at_midnight(args, state)
+        _check_button_liveness(state, telemetry_path)
 
         with state.lock:
             manual_quiet = state.manual_quiet
