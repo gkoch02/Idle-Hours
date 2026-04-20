@@ -106,6 +106,24 @@ def parse_args() -> argparse.Namespace:
         help="Skip the Inky button listener. Use on dev machines or for headless runs.",
     )
     parser.add_argument(
+        "--shutdown-command",
+        default="sudo -n shutdown -h now",
+        help=(
+            "Shell command invoked when button D is held for 2 seconds. "
+            "Default assumes passwordless sudo for shutdown is configured; set to "
+            "an empty string to disable the long-press-to-shutdown feature."
+        ),
+    )
+    parser.add_argument(
+        "--startup-image",
+        default=None,
+        help=(
+            "Optional PNG pushed to the display once at loop startup before the "
+            "first quote render, so the panel doesn't ghost yesterday's frame "
+            "during cold boot. Omit (default) to skip the startup frame."
+        ),
+    )
+    parser.add_argument(
         "--state-path",
         default=DEFAULT_STATE_PATH,
         help=(
@@ -274,6 +292,9 @@ class RuntimeState:
         self.last_quote_id: tuple | None = None
         self.last_effective_theme: str | None = None
         self.last_seen_date: dt.date | None = None
+        # Populated when button A (skip) bans a quote; button A long-press
+        # rolls that ban back and re-renders.
+        self.last_skipped: tuple | None = None
         if persisted:
             mt = persisted.get("manual_theme")
             if mt in ("default", "dark"):
@@ -453,6 +474,9 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             if previous is not None:
                 # Ban the currently-shown quote so the next pick filters it out for the week.
                 pick_quote_module.append_history(history_path, previous[0], previous[1])
+                with state.lock:
+                    # Remember what we just banned so A long-press can reverse it.
+                    state.last_skipped = previous
             time_str = current_time_str()
             quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
             _do_render(args, state, time_str, history_path, quote_id=quote_id)
@@ -461,6 +485,34 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
         except Exception as exc:
             _log(f"skip failed: {exc!r}", err=True)
             append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
+
+    def on_unskip() -> None:
+        """Button A held 2s: reverse the most recent skip.
+
+        Removes the last-skipped quote's ban from the history ledger and
+        re-renders the current time. If the bucket hasn't moved since the skip,
+        the un-banned quote is likely to be picked again. If the bucket has
+        moved on, the user just sees a fresh render for the new time — the
+        ledger is still cleaned up either way.
+        """
+        _log("button A held: un-skip")
+        try:
+            with state.lock:
+                target = state.last_skipped
+                state.last_skipped = None
+            if target is None:
+                _log("un-skip: no recently-skipped quote recorded")
+                return
+            removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
+            _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
+            time_str = current_time_str()
+            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+            _do_render(args, state, time_str, history_path, quote_id=quote_id)
+            if quote_id is not None:
+                pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+        except Exception as exc:
+            _log(f"un-skip failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
 
     def on_toggle_theme() -> None:
         try:
@@ -503,6 +555,32 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             _log(f"source card failed: {exc!r}", err=True)
             append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "card"})
 
+    def on_shutdown() -> None:
+        """Button D held 2s: display the goodnight frame and invoke the shutdown command.
+
+        Best-effort. If ``--shutdown-command`` is empty or returns non-zero,
+        the failure is logged and the loop continues. A clean shutdown on the
+        Pi requires passwordless sudo for the default ``sudo -n shutdown -h now``;
+        users running without sudo can override via ``--shutdown-command``.
+        """
+        _log("button D held: shutdown")
+        try:
+            if args.quiet_image:
+                with state.render_lock:
+                    _display_quiet_image(args.quiet_image, args.output, args.display_script)
+        except Exception as exc:
+            _log(f"shutdown pre-frame failed: {exc!r}", err=True)
+        cmd = (args.shutdown_command or "").strip()
+        if not cmd:
+            _log("shutdown: --shutdown-command is empty, skipping system shutdown")
+            return
+        try:
+            import shlex
+            subprocess.check_call(shlex.split(cmd))
+        except Exception as exc:
+            _log(f"shutdown command {cmd!r} failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "shutdown"})
+
     def on_quiet_toggle() -> None:
         try:
             with state.lock:
@@ -526,12 +604,17 @@ def _build_button_handlers(args: argparse.Namespace, state: RuntimeState) -> dic
             _log(f"quiet toggle failed: {exc!r}", err=True)
             append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "quiet"})
 
-    return {
+    short_handlers = {
         "A": on_skip,
         "B": on_toggle_theme,
         "C": on_source_card,
         "D": on_quiet_toggle,
     }
+    hold_handlers = {
+        "A": on_unskip,
+        "D": on_shutdown,
+    }
+    return short_handlers, hold_handlers
 
 
 def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
@@ -540,7 +623,8 @@ def _maybe_start_buttons(args: argparse.Namespace, state: RuntimeState):
         return None
     try:
         import inky_buttons
-        return inky_buttons.start_listener(_build_button_handlers(args, state))
+        short_handlers, hold_handlers = _build_button_handlers(args, state)
+        return inky_buttons.start_listener(short_handlers, hold_handlers=hold_handlers)
     except Exception as exc:
         _log(f"button listener disabled ({exc!r}); pass --buttons-off to silence", err=True)
         return None
@@ -591,6 +675,16 @@ def main() -> int:
     # Hold the returned button list as a local for the lifetime of the loop —
     # gpiozero drops handlers when its Button objects are garbage-collected.
     _buttons = _maybe_start_buttons(args, state)  # noqa: F841
+
+    # Startup frame: push a static image to the panel before the first quote
+    # renders so viewers see something intentional instead of yesterday's
+    # ghosted frame during cold boot. Best-effort; a missing file is logged
+    # and the loop continues to the first real render.
+    if args.startup_image:
+        try:
+            _display_quiet_image(args.startup_image, args.output, args.display_script)
+        except Exception as exc:
+            _log(f"startup image display failed: {exc!r}", err=True)
 
     _was_quiet = False
     while True:

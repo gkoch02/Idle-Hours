@@ -1100,6 +1100,7 @@ class TestButtonHandlers:
             telemetry_path="",
             state_path=str(tmp_path / "state.json"),
             quiet_image="",
+            shutdown_command="",
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -1113,8 +1114,8 @@ class TestButtonHandlers:
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"), \
              patch("run_clock.pick_quote_module.append_history") as mock_append:
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["A"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["A"]()
         # First append: ban the previous quote. Second: log the new one.
         assert mock_append.call_count == 2
         assert mock_append.call_args_list[0][0][1:] == ("src-old", 5)
@@ -1128,8 +1129,8 @@ class TestButtonHandlers:
         with patch("run_clock.render_now") as mock_render, \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["B"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["B"]()
         assert state.manual_theme == "dark"
         persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert persisted["manual_theme"] == "dark"
@@ -1147,8 +1148,8 @@ class TestButtonHandlers:
         with patch("run_clock.render_now"), \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["B"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["B"]()
         assert state.manual_theme == "default"
 
     def test_do_render_bucket_matches_time_str_near_boundary(self, tmp_path):
@@ -1174,8 +1175,8 @@ class TestButtonHandlers:
              patch("run_clock.threading.Timer") as mock_timer, \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["C"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
         kwargs = mock_render.call_args[1]
         positional = mock_render.call_args[0]
         used_mode = kwargs.get("mode") or (positional[5] if len(positional) > 5 else None)
@@ -1196,8 +1197,8 @@ class TestButtonHandlers:
              patch("run_clock.threading.Timer") as mock_timer, \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["C"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
             # First render is the card itself.
             assert mock_render.call_count == 1
             # Now invoke the restore callback manually (simulating the 5s timer firing).
@@ -1216,8 +1217,8 @@ class TestButtonHandlers:
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
         with patch("run_clock._display_quiet_image") as mock_display:
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["D"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["D"]()
         assert state.manual_quiet is True
         persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert persisted["manual_quiet"] is True
@@ -1231,8 +1232,8 @@ class TestButtonHandlers:
              patch("run_clock.render_now") as mock_render, \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
-            handlers = run_clock._build_button_handlers(args, state)
-            handlers["D"]()
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["D"]()
         assert state.manual_quiet is False
         assert mock_render.called
 
@@ -1251,8 +1252,235 @@ class TestMaybeStartButtons:
             render_script="r", output="o", width=800, height=480,
             display_script=None, mode="debug", theme="default",
             history_path="", history_days=7, telemetry_path="",
-            state_path="", quiet_image="",
+            state_path="", quiet_image="", shutdown_command="",
         )
         result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
         assert result is None
         assert "button listener disabled" in capsys.readouterr().err
+
+    def test_passes_both_short_and_hold_handlers(self, tmp_path, monkeypatch):
+        captured = {}
+
+        def fake_start(handlers, *, hold_handlers=None, **kw):
+            captured["short"] = handlers
+            captured["hold"] = hold_handlers
+            return ["stub"]
+
+        import inky_buttons as ib
+        monkeypatch.setattr(ib, "start_listener", fake_start)
+        args = argparse.Namespace(
+            buttons_off=False,
+            render_script="r", output=str(tmp_path / "out.png"),
+            width=800, height=480, display_script=None, mode="debug",
+            theme="default", history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="", shutdown_command="",
+        )
+        result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
+        assert result == ["stub"]
+        assert set(captured["short"]) == {"A", "B", "C", "D"}
+        # Long-press is only wired on A (un-skip) and D (shutdown).
+        assert set(captured["hold"]) == {"A", "D"}
+
+
+class TestUnskipHandler:
+    """Button A held 2s: remove the last-skipped ban from the ledger and re-render."""
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="default",
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7, telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+            quiet_image="", shutdown_command="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_skip_records_last_skipped_in_state(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
+        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"), \
+             patch("run_clock.pick_quote_module.append_history"):
+            short, _hold = run_clock._build_button_handlers(args, state)
+            short["A"]()
+        assert state.last_skipped == ("src-old", 5, "q-old", "mt-old")
+
+    def test_unskip_removes_ledger_entry_and_rerenders(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_skipped = ("src-old", 5, "q-old", "mt-old")
+        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"), \
+             patch("run_clock.pick_quote_module.remove_last_history_entry", return_value=True) as mock_rm, \
+             patch("run_clock.pick_quote_module.append_history") as mock_append:
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["A"]()
+        # Removed the ban.
+        assert mock_rm.called
+        assert mock_rm.call_args[0][1:] == ("src-old", 5)
+        # State cleared so double-press doesn't double-remove.
+        assert state.last_skipped is None
+        # Re-rendered the current time.
+        assert mock_render.called
+        # Logged the new pick in history.
+        assert mock_append.called
+
+    def test_unskip_noop_when_no_last_skipped(self, tmp_path, capsys):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_skipped = None
+        with patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.pick_quote_module.remove_last_history_entry") as mock_rm:
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["A"]()
+        assert not mock_rm.called
+        assert not mock_render.called
+        assert "no recently-skipped" in capsys.readouterr().out
+
+
+class TestShutdownHandler:
+    """Button D held 2s: goodnight frame, then invoke shutdown command."""
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="default",
+            history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="",
+            shutdown_command="sudo -n shutdown -h now",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_shutdown_invokes_configured_command(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.subprocess.check_call") as mock_check, \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert mock_check.called
+        cmd = mock_check.call_args[0][0]
+        assert cmd == ["sudo", "-n", "shutdown", "-h", "now"]
+
+    def test_empty_shutdown_command_skips_invocation(self, tmp_path, capsys):
+        args = self._args(tmp_path, shutdown_command="")
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.subprocess.check_call") as mock_check, \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert not mock_check.called
+        assert "skipping system shutdown" in capsys.readouterr().out
+
+    def test_shutdown_displays_goodnight_first(self, tmp_path):
+        quiet = tmp_path / "goodnight.png"
+        quiet.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(quiet))
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock._display_quiet_image") as mock_display, \
+             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert mock_display.called
+
+    def test_shutdown_command_failure_is_logged_not_raised(self, tmp_path, capsys):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.subprocess.check_call", side_effect=RuntimeError("nope")), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            # Must not raise.
+            hold["D"]()
+        assert "shutdown command" in capsys.readouterr().err
+
+
+class TestStartupImage:
+    """--startup-image: push a static PNG before the first real render on boot."""
+
+    def test_startup_image_pushed_when_set(self, tmp_path):
+        startup = tmp_path / "starting.png"
+        startup.write_bytes(b"\x89PNG")
+        argv = [
+            "run_clock.py",
+            "--once",
+            "--startup-image", str(startup),
+            "--output", str(tmp_path / "out.png"),
+            "--history-path", "",
+            "--telemetry-path", "",
+            "--state-path", "",
+        ]
+        # --once skips the startup image (it's for the loop). Verify parse accepts.
+        with patch("sys.argv", argv):
+            args = run_clock.parse_args()
+        assert args.startup_image == str(startup)
+
+    def test_startup_image_used_in_main_loop_path(self, tmp_path, monkeypatch):
+        """When --startup-image is set and --once is not, main() calls _display_quiet_image
+        once before entering the loop, then the loop body can be aborted via a stub.
+        """
+        startup = tmp_path / "starting.png"
+        startup.write_bytes(b"\x89PNG")
+        argv = [
+            "run_clock.py",
+            "--startup-image", str(startup),
+            "--output", str(tmp_path / "out.png"),
+            "--buttons-off",
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "",
+            "--quiet-off",
+            "--interval-seconds", "1",
+        ]
+        calls = []
+
+        def fake_display(quiet_image, output, display_script):
+            calls.append(("display", quiet_image))
+
+        def fake_sleep(_):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(run_clock, "_display_quiet_image", fake_display)
+        monkeypatch.setattr(run_clock.time, "sleep", fake_sleep)
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        # Startup image was pushed before any render.
+        assert any(c[0] == "display" for c in calls)
+        # And normal render still ran for the first tick.
+        assert mock_render.called
+
+    def test_no_startup_image_when_flag_omitted(self, tmp_path, monkeypatch):
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "out.png"),
+            "--buttons-off",
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "", "--quiet-off",
+            "--interval-seconds", "1",
+        ]
+        displayed = []
+        monkeypatch.setattr(
+            run_clock, "_display_quiet_image",
+            lambda q, o, d: displayed.append(q),
+        )
+        monkeypatch.setattr(run_clock.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.peek_quote_id", return_value=None):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert displayed == []

@@ -7,9 +7,16 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/LitClock
-ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py --display-script display_inky.py --mode production
+ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py --display-script display_inky.py --mode production --theme auto
 # Uses the prebuilt runtime dataset in assets/candidates-attributed.jsonl.
 # Rebuilding corpus artifacts is a separate maintenance task, not part of service startup.
+#
+# Useful additions depending on your setup:
+#   --buttons-off                           if gpiozero isn't installed or you don't want buttons
+#   --shutdown-command ""                   disable button-D long-press shutdown
+#   --startup-image /home/pi/LitClock/assets/goodnight.png   push a frame at boot
+#   --state-path /home/pi/.litclock/state.json              persisted theme/quiet overrides
+#   --telemetry-path /home/pi/.litclock/telemetry.jsonl     telemetry sidecar (litclock_health.py)
 Restart=always
 RestartSec=10
 
