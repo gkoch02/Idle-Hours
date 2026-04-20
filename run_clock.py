@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import datetime as dt
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -248,12 +249,30 @@ def load_runtime_state(state_path: str | None) -> dict:
 
 
 def save_runtime_state(state_path: str | None, state: dict) -> None:
-    """Persist runtime state. No-op when disabled."""
+    """Persist runtime state atomically. No-op when disabled.
+
+    Writes to a sibling ``*.tmp`` file, fsyncs, then ``os.replace``s into place.
+    The rename is atomic on POSIX, so a crash during the write leaves *either*
+    the old file intact or the new file fully written — never a half-written
+    JSON blob that would silently lose the user's last theme/quiet preference
+    when ``load_runtime_state`` parses it on the next boot.
+    """
     path = _resolve_state_path(state_path)
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    payload = json.dumps(state, ensure_ascii=False, indent=2)
+    try:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink()
+        raise
 
 
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:

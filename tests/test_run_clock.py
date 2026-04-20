@@ -823,6 +823,36 @@ class TestRuntimeStatePersistence:
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
         assert s.snapshot_for_persistence() == {"manual_theme": "dark", "manual_quiet": True}
 
+    def test_save_is_atomic_leaves_old_file_on_replace_failure(self, tmp_path):
+        """A crash during os.replace must not corrupt the existing state file.
+
+        Simulate the crash by patching os.replace to raise; assert the original
+        contents survive and the tmp file is cleaned up (not left as debris).
+        """
+        path = tmp_path / "state.json"
+        run_clock.save_runtime_state(str(path), {"manual_theme": "default", "manual_quiet": False})
+        original = path.read_text(encoding="utf-8")
+
+        with patch("run_clock.os.replace", side_effect=OSError("simulated crash")):
+            with pytest.raises(OSError):
+                run_clock.save_runtime_state(str(path), {"manual_theme": "dark", "manual_quiet": True})
+
+        assert path.read_text(encoding="utf-8") == original
+        assert not (tmp_path / "state.json.tmp").exists()
+
+    def test_save_writes_via_tmp_file(self, tmp_path):
+        """Verify the tmp+rename path is actually used (not a direct write)."""
+        path = tmp_path / "state.json"
+        with patch("run_clock.os.replace") as mock_replace:
+            run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+            assert mock_replace.called
+            src, dst = mock_replace.call_args[0]
+            assert str(src).endswith(".json.tmp")
+            assert str(dst).endswith(".json")
+        # The tmp file is left behind because we patched replace; clean up.
+        tmp_path_file = tmp_path / "state.json.tmp"
+        assert tmp_path_file.exists()
+
 
 class TestAppendTelemetry:
     def test_disabled_path_is_noop(self, tmp_path):
