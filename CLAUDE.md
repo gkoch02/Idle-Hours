@@ -101,6 +101,18 @@ python3 gutenberg_time_miner.py --input ~/books/ --output output/candidates.json
 python3 merge_candidates.py output/run1.jsonl output/run2.jsonl
 # → candidates-merged.jsonl + candidates-merged-summary.json
 
+# One-shot "mine + pipeline + merge into live corpus" driver for a curated list
+# of clock-precise Gutenberg IDs (gutenberg_dawn_expansion_ids.txt).
+# Safe to re-run — downloads cache in data/gutenberg/, merge_candidates dedupes.
+bash run_dawn_expansion.sh
+
+# Diagnose which GPIO pin each physical Inky button actually fires (Pi only).
+# Prints timestamped PRESSED/released lines per pin. Use before blaming
+# inky_buttons.BUTTON_GPIO or handler logic.
+python3 probe_buttons.py
+python3 probe_buttons.py --pins 5 6 16 24 17 13 26      # custom pin set
+python3 probe_buttons.py --pull-down --bounce 0.02      # active-high + tight debounce
+
 # Analyze which time buckets have few/no quotes
 python3 bucket_coverage.py output/candidates-merged.jsonl
 # → bucket-coverage.json + bucket-coverage.md
@@ -303,7 +315,7 @@ A display-history ledger filters recently-shown quotes out of the candidate pool
 {"ts": "2026-04-19T14:30:00+00:00", "source_id": "141", "line_number": 482}
 ```
 
-`pick_quote.load_recent_history` reads the ledger, drops entries older than `--history-days`, and returns a set of `(source_id, line_number)` tuples. `pick_best` applies a strict fresh-first filter: rows whose key is in that set are excluded before scoring, and if the filter empties the candidate pool the full list is used so sparse buckets still render something. `pick_quote.append_history` writes one line per successful render.
+`pick_quote.load_recent_history` reads the ledger, drops entries older than `--history-days`, and returns a set of `(source_id, line_number)` tuples. `pick_best` applies a strict fresh-first filter: rows whose key is in that set are excluded before scoring, and if the filter empties the candidate pool the full list is used so sparse buckets still render something. `pick_quote.append_history` writes one line per successful render and then `fsync`s the handle so a power loss immediately after the call can't leave the entry buffered in the kernel — the worst failure case is one lost entry, never ledger-wide corruption. If `load_recent_history` encounters a malformed line (partial write or external corruption), it logs a one-shot warning to stderr (`"history ledger {path}: malformed line skipped (corrupt or partial write); subsequent bad lines in this read will be suppressed"`) and continues; further bad lines in the same read are suppressed so a torn file doesn't spam the log.
 
 Disable the filter by passing `--history-path ""` or `--history-days 0`. `select_quote` (the library entry point) defaults to **disabled** so unit tests and one-off callers are not affected; `run_clock.py` and `pick_quote.py`'s CLI default to **enabled**. `run_clock.py`:
 - Calls `peek_quote_id` before `render_now` so the ledger snapshot both the peek and the subprocess see is identical (run_clock appends only after the subprocess returns 0).
@@ -322,7 +334,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 - **Text cleanup.** `strip_underscore_emphasis` drops Gutenberg's `_emphasis_` markers and `normalize_dashes` converts bare `--` to em-dashes before layout.
 - **Fit loop.** `fit_quote` shrinks the quote font in 2pt steps from the layout's `font_max` down to `font_min` until all lines fit within `quote_height`.
 - **Justification.** Non-last lines are fully justified by distributing leftover slack across inter-word spaces — but only when slack is ≤25% of the layout's `max_width`. Loose lines fall back to ragged-right because wide forced gaps look worse than uneven right edges.
-- **Modes.** `--mode debug` (default) draws a top-right `DEBUG MODE` banner in the accent color plus a centered bottom strip (`HH:MM · bucket[ → resolved] · layout X · quality N · id source:Lline`) separated from the quote block by a dotted horizontal rule. `--mode production` hides all of that for a clean appliance look.
+- **Modes.** `--mode debug` (default) draws a top-right `DEBUG MODE` banner (rendered in sans-bold to match the footer strip, in the theme's accent color) plus a centered bottom strip (`HH:MM · bucket[ → resolved] · layout X · quality N · id source:Lline`) separated from the quote block by a dotted horizontal rule. `--mode production` hides all of that for a clean appliance look.
 - **Outputs.** `--output` defaults to `output/render-HHMM.png`; `run_clock.py` overrides this to `output/current.png` so the Inky bridge has a stable filename.
 
 ### Runtime Loop (`run_clock.py`)
@@ -335,9 +347,15 @@ Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the 
 
 **Auto-dark theme (`--theme auto`).** Picks `dark` between 18:00 and 06:00 (`AUTO_DARK_START_HOUR` / `AUTO_DARK_END_HOUR`) and `default` otherwise. Each tick re-derives the effective theme from the wall clock; a theme change is treated like a bucket change (forces a redraw even if the picked quote is unchanged). The button-B manual toggle wins until the next midnight rollover, when `_maybe_reset_manual_theme_at_midnight` clears it so `auto` resumes.
 
-**Inky buttons (`inky_buttons.py`).** The four capacitive buttons on the Inky Impression are wired to GPIO 5/6/16/24 (labels A/B/C/D) and dispatched by `inky_buttons.start_listener(short_handlers, hold_handlers=...)` using `gpiozero.Button` with a 0.3-second debounce and a 2-second hold threshold. The hardware import is local to `start_listener` so the module is import-safe on dev hosts. `run_clock.py` builds the short/hold handler dicts in `_build_button_handlers` and stashes the returned keepalive list for the lifetime of the loop — `gpiozero` drops handlers when its `Button` is garbage-collected, so the reference must be held. Handlers act synchronously in the listener thread and serialize against the main loop via `state.render_lock`; mutations of theme/quiet flags are guarded by `state.lock`. Pass `--buttons-off` on dev machines or for headless runs.
+**Inky buttons (`inky_buttons.py`).** The four capacitive buttons on the Inky Impression are wired to GPIO 5/6/16/24 (labels A/B/C/D) and dispatched by `inky_buttons.start_listener(short_handlers, hold_handlers=..., press_logger=...)` using `gpiozero.Button` with a 0.3-second debounce and a 2-second hold threshold. The hardware import is local to `start_listener` so the module is import-safe on dev hosts. `run_clock.py` builds the short/hold handler dicts in `_build_button_handlers` and stashes the returned keepalive list for the lifetime of the loop — `gpiozero` drops handlers when its `Button` is garbage-collected, so the reference must be held. Handlers act synchronously in the listener thread and serialize against the main loop via `state.render_lock`; mutations of theme/quiet flags are guarded by `state.lock`. Pass `--buttons-off` on dev machines or for headless runs.
 
 Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so the short callback fires on *release* only when the button was not held long enough to trigger the hold callback — a long press therefore fires only the hold action, never both.
+
+**Drop-on-busy press gate.** Every button handler wraps its work in `run_clock._button_render_gate`, which does a *non-blocking* acquire of `state.render_lock`. If a render is already in flight (a Spectra 6 refresh can take 10–20s), the press is logged (`"button {name}: busy (render in flight), press ignored"`) and dropped. Without this, gpiozero queues subsequent events behind the slow eInk refresh and a tap-burst produces unpredictable multi-second delayed actions; with it the UX is "first press wins, subsequent presses during the refresh are no-ops."
+
+**Per-press GPIO logging.** `start_listener` accepts an optional `press_logger(label, gpio_pin)` callback that fires on every hardware press, before short/long dispatch and independent of handler exceptions. `run_clock._maybe_start_buttons` wires it to a `_press_logger` that logs `"press: {label} (GPIO {pin})"`, so a field operator can grep the journal to confirm a physical button actually fired before blaming handler code. For deeper wiring diagnosis use `probe_buttons.py` (standalone — doesn't need the main loop to be running).
+
+**Liveness supervision.** gpiozero runs its event loop on a background thread; if that thread dies or the pin claim is lost (flaky GPIO, post-reboot race, another process grabbing the pin) `Button.closed` flips to `True` and presses silently stop working. Each tick the main loop calls `_check_button_liveness`, which consults `inky_buttons.buttons_alive(state.button_handles)`. On the first failure it logs a loud stderr warning, appends `{"mode": "buttons_dead", "error": "button listener died"}` to telemetry, and latches `state.buttons_dead_logged` so subsequent ticks stay quiet. We deliberately do **not** auto-restart — a listener that died once often dies again immediately and a restart loop would thrash GPIO claims.
 
 | Button | Short press | Long press (2s) |
 |---|---|---|
@@ -346,9 +364,11 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 | **C** | Source card — renders a `--mode card` overlay (title / author / Gutenberg ID / matched phrase) for 5 seconds, then the timer thread itself re-renders the original frame (the next loop tick alone could be up to 60s away). | — |
 | **D** | Quiet now / wake — toggles `manual_quiet`, persists to `--state-path`. Going quiet pushes `--quiet-image` immediately; going active picks and renders the current time. | Shutdown — shows `--quiet-image`, then runs `--shutdown-command` (default `sudo -n shutdown -h now`). Requires passwordless sudo for shutdown; override or empty the flag if you don't want this behaviour. |
 
-**Persisted runtime state (`--state-path`).** `~/.litclock/state.json` (default) holds `manual_theme` and `manual_quiet`. Loaded at loop startup so the user's last button-B / button-D choices survive a restart. Pass an empty string to disable.
+**Persisted runtime state (`--state-path`).** `~/.litclock/state.json` (default) holds `manual_theme` and `manual_quiet`. Loaded at loop startup so the user's last button-B / button-D choices survive a restart. Pass an empty string to disable. `save_runtime_state` writes atomically: payload → sibling `*.tmp` file → `fsync` → `os.replace` into place → `fsync` of the parent directory. Without that final directory fsync the kernel can return from `os.replace` with the new dirent still in cache, and a crash in that window leaves the old/missing file despite the rename "succeeding." Directory-fsync failures are swallowed on platforms where they aren't meaningful (notably Windows).
 
-**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) gets one JSONL entry per successful render (`bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`) and one per loop-level error (`bucket`, `error`, `mode`). `litclock_health.py` summarises the last N hours: render count, error count, p50/p95 latency, last error message. `--json` emits the summary as JSON for cron/systemd integration; exit codes are `0` healthy, `1` no telemetry log, `2` unhealthy (errors but zero renders in the window, or `--fail-if-no-renders` was set and the window was silent). Pass an empty string to disable.
+**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) is the **base path**; `append_telemetry` actually writes to a date-rotated sibling `<stem>-YYYYMMDD<suffix>` in the same directory (e.g. `~/.litclock/telemetry-20260420.jsonl`). Rotation keeps each file bounded so a multi-year-running appliance doesn't produce a single unbounded JSONL that chokes health checks and stalls append latency. Each entry is one JSON line: successful renders write `bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`; loop-level errors write `bucket`, `error`, `mode`. Telemetry writes are best-effort — I/O failures log and drop the entry rather than crashing the loop. Pass an empty string to disable.
+
+`litclock_health.py` globs the base path's directory for date-suffixed siblings (plus any legacy unsuffixed file at the exact base path) and stream-reads them in sorted-filename order. It prunes files older than the `--hours` window by filename date alone, with one day of slack so operators east/west of UTC don't accidentally drop the active file near midnight UTC (the per-entry `ts` filter in `load_entries` enforces the exact cutoff). Siblings that match the glob but whose date suffix doesn't parse as `YYYYMMDD` are skipped — pointing `--telemetry-path` at a file directly is the supported way to summarise an arbitrary JSONL. Summary output includes render count, error count, p50/p95 render and display latency, last error message; `--json` emits the same fields for cron/systemd integration. Exit codes: `0` healthy, `1` no telemetry log, `2` unhealthy (errors but zero renders in the window, or `--fail-if-no-renders` was set and the window was silent).
 
 **Startup frame (`--startup-image`).** Optional PNG pushed to the display once at loop startup, before the first quote render, so the panel doesn't ghost yesterday's frame during cold boot. Off by default (a Spectra 6 refresh takes 10–20s, so the extra round-trip isn't always worth it). Point at any PNG that encodes to the panel's 6-colour palette cleanly.
 
@@ -370,7 +390,7 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 17 test modules covering every pipeline script plus the runtime components — 522 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`.
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 17 test modules covering every pipeline script plus the runtime components — 558 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`. `probe_buttons.py` is a runtime diagnostic (not a library surface) so it has no dedicated test module.
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
@@ -401,10 +421,11 @@ enrich_metadata.py                 attach author/title from Gutenberg headers
 pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
 contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
-run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry)
+run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry; atomic state writes, date-rotated telemetry, button liveness check)
 display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff, per-theme saturation)
-inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D → run_clock handlers)
-litclock_health.py                 telemetry summariser (render count, p50/p95 latency, last error)
+inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D → run_clock handlers, press_logger + buttons_alive supervision)
+probe_buttons.py                   Pi-only GPIO press probe — confirms which pin each physical button actually fires
+litclock_health.py                 telemetry summariser (render count, p50/p95 latency, last error; reads date-rotated sidecar)
 bootstrap_pi_inky.sh               first-time Pi setup helper
 litclock.service.example           sample systemd unit
 pi_setup_inky_impression.md        long-form Pi setup doc
@@ -421,6 +442,8 @@ tests/                             pytest suite — one module per script + conf
 output/                            runtime render target (output/current.png); gitignored except .gitkeep
 data/gutenberg/                    cached Gutenberg text downloads (gitignored)
 .github/workflows/ci.yml           GitHub Actions CI (lint + test, Python 3.11 & 3.12)
-gutenberg_batch_ids.txt            batch list of Gutenberg IDs
+gutenberg_batch_ids.txt            batch list of Gutenberg IDs for run_batch2.sh
+gutenberg_dawn_expansion_ids.txt   curated clock-precise Gutenberg ID list for run_dawn_expansion.sh
 run_batch2.sh                      bulk harvest driver
+run_dawn_expansion.sh              one-shot "mine curated IDs → pipeline → merge into live corpus" driver
 ```

@@ -34,8 +34,9 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 - `render_quote.py` - quote renderer, typography, highlighting, theme handling, Spectra 6 palette snapping
 - `pick_quote.py` - runtime quote selection from the attributed dataset
 - `display_inky.py` - thin bridge that sends a rendered image to the Inky display
-- `inky_buttons.py` - listener for the four Inky Impression capacitive buttons (A/B/C/D), short + long press
-- `litclock_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`
+- `inky_buttons.py` - listener for the four Inky Impression capacitive buttons (A/B/C/D), short + long press, liveness check
+- `probe_buttons.py` - standalone GPIO press probe for verifying which pin each physical button fires
+- `litclock_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`, reads date-rotated files
 - `buckets.py` - fuzzy time bucket mapping
 
 ### Runtime assets
@@ -125,6 +126,8 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 
 Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one.
 
+If a button press lands while a render is already in flight (a Spectra 6 refresh can take 10–20s), the press is logged and dropped rather than queued — the UX is "first press wins, subsequent taps during that refresh are no-ops." Each hardware press is also logged with its GPIO pin so you can confirm the physical button reached the expected handler; for deeper wiring diagnosis run `python3 probe_buttons.py` on the Pi. The main loop also watches for a dead button listener (pin claim lost, background thread crashed) and logs one loud warning plus a telemetry entry if it detects one — presses won't work again until the process restarts.
+
 ### Persisted runtime state and telemetry
 
 The loop can persist the manual theme and quiet overrides so they survive a restart, and it can log one JSONL entry per render/error for after-the-fact "is the appliance OK?" checks.
@@ -141,6 +144,10 @@ python3 litclock_health.py --hours 24
 # JSON summary for cron / systemd health checks (exits 2 when unhealthy)
 python3 litclock_health.py --hours 1 --json --fail-if-no-renders
 ```
+
+State writes are atomic (`tmp → fsync → rename → fsync dir`) so a crash in the window between write and rename can't leave a half-formed or missing file.
+
+Telemetry is rotated by date: the `--telemetry-path` argument is a base path, but `run_clock.py` actually writes to `<stem>-YYYYMMDD<suffix>` siblings (e.g. `~/.litclock/telemetry-20260420.jsonl`) so a multi-year-running appliance keeps file size bounded. `litclock_health.py` globs the directory for those siblings plus any legacy unsuffixed file at the exact base path and stream-reads them in order.
 
 `litclock_health.py` exit codes:
 
@@ -333,7 +340,9 @@ That work is intentionally separate from the steady-state render loop.
 - Button B flips the theme at any time and persists the choice to `--state-path`. Button A's long press reverses the most recent skip.
 - `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B override wins until the next midnight rollover.
 - Per-theme saturation: `display_inky.py` uses `0.5` for `default` and `0.7` for `dark` on the Spectra 6 panel so accents don't go muddy on dark backgrounds.
-- Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) gets one line per render and one per loop-level error; `litclock_health.py --json` feeds systemd / cron health checks.
+- Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
+- The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
+- If the Inky button listener dies mid-run (pin claim lost, background thread failed), the loop logs one loud warning plus a telemetry entry with `mode=buttons_dead` and stops retrying — restart the process to reclaim the pins.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.
@@ -347,6 +356,7 @@ If the clock is behaving oddly, these are the first files to inspect:
 - loop/update/dedup/service behavior -> `run_clock.py`
 - display handoff issues -> `display_inky.py`
 - button/long-press wiring -> `inky_buttons.py`
+- "which GPIO pin did that button actually fire?" -> `python3 probe_buttons.py` on the Pi
 - "is the appliance alive?" -> `python3 litclock_health.py --hours 24` (use `--json` from cron)
 - telemetry log (one JSONL entry per render/error) -> `~/.litclock/telemetry.jsonl`
 - persisted manual theme / quiet override -> `~/.litclock/state.json`
