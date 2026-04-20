@@ -337,3 +337,51 @@ class TestRender:
         )
         img = rq.render("08:45", row, 800, 480, mode="debug")
         assert img.size == (800, 480)
+
+
+class TestRenderCard:
+    """The button-C source card uses mode='card' to render a centered metadata frame."""
+
+    def _row(self, **overrides):
+        row = {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "source_id": "141",
+        }
+        row.update(overrides)
+        return row
+
+    def test_card_returns_image_of_correct_size(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="card")
+        assert img.size == (800, 480)
+
+    def test_card_uses_dark_theme_background(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="card", theme="dark")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["black"]
+
+    def test_card_uses_default_theme_background(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="card", theme="default")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["white"]
+
+    def test_card_palette_is_spectra6(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="card")
+        palette = set(rq.SPECTRA6.values())
+        pixels = set(img.convert("RGB").getdata())
+        assert pixels.issubset(palette), f"Unexpected colors: {pixels - palette}"
+
+    def test_card_without_author_or_title_falls_back_gracefully(self):
+        row = self._row(author=None, title=None, source_path="data/gutenberg/pg141.txt")
+        img = rq.render("03:00", row, 800, 480, mode="card")
+        assert img.size == (800, 480)
+
+    def test_card_without_source_id_does_not_crash(self):
+        row = self._row(source_id=None)
+        img = rq.render("03:00", row, 800, 480, mode="card")
+        assert img.size == (800, 480)
+
+    def test_card_strips_underscore_emphasis_from_matched_text(self):
+        row = self._row(matched_text="_three o'clock_")
+        img = rq.render("03:00", row, 800, 480, mode="card")
+        assert img.size == (800, 480)

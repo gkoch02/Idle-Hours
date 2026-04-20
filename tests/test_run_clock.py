@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import json
 import subprocess
 from unittest.mock import patch
 
@@ -716,3 +718,541 @@ class TestDisplayQuietImage:
         mock_render.assert_not_called()
         assert len(display_calls) == 1
         assert display_calls[0][0] == str(src)
+
+
+class TestAutoTheme:
+    def test_auto_theme_morning_is_default(self):
+        assert run_clock.auto_theme_for("09:00") == "default"
+
+    def test_auto_theme_afternoon_is_default(self):
+        assert run_clock.auto_theme_for("15:30") == "default"
+
+    def test_auto_theme_evening_is_dark(self):
+        assert run_clock.auto_theme_for("19:00") == "dark"
+
+    def test_auto_theme_late_night_is_dark(self):
+        assert run_clock.auto_theme_for("23:30") == "dark"
+
+    def test_auto_theme_pre_dawn_is_dark(self):
+        assert run_clock.auto_theme_for("04:00") == "dark"
+
+    def test_auto_theme_boundary_dusk_is_dark(self):
+        assert run_clock.auto_theme_for("18:00") == "dark"
+
+    def test_auto_theme_boundary_dawn_is_default(self):
+        assert run_clock.auto_theme_for("06:00") == "default"
+
+
+class TestResolveEffectiveTheme:
+    def test_explicit_default_is_returned(self):
+        assert run_clock.resolve_effective_theme("default", "20:00", None) == "default"
+
+    def test_explicit_dark_is_returned(self):
+        assert run_clock.resolve_effective_theme("dark", "10:00", None) == "dark"
+
+    def test_auto_resolves_via_clock(self):
+        assert run_clock.resolve_effective_theme("auto", "21:00", None) == "dark"
+        assert run_clock.resolve_effective_theme("auto", "10:00", None) == "default"
+
+    def test_manual_override_wins_over_auto(self):
+        assert run_clock.resolve_effective_theme("auto", "21:00", "default") == "default"
+        assert run_clock.resolve_effective_theme("auto", "10:00", "dark") == "dark"
+
+    def test_manual_override_wins_over_explicit(self):
+        # If the user pressed B while running with --theme dark, the manual override wins.
+        assert run_clock.resolve_effective_theme("dark", "10:00", "default") == "default"
+
+    def test_invalid_manual_override_ignored(self):
+        assert run_clock.resolve_effective_theme("auto", "21:00", "garbage") == "dark"
+
+
+class TestRuntimeStatePersistence:
+    def test_load_missing_returns_empty(self, tmp_path):
+        assert run_clock.load_runtime_state(str(tmp_path / "missing.json")) == {}
+
+    def test_load_empty_path_returns_empty(self):
+        assert run_clock.load_runtime_state("") == {}
+        assert run_clock.load_runtime_state(None) == {}
+
+    def test_save_then_load_roundtrip(self, tmp_path):
+        path = tmp_path / "state.json"
+        run_clock.save_runtime_state(str(path), {"manual_theme": "dark", "manual_quiet": True})
+        loaded = run_clock.load_runtime_state(str(path))
+        assert loaded == {"manual_theme": "dark", "manual_quiet": True}
+
+    def test_save_creates_parent_directory(self, tmp_path):
+        path = tmp_path / "nested" / "dir" / "state.json"
+        run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+        assert path.exists()
+
+    def test_load_corrupt_file_returns_empty(self, tmp_path, capsys):
+        path = tmp_path / "state.json"
+        path.write_text("not-json", encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+        assert "unreadable" in capsys.readouterr().err
+
+    def test_load_non_object_json_returns_empty(self, tmp_path, capsys):
+        """Valid JSON that isn't an object (bare string/number/list) must be rejected —
+        RuntimeState calls .get() on the result so a non-dict would otherwise crash startup.
+        """
+        path = tmp_path / "state.json"
+        path.write_text('"oops"', encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+        assert "not a JSON object" in capsys.readouterr().err
+
+    def test_load_number_json_returns_empty(self, tmp_path):
+        path = tmp_path / "state.json"
+        path.write_text("42", encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+
+    def test_load_list_json_returns_empty(self, tmp_path):
+        path = tmp_path / "state.json"
+        path.write_text("[]", encoding="utf-8")
+        assert run_clock.load_runtime_state(str(path)) == {}
+
+    def test_runtime_state_seeds_from_persisted(self):
+        s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
+        assert s.manual_theme == "dark"
+        assert s.manual_quiet is True
+
+    def test_runtime_state_ignores_invalid_persisted_theme(self):
+        s = run_clock.RuntimeState("auto", persisted={"manual_theme": "neon", "manual_quiet": False})
+        assert s.manual_theme is None
+
+    def test_snapshot_for_persistence_round_trips(self):
+        s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
+        assert s.snapshot_for_persistence() == {"manual_theme": "dark", "manual_quiet": True}
+
+
+class TestAppendTelemetry:
+    def test_disabled_path_is_noop(self, tmp_path):
+        run_clock.append_telemetry("", {"bucket": "h3_exact"})
+        run_clock.append_telemetry(None, {"bucket": "h3_exact"})
+        # No file written.
+        assert list(tmp_path.iterdir()) == []
+
+    def test_appends_one_line_with_ts(self, tmp_path):
+        path = tmp_path / "telemetry.jsonl"
+        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "render_ms": 500})
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["bucket"] == "h3_exact"
+        assert entry["render_ms"] == 500
+        assert "ts" in entry
+
+    def test_appends_multiple_lines(self, tmp_path):
+        path = tmp_path / "telemetry.jsonl"
+        run_clock.append_telemetry(str(path), {"bucket": "a"})
+        run_clock.append_telemetry(str(path), {"bucket": "b"})
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+
+    def test_creates_parent_directory(self, tmp_path):
+        path = tmp_path / "nested" / "telemetry.jsonl"
+        run_clock.append_telemetry(str(path), {"bucket": "h1_exact"})
+        assert path.exists()
+
+    def test_io_failure_does_not_raise(self, tmp_path, capsys):
+        """Telemetry is best-effort — an unwritable path must never crash the caller,
+        since append_telemetry runs in the loop's error-recovery branch.
+        """
+        # Path collides with a directory → opening for append raises IsADirectoryError.
+        victim = tmp_path / "telemetry.jsonl"
+        victim.mkdir()
+        # Must not raise.
+        run_clock.append_telemetry(str(victim), {"bucket": "h3_exact"})
+        assert "telemetry write" in capsys.readouterr().err
+
+    def test_unserialisable_payload_does_not_raise(self, tmp_path, capsys):
+        """json.dumps blows up on non-serialisable values — swallow and log."""
+        path = tmp_path / "telemetry.jsonl"
+
+        class NotSerialisable:
+            pass
+
+        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "blob": NotSerialisable()})
+        assert "telemetry write" in capsys.readouterr().err
+
+
+class TestRenderNowTelemetry:
+    def test_writes_telemetry_after_successful_render(self, tmp_path):
+        telemetry = tmp_path / "telemetry.jsonl"
+        with patch("subprocess.check_call"), \
+             patch("run_clock.current_time_str", return_value="14:30"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800,
+                height=480,
+                mode="production",
+                theme="dark",
+                telemetry_path=str(telemetry),
+                bucket="h2_half_past",
+                quote_id=("141", 482, "q", "mt"),
+            )
+        entry = json.loads(telemetry.read_text(encoding="utf-8").strip())
+        assert entry["bucket"] == "h2_half_past"
+        assert entry["mode"] == "production"
+        assert entry["theme"] == "dark"
+        assert entry["source_id"] == "141"
+        assert entry["line_number"] == 482
+        assert "render_ms" in entry
+
+    def test_no_telemetry_when_disabled(self, tmp_path):
+        with patch("subprocess.check_call"), \
+             patch("run_clock.current_time_str", return_value="14:30"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800,
+                height=480,
+                telemetry_path=None,
+            )
+        # No file created in tmp_path other than whatever subprocess wrote (we mocked it to nothing).
+        files = [p.name for p in tmp_path.iterdir()]
+        assert "telemetry.jsonl" not in files
+
+    def test_display_script_passes_theme(self, tmp_path):
+        calls = []
+        with patch("subprocess.check_call", side_effect=lambda cmd: calls.append(cmd)), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800,
+                height=480,
+                display_script="display_inky.py",
+                theme="dark",
+            )
+        # Second subprocess call is the display push; --theme dark must be in its argv.
+        assert len(calls) == 2
+        assert "--theme" in calls[1]
+        idx = calls[1].index("--theme")
+        assert calls[1][idx + 1] == "dark"
+
+
+class TestThemePersistenceEndToEnd:
+    """Theme persisted to state.json should be restored on the next process start."""
+
+    def test_persisted_dark_theme_overrides_default_arg(self, tmp_path):
+        state_path = tmp_path / "state.json"
+        state_path.write_text(json.dumps({"manual_theme": "dark"}), encoding="utf-8")
+
+        captured_themes: list[str] = []
+
+        def fake_render(*args, **kwargs):
+            theme = kwargs.get("theme") if "theme" in kwargs else (args[6] if len(args) > 6 else None)
+            captured_themes.append(theme)
+
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 1:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--theme", "default",
+            "--state-path", str(state_path),
+            "--telemetry-path", "",
+            "--history-path", "",
+            "--quiet-off",
+            "--buttons-off",
+            "--interval-seconds", "0",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        assert captured_themes == ["dark"], "Persisted manual_theme must override --theme arg"
+
+
+class TestAutoThemeLoopIntegration:
+    """--theme auto must pick the right theme each tick and force a redraw on theme change."""
+
+    def test_auto_theme_evening_renders_dark(self, tmp_path):
+        captured_themes: list[str] = []
+
+        def fake_render(*args, **kwargs):
+            # render_now(..., display_script, mode, theme, ...) — theme is positional[6].
+            theme = kwargs.get("theme") if "theme" in kwargs else (args[6] if len(args) > 6 else None)
+            captured_themes.append(theme)
+
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 1:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--theme", "auto",
+            "--state-path", "",
+            "--telemetry-path", "",
+            "--history-path", "",
+            "--quiet-off",
+            "--buttons-off",
+            "--interval-seconds", "0",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", return_value="20:00"), \
+             patch("run_clock.current_bucket", return_value="h8_exact"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert captured_themes == ["dark"]
+
+    def test_auto_theme_change_forces_redraw(self, tmp_path):
+        """Same bucket + same quote across two ticks; only the theme flips → render twice."""
+        captured_themes: list[str] = []
+
+        def fake_render(*args, **kwargs):
+            # render_now(..., display_script, mode, theme, ...) — theme is positional[6].
+            theme = kwargs.get("theme") if "theme" in kwargs else (args[6] if len(args) > 6 else None)
+            captured_themes.append(theme)
+
+        # Tick 1: 17:55 → default theme. Tick 2: 18:00 → dark theme. Same bucket & quote.
+        time_strs = iter(["17:55", "18:00"])
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 2:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--theme", "auto",
+            "--state-path", "",
+            "--telemetry-path", "",
+            "--history-path", "",
+            "--quiet-off",
+            "--buttons-off",
+            "--interval-seconds", "0",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("run_clock.current_bucket", return_value="h6_exact"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("time.sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert captured_themes == ["default", "dark"]
+
+
+class TestMidnightThemeReset:
+    def test_clears_manual_theme_at_day_boundary(self, tmp_path):
+        state_path = tmp_path / "state.json"
+        args = argparse.Namespace(state_path=str(state_path))
+        state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
+        # Pretend yesterday already happened.
+        state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
+        run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+        assert state.manual_theme is None
+        # Persisted state file should reflect the cleared override.
+        persisted = json.loads(state_path.read_text(encoding="utf-8"))
+        assert persisted["manual_theme"] is None
+
+    def test_no_reset_when_theme_arg_is_explicit(self, tmp_path):
+        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        state = run_clock.RuntimeState("dark", persisted={"manual_theme": "default"})
+        state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
+        run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+        # theme_arg != "auto" means we don't auto-clear.
+        assert state.manual_theme == "default"
+
+    def test_no_reset_within_same_day(self, tmp_path):
+        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
+        state.last_seen_date = dt.date.today()
+        run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+        assert state.manual_theme == "dark"
+
+
+class TestButtonHandlers:
+    """Synchronous handler dispatch — verifies wiring without spinning the loop."""
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7,
+            telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+            quiet_image="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_skip_handler_bans_current_quote_then_renders(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
+        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"), \
+             patch("run_clock.pick_quote_module.append_history") as mock_append:
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["A"]()
+        # First append: ban the previous quote. Second: log the new one.
+        assert mock_append.call_count == 2
+        assert mock_append.call_args_list[0][0][1:] == ("src-old", 5)
+        assert mock_append.call_args_list[1][0][1:] == ("src-new", 7)
+        assert mock_render.called
+
+    def test_toggle_theme_handler_flips_and_persists(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        with patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["B"]()
+        assert state.manual_theme == "dark"
+        persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert persisted["manual_theme"] == "dark"
+        # Render must use the new theme.
+        assert mock_render.called
+        kwargs = mock_render.call_args[1]
+        positional = mock_render.call_args[0]
+        used_theme = kwargs.get("theme") or (positional[6] if len(positional) > 6 else None)
+        assert used_theme == "dark"
+
+    def test_toggle_theme_handler_flips_back_when_dark(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "dark"
+        with patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["B"]()
+        assert state.manual_theme == "default"
+
+    def test_do_render_bucket_matches_time_str_near_boundary(self, tmp_path):
+        """_do_render stamps state.last_bucket from time_str, not a fresh clock read —
+        otherwise a handler firing at 03:02:59.900 could derive bucket h3_five_past from
+        a clock read at 03:03:00.001, then stamp that into state while the panel still
+        shows the h3_exact frame, causing the next loop tick to wrongly skip the redraw.
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.render_now"), \
+             patch("run_clock.current_bucket", side_effect=AssertionError("must not call current_bucket")), \
+             patch("run_clock.current_time_str", side_effect=AssertionError("must not call current_time_str")):
+            run_clock._do_render(args, state, "03:02", history_path=None, quote_id=("src", 1, "q", "mt"))
+        assert state.last_bucket == "h3_exact"
+
+    def test_source_card_handler_renders_in_card_mode(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # Patch threading.Timer so the test doesn't leave a 5s timer running.
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.threading.Timer") as mock_timer, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["C"]()
+        kwargs = mock_render.call_args[1]
+        positional = mock_render.call_args[0]
+        used_mode = kwargs.get("mode") or (positional[5] if len(positional) > 5 else None)
+        assert used_mode == "card"
+        assert mock_timer.called
+        # The 5-second restore callback should be scheduled.
+        delay, _callback = mock_timer.call_args[0][:2]
+        assert delay == 5.0
+
+    def test_source_card_restore_re_renders_normal_frame(self, tmp_path):
+        """The restore callback at +5s must actually push a new render — relying on the
+        next loop tick would leave the card up for up to --interval-seconds (60s default).
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.threading.Timer") as mock_timer, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["C"]()
+            # First render is the card itself.
+            assert mock_render.call_count == 1
+            # Now invoke the restore callback manually (simulating the 5s timer firing).
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+            assert mock_render.call_count == 2
+            # Second call must be in the normal mode, not "card".
+            second_call = mock_render.call_args_list[1]
+            mode = second_call.kwargs.get("mode") or (second_call.args[5] if len(second_call.args) > 5 else None)
+            assert mode == "debug"
+
+    def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
+        quiet = tmp_path / "goodnight.png"
+        quiet.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(quiet))
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = False
+        with patch("run_clock._display_quiet_image") as mock_display:
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["D"]()
+        assert state.manual_quiet is True
+        persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert persisted["manual_quiet"] is True
+        assert mock_display.called
+
+    def test_quiet_toggle_handler_disable_triggers_wake_render(self, tmp_path):
+        args = self._args(tmp_path, quiet_image="")
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = True
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            handlers = run_clock._build_button_handlers(args, state)
+            handlers["D"]()
+        assert state.manual_quiet is False
+        assert mock_render.called
+
+
+class TestMaybeStartButtons:
+    def test_buttons_off_returns_none(self, tmp_path):
+        args = argparse.Namespace(buttons_off=True)
+        assert run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default")) is None
+
+    def test_import_failure_logs_and_returns_none(self, tmp_path, capsys, monkeypatch):
+        # Force import of inky_buttons.start_listener to raise.
+        import inky_buttons as ib
+        monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no gpio")))
+        args = argparse.Namespace(
+            buttons_off=False,
+            render_script="r", output="o", width=800, height=480,
+            display_script=None, mode="debug", theme="default",
+            history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="",
+        )
+        result = run_clock._maybe_start_buttons(args, run_clock.RuntimeState("default"))
+        assert result is None
+        assert "button listener disabled" in capsys.readouterr().err

@@ -147,9 +147,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
     parser.add_argument(
         "--mode",
-        choices=["production", "debug"],
+        choices=["production", "debug", "card"],
         default="debug",
-        help="Render mode. Production hides debug UI, debug shows bucket/quality/time metadata.",
+        help=(
+            "Render mode. 'production' hides debug UI; 'debug' shows bucket/quality/time "
+            "metadata; 'card' draws a centered source card (title/author/Gutenberg ID/"
+            "matched phrase) instead of the full quote — used by the source-card button."
+        ),
     )
     parser.add_argument(
         "--theme",
@@ -410,7 +414,81 @@ def fallback_title(quote_row: dict) -> str | None:
     return None
 
 
+def render_source_card(quote_row: dict, width: int, height: int, theme: str = "default") -> Image.Image:
+    """Render a centered metadata card for the current quote.
+
+    Used by the Inky button-C handler: a viewer presses C, this card is shown for
+    a few seconds, then the loop repaints the original frame. Reuses the theme
+    palette and bundled fonts so it visually matches the quote frame.
+    """
+    colors = THEMES[theme]
+    image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    draw = ImageDraw.Draw(image)
+
+    title_text = (quote_row.get("title") or fallback_title(quote_row) or "Unknown source").strip()
+    author_text = (quote_row.get("author") or "").strip()
+    source_id = quote_row.get("source_id")
+    source_id_text = f"Project Gutenberg #{source_id}" if source_id else ""
+    matched_text = (quote_row.get("matched_text") or "").strip()
+    matched_text = normalize_dashes(strip_underscore_emphasis(matched_text))
+
+    label_font = load_font(META_FONT_CANDIDATES, size=18)
+    title_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=44)
+    author_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=28)
+    id_font = load_font(META_FONT_CANDIDATES, size=18)
+    phrase_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=28)
+
+    max_text_width = width - 2 * SIDE_MARGIN - 40
+    title_lines = wrap_text(draw, title_text, title_font, max_text_width)[:3]
+    author_lines = wrap_text(draw, f"by {author_text}", author_font, max_text_width)[:1] if author_text else []
+    phrase_lines = wrap_text(draw, f"\u201c{matched_text}\u201d", phrase_font, max_text_width)[:2] if matched_text else []
+
+    label_text = "Now showing"
+    label_bbox = draw.textbbox((0, 0), label_text, font=label_font)
+    label_h = label_bbox[3] - label_bbox[1]
+
+    title_h = sum((draw.textbbox((0, 0), line, font=title_font)[3] - draw.textbbox((0, 0), line, font=title_font)[1]) + 6 for line in title_lines)
+    author_h = sum((draw.textbbox((0, 0), line, font=author_font)[3] - draw.textbbox((0, 0), line, font=author_font)[1]) + 4 for line in author_lines)
+    phrase_h = sum((draw.textbbox((0, 0), line, font=phrase_font)[3] - draw.textbbox((0, 0), line, font=phrase_font)[1]) + 4 for line in phrase_lines)
+    id_bbox = draw.textbbox((0, 0), source_id_text, font=id_font) if source_id_text else (0, 0, 0, 0)
+    id_h = (id_bbox[3] - id_bbox[1]) if source_id_text else 0
+
+    block_h = label_h + 18 + title_h + (12 + author_h if author_lines else 0) + (24 + phrase_h if phrase_lines else 0) + (20 + id_h if source_id_text else 0)
+    y = max(40, (height - block_h) // 2)
+
+    def _draw_centered(text: str, font, fill):
+        nonlocal y
+        bbox = draw.textbbox((0, 0), text, font=font)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        draw.text(((width - w) // 2, y), text, font=font, fill=fill)
+        y += h
+
+    _draw_centered(label_text, label_font, colors["accent"])
+    y += 18
+    for line in title_lines:
+        _draw_centered(line, title_font, colors["text"])
+        y += 6
+    if author_lines:
+        y += 6
+        for line in author_lines:
+            _draw_centered(line, author_font, colors["text"])
+            y += 4
+    if phrase_lines:
+        y += 18
+        for line in phrase_lines:
+            _draw_centered(line, phrase_font, colors["accent"])
+            y += 4
+    if source_id_text:
+        y += 14
+        _draw_centered(source_id_text, id_font, colors["source"])
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
+    if mode == "card":
+        return render_source_card(quote_row, width, height, theme=theme)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     draw = ImageDraw.Draw(image)
