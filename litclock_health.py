@@ -81,7 +81,14 @@ def find_telemetry_files(base: Path, since: dt.datetime | None = None) -> list[P
         return candidates
     stem = base.stem
     suffix = base.suffix or ".jsonl"
-    cutoff_date = since.date() if since is not None else None
+    # Filenames use the appliance's local date (append_telemetry uses date.today());
+    # `since` is UTC. A timezone east or west of UTC can shift the local date by ±1
+    # day relative to the UTC date at any instant, so subtract a full day of slack
+    # before pruning. Otherwise west-of-UTC hosts near midnight UTC would prune the
+    # currently-active file (e.g. 20:30 local in UTC-7 → UTC date is tomorrow, local
+    # filename says today → file_date < cutoff_date → active file dropped → false
+    # "0 renders"). The per-entry ts filter in load_entries handles the slack case.
+    cutoff_date = (since.date() - dt.timedelta(days=1)) if since is not None else None
     for sibling in sorted(parent.glob(f"{stem}-*{suffix}")):
         if not sibling.is_file():
             continue
@@ -96,11 +103,6 @@ def find_telemetry_files(base: Path, since: dt.datetime | None = None) -> list[P
             # at the file directly.
             continue
         if cutoff_date is not None and file_date < cutoff_date:
-            # A file dated D only contains entries ts in [D 00:00 local, D+1 00:00 local);
-            # if that whole day is entirely before the UTC cutoff date we can skip it.
-            # We compare on calendar date (not timestamp) because filenames are date-only
-            # and local-date — a one-day slack on either side is acceptable (the inner
-            # loop's per-entry ts check will filter the boundary case).
             continue
         candidates.append(sibling)
     return candidates

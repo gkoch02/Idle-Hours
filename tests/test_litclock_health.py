@@ -236,6 +236,26 @@ class TestRotatedTelemetry:
         rows = litclock_health.load_entries(base, since)
         assert rows == []
 
+    def test_prune_includes_prior_day_to_tolerate_local_utc_skew(self, tmp_path):
+        """Filenames use local date; `since` is UTC. A west-of-UTC appliance
+        near UTC midnight can have today's active file dated "yesterday-UTC"
+        — pruning must keep a day of slack so the currently-active file is
+        still read. Without slack, `--hours 1` on a host in UTC-7 at 20:30
+        local (UTC=next day 03:30) produces a false "0 renders".
+        """
+        base = tmp_path / "telemetry.jsonl"
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        # Simulate the west-of-UTC boundary: the active file is dated one day
+        # before the UTC date embedded in `since`, but its entries' timestamps
+        # fall inside the requested window.
+        prior_day = (now_utc - dt.timedelta(days=1)).strftime("%Y%m%d")
+        self._write_daily(tmp_path, prior_day, [
+            {"ts": (now_utc - dt.timedelta(minutes=5)).isoformat(), "render_ms": 42},
+        ])
+        since = now_utc - dt.timedelta(hours=1)
+        rows = litclock_health.load_entries(base, since)
+        assert [r["render_ms"] for r in rows] == [42]
+
 
 class TestEvaluateHealth:
     def test_healthy_returns_zero(self):
