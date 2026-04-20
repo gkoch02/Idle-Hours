@@ -95,6 +95,11 @@ META_FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
 ]
+META_FONT_BOLD_CANDIDATES = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+]
 
 LAYOUTS = {
     "hero": {
@@ -498,7 +503,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     layout = LAYOUTS[layout_name]
 
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
-    debug_label_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=16)
+    debug_label_font = load_font(META_FONT_BOLD_CANDIDATES, size=15)
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
         display_quote,
