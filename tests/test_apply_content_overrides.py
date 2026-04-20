@@ -112,6 +112,33 @@ class TestApplyOverrides:
         # Unsupported fields should not end up on the row.
         assert patched[0]["quote_text"] == sample_row["quote_text"]
 
+    def test_lone_hour_override_with_null_minute_warns(self, sample_row, capsys):
+        sample_row["source_id"] = "1"
+        sample_row["line_number"] = 1
+        sample_row["hour"] = None
+        sample_row["minute"] = None
+        sample_row["normalized_time"] = "03:00"
+        sample_row["fuzzy_bucket"] = "h3_exact"
+        patched, _ = apply_overrides([sample_row], {"1:1": {"hour": 5}})
+        err = capsys.readouterr().err
+        assert "inconsistent" in err
+        # normalized_time was not touched; bucket is re-derived from the stale value.
+        assert patched[0]["normalized_time"] == "03:00"
+        assert patched[0]["fuzzy_bucket"] == "h3_exact"
+
+    def test_invalid_normalized_time_warns(self, sample_row, capsys):
+        sample_row["source_id"] = "1"
+        sample_row["line_number"] = 1
+        sample_row["fuzzy_bucket"] = "h3_exact"
+        patched, _ = apply_overrides([sample_row], {"1:1": {"normalized_time": "25:99"}})
+        err = capsys.readouterr().err
+        assert "invalid" in err
+        assert "25:99" in err
+        # The override still lands on the row (loud failure, not silent drop),
+        # but fuzzy_bucket is left as-was rather than corrupted.
+        assert patched[0]["normalized_time"] == "25:99"
+        assert patched[0]["fuzzy_bucket"] == "h3_exact"
+
     def test_non_object_patch_logs_and_skips(self, sample_row, capsys):
         sample_row["source_id"] = "1"
         sample_row["line_number"] = 1

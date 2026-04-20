@@ -130,15 +130,25 @@ def apply_overrides(rows: list[dict], overrides: dict[str, dict], *, overrides_p
             hour = row.get("hour")
             minute = row.get("minute")
             # If hour/minute were touched but normalized_time wasn't, keep them in sync.
-            if isinstance(hour, int) and isinstance(minute, int) and "normalized_time" not in patch:
-                row["normalized_time"] = f"{hour:02d}:{minute:02d}"
+            if "normalized_time" not in patch:
+                if isinstance(hour, int) and isinstance(minute, int):
+                    row["normalized_time"] = f"{hour:02d}:{minute:02d}"
+                else:
+                    _warn(
+                        f"{overrides_path}: override for {key} touches hour/minute but "
+                        f"leaves them inconsistent (hour={hour!r}, minute={minute!r}); "
+                        f"bucket will not be re-derived. Provide both, or set normalized_time."
+                    )
 
         normalized = row.get("normalized_time")
         if isinstance(normalized, str) and ":" in normalized:
             try:
                 row["fuzzy_bucket"] = bucket_for_time(normalized)
             except (ValueError, KeyError):
-                pass
+                _warn(
+                    f"{overrides_path}: override for {key} produced invalid "
+                    f"normalized_time {normalized!r}; fuzzy_bucket left unchanged."
+                )
 
         row["override_applied"] = True
         applied += 1
