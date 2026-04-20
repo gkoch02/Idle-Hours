@@ -275,18 +275,40 @@ def save_runtime_state(state_path: str | None, state: dict) -> None:
         raise
 
 
-def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
-    """Append one JSON line to the telemetry log. No-op when disabled.
+def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
+    """Return the date-suffixed sibling of ``base`` for ``today``.
 
-    Telemetry is best-effort: an I/O failure here (unwritable path, full disk,
-    path is a directory) must never surface to the caller, since this is called
-    from the loop's error-recovery path — turning telemetry into a fatal
-    failure mode would defeat its purpose.
+    Given ``~/.litclock/telemetry.jsonl`` and 2026-04-20, returns
+    ``~/.litclock/telemetry-20260420.jsonl``. This is how we rotate telemetry
+    by date so a multi-year-running appliance doesn't accumulate a single
+    unbounded JSONL file that eventually chokes ``litclock_health.py`` and
+    stalls append latency. Local date (not UTC) so an operator's ``grep`` /
+    ``ls`` groups entries by their wall-clock day.
+    """
+    if today is None:
+        today = dt.date.today()
+    suffix = base.suffix or ".jsonl"
+    return base.with_name(f"{base.stem}-{today.strftime('%Y%m%d')}{suffix}")
+
+
+def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
+    """Append one JSON line to today's telemetry log. No-op when disabled.
+
+    Rotates by date: writes to ``<base-stem>-YYYYMMDD<suffix>`` in the base
+    path's directory so the file size stays bounded. ``litclock_health.py``
+    globs the directory for date-suffixed siblings (plus any legacy
+    unsuffixed file) so older entries are still summarised.
+
+    Telemetry is best-effort: an I/O failure here (unwritable path, full
+    disk, path is a directory) must never surface to the caller, since this
+    is called from the loop's error-recovery path — turning telemetry into
+    a fatal failure mode would defeat its purpose.
     """
     if not telemetry_path:
         return
     try:
-        path = Path(telemetry_path).expanduser()
+        base = Path(telemetry_path).expanduser()
+        path = daily_telemetry_path(base)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
         with path.open("a", encoding="utf-8") as handle:

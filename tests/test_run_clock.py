@@ -854,6 +854,11 @@ class TestRuntimeStatePersistence:
         assert tmp_path_file.exists()
 
 
+def _today_telemetry_path(base):
+    """Return the date-suffixed sibling that append_telemetry would write to today."""
+    return run_clock.daily_telemetry_path(base)
+
+
 class TestAppendTelemetry:
     def test_disabled_path_is_noop(self, tmp_path):
         run_clock.append_telemetry("", {"bucket": "h3_exact"})
@@ -862,52 +867,89 @@ class TestAppendTelemetry:
         assert list(tmp_path.iterdir()) == []
 
     def test_appends_one_line_with_ts(self, tmp_path):
-        path = tmp_path / "telemetry.jsonl"
-        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "render_ms": 500})
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        base = tmp_path / "telemetry.jsonl"
+        run_clock.append_telemetry(str(base), {"bucket": "h3_exact", "render_ms": 500})
+        daily = _today_telemetry_path(base)
+        lines = daily.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 1
         entry = json.loads(lines[0])
         assert entry["bucket"] == "h3_exact"
         assert entry["render_ms"] == 500
         assert "ts" in entry
+        # The base path itself is no longer written — telemetry is rotated.
+        assert not base.exists()
 
     def test_appends_multiple_lines(self, tmp_path):
-        path = tmp_path / "telemetry.jsonl"
-        run_clock.append_telemetry(str(path), {"bucket": "a"})
-        run_clock.append_telemetry(str(path), {"bucket": "b"})
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        base = tmp_path / "telemetry.jsonl"
+        run_clock.append_telemetry(str(base), {"bucket": "a"})
+        run_clock.append_telemetry(str(base), {"bucket": "b"})
+        daily = _today_telemetry_path(base)
+        lines = daily.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 2
 
     def test_creates_parent_directory(self, tmp_path):
-        path = tmp_path / "nested" / "telemetry.jsonl"
-        run_clock.append_telemetry(str(path), {"bucket": "h1_exact"})
-        assert path.exists()
+        base = tmp_path / "nested" / "telemetry.jsonl"
+        run_clock.append_telemetry(str(base), {"bucket": "h1_exact"})
+        assert _today_telemetry_path(base).exists()
+
+    def test_rotates_by_date(self, tmp_path):
+        """Two runs on different dates produce two separate files."""
+        base = tmp_path / "telemetry.jsonl"
+        import datetime as _dt
+        day1 = _dt.date(2026, 4, 19)
+        day2 = _dt.date(2026, 4, 20)
+        with patch("run_clock.dt") as mock_dt:
+            mock_dt.date.today.return_value = day1
+            mock_dt.datetime = dt.datetime
+            mock_dt.timezone = dt.timezone
+            run_clock.append_telemetry(str(base), {"bucket": "day1"})
+        with patch("run_clock.dt") as mock_dt:
+            mock_dt.date.today.return_value = day2
+            mock_dt.datetime = dt.datetime
+            mock_dt.timezone = dt.timezone
+            run_clock.append_telemetry(str(base), {"bucket": "day2"})
+        files = sorted(p.name for p in tmp_path.iterdir())
+        assert files == ["telemetry-20260419.jsonl", "telemetry-20260420.jsonl"]
 
     def test_io_failure_does_not_raise(self, tmp_path, capsys):
         """Telemetry is best-effort — an unwritable path must never crash the caller,
         since append_telemetry runs in the loop's error-recovery branch.
         """
         # Path collides with a directory → opening for append raises IsADirectoryError.
-        victim = tmp_path / "telemetry.jsonl"
-        victim.mkdir()
+        # We collide with the *daily* path because that's what the function now writes to.
+        base = tmp_path / "telemetry.jsonl"
+        _today_telemetry_path(base).mkdir()
         # Must not raise.
-        run_clock.append_telemetry(str(victim), {"bucket": "h3_exact"})
+        run_clock.append_telemetry(str(base), {"bucket": "h3_exact"})
         assert "telemetry write" in capsys.readouterr().err
 
     def test_unserialisable_payload_does_not_raise(self, tmp_path, capsys):
         """json.dumps blows up on non-serialisable values — swallow and log."""
-        path = tmp_path / "telemetry.jsonl"
+        base = tmp_path / "telemetry.jsonl"
 
         class NotSerialisable:
             pass
 
-        run_clock.append_telemetry(str(path), {"bucket": "h3_exact", "blob": NotSerialisable()})
+        run_clock.append_telemetry(str(base), {"bucket": "h3_exact", "blob": NotSerialisable()})
         assert "telemetry write" in capsys.readouterr().err
+
+
+class TestDailyTelemetryPath:
+    def test_standard_suffix(self, tmp_path):
+        base = tmp_path / "telemetry.jsonl"
+        out = run_clock.daily_telemetry_path(base, dt.date(2026, 4, 20))
+        assert out.name == "telemetry-20260420.jsonl"
+        assert out.parent == tmp_path
+
+    def test_missing_suffix_defaults_to_jsonl(self, tmp_path):
+        base = tmp_path / "telemetry"
+        out = run_clock.daily_telemetry_path(base, dt.date(2026, 1, 2))
+        assert out.name == "telemetry-20260102.jsonl"
 
 
 class TestRenderNowTelemetry:
     def test_writes_telemetry_after_successful_render(self, tmp_path):
-        telemetry = tmp_path / "telemetry.jsonl"
+        telemetry_base = tmp_path / "telemetry.jsonl"
         with patch("subprocess.check_call"), \
              patch("run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
@@ -917,11 +959,12 @@ class TestRenderNowTelemetry:
                 height=480,
                 mode="production",
                 theme="dark",
-                telemetry_path=str(telemetry),
+                telemetry_path=str(telemetry_base),
                 bucket="h2_half_past",
                 quote_id=("141", 482, "q", "mt"),
             )
-        entry = json.loads(telemetry.read_text(encoding="utf-8").strip())
+        daily = _today_telemetry_path(telemetry_base)
+        entry = json.loads(daily.read_text(encoding="utf-8").strip())
         assert entry["bucket"] == "h2_half_past"
         assert entry["mode"] == "production"
         assert entry["theme"] == "dark"
@@ -939,9 +982,9 @@ class TestRenderNowTelemetry:
                 height=480,
                 telemetry_path=None,
             )
-        # No file created in tmp_path other than whatever subprocess wrote (we mocked it to nothing).
+        # No telemetry file created (neither legacy nor rotated).
         files = [p.name for p in tmp_path.iterdir()]
-        assert "telemetry.jsonl" not in files
+        assert not any("telemetry" in f for f in files)
 
     def test_display_script_passes_theme(self, tmp_path):
         calls = []
