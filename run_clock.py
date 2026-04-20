@@ -184,6 +184,35 @@ def parse_args() -> argparse.Namespace:
         default=pick_quote_module.DEFAULT_HISTORY_DAYS,
         help="Number of days of history to consider when filtering repeats. 0 disables.",
     )
+    parser.add_argument(
+        "--web-bind",
+        default="",
+        metavar="HOST:PORT",
+        help=(
+            "Start the curator web UI bound to HOST:PORT (default: off). "
+            "Use '127.0.0.1:8080' for local-only access or '0.0.0.0:8080' to expose "
+            "on the LAN. Non-localhost binds additionally require --web-token (or "
+            "--web-token-file) on all POST endpoints."
+        ),
+    )
+    parser.add_argument(
+        "--web-token",
+        default="",
+        help=(
+            "Shared token required on POSTs when --web-bind exposes the UI beyond "
+            "127.0.0.1. Sent by clients as 'X-LitClock-Token: <token>'. GETs remain "
+            "open (telemetry / coverage / current.png are not sensitive)."
+        ),
+    )
+    parser.add_argument(
+        "--web-token-file",
+        default="",
+        help=(
+            "Path to a file containing the web token (one line). Preferred over "
+            "--web-token when running under systemd so the token isn't visible in "
+            "the process command line (and therefore in 'ps' / journald)."
+        ),
+    )
     args = parser.parse_args()
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
@@ -248,22 +277,22 @@ def load_runtime_state(state_path: str | None) -> dict:
     return parsed
 
 
-def save_runtime_state(state_path: str | None, state: dict) -> None:
-    """Persist runtime state atomically. No-op when disabled.
+def _atomic_write_text(path: Path, payload: str) -> None:
+    """Write ``payload`` to ``path`` atomically with durability guarantees.
 
-    Writes to a sibling ``*.tmp`` file, fsyncs the data, ``os.replace``s into
-    place, then fsyncs the parent directory so the rename itself is durable.
-    Without the final directory fsync the kernel can return from ``os.replace``
-    with the new dirent still in cache — a crash in that window leaves the old
-    (or missing) file even though ``os.replace`` succeeded. Directory fsync is
-    swallowed on platforms where it's not meaningful (notably Windows).
+    Sequence: ensure parent dir exists → write payload to a sibling ``*.tmp`` file →
+    ``fsync`` the data → ``os.replace`` into place → ``fsync`` the parent directory
+    so the rename itself is durable. Without the final directory fsync the kernel
+    can return from ``os.replace`` with the new dirent still in cache, and a crash
+    in that window leaves the old/missing file despite the rename "succeeding".
+    Parent-directory fsync failures are swallowed on platforms where they aren't
+    meaningful (notably Windows).
+
+    Shared by ``save_runtime_state`` and the web UI's override writer so both
+    operations have the same durability contract.
     """
-    path = _resolve_state_path(state_path)
-    if path is None:
-        return
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    payload = json.dumps(state, ensure_ascii=False, indent=2)
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
             handle.write(payload)
@@ -284,6 +313,14 @@ def save_runtime_state(state_path: str | None, state: dict) -> None:
         pass
     finally:
         os.close(dir_fd)
+
+
+def save_runtime_state(state_path: str | None, state: dict) -> None:
+    """Persist runtime state atomically. No-op when disabled."""
+    path = _resolve_state_path(state_path)
+    if path is None:
+        return
+    _atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2))
 
 
 def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
@@ -543,7 +580,7 @@ def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, his
 
 @contextlib.contextmanager
 def _button_render_gate(state: RuntimeState, name: str):
-    """Try-acquire ``state.render_lock`` for a button handler.
+    """Try-acquire ``state.render_lock`` for a button or web handler.
 
     Yields ``True`` if the lock was acquired (caller does its work; the gate
     releases on exit) or ``False`` if a render is already in flight, in which
@@ -551,9 +588,12 @@ def _button_render_gate(state: RuntimeState, name: str):
     down to "first wins, rest are no-ops" — without it, gpiozero queues
     subsequent events behind the slow eInk refresh and the user sees
     unpredictable multi-second delays.
+
+    ``name`` is the full caller label (e.g. ``"button A (skip)"`` or
+    ``"web (skip)"``) so the log message correctly attributes a dropped press.
     """
     if not state.render_lock.acquire(blocking=False):
-        _log(f"button {name}: busy (render in flight), press ignored")
+        _log(f"{name}: busy (render in flight), press ignored")
         yield False
         return
     try:
@@ -562,103 +602,207 @@ def _button_render_gate(state: RuntimeState, name: str):
         state.render_lock.release()
 
 
+# ----------------------------------------------------------------------------
+# Module-level action functions shared by the button listener thread and the
+# curator web server's HTTP handler thread. Each returns a result dict so the
+# web handler can serialise it to JSON (e.g. {"ok": True, "theme": "dark"} or
+# {"ok": False, "error": "busy"}); button handlers ignore the return value and
+# rely on the internal logging / telemetry writes for feedback.
+#
+# Every action:
+#  - wraps its work in ``_button_render_gate`` for coalesced-press semantics,
+#  - serialises state mutations via ``state.lock`` and ledger writes via
+#    ``state.ledger_lock``,
+#  - catches ``Exception`` so a failure in one caller can't kill the listener
+#    thread or the HTTP server thread.
+#
+# ``label`` is the attribution prefix: ``"button A"`` when driven by GPIO,
+# ``"web"`` (or a route-specific variant) when driven by an HTTP POST.
+# ----------------------------------------------------------------------------
+
+def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Ban the currently-shown quote and render the next pick.
+
+    Mirrors button A short-press. Returns ``{"ok": True, "new_quote_id": [...]}``,
+    ``{"ok": False, "error": "busy"}`` when a render is already in flight, or
+    ``{"ok": False, "error": "<repr>"}`` on exception.
+    """
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    with _button_render_gate(state, f"{label} (skip)") as acquired:
+        if not acquired:
+            return {"ok": False, "error": "busy"}
+        _log(f"{label}: skip")
+        try:
+            with state.lock:
+                previous = state.last_quote_id
+            if previous is not None:
+                # Ban the currently-shown quote so the next pick filters it out for the week.
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, previous[0], previous[1])
+                with state.lock:
+                    # Remember what we just banned so A long-press / web unskip can reverse it.
+                    state.last_skipped = previous
+            time_str = current_time_str()
+            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+            _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            if quote_id is not None:
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+            return {"ok": True, "new_quote_id": list(quote_id) if quote_id else None}
+        except Exception as exc:
+            _log(f"{label} skip failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
+            return {"ok": False, "error": repr(exc)}
+
+
+def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Reverse the most recent skip: remove the ledger entry, pick, re-render.
+
+    Mirrors button A long-press. The ledger read-modify-write is serialised
+    against the main loop's ``append_history`` via ``state.ledger_lock`` so a
+    concurrent append cannot be silently lost.
+    """
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    with _button_render_gate(state, f"{label} (unskip)") as acquired:
+        if not acquired:
+            return {"ok": False, "error": "busy"}
+        _log(f"{label}: un-skip")
+        try:
+            with state.lock:
+                target = state.last_skipped
+                state.last_skipped = None
+            if target is None:
+                _log("un-skip: no recently-skipped quote recorded")
+                return {"ok": True, "restored": None}
+            with state.ledger_lock:
+                removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
+            _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
+            time_str = current_time_str()
+            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+            _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            if quote_id is not None:
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+            return {"ok": True, "restored": list(target)}
+        except Exception as exc:
+            _log(f"{label} un-skip failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
+            return {"ok": False, "error": repr(exc)}
+
+
+def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Toggle default ↔ dark, persist to ``--state-path``, re-render. Mirrors button B."""
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    with _button_render_gate(state, f"{label} (theme)") as acquired:
+        if not acquired:
+            return {"ok": False, "error": "busy"}
+        try:
+            time_str = current_time_str()
+            with state.lock:
+                current = state.last_effective_theme or resolve_effective_theme(
+                    state.theme_arg, time_str, state.manual_theme,
+                )
+                state.manual_theme = "dark" if current == "default" else "default"
+                save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                new_theme = state.manual_theme
+                quote_id = state.last_quote_id
+            _log(f"{label}: theme -> {new_theme}")
+            _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            return {"ok": True, "theme": new_theme}
+        except Exception as exc:
+            _log(f"{label} theme toggle failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "theme"})
+            return {"ok": False, "error": repr(exc)}
+
+
+def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Toggle the manual quiet override, persist, display goodnight-or-wake frame.
+
+    Mirrors button D short-press.
+    """
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    with _button_render_gate(state, f"{label} (quiet)") as acquired:
+        if not acquired:
+            return {"ok": False, "error": "busy"}
+        try:
+            with state.lock:
+                state.manual_quiet = not state.manual_quiet
+                save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                state.last_bucket = None  # force the loop to repaint on exit
+                state.last_quote_id = None
+                # Snapshot inside the lock so a concurrent toggle can't flip the
+                # branch we take below.
+                quiet_now = state.manual_quiet
+            _log(f"{label}: manual quiet -> {quiet_now}")
+            if quiet_now and args.quiet_image:
+                _display_quiet_image(args.quiet_image, args.output, args.display_script)
+            elif not quiet_now:
+                # Wake to the current time so the user sees something immediately.
+                time_str = current_time_str()
+                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            return {"ok": True, "manual_quiet": quiet_now}
+        except Exception as exc:
+            _log(f"{label} quiet toggle failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "quiet"})
+            return {"ok": False, "error": repr(exc)}
+
+
+def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
+    """Force a re-render of the current time+bucket. Useful after panel ghosting or override edits."""
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    with _button_render_gate(state, f"{label} (rerender)") as acquired:
+        if not acquired:
+            return {"ok": False, "error": "busy"}
+        try:
+            time_str = current_time_str()
+            bucket = bucket_for_time(time_str)
+            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+            _render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
+            if quote_id is not None:
+                with state.ledger_lock:
+                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+            _log(f"{label}: rerender bucket={bucket}")
+            return {"ok": True, "bucket": bucket, "quote_id": list(quote_id) if quote_id else None}
+        except Exception as exc:
+            _log(f"{label} rerender failed: {exc!r}", err=True)
+            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "rerender"})
+            return {"ok": False, "error": repr(exc)}
+
+
 def _build_button_handlers(
     args: argparse.Namespace, state: RuntimeState,
 ) -> tuple[dict[str, "callable"], dict[str, "callable"]]:
     """Return ``(short_handlers, hold_handlers)`` for ``inky_buttons.start_listener``.
 
+    Thin wrappers around the module-level ``action_*`` functions so the same
+    bodies power both GPIO presses and the curator web UI's POST endpoints.
     ``short_handlers`` covers quick taps on A/B/C/D; ``hold_handlers`` adds the
-    2-second long-press actions on A (un-skip) and D (shutdown). Each handler
-    does its work synchronously in the listener thread and serialises against
-    the loop via ``state.render_lock``. Mutations of theme/quiet state are
-    persisted to ``--state-path`` so they survive a process restart; ledger
-    appends/removes go through ``state.ledger_lock`` to prevent the main loop's
-    post-render append from racing the un-skip's read-modify-write.
+    2-second long-press actions on A (un-skip) and D (shutdown).
     """
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
 
     def on_skip() -> None:
-        with _button_render_gate(state, "A (skip)") as acquired:
-            if not acquired:
-                return
-            _log("button A: skip")
-            try:
-                with state.lock:
-                    previous = state.last_quote_id
-                if previous is not None:
-                    # Ban the currently-shown quote so the next pick filters it out for the week.
-                    with state.ledger_lock:
-                        pick_quote_module.append_history(history_path, previous[0], previous[1])
-                    with state.lock:
-                        # Remember what we just banned so A long-press can reverse it.
-                        state.last_skipped = previous
-                time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-                if quote_id is not None:
-                    with state.ledger_lock:
-                        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-            except Exception as exc:
-                _log(f"skip failed: {exc!r}", err=True)
-                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
+        action_skip(args, state, label="button A")
 
     def on_unskip() -> None:
-        """Button A held 2s: reverse the most recent skip.
-
-        Removes the last-skipped quote's ban from the history ledger and
-        re-renders the current time. If the bucket hasn't moved since the skip,
-        the un-banned quote is likely to be picked again. If the bucket has
-        moved on, the user just sees a fresh render for the new time — the
-        ledger is still cleaned up either way. The ledger read-modify-write is
-        serialised against the main loop's ``append_history`` via
-        ``state.ledger_lock`` so a concurrent append is not silently lost.
-        """
-        with _button_render_gate(state, "A (unskip)") as acquired:
-            if not acquired:
-                return
-            _log("button A held: un-skip")
-            try:
-                with state.lock:
-                    target = state.last_skipped
-                    state.last_skipped = None
-                if target is None:
-                    _log("un-skip: no recently-skipped quote recorded")
-                    return
-                with state.ledger_lock:
-                    removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
-                _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
-                time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-                if quote_id is not None:
-                    with state.ledger_lock:
-                        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-            except Exception as exc:
-                _log(f"un-skip failed: {exc!r}", err=True)
-                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
+        action_unskip(args, state, label="button A")
 
     def on_toggle_theme() -> None:
-        with _button_render_gate(state, "B (theme)") as acquired:
-            if not acquired:
-                return
-            try:
-                time_str = current_time_str()
-                with state.lock:
-                    current = state.last_effective_theme or resolve_effective_theme(
-                        state.theme_arg, time_str, state.manual_theme,
-                    )
-                    state.manual_theme = "dark" if current == "default" else "default"
-                    save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                    quote_id = state.last_quote_id
-                _log(f"button B: theme -> {state.manual_theme}")
-                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            except Exception as exc:
-                _log(f"theme toggle failed: {exc!r}", err=True)
-                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "theme"})
+        action_theme(args, state, label="button B")
 
     def on_source_card() -> None:
-        with _button_render_gate(state, "C (card)") as acquired:
+        # Source-card display is button-only for v2 (the web UI surfaces the
+        # same title/author/id through ``GET /api/current`` without occupying
+        # the panel for 5s). Kept inline because the timer-driven restore
+        # doesn't fit the action_* return-dict contract cleanly.
+        with _button_render_gate(state, "button C (card)") as acquired:
             if not acquired:
                 return
             _log("button C: source card")
@@ -712,7 +856,7 @@ def _build_button_handlers(
         if not cmd:
             _log("button D held: --shutdown-command is empty, skipping system shutdown")
             return
-        with _button_render_gate(state, "D (shutdown)") as acquired:
+        with _button_render_gate(state, "button D (shutdown)") as acquired:
             if not acquired:
                 return
             _log("button D held: shutdown")
@@ -733,29 +877,7 @@ def _build_button_handlers(
                 append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "shutdown"})
 
     def on_quiet_toggle() -> None:
-        with _button_render_gate(state, "D (quiet)") as acquired:
-            if not acquired:
-                return
-            try:
-                with state.lock:
-                    state.manual_quiet = not state.manual_quiet
-                    save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                    state.last_bucket = None  # force the loop to repaint on exit
-                    state.last_quote_id = None
-                    # Snapshot inside the lock so a concurrent toggle can't flip the
-                    # branch we take below.
-                    quiet_now = state.manual_quiet
-                _log(f"button D: manual quiet -> {quiet_now}")
-                if quiet_now and args.quiet_image:
-                    _display_quiet_image(args.quiet_image, args.output, args.display_script)
-                elif not quiet_now:
-                    # Wake to the current time so the user sees something immediately.
-                    time_str = current_time_str()
-                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                    _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            except Exception as exc:
-                _log(f"quiet toggle failed: {exc!r}", err=True)
-                append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "quiet"})
+        action_quiet(args, state, label="button D")
 
     short_handlers = {
         "A": on_skip,
@@ -831,6 +953,69 @@ def _check_button_liveness(state: RuntimeState, telemetry_path: str | None) -> N
     )
 
 
+def _resolve_web_token(args: argparse.Namespace) -> str:
+    """Resolve the web token from --web-token, --web-token-file, or empty (disabled).
+
+    Prefers the file over the inline flag when both are set so rotating the
+    token is a single file edit. A missing/unreadable token file is logged and
+    falls back to the inline flag (or empty), keeping the server startable even
+    if the file has a transient permission hiccup.
+    """
+    if args.web_token_file:
+        try:
+            return Path(args.web_token_file).expanduser().read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            _log(f"--web-token-file {args.web_token_file!r} unreadable: {exc!r}", err=True)
+    return (args.web_token or "").strip()
+
+
+def _maybe_start_web_server(args: argparse.Namespace, state: RuntimeState):
+    """Start the curator web server on a daemon thread when --web-bind is set.
+
+    Returns the ``(server, thread)`` handle or ``None`` when the UI is disabled
+    (default) or startup fails. Import is lazy so unit tests and headless runs
+    never touch ``http.server`` unless the operator opted in. A startup failure
+    is logged but does not abort the loop — the clock's primary job is still
+    rendering to the panel.
+    """
+    if not args.web_bind:
+        return None
+    try:
+        import web_server
+    except Exception as exc:
+        _log(f"web UI disabled ({exc!r}); install failure?", err=True)
+        return None
+    try:
+        token = _resolve_web_token(args)
+        handle = web_server.start_web_server(args, state, token=token)
+    except Exception as exc:
+        _log(f"web UI failed to start on {args.web_bind!r}: {exc!r}", err=True)
+        traceback.print_exc(file=sys.stderr)
+        return None
+    server, _thread = handle
+    host, port = server.server_address[:2]
+    _log(f"web UI listening on {host}:{port} ({'token required' if token else 'no token'})")
+    return handle
+
+
+def stop_web_server(handle) -> None:
+    """Shut down a running curator web server. No-op on None.
+
+    ``ThreadingHTTPServer.shutdown`` blocks until the serving loop exits; we
+    pair it with ``server_close`` to release the socket and a short thread join
+    so tests can rely on the port being free by the time this returns.
+    """
+    if handle is None:
+        return
+    server, thread = handle
+    try:
+        server.shutdown()
+    finally:
+        with contextlib.suppress(Exception):
+            server.server_close()
+    thread.join(timeout=2)
+
+
 def _maybe_reset_manual_theme_at_midnight(args: argparse.Namespace, state: RuntimeState) -> None:
     """Clear the manual theme override at the day boundary so 'auto' resumes."""
     today = dt.date.today()
@@ -893,6 +1078,13 @@ def main() -> int:
     # garbage-collected, so the reference must live as long as ``state`` does.
     # The liveness check below also reads from ``state.button_handles``.
     _maybe_start_buttons(args, state)
+
+    # Curator web UI. Off by default; only starts when --web-bind is set.
+    # Lives in the same process as the main loop so it can share state.render_lock
+    # with the button handlers (a separate process would race the atomic state
+    # writer). Runs on a daemon thread so process exit tears it down automatically;
+    # tests can stop it explicitly via stop_web_server().
+    _maybe_start_web_server(args, state)
 
     _was_quiet = False
     while True:

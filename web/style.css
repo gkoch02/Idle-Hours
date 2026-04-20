@@ -1,0 +1,258 @@
+:root {
+  --bg: #f7f4ee;
+  --panel: #ffffff;
+  --ink: #161616;
+  --muted: #6b6b6b;
+  --accent: #b03a2e;
+  --border: #d7cfc0;
+  --ok: #1f8a4c;
+  --warn: #b8860b;
+  --err: #b03a2e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Playfair Display", Georgia, "Liberation Serif", serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+header h1 { margin: 0; font-size: 1.3rem; letter-spacing: 0.08em; }
+
+.identity { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.clock { font-variant-numeric: tabular-nums; font-size: 1.3rem; font-weight: bold; }
+.pill {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  text-transform: lowercase;
+}
+
+main {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@media (min-width: 900px) {
+  main {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-areas:
+      "now       controls"
+      "now       telemetry"
+      "coverage  coverage"
+      "inspector inspector"
+      "overrides overrides"
+      "history   history";
+  }
+  .now { grid-area: now; }
+  .controls { grid-area: controls; }
+  .telemetry { grid-area: telemetry; }
+  .coverage { grid-area: coverage; }
+  .inspector { grid-area: inspector; }
+  .overrides { grid-area: overrides; }
+  .history { grid-area: history; }
+}
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+section h2 {
+  font-size: 1rem;
+  margin: 0 0 12px 0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hint {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0 0 10px 0;
+}
+
+.preview img {
+  width: 100%;
+  height: auto;
+  max-width: 800px;
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+  background: #000;
+}
+
+.identity-strip { margin-top: 10px; }
+.quote { font-size: 1.05rem; margin-bottom: 6px; }
+.attribution { color: var(--muted); font-style: italic; font-size: 0.95rem; }
+.matched { font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; color: var(--accent); margin-top: 4px; }
+
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.btn {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.9rem;
+  padding: 10px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.btn:hover { background: var(--ink); color: var(--panel); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; background: var(--panel); color: var(--ink); }
+
+.action-log {
+  margin-top: 10px;
+  min-height: 1.2em;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.stats > div {
+  display: flex;
+  flex-direction: column;
+  border-left: 3px solid var(--border);
+  padding-left: 8px;
+}
+
+.stats label {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats span {
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.last-error { margin-top: 10px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; color: var(--err); }
+
+.coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+}
+
+.coverage-cell {
+  aspect-ratio: 1;
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.62rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eee;
+  border-radius: 2px;
+  cursor: pointer;
+  color: var(--ink);
+  user-select: none;
+}
+
+.coverage-cell.zero { background: #e9c2bd; color: #6b1d14; }
+.coverage-cell.low { background: #f0d9a2; }
+.coverage-cell.mid { background: #cfe6c9; }
+.coverage-cell.high { background: #a0c99a; color: #fff; }
+.coverage-cell:hover { outline: 2px solid var(--ink); }
+
+.inspector form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.inspector input {
+  flex: 1 1 140px;
+  padding: 8px;
+  font-family: "DejaVu Sans Mono", monospace;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.inspector button {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  padding: 8px 14px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.inspector-results { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.82rem; }
+.candidate {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+.candidate.winner { border-color: var(--ok); border-width: 2px; }
+.candidate-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.candidate-quote { font-family: "Playfair Display", Georgia, serif; font-size: 0.95rem; margin: 4px 0; }
+.candidate-score {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2px 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.candidate-score span.nonzero { color: var(--accent); font-weight: bold; }
+
+textarea {
+  width: 100%;
+  min-height: 180px;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  resize: vertical;
+}
+
+.override-actions { display: flex; gap: 8px; margin-top: 8px; }
+.override-actions button {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  padding: 8px 14px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.override-status { margin-top: 8px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; min-height: 1.2em; }
+.override-status.ok { color: var(--ok); }
+.override-status.err { color: var(--err); }
+
+.history ol { padding-left: 24px; margin: 0; font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; }
+.history li { margin-bottom: 2px; color: var(--muted); }

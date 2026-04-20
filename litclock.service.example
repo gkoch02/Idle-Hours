@@ -17,6 +17,11 @@ ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.
 #   --startup-image /home/pi/LitClock/assets/goodnight.png   push a frame at boot
 #   --state-path /home/pi/.litclock/state.json              persisted theme/quiet overrides
 #   --telemetry-path /home/pi/.litclock/telemetry.jsonl     telemetry sidecar (litclock_health.py)
+#   --web-bind 127.0.0.1:8080                             curator web UI on loopback only (browse telemetry/coverage, mirror buttons, edit overrides)
+#   --web-bind 0.0.0.0:8080 --web-token-file /home/pi/.litclock/web.token
+#                                                         expose the UI on the LAN; POSTs require X-LitClock-Token.
+#                                                         Put the secret in a root:pi 0640 file — NEVER pass --web-token
+#                                                         inline or it will show up in `ps` and journald.
 Restart=always
 RestartSec=10
 

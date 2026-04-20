@@ -211,6 +211,91 @@ class TestPickBest:
         _, resolved = pq.pick_best(rows, "h3_exact", 0, 60, self._overrides())
         assert resolved == "h3_ten_past"
 
+    def test_return_ranked_yields_sorted_pool_with_scores(self):
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", quality_score=60,
+                     display_quote="A rougher three o'clock phrase."),
+            make_row(fuzzy_bucket="h3_exact", quality_score=95,
+                     display_quote="A pristine three o'clock line."),
+            make_row(fuzzy_bucket="h3_exact", quality_score=75,
+                     display_quote="A mid-tier three o'clock line."),
+        ]
+        chosen, resolved, ranked = pq.pick_best(
+            rows, "h3_exact", 0, 60, self._overrides(), return_ranked=True,
+        )
+        assert resolved == "h3_exact"
+        # Ranked list is a sorted pool of {"row": ..., "score": tuple}.
+        assert len(ranked) == 3
+        assert ranked[0]["row"]["quality_score"] == 95
+        assert isinstance(ranked[0]["score"], tuple)
+        assert chosen["quality_score"] == 95
+
+
+class TestSelectCandidates:
+    def _write_corpus(self, tmp_jsonl, monkeypatch, tmp_path):
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="141", line_number=1,
+                     quality_score=95, display_quote="A pristine three o'clock line."),
+            make_row(fuzzy_bucket="h3_exact", source_id="142", line_number=2,
+                     quality_score=80, display_quote="Another three o'clock line, slightly worse."),
+            make_row(fuzzy_bucket="h3_exact", source_id="143", line_number=3,
+                     quality_score=60, display_quote="A barely-passing three o'clock line."),
+        ]
+        corpus = tmp_jsonl(rows)
+        overrides = tmp_path / "overrides.json"
+        overrides.write_text(
+            json.dumps({"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}})
+        )
+        return corpus, overrides
+
+    def test_select_candidates_returns_named_score_components(self, tmp_jsonl, monkeypatch, tmp_path):
+        corpus, overrides = self._write_corpus(tmp_jsonl, monkeypatch, tmp_path)
+        result = pq.select_candidates(
+            bucket="h3_exact",
+            top_n=3,
+            input_path=str(corpus),
+            overrides_path=str(overrides),
+        )
+        assert len(result) == 3
+        first = result[0]
+        # Every SCORE_COMPONENTS key must be present and numeric.
+        for component in pq.SCORE_COMPONENTS:
+            assert component in first["score"]
+        # Winner flag points at the top-ranked row.
+        winners = [e for e in result if e["is_winner"]]
+        assert len(winners) == 1
+        assert winners[0]["row"]["source_id"] == "141"
+
+    def test_select_candidates_requires_time_or_bucket(self, tmp_jsonl, monkeypatch, tmp_path):
+        corpus, overrides = self._write_corpus(tmp_jsonl, monkeypatch, tmp_path)
+        with pytest.raises(ValueError, match="requires time_str or bucket"):
+            pq.select_candidates(
+                input_path=str(corpus),
+                overrides_path=str(overrides),
+            )
+
+    def test_select_candidates_respects_top_n(self, tmp_jsonl, monkeypatch, tmp_path):
+        corpus, overrides = self._write_corpus(tmp_jsonl, monkeypatch, tmp_path)
+        result = pq.select_candidates(
+            bucket="h3_exact",
+            top_n=1,
+            input_path=str(corpus),
+            overrides_path=str(overrides),
+        )
+        assert len(result) == 1
+        assert result[0]["is_winner"] is True
+
+    def test_select_candidates_accepts_time_str(self, tmp_jsonl, monkeypatch, tmp_path):
+        corpus, overrides = self._write_corpus(tmp_jsonl, monkeypatch, tmp_path)
+        result = pq.select_candidates(
+            time_str="03:00",
+            top_n=3,
+            input_path=str(corpus),
+            overrides_path=str(overrides),
+        )
+        assert len(result) == 3
+        assert result[0]["resolved_bucket"] == "h3_exact"
+
 
 class TestSourceRarityTiebreak:
     def _overrides(self):

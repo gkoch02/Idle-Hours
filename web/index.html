@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LitClock Curator</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>LitClock</h1>
+    <div id="identity" class="identity">
+      <span id="clock" class="clock">--:--</span>
+      <span id="bucket" class="pill">--</span>
+      <span id="theme" class="pill">--</span>
+      <span id="mode" class="pill">--</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="now">
+      <h2>Now showing</h2>
+      <div class="preview">
+        <img id="current-png" src="/current.png" alt="Currently rendered frame" />
+      </div>
+      <div class="identity-strip">
+        <div id="quote" class="quote">—</div>
+        <div id="attribution" class="attribution">—</div>
+        <div id="matched" class="matched"></div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <h2>Controls</h2>
+      <p class="hint">Mirrors the four physical Inky buttons. Each POST respects the render lock: if a render is already in flight the action returns 409 and is dropped.</p>
+      <div class="button-grid">
+        <button data-action="skip" class="btn">A · Skip</button>
+        <button data-action="unskip" class="btn">A-hold · Un-skip</button>
+        <button data-action="theme" class="btn">B · Toggle theme</button>
+        <button data-action="rerender" class="btn">C · Re-render</button>
+        <button data-action="quiet" class="btn">D · Quiet / wake</button>
+      </div>
+      <div id="action-log" class="action-log" aria-live="polite"></div>
+    </section>
+
+    <section class="telemetry">
+      <h2>Telemetry (last <span id="telemetry-hours">24</span>h)</h2>
+      <div class="stats">
+        <div><label>Renders</label><span id="t-renders">—</span></div>
+        <div><label>Errors</label><span id="t-errors">—</span></div>
+        <div><label>Render p50</label><span id="t-render-p50">—</span></div>
+        <div><label>Render p95</label><span id="t-render-p95">—</span></div>
+        <div><label>Display p50</label><span id="t-display-p50">—</span></div>
+        <div><label>Display p95</label><span id="t-display-p95">—</span></div>
+      </div>
+      <div id="t-last-error" class="last-error"></div>
+    </section>
+
+    <section class="coverage">
+      <h2>Coverage grid</h2>
+      <p class="hint">Each cell is one of the 144 <code>h{hour}_{state}</code> buckets. Colour encodes how many corpus rows target that bucket.</p>
+      <div id="coverage-grid" class="coverage-grid"></div>
+    </section>
+
+    <section class="inspector">
+      <h2>Bucket inspector</h2>
+      <p class="hint">Pick a bucket above (or type one) to see the ranked candidate list the scorer would have considered. Lower score is better at every position.</p>
+      <form id="inspector-form">
+        <input id="inspector-bucket" name="bucket" placeholder="e.g. h3_half_past" />
+        <input id="inspector-time" name="time" placeholder="HH:MM (optional)" />
+        <button type="submit">Inspect</button>
+      </form>
+      <div id="inspector-results" class="inspector-results"></div>
+    </section>
+
+    <section class="overrides">
+      <h2>Overrides editor</h2>
+      <p class="hint">Edit <code>assets/selection_overrides.json</code>. Validated server-side; bad bucket keys or non-list IDs are rejected with 400.</p>
+      <textarea id="overrides-text" spellcheck="false"></textarea>
+      <div class="override-actions">
+        <button id="overrides-save">Save</button>
+        <button id="overrides-reload" type="button">Reload from disk</button>
+      </div>
+      <div id="overrides-status" class="override-status"></div>
+    </section>
+
+    <section class="history">
+      <h2>History (most recent first)</h2>
+      <ol id="history-list"></ol>
+    </section>
+  </main>
+
+  <script src="/main.js"></script>
+</body>
+</html>

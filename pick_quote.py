@@ -135,15 +135,20 @@ def load_rows(path: Path) -> list[dict]:
     return rows
 
 
-def _valid_bucket_names() -> set[str]:
+def valid_bucket_names() -> set[str]:
+    """Return the full set of ``h{1..12}_{state}`` bucket names."""
     return {f"h{hour}_{state}" for hour in range(1, 13) for state in BUCKET_ORDER}
+
+
+# Backwards-compatible alias. External callers (e.g. web_server) use the public name.
+_valid_bucket_names = valid_bucket_names
 
 
 def _warn_unknown_preferred_buckets(overrides: dict) -> None:
     preferred = overrides.get("preferred_buckets") or {}
     if not isinstance(preferred, dict):
         return
-    valid = _valid_bucket_names()
+    valid = valid_bucket_names()
     unknown = sorted(key for key in preferred if key not in valid)
     if unknown:
         print(
@@ -386,6 +391,26 @@ def _row_history_key(row: dict) -> tuple | None:
     return (str(source_id), line_number)
 
 
+# Positional labels for the tuple returned by :func:`score_row`. The web UI's
+# candidate browser (``GET /api/bucket/<bucket>``) uses this to explode the raw
+# tuple into named fields so the operator can see *why* a candidate ranked
+# where it did (e.g. "lost by minute_penalty=8").
+SCORE_COMPONENTS = (
+    "fragment_penalty",
+    "cleanup_penalty",
+    "minute_penalty",
+    "metadata_bonus",
+    "dialogue_penalty",
+    "opening_penalty",
+    "source_bonus",
+    "override_bonus",
+    "quality_component",
+    "length_exactness",
+    "source_rarity_penalty",
+    "length_tiebreak",
+)
+
+
 def pick_best(
     rows: list[dict],
     bucket: str,
@@ -394,7 +419,15 @@ def pick_best(
     overrides: dict,
     requested_time: str | None = None,
     recent_history: set[tuple] | None = None,
-) -> tuple[dict, str]:
+    return_ranked: bool = False,
+):
+    """Pick the highest-ranked row for ``bucket`` (walking neighbour buckets on empty).
+
+    Returns ``(chosen_row, resolved_bucket)`` by default. When ``return_ranked``
+    is True, returns ``(chosen_row, resolved_bucket, ranked)`` where ``ranked``
+    is a list of ``{"row": dict, "score": tuple}`` ordered by ascending score
+    (best first). This variant powers the curator UI's bucket-inspector view.
+    """
     source_counts = count_sources(rows)
     recent = recent_history or set()
     for candidate_bucket in neighbor_buckets(bucket):
@@ -415,8 +448,62 @@ def pick_best(
         top_score = score_row(pool[0], candidate_bucket, overrides, requested_time, source_counts)
         top = [row for row in pool if score_row(row, candidate_bucket, overrides, requested_time, source_counts) == top_score]
         rng = random.Random(seed)
-        return rng.choice(top), candidate_bucket
+        chosen = rng.choice(top)
+        if return_ranked:
+            ranked = [
+                {"row": row, "score": score_row(row, candidate_bucket, overrides, requested_time, source_counts)}
+                for row in pool
+            ]
+            return chosen, candidate_bucket, ranked
+        return chosen, candidate_bucket
     raise SystemExit(f"No candidates found for bucket {bucket} or nearby buckets above quality {min_quality}")
+
+
+def select_candidates(
+    time_str: str | None = None,
+    bucket: str | None = None,
+    top_n: int = 10,
+    input_path: str = "assets/candidates-attributed.jsonl",
+    overrides_path: str = "assets/selection_overrides.json",
+    seed: int = 0,
+    min_quality: int = 60,
+    history_path: str | None = None,
+    history_days: int = DEFAULT_HISTORY_DAYS,
+) -> list[dict]:
+    """Return up to ``top_n`` ranked candidates for a time or bucket.
+
+    Each entry is ``{"row": <full candidate row>, "score": {component: int, ...},
+    "is_winner": bool}`` where ``score`` explodes the :func:`score_row` tuple
+    into :data:`SCORE_COMPONENTS`-keyed fields so the curator UI can render
+    per-component comparisons. Lower score is better at every position.
+
+    The winner (what :func:`select_quote` would have returned) is marked with
+    ``is_winner: true`` for the UI. Ties on top score are broken by a seeded
+    ``random.Random(seed)`` — same as the live picker — so the UI shows the
+    same frame the clock would.
+    """
+    if not time_str and not bucket:
+        raise ValueError("select_candidates requires time_str or bucket")
+    target_bucket = bucket or bucket_for_time(time_str)
+    rows = load_rows(resolve_path(input_path))
+    overrides = load_overrides(resolve_path(overrides_path))
+    recent = load_recent_history(history_path, history_days)
+    chosen, resolved_bucket, ranked = pick_best(
+        rows, target_bucket, seed, min_quality, overrides, time_str, recent, return_ranked=True,
+    )
+    chosen_key = (chosen.get("source_id"), chosen.get("line_number"))
+    result: list[dict] = []
+    for entry in ranked[: max(0, top_n)]:
+        row = entry["row"]
+        score_tuple = entry["score"]
+        score_map = dict(zip(SCORE_COMPONENTS, score_tuple))
+        result.append({
+            "row": row,
+            "score": score_map,
+            "resolved_bucket": resolved_bucket,
+            "is_winner": (row.get("source_id"), row.get("line_number")) == chosen_key,
+        })
+    return result
 
 
 def select_quote(
