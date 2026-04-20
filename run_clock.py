@@ -589,17 +589,26 @@ def _build_button_handlers(
     def on_shutdown() -> None:
         """Button D held 2s: display the goodnight frame and invoke the shutdown command.
 
-        Best-effort. If ``--shutdown-command`` is empty or returns non-zero,
-        the failure is logged and the loop continues. A clean shutdown on the
-        Pi requires passwordless sudo for the default ``sudo -n shutdown -h now``;
-        users running without sudo can override via ``--shutdown-command``.
+        Best-effort. If ``--shutdown-command`` returns non-zero the failure
+        is logged and the loop continues. A clean shutdown on the Pi requires
+        passwordless sudo for the default ``sudo -n shutdown -h now``; users
+        running without sudo can override via ``--shutdown-command``.
 
-        Order-of-operations: we flip ``state.manual_quiet`` BEFORE pushing the
-        goodnight frame so that even if the main loop wakes between our
-        ``_display_quiet_image`` call and the shutdown invocation, it takes the
-        quiet branch and (worst case) re-pushes goodnight — it can't slip a
-        normal quote onto the panel in the final seconds before poweroff.
+        If ``--shutdown-command`` is empty the feature is fully disabled:
+        we return early without flipping quiet state, so an accidental long
+        press can't leave the clock stuck in manual quiet across restarts.
+
+        Order-of-operations: when shutdown IS enabled we flip
+        ``state.manual_quiet`` BEFORE pushing the goodnight frame so that
+        even if the main loop wakes between our ``_display_quiet_image``
+        call and the shutdown invocation, it takes the quiet branch and
+        (worst case) re-pushes goodnight — it can't slip a normal quote
+        onto the panel in the final seconds before poweroff.
         """
+        cmd = (args.shutdown_command or "").strip()
+        if not cmd:
+            _log("button D held: --shutdown-command is empty, skipping system shutdown")
+            return
         _log("button D held: shutdown")
         with state.lock:
             state.manual_quiet = True
@@ -612,10 +621,6 @@ def _build_button_handlers(
                     )
         except Exception as exc:
             _log(f"shutdown pre-frame failed: {exc!r}", err=True)
-        cmd = (args.shutdown_command or "").strip()
-        if not cmd:
-            _log("shutdown: --shutdown-command is empty, skipping system shutdown")
-            return
         try:
             subprocess.check_call(shlex.split(cmd))
         except Exception as exc:

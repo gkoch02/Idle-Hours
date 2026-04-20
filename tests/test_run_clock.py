@@ -1384,6 +1384,22 @@ class TestShutdownHandler:
         assert not mock_check.called
         assert "skipping system shutdown" in capsys.readouterr().out
 
+    def test_empty_shutdown_command_does_not_flip_quiet(self, tmp_path):
+        """When shutdown is disabled, an accidental long-press must not leave
+        the clock stuck in manual quiet mode (which would persist across restarts)."""
+        args = self._args(tmp_path, shutdown_command="")
+        state = run_clock.RuntimeState("default")
+        assert state.manual_quiet is False
+        with patch("run_clock._display_quiet_image") as mock_display, \
+             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.save_runtime_state") as mock_save, \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is False
+        assert not mock_display.called
+        assert not mock_save.called
+
     def test_shutdown_displays_goodnight_first(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")
