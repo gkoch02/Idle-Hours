@@ -65,7 +65,9 @@ class TestLog:
 
 class TestMain:
     def test_returns_1_when_gpiozero_missing(self, monkeypatch, capsys):
-        # Remove gpiozero from sys.modules and prevent fallback imports
+        # A None entry in sys.modules is CPython's cached-ImportError sentinel:
+        # the next `from gpiozero import Button` raises ModuleNotFoundError without
+        # hitting the import machinery, so we don't need gpiozero uninstalled.
         monkeypatch.setitem(sys.modules, "gpiozero", None)
         rc = probe_buttons.main([])
         assert rc == 1

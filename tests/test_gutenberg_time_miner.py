@@ -1,7 +1,12 @@
 """Tests for gutenberg_time_miner.py — regex patterns, time parsing, bucket logic."""
 from __future__ import annotations
 
+import json
 import re
+import sys
+from pathlib import Path
+
+import pytest
 
 import gutenberg_time_miner as gtm
 
@@ -341,7 +346,6 @@ class TestIterCandidates:
             "By half past eight the house was quiet. "
             "Quarter to ten she departed."
         )
-        from pathlib import Path
         candidates = list(gtm.iter_candidates(Path("test.txt"), None, text, 220, 0))
         match_types = {c.match_type for c in candidates}
         assert "oclock_word" in match_types
@@ -350,7 +354,6 @@ class TestIterCandidates:
 
     def test_max_per_file_limits_results(self):
         text = " ".join([f"It was {w} o'clock." for w in ["one", "two", "three", "four", "five"]])
-        from pathlib import Path
         candidates = list(gtm.iter_candidates(Path("test.txt"), None, text, 220, max_per_file=2))
         assert len(candidates) == 2
 
@@ -375,7 +378,6 @@ class TestTextFilesFromInputs:
         assert names == ["a.txt", "b.txt"]
 
     def test_missing_path_raises(self, tmp_path):
-        import pytest
         with pytest.raises(FileNotFoundError):
             list(gtm.text_files_from_inputs([str(tmp_path / "nope.txt")]))
 
@@ -388,8 +390,11 @@ class TestFetchGutenbergText:
     def test_cache_hit_skips_network(self, tmp_path, monkeypatch):
         cached = tmp_path / "pg1234.txt"
         cached.write_text("cached content")
-        # If urlopen is called we'd get a NotImplementedError
-        monkeypatch.setattr(gtm.urllib.request, "urlopen", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("should not be called")))
+
+        def exploding_urlopen(*args, **kwargs):
+            raise AssertionError("urlopen must not be called when cache is warm")
+
+        monkeypatch.setattr(gtm.urllib.request, "urlopen", exploding_urlopen)
         result = gtm.fetch_gutenberg_text("1234", tmp_path)
         assert result == cached
         assert result.read_text() == "cached content"
@@ -414,8 +419,6 @@ class TestFetchGutenbergText:
         assert result.read_text() == "downloaded body"
 
     def test_all_urls_fail_raises(self, tmp_path, monkeypatch):
-        import pytest
-
         def fake_urlopen(url, timeout=30):
             raise gtm.urllib.error.URLError("nope")
 
@@ -452,26 +455,20 @@ class TestFetchGutenbergText:
 
 class TestMine:
     def _args(self, **kwargs):
-        import argparse
-        defaults = {
-            "gutenberg_id": [],
-            "input": [],
-            "download_dir": "data/gutenberg",
-            "output": "unused.jsonl",
-            "format": "jsonl",
-            "context_chars": 100,
-            "max_per_file": 0,
-            "max_total": 0,
-            "print_sample": 0,
-            "exclude_match_type": [],
-            "strict": False,
-            "skip_fetch_errors": False,
-        }
-        defaults.update(kwargs)
-        return argparse.Namespace(**defaults)
+        # Derive defaults from the real parser so a new CLI flag can't silently
+        # leave tests running against a stale default dict. parse_args() reads
+        # sys.argv with no override, so stub it for the duration of the call.
+        original_argv = sys.argv
+        sys.argv = ["gutenberg_time_miner.py"]
+        try:
+            args = gtm.parse_args()
+        finally:
+            sys.argv = original_argv
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return args
 
     def test_no_inputs_raises_system_exit(self, tmp_path):
-        import pytest
         with pytest.raises(SystemExit):
             gtm.mine(self._args(download_dir=str(tmp_path)))
 
@@ -527,13 +524,11 @@ class TestMine:
         assert "Skipping Gutenberg id 404" in err
 
     def test_fetch_failure_without_skip_reraises(self, tmp_path, monkeypatch):
-        import pytest
-
         def fake_fetch(ebook_id, download_dir):
             raise RuntimeError("simulated 404")
 
         monkeypatch.setattr(gtm, "fetch_gutenberg_text", fake_fetch)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="simulated 404"):
             gtm.mine(self._args(gutenberg_id=["404"], download_dir=str(tmp_path)))
 
     def test_uses_downloaded_gutenberg_text(self, tmp_path, monkeypatch):
@@ -543,7 +538,6 @@ class TestMine:
             p.write_text("It was four o'clock in the afternoon.")
             return p
 
-        from pathlib import Path  # local to avoid scope clash
         monkeypatch.setattr(gtm, "fetch_gutenberg_text", fake_fetch)
         candidates = gtm.mine(self._args(gutenberg_id=["42"], download_dir=str(tmp_path)))
         assert any(c.source_id == "42" for c in candidates)
@@ -552,18 +546,15 @@ class TestMine:
 class TestWriters:
     def test_write_jsonl(self, tmp_path):
         text = "It was three o'clock."
-        from pathlib import Path
         candidates = list(gtm.iter_candidates(Path("a.txt"), "1", text, 100, 0))
         out = tmp_path / "out.jsonl"
         count = gtm.write_jsonl(out, candidates)
         assert count == len(candidates)
-        import json
         rows = [json.loads(line) for line in out.read_text().splitlines()]
         assert all("normalized_time" in r for r in rows)
 
     def test_write_csv(self, tmp_path):
         text = "It was three o'clock."
-        from pathlib import Path
         candidates = list(gtm.iter_candidates(Path("a.txt"), "1", text, 100, 0))
         out = tmp_path / "out.csv"
         count = gtm.write_csv(out, candidates)
@@ -575,7 +566,7 @@ class TestWriters:
 class TestMainCLI:
     def test_jsonl_output_and_sample_print(self, tmp_path, monkeypatch, capsys):
         book = tmp_path / "book.txt"
-        book.write_text("It was three o'clock in the afternoon.\nThe bell struck four o'clock.")
+        book.write_text("She waited until three o'clock. Later, four o'clock struck.")
         out = tmp_path / "candidates.jsonl"
         monkeypatch.setattr(
             "sys.argv",
@@ -585,14 +576,19 @@ class TestMainCLI:
                 "--output", str(out),
                 "--download-dir", str(tmp_path / "dl"),
                 "--print-sample", "2",
+                "--exclude-match-type", "clock_struck",  # keep the assertion tight
             ],
         )
         assert gtm.main() == 0
         assert out.exists()
-        lines = out.read_text().strip().splitlines()
-        assert len(lines) >= 2
+        rows = [json.loads(line) for line in out.read_text().splitlines()]
+        assert [r["matched_text"].lower() for r in rows] == ["three o'clock", "four o'clock"]
+        assert all(r["match_type"] == "oclock_word" for r in rows)
         captured = capsys.readouterr().out
-        assert "Wrote" in captured
+        assert "Wrote 2 candidates" in captured
+        # --print-sample 2 prints one "[1]" and one "[2]" header
+        assert "[1]" in captured
+        assert "[2]" in captured
 
     def test_csv_output_format(self, tmp_path, monkeypatch):
         book = tmp_path / "book.txt"
