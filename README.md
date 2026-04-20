@@ -34,6 +34,8 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 - `render_quote.py` - quote renderer, typography, highlighting, theme handling, Spectra 6 palette snapping
 - `pick_quote.py` - runtime quote selection from the attributed dataset
 - `display_inky.py` - thin bridge that sends a rendered image to the Inky display
+- `inky_buttons.py` - listener for the four Inky Impression capacitive buttons (A/B/C/D), short + long press
+- `litclock_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`
 - `buckets.py` - fuzzy time bucket mapping
 
 ### Runtime assets
@@ -107,6 +109,54 @@ python3 run_clock.py --display-script display_inky.py --mode production
 ### Themes
 
 Pass `--theme dark` to either `run_clock.py` or `render_quote.py` for a black-background / yellow-accent variant. `--theme default` is the white-background / red-accent original.
+
+Pass `--theme auto` to let the clock pick for you: dark between 18:00 and 06:00, default otherwise. A manual button-B press overrides `auto` until the next midnight rollover.
+
+### Inky buttons (short and long press)
+
+The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_clock.py` runs on a Pi with the `gpiozero` package installed. Pass `--buttons-off` on dev hosts or for headless smoke tests.
+
+| Button | Short press | Long press (2s) |
+|---|---|---|
+| **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
+| **B** | Toggle theme — flips default ↔ dark, persists to `--state-path`. | — |
+| **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
+| **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the goodnight frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
+
+Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one.
+
+### Persisted runtime state and telemetry
+
+The loop can persist the manual theme and quiet overrides so they survive a restart, and it can log one JSONL entry per render/error for after-the-fact "is the appliance OK?" checks.
+
+```bash
+# Default paths (pass an empty string to disable either)
+python3 run_clock.py \
+  --state-path ~/.litclock/state.json \
+  --telemetry-path ~/.litclock/telemetry.jsonl
+
+# Human-readable telemetry summary for the last 24h
+python3 litclock_health.py --hours 24
+
+# JSON summary for cron / systemd health checks (exits 2 when unhealthy)
+python3 litclock_health.py --hours 1 --json --fail-if-no-renders
+```
+
+`litclock_health.py` exit codes:
+
+- `0` — healthy (renders happened in the window, or no errors with nothing scheduled)
+- `1` — telemetry log missing
+- `2` — unhealthy: errors but zero renders, or `--fail-if-no-renders` with a silent window
+
+### Startup frame
+
+```bash
+# Optional: push a static frame to the panel before the first quote renders
+# so a cold boot doesn't ghost yesterday's image.
+python3 run_clock.py --startup-image assets/goodnight.png
+```
+
+The extra refresh costs a Spectra 6 cycle (~10–20s) so this is off by default; enable when you care more about clean boot visuals than time-to-first-quote.
 
 ### Quiet hours
 
@@ -279,7 +329,11 @@ That work is intentionally separate from the steady-state render loop.
 - The clock refreshes when the fuzzy time bucket changes, not every minute, and additionally skips a redraw when the picked quote is identical to the previous frame.
 - If the exact bucket is weak or empty, the picker walks nearby buckets and records fallback metadata.
 - `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
-- Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`.
+- Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
+- Button B flips the theme at any time and persists the choice to `--state-path`. Button A's long press reverses the most recent skip.
+- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B override wins until the next midnight rollover.
+- Per-theme saturation: `display_inky.py` uses `0.5` for `default` and `0.7` for `dark` on the Spectra 6 panel so accents don't go muddy on dark backgrounds.
+- Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) gets one line per render and one per loop-level error; `litclock_health.py --json` feeds systemd / cron health checks.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.
@@ -292,4 +346,9 @@ If the clock is behaving oddly, these are the first files to inspect:
 - highlight/layout/render issues -> `render_quote.py`
 - loop/update/dedup/service behavior -> `run_clock.py`
 - display handoff issues -> `display_inky.py`
+- button/long-press wiring -> `inky_buttons.py`
+- "is the appliance alive?" -> `python3 litclock_health.py --hours 24` (use `--json` from cron)
+- telemetry log (one JSONL entry per render/error) -> `~/.litclock/telemetry.jsonl`
+- persisted manual theme / quiet override -> `~/.litclock/state.json`
+- anti-repeat ledger of recently-shown quotes -> `~/.litclock/history.jsonl`
 - runtime dataset questions -> `assets/candidates-attributed.jsonl`

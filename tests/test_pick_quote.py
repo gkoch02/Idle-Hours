@@ -317,6 +317,38 @@ class TestRecentHistory:
         pq.append_history(str(path), "1234", 5678)
         assert path.exists()
 
+    def test_remove_last_history_entry_removes_most_recent_match(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1", 1)
+        pq.append_history(str(path), "2", 2)
+        pq.append_history(str(path), "1", 1)  # duplicate — we expect this one to go
+        removed = pq.remove_last_history_entry(str(path), "1", 1)
+        assert removed is True
+        remaining = [json.loads(line) for line in path.read_text().splitlines()]
+        # The first (1, 1) entry must still be there; only the duplicate was removed.
+        assert [(e["source_id"], e["line_number"]) for e in remaining] == [("1", 1), ("2", 2)]
+
+    def test_remove_last_history_entry_returns_false_when_no_match(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1", 1)
+        assert pq.remove_last_history_entry(str(path), "42", 99) is False
+        # Unchanged.
+        assert len(path.read_text().splitlines()) == 1
+
+    def test_remove_last_history_entry_noop_for_empty_path(self, tmp_path):
+        assert pq.remove_last_history_entry("", "1", 1) is False
+        assert pq.remove_last_history_entry(None, "1", 1) is False
+
+    def test_remove_last_history_entry_noop_when_file_missing(self, tmp_path):
+        path = tmp_path / "missing.jsonl"
+        assert pq.remove_last_history_entry(str(path), "1", 1) is False
+
+    def test_remove_last_history_entry_leaves_empty_file_when_last_removed(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1", 1)
+        assert pq.remove_last_history_entry(str(path), "1", 1) is True
+        assert path.read_text() == ""
+
     def test_pick_best_filters_recently_shown(self):
         overrides = {"preferred_buckets": {}, "boost_source_ids": [], "ban_source_ids": []}
         fresh = make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=80,

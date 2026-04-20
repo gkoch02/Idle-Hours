@@ -325,6 +325,36 @@ def append_history(history_path: str | None, source_id, line_number) -> None:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def remove_last_history_entry(history_path: str | None, source_id, line_number) -> bool:
+    """Remove the most recent ledger entry matching ``(source_id, line_number)``.
+
+    Powers the "un-skip" button long-press: a skip appended the banned quote to
+    the ledger, holding the button reverses that entry so the quote can appear
+    again. Returns True if an entry was removed, False otherwise (no path,
+    missing file, nothing matched).
+    """
+    if not history_path or source_id is None or line_number is None:
+        return False
+    path = Path(history_path).expanduser()
+    if not path.exists():
+        return False
+    lines = path.read_text(encoding="utf-8").splitlines()
+    target = (str(source_id), line_number)
+    for i in range(len(lines) - 1, -1, -1):
+        try:
+            entry = json.loads(lines[i])
+        except (ValueError, json.JSONDecodeError):
+            continue
+        if (str(entry.get("source_id")), entry.get("line_number")) == target:
+            del lines[i]
+            if lines:
+                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            else:
+                path.write_text("", encoding="utf-8")
+            return True
+    return False
+
+
 def _row_history_key(row: dict) -> tuple | None:
     source_id = row.get("source_id")
     line_number = row.get("line_number")

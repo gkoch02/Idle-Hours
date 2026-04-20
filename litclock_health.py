@@ -31,6 +31,20 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_HOURS,
         help="Window of recent hours to consider (default: 24)",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a JSON summary instead of the human-readable text. Handy for cron/systemd checks.",
+    )
+    parser.add_argument(
+        "--fail-if-no-renders",
+        action="store_true",
+        help=(
+            "Exit 2 if the window contains zero successful renders (default: only fail when "
+            "there are errors AND no renders). Use on active appliances where silence itself "
+            "indicates a problem."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -107,17 +121,37 @@ def format_summary(summary: dict, hours: int) -> str:
     return "\n".join(parts)
 
 
+def evaluate_health(summary: dict, *, fail_if_no_renders: bool) -> int:
+    """Map a summary dict to a process exit code.
+
+    - ``0``: healthy (there are renders, or nothing unhealthy happened)
+    - ``2``: unhealthy — errors but no successful renders, or
+      ``--fail-if-no-renders`` was set and the window was silent.
+    """
+    if summary["error_count"] > 0 and summary["render_count"] == 0:
+        return 2
+    if fail_if_no_renders and summary["render_count"] == 0:
+        return 2
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     path = Path(args.telemetry_path).expanduser()
     since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=args.hours)
     entries = load_entries(path, since)
     if not entries and not path.exists():
-        print(f"No telemetry log at {path}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"error": f"No telemetry log at {path}", "hours": args.hours}))
+        else:
+            print(f"No telemetry log at {path}", file=sys.stderr)
         return 1
     summary = summarise(entries)
-    print(format_summary(summary, args.hours))
-    return 0
+    if args.json:
+        print(json.dumps({"hours": args.hours, **summary}))
+    else:
+        print(format_summary(summary, args.hours))
+    return evaluate_health(summary, fail_if_no_renders=args.fail_if_no_renders)
 
 
 if __name__ == "__main__":

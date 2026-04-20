@@ -56,7 +56,15 @@ python3 run_clock.py --buttons-off
 
 # Persisted runtime state (manual theme + manual quiet override) and telemetry sidecar
 python3 run_clock.py --state-path ~/.litclock/state.json --telemetry-path ~/.litclock/telemetry.jsonl
-python3 litclock_health.py --hours 24      # summary: render count, error count, p50/p95 latency
+python3 litclock_health.py --hours 24                  # human-readable summary
+python3 litclock_health.py --hours 24 --json           # JSON for cron / systemd health checks
+python3 litclock_health.py --hours 1 --fail-if-no-renders   # exit 2 if the window was silent
+
+# Push a static "starting" frame at boot so the panel doesn't ghost yesterday's render
+python3 run_clock.py --startup-image assets/goodnight.png
+
+# Override the button-D long-press shutdown command (default: sudo -n shutdown -h now)
+python3 run_clock.py --shutdown-command ""             # disable shutdown-on-hold entirely
 
 # Disable the default quiet-hours blackout (defaults 22:00–06:00, shows assets/goodnight.png)
 python3 run_clock.py --quiet-off
@@ -327,18 +335,22 @@ Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the 
 
 **Auto-dark theme (`--theme auto`).** Picks `dark` between 18:00 and 06:00 (`AUTO_DARK_START_HOUR` / `AUTO_DARK_END_HOUR`) and `default` otherwise. Each tick re-derives the effective theme from the wall clock; a theme change is treated like a bucket change (forces a redraw even if the picked quote is unchanged). The button-B manual toggle wins until the next midnight rollover, when `_maybe_reset_manual_theme_at_midnight` clears it so `auto` resumes.
 
-**Inky buttons (`inky_buttons.py`).** The four capacitive buttons on the Inky Impression are wired to GPIO 5/6/16/24 (labels A/B/C/D) and dispatched by `inky_buttons.start_listener({label: callable})` using `gpiozero.Button` with a 0.3-second debounce. The hardware import is local to `start_listener` so the module is import-safe on dev hosts. `run_clock.py` builds the handler dict in `_build_button_handlers` and stashes the returned `Button` list in a local for the lifetime of the loop — `gpiozero` drops handlers when its `Button` is garbage-collected, so the reference must be held. Handlers act synchronously in the listener thread and serialize against the main loop via `state.render_lock`; mutations of theme/quiet flags are guarded by `state.lock`. Pass `--buttons-off` on dev machines or for headless runs.
+**Inky buttons (`inky_buttons.py`).** The four capacitive buttons on the Inky Impression are wired to GPIO 5/6/16/24 (labels A/B/C/D) and dispatched by `inky_buttons.start_listener(short_handlers, hold_handlers=...)` using `gpiozero.Button` with a 0.3-second debounce and a 2-second hold threshold. The hardware import is local to `start_listener` so the module is import-safe on dev hosts. `run_clock.py` builds the short/hold handler dicts in `_build_button_handlers` and stashes the returned keepalive list for the lifetime of the loop — `gpiozero` drops handlers when its `Button` is garbage-collected, so the reference must be held. Handlers act synchronously in the listener thread and serialize against the main loop via `state.render_lock`; mutations of theme/quiet flags are guarded by `state.lock`. Pass `--buttons-off` on dev machines or for headless runs.
 
-| Button | Action |
-|---|---|
-| **A** | Skip — bans the current quote in the history ledger, picks again, re-renders. |
-| **B** | Toggle theme — flips default ↔ dark, persists to `--state-path`, re-renders. |
-| **C** | Source card — renders a `--mode card` overlay (title / author / Gutenberg ID / matched phrase) for 5 seconds, then the timer thread itself re-renders the original frame (the next loop tick alone could be up to 60s away). |
-| **D** | Quiet now / wake — toggles `manual_quiet`, persists to `--state-path`. Going quiet pushes `--quiet-image` immediately; going active picks and renders the current time. |
+Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so the short callback fires on *release* only when the button was not held long enough to trigger the hold callback — a long press therefore fires only the hold action, never both.
+
+| Button | Short press | Long press (2s) |
+|---|---|---|
+| **A** | Skip — bans the current quote in the history ledger, picks again, re-renders. Records the just-banned quote as `state.last_skipped`. | Un-skip — removes the last-skipped quote's entry from the history ledger and re-renders. Reverses a fat-fingered tap. |
+| **B** | Toggle theme — flips default ↔ dark, persists to `--state-path`, re-renders. | — |
+| **C** | Source card — renders a `--mode card` overlay (title / author / Gutenberg ID / matched phrase) for 5 seconds, then the timer thread itself re-renders the original frame (the next loop tick alone could be up to 60s away). | — |
+| **D** | Quiet now / wake — toggles `manual_quiet`, persists to `--state-path`. Going quiet pushes `--quiet-image` immediately; going active picks and renders the current time. | Shutdown — shows `--quiet-image`, then runs `--shutdown-command` (default `sudo -n shutdown -h now`). Requires passwordless sudo for shutdown; override or empty the flag if you don't want this behaviour. |
 
 **Persisted runtime state (`--state-path`).** `~/.litclock/state.json` (default) holds `manual_theme` and `manual_quiet`. Loaded at loop startup so the user's last button-B / button-D choices survive a restart. Pass an empty string to disable.
 
-**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) gets one JSONL entry per successful render (`bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`) and one per loop-level error (`bucket`, `error`, `mode`). `litclock_health.py` summarises the last N hours: render count, error count, p50/p95 latency, last error message. Designed for "is the appliance healthy?" diagnosis without `journalctl` spelunking. Pass an empty string to disable.
+**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) gets one JSONL entry per successful render (`bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`) and one per loop-level error (`bucket`, `error`, `mode`). `litclock_health.py` summarises the last N hours: render count, error count, p50/p95 latency, last error message. `--json` emits the summary as JSON for cron/systemd integration; exit codes are `0` healthy, `1` no telemetry log, `2` unhealthy (errors but zero renders in the window, or `--fail-if-no-renders` was set and the window was silent). Pass an empty string to disable.
+
+**Startup frame (`--startup-image`).** Optional PNG pushed to the display once at loop startup, before the first quote render, so the panel doesn't ghost yesterday's frame during cold boot. Off by default (a Spectra 6 refresh takes 10–20s, so the extra round-trip isn't always worth it). Point at any PNG that encodes to the panel's 6-colour palette cleanly.
 
 ### Contact Sheet (`contact_sheet.py`)
 
@@ -358,7 +370,7 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 17 test modules covering every pipeline script plus the runtime components — 485 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`.
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 17 test modules covering every pipeline script plus the runtime components — 522 tests at last count. `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`.
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)

@@ -54,6 +54,34 @@ Notes:
 - the sample runs `run_clock.py` in `--mode production`
 - edit `User=`, `WorkingDirectory=`, and `ExecStart=` if your Pi paths differ
 - if `inky-photo-frame.service` is still enabled, stop/disable it first so LitClock can own the display
+- install the `gpiozero` package into the same virtualenv if you want Inky button support (short press + 2s long press); otherwise add `--buttons-off` to `ExecStart=`
+
+### Optional: allow button D long-press shutdown
+
+The default `--shutdown-command` is `sudo -n shutdown -h now`, so a 2-second hold of button D can power the appliance down cleanly. That requires passwordless sudo for shutdown. A minimal sudoers drop-in:
+
+```bash
+sudo tee /etc/sudoers.d/litclock-shutdown <<'EOF'
+pi ALL=(root) NOPASSWD: /sbin/shutdown
+EOF
+sudo chmod 440 /etc/sudoers.d/litclock-shutdown
+```
+
+If you prefer not to grant that, set `--shutdown-command ""` in the service `ExecStart=` to turn the hold-to-shutdown off.
+
+### Optional: health checks + telemetry
+
+The loop writes a JSONL telemetry sidecar to `~/.litclock/telemetry.jsonl` (one line per successful render, one per loop-level error) and `litclock_health.py` summarises the last N hours. Useful scripts for a quick Pi check:
+
+```bash
+# Human-readable summary
+python3 litclock_health.py --hours 24
+
+# Machine-readable; exit 2 when no renders landed in the window
+python3 litclock_health.py --hours 1 --json --fail-if-no-renders
+```
+
+Wire the JSON form into a once-a-day cron / systemd timer if you want passive alerting without SSH journalctl spelunking.
 
 ## Path B: Fresh Inky setup
 

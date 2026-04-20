@@ -112,3 +112,74 @@ class TestMain:
         assert "1 errors" in out
         assert "render latency" in out
         assert "last error" in out
+
+
+class TestJsonOutput:
+    def test_json_flag_emits_valid_json(self, tmp_path, capsys):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "render_ms": 100, "display_ms": 50, "bucket": "h2_exact"},
+        ])
+        argv = ["litclock_health.py", "--telemetry-path", str(path), "--hours", "1", "--json"]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 0
+        out = capsys.readouterr().out.strip()
+        parsed = json.loads(out)
+        assert parsed["render_count"] == 1
+        assert parsed["error_count"] == 0
+        assert parsed["hours"] == 1
+
+    def test_json_flag_on_missing_log_still_emits_json(self, tmp_path, capsys):
+        argv = [
+            "litclock_health.py", "--telemetry-path", str(tmp_path / "missing.jsonl"),
+            "--json",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 1
+        out = capsys.readouterr().out.strip()
+        parsed = json.loads(out)
+        assert "error" in parsed
+
+
+class TestEvaluateHealth:
+    def test_healthy_returns_zero(self):
+        summary = {"render_count": 10, "error_count": 0}
+        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 0
+
+    def test_errors_but_some_renders_still_healthy(self):
+        summary = {"render_count": 10, "error_count": 2}
+        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 0
+
+    def test_errors_and_zero_renders_is_unhealthy(self):
+        summary = {"render_count": 0, "error_count": 3}
+        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 2
+
+    def test_fail_if_no_renders_triggers_exit_two(self):
+        summary = {"render_count": 0, "error_count": 0}
+        assert litclock_health.evaluate_health(summary, fail_if_no_renders=True) == 2
+        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 0
+
+
+class TestMainExitCodes:
+    def test_errors_with_no_renders_exits_two(self, tmp_path):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "error": "boom", "bucket": "h2_exact"},
+        ])
+        argv = ["litclock_health.py", "--telemetry-path", str(path), "--hours", "1"]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 2
+
+    def test_fail_if_no_renders_with_empty_window(self, tmp_path):
+        # An entry outside the --hours window leaves the window empty but the file exists.
+        path = _ledger(tmp_path, [
+            {"ts": _ts(24 * 60), "render_ms": 100, "bucket": "h2_exact"},
+        ])
+        argv = [
+            "litclock_health.py", "--telemetry-path", str(path),
+            "--hours", "1", "--fail-if-no-renders",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 2
