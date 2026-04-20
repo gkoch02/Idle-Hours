@@ -206,6 +206,21 @@ class TestRotatedTelemetry:
         assert rc == 0
         assert "1 renders" in capsys.readouterr().out
 
+    def test_non_date_siblings_are_ignored(self, tmp_path):
+        """A non-rotated sibling like telemetry-backup.jsonl must not be
+        read forever just because it matches the glob — otherwise any stray
+        file in the telemetry dir becomes unbounded read overhead.
+        """
+        base = tmp_path / "telemetry.jsonl"
+        backup = tmp_path / "telemetry-backup.jsonl"
+        with backup.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"ts": _ts(5), "render_ms": 9999}) + "\n")
+        since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+        rows = litclock_health.load_entries(base, since)
+        assert rows == []
+        # Confirmed at the file-listing level too.
+        assert backup not in litclock_health.find_telemetry_files(base)
+
     def test_prunes_old_dated_files_by_filename(self, tmp_path):
         """Files dated well before the window are not opened — we prune by filename."""
         base = tmp_path / "telemetry.jsonl"

@@ -86,12 +86,16 @@ def find_telemetry_files(base: Path, since: dt.datetime | None = None) -> list[P
         if not sibling.is_file():
             continue
         date_part = sibling.stem[len(stem) + 1:]
-        file_date: dt.date | None
         try:
             file_date = dt.datetime.strptime(date_part, "%Y%m%d").date()
         except ValueError:
-            file_date = None
-        if cutoff_date is not None and file_date is not None and file_date < cutoff_date:
+            # Sibling matches the glob (e.g. telemetry-backup.jsonl) but isn't
+            # a date-rotated file. Skip it — including it would mean we'd
+            # re-parse arbitrary unrelated JSONL on every health check.
+            # Operators who want those summarised should point --telemetry-path
+            # at the file directly.
+            continue
+        if cutoff_date is not None and file_date < cutoff_date:
             # A file dated D only contains entries ts in [D 00:00 local, D+1 00:00 local);
             # if that whole day is entirely before the UTC cutoff date we can skip it.
             # We compare on calendar date (not timestamp) because filenames are date-only

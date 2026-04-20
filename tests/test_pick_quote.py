@@ -336,15 +336,18 @@ class TestRecentHistory:
 
     def test_append_history_fsyncs_before_close(self, tmp_path):
         """The write path must fsync so a power loss immediately after an
-        append can't leave the line in the kernel page cache and vanish.
-        We assert os.fsync was called with the ledger's fd."""
+        append can't leave the line in the kernel page cache and vanish."""
         path = tmp_path / "history.jsonl"
         from unittest.mock import patch
         with patch("pick_quote.os.fsync") as mock_fsync:
             pq.append_history(str(path), "1234", 5678)
-            assert mock_fsync.called
-        # The file should still exist with a valid line even when fsync is mocked.
-        assert path.exists()
+        # Exactly one fsync call per append.
+        assert mock_fsync.call_count == 1
+        # Targeted at a real, opened file descriptor (not stdin/stdout/stderr),
+        # so a future refactor that accidentally fsyncs the wrong fd fails here.
+        fd_arg = mock_fsync.call_args[0][0]
+        assert isinstance(fd_arg, int) and fd_arg >= 3
+        # Write still succeeded even though fsync was mocked to a no-op.
         entry = json.loads(path.read_text().strip())
         assert entry["source_id"] == "1234"
 

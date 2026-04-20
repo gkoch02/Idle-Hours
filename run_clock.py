@@ -251,11 +251,12 @@ def load_runtime_state(state_path: str | None) -> dict:
 def save_runtime_state(state_path: str | None, state: dict) -> None:
     """Persist runtime state atomically. No-op when disabled.
 
-    Writes to a sibling ``*.tmp`` file, fsyncs, then ``os.replace``s into place.
-    The rename is atomic on POSIX, so a crash during the write leaves *either*
-    the old file intact or the new file fully written — never a half-written
-    JSON blob that would silently lose the user's last theme/quiet preference
-    when ``load_runtime_state`` parses it on the next boot.
+    Writes to a sibling ``*.tmp`` file, fsyncs the data, ``os.replace``s into
+    place, then fsyncs the parent directory so the rename itself is durable.
+    Without the final directory fsync the kernel can return from ``os.replace``
+    with the new dirent still in cache — a crash in that window leaves the old
+    (or missing) file even though ``os.replace`` succeeded. Directory fsync is
+    swallowed on platforms where it's not meaningful (notably Windows).
     """
     path = _resolve_state_path(state_path)
     if path is None:
@@ -273,6 +274,16 @@ def save_runtime_state(state_path: str | None, state: dict) -> None:
         with contextlib.suppress(OSError):
             tmp_path.unlink()
         raise
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
 
 
 def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
@@ -877,9 +888,11 @@ def main() -> int:
         except Exception as exc:
             _log(f"startup image display failed: {exc!r}", err=True)
 
-    # Hold the returned button list as a local for the lifetime of the loop —
-    # gpiozero drops handlers when its Button objects are garbage-collected.
-    _buttons = _maybe_start_buttons(args, state)  # noqa: F841
+    # ``state.button_handles`` holds the keepalive list for the lifetime of
+    # the loop — gpiozero drops callbacks when its ``Button`` objects are
+    # garbage-collected, so the reference must live as long as ``state`` does.
+    # The liveness check below also reads from ``state.button_handles``.
+    _maybe_start_buttons(args, state)
 
     _was_quiet = False
     while True:

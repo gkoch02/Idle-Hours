@@ -853,6 +853,40 @@ class TestRuntimeStatePersistence:
         tmp_path_file = tmp_path / "state.json.tmp"
         assert tmp_path_file.exists()
 
+    def test_save_fsyncs_parent_directory_after_replace(self, tmp_path):
+        """Without a dirent fsync the rename itself isn't durable on ext4.
+        Assert the directory fd is opened and fsynced after ``os.replace``.
+        """
+        path = tmp_path / "state.json"
+        with patch("run_clock.os.fsync") as mock_fsync:
+            run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+        # Two fsyncs: one for the tmp file fd, one for the parent directory fd.
+        assert mock_fsync.call_count == 2
+        fds = [call.args[0] for call in mock_fsync.call_args_list]
+        # Both should be real file descriptors (ints ≥ 3).
+        assert all(isinstance(fd, int) and fd >= 3 for fd in fds)
+
+    def test_save_tolerates_directory_fsync_failure(self, tmp_path):
+        """On platforms where directory fsync is not meaningful (e.g. Windows),
+        opening or fsyncing the parent dir can raise OSError. The file must
+        still land in place and no exception must escape.
+        """
+        path = tmp_path / "state.json"
+        real_open = run_clock.os.open
+        real_fsync = run_clock.os.fsync
+
+        def flaky_open(pth, flags):
+            # Fail only for the directory handle; let the file-fd path through.
+            if str(pth) == str(tmp_path):
+                raise OSError("simulated no-op dir fsync")
+            return real_open(pth, flags)
+
+        with patch("run_clock.os.open", side_effect=flaky_open), \
+             patch("run_clock.os.fsync", side_effect=real_fsync):
+            # Must not raise.
+            run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
+        assert json.loads(path.read_text()) == {"manual_theme": "dark"}
+
 
 def _today_telemetry_path(base):
     """Return the date-suffixed sibling that append_telemetry would write to today."""
