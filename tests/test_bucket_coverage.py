@@ -1,7 +1,11 @@
 """Tests for bucket_coverage.py"""
 from __future__ import annotations
 
+import json
+
+import bucket_coverage as bc
 from bucket_coverage import build_summary, expected_buckets, render_markdown
+from tests.conftest import make_row
 
 
 class TestExpectedBuckets:
@@ -162,3 +166,43 @@ class TestRenderMarkdown:
             if line.startswith("- `h") and "_exact`" in line
         ]
         assert len(empty_section_lines) == 2
+
+
+class TestLoadRows:
+    def test_rebuckets_from_normalized_time(self, tmp_jsonl):
+        row = make_row(normalized_time="03:32", fuzzy_bucket="bogus")
+        path = tmp_jsonl([row])
+        rows = bc.load_rows(path)
+        assert rows[0]["fuzzy_bucket"] == "h3_half_past"
+
+    def test_invalid_normalized_time_preserves_existing_bucket(self, tmp_jsonl):
+        row = make_row(normalized_time="not-a-time", fuzzy_bucket="h3_exact")
+        path = tmp_jsonl([row])
+        rows = bc.load_rows(path)
+        assert rows[0]["fuzzy_bucket"] == "h3_exact"
+
+
+class TestMainCLI:
+    def test_writes_json_and_markdown(self, tmp_path, tmp_jsonl, monkeypatch, capsys):
+        input_path = tmp_jsonl([
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", daypart_bucket="morning"),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", daypart_bucket="morning"),
+            make_row(fuzzy_bucket="h7_half_past", normalized_time="07:30", daypart_bucket="morning"),
+        ])
+        out_json = tmp_path / "coverage.json"
+        out_md = tmp_path / "coverage.md"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["bucket_coverage.py", str(input_path), "--output-json", str(out_json), "--output-md", str(out_md)],
+        )
+        exit_code = bc.main()
+        assert exit_code == 0
+        summary = json.loads(out_json.read_text())
+        assert summary["total_rows"] == 3
+        assert summary["populated_bucket_count"] == 2
+        assert summary["total_expected_buckets"] == 144
+        md = out_md.read_text()
+        assert "# Bucket Coverage Report" in md
+        out = capsys.readouterr().out
+        assert "Coverage:" in out
+        assert "Empty buckets:" in out

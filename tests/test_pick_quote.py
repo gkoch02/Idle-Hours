@@ -416,3 +416,54 @@ class TestRecentHistory:
         # No history_path passed → no file reads even if ~/.litclock exists.
         result = pq.select_quote(bucket="h3_exact", input_path=str(corpus_path), overrides_path=str(overrides_path))
         assert result["source_id"] == "1"
+
+
+class TestLoadOverrides:
+    def test_missing_file_returns_defaults(self, tmp_path):
+        result = pq.load_overrides(tmp_path / "does-not-exist.json")
+        assert result == {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
+
+    def test_valid_file_parsed(self, tmp_path):
+        path = tmp_path / "ov.json"
+        path.write_text(json.dumps({
+            "ban_source_ids": ["1"],
+            "boost_source_ids": ["2"],
+            "preferred_buckets": {"h3_exact": 42},
+        }))
+        result = pq.load_overrides(path)
+        assert result["ban_source_ids"] == ["1"]
+        assert result["preferred_buckets"] == {"h3_exact": 42}
+
+    def test_unknown_preferred_bucket_warns_on_stderr(self, tmp_path, capsys):
+        path = tmp_path / "ov.json"
+        path.write_text(json.dumps({
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {"h3_exact": 1, "h99_bogus": 2, "not_a_bucket": 3},
+        }))
+        pq.load_overrides(path)
+        err = capsys.readouterr().err
+        assert "unknown buckets" in err
+        assert "h99_bogus" in err
+        assert "not_a_bucket" in err
+        assert "h3_exact" not in err  # valid bucket must not be listed
+
+    def test_all_valid_preferred_buckets_silent(self, tmp_path, capsys):
+        path = tmp_path / "ov.json"
+        path.write_text(json.dumps({
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {"h3_exact": 1, "h12_quarter_to": 2},
+        }))
+        pq.load_overrides(path)
+        assert capsys.readouterr().err == ""
+
+    def test_non_dict_preferred_buckets_does_not_crash(self, tmp_path, capsys):
+        path = tmp_path / "ov.json"
+        path.write_text(json.dumps({
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": ["oops", "list"],
+        }))
+        pq.load_overrides(path)
+        assert capsys.readouterr().err == ""
