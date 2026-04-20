@@ -222,7 +222,10 @@ chmod 640 ~/.litclock/web.token
 sudo systemctl daemon-reload && sudo systemctl restart litclock.service
 ```
 
-Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-LitClock-Token: <the token>`. Paste the token into the UI's token field when it prompts.
+Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-LitClock-Token: <the token>`. **Caveat:** the bundled `web/` UI does not currently attach that header — it was built for the loopback-no-auth path — so on a LAN+token bind the page loads and reads cleanly but the action buttons and overrides-save will come back as `401 missing or invalid token`. Until the UI grows a token field, the working options for a LAN+token deployment are:
+
+- Drive mutating endpoints from `curl` (or any other client), e.g. `curl -X POST -H "X-LitClock-Token: $(cat ~/.litclock/web.token)" http://<pi>:8080/api/action/rerender`.
+- Or just use the SSH-tunnel flow above — loopback bind needs no token and the bundled UI works end-to-end.
 
 **How to tell it's working.** `journalctl -u litclock.service -n 20` should show a line like `web UI listening on 127.0.0.1:8080 (no token)` (or `(token required)` on a LAN bind). If the bind fails (port busy, missing token on a non-loopback bind) the main render loop keeps running and logs `web UI failed to start on …` — the panel won't go dark just because the web UI couldn't start.
 
