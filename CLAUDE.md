@@ -516,7 +516,14 @@ apply_content_overrides.py         layer assets/content_overrides.json onto cand
 pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
 contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
-run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry; atomic state writes, date-rotated telemetry with retention sweep, SIGTERM/SIGINT graceful shutdown, button liveness check)
+run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry; atomic state writes, date-rotated telemetry with retention sweep, SIGTERM/SIGINT graceful shutdown, button liveness check). Thin orchestrator — delegates state/telemetry/theme/quiet/action helpers to the runtime_* siblings below and re-exports them so existing `run_clock.X` imports and test patches keep resolving.
+runtime_log.py                     shared timestamped stderr/stdout logger (_log)
+runtime_state.py                   RuntimeState class — locks, mutable shared state between the loop, button listener, and web server
+runtime_store.py                   persisted runtime state JSON (manual_theme / manual_quiet) loaded at startup and saved atomically via atomic_io
+runtime_telemetry.py               date-rotated JSONL telemetry sidecar (append_telemetry, daily_telemetry_path, prune_telemetry)
+runtime_theme.py                   theme resolution — auto-dark window, manual override, midnight reset
+runtime_quiet.py                   in_quiet_hours + _display_quiet_image (shared by quiet hours, --startup-image, and button-D shutdown preamble)
+runtime_actions.py                 action_skip/unskip/theme/quiet/rerender + _button_render_gate — shared by GPIO buttons and the web UI; each action does a lazy `import run_clock` internally so tests that patch `run_clock.X` affect the call path (same pattern web_server.py uses)
 display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff, per-theme saturation)
 inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D → run_clock handlers, press_logger + buttons_alive supervision)
 probe_buttons.py                   Pi-only GPIO press probe — confirms which pin each physical button actually fires

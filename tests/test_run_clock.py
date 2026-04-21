@@ -933,12 +933,12 @@ class TestAppendTelemetry:
         import datetime as _dt
         day1 = _dt.date(2026, 4, 19)
         day2 = _dt.date(2026, 4, 20)
-        with patch("run_clock.dt") as mock_dt:
+        with patch("runtime_telemetry.dt") as mock_dt:
             mock_dt.date.today.return_value = day1
             mock_dt.datetime = dt.datetime
             mock_dt.timezone = dt.timezone
             run_clock.append_telemetry(str(base), {"bucket": "day1"})
-        with patch("run_clock.dt") as mock_dt:
+        with patch("runtime_telemetry.dt") as mock_dt:
             mock_dt.date.today.return_value = day2
             mock_dt.datetime = dt.datetime
             mock_dt.timezone = dt.timezone
