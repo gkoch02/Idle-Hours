@@ -701,3 +701,102 @@ class TestTokenResolution:
         state = run_clock.RuntimeState(args.theme)
         assert run_clock._maybe_start_web_server(args, state) is None
         assert "failed to start" in capsys.readouterr().err
+
+
+class TestErrorBranches:
+    """Explicit coverage of the defensive branches that return 4xx/5xx."""
+
+    def test_post_body_too_large_returns_400(self, tmp_path):
+        # MAX_BODY_BYTES is 64KB. A Content-Length header above that must be
+        # rejected by _read_json_body before we allocate anything.
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            conn = _client(server)
+            # We cannot easily send a huge body in CI, but declaring an oversized
+            # Content-Length via the header is enough — the server reads the int
+            # and raises ValueError before draining the socket.
+            conn.request(
+                "POST", "/api/overrides",
+                body=b"",  # no real body; the Content-Length header is what trips the check
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(web_server.MAX_BODY_BYTES + 1),
+                },
+            )
+            resp = conn.getresponse()
+            assert resp.status == 400
+            body = json.loads(resp.read().decode("utf-8"))
+            assert "body too large" in body["error"]
+            conn.close()
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_api_coverage_malformed_json_returns_500(self, tmp_path, live_server):
+        server, _, _ = live_server
+        bad = tmp_path / "bucket-coverage.json"
+        bad.write_text("not { valid json", encoding="utf-8")
+        server.context.coverage_path = bad
+        status, body = _get(server, "/api/coverage")
+        assert status == 500
+        assert "error" in _json_body(body)
+
+    def test_current_png_missing_returns_404(self, tmp_path, live_server):
+        server, _, args = live_server
+        # Point at a file that doesn't exist.
+        server.context.output_path = tmp_path / "nonexistent.png"
+        status, body = _get(server, "/current.png")
+        assert status == 404
+
+    def test_unknown_get_returns_404(self, live_server):
+        server, _, _ = live_server
+        status, _ = _get(server, "/api/does-not-exist")
+        assert status == 404
+
+    def test_unknown_post_returns_404_before_token_check(self, tmp_path):
+        # Token is required, but an unknown POST path must 404 without revealing
+        # that a token check even happens (avoids fingerprinting by scanners).
+        server, thread, _state, _args = _start(tmp_path, token="sekret")
+        try:
+            status, body = _post(server, "/api/action/bogus", {"x": 1})
+            assert status == 404
+            assert _json_body(body)["error"] == "not found"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_get_handler_exception_returns_500(self, tmp_path, live_server, monkeypatch):
+        """Force _api_current to blow up and assert we return 500 (not crash the server)."""
+        server, _, _ = live_server
+        import run_clock as rc
+        monkeypatch.setattr(rc, "current_time_str", lambda: (_ for _ in ()).throw(RuntimeError("clock fail")))
+        status, body = _get(server, "/api/current")
+        assert status == 500
+        assert "clock fail" in _json_body(body)["error"]
+
+    def test_post_handler_exception_returns_500(self, tmp_path, live_server, monkeypatch):
+        """A non-ValueError in a POST handler surfaces as 500, not as a bare 200."""
+        server, _, _ = live_server
+        monkeypatch.setattr(
+            run_clock, "action_rerender",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("explode")),
+        )
+        status, body = _post(server, "/api/action/rerender", {})
+        assert status == 500
+        assert "explode" in _json_body(body)["error"]
+
+    def test_api_telemetry_non_int_hours_returns_400(self, live_server):
+        server, _, _ = live_server
+        status, body = _get(server, "/api/telemetry?hours=notanumber")
+        assert status == 400
+        assert "hours" in _json_body(body)["error"]
+
+    def test_api_history_non_int_limit_returns_400(self, live_server):
+        server, _, _ = live_server
+        status, body = _get(server, "/api/history?limit=notanumber")
+        assert status == 400
+        assert "limit" in _json_body(body)["error"]
+
+    def test_api_bucket_non_int_top_returns_400(self, live_server):
+        server, _, _ = live_server
+        status, body = _get(server, "/api/bucket/h3_exact?top=notanumber")
+        assert status == 400
+        assert "top" in _json_body(body)["error"]

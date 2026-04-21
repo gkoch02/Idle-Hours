@@ -255,6 +255,119 @@ class TestFallbackTitle:
     def test_falls_back_to_source_stem_without_source_id(self):
         assert rq.fallback_title({"source_path": "data/gutenberg/pg1661.txt"}) == "pg1661"
 
+    def test_returns_none_when_no_metadata(self):
+        assert rq.fallback_title({}) is None
+        assert rq.fallback_title({"source_id": "", "source_path": ""}) is None
+
+
+class TestLoadFontFallback:
+    """When every TTF candidate is missing, ``load_font`` must log a one-shot
+    warning and return the PIL bitmap default — never crash."""
+
+    def test_missing_candidates_returns_default_and_warns_once(self, monkeypatch, capsys):
+        # Force the fallback path by flipping the module-level guard.
+        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
+        # All candidate paths report as missing.
+        monkeypatch.setattr(rq.Path, "exists", lambda self: False)
+        font = rq.load_font(["/nope/one.ttf", "/nope/two.ttf"], size=24)
+        assert font is not None  # the bitmap default
+        err = capsys.readouterr().err
+        assert "no TrueType font found" in err
+        # Second call must NOT warn again (one-shot).
+        capsys.readouterr()  # drain
+        rq.load_font(["/nope/three.ttf"], size=24)
+        assert capsys.readouterr().err == ""
+
+
+class TestResolveDisplayMatchPrefixFallback:
+    """When a match_text doesn't appear verbatim in the quote text but shares
+    a time-phrase prefix, resolve_display_match should find the fuller phrase."""
+
+    def test_prefix_fallback_finds_longer_phrase(self):
+        text = "It was five minutes past three when the bell rang."
+        # match_text starts with the same prefix but differs by trailing words.
+        result = rq.resolve_display_match(text, "five minutes past noon")
+        # The prefix walk looks for "five minutes past <word>" in text. Since
+        # that doesn't start with "five minutes past noon", we fall through to
+        # returning the normalized_match as-is.
+        assert result == "five minutes past noon"
+
+    def test_empty_match_returns_empty(self):
+        assert rq.resolve_display_match("It was three o'clock.", "") == ""
+        assert rq.resolve_display_match("text", "   ") == ""
+
+    def test_direct_match_wins(self):
+        text = "It was quarter past six in the evening."
+        result = rq.resolve_display_match(text, "quarter past six")
+        assert result == "quarter past six"
+
+
+class TestTokenizeQuoteEdge:
+    def test_empty_match_returns_plain_segment(self):
+        segments = rq.tokenize_quote("Just a plain quote.", "")
+        assert segments == [("Just a plain quote.", False)]
+
+    def test_unmatched_text_returns_plain(self):
+        segments = rq.tokenize_quote("Nothing matches here.", "three o'clock")
+        assert segments == [("Nothing matches here.", False)]
+
+    def test_trailing_punctuation_included_in_bold(self):
+        # The match-end walker extends past ”/", '/', ., ;, :, !, ?
+        segments = rq.tokenize_quote('It was "three o\'clock!"', "three o'clock")
+        # One of the middle segments should end with trailing punctuation.
+        bold_chunks = [text for text, is_bold in segments if is_bold]
+        assert bold_chunks, "expected at least one bold chunk"
+
+
+class TestFitQuoteExhaustion:
+    """When the text is so long it can't fit even at ``font_min``, fit_quote
+    must still return the font_min wrap rather than looping forever."""
+
+    def test_returns_font_min_when_no_size_fits(self):
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+        img = _Image.new("RGB", (800, 480), (255, 255, 255))
+        draw = _ImageDraw.Draw(img)
+        # An absurdly long "word" (no spaces) with impossibly tight max_height
+        # forces the loop to exhaust without a fit.
+        text = "Supercalifragilistic " * 40
+        regular_font, bold_font, wrapped, line_height, size = rq.fit_quote(
+            draw, text, match_text="",
+            max_width=720, max_height=20,  # tiny height forces exhaustion
+            font_max=30, font_min=12, line_height_mult=1.2,
+        )
+        assert size == 12  # floored at font_min
+        assert wrapped  # still produced SOME wrapped output
+
+
+class TestLineWidth:
+    def test_sums_chunk_widths(self):
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+        img = _Image.new("RGB", (400, 100), (255, 255, 255))
+        draw = _ImageDraw.Draw(img)
+        font = rq.load_font(rq.QUOTE_FONT_SEMIBOLD_CANDIDATES, size=20)
+        bold = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=20)
+        line = [("Hello", False), (" ", False), ("world", True)]
+        w = rq.line_width(draw, line, font, bold)
+        assert w > 0
+
+    def test_empty_line_is_zero(self):
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+        img = _Image.new("RGB", (400, 100), (255, 255, 255))
+        draw = _ImageDraw.Draw(img)
+        font = rq.load_font(rq.QUOTE_FONT_SEMIBOLD_CANDIDATES, size=20)
+        bold = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=20)
+        assert rq.line_width(draw, [], font, bold) == 0
+
+
+class TestWrapTextEmpty:
+    def test_empty_text_produces_no_lines(self):
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+        img = _Image.new("RGB", (400, 100), (255, 255, 255))
+        draw = _ImageDraw.Draw(img)
+        font = rq.load_font(rq.QUOTE_FONT_SEMIBOLD_CANDIDATES, size=20)
+        lines = rq.wrap_text(draw, "", font, 300)
+        assert lines == []
+
 
 class TestThemes:
     def test_dark_theme_palette_values(self):
