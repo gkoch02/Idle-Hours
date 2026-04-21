@@ -279,27 +279,39 @@ class TestLoadFontFallback:
         assert capsys.readouterr().err == ""
 
 
-class TestResolveDisplayMatchPrefixFallback:
-    """When a match_text doesn't appear verbatim in the quote text but shares
-    a time-phrase prefix, resolve_display_match should find the fuller phrase."""
+class TestResolveDisplayMatch:
+    """``resolve_display_match`` has three code paths — direct regex, prefix
+    walk, and fall-through. Each needs explicit coverage."""
 
-    def test_prefix_fallback_finds_longer_phrase(self):
+    def test_direct_match_wins(self):
+        """Path 1: normalized_match appears verbatim in the text."""
+        text = "It was quarter past six in the evening."
+        assert rq.resolve_display_match(text, "quarter past six") == "quarter past six"
+
+    def test_prefix_walk_extends_match_across_hyphen(self):
+        """Path 2: direct regex fails (trailing hyphen blocks the isolation
+        lookahead) but the prefix walk finds the fuller hyphenated form and
+        returns it because it startswith the requested match."""
+        text = "The clock read five minutes past three-fifteen that night."
+        # Direct path fails: "three" is followed by "-fifteen" which trips the
+        # (?!-[A-Za-z0-9]) lookahead. Prefix walk for "five minutes past" picks
+        # up "five minutes past three-fifteen" and the startswith check accepts it.
+        result = rq.resolve_display_match(text, "five minutes past three")
+        assert result == "five minutes past three-fifteen"
+
+    def test_fall_through_returns_normalized_match_when_nothing_found(self):
+        """Path 3: match_text not in text and no prefix walk candidate starts
+        with it — return the normalized match as-is so the caller has *some*
+        phrase to bold, even if it never appears in the rendered quote."""
         text = "It was five minutes past three when the bell rang."
-        # match_text starts with the same prefix but differs by trailing words.
+        # Prefix walk finds "five minutes past three" but that does not
+        # startswith "five minutes past noon", so Path 2 rejects and we fall through.
         result = rq.resolve_display_match(text, "five minutes past noon")
-        # The prefix walk looks for "five minutes past <word>" in text. Since
-        # that doesn't start with "five minutes past noon", we fall through to
-        # returning the normalized_match as-is.
         assert result == "five minutes past noon"
 
     def test_empty_match_returns_empty(self):
         assert rq.resolve_display_match("It was three o'clock.", "") == ""
         assert rq.resolve_display_match("text", "   ") == ""
-
-    def test_direct_match_wins(self):
-        text = "It was quarter past six in the evening."
-        result = rq.resolve_display_match(text, "quarter past six")
-        assert result == "quarter past six"
 
 
 class TestTokenizeQuoteEdge:

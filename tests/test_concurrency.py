@@ -91,18 +91,21 @@ class TestConcurrentLedgerAppend:
     def test_concurrent_appends_produce_well_formed_jsonl(self, tmp_path):
         """N threads each appending M entries concurrently should produce
         exactly N*M valid JSON lines — no interleaved writes, no dropped
-        entries. ``append_history`` uses O_APPEND + small writes so the
-        kernel provides atomicity at the line level."""
+        entries. ``append_history`` opens the file with ``mode="a"`` (O_APPEND)
+        and writes one short JSON line per call; on POSIX, writes smaller than
+        ``PIPE_BUF`` (4096 on Linux) to an O_APPEND file are atomic, so threads
+        calling ``append_history`` concurrently — with NO external lock — must
+        still produce line-atomic output.
+        """
         path = tmp_path / "history.jsonl"
         n_threads = 8
         n_per_thread = 25
 
-        ledger_lock = threading.Lock()
-
         def worker(tid: int):
             for i in range(n_per_thread):
-                with ledger_lock:
-                    pick_quote.append_history(str(path), f"src-{tid}", i)
+                # Intentionally no lock — we're verifying kernel-level atomicity,
+                # not application-level serialisation.
+                pick_quote.append_history(str(path), f"src-{tid}", i)
 
         threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
         for t in threads:
@@ -202,24 +205,9 @@ class TestRenderGateFairness:
         assert dropped_count == 20
 
 
-class TestActionThreadSafety:
-    def test_action_theme_toggles_do_not_lose_updates(self, tmp_path):
-        """Sequential action_theme calls with the stub render mock; verify
-        ``manual_theme`` reflects the toggle count correctly (even, 8 flips,
-        ends on default)."""
-        args = _args(tmp_path)
-        state = run_clock.RuntimeState("default")
-        state.last_effective_theme = "default"
-
-        with patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
-            for _ in range(8):
-                result = run_clock.action_theme(args, state, label="test")
-                assert result["ok"] is True
-
-        # 8 toggles: default → dark → default → … → default (even parity).
-        assert state.manual_theme == "default"
+class TestActionBusyBehavior:
+    """The busy/drop contract is genuinely concurrent: a second caller must
+    observe the render_lock held by someone else and bail out."""
 
     def test_action_theme_is_dropped_when_render_in_flight(self, tmp_path):
         """If another thread is rendering, action_theme must return
@@ -233,3 +221,55 @@ class TestActionThreadSafety:
             result = run_clock.action_theme(args, state, label="test")
         assert result == {"ok": False, "error": "busy"}
         assert state.manual_theme is None, "theme must NOT have been mutated while busy"
+
+    def test_parallel_theme_toggles_with_one_blocked_by_lock(self, tmp_path):
+        """Launch two concurrent action_theme calls; the one that arrives
+        while render_lock is held must drop, the other must succeed. This is
+        the actual multi-thread property run_clock's HTTP + GPIO paths rely on."""
+        args = _args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+
+        holder_in = threading.Event()
+        holder_release = threading.Event()
+        results: list[dict] = []
+
+        def holder():
+            with state.render_lock:
+                holder_in.set()
+                holder_release.wait(timeout=2)
+
+        def tap():
+            results.append(run_clock.action_theme(args, state, label="tap"))
+
+        h = threading.Thread(target=holder)
+        h.start()
+        holder_in.wait(timeout=2)
+        t = threading.Thread(target=tap)
+        t.start()
+        t.join(timeout=2)
+        holder_release.set()
+        h.join(timeout=2)
+
+        assert results == [{"ok": False, "error": "busy"}]
+        assert state.manual_theme is None
+
+
+class TestActionThemeToggleArithmetic:
+    """Not a concurrency test — locks in the even/odd parity of manual_theme
+    under repeated toggling so a signed-int regression surfaces immediately."""
+
+    def test_eight_sequential_toggles_end_on_default(self, tmp_path):
+        args = _args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+
+        with patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            for _ in range(8):
+                result = run_clock.action_theme(args, state, label="test")
+                assert result["ok"] is True
+
+        # 8 toggles: default → dark → default → … → default (even parity).
+        assert state.manual_theme == "default"

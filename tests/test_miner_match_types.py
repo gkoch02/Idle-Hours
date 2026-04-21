@@ -101,11 +101,13 @@ class TestQuarterHalfMatchType:
         assert c.hour == 2
         assert c.minute == 30
 
-    def test_hyphenated_half_past(self):
+    def test_hyphenated_half_past_is_not_matched(self):
+        """The quarter_half regex uses ``\\s+`` between "half" and "past" — it
+        does NOT accept "half-past". Documenting this explicitly so the day
+        someone adds hyphen support, they also update this test rather than
+        silently changing observable behaviour."""
         c = _first_candidate("It was half-past ten when we arrived.", "quarter_half")
-        # The regex may or may not accept hyphenation; just verify it doesn't crash.
-        if c is not None:
-            assert c.minute == 30
+        assert c is None
 
 
 class TestQuarterToMatchType:
