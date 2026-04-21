@@ -182,6 +182,53 @@ chmod 640 ~/.litclock/web.token
 python3 run_clock.py --web-bind 0.0.0.0:8080 --web-token-file ~/.litclock/web.token
 ```
 
+#### Turning the web UI on for an existing install
+
+There is nothing extra to install — `web_server.py` and `web/` already ship with the repo and the UI is just a CLI flag on `run_clock.py`. To enable it on a box that is already running, add `--web-bind` to however you launch `run_clock.py`:
+
+**Dev machine (foreground run).** Stop the current process and relaunch with the flag:
+
+```bash
+python3 run_clock.py --web-bind 127.0.0.1:8080
+# then open http://127.0.0.1:8080
+```
+
+**Pi running under systemd.** Edit the service's `ExecStart=` line to append the flag, then reload and restart:
+
+```bash
+sudoedit /etc/systemd/system/litclock.service
+# add --web-bind 127.0.0.1:8080 to the end of ExecStart=
+sudo systemctl daemon-reload
+sudo systemctl restart litclock.service
+systemctl status --no-pager litclock.service     # confirm it came back up
+```
+
+`litclock.service.example` already has the `--web-bind` lines commented out near the bottom — uncomment the one you want and you're done.
+
+**Reaching a loopback-bound UI from another machine.** Keep the `127.0.0.1:8080` bind (no token needed) and SSH-tunnel into the Pi from your laptop:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 pi@raspberrypi.local
+# leave that session open, then open http://127.0.0.1:8080 on your laptop
+```
+
+**Reaching it directly over the LAN.** Switch to `0.0.0.0:8080` *and* supply a token file — `start_web_server` refuses to bind a non-loopback address without one, so you cannot accidentally expose a tokenless POST surface:
+
+```bash
+mkdir -p ~/.litclock
+python3 -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.litclock/web.token
+chmod 640 ~/.litclock/web.token
+# edit ExecStart= to: ... --web-bind 0.0.0.0:8080 --web-token-file /home/pi/.litclock/web.token
+sudo systemctl daemon-reload && sudo systemctl restart litclock.service
+```
+
+Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-LitClock-Token: <the token>`. **Caveat:** the bundled `web/` UI does not currently attach that header — it was built for the loopback-no-auth path — so on a LAN+token bind the page loads and reads cleanly but the action buttons and overrides-save will come back as `401 missing or invalid token`. Until the UI grows a token field, the working options for a LAN+token deployment are:
+
+- Drive mutating endpoints from `curl` (or any other client), e.g. `curl -X POST -H "X-LitClock-Token: $(cat ~/.litclock/web.token)" http://<pi>:8080/api/action/rerender`.
+- Or just use the SSH-tunnel flow above — loopback bind needs no token and the bundled UI works end-to-end.
+
+**How to tell it's working.** `journalctl -u litclock.service -n 20` should show a line like `web UI listening on 127.0.0.1:8080 (no token)` (or `(token required)` on a LAN bind). If the bind fails (port busy, missing token on a non-loopback bind) the main render loop keeps running and logs `web UI failed to start on …` — the panel won't go dark just because the web UI couldn't start.
+
 The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. When you open it you get:
 
 - **Now showing** — live preview of `output/current.png`, the picked quote text, its attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
