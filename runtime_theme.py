@@ -13,7 +13,6 @@ import datetime as dt
 
 from runtime_log import _log
 from runtime_state import RuntimeState
-from runtime_store import save_runtime_state
 
 # Auto-theme: switch to dark theme during this window, default theme otherwise.
 # Boundaries chosen to match civil twilight in temperate latitudes; users who want
@@ -46,6 +45,7 @@ def resolve_effective_theme(theme_arg: str, time_str: str, manual_theme: str | N
 
 def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
     """Clear the manual theme override at the day boundary so 'auto' resumes."""
+    import run_clock
     today = dt.date.today()
     with state.lock:
         if state.last_seen_date is None:
@@ -54,5 +54,5 @@ def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
         if today != state.last_seen_date and state.theme_arg == "auto" and state.manual_theme is not None:
             _log(f"midnight rollover: clearing manual theme override ({state.manual_theme})")
             state.manual_theme = None
-            save_runtime_state(args.state_path, state.snapshot_for_persistence())
+            run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
         state.last_seen_date = today
