@@ -35,11 +35,29 @@ class TestLoadOverrides:
         path.write_text('{"1:1": {"display_quote": "hi"}}', encoding="utf-8")
         assert load_overrides(path) == {"1:1": {"display_quote": "hi"}}
 
-    def test_rejects_non_object_root(self, tmp_path):
+    def test_non_object_root_fails_open(self, tmp_path, capsys):
         path = tmp_path / "overrides.json"
         path.write_text("[]", encoding="utf-8")
-        with pytest.raises(ValueError):
-            load_overrides(path)
+        result = load_overrides(path)
+        assert result == {}
+        err = capsys.readouterr().err
+        assert "must be a JSON object" in err
+
+    def test_truncated_json_fails_open(self, tmp_path, capsys):
+        """An editor crash mid-save must not abort the pipeline."""
+        path = tmp_path / "overrides.json"
+        path.write_text('{"141:482": {"disp', encoding="utf-8")
+        result = load_overrides(path)
+        assert result == {}
+        err = capsys.readouterr().err
+        assert "not valid JSON" in err
+
+    def test_garbage_bytes_fails_open(self, tmp_path, capsys):
+        path = tmp_path / "overrides.json"
+        path.write_text("not json at all", encoding="utf-8")
+        result = load_overrides(path)
+        assert result == {}
+        assert "not valid JSON" in capsys.readouterr().err
 
 
 class TestApplyOverrides:
@@ -191,3 +209,32 @@ class TestMain:
         result = json.loads(output_file.read_text(encoding="utf-8").strip())
         assert result["display_quote"] == "new"
         assert result["override_applied"] is True
+
+    def test_in_place_rewrite_atomic_on_failure(self, tmp_path, monkeypatch):
+        """A crash during the in-place write must not truncate the picker's corpus."""
+        import os
+
+        row = {
+            "source_id": "1",
+            "line_number": 1,
+            "display_quote": "original",
+            "normalized_time": "03:00",
+            "fuzzy_bucket": "h3_exact",
+        }
+        input_file = tmp_path / "input.jsonl"
+        overrides_file = tmp_path / "overrides.json"
+        input_file.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        overrides_file.write_text(json.dumps({"1:1": {"display_quote": "new"}}), encoding="utf-8")
+        original_bytes = input_file.read_bytes()
+
+        monkeypatch.setattr(
+            os, "replace", lambda s, d: (_ for _ in ()).throw(OSError("simulated power loss"))
+        )
+
+        sys.argv = ["apply_content_overrides.py", str(input_file), "--overrides", str(overrides_file)]
+        with pytest.raises(OSError):
+            main()
+
+        # The input corpus file must be byte-identical to its pre-call state.
+        assert input_file.read_bytes() == original_bytes
+        assert list(tmp_path.glob("*.tmp")) == []

@@ -468,6 +468,25 @@ class TestRecentHistory:
         assert pq.remove_last_history_entry(str(path), "1", 1) is True
         assert path.read_text() == ""
 
+    def test_remove_last_history_entry_atomic_on_replace_failure(self, tmp_path, monkeypatch):
+        """A mid-rewrite crash must leave the original ledger untouched, not wiped."""
+        import os
+
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1", 1)
+        pq.append_history(str(path), "2", 2)
+        original = path.read_text(encoding="utf-8")
+
+        monkeypatch.setattr(
+            os, "replace", lambda s, d: (_ for _ in ()).throw(OSError("simulated power loss"))
+        )
+        with pytest.raises(OSError):
+            pq.remove_last_history_entry(str(path), "1", 1)
+
+        # Ledger must be byte-identical to pre-call state — no truncation, no tmp left behind.
+        assert path.read_text(encoding="utf-8") == original
+        assert list(tmp_path.glob("*.tmp")) == []
+
     def test_pick_best_filters_recently_shown(self):
         overrides = {"preferred_buckets": {}, "boost_source_ids": [], "ban_source_ids": []}
         fresh = make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=80,

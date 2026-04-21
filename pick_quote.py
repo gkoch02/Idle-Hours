@@ -11,6 +11,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import atomic_io
 from buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
 from jsonl_io import iter_jsonl
 
@@ -375,10 +376,12 @@ def remove_last_history_entry(history_path: str | None, source_id, line_number) 
             continue
         if (str(entry.get("source_id")), entry.get("line_number")) == target:
             del lines[i]
-            if lines:
-                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            else:
-                path.write_text("", encoding="utf-8")
+            # Atomic rewrite: a SIGKILL between truncate and write-back would
+            # otherwise wipe the ledger entirely, since this is the only path
+            # that can change history.jsonl without the append-only guarantee
+            # append_history relies on.
+            payload = ("\n".join(lines) + "\n") if lines else ""
+            atomic_io.atomic_write_text(path, payload)
             return True
     return False
 

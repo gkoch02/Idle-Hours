@@ -548,7 +548,7 @@ class TestOverrideValidation:
             web_server.validate_overrides_payload({"preferred_buckets": {"h3_exact": [1]}})
 
     def test_write_atomic_uses_shared_helper(self, tmp_path):
-        """Write goes through run_clock._atomic_write_text, which tmp+fsync+replace+dir-fsync."""
+        """Write goes through atomic_io.atomic_write_text, which tmp+fsync+replace+dir-fsync."""
         called = {"n": 0}
 
         def fake(path, payload):
@@ -556,7 +556,7 @@ class TestOverrideValidation:
             path.write_text(payload)
 
         target = tmp_path / "overrides.json"
-        with patch("run_clock._atomic_write_text", side_effect=fake):
+        with patch("atomic_io.atomic_write_text", side_effect=fake):
             web_server.write_overrides_atomic(target, {"ban_source_ids": []})
         assert called["n"] == 1
         assert target.exists()

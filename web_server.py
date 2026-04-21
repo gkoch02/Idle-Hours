@@ -37,6 +37,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import atomic_io
 import pick_quote as pick_quote_module
 from buckets import bucket_for_time
 
@@ -171,13 +172,15 @@ def validate_overrides_payload(payload: object) -> dict:
 
 
 def write_overrides_atomic(path: Path, payload: dict) -> None:
-    """Atomically write ``payload`` to ``path`` using run_clock's shared writer.
+    """Atomically write ``payload`` to ``path``.
 
-    Imported lazily to avoid any chance of circular-import fragility during
-    module load (``run_clock`` is what imports *us*).
+    Routes through :mod:`atomic_io` so the on-disk overrides file inherits the
+    same tmp → fsync → replace → dir-fsync durability contract as persisted
+    runtime state and the attributed corpus. Previously this imported
+    ``run_clock._atomic_write_text`` lazily to dodge circular imports; the
+    shared module eliminates that concern entirely.
     """
-    import run_clock
-    run_clock._atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    atomic_io.atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
 # ----------------------------------------------------------------------------
@@ -392,13 +395,20 @@ class CuratorHandler(BaseHTTPRequestHandler):
         if ctx.history_path:
             path = Path(ctx.history_path).expanduser()
             if path.exists():
-                with path.open(encoding="utf-8") as handle:
-                    for line in handle:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        with contextlib.suppress(ValueError):
-                            entries.append(json.loads(line))
+                # Hold ledger_lock so a concurrent button-A long-press
+                # (remove_last_history_entry → atomic rewrite) can't surface a
+                # torn snapshot. The lock is also what append_history callers
+                # acquire from the main loop.
+                ledger_lock = getattr(ctx.state, "ledger_lock", None)
+                lock_ctx = ledger_lock if ledger_lock is not None else contextlib.nullcontext()
+                with lock_ctx:
+                    with path.open(encoding="utf-8") as handle:
+                        for line in handle:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            with contextlib.suppress(ValueError):
+                                entries.append(json.loads(line))
         entries.reverse()  # newest first
         self._json(HTTPStatus.OK, {"entries": entries[:limit], "total": len(entries)})
 
