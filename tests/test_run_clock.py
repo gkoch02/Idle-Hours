@@ -2019,3 +2019,244 @@ class TestMaybePruneTelemetry:
         args = self._args(tmp_path, retain_days=0)
         run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
         assert calls == []
+
+
+class TestActionExceptionBranches:
+    """Every ``action_*`` wraps its body in ``except Exception`` so a failure
+    can't kill the GPIO listener thread or the HTTP worker. These tests inject
+    failures into the inner render path and verify (a) the error is logged to
+    telemetry, (b) the returned dict shape is ``{"ok": False, "error": <repr>}``,
+    and (c) no exception escapes to the caller.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7,
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            state_path=str(tmp_path / "state.json"),
+            quiet_image="",
+            shutdown_command="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def _read_telemetry(self, tmp_path) -> list[dict]:
+        """Read every rotated telemetry sibling (date-suffixed). Tests may see
+        zero or one file depending on whether ``append_telemetry`` ran."""
+        entries = []
+        for path in tmp_path.glob("telemetry-*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    entries.append(json.loads(line))
+        return entries
+
+    def test_skip_renders_failure_returns_error_dict(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
+        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("run_clock._render_unlocked", side_effect=RuntimeError("panel disconnected")), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            result = run_clock.action_skip(args, state, label="web")
+        assert result["ok"] is False
+        assert "panel disconnected" in result["error"]
+        entries = self._read_telemetry(tmp_path)
+        assert any(e.get("mode") == "skip" and "panel disconnected" in e.get("error", "") for e in entries)
+
+    def test_unskip_remove_entry_failure_returns_error_dict(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_skipped = ("src-banned", 42)
+        with patch("run_clock.pick_quote_module.remove_last_history_entry",
+                   side_effect=OSError("disk full")), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            result = run_clock.action_unskip(args, state, label="web")
+        assert result["ok"] is False
+        assert "disk full" in result["error"]
+        entries = self._read_telemetry(tmp_path)
+        assert any(e.get("mode") == "unskip" for e in entries)
+
+    def test_theme_render_failure_returns_error_dict(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        with patch("run_clock._render_unlocked", side_effect=RuntimeError("pillow boom")), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            result = run_clock.action_theme(args, state, label="web")
+        assert result["ok"] is False
+        assert "pillow boom" in result["error"]
+        # Even though the render failed, the theme preference was already toggled
+        # and persisted — that write happens before _render_unlocked.
+        assert state.manual_theme == "dark"
+
+    def test_quiet_render_failure_returns_error_dict(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = True  # toggling will flip to False and try to wake-render
+        with patch("run_clock._render_unlocked", side_effect=RuntimeError("no corpus")), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            result = run_clock.action_quiet(args, state, label="web")
+        assert result["ok"] is False
+        assert "no corpus" in result["error"]
+
+    def test_rerender_failure_returns_error_dict(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock._render_unlocked", side_effect=RuntimeError("pick failed")), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            result = run_clock.action_rerender(args, state, label="web")
+        assert result["ok"] is False
+        assert "pick failed" in result["error"]
+        entries = self._read_telemetry(tmp_path)
+        assert any(e.get("mode") == "rerender" for e in entries)
+
+    def test_all_actions_return_busy_when_render_lock_held(self, tmp_path):
+        """Non-blocking acquire must return {'ok': False, 'error': 'busy'}
+        for every action when another thread holds render_lock."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # Simulate an in-flight render by holding render_lock in this test.
+        state.render_lock.acquire()
+        try:
+            for action in (
+                run_clock.action_skip, run_clock.action_unskip,
+                run_clock.action_theme, run_clock.action_quiet,
+                run_clock.action_rerender,
+            ):
+                result = action(args, state, label="web")
+                assert result == {"ok": False, "error": "busy"}, f"{action.__name__} did not drop on busy"
+        finally:
+            state.render_lock.release()
+
+    def test_unskip_noop_when_no_last_skipped_returns_ok(self, tmp_path):
+        """Un-skip with an empty ``state.last_skipped`` is a no-op, not an error."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_skipped = None
+        result = run_clock.action_unskip(args, state, label="web")
+        assert result == {"ok": True, "restored": None}
+
+
+class TestParseArgsBasic:
+    """Smoke coverage for parse_args — the loop entry point."""
+
+    def test_defaults(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["run_clock.py"])
+        args = run_clock.parse_args()
+        assert args.quiet_start == "22:00"
+        assert args.quiet_end == "06:00"
+        assert args.mode == "debug"
+        assert args.theme == "default"
+
+    def test_overrides(self, monkeypatch):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "run_clock.py",
+                "--quiet-start", "23:30",
+                "--quiet-end", "07:00",
+                "--mode", "production",
+                "--theme", "dark",
+            ],
+        )
+        args = run_clock.parse_args()
+        assert args.quiet_start == "23:30"
+        assert args.quiet_end == "07:00"
+        assert args.mode == "production"
+        assert args.theme == "dark"
+
+    def test_invalid_hhmm_is_rejected(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--quiet-start", "25:99"])
+        with pytest.raises(SystemExit):
+            run_clock.parse_args()
+
+
+class TestMaybeStartWebServer:
+    """The web server is optional; startup failures must not abort the loop."""
+
+    def _args(self, web_bind=None):
+        return argparse.Namespace(
+            web_bind=web_bind,
+            web_token="",
+            web_token_file=None,
+            output="out.png",
+            history_path="",
+            telemetry_path="",
+            overrides="assets/selection_overrides.json",
+            mode="debug",
+        )
+
+    def test_disabled_when_bind_empty(self):
+        state = run_clock.RuntimeState("default")
+        assert run_clock._maybe_start_web_server(self._args(None), state) is None
+        assert run_clock._maybe_start_web_server(self._args(""), state) is None
+
+    def test_start_failure_logs_and_returns_none(self, monkeypatch, capsys):
+        """If web_server.start_web_server raises, we log and return None —
+        never propagate the exception and never kill the loop."""
+        state = run_clock.RuntimeState("default")
+        import web_server
+        monkeypatch.setattr(web_server, "start_web_server",
+                            lambda *a, **kw: (_ for _ in ()).throw(ValueError("bad bind")))
+        result = run_clock._maybe_start_web_server(self._args("0.0.0.0:8080"), state)
+        assert result is None
+        err = capsys.readouterr().err
+        assert "web UI failed to start" in err and "bad bind" in err
+
+
+class TestResolveWebToken:
+    def _args(self, **kw):
+        return argparse.Namespace(web_token=kw.get("web_token", ""), web_token_file=kw.get("web_token_file"))
+
+    def test_empty_when_unset(self):
+        assert run_clock._resolve_web_token(self._args()) == ""
+
+    def test_reads_from_token_file(self, tmp_path):
+        token_file = tmp_path / "token"
+        token_file.write_text("s3cret\n", encoding="utf-8")
+        assert run_clock._resolve_web_token(self._args(web_token_file=str(token_file))) == "s3cret"
+
+    def test_token_file_wins_over_inline(self, tmp_path):
+        token_file = tmp_path / "token"
+        token_file.write_text("from-file\n", encoding="utf-8")
+        args = self._args(web_token="from-flag", web_token_file=str(token_file))
+        assert run_clock._resolve_web_token(args) == "from-file"
+
+    def test_missing_token_file_falls_back_to_inline(self, tmp_path, capsys):
+        args = self._args(web_token="fallback", web_token_file=str(tmp_path / "nonexistent"))
+        assert run_clock._resolve_web_token(args) == "fallback"
+        assert "unreadable" in capsys.readouterr().err
+
+    def test_missing_file_and_no_inline_returns_empty(self, tmp_path):
+        args = self._args(web_token_file=str(tmp_path / "nope"))
+        assert run_clock._resolve_web_token(args) == ""
+
+
+class TestStopWebServer:
+    def test_none_handle_is_noop(self):
+        run_clock.stop_web_server(None)  # must not raise
+
+    def test_server_close_failure_is_swallowed(self):
+        class BadServer:
+            def shutdown(self):
+                pass
+
+            def server_close(self):
+                raise OSError("already closed")
+        thread = type("T", (), {"join": lambda self, timeout=None: None})()
+        # Must not raise despite server_close failing.
+        run_clock.stop_web_server((BadServer(), thread))

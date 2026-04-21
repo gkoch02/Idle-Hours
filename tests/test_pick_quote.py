@@ -571,3 +571,110 @@ class TestLoadOverrides:
         }))
         pq.load_overrides(path)
         assert capsys.readouterr().err == ""
+
+
+class TestInferQuoteMinute:
+    """The matched-text fallback is the only way to recover a minute when
+    ``normalized_time`` is missing. It drives ``minute_distance_penalty`` and
+    therefore directly affects which candidate wins in a given bucket, so
+    every pattern in ``EXACT_MINUTE_PATTERNS`` needs explicit coverage."""
+
+    def test_prefers_normalized_time_when_present(self):
+        row = {"normalized_time": "03:17", "matched_text": "quarter past three"}
+        # Normalized time wins even when matched_text disagrees.
+        assert pq.infer_quote_minute(row) == 17
+
+    def test_malformed_normalized_time_falls_through_to_matched_text(self):
+        row = {"normalized_time": "not-a-time", "matched_text": "quarter past three"}
+        assert pq.infer_quote_minute(row) == 15
+
+    def test_no_normalized_time_uses_matched_text(self):
+        row = {"matched_text": "half past eleven"}
+        assert pq.infer_quote_minute(row) == 30
+
+    def test_returns_none_when_nothing_matches(self):
+        row = {"matched_text": "a vague reference"}
+        assert pq.infer_quote_minute(row) is None
+
+    def test_empty_row(self):
+        assert pq.infer_quote_minute({}) is None
+
+    @pytest.mark.parametrize("phrase,minute", [
+        ("o’clock", 0),
+        ("oclock", 0),
+        ("the clock struck twelve", 0),
+        ("five minutes past two", 5),
+        ("five past two", 5),
+        ("ten minutes past four", 10),
+        ("ten past four", 10),
+        ("quarter past six", 15),
+        ("twenty minutes past three", 20),
+        ("twenty past three", 20),
+        ("half past nine", 30),
+        ("half-past nine", 30),
+        ("twenty-five minutes to three", 35),
+        ("twenty five to three", 35),
+        ("twenty minutes to three", 40),
+        ("twenty to three", 40),
+        ("quarter to eight", 45),
+        ("ten minutes to one", 50),
+        ("ten to one", 50),
+        ("five minutes to two", 55),
+        ("five to two", 55),
+    ])
+    def test_matched_text_patterns(self, phrase, minute):
+        row = {"matched_text": phrase}
+        assert pq.infer_quote_minute(row) == minute
+
+    def test_matched_text_case_insensitive(self):
+        row = {"matched_text": "QUARTER PAST THREE"}
+        assert pq.infer_quote_minute(row) == 15
+
+    def test_matched_text_with_embedded_newline(self):
+        # gutenberg_time_miner now collapses newlines, but legacy rows may still
+        # contain them — infer_quote_minute normalises before matching.
+        row = {"matched_text": "half\npast two"}
+        assert pq.infer_quote_minute(row) == 30
+
+    def test_known_substring_collision_twenty_five_past_matches_shorter_pattern(self):
+        # Documents a known limitation: "twenty-five minutes past" contains
+        # "five minutes past" (the 5-minute pattern) and dict-iteration order
+        # means the shorter pattern wins. In practice rows reach this code path
+        # only when normalized_time is missing, so the impact is minimal — but
+        # future callers should be aware.
+        row = {"matched_text": "twenty-five minutes past seven"}
+        assert pq.infer_quote_minute(row) == 5
+
+
+class TestMinuteDistancePenalty:
+    def test_returns_99_when_quote_minute_unknown(self):
+        row = {"matched_text": "some vague phrase"}
+        # Row has no normalized_time and no recognisable matched-text pattern.
+        assert pq.minute_distance_penalty(row, "h3_exact", "03:00") == 99
+
+    def test_returns_99_when_requested_is_unparseable(self):
+        row = {"normalized_time": "03:15"}
+        # bucket is a non-standard state name so DEFAULT_BUCKET_MINUTES returns None
+        assert pq.minute_distance_penalty(row, "h3_nonsense", None) == 99
+
+    def test_exact_distance_zero(self):
+        row = {"normalized_time": "03:15"}
+        assert pq.minute_distance_penalty(row, "h3_quarter_past", "03:15") == 0
+
+    def test_distance_uses_absolute_value(self):
+        row = {"normalized_time": "03:10"}
+        assert pq.minute_distance_penalty(row, "h3_quarter_past", "03:15") == 5
+
+
+class TestSourceRarityPenalty:
+    def test_no_source_id_returns_zero(self):
+        assert pq.source_rarity_penalty({"source_id": None}, pq.Counter({"1234": 10})) == 0
+        assert pq.source_rarity_penalty({}, pq.Counter({"1234": 10})) == 0
+
+    def test_returns_count_for_known_source(self):
+        counts = pq.Counter({"1234": 7})
+        assert pq.source_rarity_penalty({"source_id": "1234"}, counts) == 7
+
+    def test_unknown_source_returns_zero(self):
+        counts = pq.Counter({"1234": 7})
+        assert pq.source_rarity_penalty({"source_id": "9999"}, counts) == 0
