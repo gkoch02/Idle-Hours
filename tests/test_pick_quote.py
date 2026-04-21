@@ -127,11 +127,13 @@ class TestScoreRow:
         assert score[9] < score_no_bonus[9]
 
     def test_exactness_bonus_quarter(self):
-        row = make_row(matched_text="quarter past three", quality_score=80,
-                       display_quote="It was quarter past three.")
+        # Display quote kept well above the 60-char short-quote floor so the
+        # length_penalty component is just |len - 140| + exactness_bonus.
+        display = "It was quarter past three when the bells in the tower rang out across the square."
+        row = make_row(matched_text="quarter past three", quality_score=80, display_quote=display)
         overrides = self._overrides()
         score = pq.score_row(row, "h3_exact", overrides)
-        assert score[9] < abs(len("It was quarter past three.") - 140)
+        assert score[9] < abs(len(display) - 140)
 
     def test_no_source_id_penalty(self):
         with_id = make_row(source_id="1234")
@@ -147,6 +149,37 @@ class TestScoreRow:
         far = make_row(normalized_time="11:25", matched_text="twenty-five minutes past eleven", quality_score=90,
                        display_quote="It was twenty-five minutes past eleven.")
         assert pq.score_row(near, "h11_twenty_past", overrides, "11:20") < pq.score_row(far, "h11_twenty_past", overrides, "11:20")
+
+    def test_expanded_with_context_treated_as_clean(self):
+        # cleanup_penalty (tuple index 1) must be 0 for both "complete_sentence"
+        # and the new "expanded_with_context" status; otherwise expanded runs
+        # would be unfairly penalised in ranking.
+        overrides = self._overrides()
+        expanded = make_row(display_fragment=False, cleanup_status="expanded_with_context",
+                            quality_score=80, display_quote="A well-formed sentence run joined across a paragraph boundary and carrying real literary context.")
+        assert pq.score_row(expanded, "h3_exact", overrides)[1] == 0
+
+    def test_short_quote_floor_penalises_under_60_chars(self):
+        # Two rows, identical except for display_quote length. The short one
+        # should have a strictly larger length_penalty component (tuple index 9).
+        overrides = self._overrides()
+        short = make_row(quality_score=80, display_quote="It was three o'clock.")  # 21 chars
+        medium = make_row(quality_score=80,
+                          display_quote="It was three o'clock when the bells began to ring across the square loudly.")  # 75 chars
+        short_score = pq.score_row(short, "h3_exact", overrides)
+        medium_score = pq.score_row(medium, "h3_exact", overrides)
+        # Medium quote (75 chars) has length_penalty = |75-140| = 65.
+        # Short quote (21 chars) has length_penalty = |21-140| + 80 = 199.
+        assert short_score[9] > medium_score[9]
+        assert short_score[9] >= abs(len(short["display_quote"]) - 140) + 80
+
+    def test_short_quote_floor_not_applied_at_60_chars(self):
+        overrides = self._overrides()
+        # Exactly 60 chars — floor must not apply.
+        exactly_60 = "a" * 60 + "."
+        row = make_row(quality_score=80, display_quote=exactly_60)
+        score = pq.score_row(row, "h3_exact", overrides)
+        assert score[9] == abs(len(exactly_60) - 140)
 
 
 class TestPickBest:

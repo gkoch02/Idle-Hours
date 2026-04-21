@@ -69,7 +69,7 @@ class TestCorpusSchema:
             assert isinstance(row["display_fragment"], bool)
 
     def test_cleanup_status_is_known(self, corpus_rows):
-        allowed = {"complete_sentence", "fragment_fallback", "empty"}
+        allowed = {"complete_sentence", "expanded_with_context", "fragment_fallback", "empty"}
         for row in corpus_rows:
             assert row["cleanup_status"] in allowed, f"unknown cleanup_status {row['cleanup_status']!r}"
 

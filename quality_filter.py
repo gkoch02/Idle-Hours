@@ -39,7 +39,7 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     if display_fragment:
         score -= 30
         reasons.append("fragment")
-    if cleanup_status != "complete_sentence":
+    if cleanup_status not in ("complete_sentence", "expanded_with_context"):
         score -= 20
         reasons.append(cleanup_status)
 

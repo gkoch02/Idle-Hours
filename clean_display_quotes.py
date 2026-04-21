@@ -77,16 +77,55 @@ def looks_fragment(text: str) -> bool:
     return False
 
 
+EXPANSION_MAX_CHARS = 260
+EXPANSION_NEIGHBOURS = 2
+
+
+def expand_candidates(text: str, matched_text: str) -> tuple[list[str], set[str]]:
+    """Build multi-sentence runs centered on sentences containing ``matched_text``.
+
+    Returns ``(runs, single_hits)`` — ``single_hits`` is the subset that are a
+    lone hit sentence (no neighbours joined), kept separate so the caller can
+    distinguish a naturally-complete sentence from an expanded run.
+    """
+    if not text:
+        return [], set()
+    needle = (matched_text or "").replace("\n", " ").strip().lower()
+    if not needle:
+        return [], set()
+    sentences = [clean_edges(s) for s in split_sentences(text)]
+    sentences = [s for s in sentences if s]
+    if not sentences:
+        return [], set()
+    hits = [i for i, s in enumerate(sentences) if needle in s.lower()]
+    runs: list[str] = []
+    singles: set[str] = set()
+    for i in hits:
+        for before in range(EXPANSION_NEIGHBOURS + 1):
+            for after in range(EXPANSION_NEIGHBOURS + 1):
+                lo = i - before
+                hi = i + after
+                if lo < 0 or hi >= len(sentences):
+                    continue
+                run = " ".join(sentences[lo:hi + 1]).strip()
+                if not run or len(run) > EXPANSION_MAX_CHARS:
+                    continue
+                runs.append(run)
+                if before == 0 and after == 0:
+                    singles.add(run)
+    return runs, singles
+
+
 def best_display_quote(row: dict) -> tuple[str, bool, str]:
     candidates = []
+    single_hits: set[str] = set()
     for field in ("quote_text", "context_text"):
         value = clean_edges(row.get(field) or "")
         if not value:
             continue
-        for sentence in split_sentences(value):
-            sentence = clean_edges(sentence)
-            if row.get("matched_text") and row["matched_text"].replace("\n", " ").strip().lower() in sentence.lower():
-                candidates.append(sentence)
+        runs, singles = expand_candidates(value, row.get("matched_text") or "")
+        candidates.extend(runs)
+        single_hits.update(singles)
         candidates.append(value)
 
     seen = []
@@ -97,7 +136,8 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
     non_fragments = [c for c in seen if not looks_fragment(c)]
     if non_fragments:
         best = min(non_fragments, key=lambda c: (abs(len(c) - 140), len(c)))
-        return best, False, "complete_sentence"
+        status = "complete_sentence" if best in single_hits else "expanded_with_context"
+        return best, False, status
 
     if seen:
         best = max(seen, key=len)
