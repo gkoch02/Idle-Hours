@@ -5,10 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
-import json
-import re
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
@@ -17,30 +14,46 @@ import time
 import traceback
 from pathlib import Path
 
-import atomic_io
 import pick_quote as pick_quote_module
 from buckets import bucket_for_time
+from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
+    _button_render_gate,
+    action_quiet,
+    action_rerender,
+    action_skip,
+    action_theme,
+    action_unskip,
+)
+from runtime_log import _log  # noqa: F401  re-exported
+from runtime_quiet import (  # noqa: F401  re-exported
+    _display_quiet_image,
+    in_quiet_hours,
+)
+from runtime_state import RuntimeState  # noqa: F401  re-exported
+from runtime_store import (  # noqa: F401  re-exported
+    DEFAULT_STATE_PATH,
+    _atomic_write_text,
+    _resolve_state_path,
+    load_runtime_state,
+    save_runtime_state,
+)
+from runtime_telemetry import (  # noqa: F401  re-exported
+    _TELEMETRY_DATE_RE,
+    DEFAULT_TELEMETRY_PATH,
+    DEFAULT_TELEMETRY_RETAIN_DAYS,
+    append_telemetry,
+    daily_telemetry_path,
+    prune_telemetry,
+)
+from runtime_theme import (  # noqa: F401  re-exported
+    AUTO_DARK_END_HOUR,
+    AUTO_DARK_START_HOUR,
+    _maybe_reset_manual_theme_at_midnight,
+    auto_theme_for,
+    resolve_effective_theme,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
-
-DEFAULT_STATE_PATH = "~/.litclock/state.json"
-DEFAULT_TELEMETRY_PATH = "~/.litclock/telemetry.jsonl"
-DEFAULT_TELEMETRY_RETAIN_DAYS = 90
-# Matches ``daily_telemetry_path``'s suffix format: stem-YYYYMMDD. We use a
-# glob and then a stricter fullmatch regex so an operator pointing --telemetry
-# -path at a hand-named file can't accidentally catch unrelated siblings.
-_TELEMETRY_DATE_RE = re.compile(r"^(.+)-(\d{8})$")
-
-# Auto-theme: switch to dark theme during this window, default theme otherwise.
-# Boundaries chosen to match civil twilight in temperate latitudes; users who want
-# a tighter fit can pass --theme default or --theme dark explicitly.
-AUTO_DARK_START_HOUR = 18
-AUTO_DARK_END_HOUR = 6
-
-
-def _log(msg: str, *, err: bool = False) -> None:
-    stream = sys.stderr if err else sys.stdout
-    print(f"[{dt.datetime.now().isoformat(timespec='seconds')}] {msg}", file=stream, flush=True)
 
 
 def _valid_hhmm(value: str) -> str:
@@ -245,208 +258,6 @@ def current_bucket() -> str:
     return bucket_for_time(current_time_str())
 
 
-def auto_theme_for(time_str: str) -> str:
-    """Return 'dark' during the night window, 'default' otherwise."""
-    hour = int(time_str.split(":", 1)[0])
-    if AUTO_DARK_START_HOUR <= hour or hour < AUTO_DARK_END_HOUR:
-        return "dark"
-    return "default"
-
-
-def resolve_effective_theme(theme_arg: str, time_str: str, manual_theme: str | None) -> str:
-    """Resolve the theme actually passed to renderer/display.
-
-    ``theme_arg`` is the CLI choice ('default'/'dark'/'auto'). ``manual_theme`` is the
-    user's button-B override (set until midnight). When ``theme_arg == 'auto'`` and
-    no manual override is active, derive from the wall clock.
-    """
-    if manual_theme in ("default", "dark"):
-        return manual_theme
-    if theme_arg == "auto":
-        return auto_theme_for(time_str)
-    return theme_arg
-
-
-def _resolve_state_path(state_path: str | None) -> Path | None:
-    if not state_path:
-        return None
-    return Path(state_path).expanduser()
-
-
-def load_runtime_state(state_path: str | None) -> dict:
-    """Load persisted runtime state. Returns ``{}`` when disabled, missing, or malformed.
-
-    We expect the file to contain a JSON object. Anything else (a bare string,
-    number, list, or parse error) is treated as unreadable and ignored rather
-    than bricking startup with ``AttributeError`` when ``RuntimeState.__init__``
-    later calls ``.get()`` on it.
-    """
-    path = _resolve_state_path(state_path)
-    if path is None or not path.exists():
-        return {}
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        _log(f"runtime state at {path} unreadable, ignoring: {exc!r}", err=True)
-        return {}
-    if not isinstance(parsed, dict):
-        _log(f"runtime state at {path} is not a JSON object ({type(parsed).__name__}), ignoring", err=True)
-        return {}
-    return parsed
-
-
-def _atomic_write_text(path: Path, payload: str) -> None:
-    """Durably write ``payload`` to ``path``.
-
-    Thin shim around :func:`atomic_io.atomic_write_text` so every caller that
-    imports ``run_clock._atomic_write_text`` keeps the same contract while the
-    implementation lives in one place (see ``atomic_io`` for the tmp → fsync →
-    replace → dir-fsync details). Shared by ``save_runtime_state`` and the web
-    UI's override writer.
-    """
-    atomic_io.atomic_write_text(path, payload)
-
-
-def save_runtime_state(state_path: str | None, state: dict) -> None:
-    """Persist runtime state atomically. No-op when disabled."""
-    path = _resolve_state_path(state_path)
-    if path is None:
-        return
-    _atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2))
-
-
-def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
-    """Return the date-suffixed sibling of ``base`` for ``today``.
-
-    Given ``~/.litclock/telemetry.jsonl`` and 2026-04-20, returns
-    ``~/.litclock/telemetry-20260420.jsonl``. This is how we rotate telemetry
-    by date so a multi-year-running appliance doesn't accumulate a single
-    unbounded JSONL file that eventually chokes ``litclock_health.py`` and
-    stalls append latency. Local date (not UTC) so an operator's ``grep`` /
-    ``ls`` groups entries by their wall-clock day.
-    """
-    if today is None:
-        today = dt.date.today()
-    suffix = base.suffix or ".jsonl"
-    return base.with_name(f"{base.stem}-{today.strftime('%Y%m%d')}{suffix}")
-
-
-def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
-    """Append one JSON line to today's telemetry log. No-op when disabled.
-
-    Rotates by date: writes to ``<base-stem>-YYYYMMDD<suffix>`` in the base
-    path's directory so the file size stays bounded. ``litclock_health.py``
-    globs the directory for date-suffixed siblings (plus any legacy
-    unsuffixed file) so older entries are still summarised.
-
-    Telemetry is best-effort: an I/O failure here (unwritable path, full
-    disk, path is a directory) must never surface to the caller, since this
-    is called from the loop's error-recovery path — turning telemetry into
-    a fatal failure mode would defeat its purpose.
-    """
-    if not telemetry_path:
-        return
-    try:
-        base = Path(telemetry_path).expanduser()
-        path = daily_telemetry_path(base)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except (OSError, TypeError, ValueError) as exc:
-        _log(f"telemetry write to {telemetry_path!r} failed, dropping entry: {exc!r}", err=True)
-
-
-class RuntimeState:
-    """Mutable shared state between the main loop and the button listener thread.
-
-    Button handlers act synchronously in their own thread and serialize against
-    the main loop via :attr:`render_lock`. Per-button mutations of theme/quiet
-    state are guarded by :attr:`lock`.
-    """
-
-    def __init__(self, theme_arg: str, persisted: dict | None = None):
-        self.lock = threading.Lock()
-        self.render_lock = threading.Lock()
-        # Serialises read-modify-write of ~/.litclock/history.jsonl. Button A's
-        # long-press does a remove-last-entry that would otherwise race the main
-        # loop's post-render append and silently drop it.
-        self.ledger_lock = threading.Lock()
-        self.theme_arg = theme_arg            # CLI value ('default'/'dark'/'auto')
-        self.manual_theme: str | None = None  # set by button B until midnight
-        self.manual_quiet = False             # toggled by button D
-        self.last_bucket: str | None = None
-        self.last_quote_id: tuple | None = None
-        self.last_effective_theme: str | None = None
-        self.last_seen_date: dt.date | None = None
-        # Populated when button A (skip) bans a quote; button A long-press
-        # rolls that ban back and re-renders.
-        self.last_skipped: tuple | None = None
-        # Button listener bookkeeping. ``button_handles`` is the keepalive list
-        # returned by ``inky_buttons.start_listener`` (we must hold the refs
-        # for the lifetime of the loop or gpiozero drops our callbacks).
-        # ``buttons_dead_logged`` latches the first "listener died" warning so
-        # the loop doesn't spam stderr every tick once a pin is released.
-        self.button_handles: list | None = None
-        self.buttons_dead_logged = False
-        # Last local date we ran telemetry retention on; only re-checked on
-        # date rollover so the main loop doesn't glob every tick.
-        self.last_pruned_date: dt.date | None = None
-        # Flipped by the SIGTERM/SIGINT handler so the main loop can exit
-        # cleanly between ticks. ``threading.Event`` (not a bool) because the
-        # loop's interruptible sleep polls it; a plain flag would force us to
-        # keep time.sleep() in the non-interruptible form.
-        self.stop_requested = threading.Event()
-        if persisted:
-            mt = persisted.get("manual_theme")
-            if mt in ("default", "dark"):
-                self.manual_theme = mt
-            self.manual_quiet = bool(persisted.get("manual_quiet", False))
-
-    def snapshot_for_persistence(self) -> dict:
-        return {"manual_theme": self.manual_theme, "manual_quiet": self.manual_quiet}
-
-
-def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
-    """Return True if time_str falls within the [start, end) quiet window.
-
-    Handles overnight ranges (e.g. 22:00–07:00) where start > end.
-    Returns False when either bound is None (quiet hours disabled).
-    """
-    if start is None:
-        return False
-
-    def to_mins(t: str) -> int:
-        h, m = map(int, t.split(":"))
-        return h * 60 + m
-
-    cur, s, e = to_mins(time_str), to_mins(start), to_mins(end)
-    return (cur >= s or cur < e) if s > e else (s <= cur < e)
-
-
-def _display_quiet_image(
-    quiet_image: str,
-    output: str,
-    display_script: str | None,
-    *,
-    reason: str = "quiet hours",
-) -> None:
-    """Copy ``quiet_image`` to ``output`` and optionally push it to the display script.
-
-    ``reason`` is the label prefixed to the log message so the same helper can serve
-    the quiet-hours entry, the startup frame, and the button-D long-press
-    shutdown preamble without lying about why it ran.
-    """
-    quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
-    output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
-    shutil.copy2(str(quiet_path), output_resolved)
-    _log(f"{reason}: {quiet_path.name} -> {output_resolved}")
-    if display_script:
-        display_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
-        subprocess.check_call([sys.executable, display_path, output_resolved])
-        _log(f"Displayed {output_resolved} via {display_path}")
-
-
 def peek_quote_id(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> tuple | None:
     """Return a stable identity tuple for the quote pick_quote would return, or None on failure.
 
@@ -576,203 +387,6 @@ def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, his
     """
     with state.render_lock:
         _render_unlocked(args, state, time_str, history_path, mode=mode, bucket=bucket, quote_id=quote_id)
-
-
-@contextlib.contextmanager
-def _button_render_gate(state: RuntimeState, name: str):
-    """Try-acquire ``state.render_lock`` for a button or web handler.
-
-    Yields ``True`` if the lock was acquired (caller does its work; the gate
-    releases on exit) or ``False`` if a render is already in flight, in which
-    case the press is logged and dropped. This coalesces a rapid tap-tap-tap
-    down to "first wins, rest are no-ops" — without it, gpiozero queues
-    subsequent events behind the slow eInk refresh and the user sees
-    unpredictable multi-second delays.
-
-    ``name`` is the full caller label (e.g. ``"button A (skip)"`` or
-    ``"web (skip)"``) so the log message correctly attributes a dropped press.
-    """
-    if not state.render_lock.acquire(blocking=False):
-        _log(f"{name}: busy (render in flight), press ignored")
-        yield False
-        return
-    try:
-        yield True
-    finally:
-        state.render_lock.release()
-
-
-# ----------------------------------------------------------------------------
-# Module-level action functions shared by the button listener thread and the
-# curator web server's HTTP handler thread. Each returns a result dict so the
-# web handler can serialise it to JSON (e.g. {"ok": True, "theme": "dark"} or
-# {"ok": False, "error": "busy"}); button handlers ignore the return value and
-# rely on the internal logging / telemetry writes for feedback.
-#
-# Every action:
-#  - wraps its work in ``_button_render_gate`` for coalesced-press semantics,
-#  - serialises state mutations via ``state.lock`` and ledger writes via
-#    ``state.ledger_lock``,
-#  - catches ``Exception`` so a failure in one caller can't kill the listener
-#    thread or the HTTP server thread.
-#
-# ``label`` is the attribution prefix: ``"button A"`` when driven by GPIO,
-# ``"web"`` (or a route-specific variant) when driven by an HTTP POST.
-# ----------------------------------------------------------------------------
-
-def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Ban the currently-shown quote and render the next pick.
-
-    Mirrors button A short-press. Returns ``{"ok": True, "new_quote_id": [...]}``,
-    ``{"ok": False, "error": "busy"}`` when a render is already in flight, or
-    ``{"ok": False, "error": "<repr>"}`` on exception.
-    """
-    history_path = args.history_path or None
-    telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (skip)") as acquired:
-        if not acquired:
-            return {"ok": False, "error": "busy"}
-        _log(f"{label}: skip")
-        try:
-            with state.lock:
-                previous = state.last_quote_id
-            if previous is not None:
-                # Ban the currently-shown quote so the next pick filters it out for the week.
-                with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, previous[0], previous[1])
-                with state.lock:
-                    # Remember what we just banned so A long-press / web unskip can reverse it.
-                    state.last_skipped = previous
-            time_str = current_time_str()
-            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-            _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            if quote_id is not None:
-                with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-            return {"ok": True, "new_quote_id": list(quote_id) if quote_id else None}
-        except Exception as exc:
-            _log(f"{label} skip failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "skip"})
-            return {"ok": False, "error": repr(exc)}
-
-
-def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Reverse the most recent skip: remove the ledger entry, pick, re-render.
-
-    Mirrors button A long-press. The ledger read-modify-write is serialised
-    against the main loop's ``append_history`` via ``state.ledger_lock`` so a
-    concurrent append cannot be silently lost.
-    """
-    history_path = args.history_path or None
-    telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (unskip)") as acquired:
-        if not acquired:
-            return {"ok": False, "error": "busy"}
-        _log(f"{label}: un-skip")
-        try:
-            with state.lock:
-                target = state.last_skipped
-                state.last_skipped = None
-            if target is None:
-                _log("un-skip: no recently-skipped quote recorded")
-                return {"ok": True, "restored": None}
-            with state.ledger_lock:
-                removed = pick_quote_module.remove_last_history_entry(history_path, target[0], target[1])
-            _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
-            time_str = current_time_str()
-            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-            _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            if quote_id is not None:
-                with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-            return {"ok": True, "restored": list(target)}
-        except Exception as exc:
-            _log(f"{label} un-skip failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "unskip"})
-            return {"ok": False, "error": repr(exc)}
-
-
-def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Toggle default ↔ dark, persist to ``--state-path``, re-render. Mirrors button B."""
-    history_path = args.history_path or None
-    telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (theme)") as acquired:
-        if not acquired:
-            return {"ok": False, "error": "busy"}
-        try:
-            time_str = current_time_str()
-            with state.lock:
-                current = state.last_effective_theme or resolve_effective_theme(
-                    state.theme_arg, time_str, state.manual_theme,
-                )
-                state.manual_theme = "dark" if current == "default" else "default"
-                save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                new_theme = state.manual_theme
-                quote_id = state.last_quote_id
-            _log(f"{label}: theme -> {new_theme}")
-            _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            return {"ok": True, "theme": new_theme}
-        except Exception as exc:
-            _log(f"{label} theme toggle failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "theme"})
-            return {"ok": False, "error": repr(exc)}
-
-
-def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Toggle the manual quiet override, persist, display goodnight-or-wake frame.
-
-    Mirrors button D short-press.
-    """
-    history_path = args.history_path or None
-    telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (quiet)") as acquired:
-        if not acquired:
-            return {"ok": False, "error": "busy"}
-        try:
-            with state.lock:
-                state.manual_quiet = not state.manual_quiet
-                save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                state.last_bucket = None  # force the loop to repaint on exit
-                state.last_quote_id = None
-                # Snapshot inside the lock so a concurrent toggle can't flip the
-                # branch we take below.
-                quiet_now = state.manual_quiet
-            _log(f"{label}: manual quiet -> {quiet_now}")
-            if quiet_now and args.quiet_image:
-                _display_quiet_image(args.quiet_image, args.output, args.display_script)
-            elif not quiet_now:
-                # Wake to the current time so the user sees something immediately.
-                time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                _render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            return {"ok": True, "manual_quiet": quiet_now}
-        except Exception as exc:
-            _log(f"{label} quiet toggle failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "quiet"})
-            return {"ok": False, "error": repr(exc)}
-
-
-def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Force a re-render of the current time+bucket. Useful after panel ghosting or override edits."""
-    history_path = args.history_path or None
-    telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (rerender)") as acquired:
-        if not acquired:
-            return {"ok": False, "error": "busy"}
-        try:
-            time_str = current_time_str()
-            bucket = bucket_for_time(time_str)
-            quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-            _render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
-            if quote_id is not None:
-                with state.ledger_lock:
-                    pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-            _log(f"{label}: rerender bucket={bucket}")
-            return {"ok": True, "bucket": bucket, "quote_id": list(quote_id) if quote_id else None}
-        except Exception as exc:
-            _log(f"{label} rerender failed: {exc!r}", err=True)
-            append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "rerender"})
-            return {"ok": False, "error": repr(exc)}
 
 
 def _build_button_handlers(
@@ -1016,52 +630,6 @@ def stop_web_server(handle) -> None:
     thread.join(timeout=2)
 
 
-def prune_telemetry(telemetry_path: str | None, retain_days: int, today: dt.date | None = None) -> int:
-    """Delete date-rotated telemetry siblings older than ``retain_days``. Returns count deleted.
-
-    ``daily_telemetry_path`` rotates per local date so each file stays bounded,
-    but without a retention sweep the directory grows unbounded over months.
-    We glob the base path's directory for ``<stem>-YYYYMMDD<suffix>`` siblings
-    (using a stricter regex than the glob so a hand-named file with a numeric
-    stem isn't mistaken for rotation output), parse the date suffix, and
-    ``unlink`` anything older than today minus ``retain_days``.
-
-    Defensive: swallows every per-file exception so one unreadable sibling
-    can't block pruning of the rest; returns the count of successful unlinks
-    for observability. A zero-or-negative retain_days disables pruning.
-    """
-    if not telemetry_path or retain_days <= 0:
-        return 0
-    if today is None:
-        today = dt.date.today()
-    cutoff = today - dt.timedelta(days=retain_days)
-    try:
-        base = Path(telemetry_path).expanduser()
-        parent = base.parent
-        if not parent.exists():
-            return 0
-        stem = base.stem
-        suffix = base.suffix or ".jsonl"
-        pattern = f"{stem}-*{suffix}"
-        removed = 0
-        for candidate in parent.glob(pattern):
-            match = _TELEMETRY_DATE_RE.fullmatch(candidate.stem)
-            if match is None or match.group(1) != stem:
-                continue
-            try:
-                file_date = dt.datetime.strptime(match.group(2), "%Y%m%d").date()
-            except ValueError:
-                continue
-            if file_date < cutoff:
-                with contextlib.suppress(OSError):
-                    candidate.unlink()
-                    removed += 1
-        return removed
-    except OSError as exc:
-        _log(f"telemetry prune failed for {telemetry_path!r}: {exc!r}", err=True)
-        return 0
-
-
 def _maybe_prune_telemetry(args: argparse.Namespace, state: RuntimeState, telemetry_path: str | None) -> None:
     """Prune telemetry once per local-date rollover so we don't glob every tick.
 
@@ -1179,20 +747,6 @@ def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None
         save_runtime_state(args.state_path, state.snapshot_for_persistence())
 
     _log("shutdown: done")
-
-
-def _maybe_reset_manual_theme_at_midnight(args: argparse.Namespace, state: RuntimeState) -> None:
-    """Clear the manual theme override at the day boundary so 'auto' resumes."""
-    today = dt.date.today()
-    with state.lock:
-        if state.last_seen_date is None:
-            state.last_seen_date = today
-            return
-        if today != state.last_seen_date and state.theme_arg == "auto" and state.manual_theme is not None:
-            _log(f"midnight rollover: clearing manual theme override ({state.manual_theme})")
-            state.manual_theme = None
-            save_runtime_state(args.state_path, state.snapshot_for_persistence())
-        state.last_seen_date = today
 
 
 def main() -> int:
