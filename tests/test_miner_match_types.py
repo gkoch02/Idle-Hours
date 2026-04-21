@@ -15,8 +15,6 @@ up in the wrong bucket).
 """
 from __future__ import annotations
 
-import pytest
-
 import gutenberg_time_miner as miner
 
 

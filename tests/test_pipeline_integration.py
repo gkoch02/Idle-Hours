@@ -26,15 +26,14 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed")
 
-import apply_content_overrides
-import clean_display_quotes
-import enrich_metadata
-import gutenberg_time_miner as miner
-import merge_candidates
-import pick_quote
-import quality_filter
-import render_quote
-
+import apply_content_overrides  # noqa: E402
+import clean_display_quotes  # noqa: E402
+import enrich_metadata  # noqa: E402
+import gutenberg_time_miner as miner  # noqa: E402
+import merge_candidates  # noqa: E402
+import pick_quote  # noqa: E402
+import quality_filter  # noqa: E402
+import render_quote  # noqa: E402
 
 # A minimal but realistic Gutenberg body. Must include a Gutenberg-style header
 # (so enrich_metadata picks up Title / Author) and enough phrasing that every

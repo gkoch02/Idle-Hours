@@ -28,8 +28,6 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 import pick_quote
 import run_clock
 
@@ -137,7 +135,7 @@ class TestConcurrentLedgerAppend:
             while not stop.is_set():
                 try:
                     content = path.read_text(encoding="utf-8")
-                    lines = [l for l in content.splitlines() if l.strip()]
+                    lines = [line for line in content.splitlines() if line.strip()]
                     for line in lines:
                         json.loads(line)  # every line must be valid JSON
                     reader_counts.append(len(lines))
