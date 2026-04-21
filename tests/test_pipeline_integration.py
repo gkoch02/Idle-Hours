@@ -33,7 +33,9 @@ import gutenberg_time_miner as miner  # noqa: E402
 import merge_candidates  # noqa: E402
 import pick_quote  # noqa: E402
 import quality_filter  # noqa: E402
-import render_quote  # noqa: E402
+
+if PIL_AVAILABLE:
+    import render_quote  # noqa: E402
 
 # A minimal but realistic Gutenberg body. Must include a Gutenberg-style header
 # (so enrich_metadata picks up Title / Author) and enough phrasing that every
