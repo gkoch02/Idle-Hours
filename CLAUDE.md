@@ -490,7 +490,11 @@ The test suite lives in `tests/` and uses pytest with pytest-cov. There are 18 t
 - coverage: source = `.`, omits `tests/`, `bootstrap_pi_inky.sh`, and `display_inky.py`
 - ruff: line-length 130, target Python 3.11, rules E / W / F / I (E501 ignored)
 
-**CI:** `.github/workflows/ci.yml` runs on every push and PR against Python 3.11 and 3.12. It installs `pytest pytest-cov ruff Pillow`, runs `ruff check .` as a dedicated lint step, then `pytest --cov=. --cov-report=term-missing --cov-report=xml -v`, and uploads a coverage artifact. Keep imports sorted (rule I) — run `ruff check .` locally before pushing.
+**CI:** `.github/workflows/ci.yml` runs on pushes to `main` and on every pull request — feature branches get checked via the `pull_request` trigger only, so `push` + `pull_request` don't double-run. Two jobs:
+- `lint` — single Python 3.12 job running `ruff check --output-format=github .` once, so style feedback lands as inline PR annotations without waiting for the test matrix.
+- `test` — matrix across Python 3.11 / 3.12 running `pytest --cov=. --cov-report=term-missing --cov-report=xml -v`; each matrix cell uploads its `coverage.xml` as `coverage-<py>` with `if-no-files-found: error` so a silent test-collection failure surfaces.
+
+Both jobs install via `pip install -e ".[dev]"` (single source of truth with `pyproject.toml` — no hardcoded `pytest pytest-cov ruff Pillow` list to drift), enable `actions/setup-python`'s pip cache keyed on `pyproject.toml`, set `timeout-minutes` as a hang safety-net, and run with `permissions: contents: read` (least-privilege `GITHUB_TOKEN`). A top-level `concurrency` group cancels superseded PR runs (`cancel-in-progress` only when `github.event_name == 'pull_request'`) so `main`-branch history is preserved while rapid PR pushes don't pile up. The matrix runs with `fail-fast: false` so one Python version failing doesn't hide the other. Keep imports sorted (rule I) — run `ruff check .` locally before pushing.
 
 ### Repo Layout
 
