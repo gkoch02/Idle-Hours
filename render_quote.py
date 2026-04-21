@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import io
 import re
 import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+import atomic_io
 import pick_quote as pick_quote_module
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -678,7 +680,15 @@ def main() -> int:
         output_path = BASE_DIR / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
-    image.save(output_path)
+    try:
+        # Encode to an in-memory buffer first so a mid-save exception can't leave
+        # ``output/current.png`` truncated — display_inky.py loads that path every
+        # tick, and a torn PNG there blocks the panel until the next bucket change.
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        atomic_io.atomic_write_bytes(output_path, buffer.getvalue())
+    finally:
+        image.close()
     print(output_path)
     return 0
 

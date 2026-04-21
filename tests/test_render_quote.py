@@ -397,3 +397,65 @@ class TestRenderCard:
         row = self._row(matched_text="_three o'clock_")
         img = rq.render("03:00", row, 800, 480, mode="card")
         assert img.size == (800, 480)
+
+
+class TestMainAtomicSave:
+    """``render_quote.main`` must never leave ``output/current.png`` truncated."""
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock.",
+            "matched_text": "three o'clock",
+            "source_id": "141",
+            "line_number": 482,
+            "author": "A. Author",
+            "title": "A Title",
+            "quality_score": 90,
+            "fuzzy_bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+        }
+
+    def test_successful_save_writes_valid_png(self, tmp_path, monkeypatch):
+        """End-to-end: main() produces a file Pillow can re-open."""
+        monkeypatch.setattr(rq, "pick_quote", lambda *args, **kwargs: self._row())
+        output = tmp_path / "current.png"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["render_quote.py", "--time", "03:00", "--output", str(output)],
+        )
+        assert rq.main() == 0
+        # Must be a readable PNG, not a truncated stub.
+        with Image.open(output) as img:
+            assert img.size == (800, 480)
+        # No stray tmp sibling left behind.
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_save_failure_preserves_previous_output(self, tmp_path, monkeypatch):
+        """A Pillow save failure must not truncate the existing current.png."""
+        original_bytes = b"\x89PNG\r\n\x1a\nprior-valid-frame-bytes"
+        output = tmp_path / "current.png"
+        output.write_bytes(original_bytes)
+
+        monkeypatch.setattr(rq, "pick_quote", lambda *args, **kwargs: self._row())
+
+        # Make image.save raise mid-save by patching PIL.Image.Image.save.
+        original_save = Image.Image.save
+
+        def exploding_save(self, fp, format=None, **kwargs):  # noqa: A002
+            raise OSError("simulated disk error mid-save")
+
+        monkeypatch.setattr(Image.Image, "save", exploding_save)
+        monkeypatch.setattr(
+            "sys.argv",
+            ["render_quote.py", "--time", "03:00", "--output", str(output)],
+        )
+
+        with pytest.raises(OSError):
+            rq.main()
+
+        # Crucially, the prior frame is intact; no truncation.
+        assert output.read_bytes() == original_bytes
+        assert list(tmp_path.glob("*.tmp")) == []
+
+        # Restore so later tests aren't affected.
+        monkeypatch.setattr(Image.Image, "save", original_save)

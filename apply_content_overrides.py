@@ -37,6 +37,7 @@ import json
 import sys
 from pathlib import Path
 
+import atomic_io
 from buckets import bucket_for_time
 from jsonl_io import iter_jsonl
 
@@ -82,11 +83,29 @@ def row_key(row: dict) -> str | None:
 
 
 def load_overrides(path: Path) -> dict[str, dict]:
+    """Load the sidecar, fail-open on corruption.
+
+    The sidecar is hand-edited; an editor crash or a partial save can leave it
+    truncated, which would otherwise abort the entire pipeline's final stage
+    with a ``JSONDecodeError``. Warn loudly and return ``{}`` so the rest of
+    the bake completes — better to ship the corpus with no overrides than to
+    block the picker on a malformed JSON file.
+    """
     if not path.exists():
         return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        _warn(f"{path}: overrides unreadable ({exc!r}); treating as empty")
+        return {}
+    try:
+        raw = json.loads(text)
+    except (ValueError, json.JSONDecodeError) as exc:
+        _warn(f"{path}: overrides not valid JSON ({exc}); treating as empty")
+        return {}
     if not isinstance(raw, dict):
-        raise ValueError(f"{path}: overrides root must be a JSON object")
+        _warn(f"{path}: overrides root must be a JSON object; treating as empty")
+        return {}
     return raw
 
 
@@ -173,10 +192,14 @@ def main() -> int:
     overrides = load_overrides(overrides_path)
     patched, applied = apply_overrides(rows, overrides, overrides_path=str(overrides_path))
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
-        for row in patched:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    # Atomic write: ``output_path == input_path`` when --output is omitted
+    # (the default), so an in-place crash here would otherwise truncate the
+    # picker's live runtime corpus. Streaming so we don't have to materialise
+    # the whole file in memory first.
+    atomic_io.atomic_write_lines(
+        output_path,
+        (json.dumps(row, ensure_ascii=False) for row in patched),
+    )
 
     print(f"Applied {applied} override(s) across {len(overrides)} sidecar entries")
     print(f"Wrote {len(patched)} rows to {output_path}")

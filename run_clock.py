@@ -6,9 +6,10 @@ import argparse
 import contextlib
 import datetime as dt
 import json
-import os
+import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -16,6 +17,7 @@ import time
 import traceback
 from pathlib import Path
 
+import atomic_io
 import pick_quote as pick_quote_module
 from buckets import bucket_for_time
 
@@ -23,6 +25,11 @@ BASE_DIR = Path(__file__).resolve().parent
 
 DEFAULT_STATE_PATH = "~/.litclock/state.json"
 DEFAULT_TELEMETRY_PATH = "~/.litclock/telemetry.jsonl"
+DEFAULT_TELEMETRY_RETAIN_DAYS = 90
+# Matches ``daily_telemetry_path``'s suffix format: stem-YYYYMMDD. We use a
+# glob and then a stricter fullmatch regex so an operator pointing --telemetry
+# -path at a hand-named file can't accidentally catch unrelated siblings.
+_TELEMETRY_DATE_RE = re.compile(r"^(.+)-(\d{8})$")
 
 # Auto-theme: switch to dark theme during this window, default theme otherwise.
 # Boundaries chosen to match civil twilight in temperate latitudes; users who want
@@ -141,6 +148,17 @@ def parse_args() -> argparse.Namespace:
             "Path to the JSONL telemetry log. Each successful render appends one line "
             "with bucket, render_ms, display_ms, source_id, line_number. Loop-level "
             "errors append an entry with an 'error' field. Pass an empty string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--telemetry-retain-days",
+        type=int,
+        default=DEFAULT_TELEMETRY_RETAIN_DAYS,
+        help=(
+            "Drop date-rotated telemetry siblings older than this many days once "
+            "per local-date rollover (default: 90). litclock_health.py still globs "
+            "the directory every run, so unbounded retention eventually slows the "
+            "summariser. 0 disables pruning entirely."
         ),
     )
     parser.add_argument(
@@ -278,41 +296,15 @@ def load_runtime_state(state_path: str | None) -> dict:
 
 
 def _atomic_write_text(path: Path, payload: str) -> None:
-    """Write ``payload`` to ``path`` atomically with durability guarantees.
+    """Durably write ``payload`` to ``path``.
 
-    Sequence: ensure parent dir exists → write payload to a sibling ``*.tmp`` file →
-    ``fsync`` the data → ``os.replace`` into place → ``fsync`` the parent directory
-    so the rename itself is durable. Without the final directory fsync the kernel
-    can return from ``os.replace`` with the new dirent still in cache, and a crash
-    in that window leaves the old/missing file despite the rename "succeeding".
-    Parent-directory fsync failures are swallowed on platforms where they aren't
-    meaningful (notably Windows).
-
-    Shared by ``save_runtime_state`` and the web UI's override writer so both
-    operations have the same durability contract.
+    Thin shim around :func:`atomic_io.atomic_write_text` so every caller that
+    imports ``run_clock._atomic_write_text`` keeps the same contract while the
+    implementation lives in one place (see ``atomic_io`` for the tmp → fsync →
+    replace → dir-fsync details). Shared by ``save_runtime_state`` and the web
+    UI's override writer.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    try:
-        with tmp_path.open("w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_path, path)
-    except OSError:
-        with contextlib.suppress(OSError):
-            tmp_path.unlink()
-        raise
-    try:
-        dir_fd = os.open(path.parent, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(dir_fd)
-    except OSError:
-        pass
-    finally:
-        os.close(dir_fd)
+    atomic_io.atomic_write_text(path, payload)
 
 
 def save_runtime_state(state_path: str | None, state: dict) -> None:
@@ -397,6 +389,14 @@ class RuntimeState:
         # the loop doesn't spam stderr every tick once a pin is released.
         self.button_handles: list | None = None
         self.buttons_dead_logged = False
+        # Last local date we ran telemetry retention on; only re-checked on
+        # date rollover so the main loop doesn't glob every tick.
+        self.last_pruned_date: dt.date | None = None
+        # Flipped by the SIGTERM/SIGINT handler so the main loop can exit
+        # cleanly between ticks. ``threading.Event`` (not a bool) because the
+        # loop's interruptible sleep polls it; a plain flag would force us to
+        # keep time.sleep() in the non-interruptible form.
+        self.stop_requested = threading.Event()
         if persisted:
             mt = persisted.get("manual_theme")
             if mt in ("default", "dark"):
@@ -1016,6 +1016,171 @@ def stop_web_server(handle) -> None:
     thread.join(timeout=2)
 
 
+def prune_telemetry(telemetry_path: str | None, retain_days: int, today: dt.date | None = None) -> int:
+    """Delete date-rotated telemetry siblings older than ``retain_days``. Returns count deleted.
+
+    ``daily_telemetry_path`` rotates per local date so each file stays bounded,
+    but without a retention sweep the directory grows unbounded over months.
+    We glob the base path's directory for ``<stem>-YYYYMMDD<suffix>`` siblings
+    (using a stricter regex than the glob so a hand-named file with a numeric
+    stem isn't mistaken for rotation output), parse the date suffix, and
+    ``unlink`` anything older than today minus ``retain_days``.
+
+    Defensive: swallows every per-file exception so one unreadable sibling
+    can't block pruning of the rest; returns the count of successful unlinks
+    for observability. A zero-or-negative retain_days disables pruning.
+    """
+    if not telemetry_path or retain_days <= 0:
+        return 0
+    if today is None:
+        today = dt.date.today()
+    cutoff = today - dt.timedelta(days=retain_days)
+    try:
+        base = Path(telemetry_path).expanduser()
+        parent = base.parent
+        if not parent.exists():
+            return 0
+        stem = base.stem
+        suffix = base.suffix or ".jsonl"
+        pattern = f"{stem}-*{suffix}"
+        removed = 0
+        for candidate in parent.glob(pattern):
+            match = _TELEMETRY_DATE_RE.fullmatch(candidate.stem)
+            if match is None or match.group(1) != stem:
+                continue
+            try:
+                file_date = dt.datetime.strptime(match.group(2), "%Y%m%d").date()
+            except ValueError:
+                continue
+            if file_date < cutoff:
+                with contextlib.suppress(OSError):
+                    candidate.unlink()
+                    removed += 1
+        return removed
+    except OSError as exc:
+        _log(f"telemetry prune failed for {telemetry_path!r}: {exc!r}", err=True)
+        return 0
+
+
+def _maybe_prune_telemetry(args: argparse.Namespace, state: RuntimeState, telemetry_path: str | None) -> None:
+    """Prune telemetry once per local-date rollover so we don't glob every tick.
+
+    Piggybacks on ``state.last_seen_date`` (set by the midnight helper) as the
+    "it's a new day" edge trigger. The first tick after process start also
+    prunes so a long-running appliance that was offline while siblings aged
+    past the window doesn't wait an extra day to catch up.
+    """
+    if not telemetry_path or args.telemetry_retain_days <= 0:
+        return
+    today = dt.date.today()
+    with state.lock:
+        last_pruned = getattr(state, "last_pruned_date", None)
+        if last_pruned == today:
+            return
+        state.last_pruned_date = today
+    removed = prune_telemetry(telemetry_path, args.telemetry_retain_days, today=today)
+    if removed:
+        _log(f"telemetry retention: dropped {removed} file(s) older than {args.telemetry_retain_days}d")
+
+
+def _loop_sleep(state: RuntimeState, seconds: float) -> bool:
+    """Interruptible wait between loop ticks.
+
+    Returns True when ``state.stop_requested`` is set (caller should break the
+    loop), False otherwise. Extracted as a module-level helper so tests can
+    patch it to drive the loop deterministically without racing the event.
+    """
+    return state.stop_requested.wait(timeout=seconds)
+
+
+def _install_signal_handlers(state: RuntimeState) -> None:
+    """Arm ``SIGTERM`` / ``SIGINT`` so the loop can exit cleanly between ticks.
+
+    systemd sends ``SIGTERM`` on ``systemctl restart`` and waits up to
+    ``TimeoutStopSec`` (default 90s) before escalating to ``SIGKILL``. Without
+    a handler the default behaviour is immediate termination, which can
+    truncate whatever file (``output/current.png``, the history ledger, the
+    telemetry log) the loop happens to be writing at that moment. With this
+    handler the loop observes the event on its next poll, drains any in-flight
+    render via :meth:`RuntimeState.render_lock`, tears down the web server and
+    button listener cleanly, and exits.
+
+    Only installed from the long-running main loop; ``--once`` keeps its
+    strict-exit behaviour because cron callers rely on a nonzero exit when the
+    single render fails.
+    """
+    def _handler(signum, _frame):
+        _log(f"received signal {signum}, requesting clean shutdown")
+        state.stop_requested.set()
+
+    # signal.signal only works on the main thread; the loop runs on the main
+    # thread so this is fine. We install for both SIGTERM (systemd) and SIGINT
+    # (operator ctrl-c in a foreground run). SIGHUP is intentionally not
+    # handled — we don't yet support config reload.
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(ValueError, OSError):
+            signal.signal(sig, _handler)
+
+
+def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None:
+    """Drain the main loop's runtime resources on exit.
+
+    Order matters:
+
+    1. Block on ``render_lock`` so any in-flight render/display finishes
+       before we tear down ingress. We then **hold the lock** across the
+       web-server stop and button-close so any late-arriving HTTP POST or
+       GPIO callback that reaches ``_button_render_gate`` sees the lock
+       held and drops with a "busy" response instead of starting a fresh
+       render during shutdown — without this, a press during the teardown
+       window could kick off a new render and reintroduce SIGKILL-mid-
+       render risk under systemd's ``TimeoutStopSec``.
+    2. Stop the web server (joins its thread) while still holding the lock.
+    3. Close GPIO button handles (still under the lock) so the ``gpiozero``
+       listener thread exits instead of being left holding the pins after
+       the process returns.
+    4. Release the render lock and persist runtime state one last time so
+       ``manual_theme`` / ``manual_quiet`` survive even the final pre-exit
+       edit that didn't yet get an explicit ``save_runtime_state`` call.
+
+    Every step is wrapped in ``contextlib.suppress`` so a single teardown
+    failure doesn't prevent the others from running — shutdown is best-effort.
+    """
+    _log("shutdown: draining in-flight render")
+    acquired = False
+    try:
+        with contextlib.suppress(Exception):
+            acquired = state.render_lock.acquire(timeout=30.0)
+        if not acquired:
+            _log("shutdown: render still in flight after 30s, proceeding anyway", err=True)
+
+        # Tear down ingress WHILE holding render_lock so any late web POST
+        # or button callback that slips through hits _button_render_gate's
+        # non-blocking acquire, sees the lock held, and drops with "busy".
+        _log("shutdown: stopping web server")
+        with contextlib.suppress(Exception):
+            stop_web_server(web_handle)
+
+        _log("shutdown: releasing GPIO buttons")
+        with contextlib.suppress(Exception):
+            handles = state.button_handles or []
+            for handle in handles:
+                close = getattr(handle, "close", None)
+                if callable(close):
+                    with contextlib.suppress(Exception):
+                        close()
+    finally:
+        if acquired:
+            with contextlib.suppress(Exception):
+                state.render_lock.release()
+
+    _log("shutdown: persisting runtime state")
+    with contextlib.suppress(Exception):
+        save_runtime_state(args.state_path, state.snapshot_for_persistence())
+
+    _log("shutdown: done")
+
+
 def _maybe_reset_manual_theme_at_midnight(args: argparse.Namespace, state: RuntimeState) -> None:
     """Clear the manual theme override at the day boundary so 'auto' resumes."""
     today = dt.date.today()
@@ -1084,93 +1249,107 @@ def main() -> int:
     # with the button handlers (a separate process would race the atomic state
     # writer). Runs on a daemon thread so process exit tears it down automatically;
     # tests can stop it explicitly via stop_web_server().
-    _maybe_start_web_server(args, state)
+    web_handle = _maybe_start_web_server(args, state)
+
+    # Install signal handlers AFTER buttons / web are up so their own teardown
+    # registrations (if any) don't clobber ours. Before the main tick loop so a
+    # fast-arriving SIGTERM is observed on the first iteration.
+    _install_signal_handlers(state)
 
     _was_quiet = False
-    while True:
-        time_str = current_time_str()
-        _maybe_reset_manual_theme_at_midnight(args, state)
-        _check_button_liveness(state, telemetry_path)
+    try:
+        while not state.stop_requested.is_set():
+            time_str = current_time_str()
+            _maybe_reset_manual_theme_at_midnight(args, state)
+            _check_button_liveness(state, telemetry_path)
+            _maybe_prune_telemetry(args, state, telemetry_path)
 
-        with state.lock:
-            manual_quiet = state.manual_quiet
+            with state.lock:
+                manual_quiet = state.manual_quiet
 
-        scheduled_quiet = in_quiet_hours(time_str, None if args.quiet_off else args.quiet_start, args.quiet_end)
-        now_quiet = scheduled_quiet or manual_quiet
+            scheduled_quiet = in_quiet_hours(time_str, None if args.quiet_off else args.quiet_start, args.quiet_end)
+            now_quiet = scheduled_quiet or manual_quiet
 
-        if now_quiet:
-            if not _was_quiet:
-                trigger = "manual" if manual_quiet and not scheduled_quiet else f"{args.quiet_start}–{args.quiet_end}"
-                _log(f"quiet hours start ({trigger})")
-                # Use bucket_for_time(time_str) here rather than current_bucket() so we
-                # don't double-tap the wall clock in tests that only patch current_time_str.
-                quiet_bucket = bucket_for_time(time_str)
+            if now_quiet:
+                if not _was_quiet:
+                    trigger = "manual" if manual_quiet and not scheduled_quiet else f"{args.quiet_start}–{args.quiet_end}"
+                    _log(f"quiet hours start ({trigger})")
+                    # Use bucket_for_time(time_str) here rather than current_bucket() so we
+                    # don't double-tap the wall clock in tests that only patch current_time_str.
+                    quiet_bucket = bucket_for_time(time_str)
+                    try:
+                        if args.quiet_image:
+                            with state.render_lock:
+                                _display_quiet_image(args.quiet_image, args.output, args.display_script)
+                        else:
+                            effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
+                            with state.render_lock:
+                                render_now(
+                                    args.render_script, args.output, args.width, args.height, args.display_script,
+                                    args.mode, effective_theme, time_str=args.quiet_start,
+                                    history_path=history_path, history_days=args.history_days,
+                                    telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                                )
+                    except Exception as exc:
+                        _log(f"quiet-hours display failed: {exc!r}", err=True)
+                        traceback.print_exc(file=sys.stderr)
+                        append_telemetry(telemetry_path, {"bucket": quiet_bucket, "error": repr(exc), "mode": "quiet"})
+                    _was_quiet = True
+                # Interruptible sleep so SIGTERM-during-quiet-hours wakes us up
+                # within one tick instead of sitting on the full interval.
+                if _loop_sleep(state, max(1, args.interval_seconds)):
+                    break
+                continue
+
+            if _was_quiet:
+                _log("quiet hours end, resuming normal render cycle")
+                with state.lock:
+                    state.last_bucket = None
+                    state.last_quote_id = None
+                _was_quiet = False
+
+            bucket = current_bucket()
+            effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
+            bucket_changed = bucket != state.last_bucket
+            theme_changed = effective_theme != state.last_effective_theme and state.last_effective_theme is not None
+            if bucket_changed or theme_changed:
                 try:
-                    if args.quiet_image:
-                        with state.render_lock:
-                            _display_quiet_image(args.quiet_image, args.output, args.display_script)
+                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                    if quote_id is not None and quote_id == state.last_quote_id and not theme_changed:
+                        _log(f"bucket {bucket}: quote unchanged, skipping redraw")
+                        with state.lock:
+                            state.last_bucket = bucket
                     else:
-                        effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
                         with state.render_lock:
                             render_now(
                                 args.render_script, args.output, args.width, args.height, args.display_script,
-                                args.mode, effective_theme, time_str=args.quiet_start,
+                                args.mode, effective_theme, time_str=time_str,
                                 history_path=history_path, history_days=args.history_days,
-                                telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                                telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
                             )
-                except Exception as exc:
-                    _log(f"quiet-hours display failed: {exc!r}", err=True)
-                    traceback.print_exc(file=sys.stderr)
-                    append_telemetry(telemetry_path, {"bucket": quiet_bucket, "error": repr(exc), "mode": "quiet"})
-                _was_quiet = True
-            time.sleep(max(1, args.interval_seconds))
-            continue
-
-        if _was_quiet:
-            _log("quiet hours end, resuming normal render cycle")
-            with state.lock:
-                state.last_bucket = None
-                state.last_quote_id = None
-            _was_quiet = False
-
-        bucket = current_bucket()
-        effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
-        bucket_changed = bucket != state.last_bucket
-        theme_changed = effective_theme != state.last_effective_theme and state.last_effective_theme is not None
-        if bucket_changed or theme_changed:
-            try:
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                if quote_id is not None and quote_id == state.last_quote_id and not theme_changed:
-                    _log(f"bucket {bucket}: quote unchanged, skipping redraw")
-                    with state.lock:
-                        state.last_bucket = bucket
-                else:
-                    with state.render_lock:
-                        render_now(
-                            args.render_script, args.output, args.width, args.height, args.display_script,
-                            args.mode, effective_theme, time_str=time_str,
-                            history_path=history_path, history_days=args.history_days,
-                            telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
-                        )
-                    with state.lock:
-                        state.last_bucket = bucket
-                        state.last_effective_theme = effective_theme
+                        with state.lock:
+                            state.last_bucket = bucket
+                            state.last_effective_theme = effective_theme
+                            if quote_id is not None:
+                                state.last_quote_id = quote_id
                         if quote_id is not None:
-                            state.last_quote_id = quote_id
-                    if quote_id is not None:
-                        with state.ledger_lock:
-                            pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-            except Exception as exc:
-                # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
-                # missing corpus row, etc.) does not kill the appliance. last_bucket stays
-                # stale so the next tick retries.
-                _log(f"render/display failed for bucket {bucket}: {exc!r}", err=True)
-                traceback.print_exc(file=sys.stderr)
-                append_telemetry(telemetry_path, {"bucket": bucket, "error": repr(exc), "mode": args.mode})
-        elif state.last_effective_theme is None:
-            with state.lock:
-                state.last_effective_theme = effective_theme
-        time.sleep(max(1, args.interval_seconds))
+                            with state.ledger_lock:
+                                pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                except Exception as exc:
+                    # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
+                    # missing corpus row, etc.) does not kill the appliance. last_bucket stays
+                    # stale so the next tick retries.
+                    _log(f"render/display failed for bucket {bucket}: {exc!r}", err=True)
+                    traceback.print_exc(file=sys.stderr)
+                    append_telemetry(telemetry_path, {"bucket": bucket, "error": repr(exc), "mode": args.mode})
+            elif state.last_effective_theme is None:
+                with state.lock:
+                    state.last_effective_theme = effective_theme
+            if _loop_sleep(state, max(1, args.interval_seconds)):
+                break
+    finally:
+        _shutdown(args, state, web_handle)
+    return 0
 
 
 if __name__ == "__main__":

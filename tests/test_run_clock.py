@@ -167,7 +167,7 @@ class TestMainLoopResilience:
              patch("run_clock.current_bucket", side_effect=buckets), \
              patch("run_clock.current_time_str", return_value="12:00"), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
-             patch("time.sleep", side_effect=stop_after_ticks):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after_ticks(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         return render_calls
@@ -260,7 +260,7 @@ class TestLoopQuoteDedup:
              patch("run_clock.current_bucket", side_effect=buckets), \
              patch("run_clock.current_time_str", return_value="12:00"), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
-             patch("time.sleep", side_effect=stop_after_ticks):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after_ticks(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         return render_calls
@@ -365,7 +365,7 @@ class TestQuietHours:
         with patch("sys.argv", argv), \
              patch("run_clock.render_now", side_effect=fake_render), \
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -402,7 +402,7 @@ class TestQuietHours:
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
              patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -438,7 +438,7 @@ class TestQuietHours:
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
              patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -539,7 +539,7 @@ class TestLedgerWrite:
              patch("run_clock.current_bucket", side_effect=buckets), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
              patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert mock_append.call_count == 2
@@ -571,7 +571,7 @@ class TestLedgerWrite:
              patch("run_clock._display_quiet_image"), \
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
              patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         mock_append.assert_not_called()
@@ -600,7 +600,7 @@ class TestLedgerWrite:
              patch("run_clock.current_bucket", side_effect=buckets), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
              patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         mock_append.assert_not_called()
@@ -630,7 +630,7 @@ class TestLedgerWrite:
              patch("run_clock.current_bucket", side_effect=buckets), \
              patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
              patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # Only the first render appends; second tick sees unchanged quote and skips.
@@ -711,7 +711,7 @@ class TestDisplayQuietImage:
              patch("run_clock.render_now") as mock_render, \
              patch("run_clock._display_quiet_image", side_effect=lambda *a, **kw: display_calls.append(a)), \
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -833,7 +833,7 @@ class TestRuntimeStatePersistence:
         run_clock.save_runtime_state(str(path), {"manual_theme": "default", "manual_quiet": False})
         original = path.read_text(encoding="utf-8")
 
-        with patch("run_clock.os.replace", side_effect=OSError("simulated crash")):
+        with patch("atomic_io.os.replace", side_effect=OSError("simulated crash")):
             with pytest.raises(OSError):
                 run_clock.save_runtime_state(str(path), {"manual_theme": "dark", "manual_quiet": True})
 
@@ -843,7 +843,7 @@ class TestRuntimeStatePersistence:
     def test_save_writes_via_tmp_file(self, tmp_path):
         """Verify the tmp+rename path is actually used (not a direct write)."""
         path = tmp_path / "state.json"
-        with patch("run_clock.os.replace") as mock_replace:
+        with patch("atomic_io.os.replace") as mock_replace:
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
             assert mock_replace.called
             src, dst = mock_replace.call_args[0]
@@ -858,7 +858,7 @@ class TestRuntimeStatePersistence:
         Assert the directory fd is opened and fsynced after ``os.replace``.
         """
         path = tmp_path / "state.json"
-        with patch("run_clock.os.fsync") as mock_fsync:
+        with patch("atomic_io.os.fsync") as mock_fsync:
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
         # Two fsyncs: one for the tmp file fd, one for the parent directory fd.
         assert mock_fsync.call_count == 2
@@ -872,8 +872,9 @@ class TestRuntimeStatePersistence:
         still land in place and no exception must escape.
         """
         path = tmp_path / "state.json"
-        real_open = run_clock.os.open
-        real_fsync = run_clock.os.fsync
+        import atomic_io as _atomic_io
+        real_open = _atomic_io.os.open
+        real_fsync = _atomic_io.os.fsync
 
         def flaky_open(pth, flags):
             # Fail only for the directory handle; let the file-fd path through.
@@ -881,8 +882,8 @@ class TestRuntimeStatePersistence:
                 raise OSError("simulated no-op dir fsync")
             return real_open(pth, flags)
 
-        with patch("run_clock.os.open", side_effect=flaky_open), \
-             patch("run_clock.os.fsync", side_effect=real_fsync):
+        with patch("atomic_io.os.open", side_effect=flaky_open), \
+             patch("atomic_io.os.fsync", side_effect=real_fsync):
             # Must not raise.
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
         assert json.loads(path.read_text()) == {"manual_theme": "dark"}
@@ -1075,7 +1076,7 @@ class TestThemePersistenceEndToEnd:
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"), \
              patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -1116,7 +1117,7 @@ class TestAutoThemeLoopIntegration:
              patch("run_clock.current_time_str", return_value="20:00"), \
              patch("run_clock.current_bucket", return_value="h8_exact"), \
              patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert captured_themes == ["dark"]
@@ -1155,7 +1156,7 @@ class TestAutoThemeLoopIntegration:
              patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
              patch("run_clock.current_bucket", return_value="h6_exact"), \
              patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("time.sleep", side_effect=stop_after):
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert captured_themes == ["default", "dark"]
@@ -1664,7 +1665,7 @@ class TestStartupImage:
             raise KeyboardInterrupt
 
         monkeypatch.setattr(run_clock, "_display_quiet_image", fake_display)
-        monkeypatch.setattr(run_clock.time, "sleep", fake_sleep)
+        monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: fake_sleep(_sec))
         with patch("sys.argv", argv), \
              patch("run_clock.render_now") as mock_render, \
              patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")):
@@ -1701,7 +1702,7 @@ class TestStartupImage:
 
         monkeypatch.setattr(run_clock, "_display_quiet_image", fake_display)
         monkeypatch.setattr(run_clock, "_maybe_start_buttons", fake_start_buttons)
-        monkeypatch.setattr(run_clock.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
+        monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
         with patch("sys.argv", argv), \
              patch("run_clock.render_now"), \
              patch("run_clock.peek_quote_id", return_value=("s", 1, "q", "m")):
@@ -1726,7 +1727,7 @@ class TestStartupImage:
             run_clock, "_display_quiet_image",
             lambda q, o, d, **kw: displayed.append(q),
         )
-        monkeypatch.setattr(run_clock.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt))
+        monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
         with patch("sys.argv", argv), \
              patch("run_clock.render_now"), \
              patch("run_clock.peek_quote_id", return_value=None):
@@ -1803,3 +1804,218 @@ class TestButtonRenderGate:
         # Lock should be free now; acquiring non-blocking must succeed.
         assert state.render_lock.acquire(blocking=False)
         state.render_lock.release()
+
+
+class TestPruneTelemetry:
+    """``prune_telemetry`` unlinks only date-suffixed siblings older than the window."""
+
+    def _touch(self, base, date_str):
+        path = base.parent / f"{base.stem}-{date_str}{base.suffix}"
+        path.write_text("")
+        return path
+
+    def test_drops_siblings_older_than_retain_days(self, tmp_path):
+        base = tmp_path / "telemetry.jsonl"
+        today = dt.date(2026, 4, 20)
+        old = self._touch(base, "20260101")
+        recent = self._touch(base, "20260418")
+        current = self._touch(base, "20260420")
+        removed = run_clock.prune_telemetry(str(base), retain_days=30, today=today)
+        assert removed == 1
+        assert not old.exists()
+        assert recent.exists()
+        assert current.exists()
+
+    def test_retain_zero_disables_pruning(self, tmp_path):
+        base = tmp_path / "telemetry.jsonl"
+        today = dt.date(2026, 4, 20)
+        old = self._touch(base, "20200101")
+        removed = run_clock.prune_telemetry(str(base), retain_days=0, today=today)
+        assert removed == 0
+        assert old.exists()
+
+    def test_missing_directory_is_safe(self, tmp_path):
+        base = tmp_path / "does" / "not" / "exist" / "telemetry.jsonl"
+        removed = run_clock.prune_telemetry(str(base), retain_days=30, today=dt.date(2026, 4, 20))
+        assert removed == 0
+
+    def test_empty_path_disables_pruning(self, tmp_path):
+        assert run_clock.prune_telemetry("", retain_days=30) == 0
+        assert run_clock.prune_telemetry(None, retain_days=30) == 0
+
+    def test_non_matching_siblings_ignored(self, tmp_path):
+        """Files that match the glob pattern but have a bad date suffix stay put."""
+        base = tmp_path / "telemetry.jsonl"
+        today = dt.date(2026, 4, 20)
+        bogus = base.parent / "telemetry-BADSUFFIX.jsonl"
+        bogus.write_text("")
+        removed = run_clock.prune_telemetry(str(base), retain_days=1, today=today)
+        assert removed == 0
+        assert bogus.exists()
+
+    def test_other_stems_ignored(self, tmp_path):
+        """A different base stem's date siblings must not be pruned."""
+        base = tmp_path / "telemetry.jsonl"
+        other = tmp_path / "unrelated-20200101.jsonl"
+        other.write_text("")
+        removed = run_clock.prune_telemetry(str(base), retain_days=1, today=dt.date(2026, 4, 20))
+        assert removed == 0
+        assert other.exists()
+
+
+class TestInstallSignalHandlers:
+    """Signal handlers must flip ``state.stop_requested`` without tearing down the process."""
+
+    def test_sigterm_sets_stop_event(self):
+        import os
+        import signal
+        import time
+
+        state = run_clock.RuntimeState("default")
+        run_clock._install_signal_handlers(state)
+        try:
+            assert not state.stop_requested.is_set()
+            os.kill(os.getpid(), signal.SIGTERM)
+            # Give the signal dispatcher a moment.
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline and not state.stop_requested.is_set():
+                time.sleep(0.01)
+            assert state.stop_requested.is_set()
+        finally:
+            # Reset default handler so subsequent tests in this process aren't affected.
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+
+class TestShutdown:
+    """``_shutdown`` must tear resources down best-effort even when something raises."""
+
+    def _args(self, tmp_path):
+        return argparse.Namespace(state_path=str(tmp_path / "state.json"))
+
+    def test_releases_buttons_and_saves_state(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_theme = "dark"
+
+        closed = []
+
+        class FakeButton:
+            def close(self):
+                closed.append(True)
+
+        state.button_handles = [FakeButton(), FakeButton()]
+
+        run_clock._shutdown(args, state, web_handle=None)
+        assert closed == [True, True]
+        # State persisted.
+        assert json.loads((tmp_path / "state.json").read_text())["manual_theme"] == "dark"
+
+    def test_tolerates_render_lock_already_held(self, tmp_path, capsys):
+        """If render lock can't be acquired within the drain window, shutdown still proceeds.
+
+        Swap in a stub lock whose ``acquire`` returns False immediately (simulating
+        a 30s drain timeout) so the test doesn't wait.
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+
+        class _StubLock:
+            def acquire(self, *a, **kw):
+                return False
+
+            def release(self):
+                pass
+
+        state.render_lock = _StubLock()
+        # Must not raise; should log the "still in flight" warning.
+        run_clock._shutdown(args, state, web_handle=None)
+        err = capsys.readouterr().err
+        assert "render still in flight" in err
+
+    def test_missing_button_handles_is_fine(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # No button handles set; shutdown should not blow up.
+        run_clock._shutdown(args, state, web_handle=None)
+
+    def test_holds_render_lock_across_ingress_teardown(self, tmp_path):
+        """Regression: the render lock must stay held while the web server is
+        stopped and GPIO buttons are closed, so a late POST / button press
+        can't grab it via ``_button_render_gate`` and start a fresh render
+        during shutdown.
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+
+        observations = []
+
+        def observe_stop(handle):
+            observations.append(("web_stop", state.render_lock.locked()))
+
+        class FakeButton:
+            def close(self):
+                observations.append(("button_close", state.render_lock.locked()))
+
+        state.button_handles = [FakeButton()]
+        with patch("run_clock.stop_web_server", side_effect=observe_stop):
+            run_clock._shutdown(args, state, web_handle=object())
+
+        # The web server and button close both observed the lock as HELD.
+        assert ("web_stop", True) in observations
+        assert ("button_close", True) in observations
+        # And it was released afterwards so the process can exit cleanly.
+        assert not state.render_lock.locked()
+
+    def test_persist_failure_does_not_raise(self, tmp_path, monkeypatch):
+        """A save-state failure during shutdown must be swallowed (best-effort)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        monkeypatch.setattr(
+            run_clock, "save_runtime_state",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")),
+        )
+        # Must not raise.
+        run_clock._shutdown(args, state, web_handle=None)
+
+
+class TestMaybePruneTelemetry:
+    """The main-loop wrapper must prune at most once per local-date rollover."""
+
+    def _args(self, tmp_path, retain_days=30):
+        return argparse.Namespace(telemetry_retain_days=retain_days)
+
+    def test_skips_when_telemetry_disabled(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(run_clock, "prune_telemetry", lambda *a, **kw: calls.append(a) or 0)
+        state = run_clock.RuntimeState("default")
+        run_clock._maybe_prune_telemetry(self._args(tmp_path), state, telemetry_path=None)
+        run_clock._maybe_prune_telemetry(self._args(tmp_path), state, telemetry_path="")
+        assert calls == []
+
+    def test_runs_once_per_day(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(run_clock, "prune_telemetry", lambda *a, **kw: calls.append(a) or 0)
+        state = run_clock.RuntimeState("default")
+        args = self._args(tmp_path)
+        run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
+        run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
+        assert len(calls) == 1
+
+    def test_runs_again_next_day(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(run_clock, "prune_telemetry", lambda *a, **kw: calls.append(a) or 0)
+        state = run_clock.RuntimeState("default")
+        args = self._args(tmp_path)
+        run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
+        state.last_pruned_date = dt.date.today() - dt.timedelta(days=1)
+        run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
+        assert len(calls) == 2
+
+    def test_skips_when_retain_days_zero(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(run_clock, "prune_telemetry", lambda *a, **kw: calls.append(a) or 0)
+        state = run_clock.RuntimeState("default")
+        args = self._args(tmp_path, retain_days=0)
+        run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
+        assert calls == []
