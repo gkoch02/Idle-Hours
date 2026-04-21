@@ -1190,6 +1190,30 @@ class TestMidnightThemeReset:
         run_clock._maybe_reset_manual_theme_at_midnight(args, state)
         assert state.manual_theme == "dark"
 
+    def test_save_hook_routes_through_run_clock(self, tmp_path, monkeypatch):
+        """Patching ``run_clock.save_runtime_state`` must intercept the midnight save.
+
+        The refactor's compatibility contract is that every ``run_clock.X`` patch
+        target still works after extraction; without the lazy ``import run_clock``
+        in ``runtime_theme``, the midnight reset would bind ``save_runtime_state``
+        directly from ``runtime_store`` and silently bypass the patch, writing to
+        disk even when a test has replaced the hook.
+        """
+        state_path = tmp_path / "state.json"
+        args = argparse.Namespace(state_path=str(state_path))
+        state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
+        state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
+        calls = []
+        monkeypatch.setattr(
+            run_clock, "save_runtime_state",
+            lambda path, payload: calls.append((path, payload)),
+        )
+        run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+        assert state.manual_theme is None
+        assert calls == [(str(state_path), {"manual_theme": None, "manual_quiet": False})]
+        # Patch was honored: the real writer never ran, so no file on disk.
+        assert not state_path.exists()
+
 
 class TestButtonHandlers:
     """Synchronous handler dispatch — verifies wiring without spinning the loop."""
