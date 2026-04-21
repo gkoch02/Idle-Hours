@@ -1939,6 +1939,34 @@ class TestShutdown:
         # No button handles set; shutdown should not blow up.
         run_clock._shutdown(args, state, web_handle=None)
 
+    def test_holds_render_lock_across_ingress_teardown(self, tmp_path):
+        """Regression: the render lock must stay held while the web server is
+        stopped and GPIO buttons are closed, so a late POST / button press
+        can't grab it via ``_button_render_gate`` and start a fresh render
+        during shutdown.
+        """
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+
+        observations = []
+
+        def observe_stop(handle):
+            observations.append(("web_stop", state.render_lock.locked()))
+
+        class FakeButton:
+            def close(self):
+                observations.append(("button_close", state.render_lock.locked()))
+
+        state.button_handles = [FakeButton()]
+        with patch("run_clock.stop_web_server", side_effect=observe_stop):
+            run_clock._shutdown(args, state, web_handle=object())
+
+        # The web server and button close both observed the lock as HELD.
+        assert ("web_stop", True) in observations
+        assert ("button_close", True) in observations
+        # And it was released afterwards so the process can exit cleanly.
+        assert not state.render_lock.locked()
+
     def test_persist_failure_does_not_raise(self, tmp_path, monkeypatch):
         """A save-state failure during shutdown must be swallowed (best-effort)."""
         args = self._args(tmp_path)
