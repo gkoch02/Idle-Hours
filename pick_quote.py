@@ -252,9 +252,11 @@ def source_rarity_penalty(row: dict, source_counts: Counter) -> int:
 def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None, source_counts: Counter | None = None) -> tuple:
     display = row.get("display_quote") or ""
     fragment_penalty = 1 if row.get("display_fragment") else 0
-    cleanup_penalty = 0 if row.get("cleanup_status") == "complete_sentence" else 1
+    cleanup_penalty = 0 if row.get("cleanup_status") in {"complete_sentence", "expanded_with_context"} else 1
     matched = row.get("matched_text") or ""
     length_penalty = abs(len(display) - 140)
+    if len(display) < 60:
+        length_penalty += 80
     exactness_bonus = 0
     lowered = matched.lower().replace("\n", " ")
     if "five minutes to" in lowered or "ten minutes to" in lowered or "fifty-five minutes past" in lowered:

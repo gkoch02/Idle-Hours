@@ -65,6 +65,23 @@ def clean_edges(text: str) -> str:
     return text
 
 
+def strip_heading_prefix(text: str) -> str:
+    """Iteratively strip leading HEADING_PREFIX matches without touching quote
+    marks or other content-bearing punctuation. Used for interior sentences in
+    ``expand_candidates``: ``clean_edges`` would strip a leading ``"`` or ``'``
+    via ``LEADING_JUNK``, which destroys the opening of dialogue when joined
+    sentences like ``He paused. "All is ready," she replied.`` are concatenated
+    into a run — the interior sentence would become ``All is ready,"`` and
+    render with an orphan close-quote.
+    """
+    while True:
+        stripped = HEADING_PREFIX.sub("", text).strip()
+        if stripped == text:
+            break
+        text = stripped
+    return text
+
+
 def looks_fragment(text: str) -> bool:
     if not text:
         return True
@@ -77,27 +94,84 @@ def looks_fragment(text: str) -> bool:
     return False
 
 
+EXPANSION_MAX_CHARS = 260  # matches quality_filter's `too_long` ceiling — keep in lockstep.
+EXPANSION_NEIGHBOURS = 2
+
+# Catches chapter/book/part/scene/volume/letter markers *anywhere* in a candidate.
+# Case-sensitive (ALL CAPS or Title Case only) so we don't flag prose like
+# "garden-scene it had". Numerals must be uppercase roman or arabic, so "part 3"
+# in lowercase prose does not match either. Used post-join to reject joined runs
+# whose neighbour sentence bled a heading into the middle of the display quote.
+INTERIOR_HEADING = re.compile(
+    r"\b(?:CHAPTER|BOOK|PART|SCENE|VOLUME|LETTER|Chapter|Book|Part|Scene|Volume|Letter)"
+    r"\s+(?:[IVXLCDM]+|\d+)(?:[.:]|\b)",
+)
+
+
+def expand_candidates(text: str, matched_text: str) -> tuple[list[str], set[str]]:
+    """Build multi-sentence runs centered on sentences containing ``matched_text``.
+
+    Returns ``(runs, single_hits)`` — ``single_hits`` is the subset that are a
+    lone hit sentence (no neighbours joined), kept separate so the caller can
+    distinguish a naturally-complete sentence from an expanded run.
+    """
+    if not text:
+        return [], set()
+    needle = (matched_text or "").replace("\n", " ").strip().lower()
+    if not needle:
+        return [], set()
+    # Use the quote-preserving heading-stripper here, not clean_edges: joined
+    # runs must keep opening ``"`` / ``'`` characters on interior dialogue.
+    sentences = [strip_heading_prefix(s) for s in split_sentences(text)]
+    sentences = [s for s in sentences if s]
+    if not sentences:
+        return [], set()
+    hits = [i for i, s in enumerate(sentences) if needle in s.lower()]
+    runs: list[str] = []
+    singles: set[str] = set()
+    for i in hits:
+        for before in range(EXPANSION_NEIGHBOURS + 1):
+            for after in range(EXPANSION_NEIGHBOURS + 1):
+                lo = i - before
+                hi = i + after
+                if lo < 0 or hi >= len(sentences):
+                    continue
+                run = " ".join(sentences[lo:hi + 1]).strip()
+                if not run or len(run) > EXPANSION_MAX_CHARS:
+                    continue
+                runs.append(run)
+                if before == 0 and after == 0:
+                    singles.add(run)
+    return runs, singles
+
+
 def best_display_quote(row: dict) -> tuple[str, bool, str]:
     candidates = []
+    single_hits: set[str] = set()
     for field in ("quote_text", "context_text"):
         value = clean_edges(row.get(field) or "")
         if not value:
             continue
-        for sentence in split_sentences(value):
-            sentence = clean_edges(sentence)
-            if row.get("matched_text") and row["matched_text"].replace("\n", " ").strip().lower() in sentence.lower():
-                candidates.append(sentence)
+        runs, singles = expand_candidates(value, row.get("matched_text") or "")
+        candidates.extend(runs)
+        single_hits.update(singles)
         candidates.append(value)
+        # A full field value that is itself a single sentence must also count
+        # as a single-hit, otherwise rows with no/empty matched_text (or where
+        # the blob is the winning candidate) get mislabelled "expanded".
+        if len(split_sentences(value)) == 1:
+            single_hits.add(value)
 
-    seen = []
-    for candidate in candidates:
-        if candidate not in seen:
-            seen.append(candidate)
-
+    seen = list(dict.fromkeys(candidates))
     non_fragments = [c for c in seen if not looks_fragment(c)]
-    if non_fragments:
-        best = min(non_fragments, key=lambda c: (abs(len(c) - 140), len(c)))
-        return best, False, "complete_sentence"
+    # Prefer candidates whose interior is heading-free, but only if any survive.
+    # Sparse buckets where every candidate bleeds a heading still render something.
+    clean_non_fragments = [c for c in non_fragments if not INTERIOR_HEADING.search(c)]
+    pool = clean_non_fragments or non_fragments
+    if pool:
+        best = min(pool, key=lambda c: (abs(len(c) - 140), len(c)))
+        status = "complete_sentence" if best in single_hits else "expanded_with_context"
+        return best, False, status
 
     if seen:
         best = max(seen, key=len)

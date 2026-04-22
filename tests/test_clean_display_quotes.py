@@ -131,7 +131,9 @@ class TestBestDisplayQuote:
             context_text="",
         )
         text, _, status = cdq.best_display_quote(row)
-        assert status == "complete_sentence"
+        # The chosen text must contain the matched phrase and be a non-fragment
+        # (either a single complete sentence or an expanded multi-sentence run).
+        assert status in {"complete_sentence", "expanded_with_context"}
         assert "three o'clock" in text
 
     def test_falls_back_to_fragment(self):
@@ -157,7 +159,7 @@ class TestBestDisplayQuote:
         full = f"{short} {ideal} {very_long}"
         row = self._row(quote_text=full, context_text="")
         text, _, status = cdq.best_display_quote(row)
-        assert status == "complete_sentence"
+        assert status in {"complete_sentence", "expanded_with_context"}
         assert abs(len(text) - 140) <= abs(len(short) - 140)
 
     def test_strips_heading_from_context_sentence(self):
@@ -186,6 +188,157 @@ class TestBestDisplayQuote:
         assert status == "complete_sentence"
 
 
+class TestExpandCandidates:
+    def test_returns_single_hit_and_neighbour_runs(self):
+        text = "She arrived. It was three o'clock. Everyone cheered."
+        runs, singles = cdq.expand_candidates(text, "three o'clock")
+        # The hit sentence itself must appear as a single-hit candidate.
+        assert "It was three o'clock." in singles
+        # Multi-sentence runs joining it with its neighbours must be present.
+        assert "She arrived. It was three o'clock." in runs
+        assert "It was three o'clock. Everyone cheered." in runs
+        assert "She arrived. It was three o'clock. Everyone cheered." in runs
+
+    def test_no_match_returns_empty(self):
+        runs, singles = cdq.expand_candidates("No match here at all.", "three o'clock")
+        assert runs == []
+        assert singles == set()
+
+    def test_empty_needle_returns_empty(self):
+        runs, singles = cdq.expand_candidates("Some prose. More prose.", "")
+        assert runs == []
+        assert singles == set()
+
+    def test_caps_runs_at_max_chars(self):
+        long_filler = (
+            " ".join(["This is a long padding sentence that exists only to stretch the total length."] * 5)
+        )
+        text = f"{long_filler} It was three o'clock. {long_filler}"
+        runs, _ = cdq.expand_candidates(text, "three o'clock")
+        # No run produced may exceed the documented 260-char cap.
+        for run in runs:
+            assert len(run) <= cdq.EXPANSION_MAX_CHARS
+
+
+class TestExpandedStatusStamping:
+    def _row(self, quote_text="", context_text="", matched_text="three o'clock"):
+        return {"quote_text": quote_text, "context_text": context_text, "matched_text": matched_text}
+
+    def test_short_hit_expands_to_neighbouring_sentences(self):
+        # A bare time-utterance sandwiched between two richer complete sentences
+        # should yield a multi-sentence run as the winner (closer to 140 chars).
+        context = (
+            "The fire burned low and the hour grew late in the little cottage. "
+            "It was three o'clock. "
+            "Outside, a thin rain drummed against the shutters of the cottage."
+        )
+        row = self._row(quote_text="It was three o'clock.", context_text=context)
+        text, is_frag, status = cdq.best_display_quote(row)
+        assert is_frag is False
+        assert status == "expanded_with_context"
+        # Must include the hit and at least one neighbouring sentence.
+        assert "three o'clock" in text
+        assert "fire burned low" in text or "thin rain drummed" in text
+
+    def test_standalone_complete_sentence_stays_complete(self):
+        # When no neighbours are available, a single complete sentence should
+        # still be stamped "complete_sentence", not "expanded_with_context".
+        row = self._row(
+            quote_text="It was three o'clock in the afternoon of a long and weary day in the hills.",
+            context_text="It was three o'clock in the afternoon of a long and weary day in the hills.",
+        )
+        _, _, status = cdq.best_display_quote(row)
+        assert status == "complete_sentence"
+
+    def test_empty_matched_text_stamps_complete_when_blob_is_single_sentence(self):
+        # Regression guard: before the single-sentence-blob fallback, an empty
+        # matched_text plus a clean one-sentence quote_text got stamped
+        # "expanded_with_context" because the blob bypassed the expand path.
+        row = self._row(
+            quote_text="It was a cold and moonless night on the edge of the western hills.",
+            context_text="",
+            matched_text="",
+        )
+        _, is_frag, status = cdq.best_display_quote(row)
+        assert is_frag is False
+        assert status == "complete_sentence"
+
+    def test_interior_chapter_heading_is_avoided_when_alternative_exists(self):
+        # Row where context_text has a clean single-sentence hit but quote_text
+        # bleeds a Title-Case chapter marker mid-run. The heading-free candidate
+        # must win.
+        row = self._row(
+            quote_text="Lord, it's one o'clock. Chapter XI Titania Tries Reading in Bed.",
+            context_text="He yawned and looked at the clock on the mantel. Lord, it's one o'clock. The fire had burned low and the room was cold.",
+            matched_text="one o'clock",
+        )
+        text, _, _ = cdq.best_display_quote(row)
+        assert "Chapter XI" not in text
+        assert "one o'clock" in text
+
+    def test_interior_heading_filter_falls_back_when_only_heading_candidates(self):
+        # Sparse-bucket safety: if every non-fragment candidate contains an
+        # interior heading, we still return something (rather than punting to
+        # fragment_fallback) so the panel renders a line. Uses a mid-sentence
+        # heading that clean_edges cannot strip (it only strips prefixes), so
+        # the filter genuinely has no clean candidate to choose from.
+        only_sentence = "When I heard that CHAPTER 5 was coming, at three o'clock sharp, I felt ready."
+        row = self._row(
+            quote_text=only_sentence,
+            context_text=only_sentence,
+            matched_text="three o'clock",
+        )
+        text, is_frag, _ = cdq.best_display_quote(row)
+        assert is_frag is False
+        assert "three o'clock" in text
+        # Fell back to the unfiltered pool — the heading is still there.
+        assert "CHAPTER 5" in text
+
+    def test_expansion_preserves_opening_quotes_on_interior_dialogue(self):
+        # Regression guard for the P2 review finding: clean_edges' LEADING_JUNK
+        # strips leading "/' characters, so naïvely applying it per-sentence
+        # destroys opening quotes on interior dialogue when sentences are
+        # joined into a run, producing orphan close-quotes like
+        # 'He paused. All is ready," she replied.' instead of
+        # 'He paused. "All is ready," she replied.'.
+        quote_text = (
+            'He paused at the door, listening for voices on the stair. '
+            '"The carriage leaves at three o’clock," she replied firmly. '
+            'Outside the wind rattled the shutters of the old house.'
+        )
+        row = self._row(quote_text=quote_text, context_text="", matched_text="three o’clock")
+        text, _, _ = cdq.best_display_quote(row)
+        # If the interior dialogue sentence ended up in the run, its opening
+        # quote must still be present.
+        if "The carriage leaves at three" in text:
+            assert '"The carriage leaves' in text, (
+                f"opening quote missing before dialogue: {text!r}"
+            )
+
+    def test_picks_run_closest_to_140_over_shorter_and_longer_alternatives(self):
+        # Dedicated proximity test: a ~137-char hit sentence must win over a
+        # shorter single-sentence sibling and a much-longer joined blob.
+        short_sibling = "The door creaked."  # 17 chars
+        hit = (
+            "It was three o'clock when the long-awaited letter from her family in "
+            "a distant city finally arrived at the old country house that evening."
+        )  # 139 chars — closest to 140
+        filler = (
+            "She had waited for it all her life and the postman had come at last "
+            "with the envelope clutched tightly in his gloved hand and a wide grin."
+        )  # pushes any joined blob comfortably past 260
+        assert 130 <= len(hit) <= 150
+        row = self._row(
+            quote_text=f"{short_sibling} {hit} {filler}",
+            context_text="",
+        )
+        text, _, status = cdq.best_display_quote(row)
+        # Winner must be the 140-close hit sentence alone — not the short
+        # sibling, not a joined run, not the full blob.
+        assert text == hit
+        assert status == "complete_sentence"
+
+
 class TestMainCLI:
     def test_writes_cleaned_rows(self, tmp_path, tmp_jsonl, monkeypatch, capsys):
         rows = [
@@ -209,7 +362,7 @@ class TestMainCLI:
         assert cdq.main() == 0
         written = [json.loads(line) for line in output_path.read_text().splitlines()]
         assert len(written) == 2
-        assert written[0]["cleanup_status"] == "complete_sentence"
+        assert written[0]["cleanup_status"] in {"complete_sentence", "expanded_with_context"}
         assert written[0]["display_fragment"] is False
         assert written[1]["cleanup_status"] == "empty"
         assert written[1]["display_fragment"] is True

@@ -43,6 +43,13 @@ class TestFragmentPenalty:
         assert s_bad == s_clean - 20
         assert "fragment_fallback" in flags
 
+    def test_expanded_with_context_is_treated_as_clean(self):
+        text = "It was three o'clock when she arrived."
+        s_clean, _ = score(text, fragment=False, status="complete_sentence")
+        s_expanded, flags = score(text, fragment=False, status="expanded_with_context")
+        assert s_expanded == s_clean
+        assert "expanded_with_context" not in flags
+
 
 # ---------------------------------------------------------------------------
 # Length penalties
