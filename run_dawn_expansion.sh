@@ -68,8 +68,15 @@ python3 bucket_coverage.py "$EXISTING" \
   --output-json assets/bucket-coverage.json \
   --output-md assets/bucket-coverage.md
 
+echo ">>> Re-baking the runtime quote database..."
+# bake_quote_database.py reads the (now-updated) attributed corpus and writes
+# assets/quote_database.jsonl, the display-ready DB consulted at runtime. Must
+# be re-run any time the raw corpus changes — otherwise the picker sees stale
+# baked rows and ignores newly merged quotes.
+python3 bake_quote_database.py "$EXISTING" --output assets/quote_database.jsonl
+
 echo
 echo "Done. Review the diff, then:"
-echo "  git add $EXISTING assets/bucket-coverage.{md,json}"
+echo "  git add $EXISTING assets/bucket-coverage.{md,json} assets/quote_database.jsonl"
 echo "  git commit -m 'Expand corpus with clock-precise authors'"
 echo "  git push"

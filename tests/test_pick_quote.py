@@ -699,6 +699,112 @@ class TestMinuteDistancePenalty:
         assert pq.minute_distance_penalty(row, "h3_quarter_past", "03:15") == 5
 
 
+class TestComposeBakedScoreKey:
+    def test_layout_matches_score_row(self):
+        """compose_baked_score_key must rebuild the exact 12-tuple layout that
+        score_row produces, so tuple comparison gives identical pick ordering."""
+        row = make_row(quality_score=80, normalized_time="03:00", fuzzy_bucket="h3_exact")
+        counts = pq.Counter({"1234": 1})
+        expected = pq.score_row(
+            row, bucket="h3_exact", overrides={},
+            requested_time="03:00", source_counts=counts,
+        )
+        # Simulate what the baker stores: the ten row-intrinsic positions.
+        static_indices = (0, 1, 3, 4, 5, 6, 8, 9, 10, 11)
+        baked = dict(row)
+        baked["baked_score"] = [expected[i] for i in static_indices]
+        baked["inferred_quote_minute"] = 0
+        actual = pq.compose_baked_score_key(
+            baked, bucket="h3_exact", overrides={}, requested_time="03:00",
+        )
+        assert actual == expected
+
+    def test_minute_penalty_uses_cached_inferred_minute(self):
+        """The baked row's inferred_quote_minute is what drives minute_penalty —
+        recomputing from matched_text at runtime would be O(regex-sweep) per pick."""
+        baked = make_row(fuzzy_bucket="h3_exact")
+        baked["baked_score"] = [0] * 10
+        baked["inferred_quote_minute"] = 20
+        # Requested minute 20 ⇒ minute_penalty 0; requested 25 ⇒ penalty 5.
+        key_aligned = pq.compose_baked_score_key(baked, "h3_exact", {}, "03:20")
+        key_off = pq.compose_baked_score_key(baked, "h3_exact", {}, "03:25")
+        assert key_aligned[2] == 0
+        assert key_off[2] == 5
+
+    def test_missing_inferred_minute_returns_sentinel(self):
+        baked = make_row(fuzzy_bucket="h3_exact")
+        baked["baked_score"] = [0] * 10
+        baked["inferred_quote_minute"] = None
+        key = pq.compose_baked_score_key(baked, "h3_exact", {}, "03:00")
+        assert key[2] == 99
+
+    def test_override_bonus_recomputed_per_pick(self):
+        """Runtime selection_overrides can change between picks — bonus must
+        not be cached in baked_score."""
+        baked = make_row(source_id="42", fuzzy_bucket="h3_exact")
+        baked["baked_score"] = [0] * 10
+        baked["inferred_quote_minute"] = 0
+        no_boost = pq.compose_baked_score_key(baked, "h3_exact", {}, "03:00")
+        with_boost = pq.compose_baked_score_key(
+            baked, "h3_exact", {"boost_source_ids": ["42"]}, "03:00",
+        )
+        assert no_boost[7] == 0
+        assert with_boost[7] == -3
+
+
+class TestScoreRowBakedShortCircuit:
+    def test_baked_row_skips_intrinsic_recompute(self, monkeypatch):
+        """When baked_score is present, score_row should not call the live
+        intrinsic helpers — otherwise the bake would be wasted work."""
+        baked = make_row(fuzzy_bucket="h3_exact", quality_score=80)
+        baked["baked_score"] = [0] * 10
+        baked["inferred_quote_minute"] = 0
+        calls = {"metadata": 0, "dialogue": 0, "opening": 0}
+        monkeypatch.setattr(pq, "metadata_bonus", lambda row: calls.__setitem__("metadata", calls["metadata"] + 1) or -3)
+        monkeypatch.setattr(pq, "dialogue_penalty", lambda row: calls.__setitem__("dialogue", calls["dialogue"] + 1) or 0)
+        monkeypatch.setattr(pq, "opening_penalty", lambda row: calls.__setitem__("opening", calls["opening"] + 1) or 0)
+        pq.score_row(baked, bucket="h3_exact", overrides={}, requested_time="03:00", source_counts=None)
+        assert calls == {"metadata": 0, "dialogue": 0, "opening": 0}
+
+
+class TestResolveCorpus:
+    def test_prefers_baked_when_present(self, tmp_path, monkeypatch):
+        raw = tmp_path / "raw.jsonl"
+        baked = tmp_path / "baked.jsonl"
+        raw.write_text('{"source_id": "raw"}\n', encoding="utf-8")
+        baked.write_text('{"source_id": "baked"}\n', encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(str(baked), str(raw))
+        assert rows[0]["source_id"] == "baked"
+
+    def test_falls_back_to_raw_when_baked_missing(self, tmp_path, monkeypatch):
+        raw = tmp_path / "raw.jsonl"
+        raw.write_text('{"source_id": "raw"}\n', encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(str(tmp_path / "absent.jsonl"), str(raw))
+        assert rows[0]["source_id"] == "raw"
+
+    def test_falls_back_to_raw_when_baked_empty(self, tmp_path, monkeypatch, capsys):
+        """An editor truncating the baked file to 0 bytes must not starve the picker."""
+        raw = tmp_path / "raw.jsonl"
+        baked = tmp_path / "baked.jsonl"
+        raw.write_text('{"source_id": "raw"}\n', encoding="utf-8")
+        baked.write_text("", encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(str(baked), str(raw))
+        assert rows[0]["source_id"] == "raw"
+        assert "empty" in capsys.readouterr().err
+
+    def test_empty_database_path_forces_raw(self, tmp_path, monkeypatch):
+        raw = tmp_path / "raw.jsonl"
+        raw.write_text('{"source_id": "raw"}\n', encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(None, str(raw))
+        assert rows[0]["source_id"] == "raw"
+        rows = pq._resolve_corpus("", str(raw))
+        assert rows[0]["source_id"] == "raw"
+
+
 class TestSourceRarityPenalty:
     def test_no_source_id_returns_zero(self):
         assert pq.source_rarity_penalty({"source_id": None}, pq.Counter({"1234": 10})) == 0

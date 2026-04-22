@@ -152,12 +152,22 @@ python3 fix_legacy_buckets.py output/candidates-quality.jsonl
 python3 enrich_metadata.py output/candidates-quality.jsonl
 # → assets/candidates-attributed.jsonl
 
-# Final stage: layer durable hand-curated fixes from the sidecar on top.
+# Layer durable hand-curated fixes from the sidecar on top.
 # No-op when the sidecar is empty; otherwise patches matching rows in place,
 # stamps override_applied=true, and re-derives fuzzy_bucket from any
 # time-affecting overrides. Warns on stderr for dangling keys.
 python3 apply_content_overrides.py assets/candidates-attributed.jsonl
-# → assets/candidates-attributed.jsonl (the picker's default input)
+# → assets/candidates-attributed.jsonl (raw attributed corpus)
+
+# Final stage: bake the display-ready runtime quote database.
+# Drops daypart-only rows and rows below --min-quality, pre-computes the
+# nine row-intrinsic score components + source rarity (against the full raw
+# corpus so picks stay equivalent) into baked_score, caches
+# inferred_quote_minute, and assigns a per-bucket baked_rank. The runtime
+# picker reads this file by default and only recomputes the two request-time
+# components (minute_penalty, override_bonus) per pick.
+python3 bake_quote_database.py assets/candidates-attributed.jsonl
+# → assets/quote_database.jsonl (pick_quote.py default --database)
 ```
 
 ## Default paths
@@ -189,7 +199,9 @@ candidates-quality.jsonl
   ↓ enrich_metadata.py
 candidates-attributed.jsonl
   ↓ apply_content_overrides.py (layer assets/content_overrides.json on top)
-assets/candidates-attributed.jsonl    ← pick_quote.py --input default
+assets/candidates-attributed.jsonl    ← raw attributed corpus (curator UI --input)
+  ↓ bake_quote_database.py (drop daypart/low-quality, pre-score, per-bucket sort)
+assets/quote_database.jsonl           ← pick_quote.py default --database
   ↓ pick_quote.py
 JSON quote for requested time
   ↓ render_quote.py (imports pick_quote in-process)
@@ -312,9 +324,29 @@ Allowed override fields: `display_quote`, `matched_text`, `author`, `title`, `qu
 
 **Legacy fix scripts.** `fix_substring_time_matches.py` and `fix_legacy_buckets.py` are retained as one-shot migration tools for corpus rows harvested by earlier miner revisions (the miner now collapses `matched_text` whitespace and the shared `buckets.py` prevents legacy 8-state names). Fresh mines should make them no-ops; see each script's docstring.
 
+### Baked Quote Database (`assets/quote_database.jsonl`)
+
+Final pipeline stage output, produced by `bake_quote_database.py` from the raw attributed corpus. This is the *display-ready database* the runtime picker consults by default; `candidates-attributed.jsonl` stays on disk as the raw corpus and is used by the curator UI's bucket inspector (`/api/bucket`).
+
+**Why it exists.** Of the twelve score components in `pick_quote.score_row`, nine are row-intrinsic (`fragment`, `cleanup`, `metadata`, `dialogue`, `opening`, `source_bonus`, `quality`, `length_exactness`, `length_tiebreak`) and one more — `source_rarity_penalty` — depends only on the corpus as a whole; only `minute_penalty` and `override_bonus` actually change per request. Computing those ten components once at bake time, shipping them inline on each row, and dropping rows the picker would have filtered anyway (daypart-only rows with no `fuzzy_bucket`, rows below `--min-quality`) makes the runtime pick deterministic, smaller, and git-diffable: a regression in the scorer shows up as a diff to the committed database, not a silent drift in what the clock displays.
+
+**Row schema additions.** Every baked row keeps its original fields plus:
+
+- `baked_score` — list of ten ints in `BAKED_SCORE_COMPONENTS` order (see `bake_quote_database.py` and `pick_quote.py`). Drift between the two constant lists is how pick-equivalence silently breaks, so they're cross-checked in tests.
+- `inferred_quote_minute` — what minute this row claims, cached once so `minute_penalty` doesn't re-run the regex sweep per tick.
+- `baked_rank` — 0-based ordinal within the row's bucket after sorting ascending by `baked_score`. Purely for curator readability (the file is `(bucket, rank)`-ordered on disk); the runtime picker still sorts again once it has the two request-time components.
+
+**Rarity is baked against the raw corpus**, not the baked subset — otherwise a source whose low-quality rows get dropped at bake time would count lower in the baked rarity than in the live one, and pick-equivalence between the two paths would break for that source's surviving rows. `tests/test_bake_quote_database.TestBakeRows::test_rarity_uses_full_input_corpus` pins this.
+
+**Runtime lookup.** `pick_quote.select_quote` reads `assets/quote_database.jsonl` by default; if the file is missing or empty it falls back to the raw corpus with a stderr warning, so a stale/absent bake degrades gracefully instead of crashing the loop. `score_row` detects `baked_score in row` and short-circuits into `compose_baked_score_key`, which interleaves the two request-time components back into the pre-baked tuple at the correct positions to reproduce `score_row`'s original 12-tuple layout exactly. `tests/test_bake_equivalence.py` sweeps all 144 canonical buckets and asserts baked and raw picks return the same `(source_id, line_number)`.
+
+**What's still live, not baked.** `selection_overrides.json` (bans / boosts / preferred buckets) stays runtime, because the web UI rewrites it via `POST /api/overrides` — re-baking on every edit would block the UI on a CLI run. Bans are a cheap post-filter; boost/preferred bonuses fold into the `override_bonus` position of the sort key. The anti-repeat history ledger is also runtime (it mutates on every render).
+
+**When to re-bake.** Any time `assets/candidates-attributed.jsonl` changes — expand-corpus drivers like `run_dawn_expansion.sh` already run `bake_quote_database.py` as the last pipeline step, and the git commit it suggests includes `assets/quote_database.jsonl` alongside the raw corpus and coverage snapshot. A raw-corpus commit without a matching baked-DB commit means the picker will happily ignore the newly added quotes until the next bake.
+
 ### Quote Selection (`pick_quote.py`)
 
-Default input: `assets/candidates-attributed.jsonl`. Rows below `--min-quality` (default 60) are filtered out before scoring; banned `source_id`s (from `selection_overrides.json`) are dropped entirely.
+Default database: `assets/quote_database.jsonl` (the baked DB — see "Baked Quote Database" above); raw-corpus fallback `assets/candidates-attributed.jsonl` via `--input`. Rows below `--min-quality` (default 60) are filtered out before scoring (a no-op on baked rows since the baker already enforces the floor); banned `source_id`s (from `selection_overrides.json`) are dropped entirely.
 
 Candidates in a bucket are ranked by a long lexicographic tuple (lower is better at every position):
 
@@ -480,7 +512,7 @@ POST /api/action/{skip,unskip,theme,quiet,rerender} → mirror physical buttons
 
 ### Testing
 
-The test suite lives in `tests/` and uses pytest with pytest-cov. There are 29 test modules covering every pipeline script plus the runtime components — ~1780 tests at last count. `tests/test_atomic_io.py` exercises the shared durability primitive (`atomic_write_text` / `_bytes` / `_lines`) including monkeypatched `os.replace` failure paths that assert the tmp sibling is cleaned up and the target file is left byte-identical. The reliability branches of every caller are covered in their respective modules: `test_pick_quote.py` for the ledger-rewrite atomicity, `test_apply_content_overrides.py` for fail-open loading and atomic corpus writeback, `test_render_quote.py` for PNG-save crash recovery, `test_run_clock.py` for `_install_signal_handlers` / `_shutdown` / `prune_telemetry` / `_maybe_prune_telemetry`. Cross-cutting suites include `test_pipeline_integration.py` (end-to-end pipeline smoke), `test_corpus_invariants.py` (committed-corpus sanity checks), `test_miner_match_types.py` (regex per match type), `test_buckets_properties.py` (hypothesis-style bucket invariants), `test_concurrency.py` (render-lock and ledger-lock contention), and `test_cli_main_smoke.py` (each script's `if __name__ == "__main__"` entrypoint). `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`. `probe_buttons.py` has a smoke-test module (`test_probe_buttons.py`) that mocks GPIO interaction.
+The test suite lives in `tests/` and uses pytest with pytest-cov. There are 31 test modules covering every pipeline script plus the runtime components — ~1855 tests at last count (including `test_bake_quote_database.py` for the display-ready DB baker and `test_bake_equivalence.py` which sweeps all 144 canonical buckets to prove baked picks match raw-corpus picks). `tests/test_atomic_io.py` exercises the shared durability primitive (`atomic_write_text` / `_bytes` / `_lines`) including monkeypatched `os.replace` failure paths that assert the tmp sibling is cleaned up and the target file is left byte-identical. The reliability branches of every caller are covered in their respective modules: `test_pick_quote.py` for the ledger-rewrite atomicity, `test_apply_content_overrides.py` for fail-open loading and atomic corpus writeback, `test_render_quote.py` for PNG-save crash recovery, `test_run_clock.py` for `_install_signal_handlers` / `_shutdown` / `prune_telemetry` / `_maybe_prune_telemetry`. Cross-cutting suites include `test_pipeline_integration.py` (end-to-end pipeline smoke), `test_corpus_invariants.py` (committed-corpus sanity checks), `test_miner_match_types.py` (regex per match type), `test_buckets_properties.py` (hypothesis-style bucket invariants), `test_concurrency.py` (render-lock and ledger-lock contention), and `test_cli_main_smoke.py` (each script's `if __name__ == "__main__"` entrypoint). `display_inky.py` is exercised via `test_display_inky.py` with `_push_to_panel` mocked out so the retry/error paths run without real hardware; it stays in `tool.coverage.run.omit` so coverage numbers aren't skewed by hardware-only branches. `inky_buttons.py` is tested with `gpiozero.Button` stubbed via a `FakeButton` class injected through `sys.modules`. `probe_buttons.py` has a smoke-test module (`test_probe_buttons.py`) that mocks GPIO interaction.
 
 **Test structure:**
 - `tests/conftest.py` — shared fixtures: `make_row()` factory, `sample_row`, `sample_rows`, and `tmp_jsonl` (a helper that writes a list of dicts to a temp JSONL file)
@@ -514,8 +546,9 @@ quality_filter.py                  score + flag rows
 fix_substring_time_matches.py      LEGACY migration tool — repair substring-collision time tags in pre-fix JSONL
 fix_legacy_buckets.py              LEGACY migration tool — repair pre-buckets.py legacy 8-state names + matched_text whitespace
 enrich_metadata.py                 attach author/title from Gutenberg headers
-apply_content_overrides.py         layer assets/content_overrides.json onto candidates-attributed.jsonl (final pipeline stage)
-pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote())
+apply_content_overrides.py         layer assets/content_overrides.json onto candidates-attributed.jsonl
+bake_quote_database.py             final pipeline stage — bake the display-ready runtime DB (pre-scored, per-bucket sorted; pick_quote reads by default)
+pick_quote.py                      rank candidates, honor overrides, fall back to neighbors (exposes select_quote(); baked DB by default with raw-corpus fallback)
 render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process)
 contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
 run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry; atomic state writes, date-rotated telemetry with retention sweep, SIGTERM/SIGINT graceful shutdown, button liveness check). Thin orchestrator — delegates state/telemetry/theme/quiet/action helpers to the runtime_* siblings below and re-exports them so existing `run_clock.X` imports and test patches keep resolving.
@@ -537,7 +570,8 @@ litclock.service.example           sample systemd unit
 pi_setup_inky_impression.md        long-form Pi setup doc
 pyproject.toml                     project metadata + pytest / coverage / ruff configuration
 fonts/                             bundled Playfair Display family
-assets/candidates-attributed.jsonl shipped runtime quote corpus (pick_quote default --input)
+assets/candidates-attributed.jsonl raw attributed corpus (pick_quote --input fallback; curator UI /api/bucket)
+assets/quote_database.jsonl        baked display-ready database (pick_quote default --database; regenerate via bake_quote_database.py)
 assets/bucket-coverage.md          committed snapshot of the current corpus's bucket coverage
 assets/bucket-coverage.json        machine-readable companion to bucket-coverage.md
 assets/contact-sheet.png           12×12 visual snapshot of every bucket's current pick (regenerate via contact_sheet.py)

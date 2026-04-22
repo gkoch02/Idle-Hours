@@ -214,6 +214,97 @@ class TestMetadataCoverage:
         assert ratio >= 0.90, f"metadata coverage dropped to {ratio:.1%} of gutenberg rows — did enrich_metadata break?"
 
 
+DATABASE_PATH = Path(__file__).resolve().parent.parent / "assets" / "quote_database.jsonl"
+
+
+@pytest.fixture(scope="module")
+def baked_rows() -> list[dict]:
+    rows = []
+    with DATABASE_PATH.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
+@pytest.mark.skipif(not DATABASE_PATH.exists(), reason="shipped baked database missing")
+class TestBakedDatabaseInvariants:
+    """Schema checks on ``assets/quote_database.jsonl`` — the committed baked DB.
+
+    The raw corpus and the baked DB are both committed; CI must catch a
+    regression in the baker (wrong tuple layout, missing required field,
+    rank drift) before a deploy, not after.
+    """
+
+    def test_database_is_nonempty(self, baked_rows):
+        assert len(baked_rows) > 100, "baked database looks suspiciously small"
+
+    def test_every_row_has_baked_score(self, baked_rows):
+        for row in baked_rows:
+            score = row.get("baked_score")
+            assert isinstance(score, list), f"missing baked_score: {row.get('source_id')}:{row.get('line_number')}"
+            assert len(score) == 10, f"baked_score must have 10 components, got {len(score)}"
+            assert all(isinstance(v, int) for v in score), "baked_score components must be int"
+
+    def test_every_row_has_inferred_quote_minute(self, baked_rows):
+        for row in baked_rows:
+            assert "inferred_quote_minute" in row
+            value = row["inferred_quote_minute"]
+            assert value is None or (isinstance(value, int) and 0 <= value <= 59)
+
+    def test_every_row_has_valid_bucket(self, baked_rows):
+        """Baking drops all daypart-only rows; every kept row routes to a
+        concrete h{1..12}_{state} bucket."""
+        from pick_quote import valid_bucket_names
+        valid = valid_bucket_names()
+        for row in baked_rows:
+            bucket = row.get("fuzzy_bucket")
+            assert bucket in valid, f"unknown fuzzy_bucket {bucket!r} at {row.get('source_id')}:{row.get('line_number')}"
+
+    def test_quality_floor_applied(self, baked_rows):
+        """Default bake threshold is 60 — every row must clear it (or have no
+        score at all, which score_row treats as 0 penalty)."""
+        for row in baked_rows:
+            quality = row.get("quality_score")
+            if quality is not None:
+                assert quality >= 60, f"row below quality floor: {row.get('source_id')}:{row.get('line_number')} = {quality}"
+
+    def test_display_quote_nonempty(self, baked_rows):
+        for row in baked_rows:
+            display = row.get("display_quote")
+            assert isinstance(display, str) and display.strip()
+
+    def test_ranks_are_per_bucket_dense(self, baked_rows):
+        """Within each bucket, baked_rank should be 0, 1, 2, ... with no gaps —
+        confirms the baker's per-bucket sort+enumerate contract."""
+        from collections import defaultdict
+        by_bucket = defaultdict(list)
+        for row in baked_rows:
+            by_bucket[row["fuzzy_bucket"]].append(row["baked_rank"])
+        for bucket, ranks in by_bucket.items():
+            ranks.sort()
+            assert ranks == list(range(len(ranks))), f"bucket {bucket} has non-dense ranks {ranks}"
+
+    def test_rows_sorted_by_bucket_then_rank(self, baked_rows):
+        """File order is (bucket, rank) ascending so a human diff of the
+        committed DB is readable."""
+        seen_buckets: set[str] = set()
+        current_bucket = None
+        prev_rank = -1
+        for row in baked_rows:
+            bucket = row["fuzzy_bucket"]
+            rank = row["baked_rank"]
+            if bucket != current_bucket:
+                assert bucket not in seen_buckets, f"bucket {bucket} rows are not contiguous"
+                seen_buckets.add(bucket)
+                current_bucket = bucket
+                prev_rank = rank
+                continue
+            assert rank >= prev_rank, f"rank regression within bucket {bucket}: {prev_rank} → {rank}"
+            prev_rank = rank
+
+
 class TestBucketsHelpers:
     """Paranoid sanity checks on the primitives the invariants depend on."""
 

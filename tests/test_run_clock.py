@@ -232,7 +232,24 @@ class TestPeekQuoteId:
             side_effect=SystemExit("No candidates found"),
         ):
             assert run_clock.peek_quote_id("10:00") is None
-        assert "pick_quote failed" in capsys.readouterr().err
+
+    def test_uses_baked_database_path(self):
+        """The runtime loop must pass ``database_path=DEFAULT_DATABASE_PATH`` so
+        ``select_quote`` takes the fast baked-DB path. Without this, ``database_path``
+        defaults to ``None`` and the loop silently keeps reading the raw corpus."""
+        import pick_quote as pq
+        captured: dict = {}
+
+        def fake_select_quote(**kwargs):
+            captured.update(kwargs)
+            return {
+                "source_id": "1", "line_number": 2,
+                "display_quote": "x", "matched_text": "y",
+            }
+
+        with patch("run_clock.pick_quote_module.select_quote", side_effect=fake_select_quote):
+            run_clock.peek_quote_id("10:00")
+        assert captured.get("database_path") == pq.DEFAULT_DATABASE_PATH
 
 
 class TestLoopQuoteDedup:

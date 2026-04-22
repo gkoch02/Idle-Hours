@@ -183,7 +183,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def pick_quote(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> dict:
-    return pick_quote_module.select_quote(time_str=time_str, history_path=history_path, history_days=history_days)
+    return pick_quote_module.select_quote(
+        time_str=time_str,
+        history_path=history_path,
+        history_days=history_days,
+        database_path=pick_quote_module.DEFAULT_DATABASE_PATH,
+    )
 
 
 def load_font(candidates: list[str], size: int):
