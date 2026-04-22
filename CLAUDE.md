@@ -489,11 +489,11 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 | `runtime_state` | `RuntimeState` class, three locks, `commit_render_result` | — (stdlib only) |
 | `runtime_store` | `load_runtime_state` / `save_runtime_state` (atomic via `atomic_io`) | `runtime_log` |
 | `runtime_telemetry` | `append_telemetry`, `prune_telemetry`, `daily_telemetry_path`, date-rotated JSONL | `runtime_log` |
-| `runtime_quiet` | `in_quiet_hours`, `_display_quiet_image` | `runtime_log` |
+| `runtime_quiet` | `in_quiet_hours`, `_display_quiet_image`, `compute_quiet` / `enter_quiet` / `exit_quiet` state machine | `runtime_log`, `runtime_state`, `runtime_theme` (+ lazy `run_clock` for `_display_quiet_image` / `render_now` / `append_telemetry`) |
 | `runtime_theme` | `resolve_effective_theme`, `auto_theme_for`, `_maybe_reset_manual_theme_at_midnight` | `runtime_log`, `runtime_state` (+ lazy `run_clock` for midnight persist) |
 | `runtime_actions` | `action_skip/unskip/theme/quiet/rerender`, `_button_render_gate` | `runtime_log`, `runtime_state`, `runtime_theme`, `runtime_quiet` (+ lazy `run_clock` for peek/render/telemetry) |
 
-**Invariant:** every `runtime_*` module imports ≤4 siblings at module load (the dispatch layer in `runtime_actions` touches the most — log, state, theme, quiet — because it coordinates them), and only `runtime_actions` / `runtime_theme` touch `run_clock` — and only via `import run_clock` inside a function body, never at module top.
+**Invariant:** every `runtime_*` module imports ≤4 siblings at module load (the dispatch layer in `runtime_actions` touches the most — log, state, theme, quiet — because it coordinates them), and only `runtime_actions` / `runtime_theme` / `runtime_quiet` touch `run_clock` — and only via `import run_clock` inside a function body, never at module top.
 
 **Three locks, nested only in the documented direction.** `RuntimeState` exposes exactly three `threading.Lock`s:
 
@@ -505,7 +505,7 @@ Nesting discipline: `state.lock` is allowed inside `render_lock` (the main loop 
 
 **Thread ownership.**
 
-- **Main loop thread** owns tick cadence. Exclusive writer of `state.last_pruned_date`, `state.last_seen_date`, and the quiet-hours local flag. Calls `_append_history_after_render` post-render; *never* holds `render_lock` while calling back into button/web actions.
+- **Main loop thread** owns tick cadence. Exclusive writer of `state.last_pruned_date`, `state.last_seen_date`, and `state.was_quiet` (the rising/falling-edge tracker for quiet hours). Calls `_append_history_after_render` post-render; *never* holds `render_lock` while calling back into button/web actions.
 - **Button listener thread** (started by `inky_buttons.start_listener`). Fires handlers synchronously. Every handler's body is an `action_*` function wrapped in `_button_render_gate` — so a tap during an in-flight render drops cleanly rather than queueing behind a 20s refresh.
 - **Web server threads** (spawned by `http.server.ThreadingHTTPServer`). `POST /api/action/*` calls the *same* `action_*` functions with `label="web"`. Result dicts map 1:1 to HTTP status: `{ok: True}` → 200, `{error: "busy"}` → 409, `{error: "<repr>"}` → 500.
 
@@ -520,9 +520,10 @@ main loop iteration
   ├─ _maybe_reset_manual_theme_at_midnight(args, state)      # runtime_theme
   ├─ _check_button_liveness(state, telemetry_path)
   ├─ _maybe_prune_telemetry(args, state, telemetry_path)     # runtime_telemetry
-  ├─ scheduled_quiet = in_quiet_hours(...)                   # runtime_quiet
+  ├─ now_quiet, manual_only = compute_quiet(...)             # runtime_quiet
   │
-  ├─ if quiet:  _display_quiet_image(...);  sleep;  continue
+  ├─ if now_quiet:  enter_quiet(...) on rising edge; sleep; continue
+  ├─ if was_quiet: exit_quiet(state)                         # falling edge: clears last_bucket/quote_id
   │
   ├─ peek_quote_id(...)                                      # pick_quote
   ├─ with render_lock:  render_now(...)                      # subprocess: render_quote.py
@@ -639,7 +640,7 @@ runtime_state.py                   RuntimeState class — locks, mutable shared 
 runtime_store.py                   persisted runtime state JSON (manual_theme / manual_quiet) loaded at startup and saved atomically via atomic_io
 runtime_telemetry.py               date-rotated JSONL telemetry sidecar (append_telemetry, daily_telemetry_path, prune_telemetry)
 runtime_theme.py                   theme resolution — auto-dark window, manual override, midnight reset
-runtime_quiet.py                   in_quiet_hours + _display_quiet_image (shared by quiet hours, --startup-image, and button-D shutdown preamble)
+runtime_quiet.py                   in_quiet_hours + _display_quiet_image + compute_quiet/enter_quiet/exit_quiet state machine (shared by the main loop's scheduled quiet-hours branch and runtime_actions.action_quiet's manual toggle; --startup-image and button-D shutdown preamble reuse _display_quiet_image directly)
 runtime_actions.py                 action_skip/unskip/theme/quiet/rerender + _button_render_gate — shared by GPIO buttons and the web UI; each action does a lazy `import run_clock` internally so tests that patch `run_clock.X` affect the call path (same pattern web_server.py uses)
 display_inky.py                    Pi-only image → Inky Impression bridge (retry with backoff, per-theme saturation)
 inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D → run_clock handlers, press_logger + buttons_alive supervision)

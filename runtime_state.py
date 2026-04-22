@@ -46,6 +46,11 @@ class RuntimeState:
         # Last local date we ran telemetry retention on; only re-checked on
         # date rollover so the main loop doesn't glob every tick.
         self.last_pruned_date: dt.date | None = None
+        # Tracks whether the PREVIOUS main-loop tick was in quiet hours, so
+        # the loop can detect the rising edge (push the quiet image once on
+        # entry) and the falling edge (clear render-dedup state on exit).
+        # Only the main loop writes this, so no lock is needed.
+        self.was_quiet: bool = False
         # Flipped by the SIGTERM/SIGINT handler so the main loop can exit
         # cleanly between ticks. ``threading.Event`` (not a bool) because the
         # loop's interruptible sleep polls it; a plain flag would force us to

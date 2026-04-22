@@ -1,20 +1,39 @@
-"""Quiet-hours detection and static-image display bridge.
+"""Quiet-hours detection and state machine.
 
 ``in_quiet_hours`` decides whether a given wall-clock time falls in the
 configured blackout window (overnight ranges supported). ``_display_quiet_image``
 copies a PNG to the output path and optionally pushes it via a display script
 — used for quiet hours, the startup frame, and the button-D long-press
-shutdown preamble. Extracted from :mod:`run_clock`; the original names are
-re-exported from ``run_clock`` so existing tests and callers keep resolving.
+shutdown preamble.
+
+``compute_quiet`` / ``enter_quiet`` / ``exit_quiet`` are the three-step state
+machine the main loop drives each tick. They were extracted out of the
+``run_clock`` main loop body (and out of the inline ``last_bucket = None``
+clear in ``runtime_actions.action_quiet``) so both code paths share one
+definition of "what it means to enter / leave quiet hours".
+
+``enter_quiet`` routes its ``_display_quiet_image`` and ``render_now`` calls
+through ``run_clock.X`` (lazy ``import run_clock``) so the main-loop tests
+that patch ``run_clock._display_quiet_image`` / ``run_clock.render_now``
+continue to intercept the calls — same pattern ``runtime_actions`` uses.
+
+Extracted from :mod:`run_clock`; the original names (``in_quiet_hours``,
+``_display_quiet_image``) are re-exported from ``run_clock`` so existing tests
+and callers keep resolving.
 """
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
+from buckets import bucket_for_time
 from runtime_log import _log
+from runtime_state import RuntimeState
+from runtime_theme import resolve_effective_theme
 
 # Resolves to the repo root (same directory as run_clock.py) since all runtime
 # modules live alongside each other. Matches run_clock.BASE_DIR exactly.
@@ -59,3 +78,79 @@ def _display_quiet_image(
         display_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
         subprocess.check_call([sys.executable, display_path, output_resolved])
         _log(f"Displayed {output_resolved} via {display_path}")
+
+
+def compute_quiet(args: argparse.Namespace, state: RuntimeState, time_str: str) -> tuple[bool, bool]:
+    """Return ``(now_quiet, manual_only)`` for the current tick.
+
+    ``now_quiet`` is the OR of the scheduled-window check and
+    ``state.manual_quiet``. ``manual_only`` is True when quiet comes purely
+    from the manual toggle (used only to label the "quiet hours start" log
+    line so the operator can tell a manual override apart from the normal
+    22:00–06:00 window).
+    """
+    with state.lock:
+        manual_quiet = state.manual_quiet
+    scheduled_quiet = in_quiet_hours(
+        time_str,
+        None if args.quiet_off else args.quiet_start,
+        args.quiet_end,
+    )
+    return (scheduled_quiet or manual_quiet, manual_quiet and not scheduled_quiet)
+
+
+def enter_quiet(
+    args: argparse.Namespace,
+    state: RuntimeState,
+    time_str: str,
+    *,
+    manual_only: bool = False,
+) -> None:
+    """Push the quiet-image (or fallback quiet-start render) to the panel.
+
+    Wraps the push in ``state.render_lock`` so a racing button / web handler
+    can't interleave their own render. A display failure is logged, traced,
+    and recorded to the telemetry sidecar as ``mode="quiet"`` but never
+    propagated — the loop's next tick will retry.
+    """
+    import run_clock  # lazy: avoids circular import, and keeps test patches on
+                      # run_clock._display_quiet_image / run_clock.render_now working.
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    # bucket_for_time(time_str) rather than current_bucket() so tests that
+    # only patch current_time_str don't also have to patch the wall clock.
+    quiet_bucket = bucket_for_time(time_str)
+    trigger = "manual" if manual_only else f"{args.quiet_start}–{args.quiet_end}"
+    _log(f"quiet hours start ({trigger})")
+    try:
+        if args.quiet_image:
+            with state.render_lock:
+                run_clock._display_quiet_image(args.quiet_image, args.output, args.display_script)
+        else:
+            effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
+            with state.render_lock:
+                run_clock.render_now(
+                    args.render_script, args.output, args.width, args.height, args.display_script,
+                    args.mode, effective_theme, time_str=args.quiet_start,
+                    history_path=history_path, history_days=args.history_days,
+                    telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                )
+    except Exception as exc:
+        _log(f"quiet-hours display failed: {exc!r}", err=True)
+        traceback.print_exc(file=sys.stderr)
+        run_clock.append_telemetry(
+            telemetry_path, {"bucket": quiet_bucket, "error": repr(exc), "mode": "quiet"},
+        )
+
+
+def exit_quiet(state: RuntimeState) -> None:
+    """Clear the render-dedup fields so the next normal tick repaints.
+
+    Called by the main loop on scheduled quiet-exit, and by
+    ``runtime_actions.action_quiet`` after the manual-quiet toggle flips in
+    either direction — either case needs the loop to bypass the
+    "bucket unchanged" dedup and push a fresh frame.
+    """
+    with state.lock:
+        state.last_bucket = None
+        state.last_quote_id = None

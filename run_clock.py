@@ -25,8 +25,11 @@ from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     action_unskip,
 )
 from runtime_log import _log  # noqa: F401  re-exported
-from runtime_quiet import (  # noqa: F401  re-exported
+from runtime_quiet import (  # noqa: F401  in_quiet_hours + _display_quiet_image re-exported
     _display_quiet_image,
+    compute_quiet,
+    enter_quiet,
+    exit_quiet,
     in_quiet_hours,
 )
 from runtime_state import RuntimeState  # noqa: F401  re-exported
@@ -818,7 +821,6 @@ def main() -> int:
     # fast-arriving SIGTERM is observed on the first iteration.
     _install_signal_handlers(state)
 
-    _was_quiet = False
     try:
         while not state.stop_requested.is_set():
             time_str = current_time_str()
@@ -826,49 +828,22 @@ def main() -> int:
             _check_button_liveness(state, telemetry_path)
             _maybe_prune_telemetry(args, state, telemetry_path)
 
-            with state.lock:
-                manual_quiet = state.manual_quiet
-
-            scheduled_quiet = in_quiet_hours(time_str, None if args.quiet_off else args.quiet_start, args.quiet_end)
-            now_quiet = scheduled_quiet or manual_quiet
+            now_quiet, manual_only = compute_quiet(args, state, time_str)
 
             if now_quiet:
-                if not _was_quiet:
-                    trigger = "manual" if manual_quiet and not scheduled_quiet else f"{args.quiet_start}–{args.quiet_end}"
-                    _log(f"quiet hours start ({trigger})")
-                    # Use bucket_for_time(time_str) here rather than current_bucket() so we
-                    # don't double-tap the wall clock in tests that only patch current_time_str.
-                    quiet_bucket = bucket_for_time(time_str)
-                    try:
-                        if args.quiet_image:
-                            with state.render_lock:
-                                _display_quiet_image(args.quiet_image, args.output, args.display_script)
-                        else:
-                            effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
-                            with state.render_lock:
-                                render_now(
-                                    args.render_script, args.output, args.width, args.height, args.display_script,
-                                    args.mode, effective_theme, time_str=args.quiet_start,
-                                    history_path=history_path, history_days=args.history_days,
-                                    telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
-                                )
-                    except Exception as exc:
-                        _log(f"quiet-hours display failed: {exc!r}", err=True)
-                        traceback.print_exc(file=sys.stderr)
-                        append_telemetry(telemetry_path, {"bucket": quiet_bucket, "error": repr(exc), "mode": "quiet"})
-                    _was_quiet = True
+                if not state.was_quiet:
+                    enter_quiet(args, state, time_str, manual_only=manual_only)
+                    state.was_quiet = True
                 # Interruptible sleep so SIGTERM-during-quiet-hours wakes us up
                 # within one tick instead of sitting on the full interval.
                 if _loop_sleep(state, max(1, args.interval_seconds)):
                     break
                 continue
 
-            if _was_quiet:
+            if state.was_quiet:
                 _log("quiet hours end, resuming normal render cycle")
-                with state.lock:
-                    state.last_bucket = None
-                    state.last_quote_id = None
-                _was_quiet = False
+                exit_quiet(state)
+                state.was_quiet = False
 
             bucket = current_bucket()
             effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
