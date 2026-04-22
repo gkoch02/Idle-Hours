@@ -53,7 +53,7 @@ class TestCurrentBucket:
 
 class TestRenderNow:
     def test_calls_render_script(self, tmp_path):
-        with patch("subprocess.check_call") as mock_call, \
+        with patch("subprocess.run") as mock_call, \
              patch("run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -72,7 +72,7 @@ class TestRenderNow:
         assert "480" in cmd
 
     def test_mode_passed_through(self, tmp_path):
-        with patch("subprocess.check_call") as mock_call, \
+        with patch("subprocess.run") as mock_call, \
              patch("run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -86,7 +86,7 @@ class TestRenderNow:
         assert "production" in cmd
 
     def test_theme_passed_through(self, tmp_path):
-        with patch("subprocess.check_call") as mock_call, \
+        with patch("subprocess.run") as mock_call, \
              patch("run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -101,7 +101,7 @@ class TestRenderNow:
 
     def test_display_script_called_when_provided(self, tmp_path):
         calls = []
-        with patch("subprocess.check_call", side_effect=lambda cmd: calls.append(cmd)), \
+        with patch("subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd)), \
              patch("run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -115,7 +115,7 @@ class TestRenderNow:
         assert "display_inky.py" in calls[1][-1] or any("display_inky" in str(arg) for arg in calls[1])
 
     def test_no_display_script_one_call(self, tmp_path):
-        with patch("subprocess.check_call") as mock_call, \
+        with patch("subprocess.run") as mock_call, \
              patch("run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -662,7 +662,7 @@ class TestLedgerWrite:
             "--history-days", "14",
         ]
         with patch("sys.argv", argv), \
-             patch("subprocess.check_call") as mock_call, \
+             patch("subprocess.run") as mock_call, \
              patch("run_clock.current_time_str", return_value="14:30"), \
              patch(
                  "run_clock.peek_quote_id",
@@ -689,7 +689,7 @@ class TestDisplayQuietImage:
         src = tmp_path / "quiet.png"
         src.write_bytes(b"\x89PNG")
         out = tmp_path / "current.png"
-        with patch("subprocess.check_call") as mock_call:
+        with patch("subprocess.run") as mock_call:
             run_clock._display_quiet_image(str(src), str(out), display_script="display_inky.py")
         assert mock_call.called
         cmd = mock_call.call_args[0][0]
@@ -700,7 +700,7 @@ class TestDisplayQuietImage:
         src = tmp_path / "quiet.png"
         src.write_bytes(b"\x89PNG")
         out = tmp_path / "current.png"
-        with patch("subprocess.check_call") as mock_call:
+        with patch("subprocess.run") as mock_call:
             run_clock._display_quiet_image(str(src), str(out), display_script=None)
         mock_call.assert_not_called()
 
@@ -1002,7 +1002,7 @@ class TestDailyTelemetryPath:
 class TestRenderNowTelemetry:
     def test_writes_telemetry_after_successful_render(self, tmp_path):
         telemetry_base = tmp_path / "telemetry.jsonl"
-        with patch("subprocess.check_call"), \
+        with patch("subprocess.run"), \
              patch("run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -1025,7 +1025,7 @@ class TestRenderNowTelemetry:
         assert "render_ms" in entry
 
     def test_no_telemetry_when_disabled(self, tmp_path):
-        with patch("subprocess.check_call"), \
+        with patch("subprocess.run"), \
              patch("run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -1040,7 +1040,7 @@ class TestRenderNowTelemetry:
 
     def test_display_script_passes_theme(self, tmp_path):
         calls = []
-        with patch("subprocess.check_call", side_effect=lambda cmd: calls.append(cmd)), \
+        with patch("subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd)), \
              patch("run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
@@ -1571,7 +1571,7 @@ class TestShutdownHandler:
     def test_shutdown_invokes_configured_command(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.subprocess.check_call") as mock_check, \
+        with patch("run_clock.subprocess.run") as mock_check, \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -1582,7 +1582,7 @@ class TestShutdownHandler:
     def test_empty_shutdown_command_skips_invocation(self, tmp_path, capsys):
         args = self._args(tmp_path, shutdown_command="")
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.subprocess.check_call") as mock_check, \
+        with patch("run_clock.subprocess.run") as mock_check, \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -1596,7 +1596,7 @@ class TestShutdownHandler:
         state = run_clock.RuntimeState("default")
         assert state.manual_quiet is False
         with patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.subprocess.run"), \
              patch("run_clock.save_runtime_state") as mock_save, \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
@@ -1611,7 +1611,7 @@ class TestShutdownHandler:
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         with patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.subprocess.run"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -1620,7 +1620,7 @@ class TestShutdownHandler:
     def test_shutdown_command_failure_is_logged_not_raised(self, tmp_path, capsys):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.subprocess.check_call", side_effect=RuntimeError("nope")), \
+        with patch("run_clock.subprocess.run", side_effect=RuntimeError("nope")), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             # Must not raise.
@@ -1642,7 +1642,7 @@ class TestShutdownHandler:
             seen_flag_at_display.append(state.manual_quiet)
 
         with patch("run_clock._display_quiet_image", side_effect=record_display), \
-             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.subprocess.run"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -1655,7 +1655,7 @@ class TestShutdownHandler:
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         with patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.subprocess.check_call"), \
+             patch("run_clock.subprocess.run"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -2303,3 +2303,210 @@ class TestStopWebServer:
         thread = type("T", (), {"join": lambda self, timeout=None: None})()
         # Must not raise despite server_close failing.
         run_clock.stop_web_server((BadServer(), thread))
+
+
+class TestRenderSubprocessTimeout:
+    """The render subprocess must not be able to wedge the loop indefinitely.
+
+    subprocess.run(timeout=...) kills the child before re-raising TimeoutExpired;
+    we verify that our wrapper catches it, writes a telemetry entry tagged
+    ``mode="render_timeout"``, and re-raises so the main-loop error branch
+    keeps ``last_bucket`` stale for retry next tick.
+    """
+
+    def _boom(self, *a, **kw):
+        raise subprocess.TimeoutExpired(cmd=["render_quote.py"], timeout=run_clock.RENDER_TIMEOUT_SECONDS)
+
+    def test_render_timeout_writes_telemetry_and_reraises(self, tmp_path, capsys):
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        with patch("subprocess.run", side_effect=self._boom), \
+             patch("run_clock.current_time_str", return_value="14:30"):
+            with pytest.raises(subprocess.TimeoutExpired):
+                run_clock.render_now(
+                    render_script="render_quote.py",
+                    output_path=str(tmp_path / "current.png"),
+                    width=800,
+                    height=480,
+                    telemetry_path=str(telemetry_base),
+                    bucket="h2_half_past",
+                )
+        err = capsys.readouterr().err
+        assert "render subprocess timed out" in err
+        # Telemetry entry tagged as render_timeout.
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(e.get("mode") == "render_timeout" for e in entries)
+
+    def test_display_timeout_writes_telemetry_and_reraises(self, tmp_path, capsys):
+        # First subprocess.run call (render) succeeds; second (display) times out.
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        call_count = {"n": 0}
+
+        def side(*a, **kw):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return None
+            raise subprocess.TimeoutExpired(cmd=["display_inky.py"], timeout=run_clock.DISPLAY_TIMEOUT_SECONDS)
+
+        with patch("subprocess.run", side_effect=side), \
+             patch("run_clock.current_time_str", return_value="14:30"):
+            with pytest.raises(subprocess.TimeoutExpired):
+                run_clock.render_now(
+                    render_script="render_quote.py",
+                    output_path=str(tmp_path / "current.png"),
+                    width=800,
+                    height=480,
+                    display_script="display_inky.py",
+                    telemetry_path=str(telemetry_base),
+                    bucket="h2_half_past",
+                )
+        assert "display subprocess timed out" in capsys.readouterr().err
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(e.get("mode") == "display_timeout" for e in entries)
+
+    def test_timeout_kwarg_is_passed(self, tmp_path):
+        """Regression: subprocess.run must actually receive the timeout kwarg."""
+        captured = {}
+
+        def record(cmd, **kw):
+            captured.update(kw)
+
+        with patch("subprocess.run", side_effect=record), \
+             patch("run_clock.current_time_str", return_value="14:30"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800,
+                height=480,
+            )
+        assert captured.get("timeout") == run_clock.RENDER_TIMEOUT_SECONDS
+        assert captured.get("check") is True
+
+
+class TestRenderFailureBackoff:
+    """Repeated render failures must trigger exponential backoff and skip ticks.
+
+    Without this, a pulled ribbon cable or wedged display library would have
+    the main loop retry every --interval-seconds forever, flooding the log
+    and starving the GPIO thread.
+    """
+
+    def test_counter_increments_on_failure(self):
+        state = run_clock.RuntimeState("default")
+        # Two failures in a row is below the BACKOFF_EVERY_N_FAILURES
+        # threshold of 3, so no skip window is set yet.
+        run_clock._record_render_failure(state, telemetry_path=None, bucket="h1_exact")
+        run_clock._record_render_failure(state, telemetry_path=None, bucket="h1_exact")
+        assert state.consecutive_render_failures == 2
+        assert state.backoff_skip_until == 0.0
+
+    def test_threshold_triggers_skip_window(self, tmp_path):
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        state = run_clock.RuntimeState("default")
+        for _ in range(run_clock.BACKOFF_EVERY_N_FAILURES):
+            run_clock._record_render_failure(state, telemetry_path=str(telemetry_base), bucket="h1_exact")
+        assert state.consecutive_render_failures == run_clock.BACKOFF_EVERY_N_FAILURES
+        assert state.backoff_skip_until > 0.0
+        # Telemetry entry records the backoff event.
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(e.get("mode") == "backoff" for e in entries)
+
+    def test_backoff_is_capped(self):
+        """Very high failure counts must not produce an unbounded skip window."""
+        state = run_clock.RuntimeState("default")
+        # Simulate enough failures that 2**level would vastly exceed the cap.
+        for _ in range(run_clock.BACKOFF_EVERY_N_FAILURES * 30):
+            run_clock._record_render_failure(state, telemetry_path=None, bucket="h1_exact")
+        # backoff_skip_until is a monotonic deadline, so compare via remaining
+        # skip seconds bounded by BACKOFF_MAX_SECONDS + a small slack.
+        import time as _time
+        remaining = state.backoff_skip_until - _time.monotonic()
+        assert remaining <= run_clock.BACKOFF_MAX_SECONDS + 1
+
+    def test_in_backoff_skip_reports_true_during_window(self):
+        state = run_clock.RuntimeState("default")
+        import time as _time
+        state.backoff_skip_until = _time.monotonic() + 30
+        assert run_clock._in_backoff_skip(state) is True
+
+    def test_in_backoff_skip_reports_false_after_window(self):
+        state = run_clock.RuntimeState("default")
+        state.backoff_skip_until = 0.0
+        assert run_clock._in_backoff_skip(state) is False
+
+    def test_successful_render_resets_counter(self):
+        """commit_render_result is the single success seam; it must clear backoff."""
+        state = run_clock.RuntimeState("default")
+        state.consecutive_render_failures = 5
+        import time as _time
+        state.backoff_skip_until = _time.monotonic() + 60
+        state.commit_render_result("h2_half_past", "default", ("src", 1))
+        assert state.consecutive_render_failures == 0
+        assert state.backoff_skip_until == 0.0
+
+
+class TestHeartbeat:
+    """The loop emits a positive liveness signal so health checks can tell
+    'idle but alive' apart from 'wedged'."""
+
+    def test_heartbeat_written_first_call(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        run_clock._maybe_emit_heartbeat(state, str(telemetry_base))
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(e.get("type") == "heartbeat" for e in entries)
+
+    def test_heartbeat_throttled_within_interval(self, tmp_path):
+        """Three back-to-back calls must produce at most one heartbeat entry."""
+        state = run_clock.RuntimeState("default")
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        for _ in range(3):
+            run_clock._maybe_emit_heartbeat(state, str(telemetry_base))
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        hb = [e for e in entries if e.get("type") == "heartbeat"]
+        assert len(hb) == 1
+
+    def test_heartbeat_disabled_when_no_telemetry(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        # No telemetry path → no-op, no file created.
+        run_clock._maybe_emit_heartbeat(state, None)
+        assert list(tmp_path.iterdir()) == []
+
+
+class TestSourceCardTimerCancellation:
+    """The 5s source-card restore Timer must not fire after _shutdown."""
+
+    def _args(self, tmp_path):
+        return argparse.Namespace(
+            state_path=str(tmp_path / "state.json"),
+        )
+
+    def test_shutdown_cancels_registered_timers(self, tmp_path):
+        import threading
+        state = run_clock.RuntimeState("default")
+        fired = []
+        timer = threading.Timer(30.0, lambda: fired.append("late"))
+        timer.daemon = True
+        state.pending_timers.append(timer)
+        timer.start()
+
+        run_clock._shutdown(self._args(tmp_path), state, web_handle=None)
+        # Timer was cancelled before it could fire.
+        assert fired == []
+        # Shutdown drained pending_timers so a repeat teardown doesn't double-cancel.
+        assert state.pending_timers == []
+
+    def test_shutdown_tolerates_already_fired_timer(self, tmp_path):
+        """Timer.cancel is idempotent on a fired timer; shutdown must not raise."""
+        import threading
+        state = run_clock.RuntimeState("default")
+        # A timer that never actually scheduled — cancel is still safe.
+        timer = threading.Timer(0.0, lambda: None)
+        state.pending_timers.append(timer)
+        # No raise; pending_timers drained.
+        run_clock._shutdown(self._args(tmp_path), state, web_handle=None)
+        assert state.pending_timers == []

@@ -45,6 +45,17 @@ def parse_args() -> argparse.Namespace:
             "indicates a problem."
         ),
     )
+    parser.add_argument(
+        "--max-heartbeat-age-minutes",
+        type=int,
+        default=None,
+        help=(
+            "Exit 2 if no loop-heartbeat telemetry entry appears within this many minutes. "
+            "Heartbeats are emitted once per ~60s by run_clock regardless of whether the "
+            "panel is refreshing, so this distinguishes 'idle but alive' from 'wedged'. "
+            "Default: disabled."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -136,17 +147,30 @@ def load_entries(path: Path, since: dt.datetime) -> list[dict]:
 
 
 def summarise(entries: list[dict]) -> dict:
-    renders = [e for e in entries if "error" not in e]
-    errors = [e for e in entries if "error" in e]
+    # Heartbeat entries answer "is the loop alive?" and are counted
+    # separately from render/error tallies so a silent-but-alive appliance
+    # doesn't look like "0 renders, 0 errors" when it's actually fine.
+    heartbeats = [e for e in entries if e.get("type") == "heartbeat"]
+    non_heartbeats = [e for e in entries if e.get("type") != "heartbeat"]
+    renders = [e for e in non_heartbeats if "error" not in e]
+    errors = [e for e in non_heartbeats if "error" in e]
     render_latencies = sorted(
         e["render_ms"] for e in renders if isinstance(e.get("render_ms"), int)
     )
     display_latencies = sorted(
         e["display_ms"] for e in renders if isinstance(e.get("display_ms"), int)
     )
+    last_heartbeat_ts: str | None = None
+    if heartbeats:
+        # Heartbeats are ordered by telemetry-file-then-line, which is wall-clock
+        # order since ``append_telemetry`` always appends. The final entry's ts
+        # is the most recent heartbeat.
+        last_heartbeat_ts = heartbeats[-1].get("ts")
     return {
         "render_count": len(renders),
         "error_count": len(errors),
+        "heartbeat_count": len(heartbeats),
+        "last_heartbeat_ts": last_heartbeat_ts,
         "render_p50_ms": _percentile(render_latencies, 50),
         "render_p95_ms": _percentile(render_latencies, 95),
         "display_p50_ms": _percentile(display_latencies, 50),
@@ -159,6 +183,9 @@ def format_summary(summary: dict, hours: int) -> str:
     parts = [
         f"Last {hours}h: {summary['render_count']} renders, {summary['error_count']} errors",
     ]
+    if summary.get("heartbeat_count"):
+        last_hb = summary.get("last_heartbeat_ts") or "?"
+        parts.append(f"{summary['heartbeat_count']} heartbeats (last {last_hb})")
     if summary["render_p50_ms"] is not None:
         parts.append(
             f"render latency p50 {summary['render_p50_ms']}ms / p95 {summary['render_p95_ms']}ms"
@@ -169,19 +196,52 @@ def format_summary(summary: dict, hours: int) -> str:
         )
     if summary["last_error"]:
         parts.append(f"last error: {summary['last_error']}")
+    if summary.get("stale_heartbeat"):
+        parts.append("WARNING: heartbeat is stale — loop may be wedged")
     return "\n".join(parts)
 
 
-def evaluate_health(summary: dict, *, fail_if_no_renders: bool) -> int:
+def is_heartbeat_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
+    """Return True when the most recent heartbeat is older than ``max_age_minutes``.
+
+    Also returns True when no heartbeat was seen at all — an appliance that
+    has been running long enough for the summary window to populate but has
+    emitted zero heartbeats is either pre-heartbeat code (operator should
+    upgrade) or wedged before the first emit (same flag, same exit code).
+    """
+    last = summary.get("last_heartbeat_ts")
+    if not last:
+        return True
+    try:
+        last_dt = dt.datetime.fromisoformat(last)
+    except ValueError:
+        return True
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=dt.timezone.utc)
+    if now is None:
+        now = dt.datetime.now(dt.timezone.utc)
+    return (now - last_dt) > dt.timedelta(minutes=max_age_minutes)
+
+
+def evaluate_health(
+    summary: dict,
+    *,
+    fail_if_no_renders: bool,
+    max_heartbeat_age_minutes: int | None = None,
+) -> int:
     """Map a summary dict to a process exit code.
 
     - ``0``: healthy (there are renders, or nothing unhealthy happened)
-    - ``2``: unhealthy — errors but no successful renders, or
-      ``--fail-if-no-renders`` was set and the window was silent.
+    - ``2``: unhealthy — errors but no successful renders;
+      ``--fail-if-no-renders`` was set and the window was silent; or
+      ``--max-heartbeat-age-minutes`` was set and the most recent heartbeat
+      is older than the cap (including the "never emitted" case).
     """
     if summary["error_count"] > 0 and summary["render_count"] == 0:
         return 2
     if fail_if_no_renders and summary["render_count"] == 0:
+        return 2
+    if max_heartbeat_age_minutes is not None and is_heartbeat_stale(summary, max_heartbeat_age_minutes):
         return 2
     return 0
 
@@ -200,11 +260,17 @@ def main() -> int:
             print(f"No telemetry log at {path}", file=sys.stderr)
         return 1
     summary = summarise(entries)
+    if args.max_heartbeat_age_minutes is not None:
+        summary["stale_heartbeat"] = is_heartbeat_stale(summary, args.max_heartbeat_age_minutes)
     if args.json:
         print(json.dumps({"hours": args.hours, **summary}))
     else:
         print(format_summary(summary, args.hours))
-    return evaluate_health(summary, fail_if_no_renders=args.fail_if_no_renders)
+    return evaluate_health(
+        summary,
+        fail_if_no_renders=args.fail_if_no_renders,
+        max_heartbeat_age_minutes=args.max_heartbeat_age_minutes,
+    )
 
 
 if __name__ == "__main__":

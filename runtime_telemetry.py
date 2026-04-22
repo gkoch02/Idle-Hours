@@ -45,6 +45,22 @@ def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
     return base.with_name(f"{base.stem}-{today.strftime('%Y%m%d')}{suffix}")
 
 
+def append_heartbeat(telemetry_path: str | None) -> None:
+    """Emit a lightweight liveness marker with ``type="heartbeat"``.
+
+    Shares the rotation / fail-open / ``ts`` stamping with ``append_telemetry``;
+    factored as a thin wrapper so call sites read as "emit heartbeat" instead
+    of passing a bare sentinel dict, and so ``litclock_health.py`` can keep
+    a single ``"type"`` convention for any future marker types we add.
+
+    Heartbeat entries are deliberately NOT counted toward ``render_count`` or
+    ``error_count`` by the health summariser — they answer "is the loop
+    alive?", not "is the panel being refreshed?", which is a different
+    question an idle appliance should be able to answer "yes / no".
+    """
+    append_telemetry(telemetry_path, {"type": "heartbeat"})
+
+
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     """Append one JSON line to today's telemetry log. No-op when disabled.
 

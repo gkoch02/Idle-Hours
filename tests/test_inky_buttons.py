@@ -225,3 +225,77 @@ class TestPressLogger:
         )
         _button_for_label(buttons, "C").when_pressed()
         assert fired == ["C"]
+
+
+class TestHandlerExceptionContained:
+    """A handler that raises must not kill the gpiozero event thread.
+
+    Before the hardening, an unguarded ``dispatch()`` / ``when_held`` /
+    ``when_released`` callback would propagate into gpiozero's internal
+    thread and silently stop the listener. We now print a traceback and
+    swallow the exception, preferring loud-but-alive to silent-and-dead.
+    """
+
+    def test_short_handler_exception_is_swallowed(self, capsys):
+        def bad():
+            raise RuntimeError("handler bug")
+
+        buttons = inky_buttons.start_listener({"A": bad})
+        btn = _button_for_label(buttons, "A")
+        # Must not raise.
+        btn.when_pressed()
+        err = capsys.readouterr().err
+        assert "handler bug" in err
+        assert "GPIO 5" in err
+
+    def test_hold_handler_exception_is_swallowed(self, capsys):
+        """when_held is attached directly to the button (not via _make_press_cb),
+        so the guard has to live inside _HoldDispatcher itself.
+        """
+        def bad_hold():
+            raise RuntimeError("hold bug")
+
+        buttons = inky_buttons.start_listener(
+            {"A": lambda: None},
+            hold_handlers={"A": bad_hold},
+        )
+        btn = _button_for_label(buttons, "A")
+        # Simulate the hardware fire-order: press → hold (during press).
+        btn.when_pressed()
+        btn.when_held()
+        err = capsys.readouterr().err
+        assert "hold bug" in err
+
+    def test_release_short_exception_is_swallowed(self, capsys):
+        """After a short press, when_released fires the short handler via
+        _HoldDispatcher.on_release — that path must also catch exceptions.
+        """
+        def bad_short():
+            raise RuntimeError("short bug")
+
+        buttons = inky_buttons.start_listener(
+            {"A": bad_short},
+            hold_handlers={"A": lambda: None},
+        )
+        btn = _button_for_label(buttons, "A")
+        btn.when_pressed()
+        btn.when_released()  # not held → short handler fires
+        err = capsys.readouterr().err
+        assert "short bug" in err
+
+    def test_subsequent_presses_still_dispatch_after_raising_one(self):
+        """Regression guard: one buggy handler must not cripple the listener.
+        The press callback stays installed, and a second press still fires.
+        """
+        fired = []
+
+        def handler():
+            fired.append(len(fired))
+            if len(fired) == 1:
+                raise RuntimeError("first call raises")
+
+        buttons = inky_buttons.start_listener({"A": handler})
+        btn = _button_for_label(buttons, "A")
+        btn.when_pressed()  # raises and is swallowed
+        btn.when_pressed()  # must still fire
+        assert fired == [0, 1]

@@ -41,6 +41,7 @@ from runtime_store import (  # noqa: F401  load_runtime_state re-exported for te
 from runtime_telemetry import (  # noqa: F401  daily_telemetry_path re-exported for tests
     DEFAULT_TELEMETRY_PATH,
     DEFAULT_TELEMETRY_RETAIN_DAYS,
+    append_heartbeat,
     append_telemetry,
     daily_telemetry_path,
     prune_telemetry,
@@ -52,6 +53,31 @@ from runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-ex
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Bounds on the render / display / shutdown subprocesses so a wedged child
+# (Pillow encode stuck on a font load, inky.show() waiting on a dead I2C bus,
+# sudo hanging on PAM) can't stall the entire main loop indefinitely. These
+# are SAFETY NETS, not expected durations — set wide enough that a normal
+# Spectra 6 refresh (10–20s) plus display_inky's internal 3× retry with
+# backoff (up to ~5s) fits comfortably. We use ``subprocess.run(timeout=...)``
+# rather than ``check_call(timeout=...)`` because ``run`` kills the child on
+# TimeoutExpired before re-raising; ``check_call`` leaves the zombie.
+RENDER_TIMEOUT_SECONDS = 45
+DISPLAY_TIMEOUT_SECONDS = 60
+SHUTDOWN_TIMEOUT_SECONDS = 30
+
+# Outer-loop backoff after repeated render/display failures. Every N
+# consecutive failures we skip the next block of ticks; the skip grows
+# exponentially up to BACKOFF_MAX_SECONDS so a hard hardware fault stops
+# thrashing the log / GPIO thread.
+BACKOFF_EVERY_N_FAILURES = 3
+BACKOFF_MAX_SECONDS = 15 * 60
+
+# Minimum wall-clock spacing between loop-heartbeat telemetry writes. The
+# heartbeat is a positive "I'm ticking" signal that works during quiet
+# hours and between bucket changes, but writing on every tick of a
+# default 60s loop would be noisy and on a 1s test loop would be absurd.
+HEARTBEAT_INTERVAL_SECONDS = 60
 
 
 def _valid_hhmm(value: str) -> str:
@@ -322,35 +348,76 @@ def render_now(
     render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
     output_path_resolved = str((BASE_DIR / output_path).resolve()) if not Path(output_path).is_absolute() else output_path
     render_start = time.monotonic()
-    subprocess.check_call(
-        [
-            python_executable,
-            render_script_path,
-            "--time",
-            time_str,
-            "--output",
-            output_path_resolved,
-            "--width",
-            str(width),
-            "--height",
-            str(height),
-            "--mode",
-            mode,
-            "--theme",
-            theme,
-            "--history-path",
-            history_path or "",
-            "--history-days",
-            str(history_days),
-        ]
-    )
+    try:
+        subprocess.run(
+            [
+                python_executable,
+                render_script_path,
+                "--time",
+                time_str,
+                "--output",
+                output_path_resolved,
+                "--width",
+                str(width),
+                "--height",
+                str(height),
+                "--mode",
+                mode,
+                "--theme",
+                theme,
+                "--history-path",
+                history_path or "",
+                "--history-days",
+                str(history_days),
+            ],
+            check=True,
+            timeout=RENDER_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # subprocess.run has already killed the child before re-raising; we
+        # only need to telemetrise and re-raise so the main loop's error
+        # handler logs + keeps last_bucket stale for retry next tick.
+        _log(
+            f"render subprocess timed out after {RENDER_TIMEOUT_SECONDS}s for {time_str}",
+            err=True,
+        )
+        append_telemetry(
+            telemetry_path,
+            {
+                "bucket": bucket,
+                "error": repr(exc),
+                "mode": "render_timeout",
+                "timeout_seconds": RENDER_TIMEOUT_SECONDS,
+            },
+        )
+        raise
     render_ms = int((time.monotonic() - render_start) * 1000)
     _log(f"Rendered {time_str} -> {output_path_resolved} ({render_ms} ms)")
     display_ms: int | None = None
     if display_script:
         display_script_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
         display_start = time.monotonic()
-        subprocess.check_call([python_executable, display_script_path, output_path_resolved, "--theme", theme])
+        try:
+            subprocess.run(
+                [python_executable, display_script_path, output_path_resolved, "--theme", theme],
+                check=True,
+                timeout=DISPLAY_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            _log(
+                f"display subprocess timed out after {DISPLAY_TIMEOUT_SECONDS}s for {output_path_resolved}",
+                err=True,
+            )
+            append_telemetry(
+                telemetry_path,
+                {
+                    "bucket": bucket,
+                    "error": repr(exc),
+                    "mode": "display_timeout",
+                    "timeout_seconds": DISPLAY_TIMEOUT_SECONDS,
+                },
+            )
+            raise
         display_ms = int((time.monotonic() - display_start) * 1000)
         _log(f"Displayed {output_path_resolved} via {display_script_path} ({display_ms} ms)")
     if telemetry_path:
@@ -450,9 +517,25 @@ def _build_button_handlers(
                     except Exception as restore_exc:
                         _log(f"source card restore failed: {restore_exc!r}", err=True)
 
-                timer = threading.Timer(5.0, restore)
+                def _restore_and_deregister() -> None:
+                    try:
+                        restore()
+                    finally:
+                        # Remove ourselves from pending_timers so we don't leak
+                        # a reference. The lock is held briefly; safe inside
+                        # the timer thread.
+                        with state.lock:
+                            with contextlib.suppress(ValueError):
+                                state.pending_timers.remove(timer)
+
+                timer = threading.Timer(5.0, _restore_and_deregister)
                 # Daemon so a pending restore doesn't block process exit on SIGTERM / KeyboardInterrupt.
                 timer.daemon = True
+                # Register BEFORE start() so a _shutdown arriving mid-start
+                # can still cancel us (Timer.cancel is a no-op if the timer
+                # already fired, so the race is safe in either direction).
+                with state.lock:
+                    state.pending_timers.append(timer)
                 timer.start()
             except Exception as exc:
                 _log(f"source card failed: {exc!r}", err=True)
@@ -496,7 +579,21 @@ def _build_button_handlers(
             except Exception as exc:
                 _log(f"shutdown pre-frame failed: {exc!r}", err=True)
             try:
-                subprocess.check_call(shlex.split(cmd))
+                subprocess.run(shlex.split(cmd), check=True, timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired as exc:
+                _log(
+                    f"shutdown command {cmd!r} timed out after {SHUTDOWN_TIMEOUT_SECONDS}s",
+                    err=True,
+                )
+                append_telemetry(
+                    telemetry_path,
+                    {
+                        "bucket": current_bucket(),
+                        "error": repr(exc),
+                        "mode": "shutdown_timeout",
+                        "timeout_seconds": SHUTDOWN_TIMEOUT_SECONDS,
+                    },
+                )
             except Exception as exc:
                 _log(f"shutdown command {cmd!r} failed: {exc!r}", err=True)
                 append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "shutdown"})
@@ -662,6 +759,66 @@ def _maybe_prune_telemetry(args: argparse.Namespace, state: RuntimeState, teleme
         _log(f"telemetry retention: dropped {removed} file(s) older than {args.telemetry_retain_days}d")
 
 
+def _record_render_failure(state: RuntimeState, telemetry_path: str | None, bucket: str | None) -> None:
+    """Advance the outer-loop backoff state after a render/display exception.
+
+    Every ``BACKOFF_EVERY_N_FAILURES`` consecutive failures we extend
+    ``backoff_skip_until`` so the next tick (or ticks) no-op. The skip grows
+    exponentially — 2^n seconds capped at ``BACKOFF_MAX_SECONDS`` — so a
+    pulled ribbon cable degrades to "retry once every 15 min" instead of
+    "retry every --interval-seconds forever and drown the log." The counter
+    is reset by ``RuntimeState.commit_render_result`` on any success.
+    """
+    with state.lock:
+        state.consecutive_render_failures += 1
+        failures = state.consecutive_render_failures
+        if failures % BACKOFF_EVERY_N_FAILURES != 0:
+            return
+        # n is the backoff "level" — 1 at the first threshold, 2 at the
+        # second, etc. 2**n gives 2s, 4s, 8s, 16s, ... capped at 15 min.
+        level = failures // BACKOFF_EVERY_N_FAILURES
+        skip_seconds = min(2 ** level, BACKOFF_MAX_SECONDS)
+        state.backoff_skip_until = time.monotonic() + skip_seconds
+    _log(
+        f"render failures: {failures} consecutive; backing off {skip_seconds}s",
+        err=True,
+    )
+    append_telemetry(
+        telemetry_path,
+        {
+            "bucket": bucket,
+            "mode": "backoff",
+            "failures": failures,
+            "skip_seconds": skip_seconds,
+        },
+    )
+
+
+def _in_backoff_skip(state: RuntimeState) -> bool:
+    """Return True if the loop should skip this tick because of render backoff."""
+    with state.lock:
+        return time.monotonic() < state.backoff_skip_until
+
+
+def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> None:
+    """Emit a loop-liveness telemetry marker, throttled to HEARTBEAT_INTERVAL_SECONDS.
+
+    Without this, there is no positive "the loop is ticking" signal during
+    quiet hours or between bucket changes — ``litclock_health.py`` can only
+    tell that renders happened, not that the loop is alive and idle. The
+    throttle is wall-clock (``time.monotonic``) so a 1s test loop doesn't
+    flood telemetry even though a 60s appliance loop emits once per tick.
+    """
+    if not telemetry_path:
+        return
+    now = time.monotonic()
+    with state.lock:
+        if now - state.last_heartbeat_monotonic < HEARTBEAT_INTERVAL_SECONDS:
+            return
+        state.last_heartbeat_monotonic = now
+    append_heartbeat(telemetry_path)
+
+
 def _loop_sleep(state: RuntimeState, seconds: float) -> bool:
     """Interruptible wait between loop ticks.
 
@@ -725,6 +882,19 @@ def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None
     Every step is wrapped in ``contextlib.suppress`` so a single teardown
     failure doesn't prevent the others from running — shutdown is best-effort.
     """
+    # Cancel pending timers (currently only the source-card 5s restore) BEFORE
+    # draining the render lock so a timer callback doesn't kick off a new
+    # render during teardown. ``Timer.cancel`` is idempotent — a timer that
+    # already fired is a no-op.
+    _log("shutdown: cancelling pending timers")
+    with contextlib.suppress(Exception):
+        with state.lock:
+            timers = list(state.pending_timers)
+            state.pending_timers.clear()
+        for timer in timers:
+            with contextlib.suppress(Exception):
+                timer.cancel()
+
     _log("shutdown: draining in-flight render")
     acquired = False
     try:
@@ -827,6 +997,16 @@ def main() -> int:
             _maybe_reset_manual_theme_at_midnight(args, state)
             _check_button_liveness(state, telemetry_path)
             _maybe_prune_telemetry(args, state, telemetry_path)
+            _maybe_emit_heartbeat(state, telemetry_path)
+
+            # If the render path has failed repeatedly, skip the render
+            # attempt this tick (but keep the heartbeat / button liveness
+            # checks above so the appliance is still observably alive during
+            # the backoff window).
+            if _in_backoff_skip(state):
+                if _loop_sleep(state, max(1, args.interval_seconds)):
+                    break
+                continue
 
             now_quiet, manual_only = compute_quiet(args, state, time_str)
 
@@ -874,6 +1054,7 @@ def main() -> int:
                     _log(f"render/display failed for bucket {bucket}: {exc!r}", err=True)
                     traceback.print_exc(file=sys.stderr)
                     append_telemetry(telemetry_path, {"bucket": bucket, "error": repr(exc), "mode": args.mode})
+                    _record_render_failure(state, telemetry_path, bucket)
             elif state.last_effective_theme is None:
                 with state.lock:
                     state.last_effective_theme = effective_theme

@@ -298,3 +298,85 @@ class TestMainExitCodes:
         with patch("sys.argv", argv):
             rc = litclock_health.main()
         assert rc == 2
+
+
+class TestHeartbeatSummarisation:
+    """Heartbeat entries are counted separately so a silent-but-alive
+    appliance is not mistaken for one that has zero renders AND zero errors
+    (which should read as 'no data' rather than 'broken')."""
+
+    def test_heartbeat_does_not_inflate_render_or_error_counts(self, tmp_path):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "type": "heartbeat"},
+            {"ts": _ts(5), "type": "heartbeat"},
+            {"ts": _ts(5), "render_ms": 100, "bucket": "h2_exact"},
+            {"ts": _ts(5), "error": "boom", "bucket": "h2_exact"},
+        ])
+        entries = litclock_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
+        summary = litclock_health.summarise(entries)
+        assert summary["heartbeat_count"] == 2
+        assert summary["render_count"] == 1
+        assert summary["error_count"] == 1
+
+    def test_last_heartbeat_ts_is_most_recent(self, tmp_path):
+        old_ts = _ts(30)
+        new_ts = _ts(1)
+        path = _ledger(tmp_path, [
+            {"ts": old_ts, "type": "heartbeat"},
+            {"ts": new_ts, "type": "heartbeat"},
+        ])
+        entries = litclock_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
+        summary = litclock_health.summarise(entries)
+        assert summary["last_heartbeat_ts"] == new_ts
+
+
+class TestHeartbeatStaleness:
+    def test_fresh_heartbeat_is_not_stale(self):
+        summary = {"last_heartbeat_ts": _ts(2)}
+        assert litclock_health.is_heartbeat_stale(summary, max_age_minutes=5) is False
+
+    def test_old_heartbeat_is_stale(self):
+        summary = {"last_heartbeat_ts": _ts(10)}
+        assert litclock_health.is_heartbeat_stale(summary, max_age_minutes=5) is True
+
+    def test_missing_heartbeat_is_stale(self):
+        """An appliance running on pre-heartbeat code, OR wedged before the
+        first emit, has no last_heartbeat_ts. Either interpretation should
+        trip the staleness flag."""
+        assert litclock_health.is_heartbeat_stale({"last_heartbeat_ts": None}, max_age_minutes=5) is True
+        assert litclock_health.is_heartbeat_stale({}, max_age_minutes=5) is True
+
+    def test_cli_exits_2_when_heartbeat_stale(self, tmp_path, capsys):
+        # Window has a render so --fail-if-no-renders wouldn't fire; only the
+        # heartbeat-age flag should cause a non-zero exit.
+        path = _ledger(tmp_path, [
+            {"ts": _ts(1), "render_ms": 100, "bucket": "h2_exact"},
+            {"ts": _ts(20), "type": "heartbeat"},
+        ])
+        argv = [
+            "litclock_health.py",
+            "--telemetry-path", str(path),
+            "--hours", "1",
+            "--max-heartbeat-age-minutes", "5",
+            "--json",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 2
+        out = json.loads(capsys.readouterr().out.strip())
+        assert out.get("stale_heartbeat") is True
+
+    def test_cli_exits_0_when_heartbeat_fresh(self, tmp_path):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(1), "render_ms": 100, "bucket": "h2_exact"},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ])
+        argv = [
+            "litclock_health.py",
+            "--telemetry-path", str(path),
+            "--hours", "1",
+            "--max-heartbeat-age-minutes", "5",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 0

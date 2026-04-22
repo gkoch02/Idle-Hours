@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import datetime as dt
 import threading
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from threading import Timer
 
 
 class RuntimeState:
@@ -56,6 +60,22 @@ class RuntimeState:
         # loop's interruptible sleep polls it; a plain flag would force us to
         # keep time.sleep() in the non-interruptible form.
         self.stop_requested = threading.Event()
+        # Exponential backoff when render/display keeps failing. The inner
+        # ``display_inky.py`` already retries 3× per push with its own backoff;
+        # this is the outer-loop equivalent so a persistent hardware fault
+        # (pulled ribbon cable, wedged I2C bus) degrades to "retry once every
+        # 15 min" instead of "retry every tick forever and spam the log."
+        self.consecutive_render_failures: int = 0
+        self.backoff_skip_until: float = 0.0  # time.monotonic() deadline
+        # Pending ``threading.Timer`` objects that must be cancelled on
+        # shutdown to stop them firing after ``_shutdown`` has torn down the
+        # display handle. Currently only the source-card 5s restore timer
+        # registers itself here.
+        self.pending_timers: list["Timer"] = []
+        # time.monotonic() at last emitted heartbeat so the loop can throttle
+        # heartbeat writes to HEARTBEAT_INTERVAL_SECONDS even when
+        # --interval-seconds is smaller (e.g. tests running at 1s ticks).
+        self.last_heartbeat_monotonic: float = 0.0
         if persisted:
             mt = persisted.get("manual_theme")
             if mt in ("default", "dark"):
@@ -81,3 +101,8 @@ class RuntimeState:
             self.last_effective_theme = effective_theme
             if quote_id is not None:
                 self.last_quote_id = quote_id
+            # A successful render/push is the single signal that the render
+            # path is healthy; reset the outer-loop backoff counters so we
+            # go straight back to normal tick cadence.
+            self.consecutive_render_failures = 0
+            self.backoff_skip_until = 0.0
