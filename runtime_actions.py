@@ -17,10 +17,13 @@ Extracted from :mod:`run_clock`; the original names are re-exported from
 ``run_clock.action_*``). Implementation detail: each action does a local
 ``import run_clock`` and routes calls to helpers like ``peek_quote_id``,
 ``_render_unlocked``, ``current_time_str``, ``current_bucket``,
-``_display_quiet_image``, ``save_runtime_state``, ``append_telemetry``, and
-``pick_quote_module`` through ``run_clock.X`` so tests that patch those names
-on ``run_clock`` affect the action's call path (same pattern ``web_server``
-uses to dodge circular imports at module load).
+``save_runtime_state``, ``append_telemetry``, ``_append_history_after_render``,
+and ``pick_quote_module`` through ``run_clock.X`` so tests that patch those
+names on ``run_clock`` affect the action's call path (same pattern
+``web_server`` uses to dodge circular imports at module load).
+``_display_quiet_image`` is imported *directly* from :mod:`runtime_quiet` —
+the through-``run_clock`` indirection earned no coupling benefit for a leaf
+helper, and the direct import makes the ownership obvious.
 """
 from __future__ import annotations
 

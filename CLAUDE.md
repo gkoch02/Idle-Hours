@@ -493,15 +493,15 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 | `runtime_theme` | `resolve_effective_theme`, `auto_theme_for`, `_maybe_reset_manual_theme_at_midnight` | `runtime_log`, `runtime_state` (+ lazy `run_clock` for midnight persist) |
 | `runtime_actions` | `action_skip/unskip/theme/quiet/rerender`, `_button_render_gate` | `runtime_log`, `runtime_state`, `runtime_theme`, `runtime_quiet` (+ lazy `run_clock` for peek/render/telemetry) |
 
-**Invariant:** every `runtime_*` module imports ≤3 siblings at module load, and only `runtime_actions` / `runtime_theme` touch `run_clock` — and only via `import run_clock` inside a function body, never at module top.
+**Invariant:** every `runtime_*` module imports ≤4 siblings at module load (the dispatch layer in `runtime_actions` touches the most — log, state, theme, quiet — because it coordinates them), and only `runtime_actions` / `runtime_theme` touch `run_clock` — and only via `import run_clock` inside a function body, never at module top.
 
-**Three locks, no nesting.** `RuntimeState` exposes exactly three `threading.Lock`s with disjoint scopes:
+**Three locks, nested only in the documented direction.** `RuntimeState` exposes exactly three `threading.Lock`s:
 
 - **`render_lock`** — coarse. Serialises anything that pushes a frame to the panel (a Spectra 6 refresh can take 10–20s). The main loop acquires it blocking around `render_now`; button and web handlers acquire it *non-blocking* via `_button_render_gate` so a second press during a refresh drops rather than queues.
 - **`state.lock`** — fine. Protects the mutable fields on `RuntimeState` (`manual_theme`, `manual_quiet`, `last_bucket`, `last_quote_id`, `last_effective_theme`, `last_skipped`, `last_seen_date`, `last_pruned_date`). `commit_render_result` is the single seam that writes the `(last_bucket, last_effective_theme, last_quote_id)` triple atomically; the two intentionally-partial writes (the "quote unchanged" branch that only updates `last_bucket`, and the cold-start `last_effective_theme` prime) are inline.
-- **`ledger_lock`** — file I/O. Serialises every read-modify-write on `~/.litclock/history.jsonl`. `run_clock._append_history_after_render` is the single seam for appending after a successful render; button A's long-press un-skip and the skip action both route through it too. `pick_quote.remove_last_history_entry` takes it for the rewrite path.
+- **`ledger_lock`** — file I/O. Serialises every read-modify-write on `~/.litclock/history.jsonl`. `run_clock._append_history_after_render` is the single seam for ledger appends; button A's long-press un-skip and the skip action both route through it too. `pick_quote.remove_last_history_entry` takes it for the rewrite path.
 
-No code path holds two of these locks simultaneously. `render_lock` is released *before* any `state.lock` acquisition inside `_render_unlocked` → `commit_render_result`; `ledger_lock` is always taken after both are released.
+Nesting discipline: `state.lock` is allowed inside `render_lock` (the main loop holds `render_lock` while `_render_unlocked` → `commit_render_result` briefly takes `state.lock`; the action handlers do the same under `_button_render_gate`). `ledger_lock` is never nested with either of the other two — it's always acquired standalone, after both are released. A subprocess call (the `render_quote.py` fork) is never held under `state.lock` or `ledger_lock`.
 
 **Thread ownership.**
 
@@ -538,7 +538,7 @@ button press / web POST
   └─ _append_history_after_render(...)                       # skip/unskip/rerender only
 ```
 
-Theme-toggle and quiet-toggle branches **do not** append to history — they repaint the same `quote_id`, so re-appending would double-record the quote. This is why `_append_history_after_render` lives in `run_clock` (not inside `_render_unlocked`) and is called by the specific action sites that introduce a *new* quote.
+Theme-toggle and quiet-toggle branches **do not** append to history — they repaint the same `quote_id`, so re-appending would double-record the quote. This is why `_append_history_after_render` lives in `run_clock` (not inside `_render_unlocked`): the caller chooses what (if anything) lands in the ledger. The main loop's bucket-change branch appends the newly-rendered quote; `action_skip` appends the *previous* quote (as a ban) *and* the freshly-picked replacement; `action_unskip` / `action_rerender` append the new pick; `action_theme` / `action_quiet` never append.
 
 ### Contact Sheet (`contact_sheet.py`)
 
