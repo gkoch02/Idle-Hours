@@ -777,12 +777,15 @@ class TestResolveCorpus:
         rows = pq._resolve_corpus(str(baked), str(raw))
         assert rows[0]["source_id"] == "baked"
 
-    def test_falls_back_to_raw_when_baked_missing(self, tmp_path, monkeypatch):
+    def test_falls_back_to_raw_when_baked_missing(self, tmp_path, monkeypatch, capsys):
+        """A stale ``--database`` path (or partial checkout) must not silently downgrade
+        to the raw path — the operator should see a warning so they can fix the bake."""
         raw = tmp_path / "raw.jsonl"
         raw.write_text('{"source_id": "raw"}\n', encoding="utf-8")
         monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
         rows = pq._resolve_corpus(str(tmp_path / "absent.jsonl"), str(raw))
         assert rows[0]["source_id"] == "raw"
+        assert "not found" in capsys.readouterr().err
 
     def test_falls_back_to_raw_when_baked_empty(self, tmp_path, monkeypatch, capsys):
         """An editor truncating the baked file to 0 bytes must not starve the picker."""

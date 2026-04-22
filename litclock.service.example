@@ -8,7 +8,9 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/LitClock
 ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py --display-script display_inky.py --mode production --theme auto
-# Uses the prebuilt runtime dataset in assets/candidates-attributed.jsonl.
+# Reads the prebuilt baked DB at assets/quote_database.jsonl (the canonical runtime
+# input). assets/candidates-attributed.jsonl is the raw corpus that feeds the baker
+# and stays on disk as a defensive fallback + curator-UI input.
 # Rebuilding corpus artifacts is a separate maintenance task, not part of service startup.
 #
 # Useful additions depending on your setup:

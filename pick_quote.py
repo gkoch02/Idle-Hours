@@ -535,7 +535,7 @@ def select_candidates(
     time_str: str | None = None,
     bucket: str | None = None,
     top_n: int = 10,
-    input_path: str = "assets/candidates-attributed.jsonl",
+    input_path: str = DEFAULT_INPUT_PATH,
     overrides_path: str = "assets/selection_overrides.json",
     seed: int = 0,
     min_quality: int = 60,
@@ -553,6 +553,11 @@ def select_candidates(
     ``is_winner: true`` for the UI. Ties on top score are broken by a seeded
     ``random.Random(seed)`` — same as the live picker — so the UI shows the
     same frame the clock would.
+
+    Reads the raw corpus (``DEFAULT_INPUT_PATH``) by design rather than the
+    baked DB: the curator UI surfaces rows the baker dropped (daypart-only,
+    below the quality floor) so an operator can see *why* a quote never
+    appeared. Switching this to the baked path would silently hide those rows.
     """
     if not time_str and not bucket:
         raise ValueError("select_candidates requires time_str or bucket")
@@ -581,12 +586,20 @@ def select_candidates(
 def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
     """Prefer the baked database; fall back to the raw corpus if missing.
 
-    A missing or empty ``database_path`` falls back silently (the common case
-    before ``bake_quote_database.py`` has been run once). When the file exists
-    but is empty (0 bytes) we also fall back, since an empty baked file would
-    otherwise starve the picker even though the raw corpus is healthy. We log
-    the fallback once-per-call so a misconfigured install doesn't silently run
-    on the slower raw-scoring path forever.
+    The baked DB (``DEFAULT_DATABASE_PATH``) is the canonical runtime input and
+    ships committed in the repo, so on a healthy install this always hits the
+    first branch. The fallback exists as a defensive guardrail for two cases:
+
+    * the baked file is missing entirely (e.g. someone pointed ``--database``
+      at a stale path, or a partial checkout), and
+    * the baked file exists but is empty (e.g. a crashed bake left a zero-byte
+      placeholder).
+
+    Both fall back to the raw corpus rather than crashing the loop, and both
+    log a one-shot stderr warning so the operator notices they're running on
+    the slower raw-scoring path. A falsy ``database_path`` (empty string /
+    ``None``) skips the baked path entirely without warning — the bake-
+    equivalence tests use this to exercise the raw path on purpose.
     """
     if database_path:
         path = resolve_path(database_path)
@@ -595,6 +608,12 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
         if path.exists():
             print(
                 f"warning: baked database {path} is empty; falling back to raw corpus",
+                file=sys.stderr,
+                flush=True,
+            )
+        else:
+            print(
+                f"warning: baked database {path} not found; falling back to raw corpus",
                 file=sys.stderr,
                 flush=True,
             )
@@ -623,13 +642,14 @@ def select_quote(
     renderer) can pass pre-loaded ``rows`` and ``overrides`` to skip re-parsing
     the JSONL/JSON files on every call.
 
-    ``database_path`` defaults to ``None`` (raw-corpus path) so callers that
-    only know the old ``input_path`` keep working unchanged. Callers that want
-    the fast baked path pass ``database_path=DEFAULT_DATABASE_PATH`` explicitly
-    — which is what the CLI, ``run_clock.render_now`` and ``render_quote.pick_quote``
-    do. When a baked path is set and the file is missing or empty, the picker
-    logs a stderr warning and falls back to ``input_path``, so a stale/absent
-    bake degrades gracefully instead of crashing the loop.
+    Pass ``database_path=DEFAULT_DATABASE_PATH`` to use the baked display-ready
+    DB — the canonical runtime input, which is what the CLI, ``run_clock``, and
+    ``render_quote`` all do. Pass ``database_path=""`` (or ``None``) to force
+    the raw-corpus path; that's reserved for the bake-equivalence tests and for
+    callers that want the unfiltered corpus view. When a baked path is set but
+    the file is missing or empty, the picker logs a stderr warning and falls
+    back to ``input_path`` so a stale/absent bake degrades gracefully instead
+    of crashing the loop.
     """
     if not time_str and not bucket:
         raise ValueError("select_quote requires time_str or bucket")
