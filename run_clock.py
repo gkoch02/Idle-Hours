@@ -30,24 +30,19 @@ from runtime_quiet import (  # noqa: F401  re-exported
     in_quiet_hours,
 )
 from runtime_state import RuntimeState  # noqa: F401  re-exported
-from runtime_store import (  # noqa: F401  re-exported
+from runtime_store import (  # noqa: F401  load_runtime_state re-exported for tests
     DEFAULT_STATE_PATH,
-    _atomic_write_text,
-    _resolve_state_path,
     load_runtime_state,
     save_runtime_state,
 )
-from runtime_telemetry import (  # noqa: F401  re-exported
-    _TELEMETRY_DATE_RE,
+from runtime_telemetry import (  # noqa: F401  daily_telemetry_path re-exported for tests
     DEFAULT_TELEMETRY_PATH,
     DEFAULT_TELEMETRY_RETAIN_DAYS,
     append_telemetry,
     daily_telemetry_path,
     prune_telemetry,
 )
-from runtime_theme import (  # noqa: F401  re-exported
-    AUTO_DARK_END_HOUR,
-    AUTO_DARK_START_HOUR,
+from runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-exported for tests
     _maybe_reset_manual_theme_at_midnight,
     auto_theme_for,
     resolve_effective_theme,
@@ -291,6 +286,18 @@ def peek_quote_id(time_str: str, history_path: str | None = None, history_days: 
     )
 
 
+def _append_history_after_render(state: RuntimeState, history_path: str | None, quote_id: tuple) -> None:
+    """Append ``quote_id`` to the anti-repeat ledger under ``state.ledger_lock``.
+
+    Single seam for every caller that has successfully rendered a new quote —
+    the main loop's bucket-change branch and the ``action_*`` handlers for
+    skip / un-skip / rerender. Must NOT be called by theme or quiet toggles,
+    which repaint the same quote and would otherwise double-record it.
+    """
+    with state.ledger_lock:
+        pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+
+
 def render_now(
     render_script: str,
     output_path: str,
@@ -377,11 +384,7 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
     )
-    with state.lock:
-        state.last_bucket = actual_bucket
-        state.last_effective_theme = effective_theme
-        if quote_id is not None:
-            state.last_quote_id = quote_id
+    state.commit_render_result(actual_bucket, effective_theme, quote_id)
 
 
 def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
@@ -886,14 +889,9 @@ def main() -> int:
                                 history_path=history_path, history_days=args.history_days,
                                 telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
                             )
-                        with state.lock:
-                            state.last_bucket = bucket
-                            state.last_effective_theme = effective_theme
-                            if quote_id is not None:
-                                state.last_quote_id = quote_id
+                        state.commit_render_result(bucket, effective_theme, quote_id)
                         if quote_id is not None:
-                            with state.ledger_lock:
-                                pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                            _append_history_after_render(state, history_path, quote_id)
                 except Exception as exc:
                     # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
                     # missing corpus row, etc.) does not kill the appliance. last_bucket stays

@@ -59,3 +59,20 @@ class RuntimeState:
 
     def snapshot_for_persistence(self) -> dict:
         return {"manual_theme": self.manual_theme, "manual_quiet": self.manual_quiet}
+
+    def commit_render_result(
+        self, bucket: str, effective_theme: str, quote_id: tuple | None,
+    ) -> None:
+        """Record the identity of the frame we just pushed to the panel.
+
+        ``last_bucket``, ``last_effective_theme``, and ``last_quote_id`` form an
+        atomic group — the skip-if-unchanged check at the top of every tick
+        compares all three, so writing them separately risks a stale pair. This
+        method is the single entry point; ``quote_id`` is left untouched when
+        ``None`` (theme-only repaints reuse the previous quote).
+        """
+        with self.lock:
+            self.last_bucket = bucket
+            self.last_effective_theme = effective_theme
+            if quote_id is not None:
+                self.last_quote_id = quote_id

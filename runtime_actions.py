@@ -17,10 +17,13 @@ Extracted from :mod:`run_clock`; the original names are re-exported from
 ``run_clock.action_*``). Implementation detail: each action does a local
 ``import run_clock`` and routes calls to helpers like ``peek_quote_id``,
 ``_render_unlocked``, ``current_time_str``, ``current_bucket``,
-``_display_quiet_image``, ``save_runtime_state``, ``append_telemetry``, and
-``pick_quote_module`` through ``run_clock.X`` so tests that patch those names
-on ``run_clock`` affect the action's call path (same pattern ``web_server``
-uses to dodge circular imports at module load).
+``save_runtime_state``, ``append_telemetry``, ``_append_history_after_render``,
+and ``pick_quote_module`` through ``run_clock.X`` so tests that patch those
+names on ``run_clock`` affect the action's call path (same pattern
+``web_server`` uses to dodge circular imports at module load).
+``_display_quiet_image`` is imported *directly* from :mod:`runtime_quiet` —
+the through-``run_clock`` indirection earned no coupling benefit for a leaf
+helper, and the direct import makes the ownership obvious.
 """
 from __future__ import annotations
 
@@ -28,6 +31,7 @@ import argparse
 import contextlib
 
 from runtime_log import _log
+from runtime_quiet import _display_quiet_image
 from runtime_state import RuntimeState
 from runtime_theme import resolve_effective_theme
 
@@ -75,8 +79,7 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
                 previous = state.last_quote_id
             if previous is not None:
                 # Ban the currently-shown quote so the next pick filters it out for the week.
-                with state.ledger_lock:
-                    run_clock.pick_quote_module.append_history(history_path, previous[0], previous[1])
+                run_clock._append_history_after_render(state, history_path, previous)
                 with state.lock:
                     # Remember what we just banned so A long-press / web unskip can reverse it.
                     state.last_skipped = previous
@@ -86,8 +89,7 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
             )
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
-                with state.ledger_lock:
-                    run_clock.pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                run_clock._append_history_after_render(state, history_path, quote_id)
             return {"ok": True, "new_quote_id": list(quote_id) if quote_id else None}
         except Exception as exc:
             _log(f"{label} skip failed: {exc!r}", err=True)
@@ -129,8 +131,7 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
             )
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
-                with state.ledger_lock:
-                    run_clock.pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                run_clock._append_history_after_render(state, history_path, quote_id)
             return {"ok": True, "restored": list(target)}
         except Exception as exc:
             _log(f"{label} un-skip failed: {exc!r}", err=True)
@@ -191,7 +192,7 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 quiet_now = state.manual_quiet
             _log(f"{label}: manual quiet -> {quiet_now}")
             if quiet_now and args.quiet_image:
-                run_clock._display_quiet_image(args.quiet_image, args.output, args.display_script)
+                _display_quiet_image(args.quiet_image, args.output, args.display_script)
             elif not quiet_now:
                 # Wake to the current time so the user sees something immediately.
                 time_str = run_clock.current_time_str()
@@ -225,8 +226,7 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
             )
             run_clock._render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
             if quote_id is not None:
-                with state.ledger_lock:
-                    run_clock.pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
+                run_clock._append_history_after_render(state, history_path, quote_id)
             _log(f"{label}: rerender bucket={bucket}")
             return {"ok": True, "bucket": bucket, "quote_id": list(quote_id) if quote_id else None}
         except Exception as exc:
