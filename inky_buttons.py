@@ -13,6 +13,9 @@ enough to trigger the hold callback. This avoids firing both on a long press.
 """
 from __future__ import annotations
 
+import contextlib
+import sys
+import traceback
 from typing import Callable, Mapping
 
 BUTTON_GPIO: dict[str, int] = {
@@ -49,13 +52,45 @@ class _HoldDispatcher:
         self._held = False
 
     def on_hold(self) -> None:
+        # ``button.when_held`` fires this directly on the gpiozero event
+        # thread. An unhandled exception there kills the listener silently
+        # (``Button.closed`` may or may not flip, so our liveness check can
+        # miss it). Log and swallow so handler bugs are loud but non-fatal.
         self._held = True
         if self._long is not None:
-            self._long()
+            try:
+                self._long()
+            except Exception as exc:
+                _log_handler_exception("hold handler", exc)
 
     def on_release(self) -> None:
+        # Same rationale as on_hold — ``button.when_released`` fires directly
+        # on the gpiozero thread, bypassing ``_make_press_cb``'s guard.
         if not self._held and self._short is not None:
-            self._short()
+            try:
+                self._short()
+            except Exception as exc:
+                _log_handler_exception("release handler", exc)
+
+
+def _log_handler_exception(which: str, exc: BaseException) -> None:
+    """Emit a stderr traceback for a handler that raised on the GPIO thread.
+
+    Centralised so the two dispatch sites (``_HoldDispatcher`` and
+    ``_make_press_cb``) format identically. We call ``print`` (not the
+    ``runtime_log._log`` helper) because this module is deliberately
+    dependency-free so it stays importable on non-Pi dev hosts.
+
+    The entire body is wrapped in ``contextlib.suppress(Exception)`` because
+    this is the last line of defence against the GPIO event thread dying —
+    if stderr is closed (systemd ``StandardError=null``) or the terminal is
+    gone, ``print`` / ``traceback.print_exc`` themselves can raise
+    ``BrokenPipeError`` / ``OSError``. A raise here would defeat the whole
+    "guard the dispatch" change.
+    """
+    with contextlib.suppress(Exception):
+        print(f"inky_buttons: {which} raised {exc!r}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
 
 
 def buttons_alive(handles: list | None) -> bool:
@@ -135,7 +170,12 @@ def start_listener(
                     except Exception:
                         pass
                 if dispatch is not None:
-                    dispatch()
+                    # A raising handler on the gpiozero event thread can kill
+                    # the listener silently; log loudly and continue instead.
+                    try:
+                        dispatch()
+                    except Exception as exc:
+                        _log_handler_exception(f"button {lbl} (GPIO {p}) press handler", exc)
             return _cb
 
         if long_ is None:

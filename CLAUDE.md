@@ -65,6 +65,7 @@ python3 run_clock.py --telemetry-retain-days 30        # cap rotated telemetry s
 python3 litclock_health.py --hours 24                  # human-readable summary
 python3 litclock_health.py --hours 24 --json           # JSON for cron / systemd health checks
 python3 litclock_health.py --hours 1 --fail-if-no-renders   # exit 2 if the window was silent
+python3 litclock_health.py --hours 1 --max-heartbeat-age-minutes 5   # exit 2 if the main loop hasn't ticked in 5 min
 
 # Push a static "starting" frame at boot so the panel doesn't ghost yesterday's render
 python3 run_clock.py --startup-image assets/goodnight.png
@@ -226,7 +227,7 @@ The canonical runtime input is **`assets/quote_database.jsonl`** — the baked, 
 | `assets/bucket-coverage.{json,md}` | coverage snapshot | yes | optional | `bucket_coverage.py` |
 | `~/.litclock/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
 | `~/.litclock/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
-| `~/.litclock/telemetry-YYYYMMDD.jsonl` | render / error telemetry | — | runtime, per-appliance | `run_clock.py` |
+| `~/.litclock/telemetry-YYYYMMDD.jsonl` | render / error / heartbeat / backoff / timeout telemetry | — | runtime, per-appliance | `run_clock.py` |
 
 Three invariants to keep in mind when touching this layer:
 
@@ -460,6 +461,8 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 
 **Liveness supervision.** gpiozero runs its event loop on a background thread; if that thread dies or the pin claim is lost (flaky GPIO, post-reboot race, another process grabbing the pin) `Button.closed` flips to `True` and presses silently stop working. Each tick the main loop calls `_check_button_liveness`, which consults `inky_buttons.buttons_alive(state.button_handles)`. On the first failure it logs a loud stderr warning, appends `{"mode": "buttons_dead", "error": "button listener died"}` to telemetry, and latches `state.buttons_dead_logged` so subsequent ticks stay quiet. We deliberately do **not** auto-restart — a listener that died once often dies again immediately and a restart loop would thrash GPIO claims.
 
+**Handler-exception containment.** `_make_press_cb` and `_HoldDispatcher.on_hold`/`on_release` wrap their dispatch calls in `try/except` — a raising handler (press, hold, or release) logs the traceback on stderr and returns instead of propagating into the gpiozero event thread. Without this, a bug in any action handler (e.g. a botched `action_theme` exception path) would silently kill the listener, and because `Button.closed` might not flip in that case, `buttons_alive()` could still report healthy. Loud-and-alive is always preferred to silent-and-dead.
+
 | Button | Short press | Long press (2s) |
 |---|---|---|
 | **A** | Skip — bans the current quote in the history ledger, picks again, re-renders. Records the just-banned quote as `state.last_skipped`. | Un-skip — removes the last-skipped quote's entry from the history ledger and re-renders. Reverses a fat-fingered tap. |
@@ -471,11 +474,19 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 
 **Graceful shutdown (`SIGTERM` / `SIGINT`).** `_install_signal_handlers` binds both signals to a handler that flips `state.stop_requested` (a `threading.Event`). The main loop checks the flag at the top of each iteration and waits on it via `_loop_sleep` between ticks, so a `systemctl restart litclock.service` is observed within one tick instead of being escalated to `SIGKILL` mid-render. On loop exit `_shutdown` runs in a `finally`: it blocks on `state.render_lock` up to 30s so any in-flight render finishes, stops the web server, closes every `gpiozero.Button` handle so the GPIO listener thread exits, and persists state once more. Every step is wrapped in `contextlib.suppress` — shutdown is best-effort so one teardown failure doesn't block the others. `--once` keeps its strict-exit behaviour; signal handling only activates on the long-running loop path.
 
-**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) is the **base path**; `append_telemetry` actually writes to a date-rotated sibling `<stem>-YYYYMMDD<suffix>` in the same directory (e.g. `~/.litclock/telemetry-20260420.jsonl`). Rotation keeps each file bounded so a multi-year-running appliance doesn't produce a single unbounded JSONL that chokes health checks and stalls append latency. Each entry is one JSON line: successful renders write `bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`; loop-level errors write `bucket`, `error`, `mode`. Telemetry writes are best-effort — I/O failures log and drop the entry rather than crashing the loop. Pass an empty string to disable.
+**Subprocess timeouts (hang defence).** The render / display / shutdown children are invoked through `subprocess.run(..., check=True, timeout=...)` rather than `check_call`, because `run` kills the child on `TimeoutExpired` before re-raising — `check_call` leaves the zombie. Bounds: `RENDER_TIMEOUT_SECONDS=45`, `DISPLAY_TIMEOUT_SECONDS=60` (generous: a Spectra 6 refresh is 10–20s and `display_inky.py` internally retries 3× with up to ~5s backoff), `SHUTDOWN_TIMEOUT_SECONDS=30`. On timeout, the render/display path telemetrises `{"mode": "render_timeout"|"display_timeout", "timeout_seconds": N}` and re-raises into the main-loop error branch so `last_bucket` stays stale for retry next tick; the shutdown path logs + telemetrises but doesn't raise. `runtime_quiet._display_quiet_image` gets the same treatment (its own `DISPLAY_TIMEOUT_SECONDS` mirror, kept local to avoid circular import).
+
+**Render-failure exponential backoff.** A tight retry loop after hard hardware failure (pulled ribbon, wedged I2C bus) floods the log and starves the GPIO thread. `RuntimeState.consecutive_render_failures` increments on every render/display exception; every `BACKOFF_EVERY_N_FAILURES=3` failures, `_record_render_failure` extends `state.backoff_skip_until` by `min(2**level, BACKOFF_MAX_SECONDS=900)` seconds and appends `{"mode": "backoff", "failures": N, "skip_seconds": S}` to telemetry. The main loop checks `_in_backoff_skip(state)` near the top of each tick and short-circuits to `_loop_sleep` when the deadline hasn't passed. `commit_render_result` (the single success seam) resets both the counter and the deadline so recovery is instant. Heartbeat and button-liveness checks keep running during the backoff window — the appliance is still observably alive.
+
+**Loop heartbeat.** `runtime_telemetry.append_heartbeat` emits `{"type": "heartbeat"}` entries so `litclock_health.py` can tell "idle but alive" apart from "wedged." The main loop calls `_maybe_emit_heartbeat` each tick, throttled to `HEARTBEAT_INTERVAL_SECONDS=60` of wall-clock spacing via `state.last_heartbeat_monotonic` (so a 1s test loop emits once; a 60s appliance loop also emits ~once per tick). `litclock_health.py --max-heartbeat-age-minutes N` exits 2 when the most-recent heartbeat is older than the cap, or absent entirely (covers pre-heartbeat code and pre-first-emit wedges). Heartbeats are excluded from `render_count` / `error_count` — they answer a different question. This is also the foundation a future systemd `Type=notify` / `WatchdogSec` integration will emit `WATCHDOG=1` from.
+
+**Pending-timer cancellation on shutdown.** The button-C source-card 5s restore `threading.Timer` registers itself on `state.pending_timers` under `state.lock` before `timer.start()`; `_shutdown` drains that list and calls `.cancel()` on each before draining the render lock. Without this, a SIGTERM within 5s of a source-card press would let the daemon Timer fire after `_shutdown` tore down the display handles, racing the systemd restart with a stale frame push. `Timer.cancel` is idempotent, and the timer deregisters itself on normal fire, so double-cancellation is safe.
+
+**Telemetry sidecar (`--telemetry-path`).** `~/.litclock/telemetry.jsonl` (default) is the **base path**; `append_telemetry` actually writes to a date-rotated sibling `<stem>-YYYYMMDD<suffix>` in the same directory (e.g. `~/.litclock/telemetry-20260420.jsonl`). Rotation keeps each file bounded so a multi-year-running appliance doesn't produce a single unbounded JSONL that chokes health checks and stalls append latency. Each entry is one JSON line: successful renders write `bucket`, `render_ms`, `display_ms`, `source_id`, `line_number`, `mode`, `theme`; loop-level errors write `bucket`, `error`, `mode`; backoff events write `bucket`, `mode="backoff"`, `failures`, `skip_seconds`; timeouts write `mode` suffixed `_timeout` plus `timeout_seconds`; loop-liveness markers write `{"type": "heartbeat"}`. Telemetry writes are best-effort — I/O failures log and drop the entry rather than crashing the loop. Pass an empty string to disable.
 
 **Telemetry retention (`--telemetry-retain-days`, default 90).** Rotation bounds per-file size but not total file count. Once per local-date rollover the loop calls `prune_telemetry`, which globs the base path's parent for `<stem>-YYYYMMDD<suffix>` siblings, parses the date from the filename, and `unlink`s anything older than `today - retain_days`. The trigger is gated by `state.last_pruned_date` so we don't glob every tick. `litclock_health.py`'s summariser walks the same directory on every invocation, so unbounded retention eventually slows it down. Pass `0` to disable pruning entirely (e.g. for long-term forensic retention to external storage).
 
-`litclock_health.py` globs the base path's directory for date-suffixed siblings (plus any legacy unsuffixed file at the exact base path) and stream-reads them in sorted-filename order. It prunes files older than the `--hours` window by filename date alone, with one day of slack so operators east/west of UTC don't accidentally drop the active file near midnight UTC (the per-entry `ts` filter in `load_entries` enforces the exact cutoff). Siblings that match the glob but whose date suffix doesn't parse as `YYYYMMDD` are skipped — pointing `--telemetry-path` at a file directly is the supported way to summarise an arbitrary JSONL. Summary output includes render count, error count, p50/p95 render and display latency, last error message; `--json` emits the same fields for cron/systemd integration. Exit codes: `0` healthy, `1` no telemetry log, `2` unhealthy (errors but zero renders in the window, or `--fail-if-no-renders` was set and the window was silent).
+`litclock_health.py` globs the base path's directory for date-suffixed siblings (plus any legacy unsuffixed file at the exact base path) and stream-reads them in sorted-filename order. It prunes files older than the `--hours` window by filename date alone, with one day of slack so operators east/west of UTC don't accidentally drop the active file near midnight UTC (the per-entry `ts` filter in `load_entries` enforces the exact cutoff). Siblings that match the glob but whose date suffix doesn't parse as `YYYYMMDD` are skipped — pointing `--telemetry-path` at a file directly is the supported way to summarise an arbitrary JSONL. Summary output includes render count, error count, heartbeat count + last-heartbeat timestamp, p50/p95 render and display latency, last error message; `--json` emits the same fields for cron/systemd integration. Exit codes: `0` healthy, `1` no telemetry log, `2` unhealthy (errors but zero renders in the window; `--fail-if-no-renders` was set and the window was silent; or `--max-heartbeat-age-minutes N` was set and the most recent heartbeat is older — or absent entirely).
 
 **Startup frame (`--startup-image`).** Optional PNG pushed to the display once at loop startup, before the first quote render, so the panel doesn't ghost yesterday's frame during cold boot. Off by default (a Spectra 6 refresh takes 10–20s, so the extra round-trip isn't always worth it). Point at any PNG that encodes to the panel's 6-colour palette cleanly.
 
@@ -488,7 +499,7 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 | `runtime_log` | `_log` (timestamped stderr/stdout logger) | — |
 | `runtime_state` | `RuntimeState` class, three locks, `commit_render_result` | — (stdlib only) |
 | `runtime_store` | `load_runtime_state` / `save_runtime_state` (atomic via `atomic_io`) | `runtime_log` |
-| `runtime_telemetry` | `append_telemetry`, `prune_telemetry`, `daily_telemetry_path`, date-rotated JSONL | `runtime_log` |
+| `runtime_telemetry` | `append_telemetry`, `append_heartbeat`, `prune_telemetry`, `daily_telemetry_path`, date-rotated JSONL | `runtime_log` |
 | `runtime_quiet` | `in_quiet_hours`, `_display_quiet_image`, `compute_quiet` / `enter_quiet` / `exit_quiet` state machine | `runtime_log`, `runtime_state`, `runtime_theme` (+ lazy `run_clock` for `_display_quiet_image` / `render_now` / `append_telemetry`) |
 | `runtime_theme` | `resolve_effective_theme`, `auto_theme_for`, `_maybe_reset_manual_theme_at_midnight` | `runtime_log`, `runtime_state` (+ lazy `run_clock` for midnight persist) |
 | `runtime_actions` | `action_skip/unskip/theme/quiet/rerender`, `_button_render_gate` | `runtime_log`, `runtime_state`, `runtime_theme`, `runtime_quiet` (+ lazy `run_clock` for peek/render/telemetry) |
@@ -520,14 +531,17 @@ main loop iteration
   ├─ _maybe_reset_manual_theme_at_midnight(args, state)      # runtime_theme
   ├─ _check_button_liveness(state, telemetry_path)
   ├─ _maybe_prune_telemetry(args, state, telemetry_path)     # runtime_telemetry
+  ├─ _maybe_emit_heartbeat(state, telemetry_path)            # runtime_telemetry.append_heartbeat, throttled 60s
+  ├─ if _in_backoff_skip(state): sleep; continue             # render-failure exponential backoff gate
   ├─ now_quiet, manual_only = compute_quiet(...)             # runtime_quiet
   │
   ├─ if now_quiet:  enter_quiet(...) on rising edge; sleep; continue
   ├─ if was_quiet: exit_quiet(state)                         # falling edge: clears last_bucket/quote_id
   │
   ├─ peek_quote_id(...)                                      # pick_quote
-  ├─ with render_lock:  render_now(...)                      # subprocess: render_quote.py
-  ├─ state.commit_render_result(bucket, theme, quote_id)     # runtime_state (takes state.lock)
+  ├─ with render_lock:  render_now(...)                      # subprocess: render_quote.py (timeout-bounded)
+  │     └─ on render exception: _record_render_failure(...)  # increments counter; every N triggers skip window
+  ├─ state.commit_render_result(bucket, theme, quote_id)     # runtime_state (takes state.lock; resets backoff)
   └─ _append_history_after_render(state, ...)                # run_clock (takes ledger_lock)
 
 button press / web POST
@@ -638,7 +652,7 @@ run_clock.py                       runtime loop (bucket-change-triggered, error-
 runtime_log.py                     shared timestamped stderr/stdout logger (_log)
 runtime_state.py                   RuntimeState class — locks, mutable shared state between the loop, button listener, and web server
 runtime_store.py                   persisted runtime state JSON (manual_theme / manual_quiet) loaded at startup and saved atomically via atomic_io
-runtime_telemetry.py               date-rotated JSONL telemetry sidecar (append_telemetry, daily_telemetry_path, prune_telemetry)
+runtime_telemetry.py               date-rotated JSONL telemetry sidecar (append_telemetry, append_heartbeat, daily_telemetry_path, prune_telemetry)
 runtime_theme.py                   theme resolution — auto-dark window, manual override, midnight reset
 runtime_quiet.py                   in_quiet_hours + _display_quiet_image + compute_quiet/enter_quiet/exit_quiet state machine (shared by the main loop's scheduled quiet-hours branch and runtime_actions.action_quiet's manual toggle; --startup-image and button-D shutdown preamble reuse _display_quiet_image directly)
 runtime_actions.py                 action_skip/unskip/theme/quiet/rerender + _button_render_gate — shared by GPIO buttons and the web UI; each action does a lazy `import run_clock` internally so tests that patch `run_clock.X` affect the call path (same pattern web_server.py uses)
