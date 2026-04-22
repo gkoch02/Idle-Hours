@@ -207,6 +207,35 @@ class TestMain:
         assert not (tmp_path / "quote_database.jsonl.tmp").exists()
 
 
+class TestBakeIdempotence:
+    """Re-baking an already-baked file must refresh rarity + rank, not carry
+    forward the stale values cached in ``baked_score``. Without the strip in
+    ``bake_rows``, ``score_row`` would short-circuit on the existing
+    ``baked_score`` and reuse the previous bake's rarity."""
+
+    def test_rarity_refreshes_when_rebaking(self):
+        rarity_idx = bq.BAKED_SCORE_COMPONENTS.index("source_rarity_penalty")
+        initial = [make_row(source_id="A", line_number=i, quality_score=80) for i in range(1, 4)]
+        baked_first, _ = bq.bake_rows(initial, min_quality=60)
+        assert baked_first[0]["baked_score"][rarity_idx] == 3
+
+        # Simulate the corpus shrinking: one row survives from source A.
+        shrunk_input = [dict(baked_first[0])]  # already carries baked_score
+        baked_second, _ = bq.bake_rows(shrunk_input, min_quality=60)
+        assert baked_second[0]["baked_score"][rarity_idx] == 1, (
+            "rarity stayed stale — baker short-circuited on the existing "
+            "baked_score instead of recomputing"
+        )
+
+    def test_does_not_mutate_input_rows(self, sample_row):
+        """bake_rows must not stamp baked fields onto the caller's dicts."""
+        before = dict(sample_row)
+        bq.bake_rows([sample_row], min_quality=60)
+        assert sample_row == before, (
+            f"input row was mutated: new keys {set(sample_row) - set(before)}"
+        )
+
+
 class TestPipelinePosition:
     def test_load_rows_re_derives_fuzzy_bucket(self, tmp_path):
         """Mirrors pick_quote.load_rows: a stale fuzzy_bucket in the input is

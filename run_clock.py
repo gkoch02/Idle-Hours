@@ -274,7 +274,12 @@ def peek_quote_id(time_str: str, history_path: str | None = None, history_days: 
     the runtime loop keeps ticking instead of aborting.
     """
     try:
-        row = pick_quote_module.select_quote(time_str=time_str, history_path=history_path, history_days=history_days)
+        row = pick_quote_module.select_quote(
+            time_str=time_str,
+            history_path=history_path,
+            history_days=history_days,
+            database_path=pick_quote_module.DEFAULT_DATABASE_PATH,
+        )
     except (Exception, SystemExit) as exc:
         _log(f"pick_quote failed for {time_str}: {exc!r}", err=True)
         return None

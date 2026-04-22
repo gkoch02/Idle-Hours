@@ -124,14 +124,21 @@ def _resolve(path_str: str) -> Path:
     return path
 
 
+_BAKED_ONLY_FIELDS: frozenset[str] = frozenset({"baked_score", "inferred_quote_minute", "baked_rank"})
+
+
 def _static_score(row: dict, source_counts: Counter) -> list[int]:
     """Compute the ten row-intrinsic score components for ``row``.
 
-    Calls ``pick_quote.score_row`` with empty/neutral request-time inputs so
-    ``minute_penalty`` degrades to its sentinel (99) and ``override_bonus``
-    degrades to 0 — we then drop those positions from the tuple. Rarity is
-    computed against the raw corpus that was passed in, matching the runtime
-    picker's behaviour exactly.
+    Calls ``pick_quote.score_row`` with empty overrides and ``requested_time=None``
+    so ``override_bonus`` reduces to 0 and ``minute_penalty`` falls out of the
+    tuple positions we actually keep. The values ``score_row`` returns for the
+    two dropped positions (2 and 7) are discarded by the index projection below,
+    so it doesn't matter what they happen to compute to.
+
+    Rarity (position 10) is kept and is computed against ``source_counts`` —
+    the counter must be built from the **full raw corpus**, not the filtered
+    subset, to preserve pick-equivalence with the live picker.
     """
     bucket = row.get("fuzzy_bucket") or ""
     tup = pick_quote.score_row(
@@ -176,8 +183,21 @@ def bake_rows(rows: list[dict], min_quality: int, *, top_n: int = 0) -> tuple[li
     ``stats`` is a dict with ``input``, ``kept``, drop counters, and
     ``per_bucket`` (min / max / total populated buckets) — useful for the CLI
     summary and the bake-stage unit tests.
+
+    Input rows are not mutated: we deep-copy survivors before stamping
+    ``baked_score`` / ``inferred_quote_minute`` / ``baked_rank``. Any of those
+    fields already present on an input row are stripped first, so re-running
+    the baker on its own output refreshes (rather than carries forward) the
+    cached rarity + rank. Without the strip, ``score_row`` would short-circuit
+    on the existing ``baked_score`` and reuse the stale values from the
+    previous bake.
     """
     kept, drops = filter_rows(rows, min_quality)
+
+    # Defensive copy + strip: protects callers from surprise mutation, and
+    # guarantees ``score_row`` takes the full recomputation path below even
+    # when handed an already-baked input.
+    kept = [{k: v for k, v in row.items() if k not in _BAKED_ONLY_FIELDS} for row in kept]
 
     # Rarity must be computed against the input corpus (not the kept subset)
     # so picks are bit-for-bit equivalent to what the live picker does with

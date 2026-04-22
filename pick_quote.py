@@ -623,9 +623,13 @@ def select_quote(
     renderer) can pass pre-loaded ``rows`` and ``overrides`` to skip re-parsing
     the JSONL/JSON files on every call.
 
-    By default reads the baked database (``database_path``) and falls back to
-    the raw corpus (``input_path``) if it is missing. Pass ``database_path=""``
-    to force the raw-corpus code path.
+    ``database_path`` defaults to ``None`` (raw-corpus path) so callers that
+    only know the old ``input_path`` keep working unchanged. Callers that want
+    the fast baked path pass ``database_path=DEFAULT_DATABASE_PATH`` explicitly
+    — which is what the CLI, ``run_clock.render_now`` and ``render_quote.pick_quote``
+    do. When a baked path is set and the file is missing or empty, the picker
+    logs a stderr warning and falls back to ``input_path``, so a stale/absent
+    bake degrades gracefully instead of crashing the loop.
     """
     if not time_str and not bucket:
         raise ValueError("select_quote requires time_str or bucket")

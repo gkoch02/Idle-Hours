@@ -569,3 +569,23 @@ class TestMainAtomicSave:
 
         # Restore so later tests aren't affected.
         monkeypatch.setattr(Image.Image, "save", original_save)
+
+
+class TestPickQuoteUsesBakedDatabase:
+    """``render_quote.pick_quote`` must forward ``database_path`` to
+    ``select_quote`` so the fast baked-DB path is used. Without this, the
+    curator hero image and one-shot renders silently fall back to the raw
+    corpus even when a baked DB is present."""
+
+    def test_forwards_database_path(self, monkeypatch):
+        import pick_quote as pq
+        import render_quote
+        captured: dict = {}
+
+        def fake_select_quote(**kwargs):
+            captured.update(kwargs)
+            return {"source_id": "1", "line_number": 1, "display_quote": "x", "matched_text": "y"}
+
+        monkeypatch.setattr(render_quote.pick_quote_module, "select_quote", fake_select_quote)
+        render_quote.pick_quote("10:00")
+        assert captured.get("database_path") == pq.DEFAULT_DATABASE_PATH
