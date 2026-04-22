@@ -31,7 +31,7 @@ import argparse
 import contextlib
 
 from runtime_log import _log
-from runtime_quiet import _display_quiet_image
+from runtime_quiet import _display_quiet_image, exit_quiet
 from runtime_state import RuntimeState
 from runtime_theme import resolve_effective_theme
 
@@ -185,11 +185,12 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
             with state.lock:
                 state.manual_quiet = not state.manual_quiet
                 run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                state.last_bucket = None  # force the loop to repaint on exit
-                state.last_quote_id = None
                 # Snapshot inside the lock so a concurrent toggle can't flip the
                 # branch we take below.
                 quiet_now = state.manual_quiet
+            # Shared with the main loop's scheduled-exit path: clear render-dedup
+            # state so the next tick repaints in whichever direction we flipped.
+            exit_quiet(state)
             _log(f"{label}: manual quiet -> {quiet_now}")
             if quiet_now and args.quiet_image:
                 _display_quiet_image(args.quiet_image, args.output, args.display_script)
