@@ -279,26 +279,43 @@ class TestExpandedStatusStamping:
     def test_interior_heading_filter_falls_back_when_only_heading_candidates(self):
         # Sparse-bucket safety: if every non-fragment candidate contains an
         # interior heading, we still return something (rather than punting to
-        # fragment_fallback) so the panel renders a line.
+        # fragment_fallback) so the panel renders a line. Uses a mid-sentence
+        # heading that clean_edges cannot strip (it only strips prefixes), so
+        # the filter genuinely has no clean candidate to choose from.
+        only_sentence = "When I heard that CHAPTER 5 was coming, at three o'clock sharp, I felt ready."
         row = self._row(
-            quote_text="It was three o'clock. CHAPTER 3 The Day Begins.",
-            context_text="It was three o'clock. CHAPTER 3 The Day Begins.",
+            quote_text=only_sentence,
+            context_text=only_sentence,
+            matched_text="three o'clock",
         )
         text, is_frag, _ = cdq.best_display_quote(row)
         assert is_frag is False
         assert "three o'clock" in text
+        # Fell back to the unfiltered pool — the heading is still there.
+        assert "CHAPTER 5" in text
 
-    def test_picks_longest_run_when_closest_to_140(self):
-        # A dedicated proximity test — the 140-char candidate must beat both a
-        # much shorter and a much longer alternative, not merely "no worse than"
-        # the shortest.
-        short = "It was three o'clock."  # 21 chars
-        near_140 = "It was three o'clock when the long-awaited letter finally arrived at the quiet house on the corner of the square."  # ~115 chars
-        assert abs(len(near_140) - 140) < abs(len(short) - 140)
-        row = self._row(quote_text=f"{short} {near_140}", context_text="")
-        text, _, _ = cdq.best_display_quote(row)
-        # The winner must prefer the near-140 run over the short lone sentence.
-        assert text == near_140 or text.startswith(short) and near_140.split()[-1] in text
+    def test_picks_run_closest_to_140_over_shorter_and_longer_alternatives(self):
+        # Dedicated proximity test: a ~137-char hit sentence must win over a
+        # shorter single-sentence sibling and a much-longer joined blob.
+        short_sibling = "The door creaked."  # 17 chars
+        hit = (
+            "It was three o'clock when the long-awaited letter from her family in "
+            "a distant city finally arrived at the old country house that evening."
+        )  # 139 chars — closest to 140
+        filler = (
+            "She had waited for it all her life and the postman had come at last "
+            "with the envelope clutched tightly in his gloved hand and a wide grin."
+        )  # pushes any joined blob comfortably past 260
+        assert 130 <= len(hit) <= 150
+        row = self._row(
+            quote_text=f"{short_sibling} {hit} {filler}",
+            context_text="",
+        )
+        text, _, status = cdq.best_display_quote(row)
+        # Winner must be the 140-close hit sentence alone — not the short
+        # sibling, not a joined run, not the full blob.
+        assert text == hit
+        assert status == "complete_sentence"
 
 
 class TestMainCLI:
