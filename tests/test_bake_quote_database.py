@@ -36,6 +36,31 @@ class TestFilterRows:
         assert kept == [sample_row]
         assert drops["low_quality"] == 1
 
+    def test_drops_legacy_nonstandard_bucket_name(self):
+        """Rows with a truthy but malformed ``fuzzy_bucket`` (legacy
+        8-state names like ``"just_after"`` or daypart strings like
+        ``"morning"``) must be dropped, not scored — ``parse_requested_minute``
+        would otherwise crash with IndexError on ``"morning".split("_", 1)[1]``.
+        The raw-corpus picker silently ignores such rows because they never
+        match a canonical bucket, so dropping at bake time is the safe
+        equivalent."""
+        legacy = make_row(fuzzy_bucket="morning", normalized_time=None, hour=None, minute=None)
+        just_after = make_row(fuzzy_bucket="just_after", normalized_time=None, hour=None, minute=None)
+        valid = make_row(fuzzy_bucket="h3_exact")
+        kept, drops = bq.filter_rows([legacy, just_after, valid], min_quality=60)
+        assert kept == [valid]
+        assert drops["no_bucket"] == 2  # both legacy rows counted under no_bucket
+
+    def test_bake_rows_survives_legacy_bucket_input(self):
+        """Full bake_rows pipeline: legacy rows are filtered out before scoring,
+        so the baker completes successfully instead of crashing."""
+        legacy = make_row(fuzzy_bucket="morning", normalized_time=None, hour=None, minute=None)
+        valid = make_row(fuzzy_bucket="h3_exact")
+        baked, stats = bq.bake_rows([legacy, valid], min_quality=60)
+        assert len(baked) == 1
+        assert baked[0]["fuzzy_bucket"] == "h3_exact"
+        assert stats["drops"]["no_bucket"] == 1
+
     def test_threshold_is_inclusive(self, sample_row):
         at_threshold = make_row(quality_score=60)
         just_below = make_row(quality_score=59)

@@ -155,14 +155,22 @@ def filter_rows(rows: list[dict], min_quality: int) -> tuple[list[dict], dict[st
     """Return ``(kept, drop_counts)`` after applying the runtime filters at bake time.
 
     Drop reasons are mutually exclusive; a row is only counted under the first
-    reason that applies, in the order checked: no bucket → no display_quote →
-    low quality.
+    reason that applies, in the order checked: no/invalid bucket → no
+    display_quote → low quality.
+
+    ``fuzzy_bucket`` is validated against :func:`pick_quote.valid_bucket_names`
+    rather than just truthy-checked: the raw-corpus picker silently ignores
+    rows whose bucket is not a canonical ``h{1..12}_{state}`` (e.g. legacy
+    daypart strings like ``"morning"`` that pre-date ``buckets.py``), but the
+    baker would otherwise call ``parse_requested_minute`` on them and crash
+    with ``IndexError`` on ``"morning".split("_", 1)[1]``.
     """
+    valid = pick_quote.valid_bucket_names()
     kept: list[dict] = []
     drops = {"no_bucket": 0, "no_display_quote": 0, "low_quality": 0}
     for row in rows:
         bucket = row.get("fuzzy_bucket")
-        if not bucket:
+        if not bucket or bucket not in valid:
             drops["no_bucket"] += 1
             continue
         display = row.get("display_quote")
