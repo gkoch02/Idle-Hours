@@ -241,9 +241,32 @@ class CuratorHandler(BaseHTTPRequestHandler):
             return True
         supplied = self.headers.get(TOKEN_HEADER, "")
         if not supplied or not hmac.compare_digest(supplied, ctx.token):
+            # Structured auth-failure marker so an operator can grep for
+            # "was the web UI hammered with bad tokens?" without scraping
+            # journald; remote+path are sufficient to distinguish a fat-
+            # finger from a scanner sweep.
+            self._emit_web_telemetry({
+                "mode": "web_auth_fail",
+                "remote": self.client_address[0] if self.client_address else "",
+                "path": self.path,
+            })
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "token required"})
             return False
         return True
+
+    def _emit_web_telemetry(self, payload: dict) -> None:
+        """Emit one structured web-activity entry via the run_clock telemetry sink.
+
+        Lazy import keeps the module-import graph acyclic (``run_clock``
+        imports from ``web_server``-adjacent runtime modules, not vice
+        versa at load time) and routes through ``run_clock.append_telemetry``
+        so tests can patch the sink in one place.
+        """
+        ctx = self._ctx()
+        if not ctx.telemetry_path:
+            return
+        import run_clock
+        run_clock.append_telemetry(ctx.telemetry_path, payload)
 
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or 0)
@@ -311,9 +334,17 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             return handler()
         except ValueError as exc:
+            # Body/payload validation failure — structured 400 marker so an
+            # operator can tell a curl-it-wrong from a real 5xx blow-up.
+            self._emit_web_telemetry({
+                "mode": "web_error", "status": 400, "path": path, "error": str(exc),
+            })
             return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             _log(f"web POST {path}: {exc!r}", err=True)
+            self._emit_web_telemetry({
+                "mode": "web_error", "status": 500, "path": path, "error": repr(exc),
+            })
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
 
     # -- GET endpoints --------------------------------------------------------

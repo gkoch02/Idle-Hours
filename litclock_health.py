@@ -56,6 +56,16 @@ def parse_args() -> argparse.Namespace:
             "Default: disabled."
         ),
     )
+    parser.add_argument(
+        "--actions-only",
+        action="store_true",
+        help=(
+            "Emit an operator-centric 'what did the user do?' report instead of the full "
+            "health summary: action counts by type (skip/theme/quiet/...), press-dropped "
+            "count, web_auth_fail count, quiet-window count, and last action timestamp. "
+            "Combine with --json for machine-readable output."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -152,6 +162,16 @@ def summarise(entries: list[dict]) -> dict:
     # doesn't look like "0 renders, 0 errors" when it's actually fine.
     heartbeats = [e for e in entries if e.get("type") == "heartbeat"]
     non_heartbeats = [e for e in entries if e.get("type") != "heartbeat"]
+    # Operator-activity entries emitted by runtime_actions / _button_render_gate
+    # / web_server. Tracked separately so a burst of button presses doesn't
+    # inflate render_count and so "what did the user do?" queries have a
+    # single source of truth.
+    actions = [e for e in non_heartbeats if e.get("mode") == "action"]
+    press_dropped = [e for e in non_heartbeats if e.get("mode") == "press_dropped"]
+    web_auth_fails = [e for e in non_heartbeats if e.get("mode") == "web_auth_fail"]
+    web_errors = [e for e in non_heartbeats if e.get("mode") == "web_error"]
+    quiet_enters = [e for e in non_heartbeats if e.get("mode") == "quiet_enter"]
+    quiet_exits = [e for e in non_heartbeats if e.get("mode") == "quiet_exit"]
     # Positively identify renders by the ``render_ms`` field — only set by
     # ``run_clock.render_now`` on a successful render subprocess. Defining
     # renders as "anything without an error" miscategorises modes like
@@ -159,7 +179,15 @@ def summarise(entries: list[dict]) -> dict:
     # field) as successful renders, which would let a wedged appliance
     # report healthy as long as it was tripping the backoff threshold.
     renders = [e for e in non_heartbeats if isinstance(e.get("render_ms"), int)]
-    errors = [e for e in non_heartbeats if "error" in e]
+    # Exclude structured action / web / quiet markers from the generic
+    # error tally even if they carry an ``error`` field — they have their
+    # own dedicated counts below and a failed skip action doesn't mean the
+    # render pipeline itself is unhealthy.
+    error_modes_excluded = {"action", "web_error", "web_auth_fail"}
+    errors = [
+        e for e in non_heartbeats
+        if "error" in e and e.get("mode") not in error_modes_excluded
+    ]
     render_latencies = sorted(e["render_ms"] for e in renders)
     display_latencies = sorted(
         e["display_ms"] for e in renders if isinstance(e.get("display_ms"), int)
@@ -170,6 +198,13 @@ def summarise(entries: list[dict]) -> dict:
         # order since ``append_telemetry`` always appends. The final entry's ts
         # is the most recent heartbeat.
         last_heartbeat_ts = heartbeats[-1].get("ts")
+    # Break actions down by verb so the summary reads as
+    # "5 theme toggles, 2 skips" instead of a bare "7 actions".
+    actions_by_type: dict[str, int] = {}
+    for entry in actions:
+        name = str(entry.get("action", "unknown"))
+        actions_by_type[name] = actions_by_type.get(name, 0) + 1
+    last_action_ts = actions[-1].get("ts") if actions else None
     return {
         "render_count": len(renders),
         "error_count": len(errors),
@@ -180,6 +215,14 @@ def summarise(entries: list[dict]) -> dict:
         "display_p50_ms": _percentile(display_latencies, 50),
         "display_p95_ms": _percentile(display_latencies, 95),
         "last_error": errors[-1].get("error") if errors else None,
+        "action_count": len(actions),
+        "actions_by_type": actions_by_type,
+        "last_action_ts": last_action_ts,
+        "press_dropped_count": len(press_dropped),
+        "web_auth_fail_count": len(web_auth_fails),
+        "web_error_count": len(web_errors),
+        "quiet_enter_count": len(quiet_enters),
+        "quiet_exit_count": len(quiet_exits),
     }
 
 
@@ -198,11 +241,56 @@ def format_summary(summary: dict, hours: int) -> str:
         parts.append(
             f"display latency p50 {summary['display_p50_ms']}ms / p95 {summary['display_p95_ms']}ms"
         )
+    # Action breakdown: always show the header when any operator activity
+    # occurred so silent windows (0 actions) don't pad the summary.
+    if summary.get("action_count"):
+        actions_by_type = summary.get("actions_by_type") or {}
+        breakdown = ", ".join(
+            f"{name} {count}" for name, count in sorted(actions_by_type.items())
+        ) or "—"
+        last_action = summary.get("last_action_ts") or "?"
+        parts.append(f"{summary['action_count']} actions ({breakdown}; last {last_action})")
+    if summary.get("press_dropped_count"):
+        parts.append(f"{summary['press_dropped_count']} presses dropped (render in flight)")
+    if summary.get("web_auth_fail_count"):
+        parts.append(f"{summary['web_auth_fail_count']} web auth failures")
+    if summary.get("web_error_count"):
+        parts.append(f"{summary['web_error_count']} web POST errors")
+    if summary.get("quiet_enter_count") or summary.get("quiet_exit_count"):
+        parts.append(
+            f"quiet hours: {summary.get('quiet_enter_count', 0)} enters, "
+            f"{summary.get('quiet_exit_count', 0)} exits"
+        )
     if summary["last_error"]:
         parts.append(f"last error: {summary['last_error']}")
     if summary.get("stale_heartbeat"):
         parts.append("WARNING: heartbeat is stale — loop may be wedged")
     return "\n".join(parts)
+
+
+def format_actions_summary(summary: dict, hours: int) -> str:
+    """Render the ``--actions-only`` view.
+
+    Operator-centric "what did the user do?" report. Omits render / latency
+    fields, which are covered by the default summary. Always prints every
+    counter (including zeros) so cron / grep output is shape-stable.
+    """
+    actions_by_type = summary.get("actions_by_type") or {}
+    breakdown = (
+        ", ".join(f"{name} {count}" for name, count in sorted(actions_by_type.items()))
+        if actions_by_type else "none"
+    )
+    last_action = summary.get("last_action_ts") or "never"
+    return "\n".join([
+        f"Last {hours}h — operator activity:",
+        f"  actions: {summary.get('action_count', 0)} ({breakdown})",
+        f"  last action: {last_action}",
+        f"  presses dropped: {summary.get('press_dropped_count', 0)}",
+        f"  web auth failures: {summary.get('web_auth_fail_count', 0)}",
+        f"  web POST errors: {summary.get('web_error_count', 0)}",
+        f"  quiet hours: {summary.get('quiet_enter_count', 0)} enters / "
+        f"{summary.get('quiet_exit_count', 0)} exits",
+    ])
 
 
 def is_heartbeat_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
@@ -267,7 +355,12 @@ def main() -> int:
     if args.max_heartbeat_age_minutes is not None:
         summary["stale_heartbeat"] = is_heartbeat_stale(summary, args.max_heartbeat_age_minutes)
     if args.json:
+        # --actions-only is a human-readability concern; the JSON already
+        # contains every field either view consumes, so keep the payload
+        # shape stable for scripts regardless of the flag.
         print(json.dumps({"hours": args.hours, **summary}))
+    elif args.actions_only:
+        print(format_actions_summary(summary, args.hours))
     else:
         print(format_summary(summary, args.hours))
     return evaluate_health(

@@ -37,27 +37,58 @@ from runtime_theme import resolve_effective_theme
 
 
 @contextlib.contextmanager
-def _button_render_gate(state: RuntimeState, name: str):
+def _button_render_gate(
+    state: RuntimeState,
+    label: str,
+    action: str,
+    *,
+    telemetry_path: str | None = None,
+):
     """Try-acquire ``state.render_lock`` for a button or web handler.
 
     Yields ``True`` if the lock was acquired (caller does its work; the gate
     releases on exit) or ``False`` if a render is already in flight, in which
-    case the press is logged and dropped. This coalesces a rapid tap-tap-tap
-    down to "first wins, rest are no-ops" — without it, gpiozero queues
-    subsequent events behind the slow eInk refresh and the user sees
-    unpredictable multi-second delays.
+    case the press is logged, telemetrised as ``mode="press_dropped"``, and
+    dropped. This coalesces a rapid tap-tap-tap down to "first wins, rest are
+    no-ops" — without it, gpiozero queues subsequent events behind the slow
+    eInk refresh and the user sees unpredictable multi-second delays.
 
-    ``name`` is the full caller label (e.g. ``"button A (skip)"`` or
-    ``"web (skip)"``) so the log message correctly attributes a dropped press.
+    ``label`` is the source (``"button A"``, ``"web"``) and ``action`` is the
+    verb (``"skip"``, ``"theme"``…); they appear together in the log line and
+    as separate fields in the telemetry entry so a health summary can break
+    drops down by both source and action.
     """
+    name = f"{label} ({action})"
     if not state.render_lock.acquire(blocking=False):
         _log(f"{name}: busy (render in flight), press ignored")
+        # Structured drop marker so operators can see "I mashed during a 20 s
+        # refresh and nothing happened" in the telemetry sidecar — the log
+        # line alone is easy to miss in journald under load.
+        import run_clock  # lazy import matches the action-body pattern below
+        run_clock.append_telemetry(
+            telemetry_path,
+            {"mode": "press_dropped", "label": label, "action": action, "reason": "render_in_flight"},
+        )
         yield False
         return
     try:
         yield True
     finally:
         state.render_lock.release()
+
+
+def _emit_action(telemetry_path: str | None, action: str, label: str, *, ok: bool, error: str | None = None) -> None:
+    """Write one structured ``mode="action"`` telemetry entry.
+
+    Extracted so each ``action_*`` body has a single call site for success /
+    failure emission (the busy-drop case is handled by ``_button_render_gate``
+    and records ``mode="press_dropped"`` instead, so the two never double-count).
+    """
+    import run_clock  # lazy: keeps test patches on run_clock.append_telemetry effective
+    payload: dict = {"mode": "action", "action": action, "label": label, "ok": ok}
+    if error is not None:
+        payload["error"] = error
+    run_clock.append_telemetry(telemetry_path, payload)
 
 
 def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
@@ -70,7 +101,7 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
     import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (skip)") as acquired:
+    with _button_render_gate(state, label, "skip", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
         _log(f"{label}: skip")
@@ -90,12 +121,11 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)
+            _emit_action(telemetry_path, "skip", label, ok=True)
             return {"ok": True, "new_quote_id": list(quote_id) if quote_id else None}
         except Exception as exc:
             _log(f"{label} skip failed: {exc!r}", err=True)
-            run_clock.append_telemetry(
-                telemetry_path, {"bucket": run_clock.current_bucket(), "error": repr(exc), "mode": "skip"},
-            )
+            _emit_action(telemetry_path, "skip", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc)}
 
 
@@ -109,7 +139,7 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
     import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (unskip)") as acquired:
+    with _button_render_gate(state, label, "unskip", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
         _log(f"{label}: un-skip")
@@ -119,6 +149,7 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
                 state.last_skipped = None
             if target is None:
                 _log("un-skip: no recently-skipped quote recorded")
+                _emit_action(telemetry_path, "unskip", label, ok=True)
                 return {"ok": True, "restored": None}
             with state.ledger_lock:
                 removed = run_clock.pick_quote_module.remove_last_history_entry(
@@ -132,12 +163,11 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)
+            _emit_action(telemetry_path, "unskip", label, ok=True)
             return {"ok": True, "restored": list(target)}
         except Exception as exc:
             _log(f"{label} un-skip failed: {exc!r}", err=True)
-            run_clock.append_telemetry(
-                telemetry_path, {"bucket": run_clock.current_bucket(), "error": repr(exc), "mode": "unskip"},
-            )
+            _emit_action(telemetry_path, "unskip", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc)}
 
 
@@ -146,7 +176,7 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (theme)") as acquired:
+    with _button_render_gate(state, label, "theme", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
         try:
@@ -161,12 +191,11 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 quote_id = state.last_quote_id
             _log(f"{label}: theme -> {new_theme}")
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            _emit_action(telemetry_path, "theme", label, ok=True)
             return {"ok": True, "theme": new_theme}
         except Exception as exc:
             _log(f"{label} theme toggle failed: {exc!r}", err=True)
-            run_clock.append_telemetry(
-                telemetry_path, {"bucket": run_clock.current_bucket(), "error": repr(exc), "mode": "theme"},
-            )
+            _emit_action(telemetry_path, "theme", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc)}
 
 
@@ -178,7 +207,7 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (quiet)") as acquired:
+    with _button_render_gate(state, label, "quiet", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
         try:
@@ -204,12 +233,11 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                     time_str, history_path=history_path, history_days=args.history_days,
                 )
                 run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            _emit_action(telemetry_path, "quiet", label, ok=True)
             return {"ok": True, "manual_quiet": quiet_now}
         except Exception as exc:
             _log(f"{label} quiet toggle failed: {exc!r}", err=True)
-            run_clock.append_telemetry(
-                telemetry_path, {"bucket": run_clock.current_bucket(), "error": repr(exc), "mode": "quiet"},
-            )
+            _emit_action(telemetry_path, "quiet", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc)}
 
 
@@ -219,7 +247,7 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
     from buckets import bucket_for_time
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
-    with _button_render_gate(state, f"{label} (rerender)") as acquired:
+    with _button_render_gate(state, label, "rerender", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
         try:
@@ -232,10 +260,9 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
             if quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)
             _log(f"{label}: rerender bucket={bucket}")
+            _emit_action(telemetry_path, "rerender", label, ok=True)
             return {"ok": True, "bucket": bucket, "quote_id": list(quote_id) if quote_id else None}
         except Exception as exc:
             _log(f"{label} rerender failed: {exc!r}", err=True)
-            run_clock.append_telemetry(
-                telemetry_path, {"bucket": run_clock.current_bucket(), "error": repr(exc), "mode": "rerender"},
-            )
+            _emit_action(telemetry_path, "rerender", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc)}
