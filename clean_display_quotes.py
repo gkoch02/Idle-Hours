@@ -65,6 +65,23 @@ def clean_edges(text: str) -> str:
     return text
 
 
+def strip_heading_prefix(text: str) -> str:
+    """Iteratively strip leading HEADING_PREFIX matches without touching quote
+    marks or other content-bearing punctuation. Used for interior sentences in
+    ``expand_candidates``: ``clean_edges`` would strip a leading ``"`` or ``'``
+    via ``LEADING_JUNK``, which destroys the opening of dialogue when joined
+    sentences like ``He paused. "All is ready," she replied.`` are concatenated
+    into a run — the interior sentence would become ``All is ready,"`` and
+    render with an orphan close-quote.
+    """
+    while True:
+        stripped = HEADING_PREFIX.sub("", text).strip()
+        if stripped == text:
+            break
+        text = stripped
+    return text
+
+
 def looks_fragment(text: str) -> bool:
     if not text:
         return True
@@ -103,7 +120,9 @@ def expand_candidates(text: str, matched_text: str) -> tuple[list[str], set[str]
     needle = (matched_text or "").replace("\n", " ").strip().lower()
     if not needle:
         return [], set()
-    sentences = [clean_edges(s) for s in split_sentences(text)]
+    # Use the quote-preserving heading-stripper here, not clean_edges: joined
+    # runs must keep opening ``"`` / ``'`` characters on interior dialogue.
+    sentences = [strip_heading_prefix(s) for s in split_sentences(text)]
     sentences = [s for s in sentences if s]
     if not sentences:
         return [], set()

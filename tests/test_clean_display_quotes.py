@@ -294,6 +294,27 @@ class TestExpandedStatusStamping:
         # Fell back to the unfiltered pool — the heading is still there.
         assert "CHAPTER 5" in text
 
+    def test_expansion_preserves_opening_quotes_on_interior_dialogue(self):
+        # Regression guard for the P2 review finding: clean_edges' LEADING_JUNK
+        # strips leading "/' characters, so naïvely applying it per-sentence
+        # destroys opening quotes on interior dialogue when sentences are
+        # joined into a run, producing orphan close-quotes like
+        # 'He paused. All is ready," she replied.' instead of
+        # 'He paused. "All is ready," she replied.'.
+        quote_text = (
+            'He paused at the door, listening for voices on the stair. '
+            '"The carriage leaves at three o’clock," she replied firmly. '
+            'Outside the wind rattled the shutters of the old house.'
+        )
+        row = self._row(quote_text=quote_text, context_text="", matched_text="three o’clock")
+        text, _, _ = cdq.best_display_quote(row)
+        # If the interior dialogue sentence ended up in the run, its opening
+        # quote must still be present.
+        if "The carriage leaves at three" in text:
+            assert '"The carriage leaves' in text, (
+                f"opening quote missing before dialogue: {text!r}"
+            )
+
     def test_picks_run_closest_to_140_over_shorter_and_longer_alternatives(self):
         # Dedicated proximity test: a ~137-char hit sentence must win over a
         # shorter single-sentence sibling and a much-longer joined blob.
