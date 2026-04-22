@@ -30,7 +30,6 @@ import datetime as dt
 import hmac
 import json
 import re
-import sys
 import threading
 import urllib.parse
 from http import HTTPStatus
@@ -40,6 +39,7 @@ from pathlib import Path
 import atomic_io
 import pick_quote as pick_quote_module
 from buckets import bucket_for_time
+from runtime_log import _log
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web"
@@ -176,9 +176,7 @@ def write_overrides_atomic(path: Path, payload: dict) -> None:
 
     Routes through :mod:`atomic_io` so the on-disk overrides file inherits the
     same tmp → fsync → replace → dir-fsync durability contract as persisted
-    runtime state and the attributed corpus. Previously this imported
-    ``run_clock._atomic_write_text`` lazily to dodge circular imports; the
-    shared module eliminates that concern entirely.
+    runtime state and the attributed corpus.
     """
     atomic_io.atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
@@ -471,16 +469,6 @@ def _status_from_result(result: dict) -> int:
     if result.get("error") == "busy":
         return HTTPStatus.CONFLICT  # 409 — render already in flight
     return HTTPStatus.INTERNAL_SERVER_ERROR
-
-
-def _log(msg: str, *, err: bool = False) -> None:
-    """Tiny local logger so web_server doesn't import run_clock at module load.
-
-    Mirrors ``run_clock._log`` formatting (timestamped, flushed) so the two
-    streams interleave cleanly in journald.
-    """
-    stream = sys.stderr if err else sys.stdout
-    print(f"[{dt.datetime.now().isoformat(timespec='seconds')}] {msg}", file=stream, flush=True)
 
 
 # ----------------------------------------------------------------------------

@@ -479,6 +479,67 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 
 **Startup frame (`--startup-image`).** Optional PNG pushed to the display once at loop startup, before the first quote render, so the panel doesn't ghost yesterday's frame during cold boot. Off by default (a Spectra 6 refresh takes 10–20s, so the extra round-trip isn't always worth it). Point at any PNG that encodes to the panel's 6-colour palette cleanly.
 
+#### Runtime Module Architecture
+
+`run_clock.py` is a thin orchestrator. The logic it used to own is split across seven focused siblings plus the shared `RuntimeState` class — keep the boundaries tight or the "distributed spaghetti" hazard bites back.
+
+| Module | Owns | Imports from siblings |
+|---|---|---|
+| `runtime_log` | `_log` (timestamped stderr/stdout logger) | — |
+| `runtime_state` | `RuntimeState` class, three locks, `commit_render_result` | — (stdlib only) |
+| `runtime_store` | `load_runtime_state` / `save_runtime_state` (atomic via `atomic_io`) | `runtime_log` |
+| `runtime_telemetry` | `append_telemetry`, `prune_telemetry`, `daily_telemetry_path`, date-rotated JSONL | `runtime_log` |
+| `runtime_quiet` | `in_quiet_hours`, `_display_quiet_image` | `runtime_log` |
+| `runtime_theme` | `resolve_effective_theme`, `auto_theme_for`, `_maybe_reset_manual_theme_at_midnight` | `runtime_log`, `runtime_state` (+ lazy `run_clock` for midnight persist) |
+| `runtime_actions` | `action_skip/unskip/theme/quiet/rerender`, `_button_render_gate` | `runtime_log`, `runtime_state`, `runtime_theme`, `runtime_quiet` (+ lazy `run_clock` for peek/render/telemetry) |
+
+**Invariant:** every `runtime_*` module imports ≤3 siblings at module load, and only `runtime_actions` / `runtime_theme` touch `run_clock` — and only via `import run_clock` inside a function body, never at module top.
+
+**Three locks, no nesting.** `RuntimeState` exposes exactly three `threading.Lock`s with disjoint scopes:
+
+- **`render_lock`** — coarse. Serialises anything that pushes a frame to the panel (a Spectra 6 refresh can take 10–20s). The main loop acquires it blocking around `render_now`; button and web handlers acquire it *non-blocking* via `_button_render_gate` so a second press during a refresh drops rather than queues.
+- **`state.lock`** — fine. Protects the mutable fields on `RuntimeState` (`manual_theme`, `manual_quiet`, `last_bucket`, `last_quote_id`, `last_effective_theme`, `last_skipped`, `last_seen_date`, `last_pruned_date`). `commit_render_result` is the single seam that writes the `(last_bucket, last_effective_theme, last_quote_id)` triple atomically; the two intentionally-partial writes (the "quote unchanged" branch that only updates `last_bucket`, and the cold-start `last_effective_theme` prime) are inline.
+- **`ledger_lock`** — file I/O. Serialises every read-modify-write on `~/.litclock/history.jsonl`. `run_clock._append_history_after_render` is the single seam for appending after a successful render; button A's long-press un-skip and the skip action both route through it too. `pick_quote.remove_last_history_entry` takes it for the rewrite path.
+
+No code path holds two of these locks simultaneously. `render_lock` is released *before* any `state.lock` acquisition inside `_render_unlocked` → `commit_render_result`; `ledger_lock` is always taken after both are released.
+
+**Thread ownership.**
+
+- **Main loop thread** owns tick cadence. Exclusive writer of `state.last_pruned_date`, `state.last_seen_date`, and the quiet-hours local flag. Calls `_append_history_after_render` post-render; *never* holds `render_lock` while calling back into button/web actions.
+- **Button listener thread** (started by `inky_buttons.start_listener`). Fires handlers synchronously. Every handler's body is an `action_*` function wrapped in `_button_render_gate` — so a tap during an in-flight render drops cleanly rather than queueing behind a 20s refresh.
+- **Web server threads** (spawned by `http.server.ThreadingHTTPServer`). `POST /api/action/*` calls the *same* `action_*` functions with `label="web"`. Result dicts map 1:1 to HTTP status: `{ok: True}` → 200, `{error: "busy"}` → 409, `{error: "<repr>"}` → 500.
+
+All three thread families converge on `action_* → _button_render_gate → _render_unlocked → commit_render_result`. There is no parallel "web render path" or "button render path" — this is the point of the refactor.
+
+**Lazy `import run_clock` pattern.** `runtime_actions` and `web_server` do `import run_clock` inside function bodies, not at module top, so Python's module-load graph stays acyclic (`run_clock` imports from `runtime_actions`, but not vice versa at load time). The lookup resolves at call time against `run_clock`'s module globals — which is exactly where the test suite patches fakes (`patch("run_clock.peek_quote_id")`, `patch("run_clock._display_quiet_image")`, etc.). The re-export block at the top of `run_clock.py` exists *for this contract*: every name a test patches under `run_clock.X` is bound at that name. Names that are neither patched nor used internally have been dropped from the block — audit before adding more.
+
+**Runtime call graph (one tick).**
+
+```
+main loop iteration
+  ├─ _maybe_reset_manual_theme_at_midnight(args, state)      # runtime_theme
+  ├─ _check_button_liveness(state, telemetry_path)
+  ├─ _maybe_prune_telemetry(args, state, telemetry_path)     # runtime_telemetry
+  ├─ scheduled_quiet = in_quiet_hours(...)                   # runtime_quiet
+  │
+  ├─ if quiet:  _display_quiet_image(...);  sleep;  continue
+  │
+  ├─ peek_quote_id(...)                                      # pick_quote
+  ├─ with render_lock:  render_now(...)                      # subprocess: render_quote.py
+  ├─ state.commit_render_result(bucket, theme, quote_id)     # runtime_state (takes state.lock)
+  └─ _append_history_after_render(state, ...)                # run_clock (takes ledger_lock)
+
+button press / web POST
+  ├─ action_X(args, state, label=...)                        # runtime_actions
+  ├─ with _button_render_gate(state, ...):                   # non-blocking render_lock
+  ├─ [state.lock mutations]                                  # theme/quiet flip, persistence
+  ├─ _render_unlocked(...)                                   # run_clock (in-gate)
+  │     └─ commit_render_result(...)
+  └─ _append_history_after_render(...)                       # skip/unskip/rerender only
+```
+
+Theme-toggle and quiet-toggle branches **do not** append to history — they repaint the same `quote_id`, so re-appending would double-record the quote. This is why `_append_history_after_render` lives in `run_clock` (not inside `_render_unlocked`) and is called by the specific action sites that introduce a *new* quote.
+
 ### Contact Sheet (`contact_sheet.py`)
 
 Offline QA tool. For each of the 144 `h{1..12}_{state}` buckets, calls `pick_quote.select_quote` at the bucket's canonical `HH:MM` (e.g. `h3_twenty_past` → `03:20`; `h12_*` maps to `00:MM`), renders the full 800×480 frame via `render_quote.render`, and downscales it into a tile on a 12×12 grid. Each tile gets a small `HH:MM  h{hour}_{state}` caption below so you can locate specific buckets at a glance. Flags: `--tile-width`/`--tile-height` (defaults 200×120), `--caption-height` (18), `--margin` (6), `--theme`, and `--mode` — defaults to `production` so the debug footer doesn't dominate small tiles. History filtering is forced off (snapshot of the whole corpus, not anti-repeated picks). Use this to spot regressions after a corpus change: layout bugs, malformed `matched_text`, repeat authors in adjacent buckets, or fallback-bucket frames that look visually wrong.
@@ -516,7 +577,7 @@ POST /api/action/{skip,unskip,theme,quiet,rerender} → mirror physical buttons
 **Security model.** Loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) run without auth — the OS-level trust boundary is sufficient for a single-operator home appliance. Any other bind **requires** `--web-token` or `--web-token-file`; `start_web_server` raises `ValueError` if you try to bind `0.0.0.0` without one, so an operator can't accidentally expose a tokenless POST surface. Tokens are checked against the `X-LitClock-Token` header only — never query strings, which `BaseHTTPRequestHandler` logs to stderr and journald. `_check_token` uses `hmac.compare_digest` for timing-safety. Unknown POST routes return 404 **before** the auth check so a scanner's wrong-token probe doesn't learn the service exists. GETs stay open on every bind (telemetry + coverage + `current.png` are not sensitive and the UI fetches them without credentials). `--web-token-file` is preferred over `--web-token` in production so the secret doesn't show up in `ps`/journald.
 
 **Shared utilities, no duplication.**
-- Atomic writes go through `atomic_io.atomic_write_text` / `atomic_write_bytes` / `atomic_write_lines` (tmp → fsync → `os.replace` → dir fsync), the single durability primitive shared between `save_runtime_state`, `web_server.write_overrides_atomic`, the rendered-PNG writer in `render_quote`, the ledger-rewrite path in `pick_quote.remove_last_history_entry`, and the corpus writeback in `apply_content_overrides`. `run_clock._atomic_write_text` is a thin compatibility shim over the shared helper.
+- Atomic writes go through `atomic_io.atomic_write_text` / `atomic_write_bytes` / `atomic_write_lines` (tmp → fsync → `os.replace` → dir fsync), the single durability primitive shared between `save_runtime_state`, `web_server.write_overrides_atomic`, the rendered-PNG writer in `render_quote`, the ledger-rewrite path in `pick_quote.remove_last_history_entry`, and the corpus writeback in `apply_content_overrides`.
 - Bucket validation uses `pick_quote.valid_bucket_names()` so `POST /api/overrides` rejects the same bad keys that `load_overrides` warns about.
 - Telemetry summarisation reuses `litclock_health.load_entries` and `litclock_health.summarise` directly — the endpoint does not reimplement date-window globbing.
 - `pick_quote.pick_best(..., return_ranked=True)` and `pick_quote.select_candidates(...)` are the single entry point for the bucket-inspector view; the UI projects the raw `score_row` tuple into named fields via `SCORE_COMPONENTS` so the operator can see "lost by minute_penalty=8" rather than a mystery integer.

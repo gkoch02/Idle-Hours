@@ -45,21 +45,9 @@ def load_runtime_state(state_path: str | None) -> dict:
     return parsed
 
 
-def _atomic_write_text(path: Path, payload: str) -> None:
-    """Durably write ``payload`` to ``path``.
-
-    Thin shim around :func:`atomic_io.atomic_write_text` so every caller that
-    imports ``run_clock._atomic_write_text`` keeps the same contract while the
-    implementation lives in one place (see ``atomic_io`` for the tmp → fsync →
-    replace → dir-fsync details). Shared by ``save_runtime_state`` and the web
-    UI's override writer.
-    """
-    atomic_io.atomic_write_text(path, payload)
-
-
 def save_runtime_state(state_path: str | None, state: dict) -> None:
     """Persist runtime state atomically. No-op when disabled."""
     path = _resolve_state_path(state_path)
     if path is None:
         return
-    _atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2))
+    atomic_io.atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2))

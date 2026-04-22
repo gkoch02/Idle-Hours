@@ -1365,7 +1365,9 @@ class TestButtonHandlers:
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
-        with patch("run_clock._display_quiet_image") as mock_display:
+        # action_quiet calls runtime_quiet._display_quiet_image directly (not through
+        # run_clock), so the patch target is the action module's binding.
+        with patch("runtime_actions._display_quiet_image") as mock_display:
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         assert state.manual_quiet is True
