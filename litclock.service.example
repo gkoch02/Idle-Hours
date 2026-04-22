@@ -59,7 +59,10 @@ RestartSec=10
 # unit. Pair with explicit `raise SystemExit(42)` in run_clock when surfacing
 # terminal configuration errors. Current code exits 1 on pre-flight failure,
 # which still triggers Restart=always (intentional — transient FS issues).
-RestartForceExitStatus=42
+# NB: this is RestartPreventExitStatus, NOT RestartForceExitStatus — the
+# Force variant does the opposite (restarts *even when* Restart=no would
+# otherwise suppress it), which is not what we want here.
+RestartPreventExitStatus=42
 
 # Explicit journald wiring. Default behaviour is the same, but stating it
 # makes the contract visible and survives sandboxing changes that might
