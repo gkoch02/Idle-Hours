@@ -251,7 +251,7 @@ hour, minute, normalized_time, fuzzy_bucket, daypart_bucket, line_number, match_
 canonical_quote, canonical_context
 
 # Added by clean_display_quotes.py
-display_quote, display_fragment (bool), cleanup_status ("complete_sentence" | "fragment_fallback" | "empty")
+display_quote, display_fragment (bool), cleanup_status ("complete_sentence" | "expanded_with_context" | "fragment_fallback" | "empty")
 
 # Added by quality_filter.py
 quality_score (0–100), quality_flags (list of penalty reasons)
@@ -271,7 +271,7 @@ author, title  # parsed from the cached Gutenberg header when available
 - `contains_work_schedule` (bare word "work") and `contains_modern_am_pm`: −45
 - `contains_structural_label` (chapter/book/act/scene): −35
 - `fragment`: −30, `too_short` (<50 chars) / `too_long` (>260 chars): −20
-- Cleanup status other than `complete_sentence`: −20
+- Cleanup status other than `complete_sentence` or `expanded_with_context`: −20
 - `digit_heavy` (≥6 digits): −25, `uppercase_heavy` (>18% uppercase): −15
 - `weak_ending` (no terminal punct/quote): −10
 
@@ -320,7 +320,7 @@ Candidates in a bucket are ranked by a long lexicographic tuple (lower is better
 
 ```
 (fragment_penalty,           # 0 if display_fragment is False, else 1
- cleanup_penalty,             # 0 if cleanup_status == "complete_sentence", else 1
+ cleanup_penalty,             # 0 if cleanup_status in {"complete_sentence", "expanded_with_context"}, else 1
  minute_penalty,              # abs(requested_minute - inferred_quote_minute); 99 if either is None
  metadata_bonus,              # -3 both author+title, -1 one, +2 neither
  dialogue_penalty,            # +2 if text contains "he said" / "she said" / etc.
@@ -329,7 +329,9 @@ Candidates in a bucket are ranked by a long lexicographic tuple (lower is better
  override_bonus,              # -5 preferred_buckets[bucket] hit, -3 boost_source_ids hit
  -quality_score,              # higher quality wins
  length_penalty + exactness_bonus,
-                              # |len(display_quote) - 140| plus:
+                              # |len(display_quote) - 140|, +80 cliff when len < 60
+                              # (defence-in-depth so stubbornly short quotes lose to
+                              # any reasonable-length alternative in-bucket), plus:
                               #   -2 for "five/ten minutes to" or "fifty-five minutes past"
                               #   -1 for "quarter"/"half" matches
  source_rarity_penalty,       # count of this row's source_id in the full corpus;
@@ -507,7 +509,7 @@ merge_candidates.py                dedupe harvested JSONL rows
 bucket_coverage.py                 coverage report per (hour, minute-state) bucket
 target_sparse_buckets.py           targeted regex sweep for empty buckets
 import_targeted_hits.py            reshape targeted hits for merge
-clean_display_quotes.py            pick a displayable excerpt from each row
+clean_display_quotes.py            pick a displayable excerpt from each row (expands bare single-sentence hits with up to 2 neighbouring sentences, rejects mid-text chapter headings)
 quality_filter.py                  score + flag rows
 fix_substring_time_matches.py      LEGACY migration tool — repair substring-collision time tags in pre-fix JSONL
 fix_legacy_buckets.py              LEGACY migration tool — repair pre-buckets.py legacy 8-state names + matched_text whitespace

@@ -250,6 +250,56 @@ class TestExpandedStatusStamping:
         _, _, status = cdq.best_display_quote(row)
         assert status == "complete_sentence"
 
+    def test_empty_matched_text_stamps_complete_when_blob_is_single_sentence(self):
+        # Regression guard: before the single-sentence-blob fallback, an empty
+        # matched_text plus a clean one-sentence quote_text got stamped
+        # "expanded_with_context" because the blob bypassed the expand path.
+        row = self._row(
+            quote_text="It was a cold and moonless night on the edge of the western hills.",
+            context_text="",
+            matched_text="",
+        )
+        _, is_frag, status = cdq.best_display_quote(row)
+        assert is_frag is False
+        assert status == "complete_sentence"
+
+    def test_interior_chapter_heading_is_avoided_when_alternative_exists(self):
+        # Row where context_text has a clean single-sentence hit but quote_text
+        # bleeds a Title-Case chapter marker mid-run. The heading-free candidate
+        # must win.
+        row = self._row(
+            quote_text="Lord, it's one o'clock. Chapter XI Titania Tries Reading in Bed.",
+            context_text="He yawned and looked at the clock on the mantel. Lord, it's one o'clock. The fire had burned low and the room was cold.",
+            matched_text="one o'clock",
+        )
+        text, _, _ = cdq.best_display_quote(row)
+        assert "Chapter XI" not in text
+        assert "one o'clock" in text
+
+    def test_interior_heading_filter_falls_back_when_only_heading_candidates(self):
+        # Sparse-bucket safety: if every non-fragment candidate contains an
+        # interior heading, we still return something (rather than punting to
+        # fragment_fallback) so the panel renders a line.
+        row = self._row(
+            quote_text="It was three o'clock. CHAPTER 3 The Day Begins.",
+            context_text="It was three o'clock. CHAPTER 3 The Day Begins.",
+        )
+        text, is_frag, _ = cdq.best_display_quote(row)
+        assert is_frag is False
+        assert "three o'clock" in text
+
+    def test_picks_longest_run_when_closest_to_140(self):
+        # A dedicated proximity test — the 140-char candidate must beat both a
+        # much shorter and a much longer alternative, not merely "no worse than"
+        # the shortest.
+        short = "It was three o'clock."  # 21 chars
+        near_140 = "It was three o'clock when the long-awaited letter finally arrived at the quiet house on the corner of the square."  # ~115 chars
+        assert abs(len(near_140) - 140) < abs(len(short) - 140)
+        row = self._row(quote_text=f"{short} {near_140}", context_text="")
+        text, _, _ = cdq.best_display_quote(row)
+        # The winner must prefer the near-140 run over the short lone sentence.
+        assert text == near_140 or text.startswith(short) and near_140.split()[-1] in text
+
 
 class TestMainCLI:
     def test_writes_cleaned_rows(self, tmp_path, tmp_jsonl, monkeypatch, capsys):
