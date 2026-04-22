@@ -49,6 +49,18 @@ echo "==> Attempting first display push"
 python3 display_inky.py output/current.png
 
 echo
+printf '%s\n' "==> Optional: install systemd unit" \
+  "The sample unit at litclock.service.example uses Type=notify + WatchdogSec," \
+  "StateDirectory=litclock (creates /var/lib/litclock), and a modest sandbox." \
+  "To install:" \
+  "  sudo cp litclock.service.example /etc/systemd/system/litclock.service" \
+  "  sudo systemctl daemon-reload" \
+  "  sudo systemctl enable --now litclock.service" \
+  "  systemctl status litclock.service  # should show Active: active (running); notify" \
+  "" \
+  "Migrating state from ~/.litclock/ to /var/lib/litclock/ (if needed) is documented" \
+  "in pi_setup_inky_impression.md under 'Migrating from ~/.litclock/'."
+echo
 printf '%s\n' "Success path:" \
   "  cd ~/LitClock" \
   "  python3 run_clock.py --display-script display_inky.py"

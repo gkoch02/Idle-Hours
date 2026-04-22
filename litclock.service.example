@@ -4,10 +4,37 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# Type=notify pairs with sd_notify("READY=1") at end of run_clock.main()
+# startup and sd_notify("WATCHDOG=1") from every heartbeat. With WatchdogSec
+# set, systemd restarts the service when the watchdog ping goes silent for
+# longer than the interval — i.e. a wedged-but-breathing loop that plain
+# Type=simple would never notice. The 180s cap is 3× the 60s heartbeat
+# interval so a single slow tick (a stall in Pillow font load, a long Spectra 6
+# refresh) doesn't trigger a spurious restart.
+Type=notify
+WatchdogSec=180s
+
 User=pi
 WorkingDirectory=/home/pi/LitClock
-ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py --display-script display_inky.py --mode production --theme auto
+
+# StateDirectory=litclock makes systemd create /var/lib/litclock owned by the
+# service User (`pi` here) before ExecStart runs, and exposes it as %S/litclock
+# below. That is the system-managed replacement for the historical
+# ~/.litclock/ directory — under the sandbox below ($HOME is read-only — see
+# ProtectHome), a writable state dir under /var/lib is the least-surprising
+# option. Migration: ~/.litclock/ on older installs; symlink it to
+# /var/lib/litclock during the transition (see pi_setup_inky_impression.md).
+StateDirectory=litclock
+
+ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py \
+  --display-script display_inky.py \
+  --mode production \
+  --theme auto \
+  --state-path %S/litclock/state.json \
+  --history-path %S/litclock/history.jsonl \
+  --telemetry-path %S/litclock/telemetry.jsonl \
+  --pidfile %S/litclock/run_clock.pid
+
 # Reads the prebuilt baked DB at assets/quote_database.jsonl (the canonical runtime
 # input). assets/candidates-attributed.jsonl is the raw corpus that feeds the baker
 # and stays on disk as a defensive fallback + curator-UI input.
@@ -16,16 +43,73 @@ ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.
 # Useful additions depending on your setup:
 #   --buttons-off                           if gpiozero isn't installed or you don't want buttons
 #   --shutdown-command ""                   disable button-D long-press shutdown
+#                                           (see "Button-D shutdown vs sandboxing" note below)
 #   --startup-image /home/pi/LitClock/assets/goodnight.png   push a frame at boot
-#   --state-path /home/pi/.litclock/state.json              persisted theme/quiet overrides
-#   --telemetry-path /home/pi/.litclock/telemetry.jsonl     telemetry sidecar (litclock_health.py)
-#   --web-bind 127.0.0.1:8080                             curator web UI on loopback only (browse telemetry/coverage, mirror buttons, edit overrides)
-#   --web-bind 0.0.0.0:8080 --web-token-file /home/pi/.litclock/web.token
+#   --web-bind 127.0.0.1:8080                             curator web UI on loopback only
+#   --web-bind 0.0.0.0:8080 --web-token-file %S/litclock/web.token
 #                                                         expose the UI on the LAN; POSTs require X-LitClock-Token.
-#                                                         Put the secret in a root:pi 0640 file — NEVER pass --web-token
-#                                                         inline or it will show up in `ps` and journald.
+#                                                         Store the token under StateDirectory so it inherits the
+#                                                         0750/pi ownership — NEVER pass --web-token inline or it
+#                                                         will show up in `ps` and journald.
+
 Restart=always
 RestartSec=10
+# Reserved "do not restart" exit code for future pre-flight failures — a path
+# typo or similar configuration error should stop systemd from flapping the
+# unit. Pair with explicit `raise SystemExit(42)` in run_clock when surfacing
+# terminal configuration errors. Current code exits 1 on pre-flight failure,
+# which still triggers Restart=always (intentional — transient FS issues).
+RestartForceExitStatus=42
+
+# Explicit journald wiring. Default behaviour is the same, but stating it
+# makes the contract visible and survives sandboxing changes that might
+# otherwise silently redirect output.
+StandardOutput=journal
+StandardError=journal
+
+# ---- Sandboxing -------------------------------------------------------------
+# Modest least-privilege hardening. `systemd-analyze security litclock.service`
+# should show a meaningful improvement over an unsandboxed unit. These are
+# conservative defaults — if you run into trouble, strip them one at a time
+# and re-run systemd-analyze security to see what you gave up.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# ReadWritePaths carves holes in ProtectSystem=strict / ProtectHome=read-only
+# so the service can write its state dir + the render output file. %S expands
+# to /var/lib (since StateDirectory= exists); the WorkingDirectory carve-out
+# is needed for the default --output=output/current.png write path.
+ReadWritePaths=%S/litclock /home/pi/LitClock/output
+# Kernel / IPC hardening. None of these cost anything for a render loop that
+# only uses POSIX sockets + a GPIO char device.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+# Syscall filter: allow the standard system-service set. Button listener,
+# Inky SPI/I2C, HTTP server, file I/O all fall inside @system-service.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# ---- Button-D shutdown vs sandboxing ----------------------------------------
+# NoNewPrivileges=yes blocks setuid binaries, which means the default
+# `sudo -n shutdown -h now` used by button D's 2s long press will FAIL under
+# this unit. Two options:
+#   1. Set --shutdown-command "systemctl poweroff" in ExecStart. polkit on
+#      Raspberry Pi OS allows the active console user to poweroff without a
+#      password, and systemctl is not setuid so NoNewPrivileges doesn't block it.
+#      Verify with: systemctl poweroff  (as the pi user)
+#   2. Leave --shutdown-command as the sudo default and drop NoNewPrivileges=yes
+#      from this file if you want the stronger sandbox trade-off the other way.
+# Either is fine; option 1 is the recommended default because it keeps the
+# sandbox intact.
 
 [Install]
 WantedBy=multi-user.target

@@ -58,6 +58,53 @@ Notes:
 - edit `User=`, `WorkingDirectory=`, and `ExecStart=` if your Pi paths differ
 - if `inky-photo-frame.service` is still enabled, stop/disable it first so LitClock can own the display
 - install the `gpiozero` package into the same virtualenv if you want Inky button support (short press + 2s long press); otherwise add `--buttons-off` to `ExecStart=`
+- the unit uses `Type=notify` + `WatchdogSec=180s` so systemd restarts a wedged-but-breathing loop, not just a fully-dead one. The `sd_notify` client in `sd_notify.py` is pure stdlib (no `systemd-python` dep); off systemd it is a no-op so `python3 run_clock.py` on a dev host behaves identically.
+- the unit declares `StateDirectory=litclock`. systemd creates `/var/lib/litclock/` owned by `pi` before the service starts, and the sample's `--state-path` / `--history-path` / `--telemetry-path` / `--pidfile` / `--web-token-file` all point into that directory via `%S/litclock/...`.
+
+After `sudo systemctl status litclock.service` reports `Active: active (running); notify`, confirm the supervisor is actually supervising:
+
+```bash
+# Should show a non-zero WatchdogTimestamp + pong within a few minutes
+systemctl show litclock.service --property=WatchdogTimestamp,NotifyAccess
+# Security posture — should score meaningfully better than the default unit
+systemd-analyze security litclock.service
+# Simulate a wedge (foreground console only):
+sudo kill -STOP "$(systemctl show -p MainPID --value litclock.service)"
+# After WatchdogSec expires, systemd kills + restarts the service.
+```
+
+### Migrating from `~/.litclock/` to `/var/lib/litclock`
+
+Pre-phase-3 installs wrote state, history, telemetry, the pidfile, and the web token under `~/.litclock/`. The new unit uses `/var/lib/litclock/` so the sandbox can keep `$HOME` read-only. To preserve existing data across the switch:
+
+```bash
+# Stop the old service
+sudo systemctl stop litclock.service
+
+# Move or symlink the existing files. A move is simplest when there's no
+# pre-phase-3 install to roll back to:
+sudo mkdir -p /var/lib/litclock
+sudo mv ~/.litclock/state.json       /var/lib/litclock/ 2>/dev/null || true
+sudo mv ~/.litclock/history.jsonl    /var/lib/litclock/ 2>/dev/null || true
+sudo mv ~/.litclock/telemetry-*.jsonl /var/lib/litclock/ 2>/dev/null || true
+sudo mv ~/.litclock/web.token        /var/lib/litclock/ 2>/dev/null || true
+sudo chown -R pi:pi /var/lib/litclock
+sudo chmod 750 /var/lib/litclock
+
+# Or: symlink ~/.litclock → /var/lib/litclock during a transition window so any
+# stray tooling that still hardcodes the home path keeps working. Drop the
+# symlink once all call sites have been audited.
+# ln -s /var/lib/litclock ~/.litclock
+
+sudo systemctl daemon-reload
+sudo systemctl start litclock.service
+```
+
+`litclock_health.py` takes `--telemetry-path`, so ad-hoc health queries after the migration are just:
+
+```bash
+python3 litclock_health.py --telemetry-path /var/lib/litclock/telemetry.jsonl --hours 24
+```
 
 ### Optional: allow button D long-press shutdown
 
@@ -70,7 +117,12 @@ EOF
 sudo chmod 440 /etc/sudoers.d/litclock-shutdown
 ```
 
-If you prefer not to grant that, set `--shutdown-command ""` in the service `ExecStart=` to turn the hold-to-shutdown off.
+**Sandbox interaction.** The sample unit sets `NoNewPrivileges=yes`, which blocks setuid binaries — meaning the `sudo -n shutdown` default will be denied once you enable that hardening. Two paths:
+
+1. **Preferred:** change `--shutdown-command` to `systemctl poweroff`. polkit on Raspberry Pi OS already allows the active console user to poweroff without a password, and `systemctl` is not setuid so the sandbox leaves it alone. No sudoers drop-in required.
+2. Drop `NoNewPrivileges=yes` from the unit to keep the sudo-based command working. The sandbox's other protections still apply.
+
+If you prefer not to grant shutdown at all, set `--shutdown-command ""` in the service `ExecStart=` to turn hold-to-shutdown off entirely.
 
 ### Optional: health checks + telemetry
 
