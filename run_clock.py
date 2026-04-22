@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pick_quote as pick_quote_module
 import pidfile
+import sd_notify
 from buckets import bucket_for_time
 from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     _button_render_gate,
@@ -875,15 +876,39 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
     tell that renders happened, not that the loop is alive and idle. The
     throttle is wall-clock (``time.monotonic``) so a 1s test loop doesn't
     flood telemetry even though a 60s appliance loop emits once per tick.
+
+    On the same cadence we pet systemd's watchdog via ``sd_notify(WATCHDOG=1)``
+    when ``$NOTIFY_SOCKET`` is set. The heartbeat and the watchdog ping
+    share a trigger so an appliance supervised by systemd's ``WatchdogSec``
+    restarts for exactly the same class of wedge that shows up as silence in
+    ``litclock_health.py``. Off-socket (dev hosts, unit tests) the watchdog
+    call is a no-op. The ping is OUTSIDE the telemetry-path gate so an
+    operator who disabled telemetry still gets supervised. It is INSIDE the
+    throttle gate so the watchdog cadence tracks the heartbeat cadence
+    exactly.
+
+    WatchdogSec budget: the nominal cadence is 60s (``HEARTBEAT_INTERVAL_SECONDS``)
+    but the *worst-case* interval between two pings is bounded by how long a
+    single tick can take before returning to this function: up to
+    ``RENDER_TIMEOUT_SECONDS (45) + DISPLAY_TIMEOUT_SECONDS (60) +
+    interval_seconds (60) = 165s``. ``litclock.service.example`` ships
+    ``WatchdogSec=180s`` which leaves ~15s margin on that pathological case —
+    enough for real-world wobble but not much more. Raise ``WatchdogSec`` or
+    lower the render/display timeouts if your appliance sees tighter margins.
     """
-    if not telemetry_path:
-        return
     now = time.monotonic()
     with state.lock:
         if now - state.last_heartbeat_monotonic < HEARTBEAT_INTERVAL_SECONDS:
             return
+        # We advance the throttle clock unconditionally once the window
+        # elapses — even when telemetry is disabled — so the telemetry-off
+        # and telemetry-on paths share the same cadence. The field is
+        # private to this function so the "useless write when telemetry is
+        # off" is free.
         state.last_heartbeat_monotonic = now
-    append_heartbeat(telemetry_path)
+    if telemetry_path:
+        append_heartbeat(telemetry_path)
+    sd_notify.notify_watchdog()
 
 
 def _loop_sleep(state: RuntimeState, seconds: float) -> bool:
@@ -1140,6 +1165,14 @@ def main() -> int:
     # registrations (if any) don't clobber ours. Before the main tick loop so a
     # fast-arriving SIGTERM is observed on the first iteration.
     _install_signal_handlers(state)
+
+    # Notify systemd (Type=notify) that startup is complete. Off-socket this is
+    # a no-op. We do this AFTER buttons + web + signal handlers are all armed
+    # so a ``systemctl start`` that blocks on READY=1 only returns once the
+    # appliance is actually able to respond to SIGTERM cleanly and answer
+    # GPIO / HTTP ingress — otherwise systemd could start follow-on units
+    # ahead of us being fully ready.
+    sd_notify.notify_ready()
 
     try:
         while not state.stop_requested.is_set():
