@@ -69,12 +69,18 @@ def _display_quiet_image(
     display_script: str | None,
     *,
     reason: str = "quiet hours",
+    telemetry_path: str | None = None,
 ) -> None:
     """Copy ``quiet_image`` to ``output`` and optionally push it to the display script.
 
     ``reason`` is the label prefixed to the log message so the same helper can serve
     the quiet-hours entry, the startup frame, and the button-D long-press
     shutdown preamble without lying about why it ran.
+
+    ``telemetry_path``, when provided, is used to record a ``mode="display_timeout"``
+    entry if the display subprocess exceeds ``DISPLAY_TIMEOUT_SECONDS`` — matches the
+    contract the render/display paths in ``run_clock.render_now`` follow so operators
+    can see quiet-image wedges in ``litclock_health.py`` summaries.
     """
     quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
     output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
@@ -94,6 +100,18 @@ def _display_quiet_image(
             # entry, startup frame, shutdown pre-frame) logs and moves on so
             # a wedged display doesn't prevent the rest of those flows.
             _log(f"{reason}: display push timed out after {DISPLAY_TIMEOUT_SECONDS}s: {exc!r}", err=True)
+            # Lazy import so the telemetry helper stays a run_clock-visible
+            # name for tests that patch run_clock.append_telemetry.
+            import run_clock
+            run_clock.append_telemetry(
+                telemetry_path,
+                {
+                    "error": repr(exc),
+                    "mode": "display_timeout",
+                    "timeout_seconds": DISPLAY_TIMEOUT_SECONDS,
+                    "reason": reason,
+                },
+            )
             return
         _log(f"Displayed {output_resolved} via {display_path}")
 
@@ -143,7 +161,10 @@ def enter_quiet(
     try:
         if args.quiet_image:
             with state.render_lock:
-                run_clock._display_quiet_image(args.quiet_image, args.output, args.display_script)
+                run_clock._display_quiet_image(
+                    args.quiet_image, args.output, args.display_script,
+                    telemetry_path=telemetry_path,
+                )
         else:
             effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
             with state.render_lock:

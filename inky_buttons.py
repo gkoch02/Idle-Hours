@@ -13,6 +13,7 @@ enough to trigger the hold callback. This avoids firing both on a long press.
 """
 from __future__ import annotations
 
+import contextlib
 import sys
 import traceback
 from typing import Callable, Mapping
@@ -79,9 +80,17 @@ def _log_handler_exception(which: str, exc: BaseException) -> None:
     ``_make_press_cb``) format identically. We call ``print`` (not the
     ``runtime_log._log`` helper) because this module is deliberately
     dependency-free so it stays importable on non-Pi dev hosts.
+
+    The entire body is wrapped in ``contextlib.suppress(Exception)`` because
+    this is the last line of defence against the GPIO event thread dying —
+    if stderr is closed (systemd ``StandardError=null``) or the terminal is
+    gone, ``print`` / ``traceback.print_exc`` themselves can raise
+    ``BrokenPipeError`` / ``OSError``. A raise here would defeat the whole
+    "guard the dispatch" change.
     """
-    print(f"inky_buttons: {which} raised {exc!r}", file=sys.stderr, flush=True)
-    traceback.print_exc(file=sys.stderr)
+    with contextlib.suppress(Exception):
+        print(f"inky_buttons: {which} raised {exc!r}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
 
 
 def buttons_alive(handles: list | None) -> bool:

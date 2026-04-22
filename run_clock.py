@@ -574,7 +574,8 @@ def _build_button_handlers(
             try:
                 if args.quiet_image:
                     _display_quiet_image(
-                        args.quiet_image, args.output, args.display_script, reason="shutdown",
+                        args.quiet_image, args.output, args.display_script,
+                        reason="shutdown", telemetry_path=telemetry_path,
                     )
             except Exception as exc:
                 _log(f"shutdown pre-frame failed: {exc!r}", err=True)
@@ -968,7 +969,8 @@ def main() -> int:
     if args.startup_image:
         try:
             _display_quiet_image(
-                args.startup_image, args.output, args.display_script, reason="startup",
+                args.startup_image, args.output, args.display_script,
+                reason="startup", telemetry_path=telemetry_path,
             )
         except Exception as exc:
             _log(f"startup image display failed: {exc!r}", err=True)
@@ -1034,8 +1036,15 @@ def main() -> int:
                     quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
                     if quote_id is not None and quote_id == state.last_quote_id and not theme_changed:
                         _log(f"bucket {bucket}: quote unchanged, skipping redraw")
+                        # A successful peek that matches the last-rendered quote is still
+                        # a "the render path is healthy" signal — reset backoff counters
+                        # alongside last_bucket so a streak of below-threshold failures
+                        # (consecutive_render_failures < BACKOFF_EVERY_N_FAILURES) doesn't
+                        # accumulate across dedup-skipped ticks and trip a bogus skip window.
                         with state.lock:
                             state.last_bucket = bucket
+                            state.consecutive_render_failures = 0
+                            state.backoff_skip_until = 0.0
                     else:
                         with state.render_lock:
                             render_now(

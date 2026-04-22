@@ -193,7 +193,10 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
             exit_quiet(state)
             _log(f"{label}: manual quiet -> {quiet_now}")
             if quiet_now and args.quiet_image:
-                _display_quiet_image(args.quiet_image, args.output, args.display_script)
+                _display_quiet_image(
+                    args.quiet_image, args.output, args.display_script,
+                    telemetry_path=args.telemetry_path or None,
+                )
             elif not quiet_now:
                 # Wake to the current time so the user sees something immediately.
                 time_str = run_clock.current_time_str()

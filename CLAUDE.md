@@ -227,7 +227,7 @@ The canonical runtime input is **`assets/quote_database.jsonl`** — the baked, 
 | `assets/bucket-coverage.{json,md}` | coverage snapshot | yes | optional | `bucket_coverage.py` |
 | `~/.litclock/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
 | `~/.litclock/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
-| `~/.litclock/telemetry-YYYYMMDD.jsonl` | render / error telemetry | — | runtime, per-appliance | `run_clock.py` |
+| `~/.litclock/telemetry-YYYYMMDD.jsonl` | render / error / heartbeat / backoff / timeout telemetry | — | runtime, per-appliance | `run_clock.py` |
 
 Three invariants to keep in mind when touching this layer:
 
@@ -499,7 +499,7 @@ Short-press vs long-press dispatch is routed through a tiny `_HoldDispatcher` so
 | `runtime_log` | `_log` (timestamped stderr/stdout logger) | — |
 | `runtime_state` | `RuntimeState` class, three locks, `commit_render_result` | — (stdlib only) |
 | `runtime_store` | `load_runtime_state` / `save_runtime_state` (atomic via `atomic_io`) | `runtime_log` |
-| `runtime_telemetry` | `append_telemetry`, `prune_telemetry`, `daily_telemetry_path`, date-rotated JSONL | `runtime_log` |
+| `runtime_telemetry` | `append_telemetry`, `append_heartbeat`, `prune_telemetry`, `daily_telemetry_path`, date-rotated JSONL | `runtime_log` |
 | `runtime_quiet` | `in_quiet_hours`, `_display_quiet_image`, `compute_quiet` / `enter_quiet` / `exit_quiet` state machine | `runtime_log`, `runtime_state`, `runtime_theme` (+ lazy `run_clock` for `_display_quiet_image` / `render_now` / `append_telemetry`) |
 | `runtime_theme` | `resolve_effective_theme`, `auto_theme_for`, `_maybe_reset_manual_theme_at_midnight` | `runtime_log`, `runtime_state` (+ lazy `run_clock` for midnight persist) |
 | `runtime_actions` | `action_skip/unskip/theme/quiet/rerender`, `_button_render_gate` | `runtime_log`, `runtime_state`, `runtime_theme`, `runtime_quiet` (+ lazy `run_clock` for peek/render/telemetry) |
@@ -531,14 +531,17 @@ main loop iteration
   ├─ _maybe_reset_manual_theme_at_midnight(args, state)      # runtime_theme
   ├─ _check_button_liveness(state, telemetry_path)
   ├─ _maybe_prune_telemetry(args, state, telemetry_path)     # runtime_telemetry
+  ├─ _maybe_emit_heartbeat(state, telemetry_path)            # runtime_telemetry.append_heartbeat, throttled 60s
+  ├─ if _in_backoff_skip(state): sleep; continue             # render-failure exponential backoff gate
   ├─ now_quiet, manual_only = compute_quiet(...)             # runtime_quiet
   │
   ├─ if now_quiet:  enter_quiet(...) on rising edge; sleep; continue
   ├─ if was_quiet: exit_quiet(state)                         # falling edge: clears last_bucket/quote_id
   │
   ├─ peek_quote_id(...)                                      # pick_quote
-  ├─ with render_lock:  render_now(...)                      # subprocess: render_quote.py
-  ├─ state.commit_render_result(bucket, theme, quote_id)     # runtime_state (takes state.lock)
+  ├─ with render_lock:  render_now(...)                      # subprocess: render_quote.py (timeout-bounded)
+  │     └─ on render exception: _record_render_failure(...)  # increments counter; every N triggers skip window
+  ├─ state.commit_render_result(bucket, theme, quote_id)     # runtime_state (takes state.lock; resets backoff)
   └─ _append_history_after_render(state, ...)                # run_clock (takes ledger_lock)
 
 button press / web POST
@@ -649,7 +652,7 @@ run_clock.py                       runtime loop (bucket-change-triggered, error-
 runtime_log.py                     shared timestamped stderr/stdout logger (_log)
 runtime_state.py                   RuntimeState class — locks, mutable shared state between the loop, button listener, and web server
 runtime_store.py                   persisted runtime state JSON (manual_theme / manual_quiet) loaded at startup and saved atomically via atomic_io
-runtime_telemetry.py               date-rotated JSONL telemetry sidecar (append_telemetry, daily_telemetry_path, prune_telemetry)
+runtime_telemetry.py               date-rotated JSONL telemetry sidecar (append_telemetry, append_heartbeat, daily_telemetry_path, prune_telemetry)
 runtime_theme.py                   theme resolution — auto-dark window, manual override, midnight reset
 runtime_quiet.py                   in_quiet_hours + _display_quiet_image + compute_quiet/enter_quiet/exit_quiet state machine (shared by the main loop's scheduled quiet-hours branch and runtime_actions.action_quiet's manual toggle; --startup-image and button-D shutdown preamble reuse _display_quiet_image directly)
 runtime_actions.py                 action_skip/unskip/theme/quiet/rerender + _button_render_gate — shared by GPIO buttons and the web UI; each action does a lazy `import run_clock` internally so tests that patch `run_clock.X` affect the call path (same pattern web_server.py uses)

@@ -299,3 +299,34 @@ class TestHandlerExceptionContained:
         btn.when_pressed()  # raises and is swallowed
         btn.when_pressed()  # must still fire
         assert fired == [0, 1]
+
+
+class TestHoldPreventsShortOnException:
+    """A long-press handler that raises must still prevent the short handler
+    from firing on release. Otherwise a buggy long handler that crashes
+    would produce BOTH the long action's partial side effect AND the short
+    action — behaviour we were already careful to avoid for successful
+    long-presses in _HoldDispatcher."""
+
+    def test_raising_hold_still_suppresses_short(self, capsys):
+        short_fired = []
+
+        def bad_hold():
+            raise RuntimeError("hold bug")
+
+        def short():
+            short_fired.append(1)
+
+        buttons = inky_buttons.start_listener(
+            {"A": short},
+            hold_handlers={"A": bad_hold},
+        )
+        btn = _button_for_label(buttons, "A")
+        # Hardware fire order for a long press: press → hold (during press)
+        # → release. on_hold raises; we must swallow that AND still prevent
+        # on_release from firing the short handler.
+        btn.when_pressed()
+        btn.when_held()   # raises RuntimeError("hold bug"); swallowed
+        btn.when_released()
+        assert short_fired == [], "short handler must not fire after a (raising) long press"
+        assert "hold bug" in capsys.readouterr().err

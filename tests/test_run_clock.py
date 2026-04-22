@@ -2510,3 +2510,137 @@ class TestSourceCardTimerCancellation:
         # No raise; pending_timers drained.
         run_clock._shutdown(self._args(tmp_path), state, web_handle=None)
         assert state.pending_timers == []
+
+
+class TestBackoffSkipsSubprocess:
+    """Integration assertion: when _in_backoff_skip is True, the main-loop
+    body must not invoke render_now / subprocess.run at all. The unit tests
+    above prove the counter / deadline arithmetic; this pins the downstream
+    behaviour that actually saves the GPIO thread / log from spam.
+    """
+
+    def test_backoff_window_prevents_render_call(self, tmp_path):
+        import time as _time
+        # Build args for run_clock.main with a 0s interval so the loop ticks fast.
+        argv = ["run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0"]
+        render_calls = []
+
+        def fake_render(*a, **kw):
+            render_calls.append(1)
+
+        tick_count = {"n": 0}
+
+        def stop_after_ticks(_state, _sec):
+            tick_count["n"] += 1
+            if tick_count["n"] >= 3:
+                raise KeyboardInterrupt
+            return False
+
+        # Prime RuntimeState.backoff_skip_until BEFORE the loop starts so every
+        # tick takes the backoff-skip continue. We do it via a patched
+        # RuntimeState.__init__ that sets the deadline 60s in the future.
+        real_init = run_clock.RuntimeState.__init__
+
+        def init_with_backoff(self, theme_arg, persisted=None):
+            real_init(self, theme_arg, persisted=persisted)
+            self.backoff_skip_until = _time.monotonic() + 60.0
+
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.RuntimeState.__init__", init_with_backoff), \
+             patch("run_clock.current_time_str", return_value="12:00"), \
+             patch("run_clock._loop_sleep", side_effect=stop_after_ticks):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert render_calls == [], "render_now must not run while backoff_skip_until is in the future"
+
+    def test_commit_resets_backoff_so_next_tick_renders(self, tmp_path):
+        """Regression guard: once a success happens, the skip window clears."""
+        state = run_clock.RuntimeState("default")
+        import time as _time
+        # Start in backoff.
+        state.consecutive_render_failures = 5
+        state.backoff_skip_until = _time.monotonic() + 60.0
+        # Simulating a successful render call.
+        state.commit_render_result("h2_half_past", "default", ("src", 1))
+        assert run_clock._in_backoff_skip(state) is False
+
+
+class TestDedupResetsBackoff:
+    """The 'quote unchanged' dedup branch is a successful peek — it must
+    also clear render-failure counters, otherwise a streak of below-threshold
+    failures across ticks that happen to dedup could compound into a skip."""
+
+    def test_dedup_branch_clears_counter_and_deadline(self, tmp_path):
+        # Drive one loop tick where peek_quote_id returns the same id the state
+        # already has; the dedup branch should run and reset backoff.
+        argv = ["run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0"]
+
+        tick_count = {"n": 0}
+
+        def stop_after(_state, _sec):
+            tick_count["n"] += 1
+            if tick_count["n"] >= 1:
+                raise KeyboardInterrupt
+            return False
+
+        # Prime state with a pending backoff count (but below the threshold
+        # that would set backoff_skip_until).
+        captured = {"state": None}
+        real_init = run_clock.RuntimeState.__init__
+
+        def init_with_pending_failures(self, theme_arg, persisted=None):
+            real_init(self, theme_arg, persisted=persisted)
+            self.consecutive_render_failures = 2
+            # Force the bucket-changed branch by pre-seeding a different last_bucket.
+            self.last_bucket = "h99_exact"
+            # And prime last_quote_id so the dedup branch fires when peek returns the same.
+            # Shape matches peek_quote_id's (source_id, line_number, display_quote, matched_text).
+            self.last_quote_id = ("src-1", 1, "q", "mt")
+            # last_effective_theme non-None so theme_changed evaluates False when the
+            # effective theme matches.
+            self.last_effective_theme = "default"
+            captured["state"] = self
+
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now") as render_mock, \
+             patch("run_clock.RuntimeState.__init__", init_with_pending_failures), \
+             patch("run_clock.current_time_str", return_value="12:00"), \
+             patch("run_clock.current_bucket", return_value="h12_exact"), \
+             patch("run_clock.peek_quote_id", return_value=("src-1", 1, "q", "mt")), \
+             patch("run_clock._loop_sleep", side_effect=stop_after):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        # Dedup branch fired (render_now not called), and the counter was reset.
+        assert not render_mock.called
+        assert captured["state"].consecutive_render_failures == 0
+        assert captured["state"].backoff_skip_until == 0.0
+
+
+class TestQuietImageTimeoutTelemetry:
+    """_display_quiet_image must emit telemetry on display timeout,
+    matching the contract the render/display paths follow.
+    """
+
+    def test_quiet_image_display_timeout_writes_telemetry(self, tmp_path, capsys):
+        import runtime_quiet
+        src = tmp_path / "goodnight.png"
+        src.write_bytes(b"\x89PNG")
+        out = tmp_path / "current.png"
+        telemetry_base = tmp_path / "telemetry.jsonl"
+
+        def timeout_on_display(cmd, **kw):
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=runtime_quiet.DISPLAY_TIMEOUT_SECONDS)
+
+        with patch("subprocess.run", side_effect=timeout_on_display):
+            # Does not raise — _display_quiet_image swallows timeouts.
+            runtime_quiet._display_quiet_image(
+                str(src), str(out), display_script="display_inky.py",
+                reason="quiet hours", telemetry_path=str(telemetry_base),
+            )
+        assert "timed out" in capsys.readouterr().err
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        display_timeouts = [e for e in entries if e.get("mode") == "display_timeout"]
+        assert len(display_timeouts) == 1
+        assert display_timeouts[0].get("reason") == "quiet hours"
