@@ -15,6 +15,19 @@ BASE_DIR = Path(__file__).resolve().parent
 TERMINAL_PUNCT = ".!?\"'”’)]"
 LEADING_JUNK = re.compile(r'^[\s\[\("“”‘’\-,:;]+')
 TRAILING_JUNK = re.compile(r'[\s\[\("“”‘’\-,:;]+$')
+
+# Common English abbreviations whose trailing period must NOT be treated as a
+# sentence boundary. Without this guard, `split_sentences` cuts "Mr. Smith" into
+# two fake sentences and `best_display_quote` happily picks the "…, said Mr."
+# prefix as a complete sentence — producing display quotes truncated mid-name.
+ABBREVIATIONS = frozenset({
+    "Mr", "Mrs", "Ms", "Mx", "Dr", "St", "Sr", "Jr",
+    "Rev", "Hon", "Gen", "Col", "Capt", "Lt", "Sgt", "Maj", "Cpl", "Adm",
+    "Mme", "Mlle", "M", "Mons", "Messrs", "Prof",
+    "Mt", "Ave", "Rd", "Blvd",
+    "No", "Nos", "vs", "etc", "viz", "approx",
+})
+_LAST_TOKEN_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 HEADING_PREFIX = re.compile(
     r"^(?:"
     r"(?:[A-Z][A-Z'.-]+(?:\s+[A-Z][A-Z'.-]+){0,5})\s+"
@@ -43,14 +56,49 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _ends_with_abbreviation(text: str) -> bool:
+    """Return True if `text` ends with a known abbreviation like "Mr." or "Dr."
+
+    Also treats a lone trailing capital-letter initial (e.g. "J.", "R.") as an
+    abbreviation so we don't split "J. R. R. Tolkien" into four fake sentences,
+    and treats short multi-period tokens like "A.M.", "P.M.", "e.g.", "i.e."
+    the same way — without this a "nine o'clock P.M." sentence gets cut at the
+    `P.` and a display quote of "…at nine o'clock P." ships to the panel.
+    """
+    match = _LAST_TOKEN_RE.search(text)
+    if not match:
+        return False
+    token = match.group(1)
+    head = token.rstrip(".")
+    if head in ABBREVIATIONS:
+        return True
+    if len(head) == 1 and head.isupper():
+        return True
+    # Short dotted acronym: "P.M", "A.M", "e.g", "i.e", "U.S", "U.S.A", etc.
+    # Interior periods alone don't make it an abbreviation — "Jones." would
+    # match — so require at least one interior period and cap length.
+    if "." in head and len(head) <= 5:
+        return True
+    return False
+
+
 def split_sentences(text: str) -> list[str]:
     text = text.replace("\r", " ")
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return []
     text = re.sub(r'([.!?]["”’\]\)]?)\s+', r'\1\n', text)
-    parts = text.splitlines()
-    return [part.strip() for part in parts if part.strip()]
+    parts = [part.strip() for part in text.splitlines() if part.strip()]
+    # Un-split false boundaries left by abbreviations: if part N ends with
+    # "Mr.", "Mrs.", "Dr." etc., glue part N+1 back on. The period there is
+    # part of the abbreviation, not the end of a sentence.
+    merged: list[str] = []
+    for part in parts:
+        if merged and _ends_with_abbreviation(merged[-1]):
+            merged[-1] = f"{merged[-1]} {part}"
+        else:
+            merged.append(part)
+    return merged
 
 
 def clean_edges(text: str) -> str:
@@ -90,6 +138,12 @@ def looks_fragment(text: str) -> bool:
     if not any(text.endswith(ch) for ch in TERMINAL_PUNCT):
         return True
     if text[0].islower():
+        return True
+    # Trailing "Mr." / "Mrs." / "A.M." etc. looks like a terminal period but
+    # is almost always the miner's context window cutting a sentence short.
+    # Flag as a fragment so quality_filter heavily penalises it and the picker
+    # drops it below its default --min-quality threshold.
+    if _ends_with_abbreviation(text):
         return True
     return False
 
