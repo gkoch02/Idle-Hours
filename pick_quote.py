@@ -18,6 +18,30 @@ from jsonl_io import iter_jsonl
 DEFAULT_HISTORY_PATH = "~/.litclock/history.jsonl"
 DEFAULT_HISTORY_DAYS = 7
 
+# Paths of the two corpus artifacts committed in ``assets/``. ``DEFAULT_DATABASE_PATH``
+# is the baked, display-ready corpus produced by ``bake_quote_database.py`` and
+# consulted at runtime; ``DEFAULT_INPUT_PATH`` is the raw attributed corpus and
+# is used by the curator UI's bucket-inspector (``select_candidates``) plus as a
+# defensive fallback when the baked file is missing.
+DEFAULT_DATABASE_PATH = "assets/quote_database.jsonl"
+DEFAULT_INPUT_PATH = "assets/candidates-attributed.jsonl"
+
+# Order of the ten row-intrinsic score components stored in ``row["baked_score"]``.
+# Kept in sync with ``bake_quote_database.BAKED_SCORE_COMPONENTS``; reordering
+# either list in isolation breaks pick equivalence.
+BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
+    "fragment_penalty",
+    "cleanup_penalty",
+    "metadata_bonus",
+    "dialogue_penalty",
+    "opening_penalty",
+    "source_bonus",
+    "quality_component",
+    "length_exactness",
+    "source_rarity_penalty",
+    "length_tiebreak",
+)
+
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
     5: ["five minutes past", "five minutes after", "five past"],
@@ -70,8 +94,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pick the best LitClock quote for a time.")
     parser.add_argument(
         "--input",
-        default="assets/candidates-attributed.jsonl",
-        help="Attributed and quality-scored runtime candidate JSONL file.",
+        default=DEFAULT_INPUT_PATH,
+        help="Attributed and quality-scored raw candidate JSONL file (fallback when --database is missing).",
+    )
+    parser.add_argument(
+        "--database",
+        default=DEFAULT_DATABASE_PATH,
+        help=(
+            "Baked display-ready quote database (output of bake_quote_database.py). "
+            "Preferred over --input at runtime; empty string forces the raw-corpus path."
+        ),
     )
     parser.add_argument(
         "--time",
@@ -249,7 +281,42 @@ def source_rarity_penalty(row: dict, source_counts: Counter) -> int:
     return source_counts.get(str(source_id), 0)
 
 
+def compose_baked_score_key(row: dict, bucket: str, overrides: dict, requested_time: str | None) -> tuple:
+    """Reconstruct the full 12-component sort key for a baked row.
+
+    ``row["baked_score"]`` holds the ten row-intrinsic components in
+    :data:`BAKED_SCORE_COMPONENTS` order. We interleave back in the two
+    request-time components (``minute_penalty`` at position 2 and
+    ``override_bonus`` at position 7) so the resulting tuple has the same
+    layout as :func:`score_row`'s output — that is what guarantees bit-for-bit
+    pick-equivalence between the baked and the raw-corpus paths.
+
+    Uses ``row["inferred_quote_minute"]`` (baked once by
+    ``bake_quote_database``) instead of re-running the regex sweep per tick.
+    """
+    baked = row["baked_score"]
+    requested_minute = parse_requested_minute(bucket, requested_time)
+    quote_minute = row.get("inferred_quote_minute")
+    if requested_minute is None or quote_minute is None:
+        minute_penalty = 99
+    else:
+        minute_penalty = abs(requested_minute - quote_minute)
+    ovr = override_bonus(row, overrides, bucket)
+    return (
+        baked[0], baked[1], minute_penalty,
+        baked[2], baked[3], baked[4], baked[5],
+        ovr,
+        baked[6], baked[7], baked[8], baked[9],
+    )
+
+
 def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | None = None, source_counts: Counter | None = None) -> tuple:
+    # Fast path: baked rows carry their nine row-intrinsic components and a
+    # pre-computed source rarity in ``baked_score``. Recomputing here would
+    # burn CPU per-tick on logic the bake stage already ran — and if the two
+    # code paths drift, baked picks silently diverge from raw picks.
+    if "baked_score" in row:
+        return compose_baked_score_key(row, bucket, overrides, requested_time)
     display = row.get("display_quote") or ""
     fragment_penalty = 1 if row.get("display_fragment") else 0
     cleanup_penalty = 0 if row.get("cleanup_status") in {"complete_sentence", "expanded_with_context"} else 1
@@ -511,10 +578,34 @@ def select_candidates(
     return result
 
 
+def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
+    """Prefer the baked database; fall back to the raw corpus if missing.
+
+    A missing or empty ``database_path`` falls back silently (the common case
+    before ``bake_quote_database.py`` has been run once). When the file exists
+    but is empty (0 bytes) we also fall back, since an empty baked file would
+    otherwise starve the picker even though the raw corpus is healthy. We log
+    the fallback once-per-call so a misconfigured install doesn't silently run
+    on the slower raw-scoring path forever.
+    """
+    if database_path:
+        path = resolve_path(database_path)
+        if path.exists() and path.stat().st_size > 0:
+            return load_rows(path)
+        if path.exists():
+            print(
+                f"warning: baked database {path} is empty; falling back to raw corpus",
+                file=sys.stderr,
+                flush=True,
+            )
+    return load_rows(resolve_path(input_path))
+
+
 def select_quote(
     time_str: str | None = None,
     bucket: str | None = None,
-    input_path: str = "assets/candidates-attributed.jsonl",
+    input_path: str = DEFAULT_INPUT_PATH,
+    database_path: str | None = None,
     overrides_path: str = "assets/selection_overrides.json",
     seed: int = 0,
     min_quality: int = 60,
@@ -531,12 +622,16 @@ def select_quote(
     Callers that invoke this many times in a tight loop (e.g. the contact-sheet
     renderer) can pass pre-loaded ``rows`` and ``overrides`` to skip re-parsing
     the JSONL/JSON files on every call.
+
+    By default reads the baked database (``database_path``) and falls back to
+    the raw corpus (``input_path``) if it is missing. Pass ``database_path=""``
+    to force the raw-corpus code path.
     """
     if not time_str and not bucket:
         raise ValueError("select_quote requires time_str or bucket")
     target_bucket = bucket or bucket_for_time(time_str)
     if rows is None:
-        rows = load_rows(resolve_path(input_path))
+        rows = _resolve_corpus(database_path, input_path)
     if overrides is None:
         overrides = load_overrides(resolve_path(overrides_path))
     recent = load_recent_history(history_path, history_days)
@@ -569,6 +664,7 @@ def main() -> int:
         time_str=args.time,
         bucket=args.bucket,
         input_path=args.input,
+        database_path=args.database or None,
         overrides_path=args.overrides,
         seed=args.seed,
         min_quality=args.min_quality,
