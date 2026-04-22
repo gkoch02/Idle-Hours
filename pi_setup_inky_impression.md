@@ -108,21 +108,19 @@ python3 litclock_health.py --telemetry-path /var/lib/litclock/telemetry.jsonl --
 
 ### Optional: allow button D long-press shutdown
 
-The default `--shutdown-command` is `sudo -n shutdown -h now`, so a 2-second hold of button D can power the appliance down cleanly. That requires passwordless sudo for shutdown. A minimal sudoers drop-in:
+A 2-second hold of button D runs `--shutdown-command` and powers the appliance down cleanly. Pick one of:
 
-```bash
-sudo tee /etc/sudoers.d/litclock-shutdown <<'EOF'
-pi ALL=(root) NOPASSWD: /sbin/shutdown
-EOF
-sudo chmod 440 /etc/sudoers.d/litclock-shutdown
-```
+1. **Recommended under the sandbox:** set `--shutdown-command "systemctl poweroff"` in the service `ExecStart=`. polkit on Raspberry Pi OS already allows the active console user to poweroff without a password, and `systemctl` is not setuid so the sample unit's `NoNewPrivileges=yes` leaves it alone. No sudoers drop-in required.
+2. **Legacy / no sandbox:** keep the built-in default `sudo -n shutdown -h now`, which requires both a passwordless-sudo drop-in *and* removing `NoNewPrivileges=yes` from the unit (the sandbox blocks setuid binaries like `sudo`). The other sandbox protections still apply.
 
-**Sandbox interaction.** The sample unit sets `NoNewPrivileges=yes`, which blocks setuid binaries — meaning the `sudo -n shutdown` default will be denied once you enable that hardening. Two paths:
+   ```bash
+   sudo tee /etc/sudoers.d/litclock-shutdown <<'EOF'
+   pi ALL=(root) NOPASSWD: /sbin/shutdown
+   EOF
+   sudo chmod 440 /etc/sudoers.d/litclock-shutdown
+   ```
 
-1. **Preferred:** change `--shutdown-command` to `systemctl poweroff`. polkit on Raspberry Pi OS already allows the active console user to poweroff without a password, and `systemctl` is not setuid so the sandbox leaves it alone. No sudoers drop-in required.
-2. Drop `NoNewPrivileges=yes` from the unit to keep the sudo-based command working. The sandbox's other protections still apply.
-
-If you prefer not to grant shutdown at all, set `--shutdown-command ""` in the service `ExecStart=` to turn hold-to-shutdown off entirely.
+3. **Off entirely:** set `--shutdown-command ""` in `ExecStart=` to disable hold-to-shutdown.
 
 ### Optional: health checks + telemetry
 

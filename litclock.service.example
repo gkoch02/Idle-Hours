@@ -81,14 +81,20 @@ ProtectHome=read-only
 # to /var/lib (since StateDirectory= exists); the WorkingDirectory carve-out
 # is needed for the default --output=output/current.png write path.
 ReadWritePaths=%S/litclock /home/pi/LitClock/output
-# Kernel / IPC hardening. None of these cost anything for a render loop that
-# only uses POSIX sockets + a GPIO char device.
+# Kernel / IPC hardening. These are free for a render loop that only uses
+# POSIX sockets + GPIO / SPI / I2C char devices — which is what LitClock
+# actually does today.
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
 RestrictNamespaces=yes
 LockPersonality=yes
+# MemoryDenyWriteExecute blocks pages that are simultaneously writable and
+# executable. Pillow and the Pimoroni Inky stack are fine (their C extensions
+# load RX, not W+X). Re-check if you later add a JIT-using dependency
+# (numba, numpy-with-JIT, some ctypes-trampoline patterns); those will fail
+# with EPERM and the failure mode is non-obvious.
 MemoryDenyWriteExecute=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes

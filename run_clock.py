@@ -885,13 +885,26 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
     call is a no-op. The ping is OUTSIDE the telemetry-path gate so an
     operator who disabled telemetry still gets supervised. It is INSIDE the
     throttle gate so the watchdog cadence tracks the heartbeat cadence
-    exactly — ``WatchdogSec=180s`` gives a 3× safety margin on the default
-    60s heartbeat.
+    exactly.
+
+    WatchdogSec budget: the nominal cadence is 60s (``HEARTBEAT_INTERVAL_SECONDS``)
+    but the *worst-case* interval between two pings is bounded by how long a
+    single tick can take before returning to this function: up to
+    ``RENDER_TIMEOUT_SECONDS (45) + DISPLAY_TIMEOUT_SECONDS (60) +
+    interval_seconds (60) = 165s``. ``litclock.service.example`` ships
+    ``WatchdogSec=180s`` which leaves ~15s margin on that pathological case —
+    enough for real-world wobble but not much more. Raise ``WatchdogSec`` or
+    lower the render/display timeouts if your appliance sees tighter margins.
     """
     now = time.monotonic()
     with state.lock:
         if now - state.last_heartbeat_monotonic < HEARTBEAT_INTERVAL_SECONDS:
             return
+        # We advance the throttle clock unconditionally once the window
+        # elapses — even when telemetry is disabled — so the telemetry-off
+        # and telemetry-on paths share the same cadence. The field is
+        # private to this function so the "useless write when telemetry is
+        # off" is free.
         state.last_heartbeat_monotonic = now
     if telemetry_path:
         append_heartbeat(telemetry_path)
