@@ -42,6 +42,14 @@ BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
     "length_tiebreak",
 )
 
+# Schema version that :mod:`bake_quote_database` stamps onto every baked row.
+# Must match ``bake_quote_database.BAKED_SCORE_SCHEMA_VERSION``; a mismatch
+# between the two means the baked file on disk was produced by a different
+# scoring pipeline than the one loaded here, so :func:`_resolve_corpus` falls
+# back to the raw corpus with a stderr warning rather than silently scoring
+# with a drifted ``baked_score`` layout.
+BAKED_SCORE_SCHEMA_VERSION: int = 1
+
 EXACT_MINUTE_PATTERNS = {
     "zero": ["o’clock", "oclock", "struck"],
     5: ["five minutes past", "five minutes after", "five past"],
@@ -583,28 +591,65 @@ def select_candidates(
     return result
 
 
+def _rows_schema_mismatch(rows: list[dict]) -> int | None:
+    """Return the first rogue ``schema_version`` seen on a baked row, or ``None`` if in sync.
+
+    A baked corpus pre-dating the schema-version field will have no
+    ``schema_version`` on any row — we treat that as version 0 and report it
+    so an upgrade surfaces loudly on first boot (the operator is expected to
+    re-bake). A row with a *different* integer schema means the baker that
+    produced this file stamped a layout that the current ``pick_quote`` can't
+    interpret — ditto falls back.
+
+    Only rows that actually carry ``baked_score`` are checked; a raw-corpus
+    passthrough will have none, so the schema check skips harmlessly.
+    """
+    for row in rows:
+        if "baked_score" not in row:
+            continue
+        version = row.get("schema_version", 0)
+        if not isinstance(version, int) or version != BAKED_SCORE_SCHEMA_VERSION:
+            return version
+    return None
+
+
 def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
-    """Prefer the baked database; fall back to the raw corpus if missing.
+    """Prefer the baked database; fall back to the raw corpus if missing or schema-mismatched.
 
     The baked DB (``DEFAULT_DATABASE_PATH``) is the canonical runtime input and
     ships committed in the repo, so on a healthy install this always hits the
-    first branch. The fallback exists as a defensive guardrail for two cases:
+    first branch. The fallback exists as a defensive guardrail for three cases:
 
     * the baked file is missing entirely (e.g. someone pointed ``--database``
-      at a stale path, or a partial checkout), and
+      at a stale path, or a partial checkout);
     * the baked file exists but is empty (e.g. a crashed bake left a zero-byte
-      placeholder).
+      placeholder); and
+    * the baked file's ``schema_version`` disagrees with
+      :data:`BAKED_SCORE_SCHEMA_VERSION` — the baker that produced the file
+      stamped a ``baked_score`` layout this ``pick_quote`` doesn't understand,
+      so scoring it would produce drifted picks without crashing.
 
-    Both fall back to the raw corpus rather than crashing the loop, and both
-    log a one-shot stderr warning so the operator notices they're running on
-    the slower raw-scoring path. A falsy ``database_path`` (empty string /
-    ``None``) skips the baked path entirely without warning — the bake-
-    equivalence tests use this to exercise the raw path on purpose.
+    All three fall back to the raw corpus rather than crashing the loop, and
+    all three log a one-shot stderr warning so the operator notices they're
+    running on the slower raw-scoring path. A falsy ``database_path`` (empty
+    string / ``None``) skips the baked path entirely without warning — the
+    bake-equivalence tests use this to exercise the raw path on purpose.
     """
     if database_path:
         path = resolve_path(database_path)
         if path.exists() and path.stat().st_size > 0:
-            return load_rows(path)
+            rows = load_rows(path)
+            stale = _rows_schema_mismatch(rows)
+            if stale is not None:
+                print(
+                    f"warning: baked database {path} has schema_version={stale!r} "
+                    f"but this pick_quote expects {BAKED_SCORE_SCHEMA_VERSION}; "
+                    f"falling back to raw corpus (re-run bake_quote_database.py)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return load_rows(resolve_path(input_path))
+            return rows
         if path.exists():
             print(
                 f"warning: baked database {path} is empty; falling back to raw corpus",

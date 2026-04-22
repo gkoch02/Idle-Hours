@@ -807,6 +807,66 @@ class TestResolveCorpus:
         rows = pq._resolve_corpus("", str(raw))
         assert rows[0]["source_id"] == "raw"
 
+    def test_falls_back_when_schema_version_mismatched(self, tmp_path, monkeypatch, capsys):
+        """Issue #53: a baked DB stamped with a different schema_version must
+        trigger a fallback to the raw corpus. This is the 'git pull updated
+        pick_quote.py but not quote_database.jsonl' scenario — without the
+        check, baked_score is scored against a mis-aligned tuple layout."""
+        raw = tmp_path / "raw.jsonl"
+        baked = tmp_path / "baked.jsonl"
+        import json as _json
+        raw.write_text(_json.dumps({"source_id": "raw"}) + "\n", encoding="utf-8")
+        baked_row = {
+            "source_id": "baked",
+            "baked_score": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "schema_version": 9999,  # not the current version
+            "inferred_quote_minute": None,
+        }
+        baked.write_text(_json.dumps(baked_row) + "\n", encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(str(baked), str(raw))
+        assert rows[0]["source_id"] == "raw"
+        err = capsys.readouterr().err
+        assert "schema_version" in err
+
+    def test_missing_schema_version_also_falls_back(self, tmp_path, monkeypatch, capsys):
+        """A baked DB predating the schema-version field has no marker on any
+        row; treat that as version 0 so an upgrade surfaces loudly."""
+        raw = tmp_path / "raw.jsonl"
+        baked = tmp_path / "baked.jsonl"
+        import json as _json
+        raw.write_text(_json.dumps({"source_id": "raw"}) + "\n", encoding="utf-8")
+        baked_row = {
+            "source_id": "baked",
+            "baked_score": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "inferred_quote_minute": None,
+            # no schema_version
+        }
+        baked.write_text(_json.dumps(baked_row) + "\n", encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(str(baked), str(raw))
+        assert rows[0]["source_id"] == "raw"
+        assert "schema_version" in capsys.readouterr().err
+
+    def test_current_schema_version_loads_baked(self, tmp_path, monkeypatch, capsys):
+        """Baseline: a baked DB with the current schema_version loads normally."""
+        raw = tmp_path / "raw.jsonl"
+        baked = tmp_path / "baked.jsonl"
+        import json as _json
+        raw.write_text(_json.dumps({"source_id": "raw"}) + "\n", encoding="utf-8")
+        baked_row = {
+            "source_id": "baked",
+            "baked_score": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "schema_version": pq.BAKED_SCORE_SCHEMA_VERSION,
+            "inferred_quote_minute": None,
+        }
+        baked.write_text(_json.dumps(baked_row) + "\n", encoding="utf-8")
+        monkeypatch.setattr(pq, "BASE_DIR", tmp_path)
+        rows = pq._resolve_corpus(str(baked), str(raw))
+        assert rows[0]["source_id"] == "baked"
+        # No warning on the happy path.
+        assert "schema_version" not in capsys.readouterr().err
+
 
 class TestSourceRarityPenalty:
     def test_no_source_id_returns_zero(self):

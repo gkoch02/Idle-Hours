@@ -281,3 +281,55 @@ class TestBakedScoreComponents:
 
     def test_component_count_matches_indices(self):
         assert len(bq.BAKED_SCORE_COMPONENTS) == len(bq._STATIC_SCORE_INDICES)
+
+
+class TestSchemaVersion:
+    """Issue #53: every baked row must carry the schema-version marker so
+    a post-git-pull mismatch between pick_quote.py and quote_database.jsonl
+    is detected and the loop falls back to the raw corpus."""
+
+    def test_pick_quote_schema_version_matches_baker(self):
+        """If these diverge, a new bake will stamp a version the runtime
+        picker treats as stale, so every pick falls back to raw."""
+        assert bq.BAKED_SCORE_SCHEMA_VERSION == pick_quote.BAKED_SCORE_SCHEMA_VERSION
+
+    def test_every_baked_row_has_schema_version(self, sample_rows):
+        baked, _ = bq.bake_rows(sample_rows, min_quality=0)
+        assert baked  # sanity
+        for row in baked:
+            assert row.get("schema_version") == bq.BAKED_SCORE_SCHEMA_VERSION
+
+    def test_re_bake_strips_and_rewrites_schema_version(self, sample_rows):
+        """Rebaking an already-baked corpus must overwrite schema_version, not
+        accumulate. Without the strip in _BAKED_ONLY_FIELDS, a row that
+        survived two bakes would carry whatever the first bake stamped."""
+        baked_once, _ = bq.bake_rows(sample_rows, min_quality=0)
+        # Tamper with the first bake's stamp to make sure the second rewrites it.
+        for row in baked_once:
+            row["schema_version"] = 99999
+        baked_twice, _ = bq.bake_rows(baked_once, min_quality=0)
+        for row in baked_twice:
+            assert row["schema_version"] == bq.BAKED_SCORE_SCHEMA_VERSION
+
+    def test_committed_baked_db_has_current_schema_version(self):
+        """Regression guard for the data-model commit flow: a git pull that
+        updates the schema must also rebake. Without this assertion, a raw-
+        corpus commit with a stale committed bake would silently ship to
+        appliances with a schema mismatch.
+
+        Sweeps all 144 canonical buckets' committed rows via the current
+        resolver so we know the DB is loadable + current.
+        """
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parent.parent
+        db_path = repo_root / "assets" / "quote_database.jsonl"
+        if not db_path.exists():
+            pytest.skip("assets/quote_database.jsonl not committed")
+        rows = pick_quote.load_rows(db_path)
+        baked = [r for r in rows if "baked_score" in r]
+        assert baked, "committed database has no baked rows"
+        for row in baked:
+            assert row.get("schema_version") == bq.BAKED_SCORE_SCHEMA_VERSION, (
+                f"row {row.get('source_id')}:{row.get('line_number')} has stale schema "
+                f"{row.get('schema_version')!r} vs expected {bq.BAKED_SCORE_SCHEMA_VERSION}"
+            )

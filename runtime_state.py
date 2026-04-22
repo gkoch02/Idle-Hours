@@ -81,9 +81,50 @@ class RuntimeState:
             if mt in ("default", "dark"):
                 self.manual_theme = mt
             self.manual_quiet = bool(persisted.get("manual_quiet", False))
+            # Render-identity fields (last_bucket / last_quote_id /
+            # last_effective_theme) survive a restart so a mid-bucket
+            # ``systemctl restart`` does not redraw an identical frame. The
+            # main loop's skip-if-unchanged check then short-circuits the
+            # first post-restart tick. Shape is validated to match the
+            # runtime types so a hand-edited or corrupted state file can't
+            # poison the loop with a wrong-type field (a bad ``last_bucket``
+            # string would just trigger a redraw, which is fine).
+            last_bucket = persisted.get("last_bucket")
+            if isinstance(last_bucket, str) and last_bucket:
+                self.last_bucket = last_bucket
+            last_theme = persisted.get("last_effective_theme")
+            if last_theme in ("default", "dark"):
+                self.last_effective_theme = last_theme
+            last_quote_id = persisted.get("last_quote_id")
+            if isinstance(last_quote_id, list) and last_quote_id:
+                # Stored as a list in JSON; restore as tuple so equality checks
+                # against freshly-peeked ids (also tuples) line up. We don't
+                # pin a strict length because the runtime identity shape has
+                # evolved before (the initial 3-tuple grew to 4-tuple when
+                # ``matched_text`` was added to the dedup key); a persisted
+                # shape that doesn't match the current peek will just miss
+                # the dedup check and force a redraw — safe, not a crash.
+                self.last_quote_id = tuple(last_quote_id)
 
     def snapshot_for_persistence(self) -> dict:
-        return {"manual_theme": self.manual_theme, "manual_quiet": self.manual_quiet}
+        """Serialise the fields the operator (or the main loop) needs across restarts.
+
+        Includes the two user-facing preferences (``manual_theme``,
+        ``manual_quiet``) and the render-identity triple
+        (``last_bucket`` / ``last_quote_id`` / ``last_effective_theme``) so
+        a ``systemctl restart`` mid-bucket doesn't force a redraw of the
+        identical frame that's already on the panel. The three identity
+        fields are written atomically as a group — see
+        :meth:`commit_render_result`.
+        """
+        last_quote_id = list(self.last_quote_id) if self.last_quote_id is not None else None
+        return {
+            "manual_theme": self.manual_theme,
+            "manual_quiet": self.manual_quiet,
+            "last_bucket": self.last_bucket,
+            "last_quote_id": last_quote_id,
+            "last_effective_theme": self.last_effective_theme,
+        }
 
     def commit_render_result(
         self, bucket: str, effective_theme: str, quote_id: tuple | None,

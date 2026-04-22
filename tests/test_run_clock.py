@@ -827,6 +827,67 @@ class TestRuntimeStatePersistence:
         path.write_text("[]", encoding="utf-8")
         assert run_clock.load_runtime_state(str(path)) == {}
 
+    def test_load_rejects_wrong_type_on_known_key(self, tmp_path, capsys):
+        """Issue #53: malformed-but-parseable state.json must log a validation
+        error rather than silently flipping the field to ``{}``.
+
+        Scenario: operator hand-edits state.json and leaves ``manual_theme: 42``
+        instead of a string. Before validation, ``RuntimeState`` would read
+        the 42 and (because 42 is truthy but not one of "default"/"dark")
+        drop it to None — silent, no operator signal.
+        """
+        path = tmp_path / "state.json"
+        path.write_text('{"manual_theme": 42, "manual_quiet": true}', encoding="utf-8")
+        result = run_clock.load_runtime_state(str(path))
+        # Manual_theme is dropped; manual_quiet survives (it was valid).
+        assert result == {"manual_quiet": True}
+        err = capsys.readouterr().err
+        assert "validation" in err
+        assert "manual_theme" in err
+
+    def test_load_validation_telemetrises(self, tmp_path):
+        """Issue #53: a malformed state.json writes a telemetry entry so the
+        drift is visible in ``litclock_health.py`` summaries, not just stderr.
+        """
+        state_path = tmp_path / "state.json"
+        telemetry_path = tmp_path / "telemetry.jsonl"
+        state_path.write_text(
+            '{"manual_theme": 42, "manual_quiet": "not-a-bool"}',
+            encoding="utf-8",
+        )
+        run_clock.load_runtime_state(str(state_path), telemetry_path=str(telemetry_path))
+        daily = run_clock.daily_telemetry_path(telemetry_path)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        validation = [e for e in entries if e.get("mode") == "state_validation"]
+        assert len(validation) == 1
+        issues = validation[0]["issues"]
+        assert any("manual_theme" in i for i in issues)
+        assert any("manual_quiet" in i for i in issues)
+
+    def test_load_preserves_unknown_keys(self, tmp_path, capsys):
+        """Forward-compat: an unknown top-level key is flagged but kept in the
+        returned dict, so an older install can round-trip a newer schema field
+        without dropping it.
+        """
+        path = tmp_path / "state.json"
+        path.write_text(
+            '{"manual_theme": "dark", "manual_quiet": false, "v3_new_thing": "stays"}',
+            encoding="utf-8",
+        )
+        result = run_clock.load_runtime_state(str(path))
+        assert result.get("v3_new_thing") == "stays"
+        assert "unknown key" in capsys.readouterr().err
+
+    def test_load_parse_error_telemetrises(self, tmp_path):
+        """Parse-level corruption (tuncated write) also emits a telemetry entry."""
+        state_path = tmp_path / "state.json"
+        telemetry_path = tmp_path / "telemetry.jsonl"
+        state_path.write_text("{broken json", encoding="utf-8")
+        run_clock.load_runtime_state(str(state_path), telemetry_path=str(telemetry_path))
+        daily = run_clock.daily_telemetry_path(telemetry_path)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(e.get("mode") == "state_validation" for e in entries)
+
     def test_runtime_state_seeds_from_persisted(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
         assert s.manual_theme == "dark"
@@ -838,7 +899,47 @@ class TestRuntimeStatePersistence:
 
     def test_snapshot_for_persistence_round_trips(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
-        assert s.snapshot_for_persistence() == {"manual_theme": "dark", "manual_quiet": True}
+        assert s.snapshot_for_persistence() == {
+            "manual_theme": "dark",
+            "manual_quiet": True,
+            "last_bucket": None,
+            "last_quote_id": None,
+            "last_effective_theme": None,
+        }
+
+    def test_snapshot_includes_render_identity_triple(self):
+        """Issue #53 phase 2: a restart mid-bucket must be able to skip redraw.
+
+        The render-identity fields (``last_bucket`` / ``last_quote_id`` /
+        ``last_effective_theme``) live only in RAM otherwise, so they have to
+        land in the snapshot for the main-loop dedup check to be meaningful
+        across restarts.
+        """
+        s = run_clock.RuntimeState("default")
+        s.commit_render_result("h2_half_past", "default", ("src-1", 42))
+        snap = s.snapshot_for_persistence()
+        assert snap["last_bucket"] == "h2_half_past"
+        assert snap["last_effective_theme"] == "default"
+        # Stored as list for JSON round-tripping; re-load tupleizes it.
+        assert snap["last_quote_id"] == ["src-1", 42]
+
+    def test_persisted_render_identity_round_trips(self, tmp_path):
+        """A save → load cycle preserves the render-identity triple.
+
+        Guards against the type-drift case where JSON list → tuple mismatch
+        would make the post-restart dedup check compare a tuple against a
+        list and always miss.
+        """
+        path = tmp_path / "state.json"
+        s = run_clock.RuntimeState("default")
+        s.commit_render_result("h2_half_past", "default", ("src-1", 42))
+        run_clock.save_runtime_state(str(path), s.snapshot_for_persistence())
+        loaded = run_clock.load_runtime_state(str(path))
+        restored = run_clock.RuntimeState("default", persisted=loaded)
+        assert restored.last_bucket == "h2_half_past"
+        assert restored.last_effective_theme == "default"
+        # Restored as tuple so equality with peek_quote_id output matches.
+        assert restored.last_quote_id == ("src-1", 42)
 
     def test_save_is_atomic_leaves_old_file_on_replace_failure(self, tmp_path):
         """A crash during os.replace must not corrupt the existing state file.
@@ -1227,7 +1328,16 @@ class TestMidnightThemeReset:
         )
         run_clock._maybe_reset_manual_theme_at_midnight(args, state)
         assert state.manual_theme is None
-        assert calls == [(str(state_path), {"manual_theme": None, "manual_quiet": False})]
+        assert calls == [(
+            str(state_path),
+            {
+                "manual_theme": None,
+                "manual_quiet": False,
+                "last_bucket": None,
+                "last_quote_id": None,
+                "last_effective_theme": None,
+            },
+        )]
         # Patch was honored: the real writer never ran, so no file on disk.
         assert not state_path.exists()
 
@@ -2644,3 +2754,348 @@ class TestQuietImageTimeoutTelemetry:
         display_timeouts = [e for e in entries if e.get("mode") == "display_timeout"]
         assert len(display_timeouts) == 1
         assert display_timeouts[0].get("reason") == "quiet hours"
+
+
+class TestPreflightPaths:
+    """Issue #53: startup must abort loudly when configured paths don't exist,
+    so a typoed --display-script / --quiet-image in the systemd unit fails
+    fast in the journal instead of silently on first use."""
+
+    def _args(self, **kw):
+        """Build a Namespace with only the preflight-relevant fields."""
+        defaults = dict(
+            render_script="render_quote.py",
+            display_script=None,
+            quiet_image=None,
+            startup_image=None,
+            skip_preflight=False,
+        )
+        defaults.update(kw)
+        return argparse.Namespace(**defaults)
+
+    def test_missing_display_script_surfaces(self, tmp_path):
+        errors = run_clock._preflight_paths(
+            self._args(display_script="/does/not/exist/display.py"),
+        )
+        assert any("display-script" in e for e in errors)
+
+    def test_existing_display_script_passes(self, tmp_path):
+        real = tmp_path / "display.py"
+        real.write_text("")
+        errors = run_clock._preflight_paths(self._args(display_script=str(real)))
+        assert errors == []
+
+    def test_missing_render_script_fatal(self):
+        # render_script is REQUIRED; the default resolves against BASE_DIR.
+        errors = run_clock._preflight_paths(
+            self._args(render_script="no_such_render_script.py"),
+        )
+        assert any("render-script" in e for e in errors)
+
+    def test_repo_default_render_script_exists(self):
+        """The default render_quote.py in the repo resolves against BASE_DIR."""
+        errors = run_clock._preflight_paths(self._args(render_script="render_quote.py"))
+        assert errors == []
+
+    def test_skip_preflight_flag_bypasses(self, capsys):
+        """With --skip-preflight, _run_preflight must be a no-op even when
+        paths are bogus (escape hatch for unusual setups)."""
+        args = self._args(display_script="/bogus", skip_preflight=True)
+        # Must not raise.
+        run_clock._run_preflight(args)
+
+    def test_run_preflight_raises_on_error(self):
+        args = self._args(display_script="/does/not/exist/display.py")
+        with pytest.raises(SystemExit) as excinfo:
+            run_clock._run_preflight(args)
+        assert excinfo.value.code == 1
+
+    def test_unset_optional_paths_are_fine(self):
+        """Leaving --display-script / --quiet-image / --startup-image empty is
+        not a preflight failure — those fields are off by default."""
+        args = self._args(
+            display_script=None,
+            quiet_image="",
+            startup_image=None,
+        )
+        assert run_clock._preflight_paths(args) == []
+
+
+class TestOnceSignalHandlers:
+    """Issue #53: ``--once`` must install signal handlers so a mid-render
+    SIGTERM unwinds cleanly instead of truncating the PNG mid-write."""
+
+    def test_once_installs_signal_handlers(self, tmp_path):
+        """Patch _install_signal_handlers and verify --once calls it."""
+        argv = [
+            "run_clock.py", "--once",
+            "--output", str(tmp_path / "out.png"),
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "",
+            "--skip-preflight",
+        ]
+        installed = []
+
+        def record(state):
+            installed.append(state)
+
+        with patch("sys.argv", argv), \
+             patch("run_clock._install_signal_handlers", side_effect=record), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.peek_quote_id", return_value=None):
+            rc = run_clock.main()
+        assert rc == 0
+        assert len(installed) == 1
+        assert isinstance(installed[0], run_clock.RuntimeState)
+
+    def test_once_returns_143_when_signal_received(self, tmp_path):
+        """If a signal arrives during the --once render (sets stop_requested),
+        return 143 (SIGTERM's canonical exit code) so cron / systemd one-shots
+        can distinguish 'rendered cleanly' from 'rendered under duress'.
+        """
+        argv = [
+            "run_clock.py", "--once",
+            "--output", str(tmp_path / "out.png"),
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "",
+            "--skip-preflight",
+        ]
+
+        def install_and_fire(state):
+            # Simulate a signal arriving by setting stop_requested before render_now returns.
+            state.stop_requested.set()
+
+        with patch("sys.argv", argv), \
+             patch("run_clock._install_signal_handlers", side_effect=install_and_fire), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.peek_quote_id", return_value=None):
+            rc = run_clock.main()
+        assert rc == 143
+
+
+class TestStateRoundtripPersistsRenderIdentity:
+    """Issue #53: a mid-bucket restart must not redraw the same frame.
+
+    Verifies the end-to-end flow: (1) the loop persists the render-identity
+    triple after a render, (2) a subsequent load-rehydrate of a fresh
+    RuntimeState sees the same ``(last_bucket, last_quote_id)``, and (3) the
+    main-loop dedup check short-circuits so render_now is not called.
+    """
+
+    def test_commit_then_load_restores_last_quote_id(self, tmp_path):
+        state_path = tmp_path / "state.json"
+        s = run_clock.RuntimeState("default")
+        s.commit_render_result("h3_half_past", "default", ("src-123", 99, "q", "mt"))
+        # Persist like the main loop would after a successful render.
+        run_clock.save_runtime_state(str(state_path), s.snapshot_for_persistence())
+        # Simulate a restart: load + seed a fresh RuntimeState.
+        persisted = run_clock.load_runtime_state(str(state_path))
+        restored = run_clock.RuntimeState("default", persisted=persisted)
+        assert restored.last_bucket == "h3_half_past"
+        assert restored.last_effective_theme == "default"
+        assert restored.last_quote_id == ("src-123", 99, "q", "mt")
+
+    def test_persist_after_render_writes_identity_fields(self, tmp_path):
+        """_persist_state_after_render must write the identity triple to disk.
+
+        Without this hook, the snapshot only hits the disk on shutdown — a
+        ``kill -9`` mid-bucket would lose the last-render state and force a
+        redraw on restart.
+        """
+        state_path = tmp_path / "state.json"
+        args = argparse.Namespace(state_path=str(state_path))
+        state = run_clock.RuntimeState("default")
+        state.commit_render_result("h4_five_past", "dark", ("s", 1, "q", "mt"))
+        run_clock._persist_state_after_render(args, state)
+        loaded = run_clock.load_runtime_state(str(state_path))
+        assert loaded["last_bucket"] == "h4_five_past"
+        assert loaded["last_effective_theme"] == "dark"
+        assert loaded["last_quote_id"] == ["s", 1, "q", "mt"]
+
+    def test_persist_after_render_is_noop_without_state_path(self, tmp_path):
+        args = argparse.Namespace(state_path="")
+        state = run_clock.RuntimeState("default")
+        # Must not raise.
+        run_clock._persist_state_after_render(args, state)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_persist_swallows_disk_errors(self, tmp_path, monkeypatch, capsys):
+        """A disk error during post-render persist must NOT bubble into the
+        render path — that would incorrectly trigger outer-loop backoff.
+        """
+        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        state = run_clock.RuntimeState("default")
+        monkeypatch.setattr(
+            run_clock, "save_runtime_state",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")),
+        )
+        # Must not raise.
+        run_clock._persist_state_after_render(args, state)
+        assert "persist after render failed" in capsys.readouterr().err
+
+
+class TestTransientRenderDoesNotUpdateIdentity:
+    """Issue #53 review follow-up: the source-card overlay (``mode="card"``)
+    is a transient render that the 5s restore timer replaces. If its
+    ``(bucket, quote_id, theme)`` landed in the persisted identity triple,
+    a process death inside the 5s window would leave the card pinned on the
+    panel forever — the next-boot dedup check would see the current tick's
+    bucket match ``last_bucket`` and skip the redraw.
+    """
+
+    def _args(self, tmp_path):
+        return argparse.Namespace(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path="",
+            history_days=7,
+            telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+        )
+
+    def test_card_mode_does_not_commit_render_identity(self, tmp_path):
+        """After a ``mode="card"`` render, ``state.last_bucket`` /
+        ``last_quote_id`` / ``last_effective_theme`` must remain whatever
+        they were before the card (i.e. the underlying frame's identity)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # Seed pre-card identity (the frame the restore timer will rebuild).
+        state.commit_render_result("h3_half_past", "default", ("src", 10, "q", "mt"))
+        with patch("run_clock.render_now"):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    mode="card", quote_id=("card-src", 99, "card-q", "card-mt"),
+                )
+            finally:
+                state.render_lock.release()
+        # Identity triple still reflects the PRE-card frame, not the card.
+        assert state.last_bucket == "h3_half_past"
+        assert state.last_quote_id == ("src", 10, "q", "mt")
+        assert state.last_effective_theme == "default"
+
+    def test_card_mode_does_not_persist_state(self, tmp_path):
+        """The post-render persist hook must also be skipped in card mode, or
+        an SSD flush + power cut in the 5s window would leave the card's
+        identity on disk (with the underlying frame still on the panel)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        persisted_payloads = []
+        with patch("run_clock.render_now"), \
+             patch("run_clock.save_runtime_state",
+                   side_effect=lambda path, payload: persisted_payloads.append(payload)):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    mode="card", quote_id=("card-src", 99, "card-q", "card-mt"),
+                )
+            finally:
+                state.render_lock.release()
+        assert persisted_payloads == [], "card mode must not persist state"
+
+    def test_card_mode_still_resets_backoff(self, tmp_path):
+        """A successful card render is still a positive 'render path is healthy'
+        signal — the outer-loop failure counter must drop to zero so a prior
+        streak of transient failures doesn't trigger a skip window after we've
+        just demonstrably talked to the panel."""
+        import time as _time
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # Prime with a pending backoff; a transient render must clear it.
+        state.consecutive_render_failures = 2
+        state.backoff_skip_until = _time.monotonic() + 30
+        with patch("run_clock.render_now"):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    mode="card", quote_id=("card-src", 99, "card-q", "card-mt"),
+                )
+            finally:
+                state.render_lock.release()
+        assert state.consecutive_render_failures == 0
+        assert state.backoff_skip_until == 0.0
+
+    def test_normal_mode_still_commits_and_persists(self, tmp_path):
+        """Baseline: a normal ``mode="debug"`` render (the default) still
+        updates identity AND persists."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        persisted_payloads = []
+        with patch("run_clock.render_now"), \
+             patch("run_clock.save_runtime_state",
+                   side_effect=lambda path, payload: persisted_payloads.append(payload)):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    quote_id=("src", 42, "q", "mt"),
+                )
+            finally:
+                state.render_lock.release()
+        # Identity triple reflects the new render.
+        assert state.last_quote_id == ("src", 42, "q", "mt")
+        # And state was persisted exactly once.
+        assert len(persisted_payloads) == 1
+        assert persisted_payloads[0]["last_quote_id"] == ["src", 42, "q", "mt"]
+
+
+class TestPidfileIntegration:
+    """Issue #53: a second run_clock must detect the held pidfile and exit 1."""
+
+    def test_main_exits_one_when_pidfile_held(self, tmp_path, capsys):
+        import pidfile
+        pid_path = tmp_path / "run_clock.pid"
+        held = pidfile.acquire_pidfile(str(pid_path))
+        try:
+            argv = [
+                "run_clock.py",
+                "--output", str(tmp_path / "out.png"),
+                "--buttons-off",
+                "--history-path", "", "--telemetry-path", "",
+                "--state-path", "",
+                "--quiet-off", "--interval-seconds", "1",
+                "--pidfile", str(pid_path),
+                "--skip-preflight",
+            ]
+            with patch("sys.argv", argv):
+                rc = run_clock.main()
+            assert rc == 1
+            assert "already locked" in capsys.readouterr().err
+        finally:
+            held.release()
+
+    def test_main_releases_pidfile_on_shutdown(self, tmp_path):
+        """After main() exits cleanly, the pidfile must be released so a
+        replacement instance can start without operator intervention.
+        ``--once`` is single-shot and skips the pidfile, so we use the loop
+        path with a KeyboardInterrupt-on-first-sleep to drive one iteration.
+        """
+        pid_path = tmp_path / "run_clock.pid"
+        argv_loop = [
+            "run_clock.py",
+            "--output", str(tmp_path / "out.png"),
+            "--buttons-off",
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "",
+            "--quiet-off", "--interval-seconds", "1",
+            "--pidfile", str(pid_path),
+            "--skip-preflight",
+        ]
+        with patch("sys.argv", argv_loop), \
+             patch("run_clock._loop_sleep", side_effect=KeyboardInterrupt), \
+             patch("run_clock.render_now"), \
+             patch("run_clock.peek_quote_id", return_value=None), \
+             patch("run_clock.current_bucket", return_value="h12_exact"), \
+             patch("run_clock.current_time_str", return_value="12:00"):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        # Pidfile should be gone.
+        assert not pid_path.exists()

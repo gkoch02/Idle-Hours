@@ -7,6 +7,29 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_home(tmp_path_factory, monkeypatch):
+    """Redirect ``~`` to a per-test tmp directory so tests that use default
+    ``--state-path`` / ``--history-path`` / ``--telemetry-path`` / ``--pidfile``
+    don't leak state into the developer's real ``~/.litclock`` (and can't
+    contaminate *each other* within a test run by persisting state between
+    tests). The main-loop now persists the render-identity triple
+    (``last_bucket`` / ``last_quote_id`` / ``last_effective_theme``) to
+    ``state.json`` after every successful render, so test isolation matters
+    more than it used to.
+
+    Uses ``tmp_path_factory`` (separate from the per-test ``tmp_path``
+    fixture) so tests that assert ``tmp_path.iterdir()`` for "nothing was
+    written" don't see the home subdirectory in the listing.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    # ``pathlib.Path.expanduser`` reads ``$HOME`` on POSIX, so the env-var
+    # patch above is enough. We don't touch ``Path.home`` directly so code
+    # paths that rely on ``os.path.expanduser`` also pick up the override.
+    yield home
+
+
 def make_row(**kwargs) -> dict:
     """Build a minimal candidate row with sensible defaults."""
     defaults = {

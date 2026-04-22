@@ -15,6 +15,7 @@ import traceback
 from pathlib import Path
 
 import pick_quote as pick_quote_module
+import pidfile
 from buckets import bucket_for_time
 from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     _button_render_gate,
@@ -268,6 +269,26 @@ def parse_args() -> argparse.Namespace:
             "the process command line (and therefore in 'ps' / journald)."
         ),
     )
+    parser.add_argument(
+        "--pidfile",
+        default=pidfile.DEFAULT_PIDFILE_PATH,
+        help=(
+            "Path to the single-instance pidfile. Locked via fcntl.flock at "
+            "loop startup; a second run_clock detects the held lock and exits 1. "
+            "Stale files left by SIGKILL or power-loss are reclaimed. Pass an "
+            "empty string to disable the single-instance check."
+        ),
+    )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help=(
+            "Skip the startup existence checks for --render-script / --display-script "
+            "/ --quiet-image / --startup-image. Escape hatch for unusual setups; "
+            "normally these paths are validated so a misconfigured unit file fails "
+            "loudly at startup instead of on first use."
+        ),
+    )
     args = parser.parse_args()
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
@@ -313,6 +334,27 @@ def peek_quote_id(time_str: str, history_path: str | None = None, history_days: 
         row.get("display_quote"),
         row.get("matched_text"),
     )
+
+
+def _persist_state_after_render(args: argparse.Namespace, state: RuntimeState) -> None:
+    """Write the render-identity triple + user toggles to ``--state-path`` after a commit.
+
+    The three render-identity fields (``last_bucket`` / ``last_quote_id`` /
+    ``last_effective_theme``) only live in RAM otherwise, so a
+    ``systemctl restart`` mid-bucket forces a redraw of the same frame on
+    the next startup — wasteful on a 10–20 s Spectra 6 refresh. Saving
+    here (after every successful render commit) makes the triple durable
+    without adding a separate heartbeat write. Best-effort: swallows
+    exceptions so a disk hiccup can't bubble into the render path and
+    trigger the outer-loop backoff.
+    """
+    state_path = getattr(args, "state_path", None)
+    if not state_path:
+        return
+    try:
+        save_runtime_state(state_path, state.snapshot_for_persistence())
+    except Exception as exc:
+        _log(f"runtime state persist after render failed: {exc!r}", err=True)
 
 
 def _append_history_after_render(state: RuntimeState, history_path: str | None, quote_id: tuple) -> None:
@@ -435,6 +477,17 @@ def render_now(
         )
 
 
+# Render modes that produce a "normal" frame whose (bucket, quote_id, theme)
+# identity is what the operator expects to see on the panel. Anything outside
+# this set is a transient overlay (currently just ``"card"`` from the button-C
+# source-card handler) that the restore timer will replace within a few
+# seconds — we must NOT commit or persist its identity or a process death
+# inside that window would leave the overlay pinned on-screen forever (the
+# next-boot dedup check would see ``last_bucket``/``last_quote_id`` match the
+# current tick and skip the redraw).
+_IDENTITY_RENDER_MODES: frozenset[str] = frozenset({"production", "debug"})
+
+
 def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
                      mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
     """Core render-and-push. The caller MUST already hold ``state.render_lock``.
@@ -454,7 +507,20 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
     )
-    state.commit_render_result(actual_bucket, effective_theme, quote_id)
+    if actual_mode in _IDENTITY_RENDER_MODES:
+        state.commit_render_result(actual_bucket, effective_theme, quote_id)
+        # Persist the render-identity triple so a mid-bucket restart doesn't
+        # redraw the frame already on the panel. Best-effort: a disk error
+        # here must never fail the render path.
+        _persist_state_after_render(args, state)
+    else:
+        # Transient overlay (e.g. source card): the frame is about to be
+        # replaced by the restore timer, so don't let its identity land in
+        # the dedup triple. We DO still reset the render-failure backoff
+        # because the render itself succeeded — that's orthogonal to dedup.
+        with state.lock:
+            state.consecutive_render_failures = 0
+            state.backoff_skip_until = 0.0
 
 
 def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
@@ -842,9 +908,12 @@ def _install_signal_handlers(state: RuntimeState) -> None:
     render via :meth:`RuntimeState.render_lock`, tears down the web server and
     button listener cleanly, and exits.
 
-    Only installed from the long-running main loop; ``--once`` keeps its
-    strict-exit behaviour because cron callers rely on a nonzero exit when the
-    single render fails.
+    Also installed from the ``--once`` path against a throwaway
+    :class:`RuntimeState` so ``atomic_io``'s write→fsync→replace sequence
+    can complete even when systemd sends ``SIGTERM`` mid-render; the caller
+    observes ``state.stop_requested`` after the render returns and surfaces
+    exit code ``143`` to distinguish "rendered cleanly" from "rendered then
+    told to shut down."
     """
     def _handler(signum, _frame):
         _log(f"received signal {signum}, requesting clean shutdown")
@@ -931,6 +1000,58 @@ def _shutdown(args: argparse.Namespace, state: RuntimeState, web_handle) -> None
     _log("shutdown: done")
 
 
+_PREFLIGHT_PATH_FLAGS: tuple[tuple[str, bool], ...] = (
+    # (attr, required) — required=True means missing-when-set is fatal; the
+    # --display-script / --quiet-image / --startup-image flags are off-by-default
+    # (None or empty string) so we only validate when the operator actually set them.
+    ("render_script", True),
+    ("display_script", False),
+    ("quiet_image", False),
+    ("startup_image", False),
+)
+
+
+def _preflight_paths(args: argparse.Namespace) -> list[str]:
+    """Return a list of human-readable errors for missing --render-script / --display-script /
+    --quiet-image / --startup-image paths.
+
+    This catches the "typoed path in the systemd unit file" class of failure at
+    startup instead of at first use (first bucket change, first quiet-hours
+    entry, first cold boot). All paths are resolved against ``BASE_DIR`` to
+    match how ``render_now`` / ``_display_quiet_image`` look them up.
+    """
+    errors: list[str] = []
+    for attr, required in _PREFLIGHT_PATH_FLAGS:
+        value = getattr(args, attr, None)
+        if not value:
+            if required:
+                errors.append(f"--{attr.replace('_', '-')} is required")
+            continue
+        path = Path(value)
+        if not path.is_absolute():
+            path = BASE_DIR / path
+        if not path.exists():
+            errors.append(f"--{attr.replace('_', '-')} {value!r} does not exist (resolved to {path})")
+    return errors
+
+
+def _run_preflight(args: argparse.Namespace) -> None:
+    """Abort loudly when any configured script / image path is missing.
+
+    Skipped entirely by ``--skip-preflight``. Raises :class:`SystemExit` with
+    code 1 and a multi-line message so an operator can tell from the journal
+    which file was wrong — the systemd ``ExecStart=`` field gets copied into
+    the log preamble so all the context is right there.
+    """
+    if getattr(args, "skip_preflight", False):
+        return
+    errors = _preflight_paths(args)
+    if errors:
+        message = "pre-flight path checks failed:\n  " + "\n  ".join(errors)
+        _log(message, err=True)
+        raise SystemExit(1)
+
+
 def main() -> int:
     args = parse_args()
     output_target = Path(args.output)
@@ -941,7 +1062,18 @@ def main() -> int:
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
 
+    _run_preflight(args)
+
     if args.once:
+        # Install signal handlers for the --once path too so a mid-render
+        # SIGTERM / SIGINT doesn't truncate whatever atomic_io is currently
+        # writing (the PNG, the history ledger, telemetry). The handler sets
+        # a flag on the throwaway RuntimeState; atomic_io's write→fsync→
+        # replace sequence is not interruptible at the OS level, so even a
+        # signal arriving mid-render unwinds cleanly through the normal
+        # return path.
+        once_state = RuntimeState(args.theme)
+        _install_signal_handlers(once_state)
         time_str = current_time_str()
         effective_theme = resolve_effective_theme(args.theme, time_str, manual_theme=None)
         # Peek before rendering so the ledger entry matches what render_quote picks.
@@ -955,9 +1087,25 @@ def main() -> int:
         )
         if quote_id is not None:
             pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
-        return 0
+        # If a signal arrived during the render, propagate a nonzero exit so
+        # cron / systemd one-shot units can distinguish "rendered cleanly"
+        # from "rendered then told to shut down." The render itself already
+        # completed durably.
+        return 143 if once_state.stop_requested.is_set() else 0
 
-    persisted = load_runtime_state(args.state_path)
+    # Single-instance lock. Without this, overlapping ``systemctl restart``
+    # cycles (or a botched boot that races a slow-to-die predecessor) can
+    # briefly have two run_clock processes writing to state.json /
+    # history.jsonl / telemetry concurrently — atomic_io guards against
+    # crashes but not concurrent writers.
+    pidfile_handle: pidfile.PidfileHandle | None = None
+    try:
+        pidfile_handle = pidfile.acquire_pidfile(args.pidfile)
+    except pidfile.PidfileLockedError as exc:
+        _log(str(exc), err=True)
+        return 1
+
+    persisted = load_runtime_state(args.state_path, telemetry_path=telemetry_path)
     state = RuntimeState(args.theme, persisted=persisted)
 
     # Startup frame: push a static image to the panel before the first quote
@@ -1054,6 +1202,7 @@ def main() -> int:
                                 telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
                             )
                         state.commit_render_result(bucket, effective_theme, quote_id)
+                        _persist_state_after_render(args, state)
                         if quote_id is not None:
                             _append_history_after_render(state, history_path, quote_id)
                 except Exception as exc:
@@ -1071,6 +1220,8 @@ def main() -> int:
                 break
     finally:
         _shutdown(args, state, web_handle)
+        if pidfile_handle is not None:
+            pidfile_handle.release()
     return 0
 
 

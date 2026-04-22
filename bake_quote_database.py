@@ -67,6 +67,16 @@ BASE_DIR = Path(__file__).resolve().parent
 # baked in; minute/override are deferred to the runtime picker.
 _STATIC_SCORE_INDICES: tuple[int, ...] = (0, 1, 3, 4, 5, 6, 8, 9, 10, 11)
 
+# Schema version stamped on every baked row. Bump whenever
+# ``BAKED_SCORE_COMPONENTS`` changes (order, length, or semantics) so the
+# runtime picker can detect a mismatch between a freshly ``git pull``-ed
+# ``pick_quote.py`` and a stale ``assets/quote_database.jsonl`` that was baked
+# under an older schema, instead of silently scoring against a mis-aligned
+# tuple. The runtime picker in :mod:`pick_quote` compares against
+# ``pick_quote.BAKED_SCORE_SCHEMA_VERSION``; when they disagree it warns and
+# falls back to the raw corpus.
+BAKED_SCORE_SCHEMA_VERSION: int = 1
+
 # Human-readable labels for the baked_score tuple, in the order they appear.
 # The runtime picker uses this same order when it reconstructs the full 12-
 # component sort key; changing it breaks pick equivalence, so keep it in sync
@@ -124,7 +134,9 @@ def _resolve(path_str: str) -> Path:
     return path
 
 
-_BAKED_ONLY_FIELDS: frozenset[str] = frozenset({"baked_score", "inferred_quote_minute", "baked_rank"})
+_BAKED_ONLY_FIELDS: frozenset[str] = frozenset(
+    {"baked_score", "inferred_quote_minute", "baked_rank", "schema_version"}
+)
 
 
 def _static_score(row: dict, source_counts: Counter) -> list[int]:
@@ -217,6 +229,7 @@ def bake_rows(rows: list[dict], min_quality: int, *, top_n: int = 0) -> tuple[li
     for row in kept:
         row["baked_score"] = _static_score(row, source_counts)
         row["inferred_quote_minute"] = pick_quote.infer_quote_minute(row)
+        row["schema_version"] = BAKED_SCORE_SCHEMA_VERSION
 
     by_bucket: dict[str, list[dict]] = defaultdict(list)
     for row in kept:
