@@ -129,7 +129,10 @@ def build_sheet(
     colors = render_quote_module.THEMES[theme]
     sheet = Image.new("RGB", (sheet_w, sheet_h), color=colors["page_bg"])
     # Load corpus + overrides once; 144 tiles would otherwise re-parse both per call.
-    rows = pick_quote_module.load_rows(pick_quote_module.resolve_path("assets/candidates-attributed.jsonl"))
+    # Raw corpus on purpose: the contact sheet is a full-corpus visual snapshot,
+    # so rendering from the baker-filtered DB would hide rows that a curator
+    # might want to audit.
+    rows = pick_quote_module.load_rows(pick_quote_module.resolve_path(pick_quote_module.DEFAULT_INPUT_PATH))
     overrides = pick_quote_module.load_overrides(pick_quote_module.resolve_path("assets/selection_overrides.json"))
     total = ROWS * COLS
     for row_idx, hour in enumerate(range(1, 13)):

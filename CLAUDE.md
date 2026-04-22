@@ -213,6 +213,27 @@ Inky Impression eInk panel
 
 ## Architecture
 
+### Data model at a glance
+
+The canonical runtime input is **`assets/quote_database.jsonl`** — the baked, display-ready DB produced by `bake_quote_database.py`. Everything else in `assets/` is either the raw corpus that feeds the baker, a hand-edited sidecar, or a build-time artifact. Use this table to answer "what's source-of-truth vs derived vs per-appliance state?":
+
+| Path | Role | Committed | Ships to Pi | Produced by |
+|---|---|---|---|---|
+| `assets/quote_database.jsonl` | **baked display-ready DB — the runtime picker reads this** | yes | yes | `bake_quote_database.py` |
+| `assets/candidates-attributed.jsonl` | raw attributed corpus | yes | yes (baker input + curator UI + fallback) | `enrich_metadata.py` → `apply_content_overrides.py` |
+| `assets/content_overrides.json` | per-row hand fixes (source-of-truth) | yes | no (build-time only) | hand-edited |
+| `assets/selection_overrides.json` | bans / boosts / preferred buckets (runtime-editable) | yes | yes | hand-edited or web UI `POST /api/overrides` |
+| `assets/bucket-coverage.{json,md}` | coverage snapshot | yes | optional | `bucket_coverage.py` |
+| `~/.litclock/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
+| `~/.litclock/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
+| `~/.litclock/telemetry-YYYYMMDD.jsonl` | render / error telemetry | — | runtime, per-appliance | `run_clock.py` |
+
+Three invariants to keep in mind when touching this layer:
+
+1. **Source-of-truth is the raw corpus + `content_overrides.json`.** If you want a row to change, change those. The baked DB is re-derivable from them; changes made directly to `quote_database.jsonl` will be clobbered the next time someone runs the pipeline.
+2. **Runtime reads the baked DB.** `run_clock`, `render_quote`, and the `pick_quote` CLI all pass `database_path=DEFAULT_DATABASE_PATH` explicitly. A raw-corpus commit with no matching bake means the new rows are invisible to the appliance — the expand-corpus drivers (`run_dawn_expansion.sh`) include `bake_quote_database.py` as the last step for exactly this reason.
+3. **Curator UI reads the raw corpus deliberately.** `/api/bucket` calls `pick_quote.select_candidates` (raw path) so an operator can see rows the baker dropped (daypart-only, quality below floor) and understand *why* a quote never appeared. Switching the curator to the baked DB would regress that visibility — don't.
+
 ### Fuzzy Bucket System
 
 The core abstraction. Each of 12 hours is divided into 12 minute-state buckets (144 total), named `h{HOUR}_{STATE}`. Plus `daypart` buckets (midnight, small_hours, dawn, morning, noon, afternoon, dusk, evening, night) for time references that don't specify an hour.
@@ -570,8 +591,8 @@ litclock.service.example           sample systemd unit
 pi_setup_inky_impression.md        long-form Pi setup doc
 pyproject.toml                     project metadata + pytest / coverage / ruff configuration
 fonts/                             bundled Playfair Display family
-assets/candidates-attributed.jsonl raw attributed corpus (pick_quote --input fallback; curator UI /api/bucket)
-assets/quote_database.jsonl        baked display-ready database (pick_quote default --database; regenerate via bake_quote_database.py)
+assets/candidates-attributed.jsonl raw attributed corpus — source-of-truth input to bake_quote_database.py; also served as the curator UI's /api/bucket view and used as pick_quote's defensive fallback if the baked DB is missing
+assets/quote_database.jsonl        baked display-ready database — the canonical runtime input that pick_quote / run_clock / render_quote read by default; regenerate via bake_quote_database.py whenever the raw corpus changes
 assets/bucket-coverage.md          committed snapshot of the current corpus's bucket coverage
 assets/bucket-coverage.json        machine-readable companion to bucket-coverage.md
 assets/contact-sheet.png           12×12 visual snapshot of every bucket's current pick (regenerate via contact_sheet.py)

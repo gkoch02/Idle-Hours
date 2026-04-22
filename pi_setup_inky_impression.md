@@ -17,11 +17,12 @@ python3 display_inky.py output/current.png
 python3 run_clock.py --display-script display_inky.py
 ```
 
-This works from the prebuilt runtime dataset already committed in the repo:
-- `assets/candidates-attributed.jsonl`
+This works from the prebuilt runtime assets already committed in the repo:
+- `assets/quote_database.jsonl` — the baked display-ready DB the clock reads by default
+- `assets/candidates-attributed.jsonl` — the raw attributed corpus that feeds the baker (also consumed by the curator UI)
 
 You do not need to rebuild corpus artifacts on the Pi just to run the clock.
-Only rerun the corpus pipeline when you are intentionally changing source data or quote selection behavior.
+Only rerun the corpus pipeline when you are intentionally changing source data or quote selection behavior — and remember to re-bake at the end so the new rows actually reach the runtime picker.
 
 ```bash
 # optional maintenance-only rebuild path
@@ -29,6 +30,8 @@ python3 clean_display_quotes.py output/candidates-merged.jsonl --output output/c
 python3 quality_filter.py output/candidates-cleaned.jsonl --output output/candidates-quality.jsonl
 python3 fix_substring_time_matches.py output/candidates-quality.jsonl --output output/candidates-quality.jsonl
 python3 enrich_metadata.py output/candidates-quality.jsonl --output assets/candidates-attributed.jsonl
+python3 apply_content_overrides.py assets/candidates-attributed.jsonl
+python3 bake_quote_database.py assets/candidates-attributed.jsonl --output assets/quote_database.jsonl
 ```
 
 If the one-shot render and one-shot display both work, you can move on to making it a boot-time service.
