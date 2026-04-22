@@ -888,9 +888,12 @@ def _install_signal_handlers(state: RuntimeState) -> None:
     render via :meth:`RuntimeState.render_lock`, tears down the web server and
     button listener cleanly, and exits.
 
-    Only installed from the long-running main loop; ``--once`` keeps its
-    strict-exit behaviour because cron callers rely on a nonzero exit when the
-    single render fails.
+    Also installed from the ``--once`` path against a throwaway
+    :class:`RuntimeState` so ``atomic_io``'s write→fsync→replace sequence
+    can complete even when systemd sends ``SIGTERM`` mid-render; the caller
+    observes ``state.stop_requested`` after the render returns and surfaces
+    exit code ``143`` to distinguish "rendered cleanly" from "rendered then
+    told to shut down."
     """
     def _handler(signum, _frame):
         _log(f"received signal {signum}, requesting clean shutdown")
