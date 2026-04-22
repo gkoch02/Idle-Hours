@@ -2934,6 +2934,119 @@ class TestStateRoundtripPersistsRenderIdentity:
         assert "persist after render failed" in capsys.readouterr().err
 
 
+class TestTransientRenderDoesNotUpdateIdentity:
+    """Issue #53 review follow-up: the source-card overlay (``mode="card"``)
+    is a transient render that the 5s restore timer replaces. If its
+    ``(bucket, quote_id, theme)`` landed in the persisted identity triple,
+    a process death inside the 5s window would leave the card pinned on the
+    panel forever — the next-boot dedup check would see the current tick's
+    bucket match ``last_bucket`` and skip the redraw.
+    """
+
+    def _args(self, tmp_path):
+        return argparse.Namespace(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path="",
+            history_days=7,
+            telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+        )
+
+    def test_card_mode_does_not_commit_render_identity(self, tmp_path):
+        """After a ``mode="card"`` render, ``state.last_bucket`` /
+        ``last_quote_id`` / ``last_effective_theme`` must remain whatever
+        they were before the card (i.e. the underlying frame's identity)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # Seed pre-card identity (the frame the restore timer will rebuild).
+        state.commit_render_result("h3_half_past", "default", ("src", 10, "q", "mt"))
+        with patch("run_clock.render_now"):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    mode="card", quote_id=("card-src", 99, "card-q", "card-mt"),
+                )
+            finally:
+                state.render_lock.release()
+        # Identity triple still reflects the PRE-card frame, not the card.
+        assert state.last_bucket == "h3_half_past"
+        assert state.last_quote_id == ("src", 10, "q", "mt")
+        assert state.last_effective_theme == "default"
+
+    def test_card_mode_does_not_persist_state(self, tmp_path):
+        """The post-render persist hook must also be skipped in card mode, or
+        an SSD flush + power cut in the 5s window would leave the card's
+        identity on disk (with the underlying frame still on the panel)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        persisted_payloads = []
+        with patch("run_clock.render_now"), \
+             patch("run_clock.save_runtime_state",
+                   side_effect=lambda path, payload: persisted_payloads.append(payload)):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    mode="card", quote_id=("card-src", 99, "card-q", "card-mt"),
+                )
+            finally:
+                state.render_lock.release()
+        assert persisted_payloads == [], "card mode must not persist state"
+
+    def test_card_mode_still_resets_backoff(self, tmp_path):
+        """A successful card render is still a positive 'render path is healthy'
+        signal — the outer-loop failure counter must drop to zero so a prior
+        streak of transient failures doesn't trigger a skip window after we've
+        just demonstrably talked to the panel."""
+        import time as _time
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        # Prime with a pending backoff; a transient render must clear it.
+        state.consecutive_render_failures = 2
+        state.backoff_skip_until = _time.monotonic() + 30
+        with patch("run_clock.render_now"):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    mode="card", quote_id=("card-src", 99, "card-q", "card-mt"),
+                )
+            finally:
+                state.render_lock.release()
+        assert state.consecutive_render_failures == 0
+        assert state.backoff_skip_until == 0.0
+
+    def test_normal_mode_still_commits_and_persists(self, tmp_path):
+        """Baseline: a normal ``mode="debug"`` render (the default) still
+        updates identity AND persists."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        persisted_payloads = []
+        with patch("run_clock.render_now"), \
+             patch("run_clock.save_runtime_state",
+                   side_effect=lambda path, payload: persisted_payloads.append(payload)):
+            state.render_lock.acquire()
+            try:
+                run_clock._render_unlocked(
+                    args, state, time_str="14:30", history_path=None,
+                    quote_id=("src", 42, "q", "mt"),
+                )
+            finally:
+                state.render_lock.release()
+        # Identity triple reflects the new render.
+        assert state.last_quote_id == ("src", 42, "q", "mt")
+        # And state was persisted exactly once.
+        assert len(persisted_payloads) == 1
+        assert persisted_payloads[0]["last_quote_id"] == ["src", 42, "q", "mt"]
+
+
 class TestPidfileIntegration:
     """Issue #53: a second run_clock must detect the held pidfile and exit 1."""
 

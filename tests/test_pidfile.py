@@ -72,6 +72,43 @@ class TestAcquirePidfile:
         finally:
             handle.release()
 
+    def test_stale_pidfile_with_recycled_live_pid_is_reclaimed(self, tmp_path):
+        """A SIGKILL / reboot can leave a pidfile whose stored pid has since
+        been reassigned by the kernel to a totally unrelated live process.
+        ``flock`` is the single source of truth: if we successfully took the
+        exclusive lock, the bytes in the file are stale by definition. We
+        must NOT second-guess flock by checking whether the stored pid is
+        alive — that would wedge startup on every reboot that recycles the
+        pid, which is common on Pi-class appliances where the init system
+        starts processes in a near-deterministic order.
+        """
+        path = tmp_path / "run_clock.pid"
+        # Seed the CURRENT process's pid (guaranteed live) — a worst-case
+        # "recycled pid" scenario. A correct implementation still reclaims.
+        path.write_text(f"{os.getpid()}\n")
+        handle = pidfile.acquire_pidfile(str(path))
+        try:
+            assert handle is not None
+            # Our pid still in the file (we wrote it); what matters is the
+            # flock was successfully taken and no error was raised.
+            assert path.read_text().strip() == str(os.getpid())
+        finally:
+            handle.release()
+
+    def test_stale_pidfile_with_arbitrary_live_pid_is_reclaimed(self, tmp_path):
+        """Same as above but with the parent process's pid — an arbitrary
+        live pid that definitely isn't us — to guard against a naive
+        'if existing != self and existing is alive, bail' check.
+        """
+        path = tmp_path / "run_clock.pid"
+        # PPID is almost certainly alive and definitely not us.
+        path.write_text(f"{os.getppid()}\n")
+        handle = pidfile.acquire_pidfile(str(path))
+        try:
+            assert handle is not None
+        finally:
+            handle.release()
+
     def test_release_removes_pidfile(self, tmp_path):
         path = tmp_path / "run_clock.pid"
         handle = pidfile.acquire_pidfile(str(path))
@@ -93,15 +130,6 @@ class TestAcquirePidfile:
             assert path.exists()
         finally:
             handle.release()
-
-    def test_pid_alive_handles_negative(self):
-        """A pid ≤ 0 is never alive (never a real pid)."""
-        assert pidfile._pid_alive(0) is False
-        assert pidfile._pid_alive(-1) is False
-
-    def test_pid_alive_reports_self(self):
-        assert pidfile._pid_alive(os.getpid()) is True
-
 
 class TestPidfileLockedError:
     def test_message_includes_pid(self, tmp_path):

@@ -67,13 +67,34 @@ class PidfileHandle:
         self._released = False
 
     def release(self) -> None:
-        """Unlock + remove the pidfile. Idempotent; safe to call from ``finally``."""
+        """Unlock + remove the pidfile. Idempotent; safe to call from ``finally``.
+
+        Order matters: we unlink the path FIRST (while still holding the flock)
+        and only then release the lock + close the fd. If we unlinked after the
+        unlock, a replacement process could slip in between our ``LOCK_UN`` and
+        our ``unlink``: it would open the still-live path, acquire the flock on
+        the same inode, and then our ``unlink`` would remove its pathname out
+        from under it — opening the door for a third process to create a new
+        inode at the same path and win a second flock on the new inode, breaking
+        the single-instance guarantee. Unlinking while we hold the lock means a
+        racer either blocks on the flock (and sees us as holder in the error
+        message) or opens a fresh inode (post-unlink) and proceeds cleanly.
+        """
         if self._released:
             return
         self._released = True
         if self._fh is None:
             return
         try:
+            # Unlink before unlocking: inode stays referenced via our fd until
+            # close, but the dentry is gone so a racer's ``os.open(path, O_CREAT)``
+            # lands on a brand-new inode.
+            try:
+                self.path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                _log(f"pidfile cleanup failed for {self.path}: {exc!r}", err=True)
             if _HAS_FCNTL:
                 try:
                     fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
@@ -83,30 +104,8 @@ class PidfileHandle:
                 self._fh.close()
             except OSError:
                 pass
-            try:
-                self.path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError as exc:
-                _log(f"pidfile cleanup failed for {self.path}: {exc!r}", err=True)
         finally:
             self._fh = None
-
-
-def _pid_alive(pid: int) -> bool:
-    """Return True if ``pid`` names a live process on this host."""
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Process exists but we can't signal it (different uid) — still alive.
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def _read_existing_pid(fh) -> int | None:
@@ -148,18 +147,18 @@ def acquire_pidfile(pidfile_path: str | None = DEFAULT_PIDFILE_PATH) -> PidfileH
         try:
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            # Someone else holds the flock — they are, by definition, the
+            # live holder. Read the pid they wrote so we can surface it to
+            # the operator, then bail.
             existing = _read_existing_pid(fh)
-            # The holder is live (or we can't tell); surface a loud error.
             fh.close()
             raise PidfileLockedError(path, existing) from None
-        # We hold the lock. Check for a stale pid written by a dead
-        # predecessor and overwrite it with ours.
-        existing = _read_existing_pid(fh)
-        if existing is not None and existing != os.getpid() and _pid_alive(existing):
-            # Extremely unlikely: we got the lock but the bytes say someone
-            # else is alive. Treat as a conflict to be safe.
-            fh.close()
-            raise PidfileLockedError(path, existing)
+        # We hold the exclusive flock, so we own the pidfile. Any pid bytes
+        # already in the file are stale — either a dead predecessor, or
+        # (more commonly on a Pi that reboots) a PID that has been recycled
+        # by an unrelated process. ``flock`` is the single source of truth;
+        # second-guessing it with ``_pid_alive`` would trap startup on every
+        # SIGKILL / power-loss / reboot where the PID happens to be reused.
         fh.seek(0)
         fh.truncate()
         fh.write(f"{os.getpid()}\n")

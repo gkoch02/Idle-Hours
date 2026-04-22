@@ -477,6 +477,17 @@ def render_now(
         )
 
 
+# Render modes that produce a "normal" frame whose (bucket, quote_id, theme)
+# identity is what the operator expects to see on the panel. Anything outside
+# this set is a transient overlay (currently just ``"card"`` from the button-C
+# source-card handler) that the restore timer will replace within a few
+# seconds — we must NOT commit or persist its identity or a process death
+# inside that window would leave the overlay pinned on-screen forever (the
+# next-boot dedup check would see ``last_bucket``/``last_quote_id`` match the
+# current tick and skip the redraw).
+_IDENTITY_RENDER_MODES: frozenset[str] = frozenset({"production", "debug"})
+
+
 def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
                      mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
     """Core render-and-push. The caller MUST already hold ``state.render_lock``.
@@ -496,11 +507,20 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
     )
-    state.commit_render_result(actual_bucket, effective_theme, quote_id)
-    # Persist the render-identity triple so a mid-bucket restart doesn't
-    # redraw the frame already on the panel. Best-effort: a disk error
-    # here must never fail the render path.
-    _persist_state_after_render(args, state)
+    if actual_mode in _IDENTITY_RENDER_MODES:
+        state.commit_render_result(actual_bucket, effective_theme, quote_id)
+        # Persist the render-identity triple so a mid-bucket restart doesn't
+        # redraw the frame already on the panel. Best-effort: a disk error
+        # here must never fail the render path.
+        _persist_state_after_render(args, state)
+    else:
+        # Transient overlay (e.g. source card): the frame is about to be
+        # replaced by the restore timer, so don't let its identity land in
+        # the dedup triple. We DO still reset the render-failure backoff
+        # because the render itself succeeded — that's orthogonal to dedup.
+        with state.lock:
+            state.consecutive_render_failures = 0
+            state.backoff_skip_until = 0.0
 
 
 def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
