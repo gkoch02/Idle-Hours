@@ -38,6 +38,70 @@ class TestSplitSentences:
         parts = cdq.split_sentences("It was 3 o'clock. She left.")
         assert len(parts) == 2
 
+    def test_does_not_split_at_mr_abbreviation(self):
+        parts = cdq.split_sentences("She went to see Mr. Smith. He was kind.")
+        assert parts == ["She went to see Mr. Smith.", "He was kind."]
+
+    def test_does_not_split_at_mrs_abbreviation(self):
+        parts = cdq.split_sentences(
+            "We left Mrs. Jones at the station. The train departed at noon."
+        )
+        assert parts == ["We left Mrs. Jones at the station.", "The train departed at noon."]
+
+    def test_does_not_split_at_dr_abbreviation(self):
+        parts = cdq.split_sentences("Dr. Watson arrived at two.")
+        assert parts == ["Dr. Watson arrived at two."]
+
+    def test_does_not_split_at_st_abbreviation(self):
+        parts = cdq.split_sentences("They met at St. James's Park. It was noon.")
+        assert parts == ["They met at St. James's Park.", "It was noon."]
+
+    def test_does_not_split_at_single_letter_initials(self):
+        # "J. R. R. Tolkien" must stay whole instead of splitting into four.
+        parts = cdq.split_sentences("J. R. R. Tolkien wrote novels.")
+        assert parts == ["J. R. R. Tolkien wrote novels."]
+
+    def test_trailing_abbreviation_at_true_sentence_end_is_kept(self):
+        # If the abbreviation is genuinely at the end (no following sentence),
+        # we just return the single part — no merge required.
+        parts = cdq.split_sentences("I wrote to Mr.")
+        assert parts == ["I wrote to Mr."]
+
+    def test_does_not_split_at_am_pm_abbreviation(self):
+        parts = cdq.split_sentences("I left at four P.M. and arrived at six. It was dark.")
+        assert parts == ["I left at four P.M. and arrived at six.", "It was dark."]
+
+    def test_does_not_split_at_lowercase_am_pm(self):
+        parts = cdq.split_sentences("Meeting at 3 p.m. tomorrow. Be there.")
+        assert parts == ["Meeting at 3 p.m. tomorrow.", "Be there."]
+
+    def test_does_not_split_at_multidot_acronym(self):
+        parts = cdq.split_sentences("U.S.A. is here. Hello.")
+        assert parts == ["U.S.A. is here.", "Hello."]
+
+    def test_preserves_true_boundary_after_etc(self):
+        # Review finding (P2): an unconditional merge after every abbreviation
+        # also glues real sentence boundaries. "etc." legitimately ends a
+        # sentence, so when the next fragment starts with an uppercase letter
+        # we must keep the split.
+        parts = cdq.split_sentences("We had tea, cakes, etc. Then we left.")
+        assert parts == ["We had tea, cakes, etc.", "Then we left."]
+
+    def test_preserves_true_boundary_after_viz(self):
+        parts = cdq.split_sentences(
+            "The plans were made clear, viz. The first was shelved."
+        )
+        assert parts == [
+            "The plans were made clear, viz.",
+            "The first was shelved.",
+        ]
+
+    def test_preserves_true_boundary_after_pm_uppercase(self):
+        # "I left at four p.m. Then ..." — lowercase p.m. ends a real sentence
+        # here (uppercase "Then" signals a new sentence). Don't merge.
+        parts = cdq.split_sentences("I left at four p.m. Then I walked home.")
+        assert parts == ["I left at four p.m.", "Then I walked home."]
+
 
 # ---------------------------------------------------------------------------
 # clean_edges
@@ -105,6 +169,24 @@ class TestLooksFragment:
 
     def test_ends_with_closing_quote(self):
         assert cdq.looks_fragment('She said "three o\'clock."') is False
+
+    def test_ends_at_title_abbreviation_is_fragment(self):
+        # A sentence that terminates at "Mr." / "Mrs." / "Dr." is almost
+        # always the miner's context window cut short — the real sentence
+        # continues with a proper name. Flag as a fragment so quality_filter
+        # penalises it.
+        assert cdq.looks_fragment("At three o'clock that afternoon, Mr.") is True
+        assert cdq.looks_fragment("She wrote to her friend Mrs.") is True
+        assert cdq.looks_fragment("He went to visit Dr.") is True
+
+    def test_ends_at_sentence_ok_abbreviation_is_not_fragment(self):
+        # Review finding (P1): "p.m." / "etc." / "U.S.A." can legitimately end
+        # a real sentence, so `looks_fragment` must NOT flag them. A display
+        # quote that genuinely terminates with one of these is complete and
+        # should not be penalised in the quality filter.
+        assert cdq.looks_fragment("The meeting starts at three in the afternoon, p.m.") is False
+        assert cdq.looks_fragment("Please remember to bring the tent, stove, matches, etc.") is False
+        assert cdq.looks_fragment("He had travelled widely across the U.S.A.") is False
 
 
 # ---------------------------------------------------------------------------
