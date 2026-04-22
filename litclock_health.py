@@ -152,11 +152,15 @@ def summarise(entries: list[dict]) -> dict:
     # doesn't look like "0 renders, 0 errors" when it's actually fine.
     heartbeats = [e for e in entries if e.get("type") == "heartbeat"]
     non_heartbeats = [e for e in entries if e.get("type") != "heartbeat"]
-    renders = [e for e in non_heartbeats if "error" not in e]
+    # Positively identify renders by the ``render_ms`` field — only set by
+    # ``run_clock.render_now`` on a successful render subprocess. Defining
+    # renders as "anything without an error" miscategorises modes like
+    # ``"backoff"`` (emitted by ``_record_render_failure`` without an error
+    # field) as successful renders, which would let a wedged appliance
+    # report healthy as long as it was tripping the backoff threshold.
+    renders = [e for e in non_heartbeats if isinstance(e.get("render_ms"), int)]
     errors = [e for e in non_heartbeats if "error" in e]
-    render_latencies = sorted(
-        e["render_ms"] for e in renders if isinstance(e.get("render_ms"), int)
-    )
+    render_latencies = sorted(e["render_ms"] for e in renders)
     display_latencies = sorted(
         e["display_ms"] for e in renders if isinstance(e.get("display_ms"), int)
     )
