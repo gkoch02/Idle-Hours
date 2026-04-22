@@ -16,16 +16,25 @@ TERMINAL_PUNCT = ".!?\"'”’)]"
 LEADING_JUNK = re.compile(r'^[\s\[\("“”‘’\-,:;]+')
 TRAILING_JUNK = re.compile(r'[\s\[\("“”‘’\-,:;]+$')
 
-# Common English abbreviations whose trailing period must NOT be treated as a
-# sentence boundary. Without this guard, `split_sentences` cuts "Mr. Smith" into
-# two fake sentences and `best_display_quote` happily picks the "…, said Mr."
-# prefix as a complete sentence — producing display quotes truncated mid-name.
-ABBREVIATIONS = frozenset({
+# Titles/honorifics and initials: in natural English prose the period is
+# almost always followed by a proper name, not a new sentence. Merging across
+# these is nearly always correct, and a display quote that ends at one is
+# almost always the miner's context window cutting a name off ("…, said Mr.").
+TITLE_ABBREVIATIONS = frozenset({
     "Mr", "Mrs", "Ms", "Mx", "Dr", "St", "Sr", "Jr",
     "Rev", "Hon", "Gen", "Col", "Capt", "Lt", "Sgt", "Maj", "Cpl", "Adm",
     "Mme", "Mlle", "M", "Mons", "Messrs", "Prof",
+})
+
+# Abbreviations that can *legitimately* end a sentence ("...at 3 p.m.",
+# "Bring snacks, etc."). We still want to undo the false split the regex
+# introduces when they occur mid-sentence, but only when the following
+# fragment starts lowercase — otherwise we'd glue real sentence boundaries
+# like "...etc. Then we left." back together.
+SENTENCE_OK_ABBREVIATIONS = frozenset({
+    "etc", "viz", "approx", "vs",
     "Mt", "Ave", "Rd", "Blvd",
-    "No", "Nos", "vs", "etc", "viz", "approx",
+    "No", "Nos",
 })
 _LAST_TOKEN_RE = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 HEADING_PREFIX = re.compile(
@@ -56,27 +65,50 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _ends_with_abbreviation(text: str) -> bool:
-    """Return True if `text` ends with a known abbreviation like "Mr." or "Dr."
-
-    Also treats a lone trailing capital-letter initial (e.g. "J.", "R.") as an
-    abbreviation so we don't split "J. R. R. Tolkien" into four fake sentences,
-    and treats short multi-period tokens like "A.M.", "P.M.", "e.g.", "i.e."
-    the same way — without this a "nine o'clock P.M." sentence gets cut at the
-    `P.` and a display quote of "…at nine o'clock P." ships to the panel.
+def _last_token_head(text: str) -> str | None:
+    """Return the non-dotted head of the final dotted token (e.g. ``"Mr." → "Mr"``,
+    ``"P.M." → "P.M"``), or ``None`` if `text` doesn't end with a dotted token.
     """
     match = _LAST_TOKEN_RE.search(text)
     if not match:
+        return None
+    return match.group(1).rstrip(".")
+
+
+def _ends_with_title_abbreviation(text: str) -> bool:
+    """Title-style abbreviation or single-letter initial at the end.
+
+    In natural prose these are (almost) always followed by a proper name, so
+    the period is part of the abbreviation rather than a sentence terminator.
+    Used both to un-split false regex boundaries and to flag display quotes
+    that almost certainly got truncated by the miner's context window.
+    """
+    head = _last_token_head(text)
+    if head is None:
         return False
-    token = match.group(1)
-    head = token.rstrip(".")
-    if head in ABBREVIATIONS:
+    if head in TITLE_ABBREVIATIONS:
         return True
     if len(head) == 1 and head.isupper():
         return True
-    # Short dotted acronym: "P.M", "A.M", "e.g", "i.e", "U.S", "U.S.A", etc.
-    # Interior periods alone don't make it an abbreviation — "Jones." would
-    # match — so require at least one interior period and cap length.
+    return False
+
+
+def _ends_with_sentence_ok_abbreviation(text: str) -> bool:
+    """Abbreviation that can *legitimately* terminate a sentence.
+
+    ``etc.``, ``vs.``, ``p.m.``, ``U.S.A.`` and the like. We still undo the
+    false regex split when the next fragment continues the same sentence
+    (signalled by a lowercase start), but we must not flag these as fragments
+    when they're genuinely sentence-final.
+    """
+    head = _last_token_head(text)
+    if head is None:
+        return False
+    if head in SENTENCE_OK_ABBREVIATIONS:
+        return True
+    # Short dotted acronym: "P.M", "A.M", "e.g", "i.e", "U.S", "U.S.A".
+    # Requires an interior period so bare surnames like "Jones" don't match,
+    # and caps length so long hyphenated/dotted constructs don't either.
     if "." in head and len(head) <= 5:
         return True
     return False
@@ -89,15 +121,23 @@ def split_sentences(text: str) -> list[str]:
         return []
     text = re.sub(r'([.!?]["”’\]\)]?)\s+', r'\1\n', text)
     parts = [part.strip() for part in text.splitlines() if part.strip()]
-    # Un-split false boundaries left by abbreviations: if part N ends with
-    # "Mr.", "Mrs.", "Dr." etc., glue part N+1 back on. The period there is
-    # part of the abbreviation, not the end of a sentence.
+    # Undo the false splits the regex above introduces inside abbreviations:
+    #   - title-style ("Mr.", "Dr.", "J.") always take a following name, so
+    #     we merge unconditionally;
+    #   - sentence-capable ("etc.", "p.m.", "U.S.A.") may legitimately end a
+    #     sentence, so we only merge when the next fragment starts lowercase
+    #     (a strong signal it's a continuation, not a new sentence).
     merged: list[str] = []
     for part in parts:
-        if merged and _ends_with_abbreviation(merged[-1]):
-            merged[-1] = f"{merged[-1]} {part}"
-        else:
-            merged.append(part)
+        if merged:
+            prev = merged[-1]
+            if _ends_with_title_abbreviation(prev):
+                merged[-1] = f"{prev} {part}"
+                continue
+            if _ends_with_sentence_ok_abbreviation(prev) and part and part[0].islower():
+                merged[-1] = f"{prev} {part}"
+                continue
+        merged.append(part)
     return merged
 
 
@@ -139,11 +179,11 @@ def looks_fragment(text: str) -> bool:
         return True
     if text[0].islower():
         return True
-    # Trailing "Mr." / "Mrs." / "A.M." etc. looks like a terminal period but
-    # is almost always the miner's context window cutting a sentence short.
-    # Flag as a fragment so quality_filter heavily penalises it and the picker
-    # drops it below its default --min-quality threshold.
-    if _ends_with_abbreviation(text):
+    # Trailing "Mr." / "Mrs." / "J." almost always means the miner's context
+    # window cut a sentence short mid-name. Flag as a fragment so quality_filter
+    # heavily penalises it. We deliberately do *not* flag "p.m." / "etc." —
+    # those can terminate a real sentence and shouldn't be punished here.
+    if _ends_with_title_abbreviation(text):
         return True
     return False
 
