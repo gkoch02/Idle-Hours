@@ -76,17 +76,80 @@ def _is_non_localhost_host(host: str) -> bool:
 
 
 class WebContext:
-    """Bundle of shared state the HTTP handler reaches through ``server.context``."""
+    """Bundle of shared state the HTTP handler reaches through ``server.context``.
 
-    def __init__(self, args: argparse.Namespace, state: object, token: str = ""):
+    Token handling: if ``token_file`` is set, :meth:`current_token` restats the
+    file on every request and re-reads it when the mtime changes, so an
+    operator rotating the secret can swap the file contents without bouncing
+    the server. The inline ``token`` kwarg is the seed value — used when no
+    file is configured, or as a fallback when the file is transiently
+    unreadable. Without this, a systemctl-managed appliance would have to be
+    reloaded just to swap a shared secret.
+    """
+
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        state: object,
+        token: str = "",
+        token_file: str | Path | None = None,
+    ):
         self.args = args
         self.state = state
-        self.token = token
+        self._inline_token = (token or "").strip()
+        self._token_file: Path | None = Path(token_file).expanduser() if token_file else None
+        self._cached_token: str = self._inline_token
+        self._cached_token_mtime: float | None = None
+        self._token_lock = threading.Lock()
         self.history_path: str | None = args.history_path or None
         self.telemetry_path: str | None = args.telemetry_path or None
         self.overrides_path = _resolve_path(args.overrides) if getattr(args, "overrides", None) else DEFAULT_OVERRIDES_PATH
         self.coverage_path = DEFAULT_COVERAGE_PATH
         self.output_path = _resolve_path(args.output) if getattr(args, "output", None) else DEFAULT_OUTPUT_PATH
+        if self._token_file is not None:
+            self._refresh_token_from_file(initial=True)
+
+    def _refresh_token_from_file(self, *, initial: bool = False) -> None:
+        """Re-read the token file if its mtime changed since the last read.
+
+        ``initial=True`` is used by the constructor so a missing file at
+        startup doesn't panic — the inline fallback (or empty) carries. During
+        normal operation a file that used to exist and now doesn't is treated
+        the same way (we fall back to the inline value and log once); a file
+        that's back after a missing window re-caches cleanly.
+        """
+        assert self._token_file is not None
+        try:
+            stat = self._token_file.stat()
+        except OSError as exc:
+            if not initial:
+                _log(f"--web-token-file {self._token_file!s} unreadable: {exc!r}; using previous token", err=True)
+            return
+        if self._cached_token_mtime == stat.st_mtime:
+            return
+        try:
+            contents = self._token_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            _log(f"--web-token-file {self._token_file!s} read failed: {exc!r}; using previous token", err=True)
+            return
+        self._cached_token = contents
+        self._cached_token_mtime = stat.st_mtime
+        if not initial:
+            _log(f"--web-token-file {self._token_file!s} reloaded (mtime changed)")
+
+    def current_token(self) -> str:
+        """Return the live token, reloading from ``--web-token-file`` if it changed.
+
+        Thread-safety: the HTTP handler runs per-request threads, so an mtime
+        check + re-read must be serialised or two racing refreshes could
+        interleave a partial string into ``_cached_token``. ``threading.Lock``
+        held for the stat+read is sufficient — neither call blocks long.
+        """
+        if self._token_file is None:
+            return self._inline_token
+        with self._token_lock:
+            self._refresh_token_from_file()
+            return self._cached_token
 
 
 def _resolve_path(path_str: str) -> Path:
@@ -237,10 +300,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
 
     def _check_token(self) -> bool:
         ctx = self._ctx()
-        if not ctx.token:
+        token = ctx.current_token()
+        if not token:
             return True
         supplied = self.headers.get(TOKEN_HEADER, "")
-        if not supplied or not hmac.compare_digest(supplied, ctx.token):
+        if not supplied or not hmac.compare_digest(supplied, token):
             # Structured auth-failure marker so an operator can grep for
             # "was the web UI hammered with bad tokens?" without scraping
             # journald; remote+path are sufficient to distinguish a fat-
@@ -509,7 +573,13 @@ def _status_from_result(result: dict) -> int:
 # Lifecycle
 # ----------------------------------------------------------------------------
 
-def start_web_server(args: argparse.Namespace, state: object, *, token: str = "") -> tuple:
+def start_web_server(
+    args: argparse.Namespace,
+    state: object,
+    *,
+    token: str = "",
+    token_file: str | Path | None = None,
+) -> tuple:
     """Bind and start the curator HTTP server on a daemon thread.
 
     Returns ``(server, thread)``. Caller should hold the reference for the
@@ -518,19 +588,22 @@ def start_web_server(args: argparse.Namespace, state: object, *, token: str = ""
     is malformed, and ``PermissionError`` / ``OSError`` when the port is in
     use — the main loop catches those and keeps rendering.
 
-    Refuses to start when the bind host is not localhost and no ``token`` is
-    provided, so an operator can't accidentally put the POST surface on the
-    network. Localhost binds with an empty token are fine — loopback is
-    presumed trusted.
+    Refuses to start when the bind host is not localhost and no effective token
+    (either ``token`` or a readable ``token_file``) is provided, so an operator
+    can't accidentally put the POST surface on the network. Localhost binds
+    with an empty token are fine — loopback is presumed trusted.
+
+    ``token_file`` is restated on every request so rotating the shared secret
+    is a single file edit — no ``systemctl reload`` required.
     """
     host, port = _parse_bind(args.web_bind)
-    if _is_non_localhost_host(host) and not token:
+    ctx = WebContext(args, state, token=token, token_file=token_file)
+    if _is_non_localhost_host(host) and not ctx.current_token():
         raise ValueError(
             f"--web-bind {args.web_bind!r} exposes the UI beyond 127.0.0.1 but no "
             "--web-token / --web-token-file was provided. Either bind to 127.0.0.1 "
             "or set a token before starting the server."
         )
-    ctx = WebContext(args, state, token=token)
     server = _LitClockHTTPServer((host, port), CuratorHandler, ctx)
     thread = threading.Thread(target=server.serve_forever, name="litclock-web", daemon=True)
     thread.start()

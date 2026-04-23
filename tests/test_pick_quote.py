@@ -555,6 +555,118 @@ class TestRecentHistory:
         assert result["source_id"] == "1"
 
 
+class TestCompactHistory:
+    """Compact ledger rewrite that drops entries older than ``2 × days``."""
+
+    def _write_ledger(self, path, entries):
+        with path.open("w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+    def test_drops_expired_keeps_fresh(self, tmp_path):
+        """Acceptance: 1000 expired + 50 fresh → only the 50 fresh survive."""
+        path = tmp_path / "history.jsonl"
+        now = dt.datetime.now(dt.timezone.utc)
+        # 2 × 7 = 14 days window; anything older than 14d is dropped.
+        fresh = [
+            {"ts": (now - dt.timedelta(hours=h)).isoformat(), "source_id": str(h), "line_number": h}
+            for h in range(50)
+        ]
+        expired = [
+            {"ts": (now - dt.timedelta(days=30 + i)).isoformat(), "source_id": f"exp{i}", "line_number": i}
+            for i in range(1000)
+        ]
+        self._write_ledger(path, expired + fresh)
+
+        dropped = pq.compact_history(str(path), 7)
+
+        assert dropped == 1000
+        surviving = [json.loads(line) for line in path.read_text().splitlines()]
+        assert len(surviving) == 50
+        # All surviving entries are the fresh ones; order of fresh entries is preserved.
+        assert [e["source_id"] for e in surviving] == [str(h) for h in range(50)]
+
+    def test_noop_when_all_fresh(self, tmp_path):
+        """Every entry is within the 2× window → no rewrite at all.
+
+        Guards against a pathological "always rewrite" bug that would burn
+        disk IO on every date rollover for a healthy appliance.
+        """
+        path = tmp_path / "history.jsonl"
+        now = dt.datetime.now(dt.timezone.utc)
+        entries = [
+            {"ts": (now - dt.timedelta(days=d)).isoformat(), "source_id": str(d), "line_number": d}
+            for d in range(5)
+        ]
+        self._write_ledger(path, entries)
+        original_bytes = path.read_bytes()
+        mtime_before = path.stat().st_mtime_ns
+
+        assert pq.compact_history(str(path), 7) == 0
+
+        # Byte-identical and mtime-untouched — no atomic rewrite path was taken.
+        assert path.read_bytes() == original_bytes
+        assert path.stat().st_mtime_ns == mtime_before
+
+    def test_routes_through_atomic_io_when_rewriting(self, tmp_path, monkeypatch):
+        """The rewrite path goes through atomic_io so a mid-compact crash can't wipe the ledger."""
+        import atomic_io
+
+        path = tmp_path / "history.jsonl"
+        now = dt.datetime.now(dt.timezone.utc)
+        expired = {"ts": (now - dt.timedelta(days=30)).isoformat(), "source_id": "x", "line_number": 1}
+        fresh = {"ts": now.isoformat(), "source_id": "f", "line_number": 2}
+        self._write_ledger(path, [expired, fresh])
+
+        calls: list[tuple] = []
+        original = atomic_io.atomic_write_text
+
+        def spy(target, payload, **kwargs):
+            calls.append((target, payload))
+            return original(target, payload, **kwargs)
+
+        monkeypatch.setattr("pick_quote.atomic_io.atomic_write_text", spy)
+        assert pq.compact_history(str(path), 7) == 1
+        assert len(calls) == 1
+        # The rewritten payload contains only the fresh entry.
+        surviving = [json.loads(line) for line in path.read_text().splitlines()]
+        assert [(e["source_id"], e["line_number"]) for e in surviving] == [("f", 2)]
+
+    def test_noop_for_empty_path_or_disabled(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        assert pq.compact_history("", 7) == 0
+        assert pq.compact_history(None, 7) == 0
+        assert pq.compact_history(str(path), 0) == 0
+
+    def test_noop_when_file_missing(self, tmp_path):
+        assert pq.compact_history(str(tmp_path / "nope.jsonl"), 7) == 0
+
+    def test_preserves_malformed_lines(self, tmp_path):
+        """Compact is about bounded growth, not corruption repair.
+
+        A malformed line that load_recent_history would warn-and-skip should
+        still be preserved on disk so the operator can inspect it later.
+        """
+        path = tmp_path / "history.jsonl"
+        now = dt.datetime.now(dt.timezone.utc)
+        good_expired = {"ts": (now - dt.timedelta(days=30)).isoformat(), "source_id": "x", "line_number": 1}
+        good_fresh = {"ts": now.isoformat(), "source_id": "f", "line_number": 2}
+        lines = [
+            json.dumps(good_expired),
+            "not-json",
+            json.dumps(good_fresh),
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        dropped = pq.compact_history(str(path), 7)
+
+        assert dropped == 1  # the good_expired entry
+        remaining = path.read_text(encoding="utf-8").splitlines()
+        # Malformed line preserved; fresh preserved; expired good line gone.
+        assert "not-json" in remaining
+        assert any('"source_id": "f"' in line for line in remaining)
+
+
 class TestLoadOverrides:
     def test_missing_file_returns_defaults(self, tmp_path):
         result = pq.load_overrides(tmp_path / "does-not-exist.json")

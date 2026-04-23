@@ -1,6 +1,8 @@
 """Tests for render_quote.py — layout selection, text helpers, color quantization."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 try:
@@ -569,6 +571,50 @@ class TestMainAtomicSave:
 
         # Restore so later tests aren't affected.
         monkeypatch.setattr(Image.Image, "save", original_save)
+
+
+class TestDefaultOutputPath:
+    """Default --output must be a stable filename so ad-hoc callers don't leak
+    one PNG per HH:MM into output/ over time. run_clock always passes --output
+    explicitly, so this only governs interactive/CLI use."""
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock.",
+            "matched_text": "three o'clock",
+            "source_id": "141",
+            "line_number": 482,
+            "author": "A",
+            "title": "T",
+            "quality_score": 90,
+            "fuzzy_bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+        }
+
+    def test_default_output_is_stable_current_png(self, tmp_path, monkeypatch):
+        """No --output flag → stable ``output/current.png``, not ``output/render-HHMM.png``.
+
+        Without this, a human running render_quote.py ad-hoc can leak up to
+        1440 PNGs into output/ over the day — the loop's runtime path already
+        overwrites a single ``current.png``, but the CLI default used to
+        diverge and write a per-minute filename.
+        """
+        monkeypatch.setattr(rq, "pick_quote", lambda *a, **kw: self._row())
+        monkeypatch.setattr("sys.argv", ["render_quote.py", "--time", "14:30"])
+        written: list[Path] = []
+
+        # Capture the target path but short-circuit the actual write so the
+        # test doesn't pollute ``<repo>/output/`` for later runs of the suite.
+        def spy(target, payload):
+            written.append(Path(target))
+
+        monkeypatch.setattr(rq.atomic_io, "atomic_write_bytes", spy)
+        assert rq.main() == 0
+        assert len(written) == 1
+        # Filename must be the stable "current.png" default, not a per-HHMM one.
+        assert written[0].name == "current.png"
+        # Older default would have produced "render-1430.png" for this --time.
+        assert written[0].name != "render-1430.png"
 
 
 class TestPickQuoteUsesBakedDatabase:

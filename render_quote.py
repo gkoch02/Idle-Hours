@@ -149,7 +149,17 @@ LAYOUTS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render a literary clock quote for a given time.")
     parser.add_argument("--time", required=True, help="Time in HH:MM 24-hour format")
-    parser.add_argument("--output", default=None, help="Output PNG path. Defaults to output/render-HHMM.png")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "Output PNG path. Defaults to output/current.png (overwritten on every "
+            "run) so repeated ad-hoc invocations don't leak one file per HH:MM into "
+            "output/. Pass an explicit path when you want a persistent per-time "
+            "artifact. run_clock.py always passes --output explicitly, so the "
+            "runtime loop is unaffected by this default."
+        ),
+    )
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
     parser.add_argument(
@@ -680,7 +690,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 def main() -> int:
     args = parse_args()
     quote_row = pick_quote(args.time, history_path=args.history_path, history_days=args.history_days)
-    output_path = Path(args.output) if args.output else Path(f"output/render-{args.time.replace(':', '')}.png")
+    output_path = Path(args.output) if args.output else Path("output/current.png")
     if not output_path.is_absolute():
         output_path = BASE_DIR / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)

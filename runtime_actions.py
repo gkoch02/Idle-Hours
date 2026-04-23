@@ -172,37 +172,58 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
 
 
 def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Toggle default ↔ dark, persist to ``--state-path``, re-render. Mirrors button B."""
+    """Toggle default ↔ dark, re-render, persist to ``--state-path`` on success.
+
+    Mirrors button B. Order-of-operations matters: we flip the in-memory
+    ``manual_theme`` so the render reads the new value, push the display, and
+    only *then* persist — if the render raises (missing font file, subprocess
+    timeout, Inky disconnect), we roll the flip back so ``state.json`` and
+    the panel stay in sync. The alternative "persist first, then display"
+    leaves ``state.json`` claiming a theme the panel doesn't show after a
+    transient I/O failure.
+    """
     import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     with _button_render_gate(state, label, "theme", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
-        try:
+        rolled_back = False
+        with state.lock:
+            previous_theme = state.manual_theme
             time_str = run_clock.current_time_str()
-            with state.lock:
-                current = state.last_effective_theme or resolve_effective_theme(
-                    state.theme_arg, time_str, state.manual_theme,
-                )
-                state.manual_theme = "dark" if current == "default" else "default"
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                new_theme = state.manual_theme
-                quote_id = state.last_quote_id
+            current = state.last_effective_theme or resolve_effective_theme(
+                state.theme_arg, time_str, previous_theme,
+            )
+            state.manual_theme = "dark" if current == "default" else "default"
+            new_theme = state.manual_theme
+            quote_id = state.last_quote_id
+        try:
             _log(f"{label}: theme -> {new_theme}")
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            # Persist only after the display push succeeded so ``state.json``
+            # cannot drift ahead of the panel on a transient render failure.
+            with state.lock:
+                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
             _emit_action(telemetry_path, "theme", label, ok=True)
             return {"ok": True, "theme": new_theme}
         except Exception as exc:
-            _log(f"{label} theme toggle failed: {exc!r}", err=True)
+            with state.lock:
+                state.manual_theme = previous_theme
+            rolled_back = True
+            _log(f"{label} theme toggle failed: {exc!r} (rolled back to {previous_theme!r})", err=True)
             _emit_action(telemetry_path, "theme", label, ok=False, error=repr(exc))
-            return {"ok": False, "error": repr(exc)}
+            return {"ok": False, "error": repr(exc), "rolled_back": rolled_back}
 
 
 def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Toggle the manual quiet override, persist, display goodnight-or-wake frame.
+    """Toggle the manual quiet override, display goodnight-or-wake frame, persist on success.
 
-    Mirrors button D short-press.
+    Mirrors button D short-press. See :func:`action_theme` for the ordering
+    rationale: the flip happens in RAM first, then we push the display (quiet
+    image going in, fresh render coming out), then persist. A raise during the
+    display push rolls the flip back so ``state.json`` cannot claim "quiet"
+    while the panel still shows a quote (or vice versa).
     """
     import run_clock
     history_path = args.history_path or None
@@ -210,17 +231,15 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     with _button_render_gate(state, label, "quiet", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
+        with state.lock:
+            previous_quiet = state.manual_quiet
+            state.manual_quiet = not previous_quiet
+            quiet_now = state.manual_quiet
+        # Shared with the main loop's scheduled-exit path: clear render-dedup
+        # state so the next tick repaints in whichever direction we flipped.
+        exit_quiet(state)
+        _log(f"{label}: manual quiet -> {quiet_now}")
         try:
-            with state.lock:
-                state.manual_quiet = not state.manual_quiet
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
-                # Snapshot inside the lock so a concurrent toggle can't flip the
-                # branch we take below.
-                quiet_now = state.manual_quiet
-            # Shared with the main loop's scheduled-exit path: clear render-dedup
-            # state so the next tick repaints in whichever direction we flipped.
-            exit_quiet(state)
-            _log(f"{label}: manual quiet -> {quiet_now}")
             if quiet_now and args.quiet_image:
                 _display_quiet_image(
                     args.quiet_image, args.output, args.display_script,
@@ -233,12 +252,16 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                     time_str, history_path=history_path, history_days=args.history_days,
                 )
                 run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            with state.lock:
+                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
             _emit_action(telemetry_path, "quiet", label, ok=True)
             return {"ok": True, "manual_quiet": quiet_now}
         except Exception as exc:
-            _log(f"{label} quiet toggle failed: {exc!r}", err=True)
+            with state.lock:
+                state.manual_quiet = previous_quiet
+            _log(f"{label} quiet toggle failed: {exc!r} (rolled back to {previous_quiet!r})", err=True)
             _emit_action(telemetry_path, "quiet", label, ok=False, error=repr(exc))
-            return {"ok": False, "error": repr(exc)}
+            return {"ok": False, "error": repr(exc), "rolled_back": True}
 
 
 def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:

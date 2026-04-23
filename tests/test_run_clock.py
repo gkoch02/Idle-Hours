@@ -185,6 +185,29 @@ class TestMainLoopResilience:
         assert len(calls) == 2
         assert "render/display failed" in capsys.readouterr().err
 
+    def test_repeated_error_logs_once_and_traceback_once(self, tmp_path, capsys):
+        # Three identical failures in a row should log only once (dedup latch),
+        # so journald doesn't fill with the same traceback while the backoff
+        # retries the same hardware fault. Telemetry still gets every entry
+        # (the counter is authoritative).
+        err = RuntimeError("identical error")
+        self._drive_loop(tmp_path, [err, err, err], tick_count=3)
+        captured = capsys.readouterr().err
+        assert captured.count("render/display failed") == 1, (
+            "dedup latch should suppress repeat stderr emissions of the same error"
+        )
+        # Traceback emitted exactly once.
+        assert captured.count("Traceback") == 1
+
+    def test_distinct_errors_log_each_time(self, tmp_path, capsys):
+        # When the error text changes the latch must NOT suppress — a genuinely
+        # new failure after a transient recovery is exactly what the operator
+        # needs to see.
+        errs = [RuntimeError("first"), RuntimeError("second"), RuntimeError("third")]
+        self._drive_loop(tmp_path, errs, tick_count=3)
+        captured = capsys.readouterr().err
+        assert captured.count("render/display failed") == 3
+
     def test_once_mode_still_propagates_failure(self, tmp_path):
         # --once must NOT swallow errors — cron/smoke tests need a non-zero exit.
         argv = ["run_clock.py", "--once", "--output", str(tmp_path / "current.png")]
@@ -1498,6 +1521,55 @@ class TestButtonHandlers:
         assert state.manual_quiet is False
         assert mock_render.called
 
+    def test_theme_toggle_rolls_back_when_render_fails(self, tmp_path):
+        """Persist-before-display race: if the display push raises, manual_theme
+        must NOT land in state.json. Swap/rollback semantics keep state.json in
+        sync with what is actually on the panel."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        # state.json must not pre-exist — a pre-existing file would make "did we persist?"
+        # ambiguous. argparse.Namespace doesn't create it; confirm.
+        assert not (tmp_path / "state.json").exists()
+        with patch("run_clock.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["B"]()
+        # manual_theme reverted to its pre-flip value; state.json must never
+        # have been written with a flipped-theme snapshot.
+        assert state.manual_theme is None
+        assert not (tmp_path / "state.json").exists()
+
+    def test_quiet_toggle_rolls_back_when_display_fails(self, tmp_path):
+        """Flip-then-display-then-persist ordering: a display push failure must
+        revert manual_quiet so the two signals stay in sync."""
+        quiet = tmp_path / "goodnight.png"
+        quiet.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(quiet))
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = False
+        assert not (tmp_path / "state.json").exists()
+        with patch("runtime_actions._display_quiet_image", side_effect=OSError("disk full")):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["D"]()
+        # Rolled back: manual_quiet stays False; nothing persisted.
+        assert state.manual_quiet is False
+        assert not (tmp_path / "state.json").exists()
+
+    def test_theme_toggle_persists_only_after_render_succeeds(self, tmp_path):
+        """Happy path: persistence still happens — just AFTER the render succeeds,
+        not before. The persisted file must exist and must match the flipped theme."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        with patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["B"]()
+        assert state.manual_theme == "dark"
+        persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert persisted["manual_theme"] == "dark"
+
 
 class TestMaybeStartButtons:
     def test_buttons_off_returns_none(self, tmp_path):
@@ -2174,6 +2246,59 @@ class TestMaybePruneTelemetry:
         assert calls == []
 
 
+class TestMaybeCompactHistory:
+    """The main-loop wrapper must compact the ledger at most once per local-date rollover."""
+
+    def _args(self, tmp_path, history_days=7, history_path=None):
+        return argparse.Namespace(
+            history_days=history_days,
+            history_path=history_path if history_path is not None else str(tmp_path / "history.jsonl"),
+        )
+
+    def test_runs_once_per_day(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            run_clock.pick_quote_module, "compact_history", lambda *a, **kw: calls.append(a) or 0,
+        )
+        state = run_clock.RuntimeState("default")
+        args = self._args(tmp_path)
+        run_clock._maybe_compact_history(args, state)
+        run_clock._maybe_compact_history(args, state)
+        assert len(calls) == 1
+
+    def test_runs_again_next_day(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            run_clock.pick_quote_module, "compact_history", lambda *a, **kw: calls.append(a) or 0,
+        )
+        state = run_clock.RuntimeState("default")
+        args = self._args(tmp_path)
+        run_clock._maybe_compact_history(args, state)
+        state.last_compacted_date = dt.date.today() - dt.timedelta(days=1)
+        run_clock._maybe_compact_history(args, state)
+        assert len(calls) == 2
+
+    def test_skips_when_history_disabled(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            run_clock.pick_quote_module, "compact_history", lambda *a, **kw: calls.append(a) or 0,
+        )
+        state = run_clock.RuntimeState("default")
+        run_clock._maybe_compact_history(self._args(tmp_path, history_path=""), state)
+        run_clock._maybe_compact_history(self._args(tmp_path, history_days=0), state)
+        assert calls == []
+
+    def test_disk_error_does_not_bubble(self, tmp_path, monkeypatch):
+        """A compact failure is logged, not raised — the ledger compact must not
+        trip the outer-loop render backoff."""
+        def boom(*a, **kw):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(run_clock.pick_quote_module, "compact_history", boom)
+        state = run_clock.RuntimeState("default")
+        run_clock._maybe_compact_history(self._args(tmp_path), state)
+
+
 class TestActionExceptionBranches:
     """Every ``action_*`` wraps its body in ``except Exception`` so a failure
     can't kill the GPIO listener thread or the HTTP worker. These tests inject
@@ -2257,9 +2382,12 @@ class TestActionExceptionBranches:
             result = run_clock.action_theme(args, state, label="web")
         assert result["ok"] is False
         assert "pillow boom" in result["error"]
-        # Even though the render failed, the theme preference was already toggled
-        # and persisted — that write happens before _render_unlocked.
-        assert state.manual_theme == "dark"
+        # Persist-before-display race fix: a display push failure must roll
+        # the flip back so ``state.json`` stays in sync with what's on the
+        # panel. Pre-fix this asserted ``state.manual_theme == "dark"``, which
+        # is exactly the bug that issue #56 describes.
+        assert state.manual_theme is None
+        assert result.get("rolled_back") is True
 
     def test_quiet_render_failure_returns_error_dict(self, tmp_path):
         args = self._args(tmp_path)
