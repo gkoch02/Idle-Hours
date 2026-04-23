@@ -206,7 +206,7 @@ assets/quote_database.jsonl           ← pick_quote.py default --database
   ↓ pick_quote.py
 JSON quote for requested time
   ↓ render_quote.py (imports pick_quote in-process)
-render-HHMM.png  or  output/current.png
+output/current.png  (overwritten per render — stable filename)
   ↓ display_inky.py (optional, Pi-only)
 Inky Impression eInk panel
   ↑ run_clock.py orchestrates the render→display loop
@@ -440,7 +440,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 - **Fit loop.** `fit_quote` shrinks the quote font in 2pt steps from the layout's `font_max` down to `font_min` until all lines fit within `quote_height`.
 - **Justification.** Non-last lines are fully justified by distributing leftover slack across inter-word spaces — but only when slack is ≤25% of the layout's `max_width`. Loose lines fall back to ragged-right because wide forced gaps look worse than uneven right edges.
 - **Modes.** `--mode debug` (default) draws a top-right `DEBUG MODE` banner (rendered in sans-bold to match the footer strip, in the theme's accent color) plus a centered bottom strip (`HH:MM · bucket[ → resolved] · layout X · quality N · id source:Lline`) separated from the quote block by a dotted horizontal rule. `--mode production` hides all of that for a clean appliance look.
-- **Outputs.** `--output` defaults to `output/render-HHMM.png`; `run_clock.py` overrides this to `output/current.png` so the Inky bridge has a stable filename. The PNG is encoded to a `BytesIO` and written via `atomic_io.atomic_write_bytes` so a power cut mid-save can't leave a truncated frame for the next tick (and for `display_inky.py`) to read. The underlying PIL `Image` is explicitly `close()`d after encoding to release the file handle — important over months of continuous operation.
+- **Outputs.** `--output` defaults to `output/current.png` (the same stable filename `run_clock.py` passes explicitly), so repeated ad-hoc CLI invocations overwrite one file instead of leaking up to 1440 `render-HHMM.png` siblings across a day. Pass an explicit path when you want a persistent per-time artifact. The PNG is encoded to a `BytesIO` and written via `atomic_io.atomic_write_bytes` so a power cut mid-save can't leave a truncated frame for the next tick (and for `display_inky.py`) to read. The underlying PIL `Image` is explicitly `close()`d after encoding to release the file handle — important over months of continuous operation.
 
 ### Runtime Loop (`run_clock.py`)
 

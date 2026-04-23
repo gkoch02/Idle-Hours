@@ -431,6 +431,57 @@ def append_history(history_path: str | None, source_id, line_number) -> None:
         os.fsync(handle.fileno())
 
 
+def compact_history(history_path: str | None, days: int) -> int:
+    """Drop ledger entries older than ``2 × days``. Returns the number of lines dropped.
+
+    The anti-repeat filter only consults entries within the configured window
+    (``--history-days``), so anything older than that is dead weight that still
+    gets streamed through :func:`load_recent_history` on every pick. A long-
+    lived appliance accumulates ~288 entries per week; over years the linear
+    scan is cheap but the file grows into tens of KB of expired rows.
+
+    We keep ``2 × days`` of slack so a short clock drift or an operator
+    bumping ``--history-days`` up a day or two doesn't immediately evict rows
+    that are about to be re-consulted. No-op if the path is empty, the file
+    doesn't exist, ``days <= 0``, or every entry is still fresh (the common
+    case — avoids a pointless rewrite). Routes the rewrite through
+    :mod:`atomic_io` so a crash mid-compact leaves the original ledger intact.
+
+    Malformed lines are preserved as-is rather than silently dropped: the
+    compact pass is about bounded growth, not corruption repair — callers who
+    need the warn-and-skip behaviour should rely on :func:`load_recent_history`.
+    """
+    if not history_path or days <= 0:
+        return 0
+    path = Path(history_path).expanduser()
+    if not path.exists():
+        return 0
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=2 * days)
+    original = path.read_text(encoding="utf-8").splitlines()
+    kept: list[str] = []
+    dropped = 0
+    for line in original:
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+            ts = dt.datetime.fromisoformat(entry["ts"])
+        except (ValueError, KeyError, json.JSONDecodeError):
+            kept.append(line)
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=dt.timezone.utc)
+        if ts < cutoff:
+            dropped += 1
+            continue
+        kept.append(line)
+    if dropped == 0:
+        return 0
+    payload = ("\n".join(kept) + "\n") if kept else ""
+    atomic_io.atomic_write_text(path, payload)
+    return dropped
+
+
 def remove_last_history_entry(history_path: str | None, source_id, line_number) -> bool:
     """Remove the most recent ledger entry matching ``(source_id, line_number)``.
 

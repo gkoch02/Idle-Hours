@@ -50,6 +50,11 @@ class RuntimeState:
         # Last local date we ran telemetry retention on; only re-checked on
         # date rollover so the main loop doesn't glob every tick.
         self.last_pruned_date: dt.date | None = None
+        # Last local date we compacted the anti-repeat history ledger
+        # (pick_quote.compact_history). Gated the same way
+        # ``last_pruned_date`` gates telemetry retention so a multi-year
+        # appliance doesn't streamingly re-parse the ledger on every pick.
+        self.last_compacted_date: dt.date | None = None
         # Tracks whether the PREVIOUS main-loop tick was in quiet hours, so
         # the loop can detect the rising edge (push the quiet image once on
         # entry) and the falling edge (clear render-dedup state on exit).
@@ -67,10 +72,36 @@ class RuntimeState:
         # 15 min" instead of "retry every tick forever and spam the log."
         self.consecutive_render_failures: int = 0
         self.backoff_skip_until: float = 0.0  # time.monotonic() deadline
+        # Repr of the most recently logged render/display exception, used to
+        # deduplicate journald output while the outer-loop backoff keeps
+        # retrying the same failure. Without this, a pulled ribbon cable fills
+        # the log with identical tracebacks every tick inside the backoff
+        # window. The latch clears on any successful render (via
+        # ``commit_render_result``) so a genuinely new error after recovery
+        # still logs normally.
+        self.last_logged_error: str | None = None
         # Pending ``threading.Timer`` objects that must be cancelled on
         # shutdown to stop them firing after ``_shutdown`` has torn down the
         # display handle. Currently only the source-card 5s restore timer
         # registers itself here.
+        #
+        # Convention for new timers — follow these three rules:
+        #
+        # 1. Register BEFORE ``.start()`` under ``state.lock`` so a SIGTERM
+        #    arriving mid-``.start()`` can still observe and cancel the
+        #    timer (``Timer.cancel`` is idempotent — a timer that already
+        #    fired is a no-op, so the race is safe in either direction).
+        # 2. Deregister from inside the timer callback on completion so the
+        #    list doesn't grow unbounded over a long-running session. Wrap
+        #    the ``list.remove`` in ``contextlib.suppress(ValueError)``
+        #    because ``_shutdown`` may have already drained the list.
+        # 3. Set ``.daemon = True`` so a pending timer doesn't block process
+        #    exit on SIGTERM / KeyboardInterrupt — the cancel path is a
+        #    durability optimization, not a correctness requirement.
+        #
+        # Without (1), a timer that fires between ``_shutdown`` draining
+        # ``pending_timers`` and the operating system terminating the
+        # process can kick off a render against torn-down display handles.
         self.pending_timers: list["Timer"] = []
         # time.monotonic() at last emitted heartbeat so the loop can throttle
         # heartbeat writes to HEARTBEAT_INTERVAL_SECONDS even when
@@ -147,3 +178,7 @@ class RuntimeState:
             # go straight back to normal tick cadence.
             self.consecutive_render_failures = 0
             self.backoff_skip_until = 0.0
+            # A successful render also clears the error-dedup latch so the
+            # next genuine failure (after an intermittent recovery) logs its
+            # full traceback instead of being silenced as a "repeat".
+            self.last_logged_error = None

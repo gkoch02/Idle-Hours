@@ -744,12 +744,16 @@ def _check_button_liveness(state: RuntimeState, telemetry_path: str | None) -> N
 
 
 def _resolve_web_token(args: argparse.Namespace) -> str:
-    """Resolve the web token from --web-token, --web-token-file, or empty (disabled).
+    """Resolve the web token from --web-token or --web-token-file for startup logging.
 
     Prefers the file over the inline flag when both are set so rotating the
     token is a single file edit. A missing/unreadable token file is logged and
     falls back to the inline flag (or empty), keeping the server startable even
     if the file has a transient permission hiccup.
+
+    Note: this is the *startup* read; the live auth check uses
+    :meth:`WebContext.current_token` which re-reads the file on every request
+    when the mtime changes, so rotating the token doesn't need a restart.
     """
     if args.web_token_file:
         try:
@@ -777,7 +781,9 @@ def _maybe_start_web_server(args: argparse.Namespace, state: RuntimeState):
         return None
     try:
         token = _resolve_web_token(args)
-        handle = web_server.start_web_server(args, state, token=token)
+        handle = web_server.start_web_server(
+            args, state, token=token, token_file=args.web_token_file or None,
+        )
     except Exception as exc:
         _log(f"web UI failed to start on {args.web_bind!r}: {exc!r}", err=True)
         traceback.print_exc(file=sys.stderr)
@@ -825,6 +831,42 @@ def _maybe_prune_telemetry(args: argparse.Namespace, state: RuntimeState, teleme
     removed = prune_telemetry(telemetry_path, args.telemetry_retain_days, today=today)
     if removed:
         _log(f"telemetry retention: dropped {removed} file(s) older than {args.telemetry_retain_days}d")
+
+
+def _maybe_compact_history(args: argparse.Namespace, state: RuntimeState) -> None:
+    """Compact the anti-repeat history ledger once per local-date rollover.
+
+    Gated on ``state.last_compacted_date`` so the compact sweep runs at most
+    once per calendar day — the ledger is a ~288-entries-per-week
+    append-only file, so a per-tick compact would re-parse it needlessly.
+    Serialised against button A's ``remove_last_history_entry`` rewrite via
+    ``state.ledger_lock`` to avoid stepping on a concurrent un-skip.
+    Best-effort: a disk hiccup here must not bubble into the render path and
+    trip the outer-loop backoff counter.
+
+    Failure-retry policy: we set ``last_compacted_date`` *before* running the
+    compact, so a disk error leaves the flag set and the sweep doesn't retry
+    until tomorrow. This is intentional — retrying every tick on a persistent
+    fault (readonly fs, full disk) would just spam the log. The next day's
+    rollover retries naturally; if compaction is truly wedged, the ledger's
+    linear scan stays cheap for months before the bloat is user-visible.
+    """
+    history_path = args.history_path or None
+    if not history_path or args.history_days <= 0:
+        return
+    today = dt.date.today()
+    with state.lock:
+        if state.last_compacted_date == today:
+            return
+        state.last_compacted_date = today
+    try:
+        with state.ledger_lock:
+            dropped = pick_quote_module.compact_history(history_path, args.history_days)
+    except Exception as exc:
+        _log(f"history compact failed: {exc!r}", err=True)
+        return
+    if dropped:
+        _log(f"history compact: dropped {dropped} entr{'y' if dropped == 1 else 'ies'} older than {2 * args.history_days}d")
 
 
 def _record_render_failure(state: RuntimeState, telemetry_path: str | None, bucket: str | None) -> None:
@@ -1180,6 +1222,7 @@ def main() -> int:
             _maybe_reset_manual_theme_at_midnight(args, state)
             _check_button_liveness(state, telemetry_path)
             _maybe_prune_telemetry(args, state, telemetry_path)
+            _maybe_compact_history(args, state)
             _maybe_emit_heartbeat(state, telemetry_path)
 
             # If the render path has failed repeatedly, skip the render
@@ -1247,9 +1290,24 @@ def main() -> int:
                     # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,
                     # missing corpus row, etc.) does not kill the appliance. last_bucket stays
                     # stale so the next tick retries.
-                    _log(f"render/display failed for bucket {bucket}: {exc!r}", err=True)
-                    traceback.print_exc(file=sys.stderr)
-                    append_telemetry(telemetry_path, {"bucket": bucket, "error": repr(exc), "mode": args.mode})
+                    #
+                    # Error-log dedup latch: when the same ``repr(exc)`` repeats
+                    # back-to-back (the outer-loop backoff window is retrying
+                    # the same hardware fault), drop the stderr+traceback
+                    # emission so journald doesn't fill with identical
+                    # tracebacks. The structured telemetry entry is still
+                    # written every time so ``litclock_health.py`` sees the
+                    # full failure count. The latch clears on the next success
+                    # via ``commit_render_result``, so a genuinely new error
+                    # after a recovery still logs loudly.
+                    error_repr = repr(exc)
+                    with state.lock:
+                        is_repeat = state.last_logged_error == error_repr
+                        state.last_logged_error = error_repr
+                    if not is_repeat:
+                        _log(f"render/display failed for bucket {bucket}: {error_repr}", err=True)
+                        traceback.print_exc(file=sys.stderr)
+                    append_telemetry(telemetry_path, {"bucket": bucket, "error": error_repr, "mode": args.mode})
                     _record_render_failure(state, telemetry_path, bucket)
             elif state.last_effective_theme is None:
                 with state.lock:

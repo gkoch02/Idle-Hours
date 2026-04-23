@@ -158,6 +158,112 @@ class TestWebServerLifecycle:
         assert _json_body(body)["error"] == "not found"
 
 
+class TestTokenFileHotReload:
+    """The --web-token-file contents must re-read on mtime change, no restart needed."""
+
+    def test_new_token_accepted_after_file_rewrite(self, tmp_path):
+        """Acceptance: rotate the file under a running server; next POST with the new
+        token succeeds without restart, while the old token returns 401."""
+        import os
+        import time
+
+        token_file = tmp_path / "token"
+        token_file.write_text("first-secret\n", encoding="utf-8")
+
+        # Make sure the mtime detection has room to fire — filesystems with
+        # second-granularity mtimes could otherwise see the second write as
+        # "same mtime" if both happen inside one second.
+        past = time.time() - 10
+        os.utime(token_file, (past, past))
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(
+            args, state, token="", token_file=str(token_file),
+        )
+        try:
+            # First token works; payload validation failure returns 400 which proves auth passed.
+            status, _ = _post(
+                server, "/api/overrides", payload={"ban_source_ids": []},
+                headers={"X-LitClock-Token": "first-secret"},
+            )
+            assert status in (200, 400)
+
+            # Rotate: write new contents and bump mtime forward so the stat poll picks it up.
+            token_file.write_text("second-secret\n", encoding="utf-8")
+            now = time.time()
+            os.utime(token_file, (now, now))
+
+            # Old token must now fail.
+            status, body = _post(
+                server, "/api/overrides", payload={"ban_source_ids": []},
+                headers={"X-LitClock-Token": "first-secret"},
+            )
+            assert status == 401, _json_body(body)
+
+            # New token must succeed — no restart happened.
+            status, _ = _post(
+                server, "/api/overrides", payload={"ban_source_ids": []},
+                headers={"X-LitClock-Token": "second-secret"},
+            )
+            assert status in (200, 400)
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_unreadable_file_falls_back_to_previous_token(self, tmp_path):
+        """A transient unlink / permission hiccup keeps the previous token valid
+        instead of silently dropping auth to "any token accepted"."""
+        token_file = tmp_path / "token"
+        token_file.write_text("original\n", encoding="utf-8")
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="", token_file=str(token_file))
+        assert ctx.current_token() == "original"
+
+        # Remove the file — current_token() should keep returning the cached value.
+        token_file.unlink()
+        assert ctx.current_token() == "original"
+
+    def test_missing_file_at_startup_does_not_raise(self, tmp_path):
+        """A typo in --web-token-file at startup is logged, not crashed — the
+        inline --web-token (if any) still works, and a later fix to the path
+        will be picked up on next request."""
+        missing = tmp_path / "never-existed"
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(missing))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="fallback-inline", token_file=str(missing))
+        # No crash; the inline fallback is what we get back.
+        assert ctx.current_token() == "fallback-inline"
+
+    def test_rotation_to_empty_file_keeps_previous_token(self, tmp_path, capsys):
+        """Security: if the token file is accidentally truncated to empty at
+        runtime, we keep the previous token instead of silently disabling
+        auth. Rotation to a new non-empty value still works; this only guards
+        the empty-string edge case that an operator typo could otherwise open."""
+        import os
+        import time
+
+        token_file = tmp_path / "token"
+        token_file.write_text("valid-secret\n", encoding="utf-8")
+        past = time.time() - 10
+        os.utime(token_file, (past, past))
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="", token_file=str(token_file))
+        assert ctx.current_token() == "valid-secret"
+
+        # Simulate a botched rotation that emptied the file.
+        token_file.write_text("", encoding="utf-8")
+        now = time.time()
+        os.utime(token_file, (now, now))
+
+        # Must NOT have dropped to "" (which would disable auth).
+        assert ctx.current_token() == "valid-secret"
+        assert "refusing to downgrade to no-auth" in capsys.readouterr().err
+
+
 # ============================================================================
 # GET endpoints
 # ============================================================================
