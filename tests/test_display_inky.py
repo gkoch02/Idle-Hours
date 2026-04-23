@@ -119,3 +119,51 @@ class TestThemeSaturation:
              patch("time.sleep"):
             display_inky.main()
         assert captured == [0.1]
+
+
+class TestInkyImportGuard:
+    def test_unimportable_inky_exits_with_guidance(self, fake_image, monkeypatch):
+        # main() tries ``from inky.auto import auto`` up-front so an operator
+        # gets a useful error at startup rather than inside the retry loop.
+        # Replace the fake-inky module with one that raises on attribute access
+        # (simulating a missing library on the host).
+        broken = type(sys)("inky.auto")
+
+        def _raise(*_a, **_kw):
+            raise ImportError("No module named 'inky'")
+
+        # The import statement resolves `inky.auto.auto` at ``from`` time — this
+        # mirrors what happens when the parent package isn't installed.
+        monkeypatch.setitem(sys.modules, "inky.auto", broken)
+        # Drop ``auto`` so ``from inky.auto import auto`` fails with ImportError.
+        # (We can't use __getattr__ reliably across Python versions; a missing
+        # attribute on a module object raises ImportError at ``from`` time.)
+
+        with patch("sys.argv", _argv(fake_image)), \
+             patch("display_inky._push_to_panel") as push:
+            with pytest.raises(SystemExit) as exc_info:
+                display_inky.main()
+        msg = str(exc_info.value)
+        assert "Pimoroni Inky library" in msg
+        assert push.call_count == 0
+
+
+class TestCliArgParsing:
+    def test_parse_args_defaults(self, fake_image):
+        with patch("sys.argv", ["display_inky.py", str(fake_image)]):
+            args = display_inky.parse_args()
+        assert args.image == str(fake_image)
+        assert args.saturation is None
+        assert args.theme == "default"
+
+    def test_parse_args_rejects_unknown_theme(self, fake_image):
+        with patch("sys.argv", ["display_inky.py", str(fake_image), "--theme", "purple"]):
+            with pytest.raises(SystemExit):
+                display_inky.parse_args()
+
+    def test_backoff_schedule_shape(self):
+        # The retry loop expects exactly MAX_ATTEMPTS-1 backoff values so the
+        # final attempt doesn't sleep before giving up.
+        assert len(display_inky.RETRY_BACKOFF_SECONDS) == display_inky.MAX_ATTEMPTS - 1
+        assert all(s > 0 for s in display_inky.RETRY_BACKOFF_SECONDS)
+        assert display_inky.RETRY_BACKOFF_SECONDS == tuple(sorted(display_inky.RETRY_BACKOFF_SECONDS))
