@@ -2223,7 +2223,13 @@ class TestActionExceptionBranches:
         assert result["ok"] is False
         assert "panel disconnected" in result["error"]
         entries = self._read_telemetry(tmp_path)
-        assert any(e.get("mode") == "skip" and "panel disconnected" in e.get("error", "") for e in entries)
+        assert any(
+            e.get("mode") == "action"
+            and e.get("action") == "skip"
+            and e.get("ok") is False
+            and "panel disconnected" in e.get("error", "")
+            for e in entries
+        )
 
     def test_unskip_remove_entry_failure_returns_error_dict(self, tmp_path):
         args = self._args(tmp_path)
@@ -2236,7 +2242,10 @@ class TestActionExceptionBranches:
         assert result["ok"] is False
         assert "disk full" in result["error"]
         entries = self._read_telemetry(tmp_path)
-        assert any(e.get("mode") == "unskip" for e in entries)
+        assert any(
+            e.get("mode") == "action" and e.get("action") == "unskip" and e.get("ok") is False
+            for e in entries
+        )
 
     def test_theme_render_failure_returns_error_dict(self, tmp_path):
         args = self._args(tmp_path)
@@ -2275,7 +2284,10 @@ class TestActionExceptionBranches:
         assert result["ok"] is False
         assert "pick failed" in result["error"]
         entries = self._read_telemetry(tmp_path)
-        assert any(e.get("mode") == "rerender" for e in entries)
+        assert any(
+            e.get("mode") == "action" and e.get("action") == "rerender" and e.get("ok") is False
+            for e in entries
+        )
 
     def test_all_actions_return_busy_when_render_lock_held(self, tmp_path):
         """Non-blocking acquire must return {'ok': False, 'error': 'busy'}
@@ -2302,6 +2314,252 @@ class TestActionExceptionBranches:
         state.last_skipped = None
         result = run_clock.action_unskip(args, state, label="web")
         assert result == {"ok": True, "restored": None}
+
+
+class TestActionSuccessTelemetry:
+    """Each ``action_*`` emits a structured ``mode="action"`` entry on
+    success. Failures emit the same shape with ``ok=False`` (covered in
+    ``TestActionExceptionBranches``); busy-drops emit ``mode="press_dropped"``
+    from ``_button_render_gate`` (covered in ``TestPressDroppedTelemetry``)
+    so there is exactly one operator-visible marker per press.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7,
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            state_path=str(tmp_path / "state.json"),
+            quiet_image="",
+            shutdown_command="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def _read_telemetry(self, tmp_path) -> list[dict]:
+        entries = []
+        for path in tmp_path.glob("telemetry-*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    entries.append(json.loads(line))
+        return entries
+
+    def test_skip_success_emits_action_entry(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock._render_unlocked"), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_skip(args, state, label="button A")
+        assert result["ok"] is True
+        entries = self._read_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "action" and e.get("action") == "skip"]
+        assert matching, entries
+        assert matching[0]["label"] == "button A"
+        assert matching[0]["ok"] is True
+        assert "error" not in matching[0]
+
+    def test_theme_success_emits_action_entry(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web")
+        assert result["ok"] is True
+        entries = self._read_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "action" and e.get("action") == "theme"]
+        assert matching
+        assert matching[0]["label"] == "web"
+        assert matching[0]["ok"] is True
+
+    def test_quiet_success_emits_action_entry(self, tmp_path):
+        args = self._args(tmp_path, quiet_image="")
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = True
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_quiet(args, state, label="button D")
+        assert result["ok"] is True
+        entries = self._read_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "action" and e.get("action") == "quiet"]
+        assert matching
+        assert matching[0]["label"] == "button D"
+
+    def test_rerender_success_emits_action_entry(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_rerender(args, state, label="web")
+        assert result["ok"] is True
+        entries = self._read_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "action" and e.get("action") == "rerender"]
+        assert matching
+
+    def test_unskip_noop_still_emits_action_entry(self, tmp_path):
+        """An un-skip with nothing to restore is a successful no-op — still
+        emits ``mode="action"`` so the summary counts the operator press."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_skipped = None
+        run_clock.action_unskip(args, state, label="button A")
+        entries = self._read_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "action" and e.get("action") == "unskip"]
+        assert matching
+        assert matching[0]["ok"] is True
+
+
+class TestPressDroppedTelemetry:
+    """``_button_render_gate`` emits a ``mode="press_dropped"`` entry when
+    the non-blocking ``render_lock.acquire`` fails. One entry per dropped
+    press, never paired with an action entry.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7,
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            state_path=str(tmp_path / "state.json"),
+            quiet_image="",
+            shutdown_command="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def _read_telemetry(self, tmp_path) -> list[dict]:
+        entries = []
+        for path in tmp_path.glob("telemetry-*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    entries.append(json.loads(line))
+        return entries
+
+    def test_busy_skip_emits_press_dropped_not_action(self, tmp_path):
+        """Acceptance criterion from issue #55: a press during an in-flight
+        render shows up as ``press_dropped``, and NOT as an ``action`` entry."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.render_lock.acquire()
+        try:
+            result = run_clock.action_skip(args, state, label="button A")
+        finally:
+            state.render_lock.release()
+        assert result == {"ok": False, "error": "busy"}
+        entries = self._read_telemetry(tmp_path)
+        dropped = [e for e in entries if e.get("mode") == "press_dropped"]
+        actions = [e for e in entries if e.get("mode") == "action"]
+        assert len(dropped) == 1
+        assert actions == []  # busy path must not double-count
+        assert dropped[0]["label"] == "button A"
+        assert dropped[0]["action"] == "skip"
+        assert dropped[0]["reason"] == "render_in_flight"
+
+    def test_spam_ten_presses_yields_one_success_and_nine_dropped(self, tmp_path):
+        """Acceptance criterion from issue #55: 10 presses during a slow
+        render ⇒ 1 success + 9 dropped. We simulate this by holding the
+        render lock for 9 of the 10 presses, then releasing for the 10th."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            state.render_lock.acquire()
+            try:
+                for _ in range(9):
+                    run_clock.action_theme(args, state, label="button B")
+            finally:
+                state.render_lock.release()
+            # The 10th press succeeds.
+            run_clock.action_theme(args, state, label="button B")
+        entries = self._read_telemetry(tmp_path)
+        dropped = [e for e in entries if e.get("mode") == "press_dropped"]
+        actions = [e for e in entries if e.get("mode") == "action" and e.get("ok") is True]
+        assert len(dropped) == 9
+        assert len(actions) == 1
+
+
+class TestQuietHoursTelemetry:
+    """``enter_quiet`` emits ``mode="quiet_enter"`` (scheduled or manual);
+    the main loop's scheduled-exit branch emits ``mode="quiet_exit"`` after
+    calling ``exit_quiet``. Manual-quiet toggles are tracked via the
+    ``action`` telemetry instead, so they don't double-count here.
+    """
+
+    def test_enter_quiet_emits_telemetry(self, tmp_path):
+        import runtime_quiet
+        args = argparse.Namespace(
+            history_path="",
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            quiet_start="22:00",
+            quiet_end="06:00",
+            quiet_image="",
+            output=str(tmp_path / "out.png"),
+            display_script=None,
+            render_script="render_quote.py",
+            width=800,
+            height=480,
+            mode="debug",
+            history_days=7,
+        )
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.render_now"), \
+             patch("run_clock._display_quiet_image"):
+            runtime_quiet.enter_quiet(args, state, "22:30", manual_only=False)
+        entries = []
+        for path in tmp_path.glob("telemetry-*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    entries.append(json.loads(line))
+        matching = [e for e in entries if e.get("mode") == "quiet_enter"]
+        assert matching, entries
+        assert matching[0]["manual"] is False
+
+    def test_manual_quiet_enter_records_manual_true(self, tmp_path):
+        import runtime_quiet
+        args = argparse.Namespace(
+            history_path="",
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            quiet_start="22:00",
+            quiet_end="06:00",
+            quiet_image="",
+            output=str(tmp_path / "out.png"),
+            display_script=None,
+            render_script="render_quote.py",
+            width=800,
+            height=480,
+            mode="debug",
+            history_days=7,
+        )
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.render_now"), \
+             patch("run_clock._display_quiet_image"):
+            runtime_quiet.enter_quiet(args, state, "12:00", manual_only=True)
+        entries = []
+        for path in tmp_path.glob("telemetry-*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    entries.append(json.loads(line))
+        matching = [e for e in entries if e.get("mode") == "quiet_enter"]
+        assert matching
+        assert matching[0]["manual"] is True
 
 
 class TestParseArgsBasic:

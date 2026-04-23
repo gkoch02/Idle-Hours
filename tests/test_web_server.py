@@ -800,3 +800,121 @@ class TestErrorBranches:
         status, body = _get(server, "/api/bucket/h3_exact?top=notanumber")
         assert status == 400
         assert "top" in _json_body(body)["error"]
+
+
+# ============================================================================
+# Phase 4 observability — structured web telemetry
+# (github.com/gkoch02/litclock issue #55)
+# ============================================================================
+
+
+def _read_web_telemetry(tmp_path: Path) -> list[dict]:
+    """Read all date-rotated telemetry siblings written by the web server."""
+    entries = []
+    for path in tmp_path.glob("telemetry-*.jsonl"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                entries.append(json.loads(line))
+    return entries
+
+
+class TestWebAuthFailTelemetry:
+    def test_bad_token_post_emits_web_auth_fail(self, tmp_path):
+        """A 401 on a POST lays down a ``mode="web_auth_fail"`` entry so an
+        operator can see "was the web UI hammered with bad tokens yesterday?"
+        without scraping journald."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            status, _ = _post(server, "/api/action/theme", headers={"X-LitClock-Token": "wrong"})
+            assert status == 401
+        finally:
+            run_clock.stop_web_server((server, thread))
+        entries = _read_web_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "web_auth_fail"]
+        assert matching, entries
+        assert matching[0]["path"] == "/api/action/theme"
+        # remote is present (127.0.0.1 in the test loopback)
+        assert "remote" in matching[0]
+
+    def test_missing_token_header_emits_web_auth_fail(self, tmp_path):
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            status, _ = _post(server, "/api/action/theme")
+            assert status == 401
+        finally:
+            run_clock.stop_web_server((server, thread))
+        entries = _read_web_telemetry(tmp_path)
+        assert any(e.get("mode") == "web_auth_fail" for e in entries)
+
+    def test_auth_fail_strips_query_string_from_path(self, tmp_path):
+        """Security: a fat-finger client putting a token in the URL (instead of
+        the X-LitClock-Token header) would otherwise plant the secret in the
+        telemetry sidecar. ``log_message`` is silenced for the same reason."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            # Deliberately embed a "secret" in the query to simulate misuse.
+            conn = _client(server)
+            conn.request("POST", "/api/action/theme?token=leaked", body=b"",
+                         headers={"Content-Length": "0"})
+            resp = conn.getresponse()
+            resp.read()
+            conn.close()
+            assert resp.status == 401
+        finally:
+            run_clock.stop_web_server((server, thread))
+        entries = _read_web_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "web_auth_fail"]
+        assert matching
+        # Path must be just the route, without the query — no "leaked" token.
+        assert matching[0]["path"] == "/api/action/theme"
+        assert "leaked" not in json.dumps(matching[0])
+
+    def test_successful_post_does_not_emit_auth_fail(self, tmp_path):
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            with patch("run_clock._render_unlocked"), \
+                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+                status, _ = _post(
+                    server, "/api/action/theme",
+                    headers={"X-LitClock-Token": "secret"},
+                )
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+        entries = _read_web_telemetry(tmp_path)
+        assert not any(e.get("mode") == "web_auth_fail" for e in entries)
+
+
+class TestWebErrorTelemetry:
+    def test_bad_post_body_emits_web_error(self, live_server):
+        """A malformed overrides payload returns 400 and emits a structured
+        ``mode="web_error"`` entry with the status and error string."""
+        server, _, args = live_server
+        status, _ = _post(server, "/api/overrides", {"preferred_buckets": {"h13_exact": "141"}})
+        assert status == 400
+        entries = _read_web_telemetry(Path(args.telemetry_path).parent)
+        matching = [e for e in entries if e.get("mode") == "web_error"]
+        assert matching, entries
+        assert matching[0]["status"] == 400
+        assert matching[0]["path"] == "/api/overrides"
+
+    def test_exception_in_handler_emits_web_error_500(self, live_server, monkeypatch):
+        server, _, args = live_server
+        monkeypatch.setattr(
+            run_clock, "action_rerender",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("explode")),
+        )
+        status, _ = _post(server, "/api/action/rerender", {})
+        assert status == 500
+        entries = _read_web_telemetry(Path(args.telemetry_path).parent)
+        matching = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 500]
+        assert matching
+        assert "explode" in matching[0]["error"]

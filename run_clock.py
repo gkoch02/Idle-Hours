@@ -561,7 +561,7 @@ def _build_button_handlers(
         # same title/author/id through ``GET /api/current`` without occupying
         # the panel for 5s). Kept inline because the timer-driven restore
         # doesn't fit the action_* return-dict contract cleanly.
-        with _button_render_gate(state, "button C (card)") as acquired:
+        with _button_render_gate(state, "button C", "card", telemetry_path=telemetry_path) as acquired:
             if not acquired:
                 return
             _log("button C: source card")
@@ -631,7 +631,7 @@ def _build_button_handlers(
         if not cmd:
             _log("button D held: --shutdown-command is empty, skipping system shutdown")
             return
-        with _button_render_gate(state, "button D (shutdown)") as acquired:
+        with _button_render_gate(state, "button D", "shutdown", telemetry_path=telemetry_path) as acquired:
             if not acquired:
                 return
             _log("button D held: shutdown")
@@ -1206,6 +1206,11 @@ def main() -> int:
             if state.was_quiet:
                 _log("quiet hours end, resuming normal render cycle")
                 exit_quiet(state)
+                # Falling-edge marker paired with the enter_quiet emission so
+                # litclock_health can count balanced quiet windows (and an
+                # operator can spot "we stopped rendering because we entered
+                # quiet" vs "we stopped rendering because we wedged").
+                append_telemetry(telemetry_path, {"mode": "quiet_exit"})
                 state.was_quiet = False
 
             bucket = current_bucket()

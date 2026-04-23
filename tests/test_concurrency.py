@@ -63,13 +63,13 @@ class TestRenderGateDropsConcurrentPresses:
         observed = []
 
         def slow_first():
-            with run_clock._button_render_gate(state, "first") as acquired:
+            with run_clock._button_render_gate(state, "test", "first") as acquired:
                 observed.append(("first", acquired))
                 first_entered.set()
                 release_first.wait(timeout=2)
 
         def immediate_second():
-            with run_clock._button_render_gate(state, "second") as acquired:
+            with run_clock._button_render_gate(state, "test", "second") as acquired:
                 observed.append(("second", acquired))
 
         t1 = threading.Thread(target=slow_first)
@@ -171,14 +171,14 @@ class TestRenderGateFairness:
         count_lock = threading.Lock()
 
         def slow_holder():
-            with run_clock._button_render_gate(state, "holder") as acquired:
+            with run_clock._button_render_gate(state, "test", "holder") as acquired:
                 assert acquired
                 running.set()
                 release.wait(timeout=5)
 
         def taps():
             nonlocal acquired_count, dropped_count
-            with run_clock._button_render_gate(state, "tap") as acquired:
+            with run_clock._button_render_gate(state, "test", "tap") as acquired:
                 with count_lock:
                     if acquired:
                         acquired_count += 1

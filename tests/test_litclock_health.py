@@ -427,3 +427,157 @@ class TestBackoffNotCountedAsRender:
         summary = litclock_health.summarise(entries)
         assert summary["render_count"] == 0
         assert summary["error_count"] == 2
+
+
+class TestActionSummarisation:
+    """Phase 4 observability — operator actions, press-drops, web auth
+    failures, and quiet-window transitions surface as counters in the
+    summary. See github.com/gkoch02/litclock issue #55.
+    """
+
+    def test_actions_broken_down_by_type(self):
+        entries = [
+            {"ts": _ts(5), "mode": "action", "action": "skip", "label": "button A", "ok": True},
+            {"ts": _ts(4), "mode": "action", "action": "skip", "label": "web", "ok": True},
+            {"ts": _ts(3), "mode": "action", "action": "theme", "label": "button B", "ok": True},
+            {"ts": _ts(2), "mode": "action", "action": "theme", "label": "web", "ok": False, "error": "X"},
+        ]
+        summary = litclock_health.summarise(entries)
+        assert summary["action_count"] == 4
+        assert summary["actions_by_type"] == {"skip": 2, "theme": 2}
+        # last action is the most recent one in the list order
+        assert summary["last_action_ts"] == entries[-1]["ts"]
+
+    def test_action_errors_do_not_inflate_error_count(self):
+        """A failed skip action has ``ok=False, error=...`` but the render
+        pipeline itself is unaffected — it belongs in action_count, not
+        error_count, so a spurious web call doesn't light up health
+        monitoring."""
+        entries = [
+            {"ts": _ts(5), "mode": "action", "action": "skip", "ok": False, "error": "boom"},
+            {"ts": _ts(4), "render_ms": 100},
+        ]
+        summary = litclock_health.summarise(entries)
+        assert summary["render_count"] == 1
+        assert summary["error_count"] == 0
+        assert summary["action_count"] == 1
+
+    def test_press_dropped_counted(self):
+        entries = [
+            {"ts": _ts(5), "mode": "press_dropped", "label": "button A", "action": "skip", "reason": "render_in_flight"},
+            {"ts": _ts(4), "mode": "press_dropped", "label": "web", "action": "theme", "reason": "render_in_flight"},
+        ]
+        summary = litclock_health.summarise(entries)
+        assert summary["press_dropped_count"] == 2
+
+    def test_web_auth_fail_counted(self):
+        entries = [
+            {"ts": _ts(5), "mode": "web_auth_fail", "remote": "10.0.0.2", "path": "/api/action/theme"},
+        ]
+        summary = litclock_health.summarise(entries)
+        assert summary["web_auth_fail_count"] == 1
+        # web_auth_fail has no error field, so it shouldn't influence error_count either way.
+        assert summary["error_count"] == 0
+
+    def test_web_error_counted_not_as_generic_error(self):
+        """``web_error`` entries carry an ``error`` field but represent HTTP
+        4xx/5xx responses, not render-pipeline failures. They get their own
+        counter, not the generic error_count."""
+        entries = [
+            {"ts": _ts(5), "mode": "web_error", "status": 400, "path": "/api/overrides", "error": "invalid bucket"},
+            {"ts": _ts(4), "mode": "web_error", "status": 500, "path": "/api/action/theme", "error": "RuntimeError()"},
+        ]
+        summary = litclock_health.summarise(entries)
+        assert summary["web_error_count"] == 2
+        assert summary["error_count"] == 0
+
+    def test_quiet_enter_and_exit_counted(self):
+        entries = [
+            {"ts": _ts(30), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(20), "mode": "quiet_exit"},
+            {"ts": _ts(10), "mode": "quiet_enter", "manual": True},
+        ]
+        summary = litclock_health.summarise(entries)
+        assert summary["quiet_enter_count"] == 2
+        assert summary["quiet_exit_count"] == 1
+
+    def test_summary_fields_all_present_on_empty(self):
+        """Zero entries still produce every counter so downstream consumers
+        don't need ``summary.get(..., 0)`` guards."""
+        summary = litclock_health.summarise([])
+        for key in (
+            "action_count", "press_dropped_count", "web_auth_fail_count",
+            "web_error_count", "quiet_enter_count", "quiet_exit_count",
+        ):
+            assert summary[key] == 0, key
+        assert summary["actions_by_type"] == {}
+        assert summary["last_action_ts"] is None
+
+
+class TestActionsOnlyView:
+    def test_actions_only_text_output(self, tmp_path, capsys):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "mode": "action", "action": "skip", "label": "button A", "ok": True},
+            {"ts": _ts(4), "mode": "action", "action": "theme", "label": "web", "ok": True},
+            {"ts": _ts(3), "mode": "press_dropped", "label": "button A", "action": "skip", "reason": "render_in_flight"},
+            {"ts": _ts(2), "mode": "web_auth_fail", "remote": "1.2.3.4", "path": "/api/action/theme"},
+            {"ts": _ts(1), "mode": "quiet_enter", "manual": False},
+        ])
+        argv = [
+            "litclock_health.py",
+            "--telemetry-path", str(path),
+            "--hours", "1",
+            "--actions-only",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "operator activity" in out
+        assert "actions: 2" in out
+        assert "skip 1" in out
+        assert "theme 1" in out
+        assert "presses dropped: 1" in out
+        assert "web auth failures: 1" in out
+        assert "1 enters" in out
+
+    def test_actions_only_stable_shape_on_empty_window(self, tmp_path, capsys):
+        """Every counter prints even when zero so grep-based cron workflows
+        don't silently break when the window is quiet."""
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "render_ms": 100},  # no action traffic, but a render exists so we don't exit 1
+        ])
+        argv = [
+            "litclock_health.py",
+            "--telemetry-path", str(path),
+            "--hours", "1",
+            "--actions-only",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "actions: 0" in out
+        assert "presses dropped: 0" in out
+        assert "web auth failures: 0" in out
+        assert "last action: never" in out
+
+    def test_actions_only_ignored_by_json_flag(self, tmp_path, capsys):
+        """--json keeps its machine-readable shape regardless of --actions-only."""
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "mode": "action", "action": "skip", "label": "web", "ok": True},
+            {"ts": _ts(4), "mode": "press_dropped", "label": "web", "action": "skip", "reason": "render_in_flight"},
+        ])
+        argv = [
+            "litclock_health.py",
+            "--telemetry-path", str(path),
+            "--hours", "1",
+            "--actions-only", "--json",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out.strip())
+        assert data["action_count"] == 1
+        assert data["press_dropped_count"] == 1
+        assert data["actions_by_type"] == {"skip": 1}

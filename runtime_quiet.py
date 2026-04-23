@@ -158,6 +158,12 @@ def enter_quiet(
     quiet_bucket = bucket_for_time(time_str)
     trigger = "manual" if manual_only else f"{args.quiet_start}–{args.quiet_end}"
     _log(f"quiet hours start ({trigger})")
+    # Structured rising-edge marker so litclock_health can tell
+    # "silent window because quiet" apart from "silent window because wedged";
+    # the falling-edge marker is emitted by the main loop after exit_quiet.
+    run_clock.append_telemetry(
+        telemetry_path, {"mode": "quiet_enter", "manual": manual_only, "bucket": quiet_bucket},
+    )
     try:
         if args.quiet_image:
             with state.render_lock:
