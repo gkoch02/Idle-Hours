@@ -117,6 +117,14 @@ class WebContext:
         normal operation a file that used to exist and now doesn't is treated
         the same way (we fall back to the inline value and log once); a file
         that's back after a missing window re-caches cleanly.
+
+        Security guard: once a non-empty token has been cached, we refuse to
+        downgrade to an empty one via hot-reload. An operator who typos
+        ``echo -n "" > tokenfile`` (or runs a tool that truncates before
+        writing the new value) would otherwise silently open the POST surface
+        on any LAN bind — the startup guard wouldn't re-check. Rotation to a
+        different non-empty value is still honoured; rotation back to literally
+        empty requires a restart so the startup guard can weigh in.
         """
         assert self._token_file is not None
         try:
@@ -131,6 +139,16 @@ class WebContext:
             contents = self._token_file.read_text(encoding="utf-8").strip()
         except OSError as exc:
             _log(f"--web-token-file {self._token_file!s} read failed: {exc!r}; using previous token", err=True)
+            return
+        if not contents and self._cached_token:
+            _log(
+                f"--web-token-file {self._token_file!s} is now empty; refusing to downgrade to "
+                "no-auth at runtime (keeping previous token; restart to explicitly disable).",
+                err=True,
+            )
+            # Update mtime anyway so we don't re-warn on every request until
+            # the operator writes a valid replacement.
+            self._cached_token_mtime = stat.st_mtime
             return
         self._cached_token = contents
         self._cached_token_mtime = stat.st_mtime

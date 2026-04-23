@@ -236,6 +236,33 @@ class TestTokenFileHotReload:
         # No crash; the inline fallback is what we get back.
         assert ctx.current_token() == "fallback-inline"
 
+    def test_rotation_to_empty_file_keeps_previous_token(self, tmp_path, capsys):
+        """Security: if the token file is accidentally truncated to empty at
+        runtime, we keep the previous token instead of silently disabling
+        auth. Rotation to a new non-empty value still works; this only guards
+        the empty-string edge case that an operator typo could otherwise open."""
+        import os
+        import time
+
+        token_file = tmp_path / "token"
+        token_file.write_text("valid-secret\n", encoding="utf-8")
+        past = time.time() - 10
+        os.utime(token_file, (past, past))
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="", token_file=str(token_file))
+        assert ctx.current_token() == "valid-secret"
+
+        # Simulate a botched rotation that emptied the file.
+        token_file.write_text("", encoding="utf-8")
+        now = time.time()
+        os.utime(token_file, (now, now))
+
+        # Must NOT have dropped to "" (which would disable auth).
+        assert ctx.current_token() == "valid-secret"
+        assert "refusing to downgrade to no-auth" in capsys.readouterr().err
+
 
 # ============================================================================
 # GET endpoints

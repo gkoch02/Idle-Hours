@@ -843,6 +843,13 @@ def _maybe_compact_history(args: argparse.Namespace, state: RuntimeState) -> Non
     ``state.ledger_lock`` to avoid stepping on a concurrent un-skip.
     Best-effort: a disk hiccup here must not bubble into the render path and
     trip the outer-loop backoff counter.
+
+    Failure-retry policy: we set ``last_compacted_date`` *before* running the
+    compact, so a disk error leaves the flag set and the sweep doesn't retry
+    until tomorrow. This is intentional — retrying every tick on a persistent
+    fault (readonly fs, full disk) would just spam the log. The next day's
+    rollover retries naturally; if compaction is truly wedged, the ledger's
+    linear scan stays cheap for months before the bloat is user-visible.
     """
     history_path = args.history_path or None
     if not history_path or args.history_days <= 0:
