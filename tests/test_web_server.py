@@ -1024,3 +1024,168 @@ class TestWebErrorTelemetry:
         matching = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 500]
         assert matching
         assert "explode" in matching[0]["error"]
+
+
+# ============================================================================
+# Security edges — unsupported verbs, render-lock contention, token comparison
+# ============================================================================
+
+
+class TestUnsupportedVerbs:
+    """``BaseHTTPRequestHandler`` responds with 501 for verbs we didn't define.
+
+    We exercise this explicitly so the "someone added a do_HEAD that leaks
+    data" class of regression fails a test, not a pen-test.
+    """
+
+    def _raw_request(self, server, verb: str, path: str = "/api/current"):
+        conn = _client(server)
+        # ``http.client.HTTPConnection.request`` refuses unknown verbs in some
+        # Python versions; build the raw line ourselves to bypass that.
+        conn.putrequest(verb, path, skip_host=False, skip_accept_encoding=True)
+        conn.putheader("Content-Length", "0")
+        conn.endheaders()
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        return resp.status, body
+
+    @pytest.mark.parametrize("verb", ["PUT", "DELETE", "PATCH"])
+    def test_unsupported_verb_returns_501(self, live_server, verb):
+        server, _, _ = live_server
+        status, _ = self._raw_request(server, verb)
+        # http.server's default do_* fallback is 501 Unsupported Method.
+        assert status == 501
+
+    def test_head_does_not_leak_body(self, live_server):
+        # We don't define do_HEAD, so the base handler responds 501 — a new
+        # do_HEAD must not accidentally return a body that duplicates do_GET's
+        # response without the caching / token protections.
+        server, _, _ = live_server
+        status, body = self._raw_request(server, "HEAD", "/api/current")
+        assert status == 501
+        assert body == b"" or b"current_time" not in body
+
+
+class TestRenderLockContention:
+    """Regression guard for the ``_button_render_gate`` non-blocking acquire.
+
+    A web POST arriving during an in-flight render (or another action still
+    holding ``render_lock``) must drop with ``{"error": "busy"}`` at HTTP 409
+    instead of queueing behind the 10–20s Spectra 6 refresh.
+    """
+
+    def test_concurrent_action_during_held_render_lock_returns_409(self, tmp_path):
+        server, thread, state, args = _start(tmp_path)
+        try:
+            # Simulate an in-flight render by grabbing the lock from the test
+            # thread. The action handler uses the same non-blocking pattern
+            # GPIO presses use, so a held lock must surface as "busy".
+            state.render_lock.acquire()
+            try:
+                status, body = _post(server, "/api/action/rerender", {})
+                assert status == 409, f"expected 409 busy, got {status}: {body!r}"
+                assert _json_body(body)["error"] == "busy"
+            finally:
+                state.render_lock.release()
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_action_succeeds_once_render_lock_is_released(self, tmp_path):
+        server, thread, state, args = _start(tmp_path)
+        try:
+            state.render_lock.acquire()
+            state.render_lock.release()
+            with patch("run_clock._render_unlocked"), \
+                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+                status, body = _post(server, "/api/action/rerender", {})
+            assert status == 200, f"expected 200 after release, got {status}: {body!r}"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+
+class TestTokenComparison:
+    """The token check must be constant-time (``hmac.compare_digest``) so a
+    remote attacker can't time-probe one byte at a time.
+
+    We can't test timing directly without flakiness, but we can assert the
+    code path actually calls ``hmac.compare_digest`` rather than ``==`` — a
+    regression that downgrades to ``==`` fails here instead of only failing
+    to a motivated attacker.
+    """
+
+    def test_token_comparison_uses_hmac_compare_digest(self, tmp_path, monkeypatch):
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            calls: list[tuple[str, str]] = []
+
+            import hmac as hmac_mod
+            real_compare = hmac_mod.compare_digest
+
+            def spy(a, b):
+                calls.append((a, b))
+                return real_compare(a, b)
+
+            monkeypatch.setattr("web_server.hmac.compare_digest", spy)
+
+            status, _ = _post(
+                server, "/api/action/theme",
+                headers={"X-LitClock-Token": "secret"},
+            )
+            # We don't care about the status here (it may 200 or 500 without
+            # the peek stub) — only that compare_digest was invoked.
+            assert calls, "token comparison did not go through hmac.compare_digest"
+            assert calls[0] == ("secret", "secret")
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_empty_token_bypasses_auth(self, tmp_path):
+        """Loopback binds without a token allow every POST — a regression that
+        suddenly requires a token would break every existing local install."""
+        server, thread, _state, _args = _start(tmp_path, token="")
+        try:
+            with patch("run_clock._render_unlocked"), \
+                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+                status, _ = _post(server, "/api/action/rerender", {})
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+
+class TestContentLengthEdges:
+    def test_negative_content_length_is_treated_as_empty(self, tmp_path):
+        # A signed integer parse of "-1" would underflow the body read — the
+        # handler guards via ``length <= 0`` so the body is simply empty.
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            conn = _client(server)
+            conn.request("POST", "/api/overrides", body=b"",
+                         headers={"Content-Length": "-1"})
+            resp = conn.getresponse()
+            body = resp.read()
+            conn.close()
+            # Empty body → validator rejects the payload (not an object with
+            # the required keys). We care that the server doesn't crash or
+            # attempt a negative read, not the exact error text.
+            assert resp.status in {200, 400}
+            assert body  # the server responded with *some* JSON error/payload
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_non_numeric_content_length_rejected(self, tmp_path):
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            conn = _client(server)
+            conn.request("POST", "/api/overrides", body=b"",
+                         headers={"Content-Length": "not-a-number"})
+            resp = conn.getresponse()
+            resp.read()
+            conn.close()
+            # int() raises ValueError, which the outer do_POST except catches
+            # and returns 500. That's acceptable — the key property is that we
+            # don't attempt ``rfile.read(<bogus>)``.
+            assert resp.status in {400, 500}
+        finally:
+            run_clock.stop_web_server((server, thread))

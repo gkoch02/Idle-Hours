@@ -46,10 +46,18 @@ filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.coverage.run]
 source = ["."]
-omit = ["tests/*", "bootstrap_pi_inky.sh", "display_inky.py"]
+# display_inky.py stays in coverage: its module-level defaults + resolve_saturation
+# + main() retry/backoff logic are exercised by tests/test_display_inky.py with
+# the hardware call (_push_to_panel, which imports the Pimoroni Inky library) mocked out.
+omit = ["tests/*", "bootstrap_pi_inky.sh"]
 
 [tool.coverage.report]
 exclude_lines = [
+    # Keep coverage.py's default pragma marker when overriding this list —
+    # without it, `# pragma: no cover` comments are silently ignored and
+    # hardware-only branches like ``display_inky._push_to_panel`` inflate
+    # the "missing lines" report.
+    "pragma: no cover",
     "if __name__ == .__main__.:",
     "raise SystemExit",
 ]

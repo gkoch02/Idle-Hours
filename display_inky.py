@@ -57,11 +57,13 @@ def resolve_saturation(theme: str, override: float | None) -> float:
     return THEME_SATURATION.get(theme, THEME_SATURATION["default"])
 
 
-def _push_to_panel(image_path: Path, saturation: float) -> tuple[int, int]:
+def _push_to_panel(image_path: Path, saturation: float) -> tuple[int, int]:  # pragma: no cover - hardware only
     """Open the image and push it to the Inky panel. Returns the panel resolution.
 
     Raises any underlying exception from the Inky library so the caller can decide
-    whether to retry.
+    whether to retry. Body excluded from coverage because the real ``inky.auto``
+    import requires a physical Pimoroni panel; tests mock this function out via
+    ``patch("display_inky._push_to_panel", ...)`` and exercise the retry wrapper.
     """
     from inky.auto import auto
 
