@@ -244,11 +244,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
             # Structured auth-failure marker so an operator can grep for
             # "was the web UI hammered with bad tokens?" without scraping
             # journald; remote+path are sufficient to distinguish a fat-
-            # finger from a scanner sweep.
+            # finger from a scanner sweep. Strip the query string for the
+            # same reason ``log_message`` is silenced — a fat-finger client
+            # putting the token in the URL would otherwise plant the secret
+            # in the telemetry sidecar.
             self._emit_web_telemetry({
                 "mode": "web_auth_fail",
                 "remote": self.client_address[0] if self.client_address else "",
-                "path": self.path,
+                "path": urllib.parse.urlparse(self.path).path,
             })
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "token required"})
             return False

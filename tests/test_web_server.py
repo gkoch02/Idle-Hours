@@ -850,6 +850,31 @@ class TestWebAuthFailTelemetry:
         entries = _read_web_telemetry(tmp_path)
         assert any(e.get("mode") == "web_auth_fail" for e in entries)
 
+    def test_auth_fail_strips_query_string_from_path(self, tmp_path):
+        """Security: a fat-finger client putting a token in the URL (instead of
+        the X-LitClock-Token header) would otherwise plant the secret in the
+        telemetry sidecar. ``log_message`` is silenced for the same reason."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            # Deliberately embed a "secret" in the query to simulate misuse.
+            conn = _client(server)
+            conn.request("POST", "/api/action/theme?token=leaked", body=b"",
+                         headers={"Content-Length": "0"})
+            resp = conn.getresponse()
+            resp.read()
+            conn.close()
+            assert resp.status == 401
+        finally:
+            run_clock.stop_web_server((server, thread))
+        entries = _read_web_telemetry(tmp_path)
+        matching = [e for e in entries if e.get("mode") == "web_auth_fail"]
+        assert matching
+        # Path must be just the route, without the query — no "leaked" token.
+        assert matching[0]["path"] == "/api/action/theme"
+        assert "leaked" not in json.dumps(matching[0])
+
     def test_successful_post_does_not_emit_auth_fail(self, tmp_path):
         args = _make_args(tmp_path, web_bind="0.0.0.0:0")
         state = run_clock.RuntimeState(args.theme)

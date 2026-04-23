@@ -199,10 +199,13 @@ def summarise(entries: list[dict]) -> dict:
         # is the most recent heartbeat.
         last_heartbeat_ts = heartbeats[-1].get("ts")
     # Break actions down by verb so the summary reads as
-    # "5 theme toggles, 2 skips" instead of a bare "7 actions".
+    # "5 theme toggles, 2 skips" instead of a bare "7 actions". Use
+    # ``or "unknown"`` so both a missing key and a null value fall into
+    # the same bucket (a malformed entry with ``"action": null`` would
+    # otherwise produce an ``"None"`` column).
     actions_by_type: dict[str, int] = {}
     for entry in actions:
-        name = str(entry.get("action", "unknown"))
+        name = str(entry.get("action") or "unknown")
         actions_by_type[name] = actions_by_type.get(name, 0) + 1
     last_action_ts = actions[-1].get("ts") if actions else None
     return {
