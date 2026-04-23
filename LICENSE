@@ -31,5 +31,5 @@ Third-party content:
   and scoring of those excerpts is covered by the MIT license above.
 
 - Playfair Display fonts bundled under `fonts/` are distributed under the SIL
-  Open Font License, Version 1.1. See the font files' accompanying OFL.txt
-  (upstream: https://github.com/clauseggers/Playfair-Display).
+  Open Font License, Version 1.1. See `fonts/OFL.txt` for the full license
+  text (upstream: https://github.com/clauseggers/Playfair-Display).
