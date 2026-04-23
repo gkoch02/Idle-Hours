@@ -181,6 +181,13 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     the panel stay in sync. The alternative "persist first, then display"
     leaves ``state.json`` claiming a theme the panel doesn't show after a
     transient I/O failure.
+
+    Persist failures AFTER a successful render are NOT grounds for rollback:
+    the panel already shows the new theme, so reverting in-memory state would
+    just cause the next loop tick to undo the user's action. We log and keep
+    running (same pattern as ``_persist_state_after_render`` for the main
+    loop); the in-memory theme will be re-persisted on the next successful
+    render commit.
     """
     import run_clock
     history_path = args.history_path or None
@@ -188,7 +195,6 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     with _button_render_gate(state, label, "theme", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
-        rolled_back = False
         with state.lock:
             previous_theme = state.manual_theme
             time_str = run_clock.current_time_str()
@@ -198,22 +204,25 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
             state.manual_theme = "dark" if current == "default" else "default"
             new_theme = state.manual_theme
             quote_id = state.last_quote_id
+        _log(f"{label}: theme -> {new_theme}")
         try:
-            _log(f"{label}: theme -> {new_theme}")
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            # Persist only after the display push succeeded so ``state.json``
-            # cannot drift ahead of the panel on a transient render failure.
-            with state.lock:
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
-            _emit_action(telemetry_path, "theme", label, ok=True)
-            return {"ok": True, "theme": new_theme}
         except Exception as exc:
             with state.lock:
                 state.manual_theme = previous_theme
-            rolled_back = True
             _log(f"{label} theme toggle failed: {exc!r} (rolled back to {previous_theme!r})", err=True)
             _emit_action(telemetry_path, "theme", label, ok=False, error=repr(exc))
-            return {"ok": False, "error": repr(exc), "rolled_back": rolled_back}
+            return {"ok": False, "error": repr(exc), "rolled_back": True}
+        # Render succeeded; the panel is now authoritative. A persist failure
+        # from here on must NOT roll back — the in-memory flip matches what
+        # the operator sees.
+        try:
+            with state.lock:
+                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+        except Exception as exc:
+            _log(f"{label} theme toggle: persist after render failed: {exc!r} (keeping in-memory flip)", err=True)
+        _emit_action(telemetry_path, "theme", label, ok=True)
+        return {"ok": True, "theme": new_theme}
 
 
 def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
@@ -224,6 +233,11 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     image going in, fresh render coming out), then persist. A raise during the
     display push rolls the flip back so ``state.json`` cannot claim "quiet"
     while the panel still shows a quote (or vice versa).
+
+    Persist failures AFTER the display/render succeeded are logged but do
+    NOT trigger rollback — the panel is already the source of truth, so
+    reverting ``manual_quiet`` would let the next loop tick immediately
+    counteract the user action.
     """
     import run_clock
     history_path = args.history_path or None
@@ -252,16 +266,20 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                     time_str, history_path=history_path, history_days=args.history_days,
                 )
                 run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            with state.lock:
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
-            _emit_action(telemetry_path, "quiet", label, ok=True)
-            return {"ok": True, "manual_quiet": quiet_now}
         except Exception as exc:
             with state.lock:
                 state.manual_quiet = previous_quiet
             _log(f"{label} quiet toggle failed: {exc!r} (rolled back to {previous_quiet!r})", err=True)
             _emit_action(telemetry_path, "quiet", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc), "rolled_back": True}
+        # Display/render succeeded; persist best-effort (see docstring).
+        try:
+            with state.lock:
+                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+        except Exception as exc:
+            _log(f"{label} quiet toggle: persist after display failed: {exc!r} (keeping in-memory flip)", err=True)
+        _emit_action(telemetry_path, "quiet", label, ok=True)
+        return {"ok": True, "manual_quiet": quiet_now}
 
 
 def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:

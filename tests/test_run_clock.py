@@ -1570,6 +1570,41 @@ class TestButtonHandlers:
         persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert persisted["manual_theme"] == "dark"
 
+    def test_theme_persist_failure_after_render_keeps_flip(self, tmp_path, capsys):
+        """PR #61 review: a persist failure AFTER a successful render must not
+        roll back ``manual_theme``. The panel is already showing the new theme;
+        reverting in-memory state would cause the next loop tick to counteract
+        the user action."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        with patch("run_clock.render_now"), \
+             patch("run_clock.save_runtime_state", side_effect=OSError("disk full")), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["B"]()
+        # In-memory state keeps the flip — the panel showed "dark", and so must we.
+        assert state.manual_theme == "dark"
+        err = capsys.readouterr().err
+        assert "persist after render failed" in err
+
+    def test_quiet_persist_failure_after_display_keeps_flip(self, tmp_path, capsys):
+        """PR #61 review: a persist failure AFTER a successful display must not
+        roll back ``manual_quiet``. The screen already flipped; reverting would
+        let the next main-loop tick immediately undo the user's toggle."""
+        quiet = tmp_path / "goodnight.png"
+        quiet.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(quiet))
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = False
+        with patch("runtime_actions._display_quiet_image"), \
+             patch("run_clock.save_runtime_state", side_effect=OSError("disk full")):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["D"]()
+        assert state.manual_quiet is True
+        err = capsys.readouterr().err
+        assert "persist after display failed" in err
+
 
 class TestMaybeStartButtons:
     def test_buttons_off_returns_none(self, tmp_path):
