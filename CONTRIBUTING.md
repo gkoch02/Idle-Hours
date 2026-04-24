@@ -153,6 +153,13 @@ python3 contact_sheet.py --theme dark    --output output/contact-dark.png
 - Hardware-touching modules (`display_inky.py`, `inky_buttons.py`) are tested
   with the hardware call mocked; new hardware code should follow the same
   pattern (local import inside a function, Pillow/GPIO stubbed in the test).
+- Renderer changes must either preserve the committed golden images in
+  `tests/golden/renderer/` (most common — the Spectra 6 palette snap makes
+  the fixtures stable across FreeType drift) or regenerate them in the same
+  PR with `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py`.
+  Inspect the regenerated PNGs in review: a legitimate redesign changes many
+  pixels in structurally sensible ways; an accidental regression usually
+  moves a single element (e.g. the bold time phrase loses its accent colour).
 
 ## Commit messages and PRs
 
