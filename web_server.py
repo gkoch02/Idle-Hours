@@ -385,6 +385,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 return self._api_telemetry(query)
             if path == "/api/coverage":
                 return self._api_coverage()
+            if path == "/api/themes":
+                return self._api_themes()
             if path == "/api/overrides":
                 return self._api_overrides_get()
             if path == "/api/history":
@@ -490,6 +492,44 @@ class CuratorHandler(BaseHTTPRequestHandler):
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
         self._json(HTTPStatus.OK, payload)
 
+    def _api_themes(self) -> None:
+        """Expose the theme cycle so the UI dropdown and the Python cycle stay aligned.
+
+        Lazy import matches ``runtime_state._known_theme_names``: the module
+        stays free of Pillow at load time, and a broken renderer install
+        degrades to the historical pair instead of a 500 that would hide the
+        rest of the UI. ``theme_arg`` / ``manual_theme`` / ``effective`` give
+        the UI everything it needs to render the dropdown with the current
+        value pre-selected without a second request.
+
+        State discipline: snapshot the three fields under ``state.lock`` and
+        release it *before* calling ``resolve_effective_theme``. That helper
+        imports ``render_quote`` lazily (to keep PIL off the import graph)
+        and holding the lock across a module import violates the lock
+        discipline in CLAUDE.md even though Python's import lock is
+        reentrant. The snapshot is a consistent-enough view: effective
+        resolution only uses wall time + the snapshotted values.
+        """
+        ctx = self._ctx()
+        try:
+            from render_quote import THEME_ORDER
+            order = list(THEME_ORDER)
+        except Exception:
+            order = ["default", "dark"]
+        import run_clock
+        now = dt.datetime.now().strftime("%H:%M")
+        with ctx.state.lock:
+            manual = ctx.state.manual_theme
+            theme_arg = ctx.state.theme_arg
+            last_effective = ctx.state.last_effective_theme
+        effective = last_effective or run_clock.resolve_effective_theme(theme_arg, now, manual)
+        self._json(HTTPStatus.OK, {
+            "themes": order,
+            "theme_arg": theme_arg,
+            "manual_theme": manual,
+            "effective": effective,
+        })
+
     def _api_overrides_get(self) -> None:
         ctx = self._ctx()
         if not ctx.overrides_path.exists():
@@ -563,9 +603,32 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self._json(_status_from_result(result), result)
 
     def _action_theme(self) -> None:
+        # Optional ``{"theme": "scholar"}`` body lets the web dropdown jump
+        # straight to a named theme; an empty body (or omitted field) matches
+        # the physical button B behaviour and advances one step through the
+        # cycle. ``action_theme`` validates the target name and returns
+        # ``unknown_theme`` when it isn't registered.
+        #
+        # Malformed JSON or an oversized body raises ``ValueError`` from
+        # ``_read_json_body`` and propagates up to ``do_POST``, which
+        # emits a ``mode="web_error"`` telemetry entry and replies 400.
+        # We deliberately do NOT catch it here and fall back to ``{}`` —
+        # doing that would turn a bad-client error into a silent theme
+        # cycle (state mutation on invalid input), which is the bug
+        # chatgpt-codex-connector flagged on PR #72. ``_read_json_body``
+        # already returns ``{}`` for length=0, so the "no body" cycle
+        # path is unaffected.
         import run_clock
-        result = run_clock.action_theme(self._ctx().args, self._ctx().state, label="web")
-        self._json(_status_from_result(result), result)
+        body = self._read_json_body()
+        target = body.get("theme") if isinstance(body, dict) else None
+        if target is not None and not isinstance(target, str):
+            self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "theme must be a string"})
+            return
+        result = run_clock.action_theme(
+            self._ctx().args, self._ctx().state, label="web", target=target,
+        )
+        status = HTTPStatus.BAD_REQUEST if result.get("error") == "unknown_theme" else _status_from_result(result)
+        self._json(status, result)
 
     def _action_quiet(self) -> None:
         import run_clock

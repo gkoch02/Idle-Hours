@@ -18,10 +18,19 @@ RETRY_BACKOFF_SECONDS = (1, 4)  # sleeps between attempt 1→2 and 2→3
 
 # Per-theme saturation defaults. The Spectra 6 panel renders dark backgrounds with
 # a different waveform than light ones; pushing saturation slightly higher on the
-# dark theme keeps accent colours from looking muddy.
+# dark theme keeps accent colours from looking muddy. Unknown themes fall back to
+# the ``default`` entry via ``resolve_saturation``.
+#
+# Light themes keep the gentler 0.5 to avoid blown-out accent reds / blues; dark
+# themes and the green-on-black ``nightvision`` use 0.7 to keep the accent pop.
+# ``newsprint`` is intentionally low-contrast (no colour accent) so 0.5 matches
+# the perceptual brief — pushing it higher would start tinting the blacks.
 THEME_SATURATION: dict[str, float] = {
     "default": 0.5,
     "dark": 0.7,
+    "scholar": 0.5,
+    "newsprint": 0.5,
+    "nightvision": 0.7,
 }
 
 

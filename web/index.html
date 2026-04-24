@@ -36,9 +36,15 @@
       <div class="button-grid">
         <button data-action="skip" class="btn">A · Skip</button>
         <button data-action="unskip" class="btn">A-hold · Un-skip</button>
-        <button data-action="theme" class="btn">B · Toggle theme</button>
+        <button data-action="theme" class="btn">B · Cycle theme</button>
         <button data-action="rerender" class="btn">C · Re-render</button>
         <button data-action="quiet" class="btn">D · Quiet / wake</button>
+      </div>
+      <div class="theme-picker">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select"></select>
+        <button id="theme-apply" type="button" class="btn btn-small">Apply</button>
+        <span id="theme-current" class="pill"></span>
       </div>
       <div id="action-log" class="action-log" aria-live="polite"></div>
     </section>

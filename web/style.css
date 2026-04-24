@@ -138,6 +138,29 @@ section h2 {
   color: var(--muted);
 }
 
+.theme-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+.theme-picker label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; }
+.theme-picker select {
+  padding: 6px 8px;
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.btn-small { padding: 6px 10px; font-size: 0.82rem; }
+
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));

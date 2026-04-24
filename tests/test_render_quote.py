@@ -377,6 +377,77 @@ class TestThemes:
         assert dark["ornament_dark"] == rq.SPECTRA6["black"]
         assert dark["ornament_light"] == rq.SPECTRA6["white"]
 
+    def test_theme_order_covers_all_registered_themes(self):
+        """THEME_ORDER is the single source of truth for the cycle; it must
+        not get out of sync with the THEMES color dicts or button-B / web
+        dropdown will silently skip (or crash on) themes that exist but
+        aren't in the cycle."""
+        assert set(rq.THEME_ORDER) == set(rq.THEMES.keys())
+
+    def test_new_themes_registered(self):
+        """Keep the three new themes discoverable by name so a typo in the
+        THEMES dict or THEME_ORDER tuple fails the test rather than ghosting
+        downstream."""
+        for name in ("scholar", "newsprint", "nightvision"):
+            assert name in rq.THEMES, name
+            assert name in rq.THEME_ORDER, name
+
+    def test_every_theme_has_the_full_field_set(self):
+        """Every render theme must populate the same field set — a missing
+        key would raise KeyError deep inside ``render`` at display time,
+        long after the typo landed in git."""
+        required = set(rq.THEMES["default"].keys())
+        for name, fields in rq.THEMES.items():
+            assert set(fields.keys()) == required, f"{name} missing/extra fields"
+
+    def test_theme_colors_stay_within_spectra6_palette(self):
+        """Every theme colour must map to one of the six panel colours —
+        otherwise the ``snap_image_to_palette`` pass silently remaps and the
+        rendered result is not what the operator configured."""
+        allowed = set(rq.SPECTRA6.values())
+        for name, fields in rq.THEMES.items():
+            for field, value in fields.items():
+                assert value in allowed, f"{name}.{field}={value} is off-palette"
+
+    def test_scholar_theme_uses_blue_text(self):
+        t = rq.THEMES["scholar"]
+        assert t["text"] == rq.SPECTRA6["blue"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["accent"] == rq.SPECTRA6["red"]
+
+    def test_newsprint_theme_has_no_colour_accent(self):
+        """``newsprint`` is intentionally monochrome — the bolded matched
+        phrase carries weight differentiation but the same ink colour as
+        the surrounding text, so no colour is used anywhere."""
+        t = rq.THEMES["newsprint"]
+        assert t["text"] == t["accent"]  # bold-only differentiation
+        assert t["text"] == rq.SPECTRA6["black"]
+
+    def test_nightvision_theme_uses_green_on_black(self):
+        t = rq.THEMES["nightvision"]
+        assert t["page_bg"] == rq.SPECTRA6["black"]
+        assert t["text"] == rq.SPECTRA6["green"]
+        assert t["accent"] == rq.SPECTRA6["yellow"]
+
+    def test_every_theme_has_at_least_one_visible_ornament_colour(self):
+        """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
+        ornament_light over the page background. If BOTH ornament colours
+        equal ``page_bg``, every mask pixel disappears into the background
+        and the curly quotation marks are literally invisible. The existing
+        themes deliberately make one ornament colour match the background
+        (to produce the faux-gray half-density effect) and the other
+        contrast it; a future theme that accidentally sets BOTH to the bg
+        colour would render ornament-less — catch that class of bug here.
+        """
+        for name, fields in rq.THEMES.items():
+            bg = fields["page_bg"]
+            dark = fields["ornament_dark"]
+            light = fields["ornament_light"]
+            assert dark != bg or light != bg, (
+                f"{name}: both ornament colours equal page_bg={bg}, "
+                "so draw_faux_gray_text paints every pixel invisibly"
+            )
+
 
 class TestRender:
     def _quote_row(self, text="It was three o'clock in the afternoon.", matched="three o'clock"):
@@ -405,6 +476,16 @@ class TestRender:
     def test_render_dark_theme(self):
         row = self._quote_row()
         img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
+        assert img.size == (800, 480)
+
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    def test_render_new_themes_smoke(self, theme):
+        """Each new theme must produce a correctly-sized frame without
+        crashing — catches missing dict keys, off-palette colours that
+        would error downstream, or ornament fonts that silently fail to
+        load when the theme swap changes the duotone combination."""
+        row = self._quote_row()
+        img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
         assert img.size == (800, 480)
 
     def test_render_with_fallback_flag(self):

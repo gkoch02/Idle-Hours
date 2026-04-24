@@ -27,6 +27,10 @@ SPECTRA6 = {
     "green": (0, 255, 0),
 }
 SPECTRA6_PALETTE = list(SPECTRA6.values())
+# Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
+# the cycle is stable regardless of dict-literal ordering in Python; every name
+# here must also appear as a key in ``THEMES`` below (enforced in tests).
+THEME_ORDER: tuple[str, ...] = ("default", "dark", "scholar", "newsprint", "nightvision")
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
@@ -47,6 +51,43 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
+    },
+    # Scholarly journal: blue body on cream-white, red accent for the matched
+    # phrase. Readable at a distance thanks to the strong blue/white contrast.
+    "scholar": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["blue"],
+        "subtle": SPECTRA6["blue"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["blue"],
+    },
+    # Pure typography: no colour accent at all. Matched phrase differentiates by
+    # bold weight against the same ink colour, like an old broadsheet. Quiet.
+    "newsprint": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["black"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Retro terminal / Apollo-era mission monitor. Green body on black with a
+    # yellow accent for the matched phrase — reads well at night and contrasts
+    # strongly enough on the Spectra 6 panel to stay legible.
+    "nightvision": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["green"],
+        "subtle": SPECTRA6["green"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["green"],
+        "source": SPECTRA6["green"],
     },
 }
 SIDE_MARGIN = 20

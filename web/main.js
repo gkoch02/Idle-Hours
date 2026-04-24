@@ -157,12 +157,12 @@ const escapeHtml = (s) =>
 
 // ------- Controls (mirror buttons) ------------------------------------------
 
-async function fireAction(action) {
-  log(`→ ${action}`);
+async function fireAction(action, body = {}) {
+  log(`→ ${action}${body.theme ? ` (${body.theme})` : ""}`);
   const { status, ok, data } = await jsonFetch(`/api/action/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify(body),
   });
   if (status === 409) {
     log(`${action}: busy (render in flight)`, "warn");
@@ -172,14 +172,73 @@ async function fireAction(action) {
     log(`${action}: error ${status} ${data?.error || ""}`, "err");
     return;
   }
-  log(`${action}: ok`, "ok");
-  await refreshCurrent();
+  log(`${action}: ok${data?.theme ? ` → ${data.theme}` : ""}`, "ok");
+  await Promise.all([refreshCurrent(), refreshThemes()]);
 }
 
 function wireControls() {
   document.querySelectorAll("[data-action]").forEach((btn) => {
     btn.addEventListener("click", () => fireAction(btn.dataset.action));
   });
+  const apply = $("theme-apply");
+  if (apply) {
+    apply.addEventListener("click", () => {
+      const target = $("theme-select").value;
+      if (!target) return;
+      fireAction("theme", { theme: target });
+    });
+  }
+}
+
+// ------- Theme picker --------------------------------------------------------
+
+async function refreshThemes() {
+  const select = $("theme-select");
+  if (!select) return;
+  const { ok, data } = await jsonFetch("/api/themes");
+  if (!ok || !data) {
+    // /api/themes failed — leave the existing dropdown untouched rather than
+    // wipe it. The user can still cycle via the button.
+    return;
+  }
+  // Don't rebuild the <select> while the user is interacting with it — a
+  // 30 s poll hitting mid-hover would reset the open state and could race
+  // a same-tick click against a freshly-rebuilt option. The pill ticker
+  // still updates below since it's decorative.
+  const isFocused = document.activeElement === select;
+  if (!isFocused) {
+    const prev = select.value;
+    const current = data.manual_theme || data.effective;
+    select.innerHTML = "";
+    for (const name of data.themes || []) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name + (name === data.effective ? " (active)" : "");
+      // prev wins so a just-picked-but-not-yet-applied selection survives
+      // the poll; falls back to the server's current value on first load
+      // when prev is empty.
+      if (name === (prev || current)) opt.selected = true;
+      select.appendChild(opt);
+    }
+  }
+  const pill = $("theme-current");
+  if (pill) {
+    // Three visible states, distinguished by (manual_theme, theme_arg):
+    //   manual_theme set           → user override active
+    //   manual_theme null, arg=auto → wall-clock-derived (will switch at
+    //                                  18:00/06:00 and reset at midnight)
+    //   manual_theme null, arg!=auto → explicit CLI/systemd pin (no
+    //                                   auto switching, no midnight reset)
+    // Labeling both "manual_theme null" cases as "auto" (the old bug) gave
+    // operators misleading info when running --theme scholar.
+    if (data.manual_theme) {
+      pill.textContent = `manual: ${data.manual_theme}`;
+    } else if (data.theme_arg === "auto") {
+      pill.textContent = `auto: ${data.effective}`;
+    } else {
+      pill.textContent = `fixed: ${data.effective}`;
+    }
+  }
 }
 
 // ------- Overrides editor ---------------------------------------------------
@@ -247,7 +306,13 @@ function init() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshCurrent(), refreshTelemetry(), refreshCoverage(), refreshHistory()]);
+  await Promise.all([
+    refreshCurrent(),
+    refreshTelemetry(),
+    refreshCoverage(),
+    refreshHistory(),
+    refreshThemes(),
+  ]);
   await loadOverrides();
 }
 

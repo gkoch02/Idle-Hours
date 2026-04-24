@@ -226,8 +226,12 @@ class TestBucketIteration:
         assert all(call.get("rows") is preloaded_rows for call in captured)
         assert all(call.get("overrides") is preloaded_overrides for call in captured)
 
-    @pytest.mark.parametrize("theme", ["default", "dark"])
+    @pytest.mark.parametrize("theme", list(contact_sheet.render_quote_module.THEME_ORDER))
     def test_theme_propagates(self, theme):
+        """Every registered render theme must flow cleanly through build_sheet
+        into the per-tile render call. Pinned across the whole THEME_ORDER
+        tuple so a newly-registered theme is exercised end-to-end by the
+        contact-sheet QA tool, not just by the render_quote smoke tests."""
         seen_themes: list[str] = []
 
         def capture(_t, _q, _w, _h, mode="debug", theme="default"):

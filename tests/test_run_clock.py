@@ -779,6 +779,17 @@ class TestAutoTheme:
     def test_auto_theme_boundary_dusk_is_dark(self):
         assert run_clock.auto_theme_for("18:00") == "dark"
 
+    def test_auto_theme_returns_only_binary_values(self):
+        """``auto_theme_for`` deliberately resolves only to ``default`` or
+        ``dark`` — the other three registered themes (scholar, newsprint,
+        nightvision) are operator-choice, not wall-clock-derived. Pin the
+        contract so a well-meaning refactor doesn't start returning other
+        theme names from the time-of-day branch."""
+        for hour in range(24):
+            time_str = f"{hour:02d}:00"
+            result = run_clock.auto_theme_for(time_str)
+            assert result in ("default", "dark"), f"{time_str} -> {result}"
+
     def test_auto_theme_boundary_dawn_is_default(self):
         assert run_clock.auto_theme_for("06:00") == "default"
 
@@ -804,6 +815,28 @@ class TestResolveEffectiveTheme:
 
     def test_invalid_manual_override_ignored(self):
         assert run_clock.resolve_effective_theme("auto", "21:00", "garbage") == "dark"
+
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    def test_new_manual_themes_accepted_over_auto(self, theme):
+        """Every theme registered in ``render_quote.THEMES`` must be honoured
+        as a manual override, not silently stripped back to ``theme_arg``.
+        Before the widening this was hardcoded to ('default', 'dark'), so a
+        manual flip to ``scholar`` would fall through to ``auto_theme_for``
+        and revert on every tick — exactly the symptom that surfaced in
+        ``TestActionThemeCycle`` before ``resolve_effective_theme`` was
+        fixed. Pinning every new theme here catches the regression before
+        it lands in a render loop."""
+        assert run_clock.resolve_effective_theme("auto", "21:00", theme) == theme
+        assert run_clock.resolve_effective_theme("auto", "10:00", theme) == theme
+
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    def test_new_manual_themes_accepted_over_explicit_theme_arg(self, theme):
+        """Same widening, but when ``--theme`` was explicit (not ``auto``)
+        — the manual override must still win. A user running
+        ``--theme default`` who presses B until they reach ``scholar``
+        would otherwise revert to ``default`` on every render."""
+        assert run_clock.resolve_effective_theme("default", "10:00", theme) == theme
+        assert run_clock.resolve_effective_theme("dark", "21:00", theme) == theme
 
 
 class TestRuntimeStatePersistence:
@@ -919,6 +952,27 @@ class TestRuntimeStatePersistence:
     def test_runtime_state_ignores_invalid_persisted_theme(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "neon", "manual_quiet": False})
         assert s.manual_theme is None
+
+    def test_runtime_state_accepts_every_registered_theme(self):
+        """Every theme registered in ``render_quote.THEMES`` must round-trip
+        through ``RuntimeState(persisted=...)``. Previously the validator
+        hardcoded the pair ('default', 'dark'), which silently dropped any
+        persisted theme that was added later — a user who hit button B to
+        land on ``scholar`` would boot tomorrow with ``manual_theme=None``."""
+        import render_quote as rq
+        for name in rq.THEMES:
+            s = run_clock.RuntimeState("auto", persisted={"manual_theme": name, "manual_quiet": False})
+            assert s.manual_theme == name, f"{name} was dropped by validator"
+
+    def test_runtime_state_accepts_persisted_last_effective_for_new_themes(self):
+        """``last_effective_theme`` is the render-identity triple's theme
+        slot — if it got stripped for a new theme, a restart mid-bucket
+        would think the panel shows nothing and force a redraw."""
+        s = run_clock.RuntimeState("auto", persisted={
+            "manual_theme": None, "manual_quiet": False,
+            "last_effective_theme": "nightvision",
+        })
+        assert s.last_effective_theme == "nightvision"
 
     def test_snapshot_for_persistence_round_trips(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
@@ -1423,10 +1477,26 @@ class TestButtonHandlers:
         used_theme = kwargs.get("theme") or (positional[6] if len(positional) > 6 else None)
         assert used_theme == "dark"
 
-    def test_toggle_theme_handler_flips_back_when_dark(self, tmp_path):
+    def test_toggle_theme_handler_advances_cycle_from_dark(self, tmp_path):
+        """Button B cycles through render_quote.THEME_ORDER; stepping from
+        ``dark`` lands on the next entry (``scholar``), not a binary bounce
+        back to ``default``."""
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "dark"
+        with patch("run_clock.render_now"), \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["B"]()
+        assert state.manual_theme == "scholar"
+
+    def test_toggle_theme_handler_wraps_cycle_at_end(self, tmp_path):
+        """Stepping from the last entry wraps back to the first so the user
+        never gets stuck past the end of the cycle."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "nightvision"
         with patch("run_clock.render_now"), \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
@@ -2580,6 +2650,167 @@ class TestActionSuccessTelemetry:
         matching = [e for e in entries if e.get("mode") == "action" and e.get("action") == "unskip"]
         assert matching
         assert matching[0]["ok"] is True
+
+
+class TestActionThemeCycle:
+    """Feature: button B / POST /api/action/theme cycles through
+    ``render_quote.THEME_ORDER`` instead of toggling a binary default ↔ dark.
+    An explicit ``target=`` jumps straight to a named theme; an unknown
+    target is rejected without mutating state.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7,
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            state_path=str(tmp_path / "state.json"),
+            quiet_image="",
+            shutdown_command="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_cycle_walks_theme_order_end_to_end(self, tmp_path):
+        """N presses from ``THEME_ORDER[0]`` visit every registered theme
+        exactly once and wrap back to the head. Covers the full cycle plus
+        the wrap edge case and guarantees nothing silently drops."""
+        import render_quote as rq
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = rq.THEME_ORDER[0]
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            visited = []
+            for _ in range(len(rq.THEME_ORDER)):
+                result = run_clock.action_theme(args, state, label="web")
+                assert result["ok"] is True
+                visited.append(result["theme"])
+                # commit_render_result would normally advance last_effective_theme;
+                # emulate that here so the next tick's "current" reads correctly.
+                state.last_effective_theme = result["theme"]
+        # Every theme is visited once and the final press wraps back to the head.
+        assert set(visited) == set(rq.THEME_ORDER)
+        assert visited[-1] == rq.THEME_ORDER[0]
+
+    def test_explicit_target_jumps_directly(self, tmp_path):
+        """Web dropdown sends ``target="nightvision"`` and lands there in one
+        POST without intermediate cycling."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "default"
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web", target="nightvision")
+        assert result == {"ok": True, "theme": "nightvision", "previous": "default"}
+        assert state.manual_theme == "nightvision"
+
+    def test_unknown_target_is_rejected_without_touching_state(self, tmp_path):
+        """A typo must not flip ``manual_theme`` — the POST returns
+        ``unknown_theme`` and ``state.manual_theme`` is left exactly where
+        it was so the operator sees no change."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_theme = "scholar"
+        state.last_effective_theme = "scholar"
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web", target="chartreuse")
+        assert result["ok"] is False
+        assert result["error"] == "unknown_theme"
+        assert result["target"] == "chartreuse"
+        assert state.manual_theme == "scholar"
+        assert not mock_render.called
+
+    def test_stale_manual_theme_outside_cycle_restarts_at_head(self, tmp_path):
+        """If a persisted ``manual_theme`` names a theme a newer build has
+        removed, the cycle restarts at ``THEME_ORDER[0]`` rather than
+        stranding the user on an unrecognised value."""
+        import render_quote as rq
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_effective_theme = "retired_theme"
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web")
+        assert result["theme"] == rq.THEME_ORDER[0]
+
+    def test_target_equal_to_current_effective_is_noop(self, tmp_path):
+        """Clicking Apply on a dropdown that's already showing the active
+        theme must not burn a 10–20 s Spectra 6 refresh. The UI pre-selects
+        the active theme so this is the common case when the operator
+        wanted to adjust something else (e.g. verify the current pick)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_theme = "scholar"
+        state.last_effective_theme = "scholar"
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web", target="scholar")
+        assert result["ok"] is True
+        assert result["noop"] is True
+        assert result["theme"] == "scholar"
+        assert state.manual_theme == "scholar"  # unchanged
+        assert not mock_render.called
+
+    def test_target_equal_to_auto_resolved_preserves_auto_mode(self, tmp_path):
+        """Critical UX guarantee: if the user is running ``--theme auto``
+        (so ``manual_theme`` is ``None``) and the dropdown pre-selects the
+        auto-resolved theme, clicking Apply must NOT pin ``manual_theme``
+        to that value. Doing so would silently end auto mode until the
+        next midnight rollover. Instead, no-op and leave ``manual_theme``
+        ``None`` so auto continues to track the wall clock."""
+        args = self._args(tmp_path, theme="auto")
+        state = run_clock.RuntimeState("auto")
+        state.manual_theme = None
+        state.last_effective_theme = "default"  # auto-resolved daytime value
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web", target="default")
+        assert result["ok"] is True
+        assert result["noop"] is True
+        assert state.manual_theme is None  # CRUCIAL — auto stays auto
+        assert not mock_render.called
+
+    def test_button_cycle_never_noops_even_on_single_theme_hypothetical(self, tmp_path):
+        """The button-B path passes ``target=None`` so the no-op guard
+        never fires — even a degenerate single-entry cycle would still
+        attempt to advance. Defends against a refactor that extends the
+        guard to the ``target is None`` branch and silently wedges button
+        B when the cycle length is 1."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_theme = "default"
+        state.last_effective_theme = "default"
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="button B")
+        assert result["ok"] is True
+        assert result.get("noop") is not True
+        assert mock_render.called
+
+    def test_cli_theme_choices_match_theme_order(self):
+        """``run_clock.py --theme`` choices are duplicated from
+        render_quote.THEME_ORDER with 'auto' appended. Pin the invariant so
+        a new theme added to THEME_ORDER without updating run_clock argparse
+        fails loudly here instead of silently rejecting the new value on
+        systemd startup.
+        """
+        import render_quote as rq
+        for name in list(rq.THEME_ORDER) + ["auto"]:
+            with patch("sys.argv", ["run_clock.py", "--theme", name, "--once"]):
+                try:
+                    ns = run_clock.parse_args()
+                except SystemExit:
+                    raise AssertionError(f"--theme {name} was rejected by argparse")
+                assert ns.theme == name
 
 
 class TestPressDroppedTelemetry:

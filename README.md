@@ -120,9 +120,21 @@ python3 run_clock.py --display-script display_inky.py --mode production
 
 ### Themes
 
-Pass `--theme dark` to either `run_clock.py` or `render_quote.py` for a black-background / yellow-accent variant. `--theme default` is the white-background / red-accent original.
+Five themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Previews all show the same quote so the palette differences are the only variable — the real renders adapt layout to the picked line's length.
 
-Pass `--theme auto` to let the clock pick for you: dark between 18:00 and 06:00, default otherwise. A manual button-B press overrides `auto` until the next midnight rollover.
+| `--theme`     | Preview | Page bg | Body text | Accent  | Feel                                   |
+|---------------|---------|---------|-----------|---------|----------------------------------------|
+| `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">     | white   | black     | red     | Classic broadsheet                     |
+| `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">        | black   | white     | yellow  | Night mode                             |
+| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">     | white   | blue      | red     | Scholarly journal                      |
+| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">   | white   | black     | (none)  | Pure typography — bold-weight accent   |
+| `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Retro terminal / Apollo-era monitor    |
+
+Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 18:00 and 06:00, `default` otherwise. `auto` is deliberately binary; the three "operator-choice" themes are never auto-selected. A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover.
+
+Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` mode.
+
+> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row. They're checked in so the README renders on GitHub without a build step.
 
 ### Inky buttons (short and long press)
 
@@ -131,7 +143,7 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 | Button | Short press | Long press (2s) |
 |---|---|---|
 | **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
-| **B** | Toggle theme — flips default ↔ dark, persists to `--state-path`. | — |
+| **B** | Cycle theme — advances through `default → dark → scholar → newsprint → nightvision` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
 | **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
 | **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the goodnight frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
@@ -244,7 +256,7 @@ Browsers can still `GET` the UI without credentials (telemetry, coverage, `curre
 The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. When you open it you get:
 
 - **Now showing** — live preview of `output/current.png`, the picked quote text, its attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
-- **Controls** — five buttons that mirror the physical Inky panel: `A · Skip`, `A-hold · Un-skip`, `B · Toggle theme`, `C · Re-render`, `D · Quiet / wake`. Each press returns `{ok: true}` or `{ok: false, error: "busy"}` and is appended to a small in-browser action log.
+- **Controls** — five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a **theme dropdown** that jumps directly to any registered theme without stepping through the cycle. Each press returns `{ok: true}` or `{ok: false, error: "busy"}` and is appended to a small in-browser action log. A state pill next to the dropdown reports `manual: X` / `auto: X` / `fixed: X` so operators can see at a glance whether wall-clock switching is active.
 - **Telemetry** — renders / errors / p50 / p95 latencies over the last 24h, reading the same date-rotated sidecar that `litclock_health.py` does.
 - **Coverage grid** — 144 bucket cells coloured by corpus depth (from `assets/bucket-coverage.json`); click-through feeds the inspector.
 - **Bucket inspector** — ranked candidate list for any bucket (or `HH:MM`), with every scorer component named so you can see *why* a different quote was not picked.
@@ -260,11 +272,12 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
 | `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `litclock_health`) |
 | `GET /api/coverage` | The 144-bucket coverage snapshot from `assets/bucket-coverage.json` |
+| `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
 | `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |
 | `GET /api/overrides` | Current `assets/selection_overrides.json` |
 | `GET /api/history?limit=N` | Recent anti-repeat ledger entries |
 | `POST /api/overrides` | Validate + atomically rewrite overrides |
-| `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C |
+| `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field cycles. Malformed JSON returns 400 without mutating state. |
 
 Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-LitClock-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
 
@@ -441,9 +454,10 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - If the exact bucket is weak or empty, the picker walks nearby buckets and records fallback metadata.
 - `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
 - Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
-- Button B flips the theme at any time and persists the choice to `--state-path`. Button A's long press reverses the most recent skip.
-- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B override wins until the next midnight rollover.
-- Per-theme saturation: `display_inky.py` uses `0.5` for `default` and `0.7` for `dark` on the Spectra 6 panel so accents don't go muddy on dark backgrounds.
+- Button B cycles through the full theme list and persists the choice to `--state-path`; the web UI dropdown jumps directly to any named theme. Button A's long press reverses the most recent skip.
+- Five themes ship built-in: `default` (white/black/red), `dark` (black/white/yellow), `scholar` (white/blue/red), `newsprint` (white/black, no colour accent — bold-weight differentiation only), and `nightvision` (black/green/yellow retro-terminal). Every theme colour stays on the Spectra 6 palette.
+- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B / web override wins until the next midnight rollover.
+- Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
 - Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
 - The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
 - If the Inky button listener dies mid-run (pin claim lost, background thread failed), the loop logs one loud warning plus a telemetry entry with `mode=buttons_dead` and stops retrying — restart the process to reclaim the pins.
