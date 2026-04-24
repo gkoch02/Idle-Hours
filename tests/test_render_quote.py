@@ -374,6 +374,7 @@ class TestThemeFonts:
             "illuminated",
             "bauhaus",
             "risograph",
+            "comic",
         )
         default_primary = primary("default", "quote_regular")
         primaries = {name: primary(name, "quote_regular") for name in operator_choice}
@@ -486,6 +487,7 @@ class TestThemes:
             "illuminated",
             "bauhaus",
             "risograph",
+            "comic",
         ):
             assert name in rq.THEMES, name
             assert name in rq.THEME_ORDER, name
@@ -574,6 +576,16 @@ class TestThemes:
         for field, value in t.items():
             assert value != rq.SPECTRA6["black"], f"risograph.{field} is black"
 
+    def test_comic_theme_uses_yellow_ground(self):
+        """Comic is the first (and only) theme with a yellow page
+        background. A regression that flipped it back to white would
+        collapse the theme into a default-palette alias differentiated
+        only by the comic font."""
+        t = rq.THEMES["comic"]
+        assert t["page_bg"] == rq.SPECTRA6["yellow"]
+        assert t["text"] == rq.SPECTRA6["black"]
+        assert t["accent"] == rq.SPECTRA6["red"]
+
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):
         """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
         ornament_light over the page background. If BOTH ornament colours
@@ -633,6 +645,7 @@ class TestRender:
             "illuminated",
             "bauhaus",
             "risograph",
+            "comic",
         ],
     )
     def test_render_new_themes_smoke(self, theme):

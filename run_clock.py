@@ -164,6 +164,7 @@ def parse_args() -> argparse.Namespace:
             "illuminated",
             "bauhaus",
             "risograph",
+            "comic",
             "auto",
         ],
         default="default",
@@ -174,7 +175,8 @@ def parse_args() -> argparse.Namespace:
             "geometric sans), 'illuminated' (white/red/blue, manuscript serif + "
             "blackletter ornaments), 'bauhaus' (white/black/blue with red "
             "ornaments, geometric sans), 'risograph' (white/red/blue, no black, "
-            "rounded sans). Dark: 'dark' (black/white/yellow), "
+            "rounded sans), 'comic' (yellow bg / black body / red accent, "
+            "comic-book display face). Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow). 'auto' selects 'dark' between "
             "18:00 and 06:00 and 'default' otherwise. "
             "Pressing button B cycles themes manually and overrides 'auto' until midnight."

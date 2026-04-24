@@ -47,6 +47,11 @@ THEME_SATURATION: dict[str, float] = {
     # desaturate on the panel (there's no black neighbour to "anchor"
     # the perceived chroma of the primaries here).
     "risograph": 0.7,
+    # Comic panel — yellow ground, black body, red accent. Spectra 6's
+    # flat yellow ink reads bright; push saturation up so the red
+    # sound-effect accent and the black body stay crisp against a
+    # non-white ground.
+    "comic": 0.7,
 }
 
 

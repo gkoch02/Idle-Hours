@@ -102,6 +102,7 @@ class TestThemeSaturation:
             "illuminated",
             "bauhaus",
             "risograph",
+            "comic",
         ],
     )
     def test_new_themes_have_saturation_entries(self, theme):

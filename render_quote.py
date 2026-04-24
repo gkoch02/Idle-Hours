@@ -40,6 +40,7 @@ THEME_ORDER: tuple[str, ...] = (
     "illuminated",
     "bauhaus",
     "risograph",
+    "comic",
 )
 THEMES = {
     "default": {
@@ -165,6 +166,22 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["red"],
     },
+    # Golden-age comic panel. Yellow ground (the first yellow-
+    # background theme — Spectra 6's flat yellow reads as a bright
+    # newsprint-comic page), black body for speech-bubble legibility,
+    # red accent for the matched time phrase like a sound-effect
+    # callout. Bangers is an all-caps comic-book hand; body text ends
+    # up shouting slightly, which is the point.
+    "comic": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -262,6 +279,12 @@ META_FONT_BOLD_CANDIDATES = [
 #   neo-grotesque geometric), so the three sans-based themes stay
 #   differentiable on the panel. Ships as a variable font; axis default
 #   is Light (300) so the Regular / Bold instances are pinned explicitly.
+# * ``comic`` → Bangers (all-caps comic-book display hand). Stands
+#   alone as the only *display* / hand-lettered face in the lineup —
+#   an obvious silhouette difference from every serif / sans / mono
+#   sibling. Only one weight ships, so the matched time phrase falls
+#   through to a heavier fallback (DejaVu Sans Bold) to keep the
+#   weight differentiation readable when Bangers isn't installed.
 #
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
@@ -278,6 +301,7 @@ EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
 UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
 JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
 RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
+BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -451,6 +475,33 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             (RUBIK_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "comic": {
+        # Bangers ships only Regular — there's no true Bold companion
+        # face — so the matched-phrase role re-uses the same file and
+        # gains weight differentiation purely through the accent colour.
+        # A sans Bold falls in behind for installs missing Bangers, so
+        # the bold phrase stays visibly heavier than the body even when
+        # Bangers degrades to DejaVu.
+        "quote_regular": [
+            BANGERS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            BANGERS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            BANGERS_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],

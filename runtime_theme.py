@@ -38,9 +38,9 @@ def auto_theme_for(time_str: str) -> str:
 
     Deliberately returns only the binary pair — the other registered
     themes (``scholar``, ``newsprint``, ``nightvision``, ``blueprint``,
-    ``illuminated``, ``bauhaus``, ``risograph``) are aesthetic operator
-    choices, not wall-clock-derived. Extending this would require a
-    preference table (see ``FOLLOWUPS.md``). Pinned by
+    ``illuminated``, ``bauhaus``, ``risograph``, ``comic``) are aesthetic
+    operator choices, not wall-clock-derived. Extending this would
+    require a preference table (see ``FOLLOWUPS.md``). Pinned by
     ``TestAutoTheme::test_auto_theme_returns_only_binary_values`` so
     a well-meaning refactor doesn't silently broaden the contract.
     """
