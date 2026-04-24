@@ -834,6 +834,71 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
                 px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
 
 
+def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
+    """Paint a Bauhaus-inspired geometric frame around the canvas margin.
+
+    A thin outer rectangle plus four corner accents — circle, square,
+    triangle, circle — in the theme's three primaries (black body,
+    blue accent, red ornament). Referencing the classic Bauhaus
+    vocabulary of basic geometric forms in primary hues. Drawn after
+    the page_bg fill and before any text, so text always sits on top
+    of the border if the two were ever to overlap.
+
+    The corner shapes sit tangent to the canvas edges and overlap the
+    outer rectangle's corners, giving the "layered geometry" look of a
+    Bauhaus poster frame. Sized to stay well outside the quote block
+    (``SIDE_MARGIN + 18`` is the innermost text feature, and these
+    shapes don't reach past x=30).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_inset = 14
+    frame_color = colors["text"]
+    accent_color = colors["accent"]
+    ornament_color = colors["ornament_dark"]
+
+    # Outer rectangle outline — Pillow's rectangle ``width`` kw takes care
+    # of the thickness in a single draw call.
+    draw.rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        outline=frame_color,
+        width=2,
+    )
+
+    corner_size = 22
+    corner_margin = 6
+    # Top-left: red filled circle.
+    draw.ellipse(
+        (corner_margin, corner_margin,
+         corner_margin + corner_size, corner_margin + corner_size),
+        fill=ornament_color,
+    )
+    # Top-right: blue filled square.
+    draw.rectangle(
+        (width - corner_margin - corner_size, corner_margin,
+         width - corner_margin, corner_margin + corner_size),
+        fill=accent_color,
+    )
+    # Bottom-left: blue filled triangle. Right-angle at the bottom-left
+    # corner, hypotenuse sweeping up to the top-right of the bounding box,
+    # so the shape visually points inward toward the quote block.
+    bl_left = corner_margin
+    bl_top = height - corner_margin - corner_size
+    bl_right = corner_margin + corner_size
+    bl_bottom = height - corner_margin
+    draw.polygon(
+        [(bl_left, bl_bottom), (bl_right, bl_bottom), (bl_right, bl_top)],
+        fill=accent_color,
+    )
+    # Bottom-right: red filled circle, mirroring the top-left and completing
+    # the diagonal colour balance.
+    draw.ellipse(
+        (width - corner_margin - corner_size, height - corner_margin - corner_size,
+         width - corner_margin, height - corner_margin),
+        fill=ornament_color,
+    )
+
+
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
     snapped = Image.new("RGB", image.size)
     src = image.load()
@@ -887,6 +952,8 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     """
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    if theme == "bauhaus":
+        draw_bauhaus_border(image, colors)
     draw = ImageDraw.Draw(image)
 
     title_text = (quote_row.get("title") or fallback_title(quote_row) or "Unknown source").strip()
@@ -955,6 +1022,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_source_card(quote_row, width, height, theme=theme)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    if theme == "bauhaus":
+        draw_bauhaus_border(image, colors)
     draw = ImageDraw.Draw(image)
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row["display_quote"]))
@@ -1090,7 +1159,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         debug_label = "DEBUG MODE"
         label_bbox = draw.textbbox((0, 0), debug_label, font=debug_label_font)
         label_w = label_bbox[2] - label_bbox[0]
-        label_x = width - SIDE_MARGIN - label_w
+        # The bauhaus theme paints a corner accent in the top-right; shift the
+        # debug label left past it so the text isn't clipped by the square.
+        label_right_inset = 38 if theme == "bauhaus" else SIDE_MARGIN
+        label_x = width - label_right_inset - label_w
         label_y = 14
 
         draw_text(draw, (label_x, label_y), debug_label, font=debug_label_font, fill=colors["accent"])

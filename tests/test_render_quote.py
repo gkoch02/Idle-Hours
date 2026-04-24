@@ -713,6 +713,93 @@ class TestRender:
         assert img.size == (800, 480)
 
 
+class TestBauhausBorder:
+    """The bauhaus theme is the only theme that paints a decorative border.
+
+    A regression that drops ``draw_bauhaus_border`` from ``render`` — or
+    changes the corner-shape colours — would otherwise pass
+    ``test_render_new_themes_smoke`` (correct image size, palette snap) and
+    the dict-level palette tests silently. Pin the actual painted pixels
+    so the border can't silently vanish.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_bauhaus_corner_accents_paint_primary_colours(self):
+        """Four corner shapes, each sitting at the canvas corner with a
+        small edge margin. The centre of each shape is a reliable sample
+        point: it lands inside the shape regardless of whether it's a
+        circle, square, or right-triangle."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="bauhaus")
+        # Corner shapes are 22px at a 6px canvas-edge margin; centre near
+        # (17, 17) / (783, 17) / (17, 463) / (783, 463).
+        assert img.getpixel((15, 15)) == rq.SPECTRA6["red"], "top-left should be red circle"
+        assert img.getpixel((785, 15)) == rq.SPECTRA6["blue"], "top-right should be blue square"
+        assert img.getpixel((15, 465)) == rq.SPECTRA6["blue"], "bottom-left should be blue triangle"
+        assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "bottom-right should be red circle"
+
+    def test_bauhaus_outer_frame_is_painted_on_all_four_sides(self):
+        """The outer rectangle outline is the structural element the corner
+        accents anchor to. Sample a point on each side, well clear of the
+        corner shapes, to verify all four sides rendered."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="bauhaus")
+        assert img.getpixel((400, 14)) == rq.SPECTRA6["black"], "top frame line missing"
+        assert img.getpixel((400, 465)) == rq.SPECTRA6["black"], "bottom frame line missing"
+        assert img.getpixel((14, 240)) == rq.SPECTRA6["black"], "left frame line missing"
+        assert img.getpixel((785, 240)) == rq.SPECTRA6["black"], "right frame line missing"
+
+    def test_other_themes_do_not_paint_a_border(self):
+        """Border is gated on theme == 'bauhaus'; every other theme must
+        leave the canvas corner showing its page_bg, not a corner accent.
+        A regression that stopped gating would e.g. paint a red circle
+        over the dark theme's black background."""
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "blueprint", "illuminated", "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((15, 15)) == expected_bg, (
+                f"theme {theme} painted something at (15, 15); expected page_bg={expected_bg}"
+            )
+
+    def test_bauhaus_border_appears_in_debug_and_card_modes_too(self):
+        """The border is part of the bauhaus theme's visual identity, so
+        it must show up regardless of render mode — production, debug,
+        and the source-card overlay all get the same frame."""
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="bauhaus")
+            assert img.getpixel((15, 15)) == rq.SPECTRA6["red"], f"bauhaus mode={mode} missing TL corner"
+
+    def test_bauhaus_border_uses_theme_colours_not_hardcoded_rgb(self):
+        """``draw_bauhaus_border`` must pull its colours from the passed-in
+        theme dict (text/accent/ornament_dark). A refactor that hardcoded
+        specific RGB triples would survive the current palette tests but
+        break the contract that lets a future bauhaus palette tweak flow
+        through the border automatically. Call the helper directly with
+        a non-default colour set and assert the output reflects it."""
+        from PIL import Image
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {
+            "text": rq.SPECTRA6["green"],
+            "accent": rq.SPECTRA6["yellow"],
+            "ornament_dark": rq.SPECTRA6["blue"],
+        }
+        rq.draw_bauhaus_border(image, custom)
+        assert image.getpixel((15, 15)) == rq.SPECTRA6["blue"], "TL should use ornament_dark"
+        assert image.getpixel((785, 15)) == rq.SPECTRA6["yellow"], "TR should use accent"
+        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "frame should use text colour"
+
+
 class TestRenderCard:
     """The button-C source card uses mode='card' to render a centered metadata frame."""
 

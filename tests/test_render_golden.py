@@ -250,6 +250,23 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "nightvision",
     },
+    # The bauhaus theme is the only theme that paints a decorative border
+    # around the canvas margin (geometric corner accents + outer frame).
+    # Pinning a golden here catches any regression that silently drops
+    # ``draw_bauhaus_border`` or mis-positions the corner shapes — every
+    # such regression flips hundreds-to-thousands of pixels in the otherwise-
+    # blank margin strip.
+    {
+        "name": "standard_bauhaus_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "bauhaus",
+    },
 ]
 
 
