@@ -789,7 +789,6 @@ class TestBauhausBorder:
         break the contract that lets a future bauhaus palette tweak flow
         through the border automatically. Call the helper directly with
         a non-default colour set and assert the output reflects it."""
-        from PIL import Image
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
         custom = {
             "text": rq.SPECTRA6["green"],
@@ -866,7 +865,6 @@ class TestIlluminatedBorder:
             assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], f"illuminated mode={mode} missing TL jewel"
 
     def test_illuminated_border_uses_theme_colours_not_hardcoded_rgb(self):
-        from PIL import Image
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
         custom = {"text": rq.SPECTRA6["green"], "accent": rq.SPECTRA6["yellow"]}
         rq.draw_illuminated_border(image, custom)
@@ -944,7 +942,6 @@ class TestNewsprintBorder:
             )
 
     def test_newsprint_border_uses_theme_colour_not_hardcoded_rgb(self):
-        from PIL import Image
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
         custom = {"text": rq.SPECTRA6["green"]}
         rq.draw_newsprint_border(image, custom)
@@ -1032,7 +1029,6 @@ class TestNightvisionBorder:
             )
 
     def test_nightvision_border_uses_theme_colour_not_hardcoded_rgb(self):
-        from PIL import Image
         image = Image.new("RGB", (800, 480), color=(0, 0, 0))
         custom = {"text": rq.SPECTRA6["yellow"]}
         rq.draw_nightvision_border(image, custom)
@@ -1119,7 +1115,6 @@ class TestBlueprintBorder:
         theme dict (text for the frame, accent for the crosshairs). Call
         the helper with a non-default palette and assert the output
         reflects it."""
-        from PIL import Image
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
         custom = {
             "text": rq.SPECTRA6["green"],

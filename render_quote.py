@@ -184,19 +184,6 @@ THEMES = {
     },
 }
 SIDE_MARGIN = 20
-# Themes whose decorative border paints a graphic in the top-right corner
-# need the debug-mode "DEBUG MODE" banner pushed inward past the graphic
-# so the last glyph isn't clipped. Measured from the right canvas edge
-# past the graphic's outer extent plus a small breathing gap. Keep in
-# sync with the theme's ``draw_*_border`` helper.
-_DEBUG_LABEL_RIGHT_INSET = {
-    "bauhaus": 38,     # past the 6+22px TR filled square
-    "blueprint": 34,   # past the TR crosshair arm (frame at 16 + 8px arm)
-    "illuminated": 28, # past the TR jewel (frame at 14, radius 5 → x=width-9)
-    # newsprint intentionally omitted — its Scotch rule's right-edge pixel
-    # at x=width-11 sits outside the default label_x=width-SIDE_MARGIN(20)
-    # with 9px of clearance, so no inset adjustment is needed.
-}
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
     str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
@@ -1097,14 +1084,36 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
 
 
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
-# — themes without a border entry paint nothing. Extend here and (if the new
-# graphic touches the top-right corner) in ``_DEBUG_LABEL_RIGHT_INSET``.
+# — themes without a border entry paint nothing. Extend here when adding a new
+# theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
+# touches the top-right corner).
 _BORDER_PAINTERS = {
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
     "illuminated": draw_illuminated_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
+}
+
+# Themes whose decorative border paints a graphic in the top-right corner need
+# the debug-mode "DEBUG MODE" banner pushed inward past the graphic so the last
+# glyph isn't clipped. Measured from the right canvas edge past the graphic's
+# outer extent plus a small breathing gap. Keep in sync with the matching
+# ``draw_*_border`` helper — a missing entry for a TR-painting border will
+# silently clip the label; the ``test_debug_label_does_not_clip_border``
+# invariant catches that class of regression.
+#
+# Themes in ``_BORDER_PAINTERS`` *without* an entry here have a TR graphic
+# that sits outside the DEBUG MODE label's bounding rectangle by construction:
+#   - newsprint: Scotch rule's right side paints x=width-13 to width-11, leaving
+#     ~7px of clearance beyond the default label right edge (x=width-SIDE_MARGIN).
+#   - nightvision: HUD corner bracket's TR vertical arm paints x=width-13 to
+#     width-12 (y>=12), leaving ~7px of clearance; the horizontal arm sits at
+#     y=12-13, a row above the label's y=14 baseline.
+_DEBUG_LABEL_RIGHT_INSET = {
+    "bauhaus": 38,      # past the 6+22px TR filled square
+    "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
+    "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
 }
 
 

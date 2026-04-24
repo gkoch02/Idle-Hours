@@ -297,6 +297,26 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "illuminated",
     },
+    # Bauhaus in *debug* mode pins the ``_DEBUG_LABEL_RIGHT_INSET``
+    # contract — the TR blue square sits at x=width-28 to width-6, which
+    # would clip the default "DEBUG MODE" banner at x=width-SIDE_MARGIN.
+    # The inset entry shifts the label left by 18px; a regression that
+    # removed the inset would land the label back on top of the square
+    # and flip thousands of pixels here. Bauhaus is chosen because it
+    # has the most aggressive inset (38px); blueprint / illuminated
+    # insets are less load-bearing and their production goldens already
+    # catch graphic-placement regressions.
+    {
+        "name": "standard_bauhaus_debug",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "debug",
+        "theme": "bauhaus",
+    },
 ]
 
 
