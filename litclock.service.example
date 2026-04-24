@@ -26,31 +26,18 @@ WorkingDirectory=/home/pi/LitClock
 # /var/lib/litclock during the transition (see pi_setup_inky_impression.md).
 StateDirectory=litclock
 
+# All persistent settings live in the config file. Copy
+# assets/config.toml.example into %S/litclock/config.toml and edit there —
+# the systemd unit itself stays stable across config changes, so you only
+# ever `systemctl restart` (no `daemon-reload`) when tuning the appliance.
+# CLI flags still override config values; use them for ad-hoc runs.
 ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py \
-  --display-script display_inky.py \
-  --mode production \
-  --theme auto \
-  --state-path %S/litclock/state.json \
-  --history-path %S/litclock/history.jsonl \
-  --telemetry-path %S/litclock/telemetry.jsonl \
-  --pidfile %S/litclock/run_clock.pid
+  --config %S/litclock/config.toml
 
 # Reads the prebuilt baked DB at assets/quote_database.jsonl (the canonical runtime
 # input). assets/candidates-attributed.jsonl is the raw corpus that feeds the baker
 # and stays on disk as a defensive fallback + curator-UI input.
 # Rebuilding corpus artifacts is a separate maintenance task, not part of service startup.
-#
-# Useful additions depending on your setup:
-#   --buttons-off                           if gpiozero isn't installed or you don't want buttons
-#   --shutdown-command ""                   disable button-D long-press shutdown
-#                                           (see "Button-D shutdown vs sandboxing" note below)
-#   --startup-image /home/pi/LitClock/assets/goodnight.png   push a frame at boot
-#   --web-bind 127.0.0.1:8080                             curator web UI on loopback only
-#   --web-bind 0.0.0.0:8080 --web-token-file %S/litclock/web.token
-#                                                         expose the UI on the LAN; POSTs require X-LitClock-Token.
-#                                                         Store the token under StateDirectory so it inherits the
-#                                                         0750/pi ownership — NEVER pass --web-token inline or it
-#                                                         will show up in `ps` and journald.
 
 Restart=always
 RestartSec=10

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pick_quote as pick_quote_module
 import pidfile
+import runtime_config
 import sd_notify
 from buckets import bucket_for_time
 from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
@@ -95,6 +96,16 @@ def _valid_hhmm(value: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the literary clock render loop.")
+    parser.add_argument(
+        "--config",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to a TOML config file whose keys mirror the argparse dest names "
+            "(e.g. `display_script = \"display_inky.py\"`). CLI flags override config "
+            "values; config values override argparse defaults. See assets/config.toml.example."
+        ),
+    )
     parser.add_argument(
         "--render-script",
         default="render_quote.py",
@@ -295,6 +306,22 @@ def parse_args() -> argparse.Namespace:
             "loudly at startup instead of on first use."
         ),
     )
+    # Two-pass parse so a ``--config PATH`` value can seed argparse's own
+    # defaults before the real parse runs: argparse uses a default only
+    # when the flag is absent from argv, so the surviving CLI flags
+    # naturally win over config values, and absent flags fall back to
+    # the argparse literal default. No bespoke merge layer, no
+    # precedence-ordering bugs.
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default=None)
+    pre_args, _ = pre.parse_known_args()
+    config_path = Path(pre_args.config) if pre_args.config else None
+    config_defaults = runtime_config.load_config(
+        config_path, hhmm_validator=_valid_hhmm,
+    )
+    if config_defaults:
+        parser.set_defaults(**config_defaults)
+
     args = parser.parse_args()
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")

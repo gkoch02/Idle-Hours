@@ -1,0 +1,62 @@
+# Example LitClock appliance config.
+#
+# Every key here maps 1:1 to the argparse `dest` in run_clock.py::parse_args
+# (snake_case, not kebab-case). A CLI flag always overrides the value here,
+# and an absent key falls back to the argparse default — so you only need
+# to list keys you actually want to change.
+#
+# Copy to e.g. /var/lib/litclock/config.toml (or wherever your StateDirectory
+# is) and reference it from the systemd unit as:
+#     ExecStart=... run_clock.py --config /var/lib/litclock/config.toml
+#
+# Transient shell-only flags (--once, --skip-preflight, --config itself)
+# are deliberately rejected here with a stderr warning; pass those on the
+# CLI.
+
+# ---- Render / display pipeline ---------------------------------------------
+render_script  = "render_quote.py"
+display_script = "display_inky.py"
+output         = "output/current.png"
+mode           = "production"         # production | debug
+theme          = "auto"               # default | dark | scholar | newsprint | nightvision | auto
+width          = 800
+height         = 480
+interval_seconds = 60
+
+# ---- Persistent runtime state ----------------------------------------------
+# These paths are typically under systemd's StateDirectory. Use absolute
+# paths so the service works regardless of WorkingDirectory.
+state_path     = "/var/lib/litclock/state.json"
+history_path   = "/var/lib/litclock/history.jsonl"
+history_days   = 7
+telemetry_path = "/var/lib/litclock/telemetry.jsonl"
+telemetry_retain_days = 90
+pidfile        = "/var/lib/litclock/run_clock.pid"
+
+# ---- Quiet hours -----------------------------------------------------------
+# Overnight ranges (start > end) are supported. Set `quiet_off = true` to
+# disable entirely (24/7 rendering).
+quiet_start = "22:00"
+quiet_end   = "06:00"
+quiet_image = "assets/goodnight.png"
+quiet_off   = false
+
+# ---- Buttons / shutdown ----------------------------------------------------
+# Set `buttons_off = true` on dev machines or headless runs. The default
+# shutdown command assumes passwordless sudo; under the sandboxed systemd
+# unit (NoNewPrivileges=yes) use "systemctl poweroff" instead, or leave
+# this empty to disable the button-D long-press shutdown entirely.
+buttons_off      = false
+shutdown_command = "systemctl poweroff"
+
+# Optional static PNG pushed to the panel at boot so it doesn't ghost
+# yesterday's frame during the cold-start Spectra 6 refresh. Comment out
+# to skip the startup frame (saves 10–20s at boot).
+# startup_image = "assets/goodnight.png"
+
+# ---- Curator web UI (optional) ---------------------------------------------
+# Off by default. Loopback binds (127.0.0.1, ::1) don't need a token; any
+# other bind REQUIRES web_token_file (or web_token). Prefer web_token_file
+# so the secret never appears in `ps` / journald.
+# web_bind       = "127.0.0.1:8080"
+# web_token_file = "/var/lib/litclock/web.token"

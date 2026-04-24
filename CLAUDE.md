@@ -32,6 +32,12 @@ ruff check --fix .
 ### Runtime (render + optional display)
 
 ```bash
+# Recommended for appliance installs: point run_clock at a TOML config file.
+# See assets/config.toml.example for every supported key. CLI flags below
+# still work and override config values; absent keys fall back to argparse
+# defaults. The systemd unit uses this form exclusively.
+python3 run_clock.py --config /var/lib/litclock/config.toml
+
 # One-shot render of the current wall-clock time to output/current.png
 python3 run_clock.py --once
 
@@ -446,6 +452,8 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 
 ### Runtime Loop (`run_clock.py`)
 
+**Config file (`--config PATH`).** `parse_args()` supports a TOML config whose keys mirror the argparse `dest` names one-for-one (snake_case: `display_script`, `quiet_start`, `web_bind`, …). Loaded via `runtime_config.load_config` before the real parse, the file's values are fed into `parser.set_defaults(**config_dict)`; argparse's own rule that "the default is used only when the flag is absent from argv" delivers the three-layer precedence — **CLI flag > config value > argparse default** — without any custom merge layer. Three transient flags are deliberately refused in the file (`--config` itself, `--once`, `--skip-preflight`); listing them warns and drops. Malformed TOML, unreadable contents, a non-table root, unknown keys, and type mismatches all warn to stderr and continue with argparse defaults, mirroring `apply_content_overrides.load_overrides`'s fail-open pattern. The one hard error is pointing `--config` at a non-existent path: that raises `SystemExit(1)` at startup because a typoed unit-file path is a configuration bug the operator wants to hear about, not a silent-defaults signal. The shipped `litclock.service.example` passes `--config %S/litclock/config.toml` exclusively; see `assets/config.toml.example` for every supported key.
+
 Thin orchestrator. Each tick (`--interval-seconds`, default 60) it computes the current fuzzy bucket; only when the bucket *changes* does it consider re-invoking `render_quote.py`. Before launching the renderer it calls `peek_quote_id` — which runs `pick_quote.select_quote` in-process and returns `(source_id, line_number, display_quote, matched_text)` — and compares that identity tuple against `last_quote_id`. `matched_text` is part of the identity because the renderer uses it to choose which phrase gets bolded/coloured, so two picks that share source/line/quote but differ in the matched phrase (e.g. `02:50` vs `02:55` landing on the same row) still produce visibly different frames and must not dedupe together. If the picked quote is unchanged, the redraw is skipped so the eInk panel is not refreshed for a visually-identical frame. Otherwise it re-renders and optionally hands the image to `--display-script` (e.g. `display_inky.py`). `--mode` and `--theme` are passed through to the renderer. `--once` renders a single frame unconditionally and exits — useful for cron, smoke tests, or first bring-up. In loop mode `render_now` and quiet-hours handling are wrapped in `try/except` with timestamped stderr logging so a transient failure (missing corpus row, Pillow blow-up, Inky disconnect) no longer kills the process — the loop just logs and waits for the next tick. `--once` stays strict so cron callers still fail loudly.
 
 **Quiet hours.** Defaults to 22:00–06:00 (`--quiet-start` / `--quiet-end`, validated as `HH:MM` at parse time and supporting overnight ranges where `start > end`). When the loop first enters the window it either copies `--quiet-image` (default `assets/goodnight.png`, a pre-rendered dark-theme "good night / sleep" frame) to the output path and pushes it to the display, or — if `--quiet-image ""` is passed — re-renders the start time via `render_quote.py`. It then sits idle, skipping picks and renders, until the window ends; on exit it clears the bucket/quote-id state so the next normal tick is guaranteed to repaint. `--quiet-off` disables the feature entirely for 24/7 operation.
@@ -692,6 +700,7 @@ render_quote.py                    Pillow layout → 800×480 Spectra-6 PNG (imp
 contact_sheet.py                   12×12 grid of all 144 bucket frames, for offline QA
 run_clock.py                       runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry; atomic state writes, date-rotated telemetry with retention sweep, SIGTERM/SIGINT graceful shutdown, button liveness check). Thin orchestrator — delegates state/telemetry/theme/quiet/action helpers to the runtime_* siblings below and re-exports them so existing `run_clock.X` imports and test patches keep resolving.
 runtime_log.py                     shared timestamped stderr/stdout logger (_log)
+runtime_config.py                  TOML config-file loader (--config PATH on run_clock). Fail-open on malformed content; fails fast only on a typoed --config path. Keys mirror argparse dest names 1:1.
 runtime_state.py                   RuntimeState class — locks, mutable shared state between the loop, button listener, and web server
 runtime_store.py                   persisted runtime state JSON (manual_theme / manual_quiet + render-identity triple) loaded + validated at startup and saved atomically via atomic_io
 pidfile.py                         single-instance fcntl.flock pidfile for run_clock.main (stale-pid reclaim, --pidfile opt-out)
@@ -720,6 +729,7 @@ assets/contact-sheet.png           12×12 visual snapshot of every bucket's curr
 assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
 assets/content_overrides.json      per-row content fixes (apply_content_overrides default --overrides)
 assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
+assets/config.toml.example         annotated example config for run_clock.py --config (every CONFIG_SCHEMA key documented inline)
 assets/preview.png                 README hero image
 tests/                             pytest suite — one module per script + conftest.py; tests/golden/renderer/*.png are committed PNG fixtures for the golden-image suite (regenerate with UPDATE_RENDER_GOLDEN=1)
 output/                            runtime render target (output/current.png); gitignored except .gitkeep
