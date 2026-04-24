@@ -92,7 +92,10 @@ class TestThemeSaturation:
     def test_unknown_theme_falls_back_to_default(self):
         assert display_inky.resolve_saturation("nope", None) == display_inky.THEME_SATURATION["default"]
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision", "blueprint", "illuminated"])
+    @pytest.mark.parametrize(
+        "theme",
+        ["scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus"],
+    )
     def test_new_themes_have_saturation_entries(self, theme):
         """Every theme registered in ``render_quote.THEMES`` must have a
         ``THEME_SATURATION`` entry. Without this the resolve call silently

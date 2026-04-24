@@ -162,6 +162,7 @@ def parse_args() -> argparse.Namespace:
             "nightvision",
             "blueprint",
             "illuminated",
+            "bauhaus",
             "auto",
         ],
         default="default",
@@ -170,7 +171,8 @@ def parse_args() -> argparse.Namespace:
             "Light: 'default' (white/black/red), 'scholar' (white/blue/red), "
             "'newsprint' (white/black/no-accent), 'blueprint' (white/blue/red, "
             "geometric sans), 'illuminated' (white/red/blue, manuscript serif + "
-            "blackletter ornaments). Dark: 'dark' (black/white/yellow), "
+            "blackletter ornaments), 'bauhaus' (white/black/blue with red "
+            "ornaments, geometric sans). Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow). 'auto' selects 'dark' between "
             "18:00 and 06:00 and 'default' otherwise. "
             "Pressing button B cycles themes manually and overrides 'auto' until midnight."

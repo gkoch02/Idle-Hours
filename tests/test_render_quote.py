@@ -366,7 +366,7 @@ class TestThemeFonts:
         def primary(name: str, role: str) -> str:
             entry = rq.THEME_FONTS[name][role][0]
             return entry[0] if isinstance(entry, tuple) else entry
-        operator_choice = ("scholar", "newsprint", "nightvision", "blueprint", "illuminated")
+        operator_choice = ("scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus")
         default_primary = primary("default", "quote_regular")
         primaries = {name: primary(name, "quote_regular") for name in operator_choice}
         for name, face in primaries.items():
@@ -470,7 +470,7 @@ class TestThemes:
         """Keep the operator-choice themes discoverable by name so a typo in
         the THEMES dict or THEME_ORDER tuple fails the test rather than
         ghosting downstream."""
-        for name in ("scholar", "newsprint", "nightvision", "blueprint", "illuminated"):
+        for name in ("scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus"):
             assert name in rq.THEMES, name
             assert name in rq.THEME_ORDER, name
 
@@ -530,6 +530,18 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["red"]
         assert t["accent"] == rq.SPECTRA6["blue"]
 
+    def test_bauhaus_theme_uses_three_primaries_simultaneously(self):
+        """Bauhaus is the only theme that puts all three primaries on the
+        panel at once: black body, blue accent, red ornaments. A regression
+        that collapsed the ornament colour back to black would drop the
+        poster-palette effect and make the theme visually similar to a
+        blue-accented ``default``."""
+        t = rq.THEMES["bauhaus"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["black"]
+        assert t["accent"] == rq.SPECTRA6["blue"]
+        assert t["ornament_dark"] == rq.SPECTRA6["red"]
+
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):
         """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
         ornament_light over the page background. If BOTH ornament colours
@@ -579,7 +591,10 @@ class TestRender:
         img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
         assert img.size == (800, 480)
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision", "blueprint", "illuminated"])
+    @pytest.mark.parametrize(
+        "theme",
+        ["scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus"],
+    )
     def test_render_new_themes_smoke(self, theme):
         """Each new theme must produce a correctly-sized frame without
         crashing — catches missing dict keys, off-palette colours that

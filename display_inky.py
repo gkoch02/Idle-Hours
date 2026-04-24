@@ -38,6 +38,10 @@ THEME_SATURATION: dict[str, float] = {
     # Light-background themes stay at 0.5 so the red body doesn't bloom into
     # orange on the panel.
     "illuminated": 0.5,
+    # Bauhaus poster — white bg, black body, blue + red as the two accents.
+    # Light background stays at the gentler 0.5 saturation so the red
+    # ornament marks don't bloom into orange next to the crisp black body.
+    "bauhaus": 0.5,
 }
 
 

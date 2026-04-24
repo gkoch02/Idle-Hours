@@ -38,6 +38,7 @@ THEME_ORDER: tuple[str, ...] = (
     "nightvision",
     "blueprint",
     "illuminated",
+    "bauhaus",
 )
 THEMES = {
     "default": {
@@ -129,6 +130,22 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["red"],
     },
+    # Bauhaus poster. White ground, black body, blue for the matched time
+    # phrase, red for the oversized quotation marks — the three primaries
+    # used simultaneously, as in the Bauhaus palette. Jost (a Futura-adjacent
+    # geometric sans) carries the architectural-typography vibe and sits
+    # visually distinct from both blueprint's Archivo (grotesque) and the
+    # other serif-heavy themes.
+    "bauhaus": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -213,6 +230,13 @@ META_FONT_BOLD_CANDIDATES = [
 #   scriptorium texture. DejaVu Serif falls back when EB Garamond is
 #   missing; the ornament chain ends at the Playfair bold so a missing
 #   blackletter downgrades to a heavy serif rather than bitmap-fallback.
+# * ``bauhaus`` → Jost (Futura-adjacent modern geometric sans). Shares the
+#   sans-serif family with blueprint (Archivo) but picks a face from the
+#   geometric-constructed branch rather than the grotesque, so the two
+#   sans themes stay visually distinguishable. Ships one variable font
+#   with Regular / Bold axis picks (same pattern as Bitter for scholar);
+#   a missing ``set_variation_by_name`` would render at the axis-default
+#   weight (Regular).
 #
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
@@ -227,6 +251,7 @@ ARCHIVO_BOLD = str(BASE_DIR / "fonts/archivo/Archivo-Bold.ttf")
 EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
 EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
 UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
+JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -342,6 +367,35 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             UNIFRAKTUR_BOOK,
             EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "bauhaus": {
+        # Jost is a variable font defaulting to weight 400; every
+        # variation candidate below pins the instance explicitly so a
+        # missing ``set_variation_by_name`` doesn't leave the bold phrase
+        # visually indistinguishable from the body. Falls back through
+        # the same sans chain as ``blueprint`` for install-parity before
+        # degrading to the Playfair serif chain.
+        "quote_regular": [
+            (JOST_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
