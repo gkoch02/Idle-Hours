@@ -30,7 +30,15 @@ SPECTRA6_PALETTE = list(SPECTRA6.values())
 # Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
 # the cycle is stable regardless of dict-literal ordering in Python; every name
 # here must also appear as a key in ``THEMES`` below (enforced in tests).
-THEME_ORDER: tuple[str, ...] = ("default", "dark", "scholar", "newsprint", "nightvision", "blueprint")
+THEME_ORDER: tuple[str, ...] = (
+    "default",
+    "dark",
+    "scholar",
+    "newsprint",
+    "nightvision",
+    "blueprint",
+    "illuminated",
+)
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
@@ -103,6 +111,23 @@ THEMES = {
         "ornament_dark": SPECTRA6["blue"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["blue"],
+    },
+    # Medieval illuminated manuscript. White vellum, red body text
+    # (rubrication, the traditional mark of a liturgical or emphasised
+    # passage) and lapis-blue for the matched time phrase. EB Garamond
+    # handles the body at legible sizes; the blackletter
+    # UnifrakturMaguntia sits in the ornament slot for the big curly
+    # quotation marks, carrying the scriptorium texture without wrecking
+    # body legibility.
+    "illuminated": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["red"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["red"],
     },
 }
 SIDE_MARGIN = 20
@@ -181,6 +206,13 @@ META_FONT_BOLD_CANDIDATES = [
 #   from scholar even though both share the white/blue/red palette).
 #   DejaVu Sans / Liberation Sans / Noto Sans fall back when Archivo isn't
 #   installed.
+# * ``illuminated`` → EB Garamond for the body (humanist old-style
+#   manuscript serif — legible at the layout's font sizes unlike a full
+#   blackletter body) with UnifrakturMaguntia (blackletter) in the
+#   ornament slot so the oversized curly quotation marks carry the
+#   scriptorium texture. DejaVu Serif falls back when EB Garamond is
+#   missing; the ornament chain ends at the Playfair bold so a missing
+#   blackletter downgrades to a heavy serif rather than bitmap-fallback.
 #
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
@@ -192,6 +224,9 @@ SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
 SPACEMONO_BOLD = str(BASE_DIR / "fonts/space-mono/SpaceMono-Bold.ttf")
 ARCHIVO_REGULAR = str(BASE_DIR / "fonts/archivo/Archivo-Regular.ttf")
 ARCHIVO_BOLD = str(BASE_DIR / "fonts/archivo/Archivo-Bold.ttf")
+EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
+EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
+UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -285,6 +320,28 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "illuminated": {
+        # Humanist old-style body (EB Garamond) with a blackletter ornament
+        # (UnifrakturMaguntia). The body picks a serif *family* not already
+        # represented (Playfair is transitional, Bitter is slab, Old Standard
+        # is Didone) so illuminated reads as a different silhouette. The
+        # ornament slot — used only for the oversized curly quotation marks
+        # — carries the scriptorium texture; a blackletter body would shred
+        # legibility at dense-layout font sizes on a 4-bit eInk panel.
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },

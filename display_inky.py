@@ -34,6 +34,10 @@ THEME_SATURATION: dict[str, float] = {
     # Light background, blue ink, red dimension marks — same gentle saturation
     # as the other light themes so the red accent stays bright without bleeding.
     "blueprint": 0.5,
+    # Rubricated manuscript — red body text on white, lapis-blue accent.
+    # Light-background themes stay at 0.5 so the red body doesn't bloom into
+    # orange on the panel.
+    "illuminated": 0.5,
 }
 
 

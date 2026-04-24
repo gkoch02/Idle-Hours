@@ -366,7 +366,7 @@ class TestThemeFonts:
         def primary(name: str, role: str) -> str:
             entry = rq.THEME_FONTS[name][role][0]
             return entry[0] if isinstance(entry, tuple) else entry
-        operator_choice = ("scholar", "newsprint", "nightvision", "blueprint")
+        operator_choice = ("scholar", "newsprint", "nightvision", "blueprint", "illuminated")
         default_primary = primary("default", "quote_regular")
         primaries = {name: primary(name, "quote_regular") for name in operator_choice}
         for name, face in primaries.items():
@@ -470,7 +470,7 @@ class TestThemes:
         """Keep the operator-choice themes discoverable by name so a typo in
         the THEMES dict or THEME_ORDER tuple fails the test rather than
         ghosting downstream."""
-        for name in ("scholar", "newsprint", "nightvision", "blueprint"):
+        for name in ("scholar", "newsprint", "nightvision", "blueprint", "illuminated"):
             assert name in rq.THEMES, name
             assert name in rq.THEME_ORDER, name
 
@@ -510,6 +510,25 @@ class TestThemes:
         assert t["page_bg"] == rq.SPECTRA6["black"]
         assert t["text"] == rq.SPECTRA6["green"]
         assert t["accent"] == rq.SPECTRA6["yellow"]
+
+    def test_blueprint_theme_uses_blue_on_white_with_red_accent(self):
+        """Same palette as ``scholar`` — the two stay differentiated purely
+        via THEME_FONTS (Archivo vs Bitter). Pin the palette so a refactor
+        doesn't accidentally merge them back into a single theme."""
+        t = rq.THEMES["blueprint"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["blue"]
+        assert t["accent"] == rq.SPECTRA6["red"]
+
+    def test_illuminated_theme_uses_rubricated_red_body(self):
+        """Red body text is unique to ``illuminated`` across the rotation;
+        a regression that flipped ``text`` to black would collapse the
+        theme into a slightly-fancier ``default`` and lose the whole
+        manuscript motif."""
+        t = rq.THEMES["illuminated"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["red"]
+        assert t["accent"] == rq.SPECTRA6["blue"]
 
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):
         """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
@@ -560,7 +579,7 @@ class TestRender:
         img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
         assert img.size == (800, 480)
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision", "blueprint"])
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision", "blueprint", "illuminated"])
     def test_render_new_themes_smoke(self, theme):
         """Each new theme must produce a correctly-sized frame without
         crashing — catches missing dict keys, off-palette colours that
