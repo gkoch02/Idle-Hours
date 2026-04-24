@@ -30,7 +30,18 @@ SPECTRA6_PALETTE = list(SPECTRA6.values())
 # Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
 # the cycle is stable regardless of dict-literal ordering in Python; every name
 # here must also appear as a key in ``THEMES`` below (enforced in tests).
-THEME_ORDER: tuple[str, ...] = ("default", "dark", "scholar", "newsprint", "nightvision")
+THEME_ORDER: tuple[str, ...] = (
+    "default",
+    "dark",
+    "scholar",
+    "newsprint",
+    "nightvision",
+    "blueprint",
+    "illuminated",
+    "bauhaus",
+    "risograph",
+    "comic",
+)
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
@@ -88,6 +99,88 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["green"],
         "source": SPECTRA6["green"],
+    },
+    # Drafting / engineering blueprint. White paper, blue ink for the body
+    # text and ornaments, red for the matched time phrase (the "dimension
+    # mark" pulled out of the drawing). Sits visually distinct from
+    # ``scholar`` (also white/blue/red) thanks to the geometric Archivo
+    # sans-serif chosen in THEME_FONTS — same palette, different family.
+    "blueprint": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["blue"],
+        "subtle": SPECTRA6["blue"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["blue"],
+    },
+    # Medieval illuminated manuscript. White vellum, red body text
+    # (rubrication, the traditional mark of a liturgical or emphasised
+    # passage) and lapis-blue for the matched time phrase. EB Garamond
+    # handles the body at legible sizes; the blackletter
+    # UnifrakturMaguntia sits in the ornament slot for the big curly
+    # quotation marks, carrying the scriptorium texture without wrecking
+    # body legibility.
+    "illuminated": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["red"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["red"],
+    },
+    # Bauhaus poster. White ground, black body, blue for the matched time
+    # phrase, red for the oversized quotation marks — the three primaries
+    # used simultaneously, as in the Bauhaus palette. Jost (a Futura-adjacent
+    # geometric sans) carries the architectural-typography vibe and sits
+    # visually distinct from both blueprint's Archivo (grotesque) and the
+    # other serif-heavy themes.
+    "bauhaus": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Risograph / zine two-colour print. Red body text, blue "overprint"
+    # on the matched time phrase, zero black ink anywhere — that "no
+    # black" constraint is the defining aesthetic of the riso theme,
+    # pinned explicitly as a test invariant so a well-meaning
+    # "darken the source credit" refactor can't silently erode it.
+    # ornament_dark stays on a primary (blue) so the big curly marks
+    # carry the second-colour overprint texture. Rubik (chunky rounded
+    # geometric sans) gives the zine / indie-print register.
+    "risograph": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["red"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["red"],
+    },
+    # Golden-age comic panel. Yellow ground (the first yellow-
+    # background theme — Spectra 6's flat yellow reads as a bright
+    # newsprint-comic page), black body for speech-bubble legibility,
+    # red accent for the matched time phrase like a sound-effect
+    # callout. Bangers is an all-caps comic-book hand; body text ends
+    # up shouting slightly, which is the point.
+    "comic": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
     },
 }
 SIDE_MARGIN = 20
@@ -149,8 +242,9 @@ META_FONT_BOLD_CANDIDATES = [
 # plain path string or a ``(path, variation_name)`` tuple for variable fonts
 # (``load_font`` calls ``set_variation_by_name`` after loading). The Playfair
 # chain stays the default for ``default`` / ``dark`` so those goldens don't
-# drift; the three operator-choice themes each pick a face that matches the
-# visual vibe:
+# drift; each of the eight operator-choice themes picks a face from a
+# different type family so the rendered frame's silhouette — not just the
+# palette — shifts with the theme:
 #
 # * ``scholar`` → Bitter (chunky slab serif — textbook / academic journal
 #   register; a different type *family* from the Playfair transitional serif,
@@ -161,6 +255,37 @@ META_FONT_BOLD_CANDIDATES = [
 # * ``nightvision`` → Space Mono (retro-terminal mono that stays legible on
 #   eInk at the layout's font sizes; DejaVu Sans Mono falls back when Space
 #   Mono isn't installed).
+# * ``blueprint`` → Archivo (geometric grotesque sans-serif — the only
+#   pure-sans face in the lineup, so blueprint reads as a different *family*
+#   from scholar even though both share the white/blue/red palette).
+#   DejaVu Sans / Liberation Sans / Noto Sans fall back when Archivo isn't
+#   installed.
+# * ``illuminated`` → EB Garamond for the body (humanist old-style
+#   manuscript serif — legible at the layout's font sizes unlike a full
+#   blackletter body) with UnifrakturMaguntia (blackletter) in the
+#   ornament slot so the oversized curly quotation marks carry the
+#   scriptorium texture. DejaVu Serif falls back when EB Garamond is
+#   missing; the ornament chain ends at the Playfair bold so a missing
+#   blackletter downgrades to a heavy serif rather than bitmap-fallback.
+# * ``bauhaus`` → Jost (Futura-adjacent modern geometric sans). Shares the
+#   sans-serif family with blueprint (Archivo) but picks a face from the
+#   geometric-constructed branch rather than the grotesque, so the two
+#   sans themes stay visually distinguishable. Ships one variable font
+#   with Regular / Bold axis picks (same pattern as Bitter for scholar);
+#   a missing ``set_variation_by_name`` would render at the axis-default
+#   weight (Regular).
+# * ``risograph`` → Rubik (chunky rounded modern sans). Rubik's soft
+#   corners sit visually distinct from both blueprint's Archivo
+#   (grotesque, sharper terminals) and bauhaus's Jost (thinner,
+#   neo-grotesque geometric), so the three sans-based themes stay
+#   differentiable on the panel. Ships as a variable font; axis default
+#   is Light (300) so the Regular / Bold instances are pinned explicitly.
+# * ``comic`` → Bangers (all-caps comic-book display hand). Stands
+#   alone as the only *display* / hand-lettered face in the lineup —
+#   an obvious silhouette difference from every serif / sans / mono
+#   sibling. Only one weight ships, so the matched time phrase falls
+#   through to a heavier fallback (DejaVu Sans Bold) to keep the
+#   weight differentiation readable when Bangers isn't installed.
 #
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
@@ -170,6 +295,14 @@ OLDSTANDARD_REGULAR = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Regular.
 OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
 SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
 SPACEMONO_BOLD = str(BASE_DIR / "fonts/space-mono/SpaceMono-Bold.ttf")
+ARCHIVO_REGULAR = str(BASE_DIR / "fonts/archivo/Archivo-Regular.ttf")
+ARCHIVO_BOLD = str(BASE_DIR / "fonts/archivo/Archivo-Bold.ttf")
+EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
+EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
+UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
+JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
+RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
+BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -232,6 +365,145 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             SPACEMONO_BOLD,
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "blueprint": {
+        # Archivo is the only pure sans-serif primary in the rotation. Falls
+        # back through the common Linux/Pi sans installs (DejaVu / Liberation
+        # / Noto) before degrading to the Playfair serif chain — the latter
+        # would clash with the blueprint vibe but at least keeps the panel
+        # readable on a mis-configured install.
+        "quote_regular": [
+            ARCHIVO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ARCHIVO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            ARCHIVO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "illuminated": {
+        # Humanist old-style body (EB Garamond) with a blackletter ornament
+        # (UnifrakturMaguntia). The body picks a serif *family* not already
+        # represented (Playfair is transitional, Bitter is slab, Old Standard
+        # is Didone) so illuminated reads as a different silhouette. The
+        # ornament slot — used only for the oversized curly quotation marks
+        # — carries the scriptorium texture; a blackletter body would shred
+        # legibility at dense-layout font sizes on a 4-bit eInk panel.
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "bauhaus": {
+        # Jost is a variable font defaulting to weight 400; every
+        # variation candidate below pins the instance explicitly so a
+        # missing ``set_variation_by_name`` doesn't leave the bold phrase
+        # visually indistinguishable from the body. Falls back through
+        # the same sans chain as ``blueprint`` for install-parity before
+        # degrading to the Playfair serif chain.
+        "quote_regular": [
+            (JOST_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "risograph": {
+        # Rubik's variable-font axis minimum is Light (weight 300) — the
+        # file's default instance is Light, NOT Regular — so a missing
+        # set_variation_by_name call would render body text noticeably
+        # too thin. Pin Regular / Bold explicitly on every candidate.
+        # Shares the sans fallback chain with blueprint / bauhaus so
+        # missing-font installs still land on a sans before degrading to
+        # the Playfair serif default.
+        "quote_regular": [
+            (RUBIK_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (RUBIK_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (RUBIK_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "comic": {
+        # Bangers ships only Regular — there's no true Bold companion
+        # face — so the matched-phrase role re-uses the same file and
+        # gains weight differentiation purely through the accent colour.
+        # A sans Bold falls in behind for installs missing Bangers, so
+        # the bold phrase stays visibly heavier than the body even when
+        # Bangers degrades to DejaVu.
+        "quote_regular": [
+            BANGERS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            BANGERS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            BANGERS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },

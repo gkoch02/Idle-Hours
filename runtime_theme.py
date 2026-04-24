@@ -37,7 +37,8 @@ def auto_theme_for(time_str: str) -> str:
     """Return 'dark' during the night window, 'default' otherwise.
 
     Deliberately returns only the binary pair — the other registered
-    themes (``scholar``, ``newsprint``, ``nightvision``) are aesthetic
+    themes (``scholar``, ``newsprint``, ``nightvision``, ``blueprint``,
+    ``illuminated``, ``bauhaus``, ``risograph``, ``comic``) are aesthetic
     operator choices, not wall-clock-derived. Extending this would
     require a preference table (see ``FOLLOWUPS.md``). Pinned by
     ``TestAutoTheme::test_auto_theme_returns_only_binary_values`` so

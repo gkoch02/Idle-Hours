@@ -31,6 +31,21 @@ THEME_SATURATION: dict[str, float] = {
     "scholar": 0.5,
     "newsprint": 0.5,
     "nightvision": 0.7,
+    # Light white-background themes inherit the default 0.5 starting point —
+    # same empirical tier as ``default`` / ``scholar`` / ``newsprint``. These
+    # defaults are sensible initial values and are easy to override at runtime
+    # via ``--saturation`` if real-panel calibration suggests otherwise.
+    "blueprint": 0.5,
+    "illuminated": 0.5,
+    "bauhaus": 0.5,
+    # Non-standard grounds (``risograph`` has no black ink to anchor the
+    # two spot colours; ``comic`` has a high-chroma yellow ground rather
+    # than white) start at the 0.7 tier used by dark-background themes,
+    # on the reasoning that the accent hues need a little more push to
+    # stay visibly distinct from a non-white, non-black neighbour.
+    # Revisit once we have real-panel samples — `--saturation` overrides.
+    "risograph": 0.7,
+    "comic": 0.7,
 }
 
 

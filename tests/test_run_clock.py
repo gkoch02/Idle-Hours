@@ -1493,16 +1493,19 @@ class TestButtonHandlers:
 
     def test_toggle_theme_handler_wraps_cycle_at_end(self, tmp_path):
         """Stepping from the last entry wraps back to the first so the user
-        never gets stuck past the end of the cycle."""
+        never gets stuck past the end of the cycle. Anchored on the live
+        ``THEME_ORDER`` so adding a theme to the tuple doesn't silently break
+        the wrap test (it would still pass against the OLD last entry)."""
+        import render_quote as rq
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.last_effective_theme = "nightvision"
+        state.last_effective_theme = rq.THEME_ORDER[-1]
         with patch("run_clock.render_now"), \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
-        assert state.manual_theme == "default"
+        assert state.manual_theme == rq.THEME_ORDER[0]
 
     def test_do_render_bucket_matches_time_str_near_boundary(self, tmp_path):
         """_do_render stamps state.last_bucket from time_str, not a fresh clock read —
