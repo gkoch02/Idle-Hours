@@ -77,6 +77,7 @@ def load_config(
     path: Path | None,
     *,
     hhmm_validator: Callable[[str], str] | None = None,
+    choices_map: dict[str, list[str]] | None = None,
 ) -> dict[str, object]:
     """Load ``path`` and return a mapping of argparse dest → value.
 
@@ -97,6 +98,14 @@ def load_config(
     not import back into the orchestrator at load time (keeps the
     runtime-module acyclic import graph intact — same pattern
     ``runtime_actions`` uses).
+
+    ``choices_map`` mirrors argparse's own ``choices=`` gate for the
+    subset of keys that declare one (``mode``, ``theme``, …). Without
+    this, a typoed ``mode = "produciton"`` would flow through
+    ``set_defaults`` unchecked and surface only when the render
+    subprocess's own parser rejected it hours later. Built by
+    ``run_clock.parse_args`` from the live parser's actions so the
+    source of truth stays single-seated.
     """
     if path is None:
         return {}
@@ -147,6 +156,14 @@ def load_config(
                 f"got {type(value).__name__}; dropped"
             )
             continue
+        if choices_map is not None and key in choices_map:
+            allowed = choices_map[key]
+            if value not in allowed:
+                _warn(
+                    f"{path}: {key!r}={value!r} not in allowed choices "
+                    f"{allowed}; dropped"
+                )
+                continue
         if kind == "hhmm":
             if hhmm_validator is None:
                 # Defensive; should not happen because ``run_clock``

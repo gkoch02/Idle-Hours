@@ -124,11 +124,17 @@ python3 run_clock.py --config ~/.litclock/config.toml
 Every key maps 1:1 to an argparse `dest` (snake_case — `display_script`,
 `quiet_start`, `web_bind`, etc.), so anything you'd pass on the CLI can
 live in the file. Precedence is **CLI flag > config value > argparse
-default**, so ad-hoc one-offs like `--once`, `--mode debug`, or a
-temporary `--quiet-off` still work on top of a shipped config. Three
-transient flags are deliberately refused in the file (`--once`,
-`--skip-preflight`, and `--config` itself) — listing them warns and
-drops.
+default**, so ad-hoc one-offs like `--once` or `--mode debug` still
+work on top of a shipped config. Three transient flags are deliberately
+refused in the file (`--once`, `--skip-preflight`, and `--config`
+itself) — listing them warns and drops.
+
+**One asymmetry to know about.** `store_true` flags — `buttons_off`,
+`quiet_off` — can only be *enabled* from the CLI; there is no paired
+`--buttons-on`. So a config with `buttons_off = true` cannot be
+overridden from the command line for a one-off run. Leave boolean
+toggles out of the config unless you want them permanent, or comment
+them back out when you need CLI flexibility.
 
 Fail-open on malformed / unreadable / schema-mismatched content (warns
 to stderr, keeps running with argparse defaults); the one hard error is
@@ -451,20 +457,21 @@ Once manual render and display tests work on the Pi:
 ```bash
 cd ~/LitClock
 
-# Stage the unit file and the config it references
+# Stage the unit file and the config it references. The unit declares
+# StateDirectory=litclock, which auto-creates /var/lib/litclock on service
+# start — but we need the config file in place BEFORE the first start
+# (the sample unit passes --config %S/litclock/config.toml exclusively,
+# and a missing --config path is a hard error by design).
 sudo cp litclock.service.example /etc/systemd/system/litclock.service
 sudoedit /etc/systemd/system/litclock.service    # fix User= / WorkingDirectory= / ExecStart= paths
 
-# systemd creates /var/lib/litclock/ before ExecStart runs (StateDirectory=litclock),
-# but the first boot still needs config.toml in place
-sudo systemctl start litclock.service || true   # triggers StateDirectory creation
-sudo cp assets/config.toml.example /var/lib/litclock/config.toml
-sudo chown pi:pi /var/lib/litclock/config.toml
-sudoedit /var/lib/litclock/config.toml          # tune keys for this appliance
+sudo install -d -o pi -g pi -m 0750 /var/lib/litclock
+sudo install -o pi -g pi -m 0640 \
+    assets/config.toml.example /var/lib/litclock/config.toml
+sudoedit /var/lib/litclock/config.toml           # tune keys for this appliance
 
 sudo systemctl daemon-reload
-sudo systemctl enable litclock.service
-sudo systemctl restart litclock.service
+sudo systemctl enable --now litclock.service
 sudo systemctl status litclock.service
 ```
 

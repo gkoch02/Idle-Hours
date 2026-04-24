@@ -42,10 +42,16 @@ quiet_image = "assets/goodnight.png"
 quiet_off   = false
 
 # ---- Buttons / shutdown ----------------------------------------------------
-# Set `buttons_off = true` on dev machines or headless runs. The default
-# shutdown command assumes passwordless sudo; under the sandboxed systemd
-# unit (NoNewPrivileges=yes) use "systemctl poweroff" instead, or leave
-# this empty to disable the button-D long-press shutdown entirely.
+# Set `buttons_off = true` on dev machines or headless runs. Note:
+# `buttons_off` / `quiet_off` are argparse `store_true` flags, which means
+# the CLI can only *enable* them (there's no paired --buttons-on). Setting
+# either to `true` here makes that choice permanent until the key is
+# removed — don't set them unless you want them permanent.
+#
+# The default shutdown command assumes passwordless sudo; under the
+# sandboxed systemd unit (NoNewPrivileges=yes) use "systemctl poweroff"
+# instead, or leave this empty to disable the button-D long-press
+# shutdown entirely.
 buttons_off      = false
 shutdown_command = "systemctl poweroff"
 

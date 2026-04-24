@@ -48,18 +48,18 @@ Typical install on the Pi:
 cd ~/LitClock
 sudo cp litclock.service.example /etc/systemd/system/litclock.service
 
-# The sample unit passes `--config %S/litclock/config.toml` only. Stage
-# that config before the first start — StateDirectory=litclock makes
-# systemd create /var/lib/litclock owned by `pi`, but the config file
-# still has to land there from the repo.
-sudo systemctl start litclock.service || true     # triggers StateDirectory creation
-sudo cp assets/config.toml.example /var/lib/litclock/config.toml
-sudo chown pi:pi /var/lib/litclock/config.toml
+# The sample unit passes `--config %S/litclock/config.toml` exclusively
+# and a missing --config path is a hard error by design — so stage the
+# config before the first start. StateDirectory=litclock normally creates
+# /var/lib/litclock on service start, but we need it sooner; `install -d`
+# mirrors the ownership / mode systemd would've applied.
+sudo install -d -o pi -g pi -m 0750 /var/lib/litclock
+sudo install -o pi -g pi -m 0640 \
+    assets/config.toml.example /var/lib/litclock/config.toml
 sudoedit /var/lib/litclock/config.toml            # tune keys for this appliance
 
 sudo systemctl daemon-reload
-sudo systemctl enable litclock.service
-sudo systemctl restart litclock.service
+sudo systemctl enable --now litclock.service
 sudo systemctl status litclock.service
 ```
 

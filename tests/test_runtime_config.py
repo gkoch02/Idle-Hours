@@ -149,6 +149,48 @@ class TestLoadConfigSchemaValidation:
         cfg = runtime_config.load_config(p, hhmm_validator=_hhmm)
         assert cfg["quiet_start"] == "23:30"
 
+    def test_choices_valid_passes(self, tmp_path):
+        p = tmp_path / "cfg.toml"
+        p.write_text('mode = "production"\n', encoding="utf-8")
+        cfg = runtime_config.load_config(
+            p,
+            hhmm_validator=_hhmm,
+            choices_map={"mode": ["production", "debug"]},
+        )
+        assert cfg == {"mode": "production"}
+
+    def test_choices_invalid_warns_and_drops(self, tmp_path, capsys):
+        """A typoed ``mode = "produciton"`` must fail at config load, not
+        propagate into render subprocesses where it surfaces hours later."""
+        p = tmp_path / "cfg.toml"
+        p.write_text(
+            'mode = "produciton"\n'      # typo
+            'theme = "drak"\n'            # typo
+            "interval_seconds = 45\n",   # unaffected
+            encoding="utf-8",
+        )
+        cfg = runtime_config.load_config(
+            p,
+            hhmm_validator=_hhmm,
+            choices_map={
+                "mode": ["production", "debug"],
+                "theme": ["default", "dark", "auto"],
+            },
+        )
+        assert cfg == {"interval_seconds": 45}
+        err = capsys.readouterr().err
+        assert "'produciton'" in err
+        assert "'drak'" in err
+
+    def test_choices_map_is_optional(self, tmp_path):
+        """Absent choices_map means no choices check — every syntactically-
+        valid value passes, matching the pre-finding-#2 behaviour for
+        keys that don't have choices declared."""
+        p = tmp_path / "cfg.toml"
+        p.write_text('mode = "anything"\n', encoding="utf-8")
+        cfg = runtime_config.load_config(p, hhmm_validator=_hhmm)
+        assert cfg == {"mode": "anything"}
+
     def test_transient_keys_rejected(self, tmp_path, capsys):
         p = tmp_path / "cfg.toml"
         p.write_text(
@@ -244,15 +286,58 @@ class TestRunClockIntegration:
         with pytest.raises(SystemExit):
             run_clock.parse_args()
 
-    def test_shipped_example_loads(self):
-        """The committed assets/config.toml.example must always parse.
+    def test_empty_string_config_is_noop(self, monkeypatch):
+        """``--config ""`` must be treated as "no config file", not as a
+        pointer to a zero-length path. ``Path("")`` doesn't exist, so a
+        naive implementation would fire the typo-guard SystemExit."""
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", ""])
+        args = run_clock.parse_args()
+        # Argparse defaults survive — nothing came from a config file.
+        assert args.mode == "debug"
+        assert args.interval_seconds == 60
 
-        Prevents a silent rot where someone edits the example into
-        invalid shape and operators copy-paste a broken config.
+    def test_choices_bad_config_value_dropped_at_load(self, tmp_path, monkeypatch, capsys):
+        """A typoed ``mode`` in config must be dropped at load time so the
+        argparse default (``debug``) survives, not silently propagate into
+        ``args.mode`` and fail hours later in the render subprocess."""
+        p = tmp_path / "cfg.toml"
+        p.write_text('mode = "produciton"\n', encoding="utf-8")
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", str(p)])
+        args = run_clock.parse_args()
+        assert args.mode == "debug"   # argparse default, not "produciton"
+        assert "not in allowed choices" in capsys.readouterr().err
+
+    def test_shipped_example_loads_through_parse_args(self, monkeypatch):
+        """The committed ``assets/config.toml.example`` must load cleanly
+        through the *real* parse_args pipeline (not just the loader),
+        so type coercion + choices validation are exercised end-to-end.
+
+        Prevents silent rot where someone edits the example into an
+        invalid shape (typo in ``mode``, new CONFIG_SCHEMA key that
+        doesn't exist in argparse, HH:MM value the validator rejects)
+        and operators copy-paste a broken config.
         """
         example = Path(__file__).resolve().parent.parent / "assets" / "config.toml.example"
         assert example.exists(), "missing assets/config.toml.example"
-        cfg = runtime_config.load_config(example, hhmm_validator=_hhmm)
-        assert cfg, "example config parsed to empty dict — every key rejected?"
-        assert "mode" in cfg
-        assert "theme" in cfg
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", str(example)])
+        args = run_clock.parse_args()
+        # Spot-check that the example actually affected the namespace
+        # (a silently-empty-returning loader would leave argparse
+        # defaults in place and this assert would fail).
+        assert args.mode == "production"
+        assert args.theme == "auto"
+
+    def test_shipped_example_keys_are_all_in_schema(self):
+        """Every uncommented key in the example must be a real schema key.
+
+        Complements ``TestSchemaSync`` (which pins argparse ↔ schema) by
+        pinning example ↔ schema. Without this, adding a typoed key to
+        the example would warn at runtime but never fail a test."""
+        example = Path(__file__).resolve().parent.parent / "assets" / "config.toml.example"
+        import tomllib
+        raw = tomllib.loads(example.read_text(encoding="utf-8"))
+        unknown = set(raw.keys()) - set(runtime_config.CONFIG_SCHEMA.keys())
+        assert not unknown, (
+            f"assets/config.toml.example has keys not in CONFIG_SCHEMA: "
+            f"{sorted(unknown)}"
+        )

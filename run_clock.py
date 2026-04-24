@@ -316,8 +316,19 @@ def parse_args() -> argparse.Namespace:
     pre.add_argument("--config", default=None)
     pre_args, _ = pre.parse_known_args()
     config_path = Path(pre_args.config) if pre_args.config else None
+    # Mirror argparse's own ``choices=`` gate through ``load_config`` so a
+    # typoed ``mode = "produciton"`` or ``theme = "drak"`` fails at
+    # startup instead of silently propagating into every render
+    # subprocess. ``_actions`` is a stable argparse API used widely;
+    # pulling choices from it keeps the list of valid values
+    # single-seated at the ``add_argument`` call that already owns it.
+    choices_map = {
+        action.dest: list(action.choices)
+        for action in parser._actions
+        if action.choices is not None
+    }
     config_defaults = runtime_config.load_config(
-        config_path, hhmm_validator=_valid_hhmm,
+        config_path, hhmm_validator=_valid_hhmm, choices_map=choices_map,
     )
     if config_defaults:
         parser.set_defaults(**config_defaults)
