@@ -1,0 +1,63 @@
+# LitClock default config — every key set to the value run_clock.py would
+# use if no config file were passed. Safe to copy verbatim:
+#
+#     cp assets/config.toml.defaults ~/.litclock/config.toml
+#     python3 run_clock.py --config ~/.litclock/config.toml
+#
+# …is behaviourally identical to `python3 run_clock.py` with no --config.
+# Use this when you want an explicit, always-know-what-you're-running
+# reference you can check into your deployment repo and diff against
+# future upstream bumps. For the appliance-oriented preset with
+# /var/lib/litclock/ paths, production mode, and systemctl-poweroff,
+# see assets/config.toml.example instead.
+#
+# Two CLI defaults are `None` (argparse) and therefore OMITTED here,
+# since TOML has no null: `display_script`, `startup_image`. Set them
+# to a string path to enable the feature.
+#
+# Transient flags refused in the config (and unconditionally dropped
+# with a stderr warning): `once`, `skip_preflight`, `config`. Pass
+# those on the CLI.
+
+# ---- Render / display pipeline ---------------------------------------------
+render_script    = "render_quote.py"
+# display_script = "display_inky.py"   # Pi-only; default is unset.
+output           = "output/current.png"
+mode             = "debug"
+theme            = "default"
+width            = 800
+height           = 480
+interval_seconds = 60
+
+# ---- Persistent runtime state ----------------------------------------------
+# Default paths live under ~/.litclock/ for dev convenience. Under the
+# sandboxed systemd unit (ProtectHome=read-only) swap these to
+# /var/lib/litclock/... — see assets/config.toml.example.
+state_path            = "~/.litclock/state.json"
+history_path          = "~/.litclock/history.jsonl"
+history_days          = 7
+telemetry_path        = "~/.litclock/telemetry.jsonl"
+telemetry_retain_days = 90
+pidfile               = "~/.litclock/run_clock.pid"
+
+# ---- Quiet hours -----------------------------------------------------------
+quiet_start = "22:00"
+quiet_end   = "06:00"
+quiet_image = "assets/goodnight.png"
+quiet_off   = false
+
+# ---- Buttons / shutdown ----------------------------------------------------
+# NOTE: `buttons_off` and `quiet_off` are argparse `store_true` flags.
+# The CLI can only *enable* them (no paired --buttons-on exists), so a
+# config that sets them to `true` can't be overridden from the shell.
+# Leaving them as `false` here preserves CLI flexibility.
+buttons_off      = false
+shutdown_command = "sudo -n shutdown -h now"
+# startup_image  = "assets/goodnight.png"   # default is unset.
+
+# ---- Curator web UI --------------------------------------------------------
+# Off by default (empty web_bind). Non-loopback binds also require
+# web_token_file (or web_token); prefer the file form.
+web_bind       = ""
+web_token      = ""
+web_token_file = ""

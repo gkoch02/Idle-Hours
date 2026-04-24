@@ -100,22 +100,84 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-### Render once locally
+### Render once locally (smoke test)
+
+Zero-setup sanity check — renders one frame using argparse defaults and
+writes it to `output/current.png`:
 
 ```bash
 python3 run_clock.py --once
 ```
 
+### Set up the config file
+
+Anything beyond that smoke test should use a TOML config file. The
+repo ships two of them:
+
+- **`assets/config.toml.example`** — opinionated appliance preset
+  (production mode, `auto` theme, `/var/lib/litclock/` paths,
+  `systemctl poweroff` shutdown). This is what `litclock.service.example`
+  expects; copy it verbatim for Pi deployments and tweak from there.
+- **`assets/config.toml.defaults`** — every key set to the value
+  `run_clock.py` would use with no `--config` at all. Copying this
+  verbatim is behaviourally a no-op; use it when you want an explicit,
+  reviewable reference you can check into your deployment repo and
+  diff against future upstream bumps.
+
+```bash
+# Dev machine: start from the defaults and tweak
+mkdir -p ~/.litclock
+cp assets/config.toml.defaults ~/.litclock/config.toml
+$EDITOR ~/.litclock/config.toml
+```
+
+Every key maps 1:1 to an argparse `dest` (snake_case — `display_script`,
+`quiet_start`, `web_bind`, etc.), so anything you'd pass on the CLI can
+live in the file. Precedence is **CLI flag > config value > argparse
+default**, so ad-hoc one-offs like `--once` or `--mode debug` still
+work on top of a shipped config. Three transient flags are deliberately
+refused in the file (`--once`, `--skip-preflight`, and `--config`
+itself) — listing them warns and drops.
+
+**One asymmetry to know about.** `store_true` flags — `buttons_off`,
+`quiet_off` — can only be *enabled* from the CLI; there is no paired
+`--buttons-on`. So a config with `buttons_off = true` cannot be
+overridden from the command line for a one-off run. Leave boolean
+toggles out of the config unless you want them permanent, or comment
+them back out when you need CLI flexibility.
+
+Fail-open on malformed / unreadable / schema-mismatched content (warns
+to stderr, keeps running with argparse defaults); the one hard error is
+pointing `--config` at a non-existent path, so a typoed unit-file path
+fails fast in the journal instead of silently booting with defaults.
+
+The shipped `litclock.service.example` passes `--config %S/litclock/config.toml`
+exclusively — so tuning the appliance is a file edit plus `systemctl
+restart`, no `daemon-reload` needed.
+
+### Run the clock loop
+
+Once your config is staged, this is the canonical command. It reads
+every runtime knob (render script, display push, theme, quiet hours,
+etc.) from the file:
+
+```bash
+python3 run_clock.py --config ~/.litclock/config.toml
+```
+
 ### Render once and push to the Inky display
+
+Same config, `--once` on top for a one-shot render-and-push (useful for
+cron / bring-up):
+
+```bash
+python3 run_clock.py --config ~/.litclock/config.toml --once
+```
+
+If you haven't staged a config yet, the equivalent ad-hoc CLI form is:
 
 ```bash
 python3 run_clock.py --once --display-script display_inky.py --mode production
-```
-
-### Run the full clock loop locally
-
-```bash
-python3 run_clock.py --display-script display_inky.py --mode production
 ```
 
 ### Themes
@@ -217,17 +279,16 @@ python3 run_clock.py --web-bind 127.0.0.1:8080
 # then open http://127.0.0.1:8080
 ```
 
-**Pi running under systemd.** Edit the service's `ExecStart=` line to append the flag, then reload and restart:
+**Pi running under systemd.** Edit the config file that `ExecStart=` points at — no `daemon-reload` needed when you stay inside the config:
 
 ```bash
-sudoedit /etc/systemd/system/litclock.service
-# add --web-bind 127.0.0.1:8080 to the end of ExecStart=
-sudo systemctl daemon-reload
+sudoedit /var/lib/litclock/config.toml
+# add: web_bind = "127.0.0.1:8080"
 sudo systemctl restart litclock.service
 systemctl status --no-pager litclock.service     # confirm it came back up
 ```
 
-`litclock.service.example` already has the `--web-bind` lines commented out near the bottom — uncomment the one you want and you're done.
+`assets/config.toml.example` already ships commented-out `web_bind` / `web_token_file` lines near the bottom — uncomment the pair you want and you're done. (If the unit still uses raw `--web-bind` CLI flags on `ExecStart=`, `sudoedit` the unit itself and `daemon-reload` first, then `restart`.)
 
 **Reaching a loopback-bound UI from another machine.** Keep the `127.0.0.1:8080` bind (no token needed) and SSH-tunnel into the Pi from your laptop:
 
@@ -239,11 +300,12 @@ ssh -L 8080:127.0.0.1:8080 pi@raspberrypi.local
 **Reaching it directly over the LAN.** Switch to `0.0.0.0:8080` *and* supply a token file — `start_web_server` refuses to bind a non-loopback address without one, so you cannot accidentally expose a tokenless POST surface:
 
 ```bash
-mkdir -p ~/.litclock
-python3 -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.litclock/web.token
-chmod 640 ~/.litclock/web.token
-# edit ExecStart= to: ... --web-bind 0.0.0.0:8080 --web-token-file /home/pi/.litclock/web.token
-sudo systemctl daemon-reload && sudo systemctl restart litclock.service
+sudo install -m 640 -o pi -g pi /dev/null /var/lib/litclock/web.token
+python3 -c "import secrets; print(secrets.token_urlsafe(32))" | sudo tee /var/lib/litclock/web.token > /dev/null
+# edit /var/lib/litclock/config.toml to set:
+#   web_bind       = "0.0.0.0:8080"
+#   web_token_file = "/var/lib/litclock/web.token"
+sudo systemctl restart litclock.service
 ```
 
 Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-LitClock-Token: <the token>`. **Caveat:** the bundled `web/` UI does not currently attach that header — it was built for the loopback-no-auth path — so on a LAN+token bind the page loads and reads cleanly but the action buttons and overrides-save will come back as `401 missing or invalid token`. Until the UI grows a token field, the working options for a LAN+token deployment are:
@@ -417,11 +479,22 @@ Once manual render and display tests work on the Pi:
 
 ```bash
 cd ~/LitClock
+
+# Stage the unit file and the config it references. The unit declares
+# StateDirectory=litclock, which auto-creates /var/lib/litclock on service
+# start — but we need the config file in place BEFORE the first start
+# (the sample unit passes --config %S/litclock/config.toml exclusively,
+# and a missing --config path is a hard error by design).
 sudo cp litclock.service.example /etc/systemd/system/litclock.service
-sudoedit /etc/systemd/system/litclock.service
+sudoedit /etc/systemd/system/litclock.service    # fix User= / WorkingDirectory= / ExecStart= paths
+
+sudo install -d -o pi -g pi -m 0750 /var/lib/litclock
+sudo install -o pi -g pi -m 0640 \
+    assets/config.toml.example /var/lib/litclock/config.toml
+sudoedit /var/lib/litclock/config.toml           # tune keys for this appliance
+
 sudo systemctl daemon-reload
-sudo systemctl enable litclock.service
-sudo systemctl start litclock.service
+sudo systemctl enable --now litclock.service
 sudo systemctl status litclock.service
 ```
 
@@ -429,7 +502,12 @@ Before enabling the service, update these fields to match the actual account and
 
 - `User=`
 - `WorkingDirectory=`
-- `ExecStart=`
+- `ExecStart=` (the path to `run_clock.py` and to the config file)
+
+Day-to-day tuning after this — theme, quiet hours, web UI, startup
+image, etc. — is a `sudoedit /var/lib/litclock/config.toml` +
+`systemctl restart`. No `daemon-reload` because the unit file itself
+doesn't change.
 
 If another display service is already running, disable it first so LitClock owns the panel.
 

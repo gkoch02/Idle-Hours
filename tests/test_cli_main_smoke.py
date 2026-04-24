@@ -204,3 +204,45 @@ class TestRunClockOnce:
         assert result.returncode == 0, f"run_clock --once failed: {result.stderr}"
         assert out.exists(), "--once did not produce a frame"
         assert out.stat().st_size > 0, "--once produced an empty PNG"
+
+    def test_once_with_config_file(self, tmp_path):
+        """``--config`` plus ``--once`` must produce a frame end-to-end.
+
+        Pins the integration seam: the TOML loads, argparse defaults are
+        seeded, and the render subprocess inherits the config-derived
+        theme/mode.
+        """
+        out = tmp_path / "frame.png"
+        cfg = tmp_path / "litclock.toml"
+        cfg.write_text(
+            'mode = "production"\n'
+            'theme = "dark"\n'
+            'history_path = ""\n'
+            'state_path = ""\n'
+            'telemetry_path = ""\n'
+            "quiet_off = true\n",
+            encoding="utf-8",
+        )
+        result = _run([
+            "run_clock.py",
+            "--config", str(cfg),
+            "--once",
+            "--output", str(out),
+        ])
+        assert result.returncode == 0, f"run_clock --config --once failed: {result.stderr}"
+        assert out.exists(), "--config --once did not produce a frame"
+        assert out.stat().st_size > 0, "--config --once produced an empty PNG"
+
+    def test_once_with_missing_config_fails_fast(self, tmp_path):
+        """Typoed --config path must exit 1, not silently boot with defaults."""
+        result = _run([
+            "run_clock.py",
+            "--config", str(tmp_path / "does_not_exist.toml"),
+            "--once",
+            "--output", str(tmp_path / "frame.png"),
+            "--quiet-off",
+        ])
+        assert result.returncode == 1, (
+            f"expected exit 1 for missing --config path, got {result.returncode}"
+        )
+        assert "does not exist" in result.stderr
