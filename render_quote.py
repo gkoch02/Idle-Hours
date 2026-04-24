@@ -144,6 +144,100 @@ META_FONT_BOLD_CANDIDATES = [
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
 ]
 
+# Per-theme font candidate chains. Each role (``quote_regular``, ``quote_bold``,
+# ``ornament``) resolves through the usual fallback chain; entries may be a
+# plain path string or a ``(path, variation_name)`` tuple for variable fonts
+# (``load_font`` calls ``set_variation_by_name`` after loading). The Playfair
+# chain stays the default for ``default`` / ``dark`` so those goldens don't
+# drift; the three operator-choice themes each pick a face that matches the
+# visual vibe:
+#
+# * ``scholar`` → EB Garamond (classical humanist serif, academic / journal
+#   register). Uses one variable font with SemiBold / Bold axis picks.
+# * ``newsprint`` → Old Standard TT (vintage broadsheet / scientific-journal
+#   Didone-flavoured serif, pairs with the monochrome ink aesthetic).
+# * ``nightvision`` → Space Mono (retro-terminal mono that stays legible on
+#   eInk at the layout's font sizes; DejaVu Sans Mono falls back when Space
+#   Mono isn't installed).
+#
+# When the requested face isn't on disk, each chain ends at the Playfair /
+# DejaVu defaults so a missing-fonts install still renders rather than
+# bitmap-fallbacking.
+EBGARAMOND_VARIABLE = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Variable.ttf")
+OLDSTANDARD_REGULAR = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Regular.ttf")
+OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
+SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
+SPACEMONO_BOLD = str(BASE_DIR / "fonts/space-mono/SpaceMono-Bold.ttf")
+
+THEME_FONTS: dict[str, dict[str, list]] = {
+    "default": {
+        "quote_regular": QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        "quote_bold": QUOTE_FONT_BOLD_CANDIDATES,
+        "ornament": ORNAMENT_FONT_CANDIDATES,
+    },
+    "dark": {
+        "quote_regular": QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        "quote_bold": QUOTE_FONT_BOLD_CANDIDATES,
+        "ornament": ORNAMENT_FONT_CANDIDATES,
+    },
+    "scholar": {
+        "quote_regular": [
+            (EBGARAMOND_VARIABLE, "SemiBold"),
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (EBGARAMOND_VARIABLE, "Bold"),
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (EBGARAMOND_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "newsprint": {
+        "quote_regular": [
+            OLDSTANDARD_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            OLDSTANDARD_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            OLDSTANDARD_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "nightvision": {
+        "quote_regular": [
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+}
+
+
+def theme_font_candidates(theme: str, role: str) -> list:
+    """Return the candidate chain for ``role`` under ``theme``.
+
+    Unknown themes fall back to the ``default`` entry so a forgotten
+    ``THEME_FONTS`` registration still renders (with the default face) rather
+    than raising KeyError deep inside the layout engine.
+    """
+    fonts = THEME_FONTS.get(theme) or THEME_FONTS["default"]
+    return fonts.get(role) or THEME_FONTS["default"][role]
+
 LAYOUTS = {
     "hero": {
         "max_width": 640,
@@ -242,14 +336,35 @@ def pick_quote(time_str: str, history_path: str | None = None, history_days: int
     )
 
 
-def load_font(candidates: list[str], size: int):
+def load_font(candidates: list, size: int):
+    """Load the first reachable TrueType font in ``candidates``.
+
+    Each entry is either a plain path string or a ``(path, variation_name)``
+    tuple. When the tuple form is used and the face is a variable font,
+    ``set_variation_by_name`` selects the named instance (e.g. ``"Bold"``) —
+    this is how per-theme weight picks for the bundled EB Garamond variable
+    font work. A variation name that the file doesn't expose falls through to
+    the default instance silently; the next fallback candidate only fires if
+    the file itself is missing or unreadable.
+    """
     global _FONT_FALLBACK_WARNED
     for candidate in candidates:
-        if Path(candidate).exists():
+        if isinstance(candidate, tuple):
+            path, variation = candidate
+        else:
+            path, variation = candidate, None
+        if not Path(path).exists():
+            continue
+        try:
+            font = ImageFont.truetype(path, size=size)
+        except OSError:
+            continue
+        if variation:
             try:
-                return ImageFont.truetype(candidate, size=size)
-            except OSError:
-                continue
+                font.set_variation_by_name(variation)
+            except (OSError, ValueError, AttributeError):
+                pass
+        return font
     if not _FONT_FALLBACK_WARNED:
         print(
             "warning: no TrueType font found; falling back to PIL bitmap default. "
@@ -391,18 +506,20 @@ def wrap_text(draw, text, font, max_width):
     return lines
 
 
-def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min, line_height_mult):
+def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min, line_height_mult, theme: str = "default"):
     segments = tokenize_quote(text, match_text)
+    regular_candidates = theme_font_candidates(theme, "quote_regular")
+    bold_candidates = theme_font_candidates(theme, "quote_bold")
     for size in range(font_max, font_min - 1, -2):
-        regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=size)
-        bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=size)
+        regular_font = load_font(regular_candidates, size=size)
+        bold_font = load_font(bold_candidates, size=size)
         wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
         line_height = int(size * line_height_mult)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
             return regular_font, bold_font, wrapped, line_height, size
-    regular_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=font_min)
-    bold_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=font_min)
+    regular_font = load_font(regular_candidates, size=font_min)
+    bold_font = load_font(bold_candidates, size=font_min)
     wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult), font_min
 
@@ -496,10 +613,10 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     matched_text = normalize_dashes(strip_underscore_emphasis(matched_text))
 
     label_font = load_font(META_FONT_CANDIDATES, size=18)
-    title_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=44)
-    author_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=28)
+    title_font = load_font(theme_font_candidates(theme, "quote_bold"), size=44)
+    author_font = load_font(theme_font_candidates(theme, "quote_regular"), size=28)
     id_font = load_font(META_FONT_CANDIDATES, size=18)
-    phrase_font = load_font(QUOTE_FONT_BOLD_CANDIDATES, size=28)
+    phrase_font = load_font(theme_font_candidates(theme, "quote_bold"), size=28)
 
     max_text_width = width - 2 * SIDE_MARGIN - 40
     title_lines = wrap_text(draw, title_text, title_font, max_text_width)[:3]
@@ -571,12 +688,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         layout["font_max"],
         layout["font_min"],
         layout["line_height_mult"],
+        theme=theme,
     )
     quote_block_height = len(wrapped_quote) * line_height
     author_size = max(13, int(chosen_size * 0.52))
     source_size = max(13, int(chosen_size * 0.47))
-    attribution_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=author_size)
-    attribution_title_font = load_font(QUOTE_FONT_SEMIBOLD_CANDIDATES, size=source_size)
+    attribution_font = load_font(theme_font_candidates(theme, "quote_regular"), size=author_size)
+    attribution_title_font = load_font(theme_font_candidates(theme, "quote_regular"), size=source_size)
 
     author_text = quote_row.get("author") or None
     title_text = quote_row.get("title") or fallback_title(quote_row)
@@ -599,7 +717,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     show_debug = mode == "debug"
 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
-    mark_font = load_font(ORNAMENT_FONT_CANDIDATES, size=mark_size)
+    mark_font = load_font(theme_font_candidates(theme, "ornament"), size=mark_size)
 
     open_bb = draw.textbbox((0, 0), "“", font=mark_font)
     open_h = open_bb[3] - open_bb[1]

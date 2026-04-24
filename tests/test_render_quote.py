@@ -301,6 +301,86 @@ class TestLoadFontFallback:
         rq.load_font(["/nope/three.ttf"], size=24)
         assert capsys.readouterr().err == ""
 
+    def test_variation_tuple_candidate_loads(self):
+        """``load_font`` accepts ``(path, variation_name)`` tuples for variable
+        fonts and applies the named instance. The EB Garamond file bundled for
+        the ``scholar`` theme is a variable font with a ``Bold`` instance; the
+        Bold-variation glyphs must render visibly wider than the default."""
+        variable_path = Path(rq.BASE_DIR) / "fonts" / "eb-garamond" / "EBGaramond-Variable.ttf"
+        if not variable_path.exists():
+            pytest.skip("EB Garamond variable font not bundled")
+        regular = rq.load_font([str(variable_path)], size=60)
+        bold = rq.load_font([(str(variable_path), "Bold")], size=60)
+        img = Image.new("RGB", (400, 120), "white")
+        draw = ImageDraw.Draw(img)
+        rbbox = draw.textbbox((0, 0), "Bold", font=regular)
+        bbbox = draw.textbbox((0, 0), "Bold", font=bold)
+        # Bold instance must make the glyphs visibly wider; if the variation
+        # silently fell through, both widths would be identical.
+        assert (bbbox[2] - bbbox[0]) > (rbbox[2] - rbbox[0])
+
+    def test_variation_tuple_missing_file_falls_through(self, monkeypatch, capsys):
+        """A missing file referenced in a variation tuple falls through to the
+        next candidate, exactly like a bare-path candidate would."""
+        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
+        # First candidate is a tuple pointing at a missing file; second is a
+        # plain path to a real system font that exists on the CI image.
+        font = rq.load_font(
+            [("/nope/variable.ttf", "Bold"), "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"],
+            size=24,
+        )
+        # Should have loaded DejaVu without emitting the warning.
+        assert font is not None
+        assert "no TrueType font found" not in capsys.readouterr().err
+
+
+class TestThemeFonts:
+    """THEME_FONTS is the source of truth for per-theme typography. Every
+    ``THEMES`` entry needs a matching ``THEME_FONTS`` entry with the full
+    role set; otherwise ``render`` or ``render_source_card`` would KeyError
+    at display time."""
+
+    REQUIRED_ROLES = {"quote_regular", "quote_bold", "ornament"}
+
+    def test_every_theme_has_a_font_mapping(self):
+        for name in rq.THEMES:
+            assert name in rq.THEME_FONTS, f"theme {name!r} missing from THEME_FONTS"
+
+    def test_every_theme_font_entry_has_required_roles(self):
+        for name, roles in rq.THEME_FONTS.items():
+            assert self.REQUIRED_ROLES <= set(roles.keys()), (
+                f"theme {name!r} font map missing roles: {self.REQUIRED_ROLES - set(roles.keys())}"
+            )
+
+    def test_every_theme_role_has_at_least_one_candidate(self):
+        for name, roles in rq.THEME_FONTS.items():
+            for role, candidates in roles.items():
+                assert candidates, f"{name}.{role} candidate list is empty"
+
+    def test_new_themes_pick_distinct_primary_faces(self):
+        """The three operator-choice themes each bundle a distinct typeface —
+        a regression that made any of them alias to Playfair would defeat the
+        whole point of adding per-theme fonts."""
+        def primary(name: str, role: str) -> str:
+            entry = rq.THEME_FONTS[name][role][0]
+            return entry[0] if isinstance(entry, tuple) else entry
+        scholar_primary = primary("scholar", "quote_regular")
+        newsprint_primary = primary("newsprint", "quote_regular")
+        nightvision_primary = primary("nightvision", "quote_regular")
+        default_primary = primary("default", "quote_regular")
+        assert scholar_primary != default_primary
+        assert newsprint_primary != default_primary
+        assert nightvision_primary != default_primary
+        # And distinct from each other.
+        primaries = {scholar_primary, newsprint_primary, nightvision_primary}
+        assert len(primaries) == 3, f"new themes share a primary font: {primaries}"
+
+    def test_theme_font_candidates_falls_back_for_unknown_theme(self):
+        """An unregistered theme silently resolves to the default chain so a
+        typo in a config file doesn't crash the render path."""
+        unknown = rq.theme_font_candidates("does_not_exist", "quote_regular")
+        assert unknown == rq.theme_font_candidates("default", "quote_regular")
+
 
 # (TestResolveDisplayMatch extensions moved into the existing class above.)
 

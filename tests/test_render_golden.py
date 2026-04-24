@@ -209,6 +209,47 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "default",
     },
+    # The three operator-choice themes each use a distinct bundled typeface
+    # (EB Garamond / Old Standard TT / Space Mono). The golden pins both the
+    # colour palette (already covered by the field-set / palette tests) AND
+    # the font choice — a regression that reverted any of these back to the
+    # default Playfair chain would flip thousands of glyph pixels and blow
+    # past ``MAX_DIFF_RATIO``. Standard layout is chosen because it exercises
+    # both wrap-line and bold-phrase glyph rendering, which is where font
+    # drift shows up most visibly.
+    {
+        "name": "standard_scholar_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "scholar",
+    },
+    {
+        "name": "standard_newsprint_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "newsprint",
+    },
+    {
+        "name": "standard_nightvision_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "nightvision",
+    },
 ]
 
 
