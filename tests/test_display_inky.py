@@ -94,7 +94,15 @@ class TestThemeSaturation:
 
     @pytest.mark.parametrize(
         "theme",
-        ["scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus"],
+        [
+            "scholar",
+            "newsprint",
+            "nightvision",
+            "blueprint",
+            "illuminated",
+            "bauhaus",
+            "risograph",
+        ],
     )
     def test_new_themes_have_saturation_entries(self, theme):
         """Every theme registered in ``render_quote.THEMES`` must have a

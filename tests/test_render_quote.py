@@ -366,7 +366,15 @@ class TestThemeFonts:
         def primary(name: str, role: str) -> str:
             entry = rq.THEME_FONTS[name][role][0]
             return entry[0] if isinstance(entry, tuple) else entry
-        operator_choice = ("scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus")
+        operator_choice = (
+            "scholar",
+            "newsprint",
+            "nightvision",
+            "blueprint",
+            "illuminated",
+            "bauhaus",
+            "risograph",
+        )
         default_primary = primary("default", "quote_regular")
         primaries = {name: primary(name, "quote_regular") for name in operator_choice}
         for name, face in primaries.items():
@@ -470,7 +478,15 @@ class TestThemes:
         """Keep the operator-choice themes discoverable by name so a typo in
         the THEMES dict or THEME_ORDER tuple fails the test rather than
         ghosting downstream."""
-        for name in ("scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus"):
+        for name in (
+            "scholar",
+            "newsprint",
+            "nightvision",
+            "blueprint",
+            "illuminated",
+            "bauhaus",
+            "risograph",
+        ):
             assert name in rq.THEMES, name
             assert name in rq.THEME_ORDER, name
 
@@ -542,6 +558,22 @@ class TestThemes:
         assert t["accent"] == rq.SPECTRA6["blue"]
         assert t["ornament_dark"] == rq.SPECTRA6["red"]
 
+    def test_risograph_theme_uses_no_black_ink(self):
+        """The defining constraint of the risograph aesthetic is
+        two-colour printing with NO black plate. Pin "no black anywhere"
+        as an explicit invariant so a well-meaning refactor (e.g. making
+        the source credit more legible by darkening it) doesn't silently
+        re-introduce black and collapse the theme into a tinted
+        ``default``."""
+        t = rq.THEMES["risograph"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["red"]
+        assert t["accent"] == rq.SPECTRA6["blue"]
+        # Every colour field must avoid black — this is the theme's
+        # whole point.
+        for field, value in t.items():
+            assert value != rq.SPECTRA6["black"], f"risograph.{field} is black"
+
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):
         """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
         ornament_light over the page background. If BOTH ornament colours
@@ -593,7 +625,15 @@ class TestRender:
 
     @pytest.mark.parametrize(
         "theme",
-        ["scholar", "newsprint", "nightvision", "blueprint", "illuminated", "bauhaus"],
+        [
+            "scholar",
+            "newsprint",
+            "nightvision",
+            "blueprint",
+            "illuminated",
+            "bauhaus",
+            "risograph",
+        ],
     )
     def test_render_new_themes_smoke(self, theme):
         """Each new theme must produce a correctly-sized frame without

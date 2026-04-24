@@ -42,6 +42,11 @@ THEME_SATURATION: dict[str, float] = {
     # Light background stays at the gentler 0.5 saturation so the red
     # ornament marks don't bloom into orange next to the crisp black body.
     "bauhaus": 0.5,
+    # Risograph — red body + blue overprint, no black anywhere. Push
+    # saturation up so the two spot colours stay crisp and don't
+    # desaturate on the panel (there's no black neighbour to "anchor"
+    # the perceived chroma of the primaries here).
+    "risograph": 0.7,
 }
 
 

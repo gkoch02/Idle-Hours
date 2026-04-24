@@ -39,6 +39,7 @@ THEME_ORDER: tuple[str, ...] = (
     "blueprint",
     "illuminated",
     "bauhaus",
+    "risograph",
 )
 THEMES = {
     "default": {
@@ -146,6 +147,24 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Risograph / zine two-colour print. Red body text, blue "overprint"
+    # on the matched time phrase, zero black ink anywhere — that "no
+    # black" constraint is the whole point of the riso aesthetic, and
+    # the only other theme that comes close (``illuminated``) still
+    # uses black for the fine quote-mark stipple. Here ornament_dark
+    # stays on a primary (blue) so the big curly marks carry the
+    # second-colour overprint texture. Rubik (chunky rounded geometric
+    # sans) gives the zine / indie-print register.
+    "risograph": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["red"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["red"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -237,6 +256,12 @@ META_FONT_BOLD_CANDIDATES = [
 #   with Regular / Bold axis picks (same pattern as Bitter for scholar);
 #   a missing ``set_variation_by_name`` would render at the axis-default
 #   weight (Regular).
+# * ``risograph`` → Rubik (chunky rounded modern sans). Rubik's soft
+#   corners sit visually distinct from both blueprint's Archivo
+#   (grotesque, sharper terminals) and bauhaus's Jost (thinner,
+#   neo-grotesque geometric), so the three sans-based themes stay
+#   differentiable on the panel. Ships as a variable font; axis default
+#   is Light (300) so the Regular / Bold instances are pinned explicitly.
 #
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
@@ -252,6 +277,7 @@ EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
 EBGARAMOND_BOLD = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Bold.ttf")
 UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
 JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
+RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -395,6 +421,36 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "risograph": {
+        # Rubik's variable-font axis minimum is Light (weight 300) — the
+        # file's default instance is Light, NOT Regular — so a missing
+        # set_variation_by_name call would render body text noticeably
+        # too thin. Pin Regular / Bold explicitly on every candidate.
+        # Shares the sans fallback chain with blueprint / bauhaus so
+        # missing-font installs still land on a sans before degrading to
+        # the Playfair serif default.
+        "quote_regular": [
+            (RUBIK_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (RUBIK_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (RUBIK_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
