@@ -713,6 +713,418 @@ class TestRender:
         assert img.size == (800, 480)
 
 
+class TestBauhausBorder:
+    """The bauhaus theme is the only theme that paints a decorative border.
+
+    A regression that drops ``draw_bauhaus_border`` from ``render`` — or
+    changes the corner-shape colours — would otherwise pass
+    ``test_render_new_themes_smoke`` (correct image size, palette snap) and
+    the dict-level palette tests silently. Pin the actual painted pixels
+    so the border can't silently vanish.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_bauhaus_corner_accents_paint_primary_colours(self):
+        """Four corner shapes, each sitting at the canvas corner with a
+        small edge margin. The centre of each shape is a reliable sample
+        point: it lands inside the shape regardless of whether it's a
+        circle, square, or right-triangle."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="bauhaus")
+        # Corner shapes are 22px at a 6px canvas-edge margin; centre near
+        # (17, 17) / (783, 17) / (17, 463) / (783, 463).
+        assert img.getpixel((15, 15)) == rq.SPECTRA6["red"], "top-left should be red circle"
+        assert img.getpixel((785, 15)) == rq.SPECTRA6["blue"], "top-right should be blue square"
+        assert img.getpixel((15, 465)) == rq.SPECTRA6["blue"], "bottom-left should be blue triangle"
+        assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "bottom-right should be red circle"
+
+    def test_bauhaus_outer_frame_is_painted_on_all_four_sides(self):
+        """The outer rectangle outline is the structural element the corner
+        accents anchor to. Sample a point on each side, well clear of the
+        corner shapes, to verify all four sides rendered."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="bauhaus")
+        assert img.getpixel((400, 14)) == rq.SPECTRA6["black"], "top frame line missing"
+        assert img.getpixel((400, 465)) == rq.SPECTRA6["black"], "bottom frame line missing"
+        assert img.getpixel((14, 240)) == rq.SPECTRA6["black"], "left frame line missing"
+        assert img.getpixel((785, 240)) == rq.SPECTRA6["black"], "right frame line missing"
+
+    def test_bauhaus_border_is_theme_gated(self):
+        """Bauhaus's geometric corner accents must not appear on other
+        themes. Sample (15, 15), which lands inside the bauhaus top-left
+        red circle. Excluded themes: illuminated (its TL jewel at radius
+        5 centred on (14, 14) also covers this pixel) — both bauhaus and
+        illuminated paint here, so (15, 15) can only distinguish
+        bauhaus from every theme whose margin is empty there."""
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "blueprint", "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((15, 15)) == expected_bg, (
+                f"theme {theme} painted something at (15, 15); expected page_bg={expected_bg}"
+            )
+
+    def test_bauhaus_border_appears_in_debug_and_card_modes_too(self):
+        """The border is part of the bauhaus theme's visual identity, so
+        it must show up regardless of render mode — production, debug,
+        and the source-card overlay all get the same frame."""
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="bauhaus")
+            assert img.getpixel((15, 15)) == rq.SPECTRA6["red"], f"bauhaus mode={mode} missing TL corner"
+
+    def test_bauhaus_border_uses_theme_colours_not_hardcoded_rgb(self):
+        """``draw_bauhaus_border`` must pull its colours from the passed-in
+        theme dict (text/accent/ornament_dark). A refactor that hardcoded
+        specific RGB triples would survive the current palette tests but
+        break the contract that lets a future bauhaus palette tweak flow
+        through the border automatically. Call the helper directly with
+        a non-default colour set and assert the output reflects it."""
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {
+            "text": rq.SPECTRA6["green"],
+            "accent": rq.SPECTRA6["yellow"],
+            "ornament_dark": rq.SPECTRA6["blue"],
+        }
+        rq.draw_bauhaus_border(image, custom)
+        assert image.getpixel((15, 15)) == rq.SPECTRA6["blue"], "TL should use ornament_dark"
+        assert image.getpixel((785, 15)) == rq.SPECTRA6["yellow"], "TR should use accent"
+        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "frame should use text colour"
+
+
+class TestIlluminatedBorder:
+    """The illuminated theme paints a manuscript-style border.
+
+    Double rubricated (red) rule — outer and inner concentric rectangles
+    — plus a small blue "jewel" (filled circle) centred on each outer
+    corner, evoking the lapis cabochons inset into medieval
+    illuminated pages. Regression tests here pin the painted pixels,
+    complementing the golden-image suite.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_illuminated_double_rule_paints_both_rules_in_body_red(self):
+        """Outer rule at y=14, inner rule at y=22, page_bg gap between."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
+        assert img.getpixel((400, 14)) == rq.SPECTRA6["red"], "outer rule missing"
+        assert img.getpixel((400, 22)) == rq.SPECTRA6["red"], "inner rule missing"
+        # White gap between the two — the defining "doubled" effect.
+        assert img.getpixel((400, 18)) == rq.SPECTRA6["white"], "rules merged into single band"
+
+    def test_illuminated_corner_jewels_paint_accent_blue(self):
+        """Filled blue circles of radius 5 centred on each outer-rule corner."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
+        assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], "TL jewel centre missing"
+        assert img.getpixel((785, 14)) == rq.SPECTRA6["blue"], "TR jewel centre missing"
+        assert img.getpixel((14, 465)) == rq.SPECTRA6["blue"], "BL jewel centre missing"
+        assert img.getpixel((785, 465)) == rq.SPECTRA6["blue"], "BR jewel centre missing"
+
+    def test_illuminated_border_paints_all_four_sides(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
+        # Outer rule, mid-side samples (away from the jewels).
+        assert img.getpixel((400, 14)) == rq.SPECTRA6["red"], "top outer rule missing"
+        assert img.getpixel((400, 465)) == rq.SPECTRA6["red"], "bottom outer rule missing"
+        assert img.getpixel((14, 240)) == rq.SPECTRA6["red"], "left outer rule missing"
+        assert img.getpixel((785, 240)) == rq.SPECTRA6["red"], "right outer rule missing"
+
+    def test_illuminated_border_is_theme_gated(self):
+        """Sample (400, 22) — inner rule pixel — which is unique to
+        illuminated; no other border theme places a rule at inset 22."""
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "blueprint", "bauhaus", "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((400, 22)) == expected_bg, (
+                f"theme {theme} painted at inner-rule y=22; expected page_bg={expected_bg}"
+            )
+
+    def test_illuminated_border_appears_in_debug_and_card_modes_too(self):
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="illuminated")
+            assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], f"illuminated mode={mode} missing TL jewel"
+
+    def test_illuminated_border_uses_theme_colours_not_hardcoded_rgb(self):
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {"text": rq.SPECTRA6["green"], "accent": rq.SPECTRA6["yellow"]}
+        rq.draw_illuminated_border(image, custom)
+        assert image.getpixel((14, 14)) == rq.SPECTRA6["yellow"], "jewel should use accent"
+        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "outer rule should use text"
+        assert image.getpixel((400, 22)) == rq.SPECTRA6["green"], "inner rule should use text"
+
+
+class TestNewsprintBorder:
+    """The newsprint theme paints a Scotch-rule border.
+
+    Thick-thin parallel rules — a heavier outer rectangle and a hairline
+    inner rectangle separated by a narrow page_bg band. No corner
+    accents, no colour (newsprint is a no-colour-accent theme). The
+    restraint is the point: newspaper typography lives entirely in ink
+    weight, not chromatic contrast.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_newsprint_outer_rule_is_three_pixels_thick(self):
+        """The outer rule is intentionally weighted so the thick/thin
+        contrast against the hairline inner rule reads clearly. A
+        regression that dropped the ``width=3`` argument would collapse
+        the border into a single hairline band."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="newsprint")
+        for dy in range(3):
+            assert img.getpixel((400, 10 + dy)) == rq.SPECTRA6["black"], (
+                f"outer rule row {10 + dy} missing — thick weight regressed"
+            )
+        # Pixel just below the thick band is page_bg (white).
+        assert img.getpixel((400, 13)) == rq.SPECTRA6["white"], "outer rule over-painted"
+
+    def test_newsprint_inner_hairline_is_one_pixel_and_has_gap_above(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="newsprint")
+        assert img.getpixel((400, 18)) == rq.SPECTRA6["black"], "inner hairline missing"
+        assert img.getpixel((400, 17)) == rq.SPECTRA6["white"], "inner rule merged with thick band"
+        assert img.getpixel((400, 19)) == rq.SPECTRA6["white"], "inner rule thickened"
+
+    def test_newsprint_border_paints_all_four_sides(self):
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="newsprint")
+        assert img.getpixel((400, 11)) == rq.SPECTRA6["black"], "top outer rule missing"
+        assert img.getpixel((400, 468)) == rq.SPECTRA6["black"], "bottom outer rule missing"
+        assert img.getpixel((11, 240)) == rq.SPECTRA6["black"], "left outer rule missing"
+        assert img.getpixel((788, 240)) == rq.SPECTRA6["black"], "right outer rule missing"
+
+    def test_newsprint_border_is_theme_gated(self):
+        """Sample (400, 11) — mid-thick-band — against themes whose
+        page_bg is not black (so the page_bg check is meaningful). Dark
+        and nightvision share page_bg=black and would pass even if
+        this theme painted black there, so they're excluded."""
+        for theme in ("default", "scholar", "blueprint", "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((400, 11)) == expected_bg, (
+                f"theme {theme} painted at newsprint outer-rule y=11; expected page_bg={expected_bg}"
+            )
+
+    def test_newsprint_border_appears_in_debug_and_card_modes_too(self):
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="newsprint")
+            assert img.getpixel((400, 11)) == rq.SPECTRA6["black"], (
+                f"newsprint mode={mode} missing outer rule"
+            )
+
+    def test_newsprint_border_uses_theme_colour_not_hardcoded_rgb(self):
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {"text": rq.SPECTRA6["green"]}
+        rq.draw_newsprint_border(image, custom)
+        assert image.getpixel((400, 11)) == rq.SPECTRA6["green"], "outer rule should use text"
+        assert image.getpixel((400, 18)) == rq.SPECTRA6["green"], "inner rule should use text"
+
+
+class TestNightvisionBorder:
+    """The nightvision theme paints HUD-style corner brackets.
+
+    Four L-shaped brackets in the body green, with NO continuous outer
+    frame between them. The bracket-only composition is the signature
+    camera-viewfinder / weapons-HUD aesthetic; its absent full frame
+    visually distinguishes it from the bauhaus / blueprint / illuminated
+    / newsprint patterns which all paint a continuous rectangle.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_nightvision_corner_brackets_paint_body_green(self):
+        """Each bracket's corner point lands at (12, 12) / (787, 12) /
+        (12, 467) / (787, 467)."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="nightvision")
+        assert img.getpixel((12, 12)) == rq.SPECTRA6["green"], "TL bracket corner missing"
+        assert img.getpixel((787, 12)) == rq.SPECTRA6["green"], "TR bracket corner missing"
+        assert img.getpixel((12, 467)) == rq.SPECTRA6["green"], "BL bracket corner missing"
+        assert img.getpixel((787, 467)) == rq.SPECTRA6["green"], "BR bracket corner missing"
+
+    def test_nightvision_bracket_arms_are_two_pixels_thick(self):
+        """Each arm is a 2px-thick filled rectangle, not a hairline."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="nightvision")
+        # TL horizontal arm at y=12-13, x range 12 to 38.
+        assert img.getpixel((25, 12)) == rq.SPECTRA6["green"]
+        assert img.getpixel((25, 13)) == rq.SPECTRA6["green"]
+        assert img.getpixel((25, 14)) == rq.SPECTRA6["black"], "arm leaked past 2px thickness"
+        # TL vertical arm at x=12-13, y range 12 to 38.
+        assert img.getpixel((12, 25)) == rq.SPECTRA6["green"]
+        assert img.getpixel((13, 25)) == rq.SPECTRA6["green"]
+        assert img.getpixel((14, 25)) == rq.SPECTRA6["black"], "vertical arm leaked past 2px thickness"
+
+    def test_nightvision_has_no_continuous_outer_frame(self):
+        """The signature feature: mid-edge pixels must show the black
+        page_bg, not a connecting frame line. A regression that added
+        a full rectangle outline would collapse nightvision's HUD look
+        into another illuminated-style frame."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="nightvision")
+        assert img.getpixel((400, 12)) == rq.SPECTRA6["black"], "unexpected top frame line"
+        assert img.getpixel((400, 467)) == rq.SPECTRA6["black"], "unexpected bottom frame line"
+        assert img.getpixel((12, 240)) == rq.SPECTRA6["black"], "unexpected left frame line"
+        assert img.getpixel((787, 240)) == rq.SPECTRA6["black"], "unexpected right frame line"
+
+    def test_nightvision_border_is_theme_gated(self):
+        """Sample the TL bracket corner (12, 12). Several other border
+        themes *also* paint at this pixel — newsprint's outer thick rule
+        at inset 10 covers x=10-12 / y=10-12, bauhaus's TL red circle
+        overlaps it, and illuminated's TL jewel overlaps it — so we can
+        only use (12, 12) to distinguish nightvision from themes whose
+        margin is empty there. Skip the other border themes explicitly;
+        their own gating tests pin their distinctive pixels."""
+        for theme in ("default", "dark", "scholar", "blueprint",
+                      "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((12, 12)) == expected_bg, (
+                f"theme {theme} painted at nightvision bracket corner (12, 12); "
+                f"expected page_bg={expected_bg}"
+            )
+
+    def test_nightvision_border_appears_in_debug_and_card_modes_too(self):
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="nightvision")
+            assert img.getpixel((12, 12)) == rq.SPECTRA6["green"], (
+                f"nightvision mode={mode} missing TL bracket"
+            )
+
+    def test_nightvision_border_uses_theme_colour_not_hardcoded_rgb(self):
+        image = Image.new("RGB", (800, 480), color=(0, 0, 0))
+        custom = {"text": rq.SPECTRA6["yellow"]}
+        rq.draw_nightvision_border(image, custom)
+        assert image.getpixel((12, 12)) == rq.SPECTRA6["yellow"], "bracket should use text"
+
+
+class TestBlueprintBorder:
+    """The blueprint theme paints a drafting-sheet border.
+
+    Parallels ``TestBauhausBorder`` but locks the blueprint-specific
+    primitives: thin blue outer frame plus red crosshair registration
+    marks at each corner. A regression that dropped
+    ``draw_blueprint_border`` would pass every dict-level palette test
+    silently, so pin the painted pixels here.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_blueprint_corner_crosshairs_paint_accent_red(self):
+        """Four crosshair "+" marks centred on the frame corners at
+        ``(16, 16)`` / ``(783, 16)`` / ``(16, 463)`` / ``(783, 463)``.
+        The centre pixel is always on the mark; arm extents are ±8."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
+        assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], "TL crosshair centre missing"
+        assert img.getpixel((783, 16)) == rq.SPECTRA6["red"], "TR crosshair centre missing"
+        assert img.getpixel((16, 463)) == rq.SPECTRA6["red"], "BL crosshair centre missing"
+        assert img.getpixel((783, 463)) == rq.SPECTRA6["red"], "BR crosshair centre missing"
+
+    def test_blueprint_crosshair_arms_extend_both_directions(self):
+        """Each crosshair has four 8px arms (left/right/up/down from
+        centre). A regression that drew a single dot instead of a "+"
+        would pass the centre-pixel test but fail here."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
+        cx, cy = 16, 16
+        assert img.getpixel((cx - 6, cy)) == rq.SPECTRA6["red"], "TL left arm missing"
+        assert img.getpixel((cx + 6, cy)) == rq.SPECTRA6["red"], "TL right arm missing"
+        assert img.getpixel((cx, cy - 6)) == rq.SPECTRA6["red"], "TL up arm missing"
+        assert img.getpixel((cx, cy + 6)) == rq.SPECTRA6["red"], "TL down arm missing"
+
+    def test_blueprint_outer_frame_is_painted_in_body_blue(self):
+        """The outer rectangle outline is the structural anchor for the
+        crosshairs. Sample a point on each side well clear of the
+        corners, to verify all four sides of the frame rendered."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
+        assert img.getpixel((400, 16)) == rq.SPECTRA6["blue"], "top frame line missing"
+        assert img.getpixel((400, 463)) == rq.SPECTRA6["blue"], "bottom frame line missing"
+        assert img.getpixel((16, 240)) == rq.SPECTRA6["blue"], "left frame line missing"
+        assert img.getpixel((783, 240)) == rq.SPECTRA6["blue"], "right frame line missing"
+
+    def test_blueprint_border_is_theme_gated(self):
+        """Border is gated on theme == 'blueprint'; no other theme (including
+        bauhaus, which uses a different graphic at different coordinates)
+        should paint a crosshair arm at (6, 16)."""
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "illuminated", "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            # (6, 16) lands on the blueprint TL crosshair's leftmost arm
+            # pixel; other themes must leave it showing page_bg.
+            assert img.getpixel((6, 16)) == expected_bg, (
+                f"theme {theme} painted something at the blueprint crosshair location"
+            )
+
+    def test_blueprint_border_appears_in_debug_and_card_modes_too(self):
+        """The border is part of the blueprint theme's visual identity, so
+        it must show up regardless of render mode."""
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="blueprint")
+            assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], f"blueprint mode={mode} missing TL crosshair"
+
+    def test_blueprint_border_uses_theme_colours_not_hardcoded_rgb(self):
+        """``draw_blueprint_border`` must pull its colours from the passed-in
+        theme dict (text for the frame, accent for the crosshairs). Call
+        the helper with a non-default palette and assert the output
+        reflects it."""
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {
+            "text": rq.SPECTRA6["green"],
+            "accent": rq.SPECTRA6["yellow"],
+        }
+        rq.draw_blueprint_border(image, custom)
+        assert image.getpixel((16, 16)) == rq.SPECTRA6["yellow"], "crosshair should use accent"
+        assert image.getpixel((400, 16)) == rq.SPECTRA6["green"], "frame should use text colour"
+
+
 class TestRenderCard:
     """The button-C source card uses mode='card' to render a centered metadata frame."""
 

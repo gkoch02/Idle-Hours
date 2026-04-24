@@ -834,6 +834,289 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
                 px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
 
 
+def _paint_theme_border(image: Image.Image, theme: str, colors: dict) -> None:
+    """Dispatch to the decorative-border helper registered for ``theme``.
+
+    Kept as a single seam so ``render`` and ``render_source_card`` stay
+    in sync — adding a future theme border means registering it in
+    ``_BORDER_PAINTERS`` below and (if it paints in the top-right)
+    extending ``_DEBUG_LABEL_RIGHT_INSET``. No other render paths need
+    to change.
+    """
+    painter = _BORDER_PAINTERS.get(theme)
+    if painter is not None:
+        painter(image, colors)
+
+
+def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
+    """Paint a Bauhaus-inspired geometric frame around the canvas margin.
+
+    A thin outer rectangle plus four corner accents — circle, square,
+    triangle, circle — in the theme's three primaries (black body,
+    blue accent, red ornament). Referencing the classic Bauhaus
+    vocabulary of basic geometric forms in primary hues. Drawn after
+    the page_bg fill and before any text, so text always sits on top
+    of the border if the two were ever to overlap.
+
+    The corner shapes sit tangent to the canvas edges and overlap the
+    outer rectangle's corners, giving the "layered geometry" look of a
+    Bauhaus poster frame. Sized to stay well outside the quote block
+    (``SIDE_MARGIN + 18`` is the innermost text feature, and these
+    shapes don't reach past x=30).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_inset = 14
+    frame_color = colors["text"]
+    accent_color = colors["accent"]
+    ornament_color = colors["ornament_dark"]
+
+    # Outer rectangle outline — Pillow's rectangle ``width`` kw takes care
+    # of the thickness in a single draw call.
+    draw.rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        outline=frame_color,
+        width=2,
+    )
+
+    corner_size = 22
+    corner_margin = 6
+    # Top-left: red filled circle.
+    draw.ellipse(
+        (corner_margin, corner_margin,
+         corner_margin + corner_size, corner_margin + corner_size),
+        fill=ornament_color,
+    )
+    # Top-right: blue filled square.
+    draw.rectangle(
+        (width - corner_margin - corner_size, corner_margin,
+         width - corner_margin, corner_margin + corner_size),
+        fill=accent_color,
+    )
+    # Bottom-left: blue filled triangle. Right-angle at the bottom-left
+    # corner, hypotenuse sweeping up to the top-right of the bounding box,
+    # so the shape visually points inward toward the quote block.
+    bl_left = corner_margin
+    bl_top = height - corner_margin - corner_size
+    bl_right = corner_margin + corner_size
+    bl_bottom = height - corner_margin
+    draw.polygon(
+        [(bl_left, bl_bottom), (bl_right, bl_bottom), (bl_right, bl_top)],
+        fill=accent_color,
+    )
+    # Bottom-right: red filled circle, mirroring the top-left and completing
+    # the diagonal colour balance.
+    draw.ellipse(
+        (width - corner_margin - corner_size, height - corner_margin - corner_size,
+         width - corner_margin, height - corner_margin),
+        fill=ornament_color,
+    )
+
+
+def draw_blueprint_border(image: Image.Image, colors: dict) -> None:
+    """Paint a drafting-sheet border around the canvas margin.
+
+    A thin outer rectangle in the body-text blue plus four small red
+    crosshair "registration marks" centred on the frame corners — the
+    print-alignment tick used on engineering drawings and blueprints.
+    Parallels the bauhaus-border pattern (outer frame + four corner
+    graphics) but swaps filled geometric primitives for precision
+    linework so the margin reads as drafting-sheet rather than
+    poster-composition.
+
+    Drawn after the page_bg fill and before any text, so the quote
+    block sits on top of the border if they ever overlap (they don't —
+    the crosshairs stay at ~x<=24 and the quote block starts at
+    ``(width - layout["max_width"]) // 2`` ≈ 70 for standard layouts).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_inset = 16
+    frame_color = colors["text"]
+    mark_color = colors["accent"]
+
+    # Outer thin rectangle — 1px line in the blueprint body blue, like
+    # the printed border on a drafting sheet.
+    draw.rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Corner crosshair registration marks in the accent (dimension-mark)
+    # red. Each "+" is centred on the frame corner so the frame appears
+    # to pass through the centre of the mark, echoing how registration
+    # marks anchor sheet borders on real engineering drawings.
+    arm = 8
+    centres = [
+        (frame_inset, frame_inset),
+        (width - 1 - frame_inset, frame_inset),
+        (frame_inset, height - 1 - frame_inset),
+        (width - 1 - frame_inset, height - 1 - frame_inset),
+    ]
+    for cx, cy in centres:
+        draw.line((cx - arm, cy, cx + arm, cy), fill=mark_color, width=1)
+        draw.line((cx, cy - arm, cx, cy + arm), fill=mark_color, width=1)
+
+
+def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
+    """Paint a manuscript-style border around the canvas margin.
+
+    A double rubricated rule (two parallel thin red rectangles with a
+    narrow blank band between them) plus a small blue "jewel" — a
+    filled circle — centred on each outer corner. The double-rule is
+    the workhorse border of medieval illuminated manuscripts, and the
+    corner gem evokes the inset lapis cabochons that appear on rich
+    bindings and liturgical headpieces.
+
+    Parallels the ``draw_bauhaus_border`` / ``draw_blueprint_border``
+    structural pattern (outer frame + four corner graphics) but the
+    doubled rule + coloured jewel reads as scribal-margin rather than
+    poster-composition or drafting-sheet.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    body = colors["text"]       # rubricated red
+    accent = colors["accent"]   # lapis blue
+
+    outer_inset = 14
+    inner_inset = 22
+    # Outer rule.
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=body,
+        width=1,
+    )
+    # Inner rule — the "doubled" rubrication line.
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=body,
+        width=1,
+    )
+
+    jewel_radius = 5
+    centres = [
+        (outer_inset, outer_inset),
+        (width - 1 - outer_inset, outer_inset),
+        (outer_inset, height - 1 - outer_inset),
+        (width - 1 - outer_inset, height - 1 - outer_inset),
+    ]
+    for cx, cy in centres:
+        draw.ellipse(
+            (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
+            fill=accent,
+        )
+
+
+def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
+    """Paint a broadsheet-style Scotch-rule border around the canvas margin.
+
+    A classic thick-thin parallel rule: a heavier outer rectangle and a
+    hairline inner rectangle separated by a narrow band of white space.
+    This is the signature border of 19th-century newspaper typography —
+    the "Scotch rule" — and stays purely typographical: no corner
+    accents, no coloured ornament, nothing but weighted ink. That
+    restraint matches the newsprint theme's no-colour-accent palette
+    (every theme field is black or white), so the margin reads as
+    broadsheet rather than modernist poster.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    ink = colors["text"]
+
+    # Outer heavy rule.
+    outer_inset = 10
+    outer_weight = 3
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=ink,
+        width=outer_weight,
+    )
+    # Inner hairline rule, with a gap of white between the two.
+    inner_inset = 18
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=ink,
+        width=1,
+    )
+
+
+def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
+    """Paint HUD-style corner brackets around the canvas margin.
+
+    Four L-shaped brackets — two perpendicular green arms meeting at
+    each canvas corner, with no continuous outer frame. The bracket-
+    only composition is the iconic camera-viewfinder / weapons-HUD /
+    mission-monitor border motif; the absent full-rectangle frame is
+    the distinctive feature (full-frame HUDs are unusual), which sets
+    nightvision's border visually apart from the bauhaus / blueprint /
+    illuminated / newsprint patterns.
+
+    Drawn in the body green so brackets stay legible against the
+    theme's black page background without competing with the yellow
+    accent the matched time phrase already owns.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    bracket = colors["text"]  # green
+
+    margin = 12       # canvas-edge inset of the corner point
+    arm = 26          # length of each bracket arm
+    thickness = 2     # weight of the bracket strokes
+    right_x = width - 1 - margin
+    bottom_y = height - 1 - margin
+
+    # Each corner: one horizontal arm and one vertical arm, rendered
+    # as filled rectangles so the 2px thickness is exact regardless
+    # of Pillow's line-width rounding.
+    # Top-left
+    draw.rectangle((margin, margin, margin + arm, margin + thickness - 1), fill=bracket)
+    draw.rectangle((margin, margin, margin + thickness - 1, margin + arm), fill=bracket)
+    # Top-right
+    draw.rectangle((right_x - arm, margin, right_x, margin + thickness - 1), fill=bracket)
+    draw.rectangle((right_x - thickness + 1, margin, right_x, margin + arm), fill=bracket)
+    # Bottom-left
+    draw.rectangle((margin, bottom_y - thickness + 1, margin + arm, bottom_y), fill=bracket)
+    draw.rectangle((margin, bottom_y - arm, margin + thickness - 1, bottom_y), fill=bracket)
+    # Bottom-right
+    draw.rectangle((right_x - arm, bottom_y - thickness + 1, right_x, bottom_y), fill=bracket)
+    draw.rectangle((right_x - thickness + 1, bottom_y - arm, right_x, bottom_y), fill=bracket)
+
+
+# Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
+# — themes without a border entry paint nothing. Extend here when adding a new
+# theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
+# touches the top-right corner).
+_BORDER_PAINTERS = {
+    "bauhaus": draw_bauhaus_border,
+    "blueprint": draw_blueprint_border,
+    "illuminated": draw_illuminated_border,
+    "newsprint": draw_newsprint_border,
+    "nightvision": draw_nightvision_border,
+}
+
+# Themes whose decorative border paints a graphic in the top-right corner need
+# the debug-mode "DEBUG MODE" banner pushed inward past the graphic so the last
+# glyph isn't clipped. Measured from the right canvas edge past the graphic's
+# outer extent plus a small breathing gap. Keep in sync with the matching
+# ``draw_*_border`` helper — a missing entry for a TR-painting border will
+# silently clip the label; the ``test_debug_label_does_not_clip_border``
+# invariant catches that class of regression.
+#
+# Themes in ``_BORDER_PAINTERS`` *without* an entry here have a TR graphic
+# that sits outside the DEBUG MODE label's bounding rectangle by construction:
+#   - newsprint: Scotch rule's right side paints x=width-13 to width-11, leaving
+#     ~7px of clearance beyond the default label right edge (x=width-SIDE_MARGIN).
+#   - nightvision: HUD corner bracket's TR vertical arm paints x=width-13 to
+#     width-12 (y>=12), leaving ~7px of clearance; the horizontal arm sits at
+#     y=12-13, a row above the label's y=14 baseline.
+_DEBUG_LABEL_RIGHT_INSET = {
+    "bauhaus": 38,      # past the 6+22px TR filled square
+    "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
+    "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
+}
+
+
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
     snapped = Image.new("RGB", image.size)
     src = image.load()
@@ -887,6 +1170,7 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     """
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
     title_text = (quote_row.get("title") or fallback_title(quote_row) or "Unknown source").strip()
@@ -955,6 +1239,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_source_card(quote_row, width, height, theme=theme)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row["display_quote"]))
@@ -1090,7 +1375,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         debug_label = "DEBUG MODE"
         label_bbox = draw.textbbox((0, 0), debug_label, font=debug_label_font)
         label_w = label_bbox[2] - label_bbox[0]
-        label_x = width - SIDE_MARGIN - label_w
+        # Themes that paint a decorative top-right corner element push the
+        # debug label inward past the graphic so it isn't clipped. Keep in
+        # sync with the border helpers (``draw_bauhaus_border`` /
+        # ``draw_blueprint_border``) — inset is measured past the outer edge
+        # of the corner graphic with a small breathing gap.
+        label_right_inset = _DEBUG_LABEL_RIGHT_INSET.get(theme, SIDE_MARGIN)
+        label_x = width - label_right_inset - label_w
         label_y = 14
 
         draw_text(draw, (label_x, label_y), debug_label, font=debug_label_font, fill=colors["accent"])

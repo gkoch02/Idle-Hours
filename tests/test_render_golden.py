@@ -250,6 +250,73 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "nightvision",
     },
+    # The bauhaus theme is the only theme that paints a decorative border
+    # around the canvas margin (geometric corner accents + outer frame).
+    # Pinning a golden here catches any regression that silently drops
+    # ``draw_bauhaus_border`` or mis-positions the corner shapes — every
+    # such regression flips hundreds-to-thousands of pixels in the otherwise-
+    # blank margin strip.
+    {
+        "name": "standard_bauhaus_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "bauhaus",
+    },
+    # Blueprint paints a drafting-sheet border — thin blue outer rectangle
+    # plus red crosshair registration marks at each corner. Parallel
+    # reasoning to the bauhaus golden: catch a silent drop of
+    # ``draw_blueprint_border`` or a regression in crosshair placement.
+    {
+        "name": "standard_blueprint_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "blueprint",
+    },
+    # Illuminated paints a manuscript-style border — double red rubricated
+    # rule with a blue jewel at each outer corner. Pin the painted pixels
+    # so a regression that dropped ``draw_illuminated_border`` would flip
+    # thousands of margin pixels against the empty-margin baseline.
+    {
+        "name": "standard_illuminated_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "illuminated",
+    },
+    # Bauhaus in *debug* mode pins the ``_DEBUG_LABEL_RIGHT_INSET``
+    # contract — the TR blue square sits at x=width-28 to width-6, which
+    # would clip the default "DEBUG MODE" banner at x=width-SIDE_MARGIN.
+    # The inset entry shifts the label left by 18px; a regression that
+    # removed the inset would land the label back on top of the square
+    # and flip thousands of pixels here. Bauhaus is chosen because it
+    # has the most aggressive inset (38px); blueprint / illuminated
+    # insets are less load-bearing and their production goldens already
+    # catch graphic-placement regressions.
+    {
+        "name": "standard_bauhaus_debug",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "debug",
+        "theme": "bauhaus",
+    },
 ]
 
 
