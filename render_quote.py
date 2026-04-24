@@ -30,7 +30,7 @@ SPECTRA6_PALETTE = list(SPECTRA6.values())
 # Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
 # the cycle is stable regardless of dict-literal ordering in Python; every name
 # here must also appear as a key in ``THEMES`` below (enforced in tests).
-THEME_ORDER: tuple[str, ...] = ("default", "dark", "scholar", "newsprint", "nightvision")
+THEME_ORDER: tuple[str, ...] = ("default", "dark", "scholar", "newsprint", "nightvision", "blueprint")
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
@@ -88,6 +88,21 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["green"],
         "source": SPECTRA6["green"],
+    },
+    # Drafting / engineering blueprint. White paper, blue ink for the body
+    # text and ornaments, red for the matched time phrase (the "dimension
+    # mark" pulled out of the drawing). Sits visually distinct from
+    # ``scholar`` (also white/blue/red) thanks to the geometric Archivo
+    # sans-serif chosen in THEME_FONTS — same palette, different family.
+    "blueprint": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["blue"],
+        "subtle": SPECTRA6["blue"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["blue"],
     },
 }
 SIDE_MARGIN = 20
@@ -161,6 +176,11 @@ META_FONT_BOLD_CANDIDATES = [
 # * ``nightvision`` → Space Mono (retro-terminal mono that stays legible on
 #   eInk at the layout's font sizes; DejaVu Sans Mono falls back when Space
 #   Mono isn't installed).
+# * ``blueprint`` → Archivo (geometric grotesque sans-serif — the only
+#   pure-sans face in the lineup, so blueprint reads as a different *family*
+#   from scholar even though both share the white/blue/red palette).
+#   DejaVu Sans / Liberation Sans / Noto Sans fall back when Archivo isn't
+#   installed.
 #
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
@@ -170,6 +190,8 @@ OLDSTANDARD_REGULAR = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Regular.
 OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
 SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
 SPACEMONO_BOLD = str(BASE_DIR / "fonts/space-mono/SpaceMono-Bold.ttf")
+ARCHIVO_REGULAR = str(BASE_DIR / "fonts/archivo/Archivo-Regular.ttf")
+ARCHIVO_BOLD = str(BASE_DIR / "fonts/archivo/Archivo-Bold.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -232,6 +254,37 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             SPACEMONO_BOLD,
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "blueprint": {
+        # Archivo is the only pure sans-serif primary in the rotation. Falls
+        # back through the common Linux/Pi sans installs (DejaVu / Liberation
+        # / Noto) before degrading to the Playfair serif chain — the latter
+        # would clash with the blueprint vibe but at least keeps the panel
+        # readable on a mis-configured install.
+        "quote_regular": [
+            ARCHIVO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ARCHIVO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            ARCHIVO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },

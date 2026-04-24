@@ -31,6 +31,9 @@ THEME_SATURATION: dict[str, float] = {
     "scholar": 0.5,
     "newsprint": 0.5,
     "nightvision": 0.7,
+    # Light background, blue ink, red dimension marks — same gentle saturation
+    # as the other light themes so the red accent stays bright without bleeding.
+    "blueprint": 0.5,
 }
 
 

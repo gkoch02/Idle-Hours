@@ -360,22 +360,22 @@ class TestThemeFonts:
                 assert candidates, f"{name}.{role} candidate list is empty"
 
     def test_new_themes_pick_distinct_primary_faces(self):
-        """The three operator-choice themes each bundle a distinct typeface —
-        a regression that made any of them alias to Playfair would defeat the
+        """Each operator-choice theme bundles a distinct typeface — a
+        regression that made any of them alias to Playfair would defeat the
         whole point of adding per-theme fonts."""
         def primary(name: str, role: str) -> str:
             entry = rq.THEME_FONTS[name][role][0]
             return entry[0] if isinstance(entry, tuple) else entry
-        scholar_primary = primary("scholar", "quote_regular")
-        newsprint_primary = primary("newsprint", "quote_regular")
-        nightvision_primary = primary("nightvision", "quote_regular")
+        operator_choice = ("scholar", "newsprint", "nightvision", "blueprint")
         default_primary = primary("default", "quote_regular")
-        assert scholar_primary != default_primary
-        assert newsprint_primary != default_primary
-        assert nightvision_primary != default_primary
+        primaries = {name: primary(name, "quote_regular") for name in operator_choice}
+        for name, face in primaries.items():
+            assert face != default_primary, f"{name} aliases the default face"
         # And distinct from each other.
-        primaries = {scholar_primary, newsprint_primary, nightvision_primary}
-        assert len(primaries) == 3, f"new themes share a primary font: {primaries}"
+        unique = set(primaries.values())
+        assert len(unique) == len(operator_choice), (
+            f"operator-choice themes share primary fonts: {primaries}"
+        )
 
     def test_theme_font_candidates_falls_back_for_unknown_theme(self):
         """An unregistered theme silently resolves to the default chain so a
@@ -467,10 +467,10 @@ class TestThemes:
         assert set(rq.THEME_ORDER) == set(rq.THEMES.keys())
 
     def test_new_themes_registered(self):
-        """Keep the three new themes discoverable by name so a typo in the
-        THEMES dict or THEME_ORDER tuple fails the test rather than ghosting
-        downstream."""
-        for name in ("scholar", "newsprint", "nightvision"):
+        """Keep the operator-choice themes discoverable by name so a typo in
+        the THEMES dict or THEME_ORDER tuple fails the test rather than
+        ghosting downstream."""
+        for name in ("scholar", "newsprint", "nightvision", "blueprint"):
             assert name in rq.THEMES, name
             assert name in rq.THEME_ORDER, name
 
@@ -560,7 +560,7 @@ class TestRender:
         img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
         assert img.size == (800, 480)
 
-    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision", "blueprint"])
     def test_render_new_themes_smoke(self, theme):
         """Each new theme must produce a correctly-sized frame without
         crashing — catches missing dict keys, off-palette colours that
