@@ -150,12 +150,12 @@ THEMES = {
     },
     # Risograph / zine two-colour print. Red body text, blue "overprint"
     # on the matched time phrase, zero black ink anywhere — that "no
-    # black" constraint is the whole point of the riso aesthetic, and
-    # the only other theme that comes close (``illuminated``) still
-    # uses black for the fine quote-mark stipple. Here ornament_dark
-    # stays on a primary (blue) so the big curly marks carry the
-    # second-colour overprint texture. Rubik (chunky rounded geometric
-    # sans) gives the zine / indie-print register.
+    # black" constraint is the defining aesthetic of the riso theme,
+    # pinned explicitly as a test invariant so a well-meaning
+    # "darken the source credit" refactor can't silently erode it.
+    # ornament_dark stays on a primary (blue) so the big curly marks
+    # carry the second-colour overprint texture. Rubik (chunky rounded
+    # geometric sans) gives the zine / indie-print register.
     "risograph": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["red"],
@@ -242,8 +242,9 @@ META_FONT_BOLD_CANDIDATES = [
 # plain path string or a ``(path, variation_name)`` tuple for variable fonts
 # (``load_font`` calls ``set_variation_by_name`` after loading). The Playfair
 # chain stays the default for ``default`` / ``dark`` so those goldens don't
-# drift; the three operator-choice themes each pick a face that matches the
-# visual vibe:
+# drift; each of the eight operator-choice themes picks a face from a
+# different type family so the rendered frame's silhouette — not just the
+# palette — shifts with the theme:
 #
 # * ``scholar`` → Bitter (chunky slab serif — textbook / academic journal
 #   register; a different type *family* from the Playfair transitional serif,

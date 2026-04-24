@@ -31,26 +31,20 @@ THEME_SATURATION: dict[str, float] = {
     "scholar": 0.5,
     "newsprint": 0.5,
     "nightvision": 0.7,
-    # Light background, blue ink, red dimension marks — same gentle saturation
-    # as the other light themes so the red accent stays bright without bleeding.
+    # Light white-background themes inherit the default 0.5 starting point —
+    # same empirical tier as ``default`` / ``scholar`` / ``newsprint``. These
+    # defaults are sensible initial values and are easy to override at runtime
+    # via ``--saturation`` if real-panel calibration suggests otherwise.
     "blueprint": 0.5,
-    # Rubricated manuscript — red body text on white, lapis-blue accent.
-    # Light-background themes stay at 0.5 so the red body doesn't bloom into
-    # orange on the panel.
     "illuminated": 0.5,
-    # Bauhaus poster — white bg, black body, blue + red as the two accents.
-    # Light background stays at the gentler 0.5 saturation so the red
-    # ornament marks don't bloom into orange next to the crisp black body.
     "bauhaus": 0.5,
-    # Risograph — red body + blue overprint, no black anywhere. Push
-    # saturation up so the two spot colours stay crisp and don't
-    # desaturate on the panel (there's no black neighbour to "anchor"
-    # the perceived chroma of the primaries here).
+    # Non-standard grounds (``risograph`` has no black ink to anchor the
+    # two spot colours; ``comic`` has a high-chroma yellow ground rather
+    # than white) start at the 0.7 tier used by dark-background themes,
+    # on the reasoning that the accent hues need a little more push to
+    # stay visibly distinct from a non-white, non-black neighbour.
+    # Revisit once we have real-panel samples — `--saturation` overrides.
     "risograph": 0.7,
-    # Comic panel — yellow ground, black body, red accent. Spectra 6's
-    # flat yellow ink reads bright; push saturation up so the red
-    # sound-effect accent and the black body stay crisp against a
-    # non-white ground.
     "comic": 0.7,
 }
 
