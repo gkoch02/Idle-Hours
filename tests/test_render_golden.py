@@ -267,6 +267,21 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "bauhaus",
     },
+    # Blueprint paints a drafting-sheet border — thin blue outer rectangle
+    # plus red crosshair registration marks at each corner. Parallel
+    # reasoning to the bauhaus golden: catch a silent drop of
+    # ``draw_blueprint_border`` or a regression in crosshair placement.
+    {
+        "name": "standard_blueprint_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "blueprint",
+    },
 ]
 
 

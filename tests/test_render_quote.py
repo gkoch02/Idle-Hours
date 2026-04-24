@@ -759,13 +759,17 @@ class TestBauhausBorder:
         assert img.getpixel((14, 240)) == rq.SPECTRA6["black"], "left frame line missing"
         assert img.getpixel((785, 240)) == rq.SPECTRA6["black"], "right frame line missing"
 
-    def test_other_themes_do_not_paint_a_border(self):
-        """Border is gated on theme == 'bauhaus'; every other theme must
-        leave the canvas corner showing its page_bg, not a corner accent.
-        A regression that stopped gating would e.g. paint a red circle
-        over the dark theme's black background."""
+    def test_bauhaus_border_is_theme_gated(self):
+        """Bauhaus's geometric corner accents must not appear on other
+        themes. A regression that stopped gating would e.g. paint a red
+        circle over the dark theme's black page background. The specific
+        pixel (15, 15) lands inside the bauhaus top-left red circle;
+        sampling there on other themes must return the theme's page_bg
+        (no themes other than blueprint paint anything at that exact
+        pixel — blueprint paints crosshair arms centred at (16, 16),
+        and the arm horizontal extent covers y=16 but NOT y=15)."""
         for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
-                      "blueprint", "illuminated", "risograph", "comic"):
+                      "illuminated", "risograph", "comic"):
             img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((15, 15)) == expected_bg, (
@@ -798,6 +802,97 @@ class TestBauhausBorder:
         assert image.getpixel((15, 15)) == rq.SPECTRA6["blue"], "TL should use ornament_dark"
         assert image.getpixel((785, 15)) == rq.SPECTRA6["yellow"], "TR should use accent"
         assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "frame should use text colour"
+
+
+class TestBlueprintBorder:
+    """The blueprint theme paints a drafting-sheet border.
+
+    Parallels ``TestBauhausBorder`` but locks the blueprint-specific
+    primitives: thin blue outer frame plus red crosshair registration
+    marks at each corner. A regression that dropped
+    ``draw_blueprint_border`` would pass every dict-level palette test
+    silently, so pin the painted pixels here.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_blueprint_corner_crosshairs_paint_accent_red(self):
+        """Four crosshair "+" marks centred on the frame corners at
+        ``(16, 16)`` / ``(783, 16)`` / ``(16, 463)`` / ``(783, 463)``.
+        The centre pixel is always on the mark; arm extents are ±8."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
+        assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], "TL crosshair centre missing"
+        assert img.getpixel((783, 16)) == rq.SPECTRA6["red"], "TR crosshair centre missing"
+        assert img.getpixel((16, 463)) == rq.SPECTRA6["red"], "BL crosshair centre missing"
+        assert img.getpixel((783, 463)) == rq.SPECTRA6["red"], "BR crosshair centre missing"
+
+    def test_blueprint_crosshair_arms_extend_both_directions(self):
+        """Each crosshair has four 8px arms (left/right/up/down from
+        centre). A regression that drew a single dot instead of a "+"
+        would pass the centre-pixel test but fail here."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
+        cx, cy = 16, 16
+        assert img.getpixel((cx - 6, cy)) == rq.SPECTRA6["red"], "TL left arm missing"
+        assert img.getpixel((cx + 6, cy)) == rq.SPECTRA6["red"], "TL right arm missing"
+        assert img.getpixel((cx, cy - 6)) == rq.SPECTRA6["red"], "TL up arm missing"
+        assert img.getpixel((cx, cy + 6)) == rq.SPECTRA6["red"], "TL down arm missing"
+
+    def test_blueprint_outer_frame_is_painted_in_body_blue(self):
+        """The outer rectangle outline is the structural anchor for the
+        crosshairs. Sample a point on each side well clear of the
+        corners, to verify all four sides of the frame rendered."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
+        assert img.getpixel((400, 16)) == rq.SPECTRA6["blue"], "top frame line missing"
+        assert img.getpixel((400, 463)) == rq.SPECTRA6["blue"], "bottom frame line missing"
+        assert img.getpixel((16, 240)) == rq.SPECTRA6["blue"], "left frame line missing"
+        assert img.getpixel((783, 240)) == rq.SPECTRA6["blue"], "right frame line missing"
+
+    def test_blueprint_border_is_theme_gated(self):
+        """Border is gated on theme == 'blueprint'; no other theme (including
+        bauhaus, which uses a different graphic at different coordinates)
+        should paint a crosshair arm at (6, 16)."""
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "illuminated", "risograph", "comic"):
+            img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            # (6, 16) lands on the blueprint TL crosshair's leftmost arm
+            # pixel; other themes must leave it showing page_bg.
+            assert img.getpixel((6, 16)) == expected_bg, (
+                f"theme {theme} painted something at the blueprint crosshair location"
+            )
+
+    def test_blueprint_border_appears_in_debug_and_card_modes_too(self):
+        """The border is part of the blueprint theme's visual identity, so
+        it must show up regardless of render mode."""
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="blueprint")
+            assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], f"blueprint mode={mode} missing TL crosshair"
+
+    def test_blueprint_border_uses_theme_colours_not_hardcoded_rgb(self):
+        """``draw_blueprint_border`` must pull its colours from the passed-in
+        theme dict (text for the frame, accent for the crosshairs). Call
+        the helper with a non-default palette and assert the output
+        reflects it."""
+        from PIL import Image
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {
+            "text": rq.SPECTRA6["green"],
+            "accent": rq.SPECTRA6["yellow"],
+        }
+        rq.draw_blueprint_border(image, custom)
+        assert image.getpixel((16, 16)) == rq.SPECTRA6["yellow"], "crosshair should use accent"
+        assert image.getpixel((400, 16)) == rq.SPECTRA6["green"], "frame should use text colour"
 
 
 class TestRenderCard:

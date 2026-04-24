@@ -184,6 +184,15 @@ THEMES = {
     },
 }
 SIDE_MARGIN = 20
+# Themes whose decorative border paints a graphic in the top-right corner
+# need the debug-mode "DEBUG MODE" banner pushed inward past the graphic
+# so the last glyph isn't clipped. Measured from the right canvas edge
+# past the graphic's outer extent plus a small breathing gap. Keep in
+# sync with the theme's ``draw_*_border`` helper.
+_DEBUG_LABEL_RIGHT_INSET = {
+    "bauhaus": 38,    # past the 6+22px TR filled square
+    "blueprint": 34,  # past the TR crosshair arm (frame at 16 + 8px arm)
+}
 
 QUOTE_FONT_REGULAR_CANDIDATES = [
     str(BASE_DIR / "fonts/PlayfairDisplay-Regular.ttf"),
@@ -899,6 +908,52 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+def draw_blueprint_border(image: Image.Image, colors: dict) -> None:
+    """Paint a drafting-sheet border around the canvas margin.
+
+    A thin outer rectangle in the body-text blue plus four small red
+    crosshair "registration marks" centred on the frame corners — the
+    print-alignment tick used on engineering drawings and blueprints.
+    Parallels the bauhaus-border pattern (outer frame + four corner
+    graphics) but swaps filled geometric primitives for precision
+    linework so the margin reads as drafting-sheet rather than
+    poster-composition.
+
+    Drawn after the page_bg fill and before any text, so the quote
+    block sits on top of the border if they ever overlap (they don't —
+    the crosshairs stay at ~x<=24 and the quote block starts at
+    ``(width - layout["max_width"]) // 2`` ≈ 70 for standard layouts).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_inset = 16
+    frame_color = colors["text"]
+    mark_color = colors["accent"]
+
+    # Outer thin rectangle — 1px line in the blueprint body blue, like
+    # the printed border on a drafting sheet.
+    draw.rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Corner crosshair registration marks in the accent (dimension-mark)
+    # red. Each "+" is centred on the frame corner so the frame appears
+    # to pass through the centre of the mark, echoing how registration
+    # marks anchor sheet borders on real engineering drawings.
+    arm = 8
+    centres = [
+        (frame_inset, frame_inset),
+        (width - 1 - frame_inset, frame_inset),
+        (frame_inset, height - 1 - frame_inset),
+        (width - 1 - frame_inset, height - 1 - frame_inset),
+    ]
+    for cx, cy in centres:
+        draw.line((cx - arm, cy, cx + arm, cy), fill=mark_color, width=1)
+        draw.line((cx, cy - arm, cx, cy + arm), fill=mark_color, width=1)
+
+
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
     snapped = Image.new("RGB", image.size)
     src = image.load()
@@ -954,6 +1009,8 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     if theme == "bauhaus":
         draw_bauhaus_border(image, colors)
+    elif theme == "blueprint":
+        draw_blueprint_border(image, colors)
     draw = ImageDraw.Draw(image)
 
     title_text = (quote_row.get("title") or fallback_title(quote_row) or "Unknown source").strip()
@@ -1024,6 +1081,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     if theme == "bauhaus":
         draw_bauhaus_border(image, colors)
+    elif theme == "blueprint":
+        draw_blueprint_border(image, colors)
     draw = ImageDraw.Draw(image)
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row["display_quote"]))
@@ -1159,9 +1218,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         debug_label = "DEBUG MODE"
         label_bbox = draw.textbbox((0, 0), debug_label, font=debug_label_font)
         label_w = label_bbox[2] - label_bbox[0]
-        # The bauhaus theme paints a corner accent in the top-right; shift the
-        # debug label left past it so the text isn't clipped by the square.
-        label_right_inset = 38 if theme == "bauhaus" else SIDE_MARGIN
+        # Themes that paint a decorative top-right corner element push the
+        # debug label inward past the graphic so it isn't clipped. Keep in
+        # sync with the border helpers (``draw_bauhaus_border`` /
+        # ``draw_blueprint_border``) — inset is measured past the outer edge
+        # of the corner graphic with a small breathing gap.
+        label_right_inset = _DEBUG_LABEL_RIGHT_INSET.get(theme, SIDE_MARGIN)
         label_x = width - label_right_inset - label_w
         label_y = 14
 
