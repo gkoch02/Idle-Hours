@@ -25,8 +25,9 @@ is something the codebase is fine without but would be cleaner with.
   dropping the fallback entirely — if `render_quote` can't be imported
   the appliance is broken in ways the fallback can't paper over).
 
-- **`--theme auto` is binary (default/dark only).** The three operator
-  themes (`scholar`, `newsprint`, `nightvision`) can't be
+- **`--theme auto` is binary (default/dark only).** The eight operator
+  themes (`scholar`, `newsprint`, `nightvision`, `blueprint`,
+  `illuminated`, `bauhaus`, `risograph`, `comic`) can't be
   wall-clock-derived. If we ever want an `auto-scholar` / "light theme
   rotation" feature, `auto_theme_for` would need to grow a preference
   table — likely gated on a new `--auto-day-theme` / `--auto-night-theme`

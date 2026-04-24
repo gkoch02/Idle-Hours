@@ -182,21 +182,26 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Five themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
+Ten themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
 
-| `--theme`     | Preview | Page bg | Body text | Accent  | Typeface        | Feel                                   |
-|---------------|---------|---------|-----------|---------|-----------------|----------------------------------------|
-| `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">     | white   | black     | red     | Playfair Display | Classic broadsheet                     |
-| `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">        | black   | white     | yellow  | Playfair Display | Night mode                             |
-| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">     | white   | blue      | red     | Bitter (slab)    | Academic textbook / journal            |
-| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">   | white   | black     | (none)  | Old Standard TT  | Pure typography — bold-weight accent   |
-| `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Space Mono       | Retro terminal / Apollo-era monitor    |
+| `--theme`     | Preview | Page bg | Body text | Accent  | Typeface         | Feel                                          |
+|---------------|---------|---------|-----------|---------|------------------|-----------------------------------------------|
+| `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">         | white   | black     | red     | Playfair Display | Classic broadsheet                            |
+| `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">               | black   | white     | yellow  | Playfair Display | Night mode                                    |
+| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">         | white   | blue      | red     | Bitter (slab)    | Academic textbook / journal                   |
+| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">     | white   | black     | (none)  | Old Standard TT  | Pure typography — bold-weight accent          |
+| `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Space Mono       | Retro terminal / Apollo-era monitor           |
+| `blueprint`   | <img src="assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | white   | blue      | red     | Archivo (sans)   | Drafting blueprint / engineering sheet        |
+| `illuminated` | <img src="assets/previews/illuminated.png" width="240" alt="illuminated theme preview"> | white   | red       | blue    | EB Garamond + UnifrakturMaguntia | Rubricated medieval manuscript  |
+| `bauhaus`     | <img src="assets/previews/bauhaus.png" width="240" alt="bauhaus theme preview">         | white   | black     | blue (+ red ornaments) | Jost (geometric sans) | Bauhaus poster — three primaries at once |
+| `risograph`   | <img src="assets/previews/risograph.png" width="240" alt="risograph theme preview">     | white   | red       | blue    | Rubik (rounded sans) | Zine / two-colour riso — no black plate   |
+| `comic`       | <img src="assets/previews/comic.png" width="240" alt="comic theme preview">             | yellow  | black     | red     | Bangers (comic)  | Golden-age comic panel                        |
 
-Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 18:00 and 06:00, `default` otherwise. `auto` is deliberately binary; the three "operator-choice" themes are never auto-selected. A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover.
+Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 18:00 and 06:00, `default` otherwise. `auto` is deliberately binary; the eight "operator-choice" themes (`scholar`, `newsprint`, `nightvision`, `blueprint`, `illuminated`, `bauhaus`, `risograph`, `comic`) are never auto-selected. A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover.
 
 Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` mode.
 
-> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row. They're checked in so the README renders on GitHub without a build step. All four bundled OFL typefaces ship under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono) so the previews are reproducible without any system-font install.
+> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row (see the generator block in the Testing section). They're checked in so the README renders on GitHub without a build step. Every bundled OFL typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers) so the previews are reproducible without any system-font install.
 
 ### Inky buttons (short and long press)
 
@@ -205,7 +210,7 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 | Button | Short press | Long press (2s) |
 |---|---|---|
 | **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
-| **B** | Cycle theme — advances through `default → dark → scholar → newsprint → nightvision` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
+| **B** | Cycle theme — advances through `default → dark → scholar → newsprint → nightvision → blueprint → illuminated → bauhaus → risograph → comic` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
 | **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
 | **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the goodnight frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
@@ -533,7 +538,7 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
 - Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
 - Button B cycles through the full theme list and persists the choice to `--state-path`; the web UI dropdown jumps directly to any named theme. Button A's long press reverses the most recent skip.
-- Five themes ship built-in: `default` (white/black/red), `dark` (black/white/yellow), `scholar` (white/blue/red), `newsprint` (white/black, no colour accent — bold-weight differentiation only), and `nightvision` (black/green/yellow retro-terminal). Every theme colour stays on the Spectra 6 palette.
+- Ten themes ship built-in: `default` (white/black/red), `dark` (black/white/yellow), `scholar` (white/blue/red slab serif), `newsprint` (white/black, no colour accent — bold-weight differentiation only), `nightvision` (black/green/yellow retro-terminal), `blueprint` (white/blue/red geometric sans — drafting aesthetic), `illuminated` (white/red/blue rubricated manuscript serif + blackletter ornaments), `bauhaus` (white/black/blue + red ornaments — three primaries at once, geometric sans), `risograph` (white/red/blue, zero black ink — zine two-colour print), and `comic` (yellow ground / black body / red accent — comic-book display face). Every theme colour stays on the Spectra 6 palette.
 - `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B / web override wins until the next midnight rollover.
 - Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
 - Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
