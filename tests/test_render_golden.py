@@ -282,6 +282,21 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "blueprint",
     },
+    # Illuminated paints a manuscript-style border — double red rubricated
+    # rule with a blue jewel at each outer corner. Pin the painted pixels
+    # so a regression that dropped ``draw_illuminated_border`` would flip
+    # thousands of margin pixels against the empty-margin baseline.
+    {
+        "name": "standard_illuminated_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "illuminated",
+    },
 ]
 
 
