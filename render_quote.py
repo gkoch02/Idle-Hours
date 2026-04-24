@@ -152,8 +152,10 @@ META_FONT_BOLD_CANDIDATES = [
 # drift; the three operator-choice themes each pick a face that matches the
 # visual vibe:
 #
-# * ``scholar`` → EB Garamond (classical humanist serif, academic / journal
-#   register). Uses one variable font with SemiBold / Bold axis picks.
+# * ``scholar`` → Bitter (chunky slab serif — textbook / academic journal
+#   register; a different type *family* from the Playfair transitional serif,
+#   so the theme reads as more than just a recoloured default). Uses one
+#   variable font with Regular / Bold axis picks.
 # * ``newsprint`` → Old Standard TT (vintage broadsheet / scientific-journal
 #   Didone-flavoured serif, pairs with the monochrome ink aesthetic).
 # * ``nightvision`` → Space Mono (retro-terminal mono that stays legible on
@@ -163,7 +165,7 @@ META_FONT_BOLD_CANDIDATES = [
 # When the requested face isn't on disk, each chain ends at the Playfair /
 # DejaVu defaults so a missing-fonts install still renders rather than
 # bitmap-fallbacking.
-EBGARAMOND_VARIABLE = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Variable.ttf")
+BITTER_VARIABLE = str(BASE_DIR / "fonts/bitter/Bitter-Variable.ttf")
 OLDSTANDARD_REGULAR = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Regular.ttf")
 OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
 SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
@@ -181,16 +183,24 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": ORNAMENT_FONT_CANDIDATES,
     },
     "scholar": {
+        # Bitter is a slab serif — the chunky, even-contrast silhouette sits
+        # visually far from both Playfair Display (default/dark — high-contrast
+        # transitional) and Old Standard TT (newsprint — Didone hairlines) so
+        # the scholar theme reads as a different type *family*, not just a
+        # recolour of the default. The variable font defaults to Thin weight
+        # (axis minimum is 100), so every variation candidate here sets the
+        # instance explicitly — a missing ``set_variation_by_name`` would
+        # produce near-invisible ghost strokes on the panel.
         "quote_regular": [
-            (EBGARAMOND_VARIABLE, "SemiBold"),
+            (BITTER_VARIABLE, "Regular"),
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            (EBGARAMOND_VARIABLE, "Bold"),
+            (BITTER_VARIABLE, "Bold"),
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
-            (EBGARAMOND_VARIABLE, "Bold"),
+            (BITTER_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -342,8 +352,10 @@ def load_font(candidates: list, size: int):
     Each entry is either a plain path string or a ``(path, variation_name)``
     tuple. When the tuple form is used and the face is a variable font,
     ``set_variation_by_name`` selects the named instance (e.g. ``"Bold"``) —
-    this is how per-theme weight picks for the bundled EB Garamond variable
-    font work. A variation name that the file doesn't expose falls through to
+    this is how per-theme weight picks for the bundled Bitter variable font
+    work (its default axis instance is Thin, so the variation is load-bearing
+    — a missed call would render near-invisible hairlines on the panel).
+    A variation name that the file doesn't expose falls through to
     the default instance silently; the next fallback candidate only fires if
     the file itself is missing or unreadable.
     """

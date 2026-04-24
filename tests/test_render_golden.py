@@ -210,7 +210,7 @@ SCENARIOS: list[dict] = [
         "theme": "default",
     },
     # The three operator-choice themes each use a distinct bundled typeface
-    # (EB Garamond / Old Standard TT / Space Mono). The golden pins both the
+    # (Bitter / Old Standard TT / Space Mono). The golden pins both the
     # colour palette (already covered by the field-set / palette tests) AND
     # the font choice — a regression that reverted any of these back to the
     # default Playfair chain would flip thousands of glyph pixels and blow

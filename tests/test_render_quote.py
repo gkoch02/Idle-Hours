@@ -303,12 +303,14 @@ class TestLoadFontFallback:
 
     def test_variation_tuple_candidate_loads(self):
         """``load_font`` accepts ``(path, variation_name)`` tuples for variable
-        fonts and applies the named instance. The EB Garamond file bundled for
-        the ``scholar`` theme is a variable font with a ``Bold`` instance; the
-        Bold-variation glyphs must render visibly wider than the default."""
-        variable_path = Path(rq.BASE_DIR) / "fonts" / "eb-garamond" / "EBGaramond-Variable.ttf"
+        fonts and applies the named instance. The Bitter file bundled for the
+        ``scholar`` theme is a variable font that defaults to Thin weight, so
+        the ``Bold`` variation must produce visibly wider glyphs than the
+        default — otherwise the variation call silently fell through and the
+        panel would render near-invisible hairlines."""
+        variable_path = Path(rq.BASE_DIR) / "fonts" / "bitter" / "Bitter-Variable.ttf"
         if not variable_path.exists():
-            pytest.skip("EB Garamond variable font not bundled")
+            pytest.skip("Bitter variable font not bundled")
         regular = rq.load_font([str(variable_path)], size=60)
         bold = rq.load_font([(str(variable_path), "Bold")], size=60)
         img = Image.new("RGB", (400, 120), "white")

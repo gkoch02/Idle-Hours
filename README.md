@@ -188,7 +188,7 @@ Five themes ship built-in, all constrained to the Spectra 6 panel palette (white
 |---------------|---------|---------|-----------|---------|-----------------|----------------------------------------|
 | `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">     | white   | black     | red     | Playfair Display | Classic broadsheet                     |
 | `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">        | black   | white     | yellow  | Playfair Display | Night mode                             |
-| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">     | white   | blue      | red     | EB Garamond      | Scholarly journal                      |
+| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">     | white   | blue      | red     | Bitter (slab)    | Academic textbook / journal            |
 | `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">   | white   | black     | (none)  | Old Standard TT  | Pure typography — bold-weight accent   |
 | `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Space Mono       | Retro terminal / Apollo-era monitor    |
 
@@ -196,7 +196,7 @@ Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 
 
 Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` mode.
 
-> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row. They're checked in so the README renders on GitHub without a build step. All five bundled OFL typefaces ship under `fonts/` (Playfair Display, EB Garamond, Old Standard TT, Space Mono) so the previews are reproducible without any system-font install.
+> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row. They're checked in so the README renders on GitHub without a build step. All four bundled OFL typefaces ship under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono) so the previews are reproducible without any system-font install.
 
 ### Inky buttons (short and long press)
 
