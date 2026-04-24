@@ -429,6 +429,25 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["green"]
         assert t["accent"] == rq.SPECTRA6["yellow"]
 
+    def test_every_theme_has_at_least_one_visible_ornament_colour(self):
+        """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
+        ornament_light over the page background. If BOTH ornament colours
+        equal ``page_bg``, every mask pixel disappears into the background
+        and the curly quotation marks are literally invisible. The existing
+        themes deliberately make one ornament colour match the background
+        (to produce the faux-gray half-density effect) and the other
+        contrast it; a future theme that accidentally sets BOTH to the bg
+        colour would render ornament-less — catch that class of bug here.
+        """
+        for name, fields in rq.THEMES.items():
+            bg = fields["page_bg"]
+            dark = fields["ornament_dark"]
+            light = fields["ornament_light"]
+            assert dark != bg or light != bg, (
+                f"{name}: both ornament colours equal page_bg={bg}, "
+                "so draw_faux_gray_text paints every pixel invisibly"
+            )
+
 
 class TestRender:
     def _quote_row(self, text="It was three o'clock in the afternoon.", matched="three o'clock"):

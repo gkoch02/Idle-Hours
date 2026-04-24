@@ -252,6 +252,22 @@ def action_theme(
                 state.theme_arg, time_str, previous_theme,
             )
             new_theme = target if target is not None else _next_theme(current)
+            # Guard against "Apply" on an unchanged dropdown selection. The
+            # web UI pre-selects the active theme, so clicking Apply without
+            # changing it would burn a 10–20 s Spectra 6 refresh. Worse, if
+            # ``manual_theme`` was ``None`` (auto mode) we'd silently set it
+            # to whatever the dropdown had pre-selected and pin auto off.
+            # Only applies to explicit targets — a button-B cycle call
+            # always advances, so ``target is None`` never trips this.
+            if target is not None and new_theme == current:
+                quote_id_noop = state.last_quote_id
+                noop_manual = state.manual_theme
+                _log(f"{label}: theme already {new_theme}, no-op (manual_theme={noop_manual!r})")
+                _emit_action(telemetry_path, "theme", label, ok=True)
+                return {
+                    "ok": True, "theme": new_theme, "previous": current,
+                    "noop": True, "quote_id": list(quote_id_noop) if quote_id_noop else None,
+                }
             state.manual_theme = new_theme
             quote_id = state.last_quote_id
         _log(f"{label}: theme {current} -> {new_theme}")

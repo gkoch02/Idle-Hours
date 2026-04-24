@@ -196,16 +196,30 @@ async function refreshThemes() {
   const select = $("theme-select");
   if (!select) return;
   const { ok, data } = await jsonFetch("/api/themes");
-  if (!ok || !data) return;
-  const prev = select.value;
-  const current = data.manual_theme || data.effective;
-  select.innerHTML = "";
-  for (const name of data.themes || []) {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name + (name === data.effective ? " (active)" : "");
-    if (name === (prev || current)) opt.selected = true;
-    select.appendChild(opt);
+  if (!ok || !data) {
+    // /api/themes failed — leave the existing dropdown untouched rather than
+    // wipe it. The user can still cycle via the button.
+    return;
+  }
+  // Don't rebuild the <select> while the user is interacting with it — a
+  // 30 s poll hitting mid-hover would reset the open state and could race
+  // a same-tick click against a freshly-rebuilt option. The pill ticker
+  // still updates below since it's decorative.
+  const isFocused = document.activeElement === select;
+  if (!isFocused) {
+    const prev = select.value;
+    const current = data.manual_theme || data.effective;
+    select.innerHTML = "";
+    for (const name of data.themes || []) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name + (name === data.effective ? " (active)" : "");
+      // prev wins so a just-picked-but-not-yet-applied selection survives
+      // the poll; falls back to the server's current value on first load
+      // when prev is empty.
+      if (name === (prev || current)) opt.selected = true;
+      select.appendChild(opt);
+    }
   }
   const pill = $("theme-current");
   if (pill) {

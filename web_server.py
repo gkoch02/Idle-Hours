@@ -501,6 +501,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
         rest of the UI. ``theme_arg`` / ``manual_theme`` / ``effective`` give
         the UI everything it needs to render the dropdown with the current
         value pre-selected without a second request.
+
+        State discipline: snapshot the three fields under ``state.lock`` and
+        release it *before* calling ``resolve_effective_theme``. That helper
+        imports ``render_quote`` lazily (to keep PIL off the import graph)
+        and holding the lock across a module import violates the lock
+        discipline in CLAUDE.md even though Python's import lock is
+        reentrant. The snapshot is a consistent-enough view: effective
+        resolution only uses wall time + the snapshotted values.
         """
         ctx = self._ctx()
         try:
@@ -513,9 +521,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         with ctx.state.lock:
             manual = ctx.state.manual_theme
             theme_arg = ctx.state.theme_arg
-            effective = ctx.state.last_effective_theme or run_clock.resolve_effective_theme(
-                theme_arg, now, manual,
-            )
+            last_effective = ctx.state.last_effective_theme
+        effective = last_effective or run_clock.resolve_effective_theme(theme_arg, now, manual)
         self._json(HTTPStatus.OK, {
             "themes": order,
             "theme_arg": theme_arg,

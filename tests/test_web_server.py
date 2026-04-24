@@ -586,6 +586,34 @@ class TestActionEndpointsLocking:
         with state.lock:
             assert state.manual_theme is None
 
+    def test_theme_post_without_body_cycles(self, live_server):
+        """POST /api/action/theme with no body / empty body must cycle to
+        the next theme — mirrors a physical button-B press. The action
+        endpoint accepts missing Content-Length, empty bodies, and `{}`
+        all as "cycle". Explicitly tests the missing-body branch that the
+        dropdown's Apply-flow doesn't exercise."""
+        server, state, args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+        with self._patch_render():
+            status, body = _post(server, "/api/action/theme")  # no payload at all
+        assert status == 200
+        data = _json_body(body)
+        assert data["ok"] is True
+        assert data["theme"] == "dark"  # default → dark is step 1 of THEME_ORDER
+        persisted = json.loads(Path(args.state_path).read_text())
+        assert persisted["manual_theme"] == "dark"
+
+    def test_theme_post_with_empty_dict_cycles(self, live_server):
+        """Same behaviour when the UI sends an empty JSON object."""
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+        with self._patch_render():
+            status, body = _post(server, "/api/action/theme", payload={})
+        assert status == 200
+        assert _json_body(body)["theme"] == "dark"
+
     def test_theme_post_with_non_string_theme_returns_400(self, live_server):
         """A numeric / list ``theme`` value must be rejected without any
         state mutation — defence in depth against a malformed client."""

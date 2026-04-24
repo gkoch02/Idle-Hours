@@ -779,6 +779,17 @@ class TestAutoTheme:
     def test_auto_theme_boundary_dusk_is_dark(self):
         assert run_clock.auto_theme_for("18:00") == "dark"
 
+    def test_auto_theme_returns_only_binary_values(self):
+        """``auto_theme_for`` deliberately resolves only to ``default`` or
+        ``dark`` — the other three registered themes (scholar, newsprint,
+        nightvision) are operator-choice, not wall-clock-derived. Pin the
+        contract so a well-meaning refactor doesn't start returning other
+        theme names from the time-of-day branch."""
+        for hour in range(24):
+            time_str = f"{hour:02d}:00"
+            result = run_clock.auto_theme_for(time_str)
+            assert result in ("default", "dark"), f"{time_str} -> {result}"
+
     def test_auto_theme_boundary_dawn_is_default(self):
         assert run_clock.auto_theme_for("06:00") == "default"
 
@@ -804,6 +815,28 @@ class TestResolveEffectiveTheme:
 
     def test_invalid_manual_override_ignored(self):
         assert run_clock.resolve_effective_theme("auto", "21:00", "garbage") == "dark"
+
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    def test_new_manual_themes_accepted_over_auto(self, theme):
+        """Every theme registered in ``render_quote.THEMES`` must be honoured
+        as a manual override, not silently stripped back to ``theme_arg``.
+        Before the widening this was hardcoded to ('default', 'dark'), so a
+        manual flip to ``scholar`` would fall through to ``auto_theme_for``
+        and revert on every tick — exactly the symptom that surfaced in
+        ``TestActionThemeCycle`` before ``resolve_effective_theme`` was
+        fixed. Pinning every new theme here catches the regression before
+        it lands in a render loop."""
+        assert run_clock.resolve_effective_theme("auto", "21:00", theme) == theme
+        assert run_clock.resolve_effective_theme("auto", "10:00", theme) == theme
+
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    def test_new_manual_themes_accepted_over_explicit_theme_arg(self, theme):
+        """Same widening, but when ``--theme`` was explicit (not ``auto``)
+        — the manual override must still win. A user running
+        ``--theme default`` who presses B until they reach ``scholar``
+        would otherwise revert to ``default`` on every render."""
+        assert run_clock.resolve_effective_theme("default", "10:00", theme) == theme
+        assert run_clock.resolve_effective_theme("dark", "21:00", theme) == theme
 
 
 class TestRuntimeStatePersistence:
@@ -2708,6 +2741,60 @@ class TestActionThemeCycle:
              patch("run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web")
         assert result["theme"] == rq.THEME_ORDER[0]
+
+    def test_target_equal_to_current_effective_is_noop(self, tmp_path):
+        """Clicking Apply on a dropdown that's already showing the active
+        theme must not burn a 10–20 s Spectra 6 refresh. The UI pre-selects
+        the active theme so this is the common case when the operator
+        wanted to adjust something else (e.g. verify the current pick)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_theme = "scholar"
+        state.last_effective_theme = "scholar"
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web", target="scholar")
+        assert result["ok"] is True
+        assert result["noop"] is True
+        assert result["theme"] == "scholar"
+        assert state.manual_theme == "scholar"  # unchanged
+        assert not mock_render.called
+
+    def test_target_equal_to_auto_resolved_preserves_auto_mode(self, tmp_path):
+        """Critical UX guarantee: if the user is running ``--theme auto``
+        (so ``manual_theme`` is ``None``) and the dropdown pre-selects the
+        auto-resolved theme, clicking Apply must NOT pin ``manual_theme``
+        to that value. Doing so would silently end auto mode until the
+        next midnight rollover. Instead, no-op and leave ``manual_theme``
+        ``None`` so auto continues to track the wall clock."""
+        args = self._args(tmp_path, theme="auto")
+        state = run_clock.RuntimeState("auto")
+        state.manual_theme = None
+        state.last_effective_theme = "default"  # auto-resolved daytime value
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="web", target="default")
+        assert result["ok"] is True
+        assert result["noop"] is True
+        assert state.manual_theme is None  # CRUCIAL — auto stays auto
+        assert not mock_render.called
+
+    def test_button_cycle_never_noops_even_on_single_theme_hypothetical(self, tmp_path):
+        """The button-B path passes ``target=None`` so the no-op guard
+        never fires — even a degenerate single-entry cycle would still
+        attempt to advance. Defends against a refactor that extends the
+        guard to the ``target is None`` branch and silently wedges button
+        B when the cycle length is 1."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_theme = "default"
+        state.last_effective_theme = "default"
+        with patch("run_clock._render_unlocked") as mock_render, \
+             patch("run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_theme(args, state, label="button B")
+        assert result["ok"] is True
+        assert result.get("noop") is not True
+        assert mock_render.called
 
     def test_cli_theme_choices_match_theme_order(self):
         """``run_clock.py --theme`` choices are duplicated from

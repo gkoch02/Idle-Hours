@@ -48,8 +48,14 @@ class RuntimeState:
         # long-press does a remove-last-entry that would otherwise race the main
         # loop's post-render append and silently drop it.
         self.ledger_lock = threading.Lock()
-        self.theme_arg = theme_arg            # CLI value ('default'/'dark'/'auto')
-        self.manual_theme: str | None = None  # set by button B until midnight
+        # CLI ``--theme`` value — any registered theme name in
+        # ``render_quote.THEMES`` (default/dark/scholar/newsprint/nightvision
+        # at the time of writing) or ``"auto"``. Stored verbatim; resolved
+        # to an effective render theme per-tick via ``resolve_effective_theme``.
+        self.theme_arg = theme_arg
+        # Button-B / web dropdown override, cleared at midnight when
+        # ``theme_arg == "auto"``. Any registered theme name or ``None``.
+        self.manual_theme: str | None = None
         self.manual_quiet = False             # toggled by button D
         self.last_bucket: str | None = None
         self.last_quote_id: tuple | None = None
