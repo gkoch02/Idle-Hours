@@ -341,3 +341,75 @@ class TestRunClockIntegration:
             f"assets/config.toml.example has keys not in CONFIG_SCHEMA: "
             f"{sorted(unknown)}"
         )
+
+
+class TestShippedDefaultsFile:
+    """``assets/config.toml.defaults`` is the faithful dump: every key set
+    to the argparse default. Copying it verbatim must be a no-op vs. no
+    --config at all, so operators who want an explicit, reviewable
+    reference can diff it against future upstream bumps.
+    """
+
+    def _defaults_path(self) -> Path:
+        return Path(__file__).resolve().parent.parent / "assets" / "config.toml.defaults"
+
+    def test_file_exists(self):
+        assert self._defaults_path().exists(), "missing assets/config.toml.defaults"
+
+    def test_loads_through_parse_args_without_warnings(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", str(self._defaults_path())])
+        run_clock.parse_args()
+        err = capsys.readouterr().err
+        # No warnings means no dropped keys, bad types, or stale entries.
+        assert err == "", (
+            f"defaults file produced warnings (stale schema?):\n{err}"
+        )
+
+    def test_values_match_argparse_defaults(self, monkeypatch):
+        """The whole point of this file: every value in it must equal
+        what argparse would have returned with no --config at all."""
+        # argparse namespace from no-config run
+        monkeypatch.setattr("sys.argv", ["run_clock.py"])
+        defaults_ns = run_clock.parse_args()
+
+        # argparse namespace from the defaults-file run
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", str(self._defaults_path())])
+        config_ns = run_clock.parse_args()
+
+        # Ignore ``config`` itself (None vs the file path) — everything
+        # else must match.
+        d_vars, c_vars = vars(defaults_ns), vars(config_ns)
+        for key in d_vars:
+            if key == "config":
+                continue
+            assert d_vars[key] == c_vars[key], (
+                f"defaults file diverged for {key!r}: "
+                f"argparse default={d_vars[key]!r}, config value={c_vars[key]!r}"
+            )
+
+    def test_covers_every_non_none_default(self):
+        """Every CONFIG_SCHEMA key whose argparse default is representable
+        in TOML (not ``None``) must appear in the file. ``None`` defaults
+        are commented out because TOML has no null literal, so they live
+        in the file as guidance but not as active keys."""
+        import tomllib
+        raw = tomllib.loads(self._defaults_path().read_text(encoding="utf-8"))
+
+        # Re-derive the "representable defaults" set from argparse itself.
+        import sys
+        saved = sys.argv
+        try:
+            sys.argv = ["run_clock.py"]
+            ns = run_clock.parse_args()
+        finally:
+            sys.argv = saved
+        ns_vars = vars(ns)
+        expected = {
+            key for key in runtime_config.CONFIG_SCHEMA
+            if ns_vars.get(key) is not None
+        }
+        missing = expected - set(raw.keys())
+        assert not missing, (
+            f"assets/config.toml.defaults missing schema keys with "
+            f"non-None argparse defaults: {sorted(missing)}"
+        )

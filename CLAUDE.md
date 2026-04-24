@@ -32,10 +32,11 @@ ruff check --fix .
 ### Runtime (render + optional display)
 
 ```bash
-# Recommended for appliance installs: point run_clock at a TOML config file.
-# See assets/config.toml.example for every supported key. CLI flags below
-# still work and override config values; absent keys fall back to argparse
-# defaults. The systemd unit uses this form exclusively.
+# Recommended: point run_clock at a TOML config file. Two ship in the repo:
+#   assets/config.toml.example  — appliance preset (production, /var/lib paths)
+#   assets/config.toml.defaults — every argparse default (copy-and-tweak ref)
+# CLI flags below still work and override config values; absent keys fall
+# back to argparse defaults. The systemd unit uses this form exclusively.
 python3 run_clock.py --config /var/lib/litclock/config.toml
 
 # One-shot render of the current wall-clock time to output/current.png
@@ -729,7 +730,8 @@ assets/contact-sheet.png           12×12 visual snapshot of every bucket's curr
 assets/selection_overrides.json    manual bans/boosts/per-bucket preferences (pick_quote default --overrides)
 assets/content_overrides.json      per-row content fixes (apply_content_overrides default --overrides)
 assets/goodnight.png               static dark-theme "good night" frame shown during quiet hours
-assets/config.toml.example         annotated example config for run_clock.py --config (every CONFIG_SCHEMA key documented inline)
+assets/config.toml.example         annotated example config for run_clock.py --config — appliance-oriented preset (production mode, auto theme, /var/lib paths, systemctl-poweroff)
+assets/config.toml.defaults        faithful dump of every argparse default. Copying verbatim is a no-op vs. no --config; diffable reference for deployments pinned to explicit values
 assets/preview.png                 README hero image
 tests/                             pytest suite — one module per script + conftest.py; tests/golden/renderer/*.png are committed PNG fixtures for the golden-image suite (regenerate with UPDATE_RENDER_GOLDEN=1)
 output/                            runtime render target (output/current.png); gitignored except .gitkeep

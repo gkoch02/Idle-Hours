@@ -100,25 +100,35 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-### Render once locally
+### Render once locally (smoke test)
+
+Zero-setup sanity check — renders one frame using argparse defaults and
+writes it to `output/current.png`:
 
 ```bash
 python3 run_clock.py --once
 ```
 
-### Config file (recommended for appliance installs)
+### Set up the config file
 
-For a long-running appliance you almost never want the slew of CLI flags
-below on the command line — move them into a TOML config and point
-`run_clock.py` at it once:
+Anything beyond that smoke test should use a TOML config file. The
+repo ships two of them:
+
+- **`assets/config.toml.example`** — opinionated appliance preset
+  (production mode, `auto` theme, `/var/lib/litclock/` paths,
+  `systemctl poweroff` shutdown). This is what `litclock.service.example`
+  expects; copy it verbatim for Pi deployments and tweak from there.
+- **`assets/config.toml.defaults`** — every key set to the value
+  `run_clock.py` would use with no `--config` at all. Copying this
+  verbatim is behaviourally a no-op; use it when you want an explicit,
+  reviewable reference you can check into your deployment repo and
+  diff against future upstream bumps.
 
 ```bash
-# Copy the annotated example and edit in place
-cp assets/config.toml.example ~/.litclock/config.toml
+# Dev machine: start from the defaults and tweak
+mkdir -p ~/.litclock
+cp assets/config.toml.defaults ~/.litclock/config.toml
 $EDITOR ~/.litclock/config.toml
-
-# Run the loop using that config
-python3 run_clock.py --config ~/.litclock/config.toml
 ```
 
 Every key maps 1:1 to an argparse `dest` (snake_case — `display_script`,
@@ -145,16 +155,29 @@ The shipped `litclock.service.example` passes `--config %S/litclock/config.toml`
 exclusively — so tuning the appliance is a file edit plus `systemctl
 restart`, no `daemon-reload` needed.
 
+### Run the clock loop
+
+Once your config is staged, this is the canonical command. It reads
+every runtime knob (render script, display push, theme, quiet hours,
+etc.) from the file:
+
+```bash
+python3 run_clock.py --config ~/.litclock/config.toml
+```
+
 ### Render once and push to the Inky display
+
+Same config, `--once` on top for a one-shot render-and-push (useful for
+cron / bring-up):
+
+```bash
+python3 run_clock.py --config ~/.litclock/config.toml --once
+```
+
+If you haven't staged a config yet, the equivalent ad-hoc CLI form is:
 
 ```bash
 python3 run_clock.py --once --display-script display_inky.py --mode production
-```
-
-### Run the full clock loop locally
-
-```bash
-python3 run_clock.py --display-script display_inky.py --mode production
 ```
 
 ### Themes

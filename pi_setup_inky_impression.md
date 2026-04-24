@@ -12,9 +12,17 @@ If your Pi already has the Pimoroni Inky stack working in a virtualenv, this is 
 source ~/.virtualenvs/pimoroni/bin/activate
 git clone git@github.com:gkoch02/LitClock.git
 cd LitClock
+
+# Smoke-test the render pipeline with argparse defaults — no config yet.
 python3 run_clock.py --once
 python3 display_inky.py output/current.png
-python3 run_clock.py --display-script display_inky.py
+
+# Stage a config (the appliance preset), then run the loop through it.
+# This matches what the systemd unit will do later.
+sudo install -d -o "$USER" -g "$USER" -m 0750 /var/lib/litclock
+sudo install -o "$USER" -g "$USER" -m 0640 \
+    assets/config.toml.example /var/lib/litclock/config.toml
+python3 run_clock.py --config /var/lib/litclock/config.toml
 ```
 
 This works from the prebuilt runtime assets already committed in the repo:
