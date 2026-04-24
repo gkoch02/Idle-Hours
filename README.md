@@ -182,21 +182,21 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Five themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Previews all show the same quote so the palette differences are the only variable — the real renders adapt layout to the picked line's length.
+Five themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
 
-| `--theme`     | Preview | Page bg | Body text | Accent  | Feel                                   |
-|---------------|---------|---------|-----------|---------|----------------------------------------|
-| `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">     | white   | black     | red     | Classic broadsheet                     |
-| `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">        | black   | white     | yellow  | Night mode                             |
-| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">     | white   | blue      | red     | Scholarly journal                      |
-| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">   | white   | black     | (none)  | Pure typography — bold-weight accent   |
-| `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Retro terminal / Apollo-era monitor    |
+| `--theme`     | Preview | Page bg | Body text | Accent  | Typeface        | Feel                                   |
+|---------------|---------|---------|-----------|---------|-----------------|----------------------------------------|
+| `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">     | white   | black     | red     | Playfair Display | Classic broadsheet                     |
+| `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">        | black   | white     | yellow  | Playfair Display | Night mode                             |
+| `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">     | white   | blue      | red     | EB Garamond      | Scholarly journal                      |
+| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">   | white   | black     | (none)  | Old Standard TT  | Pure typography — bold-weight accent   |
+| `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Space Mono       | Retro terminal / Apollo-era monitor    |
 
 Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 18:00 and 06:00, `default` otherwise. `auto` is deliberately binary; the three "operator-choice" themes are never auto-selected. A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover.
 
 Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` mode.
 
-> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row. They're checked in so the README renders on GitHub without a build step.
+> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row. They're checked in so the README renders on GitHub without a build step. All five bundled OFL typefaces ship under `fonts/` (Playfair Display, EB Garamond, Old Standard TT, Space Mono) so the previews are reproducible without any system-font install.
 
 ### Inky buttons (short and long press)
 
