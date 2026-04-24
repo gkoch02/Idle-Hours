@@ -36,6 +36,37 @@ from runtime_state import RuntimeState
 from runtime_theme import resolve_effective_theme
 
 
+def _theme_cycle() -> tuple[str, ...]:
+    """Return the cycle order for button-B / web theme advancement.
+
+    Resolved lazily against ``render_quote.THEME_ORDER`` so this module keeps
+    its PIL-free import graph. Falls back to the original binary pair if
+    ``render_quote`` is unavailable, matching ``runtime_state._known_theme_names``.
+    """
+    try:
+        from render_quote import THEME_ORDER
+    except Exception:
+        return ("default", "dark")
+    return tuple(THEME_ORDER)
+
+
+def _next_theme(current: str) -> str:
+    """Return the next theme in the cycle after ``current``.
+
+    If ``current`` is outside the cycle (e.g. a persisted theme that a newer
+    build dropped), restart at the first entry so the user is never stranded
+    on an unrecognised value.
+    """
+    order = _theme_cycle()
+    if not order:
+        return current
+    try:
+        idx = order.index(current)
+    except ValueError:
+        return order[0]
+    return order[(idx + 1) % len(order)]
+
+
 @contextlib.contextmanager
 def _button_render_gate(
     state: RuntimeState,
@@ -171,16 +202,28 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
             return {"ok": False, "error": repr(exc)}
 
 
-def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Toggle default ↔ dark, re-render, persist to ``--state-path`` on success.
+def action_theme(
+    args: argparse.Namespace,
+    state: RuntimeState,
+    *,
+    label: str = "web",
+    target: str | None = None,
+) -> dict:
+    """Advance the theme (button B cycle) or jump to ``target`` (web dropdown).
 
-    Mirrors button B. Order-of-operations matters: we flip the in-memory
-    ``manual_theme`` so the render reads the new value, push the display, and
-    only *then* persist — if the render raises (missing font file, subprocess
-    timeout, Inky disconnect), we roll the flip back so ``state.json`` and
-    the panel stay in sync. The alternative "persist first, then display"
-    leaves ``state.json`` claiming a theme the panel doesn't show after a
-    transient I/O failure.
+    When ``target`` is ``None`` (button B / fire-and-forget web POST), cycle
+    to the next theme in ``render_quote.THEME_ORDER``. When ``target`` is a
+    known theme name, jump directly to it — lets the curator UI expose a
+    dropdown without forcing the operator to mash B four times to reach
+    ``nightvision``. An unknown ``target`` returns 400-equivalent
+    ``{"ok": False, "error": "unknown_theme"}`` without touching state.
+
+    Order-of-operations matters: flip the in-memory ``manual_theme`` so the
+    render reads the new value, push the display, and only *then* persist —
+    if the render raises (missing font, subprocess timeout, Inky disconnect)
+    we roll the flip back so ``state.json`` and the panel stay in sync.
+    The alternative "persist first, then display" leaves ``state.json``
+    claiming a theme the panel doesn't show after a transient I/O failure.
 
     Persist failures AFTER a successful render are NOT grounds for rollback:
     the panel already shows the new theme, so reverting in-memory state would
@@ -192,6 +235,13 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
+    # Validate ``target`` BEFORE the render-gate so a typo'd POST doesn't
+    # burn a lock acquire / release cycle and doesn't emit a misleading
+    # "busy" reply when the problem is the input, not contention.
+    if target is not None and target not in _theme_cycle():
+        _log(f"{label}: unknown theme {target!r}", err=True)
+        _emit_action(telemetry_path, "theme", label, ok=False, error=f"unknown_theme:{target}")
+        return {"ok": False, "error": "unknown_theme", "target": target}
     with _button_render_gate(state, label, "theme", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
@@ -201,16 +251,16 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
             current = state.last_effective_theme or resolve_effective_theme(
                 state.theme_arg, time_str, previous_theme,
             )
-            state.manual_theme = "dark" if current == "default" else "default"
-            new_theme = state.manual_theme
+            new_theme = target if target is not None else _next_theme(current)
+            state.manual_theme = new_theme
             quote_id = state.last_quote_id
-        _log(f"{label}: theme -> {new_theme}")
+        _log(f"{label}: theme {current} -> {new_theme}")
         try:
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
         except Exception as exc:
             with state.lock:
                 state.manual_theme = previous_theme
-            _log(f"{label} theme toggle failed: {exc!r} (rolled back to {previous_theme!r})", err=True)
+            _log(f"{label} theme change failed: {exc!r} (rolled back to {previous_theme!r})", err=True)
             _emit_action(telemetry_path, "theme", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc), "rolled_back": True}
         # Render succeeded; the panel is now authoritative. A persist failure
@@ -220,9 +270,9 @@ def action_theme(args: argparse.Namespace, state: RuntimeState, *, label: str = 
             with state.lock:
                 run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
         except Exception as exc:
-            _log(f"{label} theme toggle: persist after render failed: {exc!r} (keeping in-memory flip)", err=True)
+            _log(f"{label} theme change: persist after render failed: {exc!r} (keeping in-memory flip)", err=True)
         _emit_action(telemetry_path, "theme", label, ok=True)
-        return {"ok": True, "theme": new_theme}
+        return {"ok": True, "theme": new_theme, "previous": current}
 
 
 def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:

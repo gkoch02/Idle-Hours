@@ -92,6 +92,24 @@ class TestThemeSaturation:
     def test_unknown_theme_falls_back_to_default(self):
         assert display_inky.resolve_saturation("nope", None) == display_inky.THEME_SATURATION["default"]
 
+    @pytest.mark.parametrize("theme", ["scholar", "newsprint", "nightvision"])
+    def test_new_themes_have_saturation_entries(self, theme):
+        """Every theme registered in ``render_quote.THEMES`` must have a
+        ``THEME_SATURATION`` entry. Without this the resolve call silently
+        falls back to the default saturation, which can make a dark-background
+        theme (``nightvision``) look muddier than intended."""
+        import render_quote as rq
+        assert theme in rq.THEMES
+        assert theme in display_inky.THEME_SATURATION
+
+    def test_every_render_theme_has_saturation(self):
+        """Belt-and-braces: the dynamic list of registered render themes must
+        exactly equal the saturation table's keys. Prevents a new theme from
+        silently inheriting the default saturation just because someone added
+        a THEMES entry without touching display_inky."""
+        import render_quote as rq
+        assert set(rq.THEMES.keys()) == set(display_inky.THEME_SATURATION.keys())
+
     def test_main_passes_theme_saturation_to_panel(self, fake_image):
         captured: list[float] = []
 

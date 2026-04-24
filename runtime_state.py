@@ -15,6 +15,24 @@ if TYPE_CHECKING:
     from threading import Timer
 
 
+def _known_theme_names() -> frozenset[str]:
+    """Registered render themes, resolved lazily to avoid pulling PIL into the
+    main-loop import graph. ``render_quote.THEMES`` imports Pillow at module
+    load; doing the import inside ``RuntimeState.__init__`` keeps the
+    one-time cost off ``run_clock`` startup and off any test that constructs
+    a RuntimeState without needing the renderer.
+
+    Falls back to the minimal original pair if the import fails (e.g. in a
+    stripped-down test harness) so a missing Pillow install can't wedge
+    state-file loading.
+    """
+    try:
+        from render_quote import THEMES
+    except Exception:
+        return frozenset({"default", "dark"})
+    return frozenset(THEMES.keys())
+
+
 class RuntimeState:
     """Mutable shared state between the main loop and the button listener thread.
 
@@ -109,7 +127,7 @@ class RuntimeState:
         self.last_heartbeat_monotonic: float = 0.0
         if persisted:
             mt = persisted.get("manual_theme")
-            if mt in ("default", "dark"):
+            if isinstance(mt, str) and mt in _known_theme_names():
                 self.manual_theme = mt
             self.manual_quiet = bool(persisted.get("manual_quiet", False))
             # Render-identity fields (last_bucket / last_quote_id /
@@ -124,7 +142,7 @@ class RuntimeState:
             if isinstance(last_bucket, str) and last_bucket:
                 self.last_bucket = last_bucket
             last_theme = persisted.get("last_effective_theme")
-            if last_theme in ("default", "dark"):
+            if isinstance(last_theme, str) and last_theme in _known_theme_names():
                 self.last_effective_theme = last_theme
             last_quote_id = persisted.get("last_quote_id")
             if isinstance(last_quote_id, list) and last_quote_id:

@@ -157,12 +157,12 @@ const escapeHtml = (s) =>
 
 // ------- Controls (mirror buttons) ------------------------------------------
 
-async function fireAction(action) {
-  log(`→ ${action}`);
+async function fireAction(action, body = {}) {
+  log(`→ ${action}${body.theme ? ` (${body.theme})` : ""}`);
   const { status, ok, data } = await jsonFetch(`/api/action/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify(body),
   });
   if (status === 409) {
     log(`${action}: busy (render in flight)`, "warn");
@@ -172,14 +172,47 @@ async function fireAction(action) {
     log(`${action}: error ${status} ${data?.error || ""}`, "err");
     return;
   }
-  log(`${action}: ok`, "ok");
-  await refreshCurrent();
+  log(`${action}: ok${data?.theme ? ` → ${data.theme}` : ""}`, "ok");
+  await Promise.all([refreshCurrent(), refreshThemes()]);
 }
 
 function wireControls() {
   document.querySelectorAll("[data-action]").forEach((btn) => {
     btn.addEventListener("click", () => fireAction(btn.dataset.action));
   });
+  const apply = $("theme-apply");
+  if (apply) {
+    apply.addEventListener("click", () => {
+      const target = $("theme-select").value;
+      if (!target) return;
+      fireAction("theme", { theme: target });
+    });
+  }
+}
+
+// ------- Theme picker --------------------------------------------------------
+
+async function refreshThemes() {
+  const select = $("theme-select");
+  if (!select) return;
+  const { ok, data } = await jsonFetch("/api/themes");
+  if (!ok || !data) return;
+  const prev = select.value;
+  const current = data.manual_theme || data.effective;
+  select.innerHTML = "";
+  for (const name of data.themes || []) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name + (name === data.effective ? " (active)" : "");
+    if (name === (prev || current)) opt.selected = true;
+    select.appendChild(opt);
+  }
+  const pill = $("theme-current");
+  if (pill) {
+    pill.textContent = data.manual_theme
+      ? `manual: ${data.manual_theme}`
+      : `auto: ${data.effective}`;
+  }
 }
 
 // ------- Overrides editor ---------------------------------------------------
@@ -247,7 +280,13 @@ function init() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshCurrent(), refreshTelemetry(), refreshCoverage(), refreshHistory()]);
+  await Promise.all([
+    refreshCurrent(),
+    refreshTelemetry(),
+    refreshCoverage(),
+    refreshHistory(),
+    refreshThemes(),
+  ]);
   await loadOverrides();
 }
 

@@ -254,20 +254,24 @@ class TestActionBusyBehavior:
 
 
 class TestActionThemeToggleArithmetic:
-    """Not a concurrency test — locks in the even/odd parity of manual_theme
-    under repeated toggling so a signed-int regression surfaces immediately."""
+    """Not a concurrency test — locks in the cycle arithmetic so a
+    regression in ``_next_theme`` (wrong modulus, off-by-one) surfaces
+    immediately. Covers the full-loop wrap: N presses from the head of
+    THEME_ORDER revisit the head exactly."""
 
-    def test_eight_sequential_toggles_end_on_default(self, tmp_path):
+    def test_n_sequential_presses_return_to_head_of_cycle(self, tmp_path):
+        import render_quote as rq
         args = _args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.last_effective_theme = "default"
+        state.last_effective_theme = rq.THEME_ORDER[0]
 
         with patch("run_clock.render_now"), \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
-            for _ in range(8):
+            for _ in range(len(rq.THEME_ORDER)):
                 result = run_clock.action_theme(args, state, label="test")
                 assert result["ok"] is True
 
-        # 8 toggles: default → dark → default → … → default (even parity).
-        assert state.manual_theme == "default"
+        # After exactly len(THEME_ORDER) presses the cycle completes one loop
+        # and lands back where it started.
+        assert state.manual_theme == rq.THEME_ORDER[0]

@@ -395,6 +395,35 @@ class TestReadEndpoints:
         assert status == 200
         assert _json_body(body)["bucket_counts"] == {}
 
+    def test_api_themes_returns_cycle_and_current_state(self, live_server):
+        """The themes endpoint feeds the UI dropdown: it returns the full
+        cycle list, the CLI ``theme_arg``, and either the manual override
+        or the auto-resolved effective theme. Pin the shape so the UI
+        doesn't silently break when a new field is added or renamed."""
+        import render_quote as rq
+        server, state, _args = live_server
+        with state.lock:
+            state.manual_theme = "scholar"
+            state.last_effective_theme = "scholar"
+        status, body = _get(server, "/api/themes")
+        assert status == 200
+        data = _json_body(body)
+        assert data["themes"] == list(rq.THEME_ORDER)
+        assert data["manual_theme"] == "scholar"
+        assert data["effective"] == "scholar"
+        assert "theme_arg" in data
+
+    def test_api_themes_reflects_auto_when_no_manual_override(self, live_server):
+        server, state, _args = live_server
+        with state.lock:
+            state.manual_theme = None
+            state.last_effective_theme = "default"
+        status, body = _get(server, "/api/themes")
+        assert status == 200
+        data = _json_body(body)
+        assert data["manual_theme"] is None
+        assert data["effective"] in ("default", "dark", "scholar", "newsprint", "nightvision")
+
     def test_api_bucket_returns_ranked_candidates_with_score_components(self, live_server):
         server, _, _ = live_server
         fake = [
@@ -524,6 +553,49 @@ class TestActionEndpointsLocking:
         # Persistence check: the state file must exist and hold manual_theme=dark
         persisted = json.loads(Path(args.state_path).read_text())
         assert persisted["manual_theme"] == "dark"
+
+    def test_theme_post_with_body_jumps_to_named_theme(self, live_server):
+        """POST /api/action/theme with {"theme": "<name>"} jumps straight to
+        the named theme without stepping through the cycle. Mirrors the
+        web UI dropdown's direct-selection behaviour."""
+        server, state, args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+        with self._patch_render():
+            status, body = _post(server, "/api/action/theme", payload={"theme": "nightvision"})
+        assert status == 200
+        data = _json_body(body)
+        assert data["ok"] is True
+        assert data["theme"] == "nightvision"
+        persisted = json.loads(Path(args.state_path).read_text())
+        assert persisted["manual_theme"] == "nightvision"
+
+    def test_theme_post_unknown_name_returns_400(self, live_server):
+        """A typo in ``theme`` comes back as 400 with ``error: unknown_theme``
+        rather than a 500 or a silent no-op; ``manual_theme`` stays put."""
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+            state.manual_theme = None
+        with self._patch_render():
+            status, body = _post(server, "/api/action/theme", payload={"theme": "chartreuse"})
+        assert status == 400
+        data = _json_body(body)
+        assert data["ok"] is False
+        assert data["error"] == "unknown_theme"
+        with state.lock:
+            assert state.manual_theme is None
+
+    def test_theme_post_with_non_string_theme_returns_400(self, live_server):
+        """A numeric / list ``theme`` value must be rejected without any
+        state mutation — defence in depth against a malformed client."""
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+            state.manual_theme = None
+        status, body = _post(server, "/api/action/theme", payload={"theme": 42})
+        assert status == 400
+        assert _json_body(body)["ok"] is False
 
     def test_quiet_toggle_wakes_with_render(self, live_server):
         server, state, _args = live_server

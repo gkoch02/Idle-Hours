@@ -131,7 +131,7 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 | Button | Short press | Long press (2s) |
 |---|---|---|
 | **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
-| **B** | Toggle theme — flips default ↔ dark, persists to `--state-path`. | — |
+| **B** | Cycle theme — advances through `default → dark → scholar → newsprint → nightvision` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
 | **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
 | **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the goodnight frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
@@ -441,9 +441,10 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - If the exact bucket is weak or empty, the picker walks nearby buckets and records fallback metadata.
 - `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
 - Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
-- Button B flips the theme at any time and persists the choice to `--state-path`. Button A's long press reverses the most recent skip.
-- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B override wins until the next midnight rollover.
-- Per-theme saturation: `display_inky.py` uses `0.5` for `default` and `0.7` for `dark` on the Spectra 6 panel so accents don't go muddy on dark backgrounds.
+- Button B cycles through the full theme list and persists the choice to `--state-path`; the web UI dropdown jumps directly to any named theme. Button A's long press reverses the most recent skip.
+- Five themes ship built-in: `default` (white/black/red), `dark` (black/white/yellow), `scholar` (white/blue/red), `newsprint` (white/black, no colour accent — bold-weight differentiation only), and `nightvision` (black/green/yellow retro-terminal). Every theme colour stays on the Spectra 6 palette.
+- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B / web override wins until the next midnight rollover.
+- Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
 - Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
 - The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
 - If the Inky button listener dies mid-run (pin claim lost, background thread failed), the loop logs one loud warning plus a telemetry entry with `mode=buttons_dead` and stops retrying — restart the process to reclaim the pins.

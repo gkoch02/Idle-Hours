@@ -141,12 +141,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--theme",
-        choices=["default", "dark", "auto"],
+        # Kept in lockstep with render_quote.THEME_ORDER (+ "auto"). The test
+        # tests/test_run_clock.py::TestCliThemeChoices pins this invariant.
+        choices=["default", "dark", "scholar", "newsprint", "nightvision", "auto"],
         default="default",
         help=(
             "Render theme passed through to render_quote.py. "
-            "'auto' selects 'dark' between 18:00 and 06:00 and 'default' otherwise. "
-            "Pressing button B toggles theme manually and overrides 'auto' until midnight."
+            "Light: 'default' (white/black/red), 'scholar' (white/blue/red), "
+            "'newsprint' (white/black/no-accent). Dark: 'dark' (black/white/yellow), "
+            "'nightvision' (black/green/yellow). 'auto' selects 'dark' between "
+            "18:00 and 06:00 and 'default' otherwise. "
+            "Pressing button B cycles themes manually and overrides 'auto' until midnight."
         ),
     )
     parser.add_argument(
