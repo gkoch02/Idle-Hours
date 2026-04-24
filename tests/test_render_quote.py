@@ -1124,6 +1124,31 @@ class TestBlueprintBorder:
         assert image.getpixel((16, 16)) == rq.SPECTRA6["yellow"], "crosshair should use accent"
         assert image.getpixel((400, 16)) == rq.SPECTRA6["green"], "frame should use text colour"
 
+    def test_blueprint_interior_grid_paints_in_body_blue(self):
+        """The graph-paper grid inside the frame uses the body-text colour.
+        Sample an intersection well clear of the frame and of the quote
+        block so no glyph or outer rule is painted on top. At 20px spacing,
+        with ``frame_inset=16``, the first interior horizontal rule is at
+        y=36 and the first interior vertical rule is at x=36; (36, 56) is
+        a clean grid crossing."""
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        rq.draw_blueprint_border(image, {"text": rq.SPECTRA6["blue"], "accent": rq.SPECTRA6["red"]})
+        assert image.getpixel((36, 56)) == rq.SPECTRA6["blue"], "grid intersection should use text colour"
+        # Off-grid whitespace between rules stays page_bg (white canvas here).
+        assert image.getpixel((45, 45)) == (255, 255, 255), "between-grid pixel should remain unpainted"
+
+    def test_blueprint_grid_is_theme_gated(self):
+        """No other theme paints a blue pixel at the blueprint grid-intersection
+        coordinate (36, 56) — it should show that theme's page_bg."""
+        row = self._row()
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "illuminated", "bauhaus", "risograph", "comic"):
+            img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((36, 56)) == expected_bg, (
+                f"theme {theme} painted something at the blueprint grid coordinate"
+            )
+
 
 class TestRenderCard:
     """The button-C source card uses mode='card' to render a centered metadata frame."""

@@ -914,26 +914,45 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict) -> None:
-    """Paint a drafting-sheet border around the canvas margin.
+    """Paint a drafting-sheet border and graph-paper grid over the canvas.
 
     A thin outer rectangle in the body-text blue plus four small red
     crosshair "registration marks" centred on the frame corners — the
-    print-alignment tick used on engineering drawings and blueprints.
-    Parallels the bauhaus-border pattern (outer frame + four corner
-    graphics) but swaps filled geometric primitives for precision
-    linework so the margin reads as drafting-sheet rather than
-    poster-composition.
+    print-alignment tick used on engineering drawings and blueprints —
+    with a thin blue graph-paper grid inside the frame so the ground
+    reads as engineering paper rather than an empty sheet. Parallels
+    the bauhaus-border pattern (outer frame + four corner graphics)
+    but swaps filled geometric primitives for precision linework.
 
-    Drawn after the page_bg fill and before any text, so the quote
-    block sits on top of the border if they ever overlap (they don't —
-    the crosshairs stay at ~x<=24 and the quote block starts at
-    ``(width - layout["max_width"]) // 2`` ≈ 70 for standard layouts).
+    Drawn after the page_bg fill and before any text. Rendering order
+    is grid → outer frame → crosshairs, so the frame edge stays crisp
+    and the red registration marks layer cleanly on top. Text is
+    painted later by ``render``, so glyphs sit over the grid and the
+    rules show through only between letters — the "writing on graph
+    paper" effect.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_inset = 16
     frame_color = colors["text"]
     mark_color = colors["accent"]
+
+    # Graph-paper grid — thin blue rules at a fixed spacing inside the
+    # outer frame. Strictly interior so the frame's 1px edge stays the
+    # single defining line of the sheet.
+    grid_spacing = 20
+    grid_left = frame_inset + 1
+    grid_right = width - 2 - frame_inset
+    grid_top = frame_inset + 1
+    grid_bottom = height - 2 - frame_inset
+    x = frame_inset + grid_spacing
+    while x <= grid_right:
+        draw.line((x, grid_top, x, grid_bottom), fill=frame_color, width=1)
+        x += grid_spacing
+    y = frame_inset + grid_spacing
+    while y <= grid_bottom:
+        draw.line((grid_left, y, grid_right, y), fill=frame_color, width=1)
+        y += grid_spacing
 
     # Outer thin rectangle — 1px line in the blueprint body blue, like
     # the printed border on a drafting sheet.
