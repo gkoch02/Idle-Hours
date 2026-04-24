@@ -625,6 +625,55 @@ class TestActionEndpointsLocking:
         assert status == 400
         assert _json_body(body)["ok"] is False
 
+    def test_theme_post_with_malformed_json_returns_400(self, live_server):
+        """A malformed JSON body must come back as 400 — not silently fall
+        back to ``{}`` and cycle. Previously ``_action_theme`` caught
+        ``ValueError`` and defaulted to an empty dict, which meant a bad
+        client (or a corrupt request mid-flight) could unintentionally
+        advance the theme on the panel. Regression guard for the P1
+        comment on PR #72.
+        """
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+            state.manual_theme = None
+        # Craft a handcrafted POST with invalid JSON bytes.
+        conn = _client(server)
+        data = b"{not valid json"
+        headers = {"Content-Type": "application/json", "Content-Length": str(len(data))}
+        conn.request("POST", "/api/action/theme", body=data, headers=headers)
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        assert resp.status == 400
+        # State must be untouched — no silent cycle advance from bad input.
+        with state.lock:
+            assert state.manual_theme is None
+
+    def test_theme_post_with_oversized_body_returns_400(self, live_server):
+        """An oversized body (larger than ``MAX_BODY_BYTES``) raises
+        ``ValueError`` from ``_read_json_body`` and must propagate to 400
+        rather than being swallowed into a silent cycle. Same P1 regression
+        guard as the malformed-JSON test above.
+        """
+        server, state, _args = live_server
+        with state.lock:
+            state.last_effective_theme = "default"
+            state.manual_theme = None
+        # Fabricate a Content-Length that exceeds the server's cap without
+        # actually shipping that many bytes — the guard fires on the header
+        # check before the body read.
+        oversize = web_server.MAX_BODY_BYTES + 1
+        conn = _client(server)
+        headers = {"Content-Type": "application/json", "Content-Length": str(oversize)}
+        conn.request("POST", "/api/action/theme", body=b"", headers=headers)
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        assert resp.status == 400
+        with state.lock:
+            assert state.manual_theme is None
+
     def test_quiet_toggle_wakes_with_render(self, live_server):
         server, state, _args = live_server
         # Start quiet so the toggle wakes (and hence must re-render)

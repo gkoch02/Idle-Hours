@@ -223,9 +223,21 @@ async function refreshThemes() {
   }
   const pill = $("theme-current");
   if (pill) {
-    pill.textContent = data.manual_theme
-      ? `manual: ${data.manual_theme}`
-      : `auto: ${data.effective}`;
+    // Three visible states, distinguished by (manual_theme, theme_arg):
+    //   manual_theme set           → user override active
+    //   manual_theme null, arg=auto → wall-clock-derived (will switch at
+    //                                  18:00/06:00 and reset at midnight)
+    //   manual_theme null, arg!=auto → explicit CLI/systemd pin (no
+    //                                   auto switching, no midnight reset)
+    // Labeling both "manual_theme null" cases as "auto" (the old bug) gave
+    // operators misleading info when running --theme scholar.
+    if (data.manual_theme) {
+      pill.textContent = `manual: ${data.manual_theme}`;
+    } else if (data.theme_arg === "auto") {
+      pill.textContent = `auto: ${data.effective}`;
+    } else {
+      pill.textContent = `fixed: ${data.effective}`;
+    }
   }
 }
 

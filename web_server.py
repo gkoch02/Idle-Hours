@@ -608,11 +608,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
         # the physical button B behaviour and advances one step through the
         # cycle. ``action_theme`` validates the target name and returns
         # ``unknown_theme`` when it isn't registered.
+        #
+        # Malformed JSON or an oversized body raises ``ValueError`` from
+        # ``_read_json_body`` and propagates up to ``do_POST``, which
+        # emits a ``mode="web_error"`` telemetry entry and replies 400.
+        # We deliberately do NOT catch it here and fall back to ``{}`` —
+        # doing that would turn a bad-client error into a silent theme
+        # cycle (state mutation on invalid input), which is the bug
+        # chatgpt-codex-connector flagged on PR #72. ``_read_json_body``
+        # already returns ``{}`` for length=0, so the "no body" cycle
+        # path is unaffected.
         import run_clock
-        try:
-            body = self._read_json_body()
-        except (ValueError, json.JSONDecodeError):
-            body = {}
+        body = self._read_json_body()
         target = body.get("theme") if isinstance(body, dict) else None
         if target is not None and not isinstance(target, str):
             self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "theme must be a string"})
