@@ -120,9 +120,19 @@ python3 run_clock.py --display-script display_inky.py --mode production
 
 ### Themes
 
-Pass `--theme dark` to either `run_clock.py` or `render_quote.py` for a black-background / yellow-accent variant. `--theme default` is the white-background / red-accent original.
+Five themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green):
 
-Pass `--theme auto` to let the clock pick for you: dark between 18:00 and 06:00, default otherwise. A manual button-B press overrides `auto` until the next midnight rollover.
+| `--theme`     | Page bg | Body text | Accent  | Feel                                   |
+|---------------|---------|-----------|---------|----------------------------------------|
+| `default`     | white   | black     | red     | Classic broadsheet                     |
+| `dark`        | black   | white     | yellow  | Night mode                             |
+| `scholar`     | white   | blue      | red     | Scholarly journal                      |
+| `newsprint`   | white   | black     | (none)  | Pure typography — bold-weight accent   |
+| `nightvision` | black   | green     | yellow  | Retro terminal / Apollo-era monitor    |
+
+Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 18:00 and 06:00, `default` otherwise. `auto` is deliberately binary; the three "operator-choice" themes are never auto-selected. A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover.
+
+Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` mode.
 
 ### Inky buttons (short and long press)
 
@@ -244,7 +254,7 @@ Browsers can still `GET` the UI without credentials (telemetry, coverage, `curre
 The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. When you open it you get:
 
 - **Now showing** — live preview of `output/current.png`, the picked quote text, its attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
-- **Controls** — five buttons that mirror the physical Inky panel: `A · Skip`, `A-hold · Un-skip`, `B · Toggle theme`, `C · Re-render`, `D · Quiet / wake`. Each press returns `{ok: true}` or `{ok: false, error: "busy"}` and is appended to a small in-browser action log.
+- **Controls** — five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a **theme dropdown** that jumps directly to any registered theme without stepping through the cycle. Each press returns `{ok: true}` or `{ok: false, error: "busy"}` and is appended to a small in-browser action log. A state pill next to the dropdown reports `manual: X` / `auto: X` / `fixed: X` so operators can see at a glance whether wall-clock switching is active.
 - **Telemetry** — renders / errors / p50 / p95 latencies over the last 24h, reading the same date-rotated sidecar that `litclock_health.py` does.
 - **Coverage grid** — 144 bucket cells coloured by corpus depth (from `assets/bucket-coverage.json`); click-through feeds the inspector.
 - **Bucket inspector** — ranked candidate list for any bucket (or `HH:MM`), with every scorer component named so you can see *why* a different quote was not picked.
@@ -260,11 +270,12 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
 | `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `litclock_health`) |
 | `GET /api/coverage` | The 144-bucket coverage snapshot from `assets/bucket-coverage.json` |
+| `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
 | `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |
 | `GET /api/overrides` | Current `assets/selection_overrides.json` |
 | `GET /api/history?limit=N` | Recent anti-repeat ledger entries |
 | `POST /api/overrides` | Validate + atomically rewrite overrides |
-| `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C |
+| `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field cycles. Malformed JSON returns 400 without mutating state. |
 
 Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-LitClock-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
 

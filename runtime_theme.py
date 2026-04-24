@@ -34,7 +34,15 @@ def _registered_themes() -> frozenset[str]:
 
 
 def auto_theme_for(time_str: str) -> str:
-    """Return 'dark' during the night window, 'default' otherwise."""
+    """Return 'dark' during the night window, 'default' otherwise.
+
+    Deliberately returns only the binary pair — the other registered
+    themes (``scholar``, ``newsprint``, ``nightvision``) are aesthetic
+    operator choices, not wall-clock-derived. Extending this would
+    require a preference table (see ``FOLLOWUPS.md``). Pinned by
+    ``TestAutoTheme::test_auto_theme_returns_only_binary_values`` so
+    a well-meaning refactor doesn't silently broaden the contract.
+    """
     hour = int(time_str.split(":", 1)[0])
     if AUTO_DARK_START_HOUR <= hour or hour < AUTO_DARK_END_HOUR:
         return "dark"
