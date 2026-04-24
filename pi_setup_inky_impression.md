@@ -47,19 +47,31 @@ Typical install on the Pi:
 ```bash
 cd ~/LitClock
 sudo cp litclock.service.example /etc/systemd/system/litclock.service
+
+# The sample unit passes `--config %S/litclock/config.toml` only. Stage
+# that config before the first start — StateDirectory=litclock makes
+# systemd create /var/lib/litclock owned by `pi`, but the config file
+# still has to land there from the repo.
+sudo systemctl start litclock.service || true     # triggers StateDirectory creation
+sudo cp assets/config.toml.example /var/lib/litclock/config.toml
+sudo chown pi:pi /var/lib/litclock/config.toml
+sudoedit /var/lib/litclock/config.toml            # tune keys for this appliance
+
 sudo systemctl daemon-reload
 sudo systemctl enable litclock.service
-sudo systemctl start litclock.service
+sudo systemctl restart litclock.service
 sudo systemctl status litclock.service
 ```
 
 Notes:
-- the sample runs `run_clock.py` in `--mode production`
-- edit `User=`, `WorkingDirectory=`, and `ExecStart=` if your Pi paths differ
+- the unit file itself only passes `--config %S/litclock/config.toml`. All tunable knobs — theme, mode, quiet hours, web UI, startup image, shutdown command, button opt-out — live in `/var/lib/litclock/config.toml`. Day-to-day changes are `sudoedit` + `systemctl restart`; `daemon-reload` is only needed when the unit file itself changes
+- every key in the config maps 1:1 to an argparse `dest` on `run_clock.py` (snake_case — `display_script`, `quiet_start`, `web_bind`, etc.). `assets/config.toml.example` ships every supported key with inline documentation
+- CLI flags still work and override config values — useful for ad-hoc troubleshooting (`systemctl stop` then `python3 run_clock.py --once --mode debug ...`)
+- edit `User=`, `WorkingDirectory=`, and `ExecStart=` in the unit only if your Pi paths differ
 - if `inky-photo-frame.service` is still enabled, stop/disable it first so LitClock can own the display
-- install the `gpiozero` package into the same virtualenv if you want Inky button support (short press + 2s long press); otherwise add `--buttons-off` to `ExecStart=`
+- install the `gpiozero` package into the same virtualenv if you want Inky button support (short press + 2s long press); otherwise set `buttons_off = true` in the config
 - the unit uses `Type=notify` + `WatchdogSec=180s` so systemd restarts a wedged-but-breathing loop, not just a fully-dead one. The `sd_notify` client in `sd_notify.py` is pure stdlib (no `systemd-python` dep); off systemd it is a no-op so `python3 run_clock.py` on a dev host behaves identically.
-- the unit declares `StateDirectory=litclock`. systemd creates `/var/lib/litclock/` owned by `pi` before the service starts, and the sample's `--state-path` / `--history-path` / `--telemetry-path` / `--pidfile` / `--web-token-file` all point into that directory via `%S/litclock/...`.
+- the unit declares `StateDirectory=litclock`. systemd creates `/var/lib/litclock/` owned by `pi` before the service starts, and the sample config's `state_path` / `history_path` / `telemetry_path` / `pidfile` / `web_token_file` all point into that directory.
 
 After `sudo systemctl status litclock.service` reports `Active: active (running); notify`, confirm the supervisor is actually supervising:
 
@@ -108,9 +120,9 @@ python3 litclock_health.py --telemetry-path /var/lib/litclock/telemetry.jsonl --
 
 ### Optional: allow button D long-press shutdown
 
-A 2-second hold of button D runs `--shutdown-command` and powers the appliance down cleanly. Pick one of:
+A 2-second hold of button D runs `shutdown_command` and powers the appliance down cleanly. Pick one of:
 
-1. **Recommended under the sandbox:** set `--shutdown-command "systemctl poweroff"` in the service `ExecStart=`. polkit on Raspberry Pi OS already allows the active console user to poweroff without a password, and `systemctl` is not setuid so the sample unit's `NoNewPrivileges=yes` leaves it alone. No sudoers drop-in required.
+1. **Recommended under the sandbox:** set `shutdown_command = "systemctl poweroff"` in `/var/lib/litclock/config.toml`. polkit on Raspberry Pi OS already allows the active console user to poweroff without a password, and `systemctl` is not setuid so the sample unit's `NoNewPrivileges=yes` leaves it alone. No sudoers drop-in required.
 2. **Legacy / no sandbox:** keep the built-in default `sudo -n shutdown -h now`, which requires both a passwordless-sudo drop-in *and* removing `NoNewPrivileges=yes` from the unit (the sandbox blocks setuid binaries like `sudo`). The other sandbox protections still apply.
 
    ```bash
@@ -120,7 +132,7 @@ A 2-second hold of button D runs `--shutdown-command` and powers the appliance d
    sudo chmod 440 /etc/sudoers.d/litclock-shutdown
    ```
 
-3. **Off entirely:** set `--shutdown-command ""` in `ExecStart=` to disable hold-to-shutdown.
+3. **Off entirely:** set `shutdown_command = ""` in the config to disable hold-to-shutdown.
 
 ### Optional: health checks + telemetry
 
@@ -157,7 +169,7 @@ python3 run_clock.py \
   --web-token-file ~/.litclock/web.token
 ```
 
-To enable the UI under systemd, append the same flags to `ExecStart=` in `litclock.service` (commented examples are included in `litclock.service.example`). The UI shares `render_lock` with the button handlers, so a tap on the physical panel and a click in the browser will never render-race — the second one returns `409 busy` instead of queueing. GETs (the `current.png` preview, telemetry, coverage) stay open on all binds; only POSTs are token-gated.
+To enable the UI under systemd, uncomment `web_bind` / `web_token_file` in `/var/lib/litclock/config.toml` (the shipped `assets/config.toml.example` has commented-out lines for both the loopback and LAN-exposed shapes) and `sudo systemctl restart litclock.service`. The UI shares `render_lock` with the button handlers, so a tap on the physical panel and a click in the browser will never render-race — the second one returns `409 busy` instead of queueing. GETs (the `current.png` preview, telemetry, coverage) stay open on all binds; only POSTs are token-gated.
 
 See the "Curator web UI" section in `README.md` for the full endpoint list, UI panel descriptions, and security model.
 
