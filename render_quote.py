@@ -928,7 +928,7 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_inset = 16
-    frame_color = colors["subtle"]
+    frame_color = colors.get("subtle", colors["text"])
     border_color = colors["text"]
     mark_color = colors["accent"]
 
@@ -1107,6 +1107,65 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     draw.rectangle((right_x - thickness + 1, bottom_y - arm, right_x, bottom_y), fill=bracket)
 
 
+def draw_scholar_border(image: Image.Image, colors: dict) -> None:
+    """Paint an annotated-manuscript / academic-journal margin system.
+
+    Scholar gets a more opinionated page architecture than a plain frame:
+    double blue margin rules, faint horizontal baseline guides in the outer
+    margins, and small red footnote / reference glyphs that make the page
+    feel edited and studied rather than merely recoloured.
+
+    The center text column stays clear; the extra structure lives in the
+    margins where it reads as apparatus, not interference.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    body = colors["text"]
+    accent = colors["accent"]
+
+    outer_inset = 18
+    inner_inset = 28
+    left_margin_rule = 96
+    right_margin_rule = width - 96
+
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=body,
+        width=1,
+    )
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=body,
+        width=1,
+    )
+
+    draw.line((left_margin_rule, inner_inset, left_margin_rule, height - 1 - inner_inset), fill=body, width=1)
+    draw.line((right_margin_rule, inner_inset, right_margin_rule, height - 1 - inner_inset), fill=body, width=1)
+
+    for y in range(74, height - 60, 42):
+        draw.line((outer_inset + 8, y, left_margin_rule - 10, y), fill=body, width=1)
+        draw.line((right_margin_rule + 10, y, width - 1 - outer_inset - 8, y), fill=body, width=1)
+
+    marker_font = load_font(theme_font_candidates("scholar", "ornament"), size=20)
+    left_marks = ["1", "2", "3", "*", "†", "§"]
+    right_marks = ["a", "b", "c", "¶", "‡", "#"]
+    for i, y in enumerate(range(84, height - 80, 56)):
+        lmark = left_marks[i % len(left_marks)]
+        rmark = right_marks[i % len(right_marks)]
+        lb = draw.textbbox((0, 0), lmark, font=marker_font)
+        rb = draw.textbbox((0, 0), rmark, font=marker_font)
+        draw_text(draw, (54 - (lb[2] - lb[0]) // 2, y), lmark, font=marker_font, fill=accent)
+        draw_text(draw, (width - 54 - (rb[2] - rb[0]) // 2, y), rmark, font=marker_font, fill=accent)
+
+    header_y = 46
+    draw.line((outer_inset + 14, header_y, width // 2 - 70, header_y), fill=body, width=1)
+    draw.line((width // 2 + 70, header_y, width - 1 - outer_inset - 14, header_y), fill=body, width=1)
+    title_font = load_font(META_FONT_BOLD_CANDIDATES, size=15)
+    header = "SCHOLARLY EDITION"
+    hb = draw.textbbox((0, 0), header, font=title_font)
+    hx = (width - (hb[2] - hb[0])) // 2
+    draw_text(draw, (hx, header_y - (hb[3] - hb[1]) - 4), header, font=title_font, fill=body)
+
 _COMIC_STRIPE_PALETTE = (
     SPECTRA6["blue"],
     SPECTRA6["green"],
@@ -1219,6 +1278,7 @@ _BORDER_PAINTERS = {
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
     "comic": draw_comic_corner_stripes,
+    "scholar": draw_scholar_border,
     "illuminated": draw_illuminated_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
@@ -1299,6 +1359,7 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     """
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
     title_text = (quote_row.get("title") or fallback_title(quote_row) or "Unknown source").strip()
