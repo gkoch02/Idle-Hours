@@ -913,59 +913,64 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     )
 
 
-def draw_blueprint_border(image: Image.Image, colors: dict) -> None:
+def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
     """Paint a drafting-sheet border and graph-paper grid over the canvas.
 
     A thin outer rectangle in the body-text blue plus four small red
     crosshair "registration marks" centred on the frame corners — the
     print-alignment tick used on engineering drawings and blueprints —
     with a thin blue graph-paper grid inside the frame so the ground
-    reads as engineering paper rather than an empty sheet. Parallels
-    the bauhaus-border pattern (outer frame + four corner graphics)
-    but swaps filled geometric primitives for precision linework.
-
-    Drawn after the page_bg fill and before any text. Rendering order
-    is grid → outer frame → crosshairs, so the frame edge stays crisp
-    and the red registration marks layer cleanly on top. Text is
-    painted later by ``render``, so glyphs sit over the grid and the
-    rules show through only between letters — the "writing on graph
-    paper" effect.
+    reads as engineering paper rather than an empty sheet. When
+    ``clear_rect`` is provided, the grid skips that quote-sized window so
+    the text block gets a calmer field without losing the drafting-sheet
+    frame and corner marks.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_inset = 16
-    frame_color = colors["text"]
+    frame_color = colors["subtle"]
+    border_color = colors["text"]
     mark_color = colors["accent"]
 
-    # Graph-paper grid — thin blue rules at a fixed spacing inside the
-    # outer frame. Strictly interior so the frame's 1px edge stays the
-    # single defining line of the sheet.
     grid_spacing = 20
     grid_left = frame_inset + 1
     grid_right = width - 2 - frame_inset
     grid_top = frame_inset + 1
     grid_bottom = height - 2 - frame_inset
+
+    if clear_rect is not None:
+        clear_left, clear_top, clear_right, clear_bottom = clear_rect
+    else:
+        clear_left = clear_top = clear_right = clear_bottom = None
+
     x = frame_inset + grid_spacing
     while x <= grid_right:
-        draw.line((x, grid_top, x, grid_bottom), fill=frame_color, width=1)
+        if clear_rect is None or x < clear_left or x > clear_right:
+            draw.line((x, grid_top, x, grid_bottom), fill=frame_color, width=1)
+        else:
+            if grid_top < clear_top:
+                draw.line((x, grid_top, x, clear_top), fill=frame_color, width=1)
+            if clear_bottom < grid_bottom:
+                draw.line((x, clear_bottom, x, grid_bottom), fill=frame_color, width=1)
         x += grid_spacing
+
     y = frame_inset + grid_spacing
     while y <= grid_bottom:
-        draw.line((grid_left, y, grid_right, y), fill=frame_color, width=1)
+        if clear_rect is None or y < clear_top or y > clear_bottom:
+            draw.line((grid_left, y, grid_right, y), fill=frame_color, width=1)
+        else:
+            if grid_left < clear_left:
+                draw.line((grid_left, y, clear_left, y), fill=frame_color, width=1)
+            if clear_right < grid_right:
+                draw.line((clear_right, y, grid_right, y), fill=frame_color, width=1)
         y += grid_spacing
 
-    # Outer thin rectangle — 1px line in the blueprint body blue, like
-    # the printed border on a drafting sheet.
     draw.rectangle(
         (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
-        outline=frame_color,
+        outline=border_color,
         width=1,
     )
 
-    # Corner crosshair registration marks in the accent (dimension-mark)
-    # red. Each "+" is centred on the frame corner so the frame appears
-    # to pass through the centre of the mark, echoing how registration
-    # marks anchor sheet borders on real engineering drawings.
     arm = 8
     centres = [
         (frame_inset, frame_inset),
@@ -1294,7 +1299,6 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     """
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
-    _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
     title_text = (quote_row.get("title") or fallback_title(quote_row) or "Unknown source").strip()
@@ -1407,6 +1411,80 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     block_bottom = block_top + total_h
     quote_top = block_top
 
+    quote_line_boxes = []
+    quote_left_edge = width
+    quote_right_edge = 0
+    y_probe = quote_top
+    total_lines = len(wrapped_quote)
+    for line_index, line in enumerate(wrapped_quote):
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+
+        current_width = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            current_width += bbox[2] - bbox[0]
+
+        space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
+        is_last = line_index == total_lines - 1
+        slack = layout["max_width"] - current_width
+        distribute = []
+        if not is_last and space_slots > 0 and 0 < slack <= layout["max_width"] * 0.25:
+            base = slack // space_slots
+            remainder = slack - base * space_slots
+            distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
+
+        line_x = (width - layout["max_width"]) // 2
+        line_left = None
+        line_right = line_x
+        space_idx = 0
+        for chunk, is_bold in drawable:
+            if line_left is None and chunk.strip():
+                line_left = line_x
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            line_x += bbox[2] - bbox[0]
+            if chunk.strip():
+                line_right = line_x
+            if distribute and chunk == " ":
+                line_x += distribute[space_idx]
+                space_idx += 1
+        if line_left is not None:
+            quote_line_boxes.append((line_left, y_probe, line_right, y_probe + line_height))
+            quote_left_edge = min(quote_left_edge, line_left)
+            quote_right_edge = max(quote_right_edge, line_right)
+        y_probe += line_height
+
+    clear_rect = None
+    if theme == "blueprint" and quote_line_boxes:
+        clear_pad_x = 2
+        clear_pad_top = 2
+        clear_pad_bottom = 2
+        clear_top = max(0, quote_line_boxes[0][1] - clear_pad_top)
+        clear_bottom = min(height - 1, block_bottom + clear_pad_bottom)
+        clear_rect = (
+            max(0, quote_left_edge - clear_pad_x),
+            clear_top,
+            min(width - 1, quote_right_edge + clear_pad_x),
+            clear_bottom,
+        )
+
+    if theme == "blueprint":
+        _paint_theme_border(image, theme, colors)
+        if clear_rect is not None:
+            clear_draw = ImageDraw.Draw(image)
+            clear_draw.rectangle(clear_rect, fill=colors["page_bg"])
+            draw_blueprint_border(image, colors, clear_rect=clear_rect)
+    else:
+        _paint_theme_border(image, theme, colors)
+
+    draw = ImageDraw.Draw(image)
     show_debug = mode == "debug"
 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
