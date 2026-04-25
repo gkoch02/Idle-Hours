@@ -914,26 +914,45 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict) -> None:
-    """Paint a drafting-sheet border around the canvas margin.
+    """Paint a drafting-sheet border and graph-paper grid over the canvas.
 
     A thin outer rectangle in the body-text blue plus four small red
     crosshair "registration marks" centred on the frame corners — the
-    print-alignment tick used on engineering drawings and blueprints.
-    Parallels the bauhaus-border pattern (outer frame + four corner
-    graphics) but swaps filled geometric primitives for precision
-    linework so the margin reads as drafting-sheet rather than
-    poster-composition.
+    print-alignment tick used on engineering drawings and blueprints —
+    with a thin blue graph-paper grid inside the frame so the ground
+    reads as engineering paper rather than an empty sheet. Parallels
+    the bauhaus-border pattern (outer frame + four corner graphics)
+    but swaps filled geometric primitives for precision linework.
 
-    Drawn after the page_bg fill and before any text, so the quote
-    block sits on top of the border if they ever overlap (they don't —
-    the crosshairs stay at ~x<=24 and the quote block starts at
-    ``(width - layout["max_width"]) // 2`` ≈ 70 for standard layouts).
+    Drawn after the page_bg fill and before any text. Rendering order
+    is grid → outer frame → crosshairs, so the frame edge stays crisp
+    and the red registration marks layer cleanly on top. Text is
+    painted later by ``render``, so glyphs sit over the grid and the
+    rules show through only between letters — the "writing on graph
+    paper" effect.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_inset = 16
     frame_color = colors["text"]
     mark_color = colors["accent"]
+
+    # Graph-paper grid — thin blue rules at a fixed spacing inside the
+    # outer frame. Strictly interior so the frame's 1px edge stays the
+    # single defining line of the sheet.
+    grid_spacing = 20
+    grid_left = frame_inset + 1
+    grid_right = width - 2 - frame_inset
+    grid_top = frame_inset + 1
+    grid_bottom = height - 2 - frame_inset
+    x = frame_inset + grid_spacing
+    while x <= grid_right:
+        draw.line((x, grid_top, x, grid_bottom), fill=frame_color, width=1)
+        x += grid_spacing
+    y = frame_inset + grid_spacing
+    while y <= grid_bottom:
+        draw.line((grid_left, y, grid_right, y), fill=frame_color, width=1)
+        y += grid_spacing
 
     # Outer thin rectangle — 1px line in the blueprint body blue, like
     # the printed border on a drafting sheet.
@@ -1083,6 +1102,89 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     draw.rectangle((right_x - thickness + 1, bottom_y - arm, right_x, bottom_y), fill=bracket)
 
 
+_COMIC_STRIPE_PALETTE = (
+    SPECTRA6["blue"],
+    SPECTRA6["green"],
+    SPECTRA6["red"],
+    SPECTRA6["black"],
+)
+
+
+def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
+    """Paint retro 70s-style 45° racing stripes into the bottom-right corner.
+
+    Parallel diagonal bands cycling through the four non-yellow palette
+    accents (blue / green / red / black) sweep down-and-right at 45°,
+    evoking the chromatic chevron motif of mid-century racing graphics
+    and 70s/80s graphic design. The yellow page_bg shows through the
+    gaps so the chevron reads as banded stripes rather than a solid
+    block.
+
+    Constrained to a 45° right-isoceles triangle pinned to the bottom-
+    right canvas corner — legs of length ``height // 2`` running along
+    the bottom and right edges, hypotenuse sweeping from
+    ``(width - height // 2, height)`` up to ``(width, height // 2)``.
+    The hypotenuse runs at exactly slope -1, parallel to the stripes
+    themselves, so the boundary edge "fades in" along the stripe
+    direction rather than clipping bands at an angle. Strict to the
+    bottom-right corner — the bottom-left half of the lower-right
+    quadrant stays yellow page_bg so the quote body never crosses the
+    chevron even on the longest dense-layout lines.
+
+    Drawn after the page_bg fill and before any text, so any glyph
+    that does land inside the triangle overlays the stripes — text
+    wins, the chevron shows through whitespace.
+
+    Stripe palette is hardcoded at module scope rather than read from
+    ``colors`` because the comic theme dict only carries two non-bg
+    accents (text=black, accent=red); pulling the cool blue/green
+    half of the chevron from anywhere else would require extending the
+    THEMES schema, which the cross-theme invariant tests pin tightly.
+    The yellow gap colour does come from ``colors["page_bg"]`` so a
+    future palette tweak that swaps the comic ground still flows
+    through.
+    """
+    width, height = image.size
+    qx = width // 2
+    qy = height // 2
+    qw = width - qx
+    qh = height - qy
+
+    # Paint stripes onto a sub-image sized to the lower-right quadrant
+    # so 45° bands that extend past either edge clip naturally on the
+    # sub-image bounds rather than needing per-stripe polygon math.
+    quadrant = Image.new("RGB", (qw, qh), color=colors["page_bg"])
+    qd = ImageDraw.Draw(quadrant)
+
+    stripe_thickness = 18
+    period = 30
+    palette = _COMIC_STRIPE_PALETTE
+
+    # Bands run with slope -1 (down-and-left): each line passes through
+    # (c, qh) at the sub-image's bottom edge and (c + qh, 0) at the top
+    # edge, so the chevron leans up-and-to-the-right and parallels the
+    # mask hypotenuse. Visible range of c is [-qh, qw]; iterate a touch
+    # wider so rounded line caps still clip cleanly.
+    i = 0
+    c = -qh - period
+    while c <= qw + period:
+        color = palette[i % len(palette)]
+        qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
+        c += period
+        i += 1
+
+    # 45° right-isoceles triangle mask pinned to the bottom-right of
+    # the quadrant. Legs of length qh (the shorter dimension) so the
+    # hypotenuse runs at exactly slope -1, parallel to the stripes.
+    # Painted in mode "L" so paste() reads it as a per-pixel alpha —
+    # striped pixels land on the canvas only where the mask is 255.
+    mask = Image.new("L", (qw, qh), 0)
+    md = ImageDraw.Draw(mask)
+    md.polygon([(qw - qh, qh), (qw, 0), (qw, qh)], fill=255)
+
+    image.paste(quadrant, (qx, qy), mask=mask)
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -1090,6 +1192,7 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
 _BORDER_PAINTERS = {
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
+    "comic": draw_comic_corner_stripes,
     "illuminated": draw_illuminated_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,

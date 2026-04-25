@@ -1124,6 +1124,126 @@ class TestBlueprintBorder:
         assert image.getpixel((16, 16)) == rq.SPECTRA6["yellow"], "crosshair should use accent"
         assert image.getpixel((400, 16)) == rq.SPECTRA6["green"], "frame should use text colour"
 
+    def test_blueprint_interior_grid_paints_in_body_blue(self):
+        """The graph-paper grid inside the frame uses the body-text colour.
+        Sample an intersection well clear of the frame and of the quote
+        block so no glyph or outer rule is painted on top. At 20px spacing,
+        with ``frame_inset=16``, the first interior horizontal rule is at
+        y=36 and the first interior vertical rule is at x=36; (36, 56) is
+        a clean grid crossing."""
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        rq.draw_blueprint_border(image, {"text": rq.SPECTRA6["blue"], "accent": rq.SPECTRA6["red"]})
+        assert image.getpixel((36, 56)) == rq.SPECTRA6["blue"], "grid intersection should use text colour"
+        # Off-grid whitespace between rules stays page_bg (white canvas here).
+        assert image.getpixel((45, 45)) == (255, 255, 255), "between-grid pixel should remain unpainted"
+
+    def test_blueprint_grid_is_theme_gated(self):
+        """No other theme paints a blue pixel at the blueprint grid-intersection
+        coordinate (36, 56) — it should show that theme's page_bg."""
+        row = self._row()
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "illuminated", "bauhaus", "risograph", "comic"):
+            img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((36, 56)) == expected_bg, (
+                f"theme {theme} painted something at the blueprint grid coordinate"
+            )
+
+
+class TestComicCornerStripes:
+    """Comic theme paints retro 45° racing stripes inside the bottom-right
+    triangle of the canvas. The chevron rotates through a four-colour
+    palette (blue / green / red / black); the upper-left half of the
+    canvas stays yellow page_bg so the quote body never crosses it."""
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_comic_stripes_cover_lower_right_triangle_in_palette_colours(self):
+        """Sample a horizontal sweep at y=460 (deep inside the bottom-right
+        triangle) and verify every one of the four stripe-palette accents
+        appears at least once. The 45° right-iso triangle has legs of
+        length 240, so at y=460 the striped region spans x in [580, 800];
+        sweep that range. A regression that collapsed the rotation to a
+        single colour would fail here even if the chevron geometry was
+        intact."""
+        image = Image.new("RGB", (800, 480), color=rq.SPECTRA6["yellow"])
+        rq.draw_comic_corner_stripes(image, {"page_bg": rq.SPECTRA6["yellow"]})
+        palette_set = set(rq._COMIC_STRIPE_PALETTE)
+        found = set()
+        for x in range(590, 800, 3):
+            pixel = image.getpixel((x, 460))
+            if pixel in palette_set:
+                found.add(pixel)
+        assert palette_set <= found, (
+            f"missing palette colours at y=460: expected {palette_set}, found {found}"
+        )
+
+    def test_comic_stripes_leave_upper_left_clear(self):
+        """Everything outside the 45° right-iso triangle stays page_bg —
+        that includes the upper-left three canvas quadrants entirely AND
+        the bottom-left half of the lower-right quadrant. The triangle's
+        hypotenuse satisfies ``x + y = 1040`` (legs of length 240 anchored
+        at the bottom-right corner), so any sample with ``x + y < 1040``
+        must remain unmasked. Pin a spread of points so a regression that
+        re-grew the triangle to span the full quadrant would surface."""
+        image = Image.new("RGB", (800, 480), color=rq.SPECTRA6["yellow"])
+        rq.draw_comic_corner_stripes(image, {"page_bg": rq.SPECTRA6["yellow"]})
+        yellow = rq.SPECTRA6["yellow"]
+        # Outside the lower-right quadrant — never touched.
+        assert image.getpixel((20, 20)) == yellow, "TL canvas corner should stay page_bg"
+        assert image.getpixel((20, 460)) == yellow, "BL canvas corner should stay page_bg"
+        assert image.getpixel((380, 100)) == yellow, "above quadrant should stay page_bg"
+        # Inside the LR quadrant but outside the 240×240 corner triangle.
+        assert image.getpixel((410, 250)) == yellow, "upper-left of LR quadrant should stay page_bg"
+        assert image.getpixel((450, 460)) == yellow, "bottom-left of LR quadrant should stay page_bg (outside corner triangle)"
+        assert image.getpixel((550, 300)) == yellow, "diagonal middle of LR quadrant should stay page_bg"
+
+    def test_comic_stripes_are_theme_gated(self):
+        """No other theme paints a non-page_bg pixel at the comic stripe
+        sample point (650, 470) — well inside the bottom-right triangle
+        and outside every other theme's corner decorations / outer rules.
+        A regression that registered the painter against the wrong theme
+        key would surface here."""
+        row = self._row()
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "blueprint", "illuminated", "bauhaus", "risograph"):
+            img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
+            expected_bg = rq.THEMES[theme]["page_bg"]
+            assert img.getpixel((650, 470)) == expected_bg, (
+                f"theme {theme} painted something inside the comic stripe triangle"
+            )
+
+    def test_comic_stripes_appear_in_debug_and_card_modes_too(self):
+        """Stripes are part of the comic theme's identity and must show
+        up regardless of render mode. Pin (650, 470) — well inside the
+        triangle — against page_bg for every mode."""
+        yellow = rq.SPECTRA6["yellow"]
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="comic")
+            assert img.getpixel((650, 470)) != yellow, (
+                f"comic mode={mode} missing stripe pixel — chevron didn't paint"
+            )
+
+    def test_comic_stripe_palette_stays_within_spectra6(self):
+        """Hardcoded module-level palette must round-trip through the panel's
+        6-colour quantisation without the snap-to-palette pass remapping
+        any stripe — otherwise a future palette change could silently
+        recolour the chevron."""
+        allowed = set(rq.SPECTRA6.values())
+        for color in rq._COMIC_STRIPE_PALETTE:
+            assert color in allowed, f"stripe colour {color} is off-palette"
+
 
 class TestRenderCard:
     """The button-C source card uses mode='card' to render a centered metadata frame."""
