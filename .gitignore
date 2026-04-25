@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .coverage
+coverage.xml
 *.egg-info/
 research/raw-gutenberg/
 output/*
