@@ -13,7 +13,7 @@ Every stage is a standalone Python 3 CLI script that reads/writes JSONL. The min
 ### Testing & linting
 
 ```bash
-# Run the full test suite
+# Run the full test suite (2254 tests, ~3 minutes)
 pytest
 
 # Run tests with coverage report
