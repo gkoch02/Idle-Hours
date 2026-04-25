@@ -1156,7 +1156,7 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     quadrant = Image.new("RGB", (qw, qh), color=colors["page_bg"])
     qd = ImageDraw.Draw(quadrant)
 
-    stripe_thickness = 18
+    stripe_thickness = 23
     period = 30
     palette = _COMIC_STRIPE_PALETTE
 
