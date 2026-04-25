@@ -32,15 +32,26 @@ This works from the prebuilt runtime assets already committed in the repo:
 You do not need to rebuild corpus artifacts on the Pi just to run the clock.
 Only rerun the corpus pipeline when you are intentionally changing source data or quote selection behavior — and remember to re-bake at the end so the new rows actually reach the runtime picker.
 
+For an end-to-end "harvest a curated set of Gutenberg IDs and merge into the live corpus" flow, prefer the bundled driver script:
+
 ```bash
-# optional maintenance-only rebuild path
+bash run_dawn_expansion.sh
+```
+
+It runs the canonical pipeline (mine → merge → clean → quality → enrich → bake) against `gutenberg_dawn_expansion_ids.txt`, regenerates the coverage snapshot, and re-bakes `assets/quote_database.jsonl`. Safe to re-run; downloads are cached and `merge_candidates` dedupes.
+
+If you want to drive individual stages manually — e.g. iterating on a single transform — the canonical order is:
+
+```bash
+# starting from a merged candidates file:
 python3 clean_display_quotes.py output/candidates-merged.jsonl --output output/candidates-cleaned.jsonl
 python3 quality_filter.py output/candidates-cleaned.jsonl --output output/candidates-quality.jsonl
-python3 fix_substring_time_matches.py output/candidates-quality.jsonl --output output/candidates-quality.jsonl
 python3 enrich_metadata.py output/candidates-quality.jsonl --output assets/candidates-attributed.jsonl
 python3 apply_content_overrides.py assets/candidates-attributed.jsonl
 python3 bake_quote_database.py assets/candidates-attributed.jsonl --output assets/quote_database.jsonl
 ```
+
+`fix_substring_time_matches.py` and `fix_legacy_buckets.py` are one-shot migration tools for corpus rows produced by earlier miner revisions — they're no-ops on fresh harvests, so the canonical pipeline above does not include them. See their docstrings if you have an old JSONL that needs repair.
 
 If the one-shot render and one-shot display both work, you can move on to making it a boot-time service.
 
@@ -303,7 +314,7 @@ Recommended progression:
 1. manual render test
 2. manual Inky display test
 3. manual combined loop
-4. `systemd` service
+4. `systemd` service — see [Optional: Run LitClock as an appliance at boot](#optional-run-litclock-as-an-appliance-at-boot) above for the config-file + unit-file install steps
 
 ## Notes
 

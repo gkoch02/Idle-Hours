@@ -131,15 +131,29 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
-The `THEMES` dict has two presets (`default`, `dark`); add a third by also
-wiring it into `display_inky.THEME_SATURATION` and the `--theme` argparse
-choices in `run_clock.py` and `render_quote.py`.
 
-Test visually on both themes with the contact sheet:
+Ten themes ship today (`default`, `dark`, `scholar`, `newsprint`, `nightvision`,
+`blueprint`, `illuminated`, `bauhaus`, `risograph`, `comic`). Adding an
+eleventh means wiring it into all of:
+
+- `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
+- `render_quote.THEME_ORDER` — append; this is what button B cycles through
+- `render_quote.THEME_FONTS` — typeface chain (otherwise the renderer falls
+  back to Playfair Display, defeating the per-theme typography)
+- `display_inky.THEME_SATURATION` — `0.5` for light grounds, `0.7` for
+  dark / coloured grounds
+- `--theme` argparse `choices` in `run_clock.py` (the
+  `TestActionThemeCycle::test_cli_theme_choices_match_theme_order` test
+  pins this in lockstep with `THEME_ORDER`)
+
+Test visually with the contact sheet — re-render at least one light-ground
+and one dark-ground theme to catch palette / contrast regressions:
 
 ```bash
 python3 contact_sheet.py --theme default --output output/contact-default.png
 python3 contact_sheet.py --theme dark    --output output/contact-dark.png
+# add the new theme:
+python3 contact_sheet.py --theme <new>   --output output/contact-<new>.png
 ```
 
 ## Testing
