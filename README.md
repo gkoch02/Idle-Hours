@@ -4,6 +4,39 @@ LitClock is a literary clock built from public-domain text. It picks a quote tha
 
 ![LitClock render preview](assets/preview.png)
 
+## Table of contents
+
+- [What this repo is](#what-this-repo-is)
+- [How LitClock was built](#how-litclock-was-built)
+- [Repo map](#repo-map)
+  - [Runtime](#runtime)
+  - [Runtime assets](#runtime-assets)
+  - [Build and corpus tools](#build-and-corpus-tools)
+  - [Other important paths](#other-important-paths)
+- [Runtime data contract](#runtime-data-contract)
+- [Quick start](#quick-start)
+  - [Local setup](#local-setup)
+  - [Render once locally (smoke test)](#render-once-locally-smoke-test)
+  - [Set up the config file](#set-up-the-config-file)
+  - [Run the clock loop](#run-the-clock-loop)
+  - [Render once and push to the Inky display](#render-once-and-push-to-the-inky-display)
+  - [Themes](#themes)
+  - [Inky buttons (short and long press)](#inky-buttons-short-and-long-press)
+  - [Persisted runtime state and telemetry](#persisted-runtime-state-and-telemetry)
+  - [Startup frame](#startup-frame)
+  - [Curator web UI](#curator-web-ui)
+  - [Quiet hours](#quiet-hours)
+- [Testing](#testing)
+- [Raspberry Pi deployment](#raspberry-pi-deployment)
+  - [Fresh Pi setup](#fresh-pi-setup)
+  - [Existing Pi update flow](#existing-pi-update-flow)
+  - [Example service](#example-service)
+  - [Install the service](#install-the-service)
+- [Build pipeline notes](#build-pipeline-notes)
+- [Operational notes](#operational-notes)
+- [Useful files when something breaks](#useful-files-when-something-breaks)
+- [Contributing and security](#contributing-and-security)
+
 ## What this repo is
 
 This repo contains both:
@@ -31,13 +64,17 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 ### Runtime
 
 - `run_clock.py` - long-running clock loop, bucket-change refresh logic, optional display handoff
+- `runtime_*.py` - the seven siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` (architecture in [`CLAUDE.md`](CLAUDE.md))
 - `render_quote.py` - quote renderer, typography, highlighting, theme handling, Spectra 6 palette snapping
 - `pick_quote.py` - runtime quote selection from the attributed dataset
 - `display_inky.py` - thin bridge that sends a rendered image to the Inky display
 - `inky_buttons.py` - listener for the four Inky Impression capacitive buttons (A/B/C/D), short + long press, liveness check
 - `probe_buttons.py` - standalone GPIO press probe for verifying which pin each physical button fires
 - `litclock_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`, reads date-rotated files
-- `buckets.py` - fuzzy time bucket mapping
+- `buckets.py` - fuzzy time bucket mapping (single source of truth — every other script imports from it)
+- `atomic_io.py` - shared atomic-write primitive (tmp → fsync → rename → fsync dir) used by every file the next tick reads
+- `pidfile.py` - single-instance `fcntl.flock` pidfile so overlapping `systemctl restart` cycles can't race
+- `sd_notify.py` - pure-stdlib systemd `READY=1` / `WATCHDOG=1` client; no-op when `$NOTIFY_SOCKET` is unset
 - `web_server.py` + `web/` - optional local curator UI (off by default; enable with `--web-bind`)
 
 ### Runtime assets
@@ -50,24 +87,30 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 ### Build and corpus tools
 
-- `gutenberg_time_miner.py`
-- `clean_display_quotes.py`
-- `quality_filter.py`
-- `enrich_metadata.py`
-- `merge_candidates.py`
-- `bucket_coverage.py`
-- `fix_substring_time_matches.py`
-- `target_sparse_buckets.py`
-- `import_targeted_hits.py`
+The full pipeline order is documented in [Build pipeline notes](#build-pipeline-notes); the scripts themselves are:
+
+- `gutenberg_time_miner.py` - harvest time-phrase candidates from Project Gutenberg or local `.txt` files
+- `merge_candidates.py` - dedupe and merge multiple harvest runs
+- `clean_display_quotes.py` - normalise raw matches into a displayable excerpt
+- `quality_filter.py` - score rows and append quality flags
+- `enrich_metadata.py` - attach title / author from cached Gutenberg headers
+- `apply_content_overrides.py` - layer per-row hand fixes from `assets/content_overrides.json`
+- `bake_quote_database.py` - final stage; produces `assets/quote_database.jsonl`, the runtime DB
+- `bucket_coverage.py` - report which fuzzy buckets are sparse or empty
+- `target_sparse_buckets.py` - targeted sweep for the buckets `bucket_coverage.py` flagged
+- `import_targeted_hits.py` - reshape targeted hits so `merge_candidates.py` can absorb them
+- `fix_substring_time_matches.py`, `fix_legacy_buckets.py` - one-shot migration tools for corpus rows from earlier miner revisions; no-ops on fresh harvests
 
 ### Other important paths
 
-- `tests/` - automated tests
+- `tests/` - automated tests (one module per script, plus golden fixtures under `tests/golden/`)
 - `output/` - generated output and analysis artifacts, not canonical runtime source
-- `fonts/` - bundled Playfair Display fonts used by the renderer
+- `fonts/` - bundled OFL typefaces used by the renderer (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers — one per theme)
 - `litclock.service.example` - example systemd service for Pi deployment
 - `pi_setup_inky_impression.md` - Pi setup notes
 - `bootstrap_pi_inky.sh` - helper bootstrap script for Pi setup
+- `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` - process and policy docs
+- `FOLLOWUPS.md` - deferred-work list (carved out of larger PRs to keep them focused)
 
 ## Runtime data contract
 
@@ -565,3 +608,12 @@ If the clock is behaving oddly, these are the first files to inspect:
 - persisted manual theme / quiet override -> `~/.litclock/state.json`
 - anti-repeat ledger of recently-shown quotes -> `~/.litclock/history.jsonl`
 - runtime dataset questions -> `assets/quote_database.jsonl` (what the clock reads) + `assets/candidates-attributed.jsonl` (raw source)
+
+## Contributing and security
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev environment, pipeline overview, what to do for each kind of change (runtime / corpus / pipeline / rendering), test conventions.
+- [`SECURITY.md`](SECURITY.md) — how to report a vulnerability, what's in and out of scope.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant v2.1.
+- [`FOLLOWUPS.md`](FOLLOWUPS.md) — deferred work items deliberately carved out of larger PRs.
+
+Deeper architecture and design notes live in [`CLAUDE.md`](CLAUDE.md); skim that first when modifying the runtime or pipeline.

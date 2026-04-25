@@ -32,15 +32,27 @@ This works from the prebuilt runtime assets already committed in the repo:
 You do not need to rebuild corpus artifacts on the Pi just to run the clock.
 Only rerun the corpus pipeline when you are intentionally changing source data or quote selection behavior — and remember to re-bake at the end so the new rows actually reach the runtime picker.
 
+For an end-to-end "harvest a curated set of Gutenberg IDs and merge into the live corpus" flow, prefer the bundled driver script:
+
 ```bash
-# optional maintenance-only rebuild path
+bash run_dawn_expansion.sh
+```
+
+It runs the full pipeline (mine → merge → clean → quality → fix-substring → enrich → bake) against `gutenberg_dawn_expansion_ids.txt`, regenerates the coverage snapshot, and re-bakes `assets/quote_database.jsonl`. Safe to re-run; downloads are cached and `merge_candidates` dedupes.
+
+If you want to drive individual stages manually — e.g. iterating on a single transform — the order the driver script uses is:
+
+```bash
+# starting from a merged candidates file:
 python3 clean_display_quotes.py output/candidates-merged.jsonl --output output/candidates-cleaned.jsonl
 python3 quality_filter.py output/candidates-cleaned.jsonl --output output/candidates-quality.jsonl
-python3 fix_substring_time_matches.py output/candidates-quality.jsonl --output output/candidates-quality.jsonl
+python3 fix_substring_time_matches.py output/candidates-quality.jsonl   # in-place compatibility pass
 python3 enrich_metadata.py output/candidates-quality.jsonl --output assets/candidates-attributed.jsonl
 python3 apply_content_overrides.py assets/candidates-attributed.jsonl
 python3 bake_quote_database.py assets/candidates-attributed.jsonl --output assets/quote_database.jsonl
 ```
+
+`fix_substring_time_matches.py` runs as a defensive compatibility pass: it's a no-op on fresh harvests (the current miner already collapses the substring-collision case) but rewrites time metadata in older JSONL rows that captured `"five minutes past two"` as a substring of `"thirty-five minutes past two"`. Keeping it in the manual flow above matches `run_dawn_expansion.sh` line-for-line, so a manually-driven rebuild produces the same corpus the driver script would. `fix_legacy_buckets.py` is the companion repair for pre-`buckets.py` 8-state bucket names; the dawn driver does not run it because that drift was eradicated before the dawn corpus existed, but include it after `quality_filter` if you're rebuilding from a JSONL old enough to contain those names.
 
 If the one-shot render and one-shot display both work, you can move on to making it a boot-time service.
 
@@ -303,7 +315,7 @@ Recommended progression:
 1. manual render test
 2. manual Inky display test
 3. manual combined loop
-4. `systemd` service
+4. `systemd` service — see [Optional: Run LitClock as an appliance at boot](#optional-run-litclock-as-an-appliance-at-boot) above for the config-file + unit-file install steps
 
 ## Notes
 
