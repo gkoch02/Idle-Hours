@@ -913,6 +913,57 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+def draw_risograph_border(image: Image.Image, colors: dict) -> None:
+    """Paint a lively risograph-inspired print frame.
+
+    The effect comes from deliberate misregistration: a primary frame in the
+    theme's text color, a slightly shifted duplicate in the accent color, plus
+    crop / register marks and a few chunky side blocks that feel like a print
+    test sheet. The center stays mostly clear so the quote remains legible.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    base = colors["text"]
+    accent = colors["accent"]
+    shadow = colors.get("subtle", base)
+
+    outer = 20
+    inner = 34
+    dx, dy = 5, 3
+
+    draw.rectangle((outer + dx, outer + dy, width - 1 - outer + dx, height - 1 - outer + dy), outline=accent, width=2)
+    draw.rectangle((outer, outer, width - 1 - outer, height - 1 - outer), outline=base, width=2)
+    draw.rectangle((inner, inner, width - 1 - inner, height - 1 - inner), outline=shadow, width=1)
+
+    # Chunky print bars.
+    draw.rectangle((42, 54, 74, 170), fill=accent)
+    draw.rectangle((56, 68, 88, 184), outline=base, width=2)
+    draw.rectangle((width - 88, height - 184, width - 56, height - 68), fill=base)
+    draw.rectangle((width - 102, height - 198, width - 70, height - 82), outline=accent, width=2)
+
+    # Overprint-style circles.
+    draw.ellipse((width - 118, 58, width - 54, 122), outline=base, width=2)
+    draw.ellipse((width - 112 + dx, 64 + dy, width - 48 + dx, 128 + dy), outline=accent, width=2)
+    draw.ellipse((54, height - 128, 118, height - 64), outline=accent, width=2)
+    draw.ellipse((48 + dx, height - 122 + dy, 112 + dx, height - 58 + dy), outline=base, width=2)
+
+    # Registration / crop marks.
+    def cross(cx: int, cy: int, color: tuple[int, int, int]) -> None:
+        draw.line((cx - 10, cy, cx + 10, cy), fill=color, width=1)
+        draw.line((cx, cy - 10, cx, cy + 10), fill=color, width=1)
+        draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), outline=color, width=1)
+
+    marks = [
+        (outer, outer),
+        (width - outer, outer),
+        (outer, height - outer),
+        (width - outer, height - outer),
+    ]
+    for cx, cy in marks:
+        cross(cx, cy, base)
+        cross(cx + dx, cy + dy, accent)
+
+
 def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
     """Paint a drafting-sheet border and graph-paper grid over the canvas.
 
@@ -1281,6 +1332,7 @@ _BORDER_PAINTERS = {
     "illuminated": draw_illuminated_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
+    "risograph": draw_risograph_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -1302,6 +1354,7 @@ _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
     "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
+    "risograph": 44,    # past the shifted TR registration mark at x=width-15
 }
 
 
