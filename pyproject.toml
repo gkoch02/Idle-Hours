@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "ruff"]
+dev = ["pytest", "pytest-cov", "pytest-xdist", "ruff"]
 pi = ["inky", "gpiozero"]
 
 [tool.setuptools]
