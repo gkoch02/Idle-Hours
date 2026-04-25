@@ -160,6 +160,12 @@ jobs:
           /tmp/whlcheck/bin/pip install dist/*.whl
 
       - name: Import every production module from the installed wheel
+        # Run from /tmp, not the repo root: when Python starts, ``sys.path[0]``
+        # is the CWD, so a step run from the checkout would resolve
+        # ``import run_clock`` to ``./run_clock.py`` BEFORE the installed
+        # wheel — defeating the whole point of this job. ``cd /tmp`` forces
+        # imports to come from site-packages.
+        working-directory: /tmp
         run: |
           /tmp/whlcheck/bin/python - <<'PY'
           import importlib
@@ -178,8 +184,16 @@ jobs:
               "runtime_telemetry", "runtime_theme", "sd_notify",
               "target_sparse_buckets", "web_server",
           ]
+          site_packages = "/tmp/whlcheck/lib"
           for name in MODULES:
-              importlib.import_module(name)
+              mod = importlib.import_module(name)
+              # Defence in depth: confirm the import resolved to the installed
+              # wheel, not a stray copy on sys.path. If this assertion ever
+              # fires the working-directory above is wrong.
+              assert mod.__file__ and mod.__file__.startswith(site_packages), (
+                  f"{name!r} resolved to {mod.__file__!r}, "
+                  f"expected something under {site_packages!r}"
+              )
 
           forbidden = ("gpiozero", "inky", "RPi")
           leaked = sorted(m for m in sys.modules if m.split(".", 1)[0] in forbidden)
@@ -188,7 +202,8 @@ jobs:
           PY
 
       - name: Smoke-test installed entrypoint
-        # ``python -m run_clock --help`` resolves only against installed
-        # top-level modules, so this fails loudly if the wheel is missing
-        # anything that ``run_clock``'s import chain needs.
+        # Same ``working-directory`` reasoning as above — without it,
+        # ``python -m run_clock`` would resolve against the source checkout
+        # instead of the wheel.
+        working-directory: /tmp
         run: /tmp/whlcheck/bin/python -m run_clock --help
