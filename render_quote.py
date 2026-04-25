@@ -1165,11 +1165,21 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     # edge, so the chevron leans up-and-to-the-right and parallels the
     # mask hypotenuse. Visible range of c is [-qh, qw]; iterate a touch
     # wider so rounded line caps still clip cleanly.
+    #
+    # Restrict the painted bands to the middle four of the nine stripes
+    # that would otherwise be visible — keeping only the green / red /
+    # black / blue quartet closest to the triangle's centre. The two
+    # outer partial-red strips and the outer black/blue/green/green pair
+    # on either side stay page_bg, so the chevron reads as a compact
+    # block rather than filling the whole corner triangle.
+    keep_min_c = 240
+    keep_max_c = 330
     i = 0
     c = -qh - period
     while c <= qw + period:
-        color = palette[i % len(palette)]
-        qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
+        if keep_min_c <= c <= keep_max_c:
+            color = palette[i % len(palette)]
+            qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
         c += period
         i += 1
 
