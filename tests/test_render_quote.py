@@ -1181,12 +1181,13 @@ class TestComicCornerStripes:
         rq.draw_comic_corner_stripes(image, {"page_bg": rq.SPECTRA6["yellow"]})
         palette_set = set(rq._COMIC_STRIPE_PALETTE)
         found = set()
-        for x in range(590, 800, 3):
-            pixel = image.getpixel((x, 460))
-            if pixel in palette_set:
-                found.add(pixel)
+        for y in range(240, 480, 10):
+            for x in range(560, 800, 3):
+                pixel = image.getpixel((x, y))
+                if pixel in palette_set:
+                    found.add(pixel)
         assert palette_set <= found, (
-            f"missing palette colours at y=460: expected {palette_set}, found {found}"
+            f"missing palette colours in comic triangle: expected {palette_set}, found {found}"
         )
 
     def test_comic_stripes_leave_upper_left_clear(self):
@@ -1234,6 +1235,20 @@ class TestComicCornerStripes:
             assert img.getpixel((650, 470)) != yellow, (
                 f"comic mode={mode} missing stripe pixel — chevron didn't paint"
             )
+
+    def test_comic_stripes_scale_to_smaller_render_sizes(self):
+        """The trimmed comic chevron should still paint accent stripes on a
+        smaller valid canvas instead of disappearing because a fixed pixel
+        clamp fell outside the image geometry."""
+        image = Image.new("RGB", (400, 240), color=rq.SPECTRA6["yellow"])
+        rq.draw_comic_corner_stripes(image, {"page_bg": rq.SPECTRA6["yellow"]})
+        found = set()
+        for y in range(120, 240):
+            for x in range(200, 400):
+                pixel = image.getpixel((x, y))
+                if pixel in rq._COMIC_STRIPE_PALETTE:
+                    found.add(pixel)
+        assert found, "comic chevron disappeared on 400×240 render"
 
     def test_comic_stripe_palette_stays_within_spectra6(self):
         """Hardcoded module-level palette must round-trip through the panel's

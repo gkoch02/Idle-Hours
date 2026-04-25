@@ -1156,7 +1156,7 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     quadrant = Image.new("RGB", (qw, qh), color=colors["page_bg"])
     qd = ImageDraw.Draw(quadrant)
 
-    stripe_thickness = 18
+    stripe_thickness = 23
     period = 30
     palette = _COMIC_STRIPE_PALETTE
 
@@ -1165,13 +1165,34 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     # edge, so the chevron leans up-and-to-the-right and parallels the
     # mask hypotenuse. Visible range of c is [-qh, qw]; iterate a touch
     # wider so rounded line caps still clip cleanly.
-    i = 0
-    c = -qh - period
-    while c <= qw + period:
-        color = palette[i % len(palette)]
-        qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
-        c += period
-        i += 1
+    #
+    # Restrict the painted bands to the same four-stripe window in the
+    # visible ``c`` sequence regardless of render size. For the default
+    # 800×480 canvas this reproduces the historical [240, 330] quartet;
+    # smaller canvases scale to the nearest equivalent stripe indices
+    # instead of dropping the accent entirely.
+    stripe_cs = list(range(-qh - period, qw + period + 1, period))
+    if qh == 240 and qw == 400:
+        kept_indices = {17, 18, 19, 20}
+    else:
+        default_qh = 240
+        default_qw = 400
+        default_stripe_cs = list(range(-default_qh - period, default_qw + period + 1, period))
+        default_keep_indices = [
+            idx for idx, c in enumerate(default_stripe_cs)
+            if 240 <= c <= 330
+        ]
+        target_mid = sum(default_keep_indices) / len(default_keep_indices)
+        scale = len(stripe_cs) / len(default_stripe_cs)
+        scaled_mid = target_mid * scale
+        keep_start = round(scaled_mid - 1.5)
+        keep_start = max(0, min(keep_start, max(0, len(stripe_cs) - 4)))
+        kept_indices = set(range(keep_start, min(len(stripe_cs), keep_start + 4)))
+
+    for i, c in enumerate(stripe_cs):
+        if i in kept_indices:
+            color = palette[i % len(palette)]
+            qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
 
     # 45° right-isoceles triangle mask pinned to the bottom-right of
     # the quadrant. Legs of length qh (the shorter dimension) so the
