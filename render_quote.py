@@ -978,9 +978,6 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
     accent = colors["accent"]
     outer_inset = 18
     inner_inset = 26
-    left_rule = 92
-    right_rule = width - 92
-
     draw.rectangle(
         (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
         outline=body,
