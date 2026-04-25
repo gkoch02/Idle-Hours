@@ -1102,6 +1102,89 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     draw.rectangle((right_x - thickness + 1, bottom_y - arm, right_x, bottom_y), fill=bracket)
 
 
+_COMIC_STRIPE_PALETTE = (
+    SPECTRA6["blue"],
+    SPECTRA6["green"],
+    SPECTRA6["red"],
+    SPECTRA6["black"],
+)
+
+
+def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
+    """Paint retro 70s-style 45° racing stripes into the bottom-right corner.
+
+    Parallel diagonal bands cycling through the four non-yellow palette
+    accents (blue / green / red / black) sweep down-and-right at 45°,
+    evoking the chromatic chevron motif of mid-century racing graphics
+    and 70s/80s graphic design. The yellow page_bg shows through the
+    gaps so the chevron reads as banded stripes rather than a solid
+    block.
+
+    Constrained to a right-triangle pinned to the bottom-right corner —
+    legs running along the bottom and right canvas edges, hypotenuse
+    sweeping from ``(width // 2, height)`` up to ``(width, height // 2)``.
+    Because the lower-right quadrant is wider than it is tall (400×240),
+    the hypotenuse sits at ~31° rather than a true 45°, but that slope
+    mismatch turns into a feature: bands near the hypotenuse get
+    progressively shorter going up-and-left, so the chevron appears to
+    fan outward from the bottom-right corner rather than reading as a
+    rectangular stamp. The upper-left half of the canvas stays
+    striped-free so the bulk of the quote text never crosses the
+    chevron.
+
+    Drawn after the page_bg fill and before any text, so any glyph
+    that does land inside the triangle overlays the stripes — text
+    wins, the chevron shows through whitespace.
+
+    Stripe palette is hardcoded at module scope rather than read from
+    ``colors`` because the comic theme dict only carries two non-bg
+    accents (text=black, accent=red); pulling the cool blue/green
+    half of the chevron from anywhere else would require extending the
+    THEMES schema, which the cross-theme invariant tests pin tightly.
+    The yellow gap colour does come from ``colors["page_bg"]`` so a
+    future palette tweak that swaps the comic ground still flows
+    through.
+    """
+    width, height = image.size
+    qx = width // 2
+    qy = height // 2
+    qw = width - qx
+    qh = height - qy
+
+    # Paint stripes onto a sub-image sized to the lower-right quadrant
+    # so 45° bands that extend past either edge clip naturally on the
+    # sub-image bounds rather than needing per-stripe polygon math.
+    quadrant = Image.new("RGB", (qw, qh), color=colors["page_bg"])
+    qd = ImageDraw.Draw(quadrant)
+
+    stripe_thickness = 18
+    period = 30
+    palette = _COMIC_STRIPE_PALETTE
+
+    # Bands run with slope +1 (down-and-right) so each line passes
+    # through (c, 0) at the sub-image's top edge and (c + qh, qh) at
+    # the bottom edge. Visible range of c is [-qh, qw]; iterate a
+    # touch wider so rounded line caps still clip cleanly.
+    i = 0
+    c = -qh - period
+    while c <= qw + period:
+        color = palette[i % len(palette)]
+        qd.line([(c, 0), (c + qh, qh)], fill=color, width=stripe_thickness)
+        c += period
+        i += 1
+
+    # Right-triangle mask pinned to the bottom-right of the quadrant.
+    # Hypotenuse runs from (0, qh) up to (qw, 0); the white half is
+    # the triangle anchored at the bottom-right corner. Painted in
+    # mode "L" so paste() reads it as a per-pixel alpha — striped
+    # pixels land on the canvas only where the mask is 255.
+    mask = Image.new("L", (qw, qh), 0)
+    md = ImageDraw.Draw(mask)
+    md.polygon([(0, qh), (qw, 0), (qw, qh)], fill=255)
+
+    image.paste(quadrant, (qx, qy), mask=mask)
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -1109,6 +1192,7 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
 _BORDER_PAINTERS = {
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
+    "comic": draw_comic_corner_stripes,
     "illuminated": draw_illuminated_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
