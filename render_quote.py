@@ -1166,22 +1166,33 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     # mask hypotenuse. Visible range of c is [-qh, qw]; iterate a touch
     # wider so rounded line caps still clip cleanly.
     #
-    # Restrict the painted bands to the middle four of the nine stripes
-    # that would otherwise be visible — keeping only the green / red /
-    # black / blue quartet closest to the triangle's centre. The two
-    # outer partial-red strips and the outer black/blue/green/green pair
-    # on either side stay page_bg, so the chevron reads as a compact
-    # block rather than filling the whole corner triangle.
-    keep_min_c = 240
-    keep_max_c = 330
-    i = 0
-    c = -qh - period
-    while c <= qw + period:
-        if keep_min_c <= c <= keep_max_c:
+    # Restrict the painted bands to the same four-stripe window in the
+    # visible ``c`` sequence regardless of render size. For the default
+    # 800×480 canvas this reproduces the historical [240, 330] quartet;
+    # smaller canvases scale to the nearest equivalent stripe indices
+    # instead of dropping the accent entirely.
+    stripe_cs = list(range(-qh - period, qw + period + 1, period))
+    if qh == 240 and qw == 400:
+        kept_indices = {17, 18, 19, 20}
+    else:
+        default_qh = 240
+        default_qw = 400
+        default_stripe_cs = list(range(-default_qh - period, default_qw + period + 1, period))
+        default_keep_indices = [
+            idx for idx, c in enumerate(default_stripe_cs)
+            if 240 <= c <= 330
+        ]
+        target_mid = sum(default_keep_indices) / len(default_keep_indices)
+        scale = len(stripe_cs) / len(default_stripe_cs)
+        scaled_mid = target_mid * scale
+        keep_start = round(scaled_mid - 1.5)
+        keep_start = max(0, min(keep_start, max(0, len(stripe_cs) - 4)))
+        kept_indices = set(range(keep_start, min(len(stripe_cs), keep_start + 4)))
+
+    for i, c in enumerate(stripe_cs):
+        if i in kept_indices:
             color = palette[i % len(palette)]
             qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
-        c += period
-        i += 1
 
     # 45° right-isoceles triangle mask pinned to the bottom-right of
     # the quadrant. Legs of length qh (the shorter dimension) so the
