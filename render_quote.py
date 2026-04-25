@@ -1150,45 +1150,56 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
-    """Paint HUD-style corner brackets around the canvas margin.
-
-    Four L-shaped brackets — two perpendicular green arms meeting at
-    each canvas corner, with no continuous outer frame. The bracket-
-    only composition is the iconic camera-viewfinder / weapons-HUD /
-    mission-monitor border motif; the absent full-rectangle frame is
-    the distinctive feature (full-frame HUDs are unusual), which sets
-    nightvision's border visually apart from the bauhaus / blueprint /
-    illuminated / newsprint patterns.
-
-    Drawn in the body green so brackets stay legible against the
-    theme's black page background without competing with the yellow
-    accent the matched time phrase already owns.
-    """
+    """Paint a HUD-style nightvision field without closing the outer frame."""
     draw = ImageDraw.Draw(image)
     width, height = image.size
-    bracket = colors["text"]  # green
+    body = colors["text"]
+    accent = colors.get("accent", body)
+    subtle = colors.get("subtle", body)
 
-    margin = 12       # canvas-edge inset of the corner point
-    arm = 26          # length of each bracket arm
-    thickness = 2     # weight of the bracket strokes
+    margin = 12
+    arm = 26
+    thickness = 2
     right_x = width - 1 - margin
     bottom_y = height - 1 - margin
 
-    # Each corner: one horizontal arm and one vertical arm, rendered
-    # as filled rectangles so the 2px thickness is exact regardless
-    # of Pillow's line-width rounding.
-    # Top-left
-    draw.rectangle((margin, margin, margin + arm, margin + thickness - 1), fill=bracket)
-    draw.rectangle((margin, margin, margin + thickness - 1, margin + arm), fill=bracket)
-    # Top-right
-    draw.rectangle((right_x - arm, margin, right_x, margin + thickness - 1), fill=bracket)
-    draw.rectangle((right_x - thickness + 1, margin, right_x, margin + arm), fill=bracket)
-    # Bottom-left
-    draw.rectangle((margin, bottom_y - thickness + 1, margin + arm, bottom_y), fill=bracket)
-    draw.rectangle((margin, bottom_y - arm, margin + thickness - 1, bottom_y), fill=bracket)
-    # Bottom-right
-    draw.rectangle((right_x - arm, bottom_y - thickness + 1, right_x, bottom_y), fill=bracket)
-    draw.rectangle((right_x - thickness + 1, bottom_y - arm, right_x, bottom_y), fill=bracket)
+    # Preserve the original bracket-only silhouette.
+    draw.rectangle((margin, margin, margin + arm, margin + thickness - 1), fill=body)
+    draw.rectangle((margin, margin, margin + thickness - 1, margin + arm), fill=body)
+    draw.rectangle((right_x - arm, margin, right_x, margin + thickness - 1), fill=body)
+    draw.rectangle((right_x - thickness + 1, margin, right_x, margin + arm), fill=body)
+    draw.rectangle((margin, bottom_y - thickness + 1, margin + arm, bottom_y), fill=body)
+    draw.rectangle((margin, bottom_y - arm, margin + thickness - 1, bottom_y), fill=body)
+    draw.rectangle((right_x - arm, bottom_y - thickness + 1, right_x, bottom_y), fill=body)
+    draw.rectangle((right_x - thickness + 1, bottom_y - arm, right_x, bottom_y), fill=body)
+
+    # Faint scanlines contained inside the page, leaving the bracket gaps intact.
+    for y in range(margin + 18, bottom_y - 6, 14):
+        draw.line((margin + 30, y, right_x - 30, y), fill=subtle, width=1)
+
+    # Mid-edge targeting ticks that float inside the canvas rather than joining the frame.
+    tick = 12
+    cx = width // 2
+    cy = height // 2
+    top_y = margin + 20
+    bottom_tick_y = bottom_y - 20
+    left_x = margin + 20
+    right_tick_x = right_x - 20
+    draw.line((cx - 48, top_y, cx - 48 + tick, top_y), fill=accent, width=2)
+    draw.line((cx + 48 - tick, top_y, cx + 48, top_y), fill=accent, width=2)
+    draw.line((cx - 48, bottom_tick_y, cx - 48 + tick, bottom_tick_y), fill=accent, width=2)
+    draw.line((cx + 48 - tick, bottom_tick_y, cx + 48, bottom_tick_y), fill=accent, width=2)
+    draw.line((left_x, cy - 32, left_x, cy - 32 + tick), fill=accent, width=2)
+    draw.line((left_x, cy + 32 - tick, left_x, cy + 32), fill=accent, width=2)
+    draw.line((right_tick_x, cy - 32, right_tick_x, cy - 32 + tick), fill=accent, width=2)
+    draw.line((right_tick_x, cy + 32 - tick, right_tick_x, cy + 32), fill=accent, width=2)
+
+    # Tiny corner telemetry, kept clear of the debug-banner region.
+    meta_font = load_font(META_FONT_CANDIDATES, size=12)
+    draw_text(draw, (24, 20), 'SIG 92%', font=meta_font, fill=accent)
+    draw_text(draw, (24, height - 34), 'GAIN AUTO', font=meta_font, fill=accent)
+    draw_text(draw, (width - 122, 40), 'AZ 041  EL 17', font=meta_font, fill=accent)
+
 
 
 _COMIC_STRIPE_PALETTE = (
