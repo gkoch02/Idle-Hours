@@ -1161,15 +1161,16 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     period = 30
     palette = _COMIC_STRIPE_PALETTE
 
-    # Bands run with slope +1 (down-and-right) so each line passes
-    # through (c, 0) at the sub-image's top edge and (c + qh, qh) at
-    # the bottom edge. Visible range of c is [-qh, qw]; iterate a
-    # touch wider so rounded line caps still clip cleanly.
+    # Bands run with slope -1 (down-and-left): each line passes through
+    # (c, qh) at the sub-image's bottom edge and (c + qh, 0) at the top
+    # edge, so the chevron leans up-and-to-the-right and parallels the
+    # mask hypotenuse. Visible range of c is [-qh, qw]; iterate a touch
+    # wider so rounded line caps still clip cleanly.
     i = 0
     c = -qh - period
     while c <= qw + period:
         color = palette[i % len(palette)]
-        qd.line([(c, 0), (c + qh, qh)], fill=color, width=stripe_thickness)
+        qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
         c += period
         i += 1
 
