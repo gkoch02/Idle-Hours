@@ -17,12 +17,21 @@ dev = ["pytest", "pytest-cov", "pytest-xdist", "ruff"]
 pi = ["inky", "gpiozero"]
 
 [tool.setuptools]
+# Keep this list in sync with the top-level *.py files in the repo root.
+# tests/test_packaging.py::test_py_modules_covers_top_level_modules enforces
+# the invariant — a module that exists on disk but is missing here will
+# silently break ``pip install .`` (the installed wheel won't contain it).
 py-modules = [
-    "buckets",
+    "apply_content_overrides",
+    "atomic_io",
+    "bake_quote_database",
     "bucket_coverage",
+    "buckets",
     "clean_display_quotes",
+    "contact_sheet",
     "display_inky",
     "enrich_metadata",
+    "fix_legacy_buckets",
     "fix_substring_time_matches",
     "gutenberg_time_miner",
     "import_targeted_hits",
@@ -31,9 +40,20 @@ py-modules = [
     "litclock_health",
     "merge_candidates",
     "pick_quote",
+    "pidfile",
+    "probe_buttons",
     "quality_filter",
     "render_quote",
     "run_clock",
+    "runtime_actions",
+    "runtime_config",
+    "runtime_log",
+    "runtime_quiet",
+    "runtime_state",
+    "runtime_store",
+    "runtime_telemetry",
+    "runtime_theme",
+    "sd_notify",
     "target_sparse_buckets",
     "web_server",
 ]

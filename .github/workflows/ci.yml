@@ -75,6 +75,20 @@ jobs:
           COVERAGE_CORE: sysmon
         run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=. --cov-report=term-missing --cov-report=xml
 
+      - name: End-to-end --once smoke (verifies rendered PNG decodes)
+        # One Python version is enough — the existing test job already exercises
+        # ``run_clock --once`` via subprocess; this step adds an
+        # ``Image.verify()`` check so a truncated / partially-snapped PNG
+        # surfaces immediately instead of waiting for someone to look at the
+        # appliance. ``--skip-preflight`` is required because the CI runner
+        # has no display script on the configured path.
+        if: matrix.python-version == '3.12'
+        run: |
+          python run_clock.py --once --skip-preflight --buttons-off --quiet-off \
+            --history-path "" --state-path "" --pidfile "" --telemetry-path "" \
+            --mode production
+          python -c "from PIL import Image; im = Image.open('output/current.png'); im.verify(); im.close(); print('PNG OK')"
+
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v7
@@ -104,3 +118,77 @@ jobs:
 
       - name: Run golden render tests
         run: pytest tests/test_render_golden.py -n auto --dist worksteal
+
+  package-build:
+    # Builds a wheel + sdist from pyproject.toml and installs the wheel into
+    # a fresh venv with NO extras (no ``[dev]``, no ``[pi]``). Then imports
+    # every production module from the installed wheel and runs
+    # ``python -m run_clock --help`` as a canonical entrypoint smoke. This
+    # catches three install-time failure modes that the rest of CI (which
+    # uses ``pip install -e .``) cannot see:
+    #
+    #   1. Modules missing from ``[tool.setuptools] py-modules`` — the wheel
+    #      ships only what's listed there. A missing entry produces a wheel
+    #      that crashes on first ``import``.
+    #   2. Optional-dep leakage at module import time — if any module hoists
+    #      an ``import gpiozero`` / ``import inky`` from a function body to
+    #      the top of the file, the wheel becomes unusable on non-Pi hosts.
+    #   3. Broken ``__main__`` wiring — ``python -m run_clock`` only resolves
+    #      against installed top-level modules, not the source checkout.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Install built wheel into clean venv (no extras)
+        run: |
+          python -m venv /tmp/whlcheck
+          /tmp/whlcheck/bin/pip install --upgrade pip
+          /tmp/whlcheck/bin/pip install dist/*.whl
+
+      - name: Import every production module from the installed wheel
+        run: |
+          /tmp/whlcheck/bin/python - <<'PY'
+          import importlib
+          import sys
+
+          MODULES = [
+              "apply_content_overrides", "atomic_io", "bake_quote_database",
+              "bucket_coverage", "buckets", "clean_display_quotes",
+              "contact_sheet", "display_inky", "enrich_metadata",
+              "fix_legacy_buckets", "fix_substring_time_matches",
+              "gutenberg_time_miner", "import_targeted_hits", "inky_buttons",
+              "jsonl_io", "litclock_health", "merge_candidates", "pick_quote",
+              "pidfile", "probe_buttons", "quality_filter", "render_quote",
+              "run_clock", "runtime_actions", "runtime_config", "runtime_log",
+              "runtime_quiet", "runtime_state", "runtime_store",
+              "runtime_telemetry", "runtime_theme", "sd_notify",
+              "target_sparse_buckets", "web_server",
+          ]
+          for name in MODULES:
+              importlib.import_module(name)
+
+          forbidden = ("gpiozero", "inky", "RPi")
+          leaked = sorted(m for m in sys.modules if m.split(".", 1)[0] in forbidden)
+          assert leaked == [], f"hardware deps leaked into sys.modules: {leaked}"
+          print(f"OK: {len(MODULES)} modules importable from installed wheel; no leakage")
+          PY
+
+      - name: Smoke-test installed entrypoint
+        # ``python -m run_clock --help`` resolves only against installed
+        # top-level modules, so this fails loudly if the wheel is missing
+        # anything that ``run_clock``'s import chain needs.
+        run: /tmp/whlcheck/bin/python -m run_clock --help
