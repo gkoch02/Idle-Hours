@@ -1156,43 +1156,42 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     quadrant = Image.new("RGB", (qw, qh), color=colors["page_bg"])
     qd = ImageDraw.Draw(quadrant)
 
-    stripe_thickness = 23
-    period = 30
+    stripe_thickness = 19
+    stripe_gap = 11
+    period = stripe_thickness + stripe_gap
     palette = _COMIC_STRIPE_PALETTE
 
     # Bands run with slope -1 (down-and-left): each line passes through
-    # (c, qh) at the sub-image's bottom edge and (c + qh, 0) at the top
-    # edge, so the chevron leans up-and-to-the-right and parallels the
-    # mask hypotenuse. Visible range of c is [-qh, qw]; iterate a touch
-    # wider so rounded line caps still clip cleanly.
-    #
-    # Restrict the painted bands to the same four-stripe window in the
-    # visible ``c`` sequence regardless of render size. For the default
-    # 800×480 canvas this reproduces the historical [240, 330] quartet;
-    # smaller canvases scale to the nearest equivalent stripe indices
-    # instead of dropping the accent entirely.
+    # (c, qh) at the sub-image's bottom edge and would naturally hit
+    # (c + qh, 0) at the top edge. Extend each stripe beyond both bounds
+    # so the painted segment reaches the canvas edge cleanly after PIL's
+    # line-cap rasterisation, while the larger period leaves a deliberate
+    # yellow gap between neighbouring bands.
     stripe_cs = list(range(-qh - period, qw + period + 1, period))
+    keep_count = min(4, len(stripe_cs))
     if qh == 240 and qw == 400:
         kept_indices = {17, 18, 19, 20}
     else:
         default_qh = 240
         default_qw = 400
         default_stripe_cs = list(range(-default_qh - period, default_qw + period + 1, period))
-        default_keep_indices = [
-            idx for idx, c in enumerate(default_stripe_cs)
-            if 240 <= c <= 330
-        ]
+        default_keep_indices = {17, 18, 19, 20}
         target_mid = sum(default_keep_indices) / len(default_keep_indices)
         scale = len(stripe_cs) / len(default_stripe_cs)
         scaled_mid = target_mid * scale
-        keep_start = round(scaled_mid - 1.5)
-        keep_start = max(0, min(keep_start, max(0, len(stripe_cs) - 4)))
-        kept_indices = set(range(keep_start, min(len(stripe_cs), keep_start + 4)))
+        keep_start = round(scaled_mid - (keep_count - 1) / 2)
+        keep_start = max(0, min(keep_start, max(0, len(stripe_cs) - keep_count)))
+        kept_indices = set(range(keep_start, min(len(stripe_cs), keep_start + keep_count)))
 
+    overshoot = max(stripe_thickness, stripe_gap)
     for i, c in enumerate(stripe_cs):
         if i in kept_indices:
             color = palette[i % len(palette)]
-            qd.line([(c, qh), (c + qh, 0)], fill=color, width=stripe_thickness)
+            qd.line(
+                [(c - overshoot, qh + overshoot), (c + qh + overshoot, -overshoot)],
+                fill=color,
+                width=stripe_thickness,
+            )
 
     # 45° right-isoceles triangle mask pinned to the bottom-right of
     # the quadrant. Legs of length qh (the shorter dimension) so the
