@@ -1172,14 +1172,16 @@ class TestComicCornerStripes:
     def test_comic_stripes_cover_lower_right_triangle_in_palette_colours(self):
         """Sample a horizontal sweep at y=460 (deep inside the bottom-right
         triangle) and verify every one of the four stripe-palette accents
-        appears at least once. A regression that collapsed the rotation to
-        a single colour would fail here even if the chevron geometry was
+        appears at least once. The 45° right-iso triangle has legs of
+        length 240, so at y=460 the striped region spans x in [580, 800];
+        sweep that range. A regression that collapsed the rotation to a
+        single colour would fail here even if the chevron geometry was
         intact."""
         image = Image.new("RGB", (800, 480), color=rq.SPECTRA6["yellow"])
         rq.draw_comic_corner_stripes(image, {"page_bg": rq.SPECTRA6["yellow"]})
         palette_set = set(rq._COMIC_STRIPE_PALETTE)
         found = set()
-        for x in range(450, 800, 4):
+        for x in range(590, 800, 3):
             pixel = image.getpixel((x, 460))
             if pixel in palette_set:
                 found.add(pixel)
@@ -1188,10 +1190,13 @@ class TestComicCornerStripes:
         )
 
     def test_comic_stripes_leave_upper_left_clear(self):
-        """The upper-left half of the canvas — outside the lower-right
-        quadrant entirely, plus the above-hypotenuse half of the quadrant —
-        stays page_bg. Pin a few points spanning the clear region so a
-        regression that flipped the mask polygon would surface."""
+        """Everything outside the 45° right-iso triangle stays page_bg —
+        that includes the upper-left three canvas quadrants entirely AND
+        the bottom-left half of the lower-right quadrant. The triangle's
+        hypotenuse satisfies ``x + y = 1040`` (legs of length 240 anchored
+        at the bottom-right corner), so any sample with ``x + y < 1040``
+        must remain unmasked. Pin a spread of points so a regression that
+        re-grew the triangle to span the full quadrant would surface."""
         image = Image.new("RGB", (800, 480), color=rq.SPECTRA6["yellow"])
         rq.draw_comic_corner_stripes(image, {"page_bg": rq.SPECTRA6["yellow"]})
         yellow = rq.SPECTRA6["yellow"]
@@ -1199,11 +1204,10 @@ class TestComicCornerStripes:
         assert image.getpixel((20, 20)) == yellow, "TL canvas corner should stay page_bg"
         assert image.getpixel((20, 460)) == yellow, "BL canvas corner should stay page_bg"
         assert image.getpixel((380, 100)) == yellow, "above quadrant should stay page_bg"
-        # Inside the quadrant but above the hypotenuse running from
-        # (qx, qy+qh)=(400,480) to (qx+qw, qy)=(800,240). At canvas
-        # (410, 250) the local quadrant point is (10, 10), which is
-        # well above the hypotenuse line — should remain unmasked.
-        assert image.getpixel((410, 250)) == yellow, "above-hypotenuse half of quadrant should stay page_bg"
+        # Inside the LR quadrant but outside the 240×240 corner triangle.
+        assert image.getpixel((410, 250)) == yellow, "upper-left of LR quadrant should stay page_bg"
+        assert image.getpixel((450, 460)) == yellow, "bottom-left of LR quadrant should stay page_bg (outside corner triangle)"
+        assert image.getpixel((550, 300)) == yellow, "diagonal middle of LR quadrant should stay page_bg"
 
     def test_comic_stripes_are_theme_gated(self):
         """No other theme paints a non-page_bg pixel at the comic stripe

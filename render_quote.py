@@ -1120,17 +1120,16 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     gaps so the chevron reads as banded stripes rather than a solid
     block.
 
-    Constrained to a right-triangle pinned to the bottom-right corner —
-    legs running along the bottom and right canvas edges, hypotenuse
-    sweeping from ``(width // 2, height)`` up to ``(width, height // 2)``.
-    Because the lower-right quadrant is wider than it is tall (400×240),
-    the hypotenuse sits at ~31° rather than a true 45°, but that slope
-    mismatch turns into a feature: bands near the hypotenuse get
-    progressively shorter going up-and-left, so the chevron appears to
-    fan outward from the bottom-right corner rather than reading as a
-    rectangular stamp. The upper-left half of the canvas stays
-    striped-free so the bulk of the quote text never crosses the
-    chevron.
+    Constrained to a 45° right-isoceles triangle pinned to the bottom-
+    right canvas corner — legs of length ``height // 2`` running along
+    the bottom and right edges, hypotenuse sweeping from
+    ``(width - height // 2, height)`` up to ``(width, height // 2)``.
+    The hypotenuse runs at exactly slope -1, parallel to the stripes
+    themselves, so the boundary edge "fades in" along the stripe
+    direction rather than clipping bands at an angle. Strict to the
+    bottom-right corner — the bottom-left half of the lower-right
+    quadrant stays yellow page_bg so the quote body never crosses the
+    chevron even on the longest dense-layout lines.
 
     Drawn after the page_bg fill and before any text, so any glyph
     that does land inside the triangle overlays the stripes — text
@@ -1174,14 +1173,14 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
         c += period
         i += 1
 
-    # Right-triangle mask pinned to the bottom-right of the quadrant.
-    # Hypotenuse runs from (0, qh) up to (qw, 0); the white half is
-    # the triangle anchored at the bottom-right corner. Painted in
-    # mode "L" so paste() reads it as a per-pixel alpha — striped
-    # pixels land on the canvas only where the mask is 255.
+    # 45° right-isoceles triangle mask pinned to the bottom-right of
+    # the quadrant. Legs of length qh (the shorter dimension) so the
+    # hypotenuse runs at exactly slope -1, parallel to the stripes.
+    # Painted in mode "L" so paste() reads it as a per-pixel alpha —
+    # striped pixels land on the canvas only where the mask is 255.
     mask = Image.new("L", (qw, qh), 0)
     md = ImageDraw.Draw(mask)
-    md.polygon([(0, qh), (qw, 0), (qw, qh)], fill=255)
+    md.polygon([(qw - qh, qh), (qw, 0), (qw, qh)], fill=255)
 
     image.paste(quadrant, (qx, qy), mask=mask)
 
