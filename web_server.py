@@ -495,8 +495,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _api_themes(self) -> None:
         """Expose the theme cycle so the UI dropdown and the Python cycle stay aligned.
 
-        Lazy import matches ``runtime_state._known_theme_names``: the module
-        stays free of Pillow at load time, and a broken renderer install
+        Lazy import via :mod:`theme_names` keeps Pillow off the web-server
+        module's load-time import graph, and a broken renderer install
         degrades to the historical pair instead of a 500 that would hide the
         rest of the UI. ``theme_arg`` / ``manual_theme`` / ``effective`` give
         the UI everything it needs to render the dropdown with the current
@@ -510,12 +510,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
         reentrant. The snapshot is a consistent-enough view: effective
         resolution only uses wall time + the snapshotted values.
         """
+        from theme_names import theme_cycle
         ctx = self._ctx()
-        try:
-            from render_quote import THEME_ORDER
-            order = list(THEME_ORDER)
-        except Exception:
-            order = ["default", "dark"]
+        order = list(theme_cycle())
         import run_clock
         now = dt.datetime.now().strftime("%H:%M")
         with ctx.state.lock:

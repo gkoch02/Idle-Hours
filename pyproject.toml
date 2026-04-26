@@ -55,6 +55,7 @@ py-modules = [
     "runtime_theme",
     "sd_notify",
     "target_sparse_buckets",
+    "theme_names",
     "web_server",
 ]
 

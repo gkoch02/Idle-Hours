@@ -290,6 +290,9 @@ class TestLoadFontFallback:
     def test_missing_candidates_returns_default_and_warns_once(self, monkeypatch, capsys):
         # Force the fallback path by flipping the module-level guard.
         monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
+        # Clear the per-process font cache so the fallback path actually runs;
+        # a previous test could have cached the same key.
+        monkeypatch.setattr(rq, "_FONT_CACHE", {})
         # All candidate paths report as missing.
         monkeypatch.setattr(rq.Path, "exists", lambda self: False)
         font = rq.load_font(["/nope/one.ttf", "/nope/two.ttf"], size=24)
@@ -325,6 +328,7 @@ class TestLoadFontFallback:
         """A missing file referenced in a variation tuple falls through to the
         next candidate, exactly like a bare-path candidate would."""
         monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
+        monkeypatch.setattr(rq, "_FONT_CACHE", {})
         # First candidate is a tuple pointing at a missing file; second is a
         # plain path to a real system font that exists on the CI image.
         font = rq.load_font(
@@ -334,6 +338,43 @@ class TestLoadFontFallback:
         # Should have loaded DejaVu without emitting the warning.
         assert font is not None
         assert "no TrueType font found" not in capsys.readouterr().err
+
+    def test_load_font_caches_results_per_size(self, monkeypatch):
+        """``load_font`` is called up to 18 times per render in ``fit_quote``
+        with the same candidate chain at different sizes; caching turns the
+        repeat opens into O(1) lookups. Verify by counting ``ImageFont.truetype``
+        calls across two cache hits and one cache miss.
+        """
+        monkeypatch.setattr(rq, "_FONT_CACHE", {})
+        truetype_calls = []
+        original_truetype = rq.ImageFont.truetype
+
+        def counting_truetype(*args, **kwargs):
+            truetype_calls.append((args, kwargs))
+            return original_truetype(*args, **kwargs)
+
+        monkeypatch.setattr(rq.ImageFont, "truetype", counting_truetype)
+        candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"]
+        a = rq.load_font(candidates, size=24)
+        b = rq.load_font(candidates, size=24)  # cache hit
+        c = rq.load_font(candidates, size=32)  # different size → cache miss
+        # Two distinct truetype opens (one per size); the duplicate-size call
+        # was served from cache.
+        assert len(truetype_calls) == 2
+        # Cache returns the *same* font object across calls with the same key.
+        assert a is b
+        assert a is not c
+
+    def test_load_font_keys_on_variation(self, monkeypatch):
+        """Different variation pins of the same path produce different cache
+        entries, so a per-theme variable-font Bold/Regular split is isolated.
+        """
+        monkeypatch.setattr(rq, "_FONT_CACHE", {})
+        path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+        plain = rq.load_font([path], size=20)
+        with_variation = rq.load_font([(path, "Bold")], size=20)
+        # Different keys → different cached objects (variation is part of key).
+        assert plain is not with_variation
 
 
 class TestThemeFonts:

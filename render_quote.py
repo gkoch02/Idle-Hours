@@ -618,8 +618,19 @@ def pick_quote(time_str: str, history_path: str | None = None, history_days: int
     )
 
 
+_FONT_CACHE: dict[tuple, "ImageFont.FreeTypeFont"] = {}
+
+
+def _normalize_candidates(candidates) -> tuple:
+    """Normalize the load_font candidates list into a hashable cache key.
+
+    Plain string entries become ``(path, None)``; tuple entries pass through.
+    """
+    return tuple((c, None) if not isinstance(c, tuple) else tuple(c) for c in candidates)
+
+
 def load_font(candidates: list, size: int):
-    """Load the first reachable TrueType font in ``candidates``.
+    """Load the first reachable TrueType font in ``candidates``, memoized.
 
     Each entry is either a plain path string or a ``(path, variation_name)``
     tuple. When the tuple form is used and the face is a variable font,
@@ -630,13 +641,25 @@ def load_font(candidates: list, size: int):
     A variation name that the file doesn't expose falls through to
     the default instance silently; the next fallback candidate only fires if
     the file itself is missing or unreadable.
+
+    Results are cached per-process keyed on ``(normalised_candidates, size)``.
+    ``fit_quote`` calls ``load_font`` up to 18 times per render with the same
+    candidate chain at different sizes; without a cache that's 36 candidate-
+    chain scans + 36 ``ImageFont.truetype`` opens per render. Cache lifetime
+    is the renderer subprocess (single-threaded), so no FD-leak risk.
+
+    Contract: callers must NOT mutate the returned font (e.g. by calling
+    ``set_variation_by_name`` directly). All variation pinning is encoded in
+    the candidate tuple so a different variation produces a different cache
+    key; an external mutation would silently corrupt other cache consumers.
     """
     global _FONT_FALLBACK_WARNED
-    for candidate in candidates:
-        if isinstance(candidate, tuple):
-            path, variation = candidate
-        else:
-            path, variation = candidate, None
+    normalized = _normalize_candidates(candidates)
+    cache_key = (normalized, size)
+    cached = _FONT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    for path, variation in normalized:
         if not Path(path).exists():
             continue
         try:
@@ -648,6 +671,7 @@ def load_font(candidates: list, size: int):
                 font.set_variation_by_name(variation)
             except (OSError, ValueError, AttributeError):
                 pass
+        _FONT_CACHE[cache_key] = font
         return font
     if not _FONT_FALLBACK_WARNED:
         print(
@@ -657,7 +681,9 @@ def load_font(candidates: list, size: int):
             flush=True,
         )
         _FONT_FALLBACK_WARNED = True
-    return ImageFont.load_default()
+    fallback = ImageFont.load_default()
+    _FONT_CACHE[cache_key] = fallback
+    return fallback
 
 
 def strip_underscore_emphasis(text: str) -> str:
@@ -695,23 +721,45 @@ TIME_PHRASE_PREFIXES = [
     "five minutes to",
 ]
 
+# Pre-compiled longest-first so the first prefix that matches the candidate
+# wins ("twenty-five minutes past" beats "minutes past" for the same row).
+# Order is load-bearing — keep this list sorted by descending prefix length.
+_TIME_PHRASE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    (
+        prefix,
+        re.compile(
+            rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(prefix)}"
+            rf"(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9])(?!-[A-Za-z0-9])",
+            re.IGNORECASE,
+        ),
+    )
+    for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True)
+]
+
+
+def _direct_match_pattern(normalized_match: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(normalized_match)}(?![A-Za-z0-9])(?!-[A-Za-z0-9])",
+        re.IGNORECASE,
+    )
+
 
 def resolve_display_match(text: str, match_text: str) -> str:
     normalized_match = " ".join((match_text or "").split()).strip()
     if not normalized_match:
         return ""
 
-    direct = re.search(rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(normalized_match)}(?![A-Za-z0-9])(?!-[A-Za-z0-9])", text, re.IGNORECASE)
+    direct = _direct_match_pattern(normalized_match).search(text)
     if direct:
         return direct.group(0)
 
-    for prefix in sorted(TIME_PHRASE_PREFIXES, key=len, reverse=True):
-        if not normalized_match.lower().startswith(prefix):
+    lower_match = normalized_match.lower()
+    for prefix, pattern in _TIME_PHRASE_PATTERNS:
+        if not lower_match.startswith(prefix):
             continue
-        pattern = re.compile(rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(prefix)}(?:[ ,]+[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)?(?![A-Za-z0-9])(?!-[A-Za-z0-9])", re.IGNORECASE)
         for m in pattern.finditer(text):
             candidate = m.group(0).strip(" ,.;:!?")
-            if candidate.lower().startswith(normalized_match.lower()):
+            if candidate.lower().startswith(lower_match):
                 return candidate
 
     return normalized_match
@@ -721,8 +769,7 @@ def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     normalized_match = resolve_display_match(text, match_text)
     if not normalized_match:
         return [(text, False)]
-    pattern = re.compile(rf"(?<![A-Za-z0-9])(?<![A-Za-z0-9]-){re.escape(normalized_match)}(?![A-Za-z0-9])(?!-[A-Za-z0-9])", re.IGNORECASE)
-    match = pattern.search(text)
+    match = _direct_match_pattern(normalized_match).search(text)
     if not match:
         return [(text, False)]
 
@@ -742,6 +789,11 @@ def wrap_styled_text(draw, segments, regular_font, bold_font, max_width):
     lines = []
     current = []
     current_width = 0
+    # Space width is the same for every inter-word position that uses the same
+    # font object. fit_quote calls wrap_styled_text up to 18 times per render
+    # with two distinct fonts (regular + bold); a 140-char quote has ~25 spaces,
+    # so without this memo we'd run draw.textbbox(" ", …) ~450 times per render.
+    space_widths: dict[int, int] = {}
 
     for text, is_bold in segments:
         font = bold_font if is_bold else regular_font
@@ -757,8 +809,12 @@ def wrap_styled_text(draw, segments, regular_font, bold_font, max_width):
                 current.append((part, is_bold))
                 current_width += token_width
             if i < len(parts) - 1:
-                bbox = draw.textbbox((0, 0), " ", font=font)
-                space_width = bbox[2] - bbox[0]
+                font_id = id(font)
+                space_width = space_widths.get(font_id)
+                if space_width is None:
+                    bbox = draw.textbbox((0, 0), " ", font=font)
+                    space_width = bbox[2] - bbox[0]
+                    space_widths[font_id] = space_width
                 if current and current_width + space_width > max_width:
                     lines.append(current)
                     current = []

@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import json
+import os
 import re
 from pathlib import Path
 
@@ -57,8 +58,14 @@ def append_heartbeat(telemetry_path: str | None) -> None:
     ``error_count`` by the health summariser — they answer "is the loop
     alive?", not "is the panel being refreshed?", which is a different
     question an idle appliance should be able to answer "yes / no".
+
+    Heartbeats fire every ``HEARTBEAT_INTERVAL_SECONDS`` (~60 s on the
+    appliance), so they're written without ``fsync`` to bound SD-card write
+    amplification. Losing the last minute of "alive" pings to a power cut is
+    recoverable; losing a render error or backoff event is not — that's why
+    every other ``append_telemetry`` caller fsyncs.
     """
-    append_telemetry(telemetry_path, {"type": "heartbeat"})
+    _append_entry(telemetry_path, {"type": "heartbeat"}, fsync=False)
 
 
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
@@ -73,7 +80,17 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     disk, path is a directory) must never surface to the caller, since this
     is called from the loop's error-recovery path — turning telemetry into
     a fatal failure mode would defeat its purpose.
+
+    Entries are flushed and ``os.fsync``'d before close so a SIGKILL / power
+    loss immediately after a render or error event can't leave the line
+    buffered in the kernel and lost — that's exactly when ``litclock_health``
+    needs the last few entries to distinguish "wedged" from "idle".
+    Heartbeats skip the fsync via ``append_heartbeat`` (see its docstring).
     """
+    _append_entry(telemetry_path, entry, fsync=True)
+
+
+def _append_entry(telemetry_path: str | None, entry: dict, *, fsync: bool) -> None:
     if not telemetry_path:
         return
     try:
@@ -83,6 +100,9 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
         payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            if fsync:
+                handle.flush()
+                os.fsync(handle.fileno())
     except (OSError, TypeError, ValueError) as exc:
         _log(f"telemetry write to {telemetry_path!r} failed, dropping entry: {exc!r}", err=True)
 
