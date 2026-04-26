@@ -618,7 +618,7 @@ def pick_quote(time_str: str, history_path: str | None = None, history_days: int
     )
 
 
-_FONT_CACHE: dict[tuple, "ImageFont.FreeTypeFont"] = {}
+_FONT_CACHE: dict[tuple, ImageFont.ImageFont] = {}
 
 
 def _normalize_candidates(candidates) -> tuple:
