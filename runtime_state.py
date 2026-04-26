@@ -15,22 +15,7 @@ if TYPE_CHECKING:
     from threading import Timer
 
 
-def _known_theme_names() -> frozenset[str]:
-    """Registered render themes, resolved lazily to avoid pulling PIL into the
-    main-loop import graph. ``render_quote.THEMES`` imports Pillow at module
-    load; doing the import inside ``RuntimeState.__init__`` keeps the
-    one-time cost off ``run_clock`` startup and off any test that constructs
-    a RuntimeState without needing the renderer.
-
-    Falls back to the minimal original pair if the import fails (e.g. in a
-    stripped-down test harness) so a missing Pillow install can't wedge
-    state-file loading.
-    """
-    try:
-        from render_quote import THEMES
-    except Exception:
-        return frozenset({"default", "dark"})
-    return frozenset(THEMES.keys())
+from theme_names import known_theme_names as _known_theme_names
 
 
 class RuntimeState:

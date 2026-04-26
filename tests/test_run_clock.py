@@ -1163,6 +1163,38 @@ class TestAppendTelemetry:
         run_clock.append_telemetry(str(base), {"bucket": "h3_exact", "blob": NotSerialisable()})
         assert "telemetry write" in capsys.readouterr().err
 
+    def test_render_entry_calls_fsync(self, tmp_path):
+        """Render / error / action telemetry must fsync so a power loss after a
+        wedge-event entry can't lose the line that ``litclock_health`` needs to
+        distinguish "wedged" from "idle".
+        """
+        import runtime_telemetry
+
+        base = tmp_path / "telemetry.jsonl"
+        fsync_calls: list[int] = []
+        with patch.object(runtime_telemetry.os, "fsync", side_effect=lambda fd: fsync_calls.append(fd)):
+            run_clock.append_telemetry(str(base), {"bucket": "h3_exact", "render_ms": 500})
+        assert len(fsync_calls) == 1
+        # File contents are still correct.
+        daily = _today_telemetry_path(base)
+        assert json.loads(daily.read_text(encoding="utf-8").strip())["bucket"] == "h3_exact"
+
+    def test_heartbeat_skips_fsync(self, tmp_path):
+        """Heartbeats fire every ~60s on the appliance and are recoverable
+        (a missed minute of "alive" pings is fine), so they skip fsync to
+        bound SD-card write amplification.
+        """
+        import runtime_telemetry
+
+        base = tmp_path / "telemetry.jsonl"
+        fsync_calls: list[int] = []
+        with patch.object(runtime_telemetry.os, "fsync", side_effect=lambda fd: fsync_calls.append(fd)):
+            run_clock.append_heartbeat(str(base))
+        assert fsync_calls == []
+        # Heartbeat still landed on disk.
+        daily = _today_telemetry_path(base)
+        assert json.loads(daily.read_text(encoding="utf-8").strip())["type"] == "heartbeat"
+
 
 class TestDailyTelemetryPath:
     def test_standard_suffix(self, tmp_path):

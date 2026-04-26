@@ -15,6 +15,20 @@ pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed"
 
 import render_quote as rq  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _isolate_font_cache():
+    """Clear ``render_quote._FONT_CACHE`` around every test so cache state
+    from a prior test can't mask path-existence assertions or fallback-path
+    expectations in the current one. The cache is a per-process performance
+    optimisation, not a correctness signal — tests that exercise either
+    branch should always start from an empty cache.
+    """
+    rq._FONT_CACHE.clear()
+    yield
+    rq._FONT_CACHE.clear()
+
+
 # ---------------------------------------------------------------------------
 # choose_layout
 # ---------------------------------------------------------------------------
@@ -290,7 +304,8 @@ class TestLoadFontFallback:
     def test_missing_candidates_returns_default_and_warns_once(self, monkeypatch, capsys):
         # Force the fallback path by flipping the module-level guard.
         monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
-        # All candidate paths report as missing.
+        # All candidate paths report as missing. (Cache isolation is provided
+        # by the autouse ``_isolate_font_cache`` fixture at module scope.)
         monkeypatch.setattr(rq.Path, "exists", lambda self: False)
         font = rq.load_font(["/nope/one.ttf", "/nope/two.ttf"], size=24)
         assert font is not None  # the bitmap default
@@ -334,6 +349,76 @@ class TestLoadFontFallback:
         # Should have loaded DejaVu without emitting the warning.
         assert font is not None
         assert "no TrueType font found" not in capsys.readouterr().err
+
+    def test_fallback_path_not_cached_so_recovery_works(self, monkeypatch):
+        """A transient font-load failure (NFS hiccup, brief unavailability)
+        must not pin the process to the bitmap fallback. The cache stores
+        successfully-loaded fonts only; a later call after the file becomes
+        reachable again must re-scan and load the real font.
+
+        Regression guard for a Codex review concern: caching the fallback
+        would silently degrade rendering for the rest of the subprocess
+        (especially noticeable for ``contact_sheet.py`` which renders all
+        144 buckets in one process).
+        """
+        # Suppress the one-shot warning so capsys doesn't matter here.
+        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", True)
+        real_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+        if not Path(real_path).exists():
+            pytest.skip("DejaVu Serif not installed")
+        # First call: pretend the file is missing → fallback to PIL's
+        # bundled default (or the bitmap default in older Pillows).
+        monkeypatch.setattr(rq.Path, "exists", lambda self: False)
+        a = rq.load_font([real_path], size=24)
+        # Second call: file is reachable again → should load the real font.
+        monkeypatch.undo()
+        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", True)
+        b = rq.load_font([real_path], size=24)
+        # `b` must be the real load: its underlying path matches what we asked
+        # for, and the cache now holds it. `a` did NOT come from real_path
+        # (the path was unreachable on that call) so it must be a different
+        # font, AND the fallback call must NOT have populated the cache —
+        # otherwise `b` would be `a` (the cached fallback).
+        b_path = getattr(b, "path", None)
+        assert b_path == real_path, f"second call should load {real_path!r}, got {b_path!r}"
+        assert a is not b, "fallback was cached and reused — recovery is broken"
+        # The cache contains exactly one entry (the successful load on call 2).
+        assert len(rq._FONT_CACHE) == 1
+
+    def test_load_font_caches_results_per_size(self, monkeypatch):
+        """``load_font`` is called up to 18 times per render in ``fit_quote``
+        with the same candidate chain at different sizes; caching turns the
+        repeat opens into O(1) lookups. Verify by counting ``ImageFont.truetype``
+        calls across two cache hits and one cache miss.
+        """
+        truetype_calls = []
+        original_truetype = rq.ImageFont.truetype
+
+        def counting_truetype(*args, **kwargs):
+            truetype_calls.append((args, kwargs))
+            return original_truetype(*args, **kwargs)
+
+        monkeypatch.setattr(rq.ImageFont, "truetype", counting_truetype)
+        candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"]
+        a = rq.load_font(candidates, size=24)
+        b = rq.load_font(candidates, size=24)  # cache hit
+        c = rq.load_font(candidates, size=32)  # different size → cache miss
+        # Two distinct truetype opens (one per size); the duplicate-size call
+        # was served from cache.
+        assert len(truetype_calls) == 2
+        # Cache returns the *same* font object across calls with the same key.
+        assert a is b
+        assert a is not c
+
+    def test_load_font_keys_on_variation(self):
+        """Different variation pins of the same path produce different cache
+        entries, so a per-theme variable-font Bold/Regular split is isolated.
+        """
+        path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+        plain = rq.load_font([path], size=20)
+        with_variation = rq.load_font([(path, "Bold")], size=20)
+        # Different keys → different cached objects (variation is part of key).
+        assert plain is not with_variation
 
 
 class TestThemeFonts:

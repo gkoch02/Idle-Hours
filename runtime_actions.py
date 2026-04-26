@@ -34,20 +34,7 @@ from runtime_log import _log
 from runtime_quiet import _display_quiet_image, exit_quiet
 from runtime_state import RuntimeState
 from runtime_theme import resolve_effective_theme
-
-
-def _theme_cycle() -> tuple[str, ...]:
-    """Return the cycle order for button-B / web theme advancement.
-
-    Resolved lazily against ``render_quote.THEME_ORDER`` so this module keeps
-    its PIL-free import graph. Falls back to the original binary pair if
-    ``render_quote`` is unavailable, matching ``runtime_state._known_theme_names``.
-    """
-    try:
-        from render_quote import THEME_ORDER
-    except Exception:
-        return ("default", "dark")
-    return tuple(THEME_ORDER)
+from theme_names import theme_cycle as _theme_cycle
 
 
 def _next_theme(current: str) -> str:

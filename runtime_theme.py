@@ -13,24 +13,13 @@ import datetime as dt
 
 from runtime_log import _log
 from runtime_state import RuntimeState
+from theme_names import known_theme_names as _registered_themes
 
 # Auto-theme: switch to dark theme during this window, default theme otherwise.
 # Boundaries chosen to match civil twilight in temperate latitudes; users who want
 # a tighter fit can pass --theme default or --theme dark explicitly.
 AUTO_DARK_START_HOUR = 18
 AUTO_DARK_END_HOUR = 6
-
-
-def _registered_themes() -> frozenset[str]:
-    """Registered render themes, resolved lazily to avoid pulling PIL into the
-    main-loop import graph at module load. Mirrors ``runtime_state._known_theme_names``
-    and falls back to the legacy pair if ``render_quote`` cannot be imported.
-    """
-    try:
-        from render_quote import THEMES
-    except Exception:
-        return frozenset({"default", "dark"})
-    return frozenset(THEMES.keys())
 
 
 def auto_theme_for(time_str: str) -> str:
