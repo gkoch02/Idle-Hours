@@ -681,9 +681,16 @@ def load_font(candidates: list, size: int):
             flush=True,
         )
         _FONT_FALLBACK_WARNED = True
-    fallback = ImageFont.load_default()
-    _FONT_CACHE[cache_key] = fallback
-    return fallback
+    # Deliberately NOT caching the bitmap fallback. A transient miss (NFS hiccup,
+    # filesystem briefly unavailable, momentary file-handle exhaustion) would
+    # otherwise pin the process to degraded rendering for the whole subprocess
+    # lifetime — and contact_sheet.py renders 144 frames in one process, so a
+    # single early hiccup would silently downgrade every later tile. Re-scanning
+    # the candidate chain on each fallback call is cheap (a few Path.exists
+    # checks) and lets the next call recover automatically once the font path
+    # is reachable again. The warn-once behaviour comes from
+    # _FONT_FALLBACK_WARNED, not from caching, so we still don't spam stderr.
+    return ImageFont.load_default()
 
 
 def strip_underscore_emphasis(text: str) -> str:

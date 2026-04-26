@@ -350,6 +350,41 @@ class TestLoadFontFallback:
         assert font is not None
         assert "no TrueType font found" not in capsys.readouterr().err
 
+    def test_fallback_path_not_cached_so_recovery_works(self, monkeypatch):
+        """A transient font-load failure (NFS hiccup, brief unavailability)
+        must not pin the process to the bitmap fallback. The cache stores
+        successfully-loaded fonts only; a later call after the file becomes
+        reachable again must re-scan and load the real font.
+
+        Regression guard for a Codex review concern: caching the fallback
+        would silently degrade rendering for the rest of the subprocess
+        (especially noticeable for ``contact_sheet.py`` which renders all
+        144 buckets in one process).
+        """
+        # Suppress the one-shot warning so capsys doesn't matter here.
+        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", True)
+        real_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+        if not Path(real_path).exists():
+            pytest.skip("DejaVu Serif not installed")
+        # First call: pretend the file is missing → fallback to PIL's
+        # bundled default (or the bitmap default in older Pillows).
+        monkeypatch.setattr(rq.Path, "exists", lambda self: False)
+        a = rq.load_font([real_path], size=24)
+        # Second call: file is reachable again → should load the real font.
+        monkeypatch.undo()
+        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", True)
+        b = rq.load_font([real_path], size=24)
+        # `b` must be the real load: its underlying path matches what we asked
+        # for, and the cache now holds it. `a` did NOT come from real_path
+        # (the path was unreachable on that call) so it must be a different
+        # font, AND the fallback call must NOT have populated the cache —
+        # otherwise `b` would be `a` (the cached fallback).
+        b_path = getattr(b, "path", None)
+        assert b_path == real_path, f"second call should load {real_path!r}, got {b_path!r}"
+        assert a is not b, "fallback was cached and reused — recovery is broken"
+        # The cache contains exactly one entry (the successful load on call 2).
+        assert len(rq._FONT_CACHE) == 1
+
     def test_load_font_caches_results_per_size(self, monkeypatch):
         """``load_font`` is called up to 18 times per render in ``fit_quote``
         with the same candidate chain at different sizes; caching turns the
