@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -1391,6 +1392,70 @@ class TestRenderCard:
         row = self._row(matched_text="_three o'clock_")
         img = rq.render("03:00", row, 800, 480, mode="card")
         assert img.size == (800, 480)
+
+
+class TestRenderStaticMessage:
+    """``render_static_message`` paints a centred headline in the active
+    theme. Used by ``--quiet-image=auto`` / ``--startup-image=auto`` so the
+    goodnight / startup frame matches the rest of the UI instead of forcing
+    the dark-only ``assets/goodnight.png`` on every operator.
+    """
+
+    def test_returns_image_of_correct_size(self):
+        img = rq.render_static_message("Good night.", 800, 480, theme="default")
+        assert img.size == (800, 480)
+
+    def test_uses_default_theme_background(self):
+        img = rq.render_static_message("Good night.", 800, 480, theme="default")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["white"]
+
+    def test_uses_dark_theme_background(self):
+        img = rq.render_static_message("Good night.", 800, 480, theme="dark")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["black"]
+
+    def test_uses_scholar_theme_background(self):
+        img = rq.render_static_message("Good night.", 800, 480, theme="scholar")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["white"]
+
+    def test_uses_nightvision_theme_background(self):
+        img = rq.render_static_message("Good night.", 800, 480, theme="nightvision")
+        assert img.getpixel((0, 0)) == rq.SPECTRA6["black"]
+
+    @pytest.mark.parametrize("theme", sorted(rq.THEMES))
+    def test_palette_is_spectra6_across_every_theme(self, theme):
+        """Every output pixel must land in the Spectra 6 palette regardless
+        of which theme is active. Without ``snap_image_to_palette`` the
+        per-theme borders (illuminated jewels, blueprint grid, etc.) can
+        introduce intermediate dither colours that look fine on a sRGB
+        monitor but bleed unpredictably on the eInk panel."""
+        img = rq.render_static_message("Good night.", 800, 480, theme=theme)
+        palette = set(rq.SPECTRA6.values())
+        pixels = set(img.convert("RGB").getdata())
+        assert pixels.issubset(palette), f"theme={theme}: unexpected colors {pixels - palette}"
+
+    def test_message_wraps_for_long_text(self):
+        """A long ``--message`` value must still produce a valid frame —
+        the fit loop shrinks the headline font until it fits, and
+        ``wrap_text`` handles word-wrapping at the chosen size."""
+        long_msg = "Sleep well, dear reader, and may your dreams be filled with quiet."
+        img = rq.render_static_message(long_msg, 800, 480, theme="default")
+        assert img.size == (800, 480)
+
+    def test_goodnight_mode_via_main_writes_png(self, tmp_path, monkeypatch):
+        """End-to-end: ``rq.main()`` with ``--mode goodnight`` should skip
+        ``pick_quote`` entirely and produce a valid PNG."""
+        out = tmp_path / "gn.png"
+        argv = ["render_quote.py", "--mode", "goodnight", "--theme", "scholar",
+                "--message", "Sleep well.", "--output", str(out)]
+        monkeypatch.setattr("sys.argv", argv)
+        # If main accidentally called pick_quote, this would explode loudly.
+        with patch.object(rq, "pick_quote", side_effect=AssertionError("pick_quote must not run for mode=goodnight")):
+            assert rq.main() == 0
+        assert out.exists()
+        from PIL import Image
+        img = Image.open(out)
+        assert img.size == (800, 480)
+        img.close()
 
 
 class TestMainAtomicSave:

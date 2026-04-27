@@ -33,7 +33,7 @@ import contextlib
 from runtime_log import _log
 from runtime_quiet import _display_quiet_image, exit_quiet
 from runtime_state import RuntimeState
-from runtime_theme import resolve_effective_theme
+from runtime_theme import _auto_theme_kwargs, resolve_effective_theme
 from theme_names import theme_cycle as _theme_cycle
 
 
@@ -236,7 +236,7 @@ def action_theme(
             previous_theme = state.manual_theme
             time_str = run_clock.current_time_str()
             current = state.last_effective_theme or resolve_effective_theme(
-                state.theme_arg, time_str, previous_theme,
+                state.theme_arg, time_str, previous_theme, **_auto_theme_kwargs(args),
             )
             new_theme = target if target is not None else _next_theme(current)
             # Guard against "Apply" on an unchanged dropdown selection. The

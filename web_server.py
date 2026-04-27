@@ -445,7 +445,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             quote_id = state.last_quote_id
             bucket = state.last_bucket or bucket_for_time(now)
             theme = state.last_effective_theme or run_clock.resolve_effective_theme(
-                state.theme_arg, now, state.manual_theme,
+                state.theme_arg, now, state.manual_theme, **run_clock._auto_theme_kwargs(ctx.args),
             )
             manual_quiet = state.manual_quiet
             manual_theme = state.manual_theme
@@ -519,7 +519,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
             manual = ctx.state.manual_theme
             theme_arg = ctx.state.theme_arg
             last_effective = ctx.state.last_effective_theme
-        effective = last_effective or run_clock.resolve_effective_theme(theme_arg, now, manual)
+        effective = last_effective or run_clock.resolve_effective_theme(
+            theme_arg, now, manual, **run_clock._auto_theme_kwargs(ctx.args),
+        )
         self._json(HTTPStatus.OK, {
             "themes": order,
             "theme_arg": theme_arg,

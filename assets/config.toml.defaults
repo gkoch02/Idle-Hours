@@ -25,6 +25,11 @@ render_script    = "render_quote.py"
 output           = "output/current.png"
 mode             = "debug"
 theme            = "default"
+# When `theme = "auto"`, these pick the day/night theme. Defaults match the
+# legacy binary contract; broaden the rotation by setting one or both to any
+# registered theme name (e.g. "scholar" / "nightvision"). 'auto' is rejected.
+auto_day_theme   = "default"
+auto_night_theme = "dark"
 width            = 800
 height           = 480
 interval_seconds = 60

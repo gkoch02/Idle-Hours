@@ -317,10 +317,40 @@ SCENARIOS: list[dict] = [
         "mode": "debug",
         "theme": "bauhaus",
     },
+    # Goodnight mode (--quiet-image=auto / --startup-image=auto) renders a
+    # centred static message in the active theme via render_static_message.
+    # Pin one light-theme + one dark-theme + one operator-theme golden so a
+    # regression in the headline font, fit-loop, or theme-border interaction
+    # for the goodnight code path lands here loudly.
+    {
+        "name": "goodnight_default",
+        "message": "Good night.",
+        "mode": "goodnight",
+        "theme": "default",
+    },
+    {
+        "name": "goodnight_dark",
+        "message": "Good night.",
+        "mode": "goodnight",
+        "theme": "dark",
+    },
+    {
+        "name": "goodnight_scholar",
+        "message": "Good night.",
+        "mode": "goodnight",
+        "theme": "scholar",
+    },
 ]
 
 
 def _render_scenario(scenario: dict) -> Image.Image:
+    if scenario["mode"] == "goodnight":
+        return rq.render_static_message(
+            scenario["message"],
+            800,
+            480,
+            theme=scenario["theme"],
+        )
     return rq.render(
         scenario["time"],
         scenario["row"],

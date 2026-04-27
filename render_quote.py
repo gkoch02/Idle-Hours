@@ -565,7 +565,11 @@ LAYOUTS = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render a literary clock quote for a given time.")
-    parser.add_argument("--time", required=True, help="Time in HH:MM 24-hour format")
+    parser.add_argument(
+        "--time",
+        default=None,
+        help="Time in HH:MM 24-hour format. Required unless --mode goodnight.",
+    )
     parser.add_argument(
         "--output",
         default=None,
@@ -581,13 +585,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
     parser.add_argument(
         "--mode",
-        choices=["production", "debug", "card"],
+        choices=["production", "debug", "card", "goodnight"],
         default="debug",
         help=(
             "Render mode. 'production' hides debug UI; 'debug' shows bucket/quality/time "
             "metadata; 'card' draws a centered source card (title/author/Gutenberg ID/"
-            "matched phrase) instead of the full quote — used by the source-card button."
+            "matched phrase) instead of the full quote — used by the source-card button. "
+            "'goodnight' draws a centered static message in the active theme — used by "
+            "--quiet-image=auto and --startup-image=auto."
         ),
+    )
+    parser.add_argument(
+        "--message",
+        default="Good night.",
+        help="Headline text for --mode goodnight. Ignored otherwise.",
     )
     parser.add_argument(
         "--theme",
@@ -606,7 +617,10 @@ def parse_args() -> argparse.Namespace:
         default=pick_quote_module.DEFAULT_HISTORY_DAYS,
         help="Number of days of history to consider when filtering repeats. 0 disables.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.mode != "goodnight" and not args.time:
+        parser.error("--time is required unless --mode goodnight")
+    return args
 
 
 def pick_quote(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> dict:
@@ -1523,6 +1537,44 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+def render_static_message(message: str, width: int, height: int, theme: str = "default") -> Image.Image:
+    """Render a centered headline message in the active theme.
+
+    Used by the ``--quiet-image=auto`` and ``--startup-image=auto`` sentinels
+    so the goodnight / startup frame matches the operator's chosen theme
+    instead of always showing the dark ``assets/goodnight.png``. Reuses the
+    theme palette, border, and bundled fonts so it visually matches the quote
+    frame an operator sees seconds before quiet hours begin.
+    """
+    colors = THEMES[theme]
+    image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    _paint_theme_border(image, theme, colors)
+    draw = ImageDraw.Draw(image)
+
+    max_text_width = width - 2 * SIDE_MARGIN - 40
+    headline_candidates = theme_font_candidates(theme, "quote_bold")
+    line_gap = 12
+    for size in range(96, 35, -4):
+        font = load_font(headline_candidates, size=size)
+        lines = wrap_text(draw, message, font, max_text_width)
+        line_heights = [
+            draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1]
+            for line in lines
+        ]
+        block_h = sum(line_heights) + max(0, len(lines) - 1) * line_gap
+        if block_h <= height - 80:
+            break
+
+    y = max(40, (height - block_h) // 2)
+    for line, h in zip(lines, line_heights):
+        bbox = draw.textbbox((0, 0), line, font=font)
+        w = bbox[2] - bbox[0]
+        draw.text(((width - w) // 2, y), line, font=font, fill=colors["text"])
+        y += h + line_gap
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -1786,12 +1838,15 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
 def main() -> int:
     args = parse_args()
-    quote_row = pick_quote(args.time, history_path=args.history_path, history_days=args.history_days)
     output_path = Path(args.output) if args.output else Path("output/current.png")
     if not output_path.is_absolute():
         output_path = BASE_DIR / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
+    if args.mode == "goodnight":
+        image = render_static_message(args.message, args.width, args.height, theme=args.theme)
+    else:
+        quote_row = pick_quote(args.time, history_path=args.history_path, history_days=args.history_days)
+        image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
     try:
         # Encode to an in-memory buffer first so a mid-save exception can't leave
         # ``output/current.png`` truncated — display_inky.py loads that path every

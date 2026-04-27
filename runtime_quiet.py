@@ -33,7 +33,7 @@ from pathlib import Path
 from buckets import bucket_for_time
 from runtime_log import _log
 from runtime_state import RuntimeState
-from runtime_theme import resolve_effective_theme
+from runtime_theme import _auto_theme_kwargs, resolve_effective_theme
 
 # Resolves to the repo root (same directory as run_clock.py) since all runtime
 # modules live alongside each other. Matches run_clock.BASE_DIR exactly.
@@ -165,14 +165,33 @@ def enter_quiet(
         telemetry_path, {"mode": "quiet_enter", "manual": manual_only, "bucket": quiet_bucket},
     )
     try:
-        if args.quiet_image:
+        if args.quiet_image == "auto":
+            # On-the-fly goodnight frame in the operator's active theme. The
+            # static assets/goodnight.png is dark-only, so themed installs
+            # opt into this sentinel to keep the entire-display palette
+            # consistent at the rising edge of quiet hours. ``mode='goodnight'``
+            # tells render_quote.py to skip pick_quote and paint a centred
+            # message instead — no quote, no history append.
+            effective_theme = resolve_effective_theme(
+                state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+            )
+            with state.render_lock:
+                run_clock.render_now(
+                    args.render_script, args.output, args.width, args.height, args.display_script,
+                    "goodnight", effective_theme, time_str=args.quiet_start,
+                    history_path=history_path, history_days=args.history_days,
+                    telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                )
+        elif args.quiet_image:
             with state.render_lock:
                 run_clock._display_quiet_image(
                     args.quiet_image, args.output, args.display_script,
                     telemetry_path=telemetry_path,
                 )
         else:
-            effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
+            effective_theme = resolve_effective_theme(
+                state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+            )
             with state.render_lock:
                 run_clock.render_now(
                     args.render_script, args.output, args.width, args.height, args.display_script,
