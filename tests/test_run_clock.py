@@ -779,12 +779,15 @@ class TestAutoTheme:
     def test_auto_theme_boundary_dusk_is_dark(self):
         assert run_clock.auto_theme_for("18:00") == "dark"
 
-    def test_auto_theme_returns_only_binary_values(self):
-        """``auto_theme_for`` deliberately resolves only to ``default`` or
-        ``dark`` — the other three registered themes (scholar, newsprint,
-        nightvision) are operator-choice, not wall-clock-derived. Pin the
-        contract so a well-meaning refactor doesn't start returning other
-        theme names from the time-of-day branch."""
+    def test_auto_theme_default_args_match_legacy_binary_contract(self):
+        """``auto_theme_for`` with no kwargs preserves the historical
+        ``default``/``dark`` contract for every hour. The function grew two
+        kwargs (``day_theme``, ``night_theme``) so operators can broaden the
+        rotation via ``--auto-day-theme`` / ``--auto-night-theme``, but a
+        caller that forgets the kwargs (or constructs an ``argparse.Namespace``
+        without them) must still observe legacy behaviour. Pinned so a future
+        refactor that changes the default kwargs silently doesn't flip every
+        existing default-config install on first redeploy."""
         for hour in range(24):
             time_str = f"{hour:02d}:00"
             result = run_clock.auto_theme_for(time_str)
@@ -792,6 +795,18 @@ class TestAutoTheme:
 
     def test_auto_theme_boundary_dawn_is_default(self):
         assert run_clock.auto_theme_for("06:00") == "default"
+
+    def test_auto_theme_honours_day_theme_override(self):
+        assert run_clock.auto_theme_for("10:00", day_theme="scholar", night_theme="nightvision") == "scholar"
+
+    def test_auto_theme_honours_night_theme_override(self):
+        assert run_clock.auto_theme_for("22:00", day_theme="scholar", night_theme="nightvision") == "nightvision"
+
+    def test_auto_theme_boundary_dusk_uses_night_override(self):
+        assert run_clock.auto_theme_for("18:00", day_theme="scholar", night_theme="nightvision") == "nightvision"
+
+    def test_auto_theme_boundary_dawn_uses_day_override(self):
+        assert run_clock.auto_theme_for("06:00", day_theme="scholar", night_theme="nightvision") == "scholar"
 
 
 class TestResolveEffectiveTheme:
@@ -837,6 +852,55 @@ class TestResolveEffectiveTheme:
         would otherwise revert to ``default`` on every render."""
         assert run_clock.resolve_effective_theme("default", "10:00", theme) == theme
         assert run_clock.resolve_effective_theme("dark", "21:00", theme) == theme
+
+    def test_auto_with_day_theme_kwarg_resolves_to_day_choice(self):
+        assert run_clock.resolve_effective_theme(
+            "auto", "10:00", None, auto_day_theme="scholar", auto_night_theme="nightvision",
+        ) == "scholar"
+
+    def test_auto_with_night_theme_kwarg_resolves_to_night_choice(self):
+        assert run_clock.resolve_effective_theme(
+            "auto", "22:00", None, auto_day_theme="scholar", auto_night_theme="nightvision",
+        ) == "nightvision"
+
+    def test_manual_override_wins_over_new_auto_kwargs(self):
+        """A button-B / web-dropdown manual flip beats both auto kwargs.
+        Without this, an operator running ``--theme auto --auto-night-theme nightvision``
+        who manually flipped to ``comic`` would revert to nightvision at the
+        next 18:00 boundary."""
+        assert run_clock.resolve_effective_theme(
+            "auto", "10:00", "comic", auto_day_theme="scholar", auto_night_theme="nightvision",
+        ) == "comic"
+        assert run_clock.resolve_effective_theme(
+            "auto", "22:00", "comic", auto_day_theme="scholar", auto_night_theme="nightvision",
+        ) == "comic"
+
+    def test_explicit_theme_arg_ignores_auto_kwargs(self):
+        """``--theme scholar`` is a hard pin, not a wall-clock-derived value;
+        the new auto kwargs must not affect explicit theme args."""
+        assert run_clock.resolve_effective_theme(
+            "scholar", "22:00", None, auto_day_theme="default", auto_night_theme="dark",
+        ) == "scholar"
+
+
+class TestAutoThemeKwargsHelper:
+    """``_auto_theme_kwargs`` reads the day/night picks off an argparse
+    Namespace. ``getattr`` defaults preserve the legacy contract for ad-hoc
+    Namespaces (typically test fixtures) that predate these flags."""
+
+    def test_reads_attrs_when_present(self):
+        ns = argparse.Namespace(auto_day_theme="scholar", auto_night_theme="nightvision")
+        assert run_clock._auto_theme_kwargs(ns) == {
+            "auto_day_theme": "scholar",
+            "auto_night_theme": "nightvision",
+        }
+
+    def test_falls_back_to_legacy_defaults_when_absent(self):
+        ns = argparse.Namespace()
+        assert run_clock._auto_theme_kwargs(ns) == {
+            "auto_day_theme": "default",
+            "auto_night_theme": "dark",
+        }
 
 
 class TestRuntimeStatePersistence:
@@ -1348,6 +1412,56 @@ class TestAutoThemeLoopIntegration:
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert captured_themes == ["dark"]
+
+    @pytest.mark.parametrize(
+        "now,day_theme,night_theme,expected",
+        [
+            ("10:00", "scholar", "nightvision", "scholar"),
+            ("22:00", "scholar", "nightvision", "nightvision"),
+            ("06:00", "comic",   "bauhaus",     "comic"),
+            ("18:00", "comic",   "bauhaus",     "bauhaus"),
+        ],
+    )
+    def test_auto_theme_honours_day_night_kwargs(self, tmp_path, now, day_theme, night_theme, expected):
+        """End-to-end: with ``--auto-day-theme`` / ``--auto-night-theme`` set,
+        the loop's render call sees the broadened pick at the day/night
+        boundaries — proving the kwargs thread through ``parse_args`` →
+        ``main`` tick → ``resolve_effective_theme`` → ``render_now``."""
+        captured_themes: list[str] = []
+
+        def fake_render(*args, **kwargs):
+            theme = kwargs.get("theme") if "theme" in kwargs else (args[6] if len(args) > 6 else None)
+            captured_themes.append(theme)
+
+        sleep_count = {"n": 0}
+
+        def stop_after(_):
+            sleep_count["n"] += 1
+            if sleep_count["n"] >= 1:
+                raise KeyboardInterrupt
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--theme", "auto",
+            "--auto-day-theme", day_theme,
+            "--auto-night-theme", night_theme,
+            "--state-path", "",
+            "--telemetry-path", "",
+            "--history-path", "",
+            "--quiet-off",
+            "--buttons-off",
+            "--interval-seconds", "0",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now", side_effect=fake_render), \
+             patch("run_clock.current_time_str", return_value=now), \
+             patch("run_clock.current_bucket", return_value="h1_exact"), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert captured_themes == [expected]
 
     def test_auto_theme_change_forces_redraw(self, tmp_path):
         """Same bucket + same quote across two ticks; only the theme flips → render twice."""
@@ -2100,6 +2214,128 @@ class TestStartupImage:
                 run_clock.main()
         assert displayed == []
 
+    def test_startup_image_auto_routes_through_render_now_goodnight(self, tmp_path, monkeypatch):
+        """``--startup-image auto`` paints the goodnight frame in the active
+        theme via ``render_now(mode='goodnight')`` rather than copying a
+        static PNG. Mirrors the quiet-hours sentinel — same FOLLOWUPS gap,
+        same rendering path."""
+        argv = [
+            "run_clock.py",
+            "--startup-image", "auto",
+            "--theme", "scholar",
+            "--output", str(tmp_path / "out.png"),
+            "--buttons-off",
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "", "--quiet-off",
+            "--interval-seconds", "1",
+        ]
+        render_calls: list[dict] = []
+        display_calls: list = []
+
+        def fake_render(*args, **kwargs):
+            render_calls.append({"args": args, "kwargs": kwargs})
+
+        monkeypatch.setattr(run_clock, "render_now", fake_render)
+        monkeypatch.setattr(run_clock, "_display_quiet_image", lambda *a, **kw: display_calls.append(a))
+        monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
+        with patch("sys.argv", argv), \
+             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.current_time_str", return_value="22:30"), \
+             patch("run_clock.current_bucket", return_value="h10_half_past"):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        # First render call is the startup goodnight frame.
+        assert render_calls, "expected at least one render_now call"
+        first = render_calls[0]
+        # render_now signature: (render_script, output, width, height, display_script, mode, theme, ...)
+        assert first["args"][5] == "goodnight"
+        assert first["args"][6] == "scholar"
+        # Static PNG copy path must NOT have run for "auto".
+        assert display_calls == []
+
+
+class TestQuietGoodnightOnTheFly:
+    """``--quiet-image auto`` paints the goodnight frame in the active theme
+    via ``render_now(mode='goodnight')`` rather than copying ``goodnight.png``.
+
+    Closes the FOLLOWUPS.md "Goodnight frame ignores active theme" carve-out
+    on opt-in: the static-PNG default is unchanged, so existing installs see
+    no behaviour change unless they pass ``--quiet-image auto``.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="auto",
+            auto_day_theme="default", auto_night_theme="dark",
+            history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_start="22:00", quiet_end="06:00",
+            quiet_off=False, quiet_image="auto",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_quiet_image_auto_routes_through_render_now_goodnight(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("auto")
+        with patch("run_clock.render_now") as mock_render, \
+             patch("run_clock._display_quiet_image") as mock_display, \
+             patch("run_clock.append_telemetry"):
+            from runtime_quiet import enter_quiet
+            enter_quiet(args, state, "22:00")
+        # render_now invoked with mode="goodnight"; static-PNG copy NOT called.
+        assert mock_render.called
+        call_args = mock_render.call_args.args
+        assert call_args[5] == "goodnight"
+        assert mock_display.called is False
+
+    def test_quiet_image_auto_uses_auto_night_theme(self, tmp_path):
+        """At 22:00 with --auto-night-theme nightvision, the goodnight render
+        uses theme='nightvision' — proving the kwargs thread through to the
+        sentinel branch."""
+        args = self._args(tmp_path, auto_day_theme="scholar", auto_night_theme="nightvision")
+        state = run_clock.RuntimeState("auto")
+        with patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.append_telemetry"):
+            from runtime_quiet import enter_quiet
+            enter_quiet(args, state, "22:00")
+        assert mock_render.called
+        # render_now signature: theme is positional[6].
+        assert mock_render.call_args.args[6] == "nightvision"
+
+    def test_quiet_image_empty_string_unchanged(self, tmp_path):
+        """Existing fallback (quiet_image='' → render the start-time quote in
+        the operator's normal mode) must NOT be hijacked by the new sentinel."""
+        args = self._args(tmp_path, quiet_image="", mode="production")
+        state = run_clock.RuntimeState("auto")
+        with patch("run_clock.render_now") as mock_render, \
+             patch("run_clock._display_quiet_image") as mock_display, \
+             patch("run_clock.append_telemetry"):
+            from runtime_quiet import enter_quiet
+            enter_quiet(args, state, "22:00")
+        assert mock_render.called
+        # Mode is the configured render mode, NOT goodnight.
+        assert mock_render.call_args.args[5] == "production"
+        assert mock_display.called is False
+
+    def test_quiet_image_static_path_unchanged(self, tmp_path):
+        """Existing static-PNG copy path (quiet_image=<path> → shutil.copy +
+        display push) must not be affected — operators with custom goodnight
+        assets keep working."""
+        png = tmp_path / "custom-goodnight.png"
+        png.write_bytes(b"\x89PNG")
+        args = self._args(tmp_path, quiet_image=str(png))
+        state = run_clock.RuntimeState("auto")
+        with patch("run_clock.render_now") as mock_render, \
+             patch("run_clock._display_quiet_image") as mock_display, \
+             patch("run_clock.append_telemetry"):
+            from runtime_quiet import enter_quiet
+            enter_quiet(args, state, "22:00")
+        assert mock_display.called
+        assert mock_render.called is False
+
 
 class TestButtonRenderGate:
     """Rapid presses must not queue behind an in-flight render.
@@ -2846,6 +3082,31 @@ class TestActionThemeCycle:
                 except SystemExit:
                     raise AssertionError(f"--theme {name} was rejected by argparse")
                 assert ns.theme == name
+
+    def test_cli_auto_day_theme_choices_match_theme_order(self):
+        """``--auto-day-theme`` / ``--auto-night-theme`` accept every
+        registered theme name and reject ``auto``. ``auto`` is rejected
+        because the kwargs ARE the broadening hook for ``--theme auto`` —
+        nesting auto-into-auto would be a config typo, not a useful
+        recursion. Same drift hazard as the parent test: a new theme in
+        ``THEME_ORDER`` must reach these flags too.
+        """
+        import render_quote as rq
+        for name in rq.THEME_ORDER:
+            for flag in ("--auto-day-theme", "--auto-night-theme"):
+                with patch("sys.argv", ["run_clock.py", flag, name, "--once"]):
+                    try:
+                        ns = run_clock.parse_args()
+                    except SystemExit:
+                        raise AssertionError(f"{flag} {name} was rejected by argparse")
+                    if flag == "--auto-day-theme":
+                        assert ns.auto_day_theme == name
+                    else:
+                        assert ns.auto_night_theme == name
+        for flag in ("--auto-day-theme", "--auto-night-theme"):
+            with patch("sys.argv", ["run_clock.py", flag, "auto", "--once"]):
+                with pytest.raises(SystemExit):
+                    run_clock.parse_args()
 
 
 class TestPressDroppedTelemetry:

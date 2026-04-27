@@ -48,6 +48,8 @@ class TestLoadConfigHappyPath:
             'display_script = "display_inky.py"',
             'mode = "production"',
             'theme = "auto"',
+            'auto_day_theme = "scholar"',
+            'auto_night_theme = "nightvision"',
             "buttons_off = true",
             'shutdown_command = "systemctl poweroff"',
             'startup_image = "assets/goodnight.png"',
@@ -190,6 +192,34 @@ class TestLoadConfigSchemaValidation:
         p.write_text('mode = "anything"\n', encoding="utf-8")
         cfg = runtime_config.load_config(p, hhmm_validator=_hhmm)
         assert cfg == {"mode": "anything"}
+
+    def test_auto_day_theme_loads_from_config(self, tmp_path):
+        p = tmp_path / "cfg.toml"
+        p.write_text(
+            'auto_day_theme = "scholar"\nauto_night_theme = "nightvision"\n',
+            encoding="utf-8",
+        )
+        cfg = runtime_config.load_config(
+            p, hhmm_validator=_hhmm,
+            choices_map={
+                "auto_day_theme": ["default", "dark", "scholar", "nightvision"],
+                "auto_night_theme": ["default", "dark", "scholar", "nightvision"],
+            },
+        )
+        assert cfg == {"auto_day_theme": "scholar", "auto_night_theme": "nightvision"}
+
+    def test_auto_day_theme_rejects_auto_value(self, tmp_path, capsys):
+        """``auto`` is not a valid day/night pick — it would be a config typo,
+        not a useful recursion. Mirrors the argparse rejection so config-file
+        installs surface the same error as the CLI."""
+        p = tmp_path / "cfg.toml"
+        p.write_text('auto_day_theme = "auto"\n', encoding="utf-8")
+        cfg = runtime_config.load_config(
+            p, hhmm_validator=_hhmm,
+            choices_map={"auto_day_theme": ["default", "dark", "scholar"]},
+        )
+        assert cfg == {}
+        assert "auto_day_theme" in capsys.readouterr().err
 
     def test_transient_keys_rejected(self, tmp_path, capsys):
         p = tmp_path / "cfg.toml"

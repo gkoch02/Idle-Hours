@@ -50,6 +50,7 @@ from runtime_telemetry import (  # noqa: F401  daily_telemetry_path re-exported 
     prune_telemetry,
 )
 from runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-exported for tests
+    _auto_theme_kwargs,
     _maybe_reset_manual_theme_at_midnight,
     auto_theme_for,
     resolve_effective_theme,
@@ -150,23 +151,23 @@ def parse_args() -> argparse.Namespace:
         default="debug",
         help="Render mode passed through to render_quote.py",
     )
+    # Kept in lockstep with render_quote.THEME_ORDER (+ "auto"). The test
+    # tests/test_run_clock.py::TestCliThemeChoices pins this invariant.
+    _theme_choices = [
+        "default",
+        "dark",
+        "scholar",
+        "newsprint",
+        "nightvision",
+        "blueprint",
+        "illuminated",
+        "bauhaus",
+        "risograph",
+        "comic",
+    ]
     parser.add_argument(
         "--theme",
-        # Kept in lockstep with render_quote.THEME_ORDER (+ "auto"). The test
-        # tests/test_run_clock.py::TestCliThemeChoices pins this invariant.
-        choices=[
-            "default",
-            "dark",
-            "scholar",
-            "newsprint",
-            "nightvision",
-            "blueprint",
-            "illuminated",
-            "bauhaus",
-            "risograph",
-            "comic",
-            "auto",
-        ],
+        choices=[*_theme_choices, "auto"],
         default="default",
         help=(
             "Render theme passed through to render_quote.py. "
@@ -178,8 +179,27 @@ def parse_args() -> argparse.Namespace:
             "rounded sans), 'comic' (yellow bg / black body / red accent, "
             "comic-book display face). Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow). 'auto' selects 'dark' between "
-            "18:00 and 06:00 and 'default' otherwise. "
+            "18:00 and 06:00 and 'default' otherwise — broaden the rotation via "
+            "--auto-day-theme / --auto-night-theme. "
             "Pressing button B cycles themes manually and overrides 'auto' until midnight."
+        ),
+    )
+    parser.add_argument(
+        "--auto-day-theme",
+        choices=_theme_choices,
+        default="default",
+        help=(
+            "Theme used by --theme auto during 06:00–18:00. Defaults to 'default' "
+            "(legacy binary contract). Must be a registered theme name; 'auto' is rejected."
+        ),
+    )
+    parser.add_argument(
+        "--auto-night-theme",
+        choices=_theme_choices,
+        default="dark",
+        help=(
+            "Theme used by --theme auto during 18:00–06:00. Defaults to 'dark' "
+            "(legacy binary contract). Must be a registered theme name; 'auto' is rejected."
         ),
     )
     parser.add_argument(
@@ -559,7 +579,9 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
     presses that land while a 10–20 s Spectra 6 refresh is still in flight
     instead of queuing behind it.
     """
-    effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
+    effective_theme = resolve_effective_theme(
+        state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+    )
     actual_mode = mode or args.mode
     actual_bucket = bucket or bucket_for_time(time_str)
     render_now(
@@ -1154,6 +1176,11 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
             if required:
                 errors.append(f"--{attr.replace('_', '-')} is required")
             continue
+        # The "auto" sentinel for --quiet-image / --startup-image routes through
+        # render_now(mode='goodnight') instead of treating value as a file path,
+        # so pre-flight existence checks would reject a perfectly valid config.
+        if attr in ("quiet_image", "startup_image") and value == "auto":
+            continue
         path = Path(value)
         if not path.is_absolute():
             path = BASE_DIR / path
@@ -1202,7 +1229,9 @@ def main() -> int:
         once_state = RuntimeState(args.theme)
         _install_signal_handlers(once_state)
         time_str = current_time_str()
-        effective_theme = resolve_effective_theme(args.theme, time_str, manual_theme=None)
+        effective_theme = resolve_effective_theme(
+            args.theme, time_str, manual_theme=None, **_auto_theme_kwargs(args),
+        )
         # Peek before rendering so the ledger entry matches what render_quote picks.
         # Both see the same ledger state because run_clock appends only after render succeeds.
         quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
@@ -1241,7 +1270,24 @@ def main() -> int:
     # and the loop continues to the first real render. Runs BEFORE the button
     # listener starts so a press during the (potentially slow) Inky push can't
     # collide with the unlocked display call.
-    if args.startup_image:
+    if args.startup_image == "auto":
+        # On-the-fly goodnight frame in the active theme. Honours any persisted
+        # ``manual_theme`` so an operator who pressed button B before reboot
+        # still gets their chosen theme on cold boot, not just the --theme arg.
+        try:
+            time_str = current_time_str()
+            effective_theme = resolve_effective_theme(
+                args.theme, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+            )
+            render_now(
+                args.render_script, args.output, args.width, args.height, args.display_script,
+                "goodnight", effective_theme, time_str=time_str,
+                history_path=history_path, history_days=args.history_days,
+                telemetry_path=telemetry_path, bucket=None, quote_id=None,
+            )
+        except Exception as exc:
+            _log(f"startup image render failed: {exc!r}", err=True)
+    elif args.startup_image:
         try:
             _display_quiet_image(
                 args.startup_image, args.output, args.display_script,
@@ -1317,7 +1363,9 @@ def main() -> int:
                 state.was_quiet = False
 
             bucket = current_bucket()
-            effective_theme = resolve_effective_theme(state.theme_arg, time_str, state.manual_theme)
+            effective_theme = resolve_effective_theme(
+                state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+            )
             bucket_changed = bucket != state.last_bucket
             theme_changed = effective_theme != state.last_effective_theme and state.last_effective_theme is not None
             if bucket_changed or theme_changed:

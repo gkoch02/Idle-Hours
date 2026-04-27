@@ -42,6 +42,8 @@ CONFIG_SCHEMA: dict[str, object] = {
     "display_script": str,
     "mode": str,
     "theme": str,
+    "auto_day_theme": str,
+    "auto_night_theme": str,
     "buttons_off": bool,
     "shutdown_command": str,
     "startup_image": str,

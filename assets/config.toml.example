@@ -19,6 +19,14 @@ display_script = "display_inky.py"
 output         = "output/current.png"
 mode           = "production"         # production | debug
 theme          = "auto"               # default | dark | scholar | newsprint | nightvision | blueprint | illuminated | bauhaus | risograph | comic | auto
+# When `theme = "auto"`, these pick the day-window (06:00–18:00) and
+# night-window (18:00–06:00) themes. Defaults match the historical binary
+# contract; broaden the rotation by setting one or both, e.g.
+#   auto_day_theme   = "scholar"
+#   auto_night_theme = "nightvision"
+# 'auto' itself is rejected — that would be a config typo, not a recursion.
+auto_day_theme   = "default"
+auto_night_theme = "dark"
 width          = 800
 height         = 480
 interval_seconds = 60
@@ -38,6 +46,12 @@ pidfile        = "/var/lib/litclock/run_clock.pid"
 # disable entirely (24/7 rendering).
 quiet_start = "22:00"
 quiet_end   = "06:00"
+# Three-way choice for what gets pushed at the rising edge:
+#   "<path>"  — copy a static PNG (e.g. assets/goodnight.png — the dark default).
+#   "auto"    — render a centred "Good night." in the active theme on the fly.
+#               Pairs nicely with `theme = "auto"` + auto_day/night themes so
+#               the goodnight frame matches the rest of the UI.
+#   ""        — render the picked quote at quiet_start (last-quote-of-the-night).
 quiet_image = "assets/goodnight.png"
 quiet_off   = false
 
@@ -55,10 +69,13 @@ quiet_off   = false
 buttons_off      = false
 shutdown_command = "systemctl poweroff"
 
-# Optional static PNG pushed to the panel at boot so it doesn't ghost
+# Optional frame pushed to the panel at boot so it doesn't ghost
 # yesterday's frame during the cold-start Spectra 6 refresh. Comment out
-# to skip the startup frame (saves 10–20s at boot).
-# startup_image = "assets/goodnight.png"
+# to skip the startup frame (saves 10–20s at boot). Same three-way choice
+# as quiet_image:
+#   "<path>"  — copy a static PNG.
+#   "auto"    — render "Good night." in the active theme on the fly.
+# startup_image = "auto"
 
 # ---- Curator web UI (optional) ---------------------------------------------
 # Off by default. Loopback binds (127.0.0.1, ::1) don't need a token; any
