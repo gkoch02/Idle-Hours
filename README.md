@@ -1,5 +1,7 @@
 # LitClock
 
+[![CI](https://github.com/gkoch02/litclock/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/litclock/actions/workflows/ci.yml)
+
 LitClock is a literary clock built from public-domain text. It picks a quote that matches the current fuzzy time bucket, renders it into an 800×480 image, and can push that image to an eInk display such as the Pimoroni Inky Impression 7.3.
 
 ![LitClock render preview](assets/preview.png)
