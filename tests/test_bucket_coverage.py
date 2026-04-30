@@ -181,6 +181,14 @@ class TestLoadRows:
         rows = bc.load_rows(path)
         assert rows[0]["fuzzy_bucket"] == "h3_exact"
 
+    def test_unparseable_normalized_time_preserves_existing_bucket(self, tmp_jsonl):
+        # Has a colon (so we enter the try block) but the parts are not ints —
+        # exercises the ``except (ValueError, KeyError)`` branch in load_rows.
+        row = make_row(normalized_time="ab:cd", fuzzy_bucket="h3_exact")
+        path = tmp_jsonl([row])
+        rows = bc.load_rows(path)
+        assert rows[0]["fuzzy_bucket"] == "h3_exact"
+
 
 class TestMainCLI:
     def test_writes_json_and_markdown(self, tmp_path, tmp_jsonl, monkeypatch, capsys):

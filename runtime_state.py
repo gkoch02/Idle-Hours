@@ -11,7 +11,7 @@ import datetime as dt
 import threading
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover - type-checking only
     from threading import Timer
 
 
