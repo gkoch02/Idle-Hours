@@ -45,7 +45,7 @@ def _next_theme(current: str) -> str:
     on an unrecognised value.
     """
     order = _theme_cycle()
-    if not order:
+    if not order:  # pragma: no cover - defensive; theme_cycle always returns ≥2 entries
         return current
     try:
         idx = order.index(current)

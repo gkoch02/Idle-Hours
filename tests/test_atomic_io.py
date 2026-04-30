@@ -117,3 +117,14 @@ class TestDirFsyncBestEffort:
     def test_missing_directory_is_ignored(self, tmp_path: Path) -> None:
         # The internal helper should not raise when the directory vanishes.
         atomic_io._fsync_dir(tmp_path / "does-not-exist")
+
+    def test_fsync_failure_is_swallowed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An OSError from os.fsync (e.g. on a filesystem that doesn't
+        # support it) must not propagate — dir-fsync is best-effort.
+        def exploding_fsync(fd):
+            raise OSError("simulated fsync failure")
+
+        monkeypatch.setattr(os, "fsync", exploding_fsync)
+        atomic_io._fsync_dir(tmp_path)

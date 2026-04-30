@@ -167,7 +167,7 @@ def load_config(
                 )
                 continue
         if kind == "hhmm":
-            if hhmm_validator is None:
+            if hhmm_validator is None:  # pragma: no cover - defensive; run_clock always injects one
                 # Defensive; should not happen because ``run_clock``
                 # always injects one. If it does, keep the string as-is
                 # and let downstream handling catch a bad value.
