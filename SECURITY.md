@@ -63,7 +63,7 @@ These are the surfaces where a security bug would matter:
   surface). Report anything that lets a caller exfiltrate state outside the
   corpus (e.g. arbitrary file reads via the search filter), trigger
   unbounded resource use (the preview width/height are clamped to
-  `1600×960` and the search limit to 500), or bypass the bind check.
+  `800×480` and the search limit to 500), or bypass the bind check.
   `/metrics` reuses `litclock_health.summarise` over a fixed 24 h window —
   if the summariser ever leaks request data into the metric values, that's
   in scope.

@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 import pick_quote
 import run_clock
@@ -1785,11 +1786,17 @@ class TestApiPreview:
             "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
             "source_id": "1", "line_number": 1,
         }
-        with patch("pick_quote.select_quote", return_value=fake_row):
+        image = Image.new("RGB", (1, 1), "white")
+        with (
+            patch("pick_quote.select_quote", return_value=fake_row),
+            patch("render_quote.render", return_value=image) as render,
+        ):
             status, body = _get(server, "/api/preview?theme=default&time=03:00&width=100000&height=100000")
-        # Should not OOM — capped at 1600x960. Status 200 means render survived.
+        # Should not OOM — verify the untrusted request was capped before render.
         assert status == 200
         assert body.startswith(b"\x89PNG")
+        render.assert_called_once()
+        assert render.call_args.args[:4] == ("03:00", fake_row, 800, 480)
 
 
 # ============================================================================

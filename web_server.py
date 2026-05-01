@@ -53,6 +53,10 @@ DEFAULT_OUTPUT_PATH = BASE_DIR / "output" / "current.png"
 
 TOKEN_HEADER = "X-LitClock-Token"
 MAX_BODY_BYTES = 64 * 1024  # Overrides payloads are tiny; cap to stop runaway requests.
+PREVIEW_MIN_WIDTH = 80
+PREVIEW_MIN_HEIGHT = 60
+PREVIEW_MAX_WIDTH = 800
+PREVIEW_MAX_HEIGHT = 480
 BUCKET_PATH_RE = re.compile(r"^/api/bucket/(?P<bucket>h(?:[1-9]|1[0-2])_[a-z_]+)$")
 # Per-row content-override key: "<source_id>:<line_number>". Source IDs are
 # numeric strings in the corpus (Gutenberg IDs like "141"); line_number is a
@@ -1039,10 +1043,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
             height = int(query.get("height", [str(ctx.args.height)])[0])
         except (TypeError, ValueError):
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "width/height must be int"})
-        # Cap dimensions: a thumbnail grid only needs ~400×240, and unbounded
-        # values would let a client request arbitrary RAM allocations.
-        width = max(80, min(width, 1600))
-        height = max(60, min(height, 960))
+        # Cap dimensions: preview is used for thumbnails, and full panel size is
+        # already enough detail while avoiding slow/high-memory renders from a
+        # hostile or buggy client.
+        width = max(PREVIEW_MIN_WIDTH, min(width, PREVIEW_MAX_WIDTH))
+        height = max(PREVIEW_MIN_HEIGHT, min(height, PREVIEW_MAX_HEIGHT))
         image = render_quote.render(time_str, row, width, height, mode=mode, theme=theme)
         buf = BytesIO()
         try:
