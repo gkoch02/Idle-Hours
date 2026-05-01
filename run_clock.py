@@ -17,6 +17,7 @@ from pathlib import Path
 import pick_quote as pick_quote_module
 import pidfile
 import runtime_config
+import runtime_webhook
 import sd_notify
 from buckets import bucket_for_time
 from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
@@ -240,6 +241,28 @@ def parse_args() -> argparse.Namespace:
             "Path to the JSONL telemetry log. Each successful render appends one line "
             "with bucket, render_ms, display_ms, source_id, line_number. Loop-level "
             "errors append an entry with an 'error' field. Pass an empty string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--webhook-url",
+        default="",
+        metavar="URL",
+        help=(
+            "Optional HTTP endpoint that receives a JSON POST for each "
+            "interesting telemetry event (errors, render/display/shutdown timeouts, "
+            "backoff entered, button listener died, state validation issues). "
+            "Successful renders and heartbeats are NOT posted by default. "
+            "Best-effort: dispatched on a daemon thread with a 5s timeout, "
+            "failures are logged but never block the loop."
+        ),
+    )
+    parser.add_argument(
+        "--webhook-all-events",
+        action="store_true",
+        help=(
+            "Post every telemetry event to --webhook-url (except heartbeats and "
+            "successful renders, which would generate alert spam). Default behaviour "
+            "is to post only operationally-interesting modes — see runtime_webhook.ALERT_MODES."
         ),
     )
     parser.add_argument(
@@ -1215,6 +1238,15 @@ def main() -> int:
 
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
+
+    # Wire webhook config once at startup so every later append_telemetry
+    # call (across run_clock, runtime_actions, runtime_quiet, web_server)
+    # picks up the destination without per-call plumbing. Empty URL =
+    # disabled; runtime_webhook.configure handles that explicitly.
+    runtime_webhook.configure(
+        getattr(args, "webhook_url", "") or None,
+        all_events=getattr(args, "webhook_all_events", False),
+    )
 
     _run_preflight(args)
 

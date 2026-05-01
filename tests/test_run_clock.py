@@ -1046,6 +1046,7 @@ class TestRuntimeStatePersistence:
             "last_bucket": None,
             "last_quote_id": None,
             "last_effective_theme": None,
+            "setup_complete": False,  # v2 wizard flag, defaults False on fresh state
         }
 
     def test_snapshot_includes_render_identity_triple(self):
@@ -1559,6 +1560,7 @@ class TestMidnightThemeReset:
                 "last_bucket": None,
                 "last_quote_id": None,
                 "last_effective_theme": None,
+                "setup_complete": False,  # v2 wizard flag, defaults False on fresh state
             },
         )]
         # Patch was honored: the real writer never ran, so no file on disk.

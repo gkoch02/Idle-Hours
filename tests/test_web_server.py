@@ -1800,3 +1800,192 @@ class TestContentOverridesValidator:
         # hour must be an int (not bool)
         with pytest.raises(ValueError, match="must be an int"):
             web_server.validate_content_overrides_payload({"141:42": {"hour": True}})
+
+
+# ============================================================================
+# v2: /metrics (Prometheus text format)
+# ============================================================================
+
+class TestMetricsEndpoint:
+    def _write_telemetry(self, args, entries):
+        import datetime as dt
+        today = dt.datetime.now().strftime("%Y%m%d")
+        rotated = Path(args.telemetry_path).with_name(
+            f"{Path(args.telemetry_path).stem}-{today}.jsonl",
+        )
+        rotated.parent.mkdir(parents=True, exist_ok=True)
+        rotated.write_text(
+            "\n".join(json.dumps({"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **e}) for e in entries) + "\n",
+        )
+
+    def test_metrics_returns_text_exposition_format(self, live_server):
+        server, _state, args = live_server
+        self._write_telemetry(args, [
+            {"render_ms": 120, "display_ms": 15000, "bucket": "h3_exact", "mode": "debug"},
+            {"render_ms": 130, "display_ms": 14000, "bucket": "h3_exact", "mode": "debug"},
+            {"error": "boom", "bucket": "h3_exact", "mode": "debug"},
+        ])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        # Required Prometheus header lines must appear for every metric.
+        assert "# HELP litclock_renders_total" in text
+        assert "# TYPE litclock_renders_total" in text
+        # The render count comes from litclock_health.summarise — the same
+        # source as /api/telemetry, so the values must match exactly.
+        assert "litclock_renders_total 2" in text
+        assert "litclock_errors_total 1" in text
+        # p50 / p95 latencies are gauges with integer milliseconds.
+        assert "litclock_render_p50_ms" in text
+        assert "litclock_display_p50_ms" in text
+
+    def test_metrics_no_telemetry_returns_zeros(self, tmp_path):
+        """A telemetry-disabled appliance still exposes the metric names so
+        Prometheus's first-scrape doesn't see missing series. Otherwise rate()
+        would silently return no data on a fresh install."""
+        args = _make_args(tmp_path, telemetry_path="")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state)
+        try:
+            status, body = _get(server, "/metrics")
+            assert status == 200
+            text = body.decode("utf-8")
+            assert "litclock_renders_total 0" in text
+            assert "litclock_errors_total 0" in text
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_metrics_content_type_is_prometheus_format(self, live_server):
+        """Prometheus identifies the parser by Content-Type version. Must end
+        with ``version=0.0.4`` for the standard text-exposition parser."""
+        server, _, _ = live_server
+        conn = _client(server)
+        conn.request("GET", "/metrics")
+        resp = conn.getresponse()
+        resp.read()
+        ctype = resp.getheader("Content-Type")
+        conn.close()
+        assert ctype is not None
+        assert "text/plain" in ctype
+        assert "version=0.0.4" in ctype
+
+    def test_metrics_no_auth_required(self, tmp_path):
+        """The metrics endpoint stays open on every bind so Prometheus can
+        scrape without managing a token. Other GETs follow the same convention."""
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret-token")
+        try:
+            # No X-LitClock-Token header.
+            status, _ = _get(server, "/metrics")
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+
+# ============================================================================
+# v2: First-run setup wizard
+# ============================================================================
+
+class TestApiSetup:
+    def test_get_setup_returns_complete_false_initially(self, live_server):
+        server, state, _args = live_server
+        # Default RuntimeState has setup_complete = False so the wizard fires.
+        assert state.setup_complete is False
+        status, body = _get(server, "/api/setup")
+        assert status == 200
+        data = _json_body(body)
+        assert data["setup_complete"] is False
+        assert "themes" in data
+        assert isinstance(data["themes"], list)
+        assert "quiet_start" in data and "quiet_end" in data
+
+    def test_post_dismiss_marks_setup_complete(self, live_server):
+        server, state, args = live_server
+        # No body == "I'm ready" without changing the theme.
+        status, body = _post(server, "/api/setup", {})
+        assert status == 200
+        data = _json_body(body)
+        assert data["ok"] is True
+        assert data["setup_complete"] is True
+        # In-memory flag flipped.
+        with state.lock:
+            assert state.setup_complete is True
+        # Persisted to state.json so a reload doesn't re-trigger the wizard.
+        on_disk = json.loads(Path(args.state_path).read_text(encoding="utf-8"))
+        assert on_disk["setup_complete"] is True
+
+    def test_post_with_theme_applies_and_completes(self, live_server):
+        server, state, args = live_server
+        # action_theme returns ok=True only if it can render — patch the
+        # render path (run_clock._render_unlocked) so we don't actually
+        # invoke pillow / pick_quote here.
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            status, body = _post(server, "/api/setup", {"theme": "scholar"})
+        assert status == 200, _json_body(body)
+        data = _json_body(body)
+        assert data["setup_complete"] is True
+        assert data["applied_theme"] is not None
+        with state.lock:
+            assert state.manual_theme == "scholar"
+
+    def test_post_rejects_unknown_theme(self, live_server):
+        server, _state, _args = live_server
+        with patch("run_clock._render_unlocked"), \
+             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            status, body = _post(server, "/api/setup", {"theme": "imaginary-theme"})
+        assert status == 400
+        assert "unknown theme" in _json_body(body)["error"]
+
+    def test_post_rejects_non_string_theme(self, live_server):
+        server, _state, _args = live_server
+        status, body = _post(server, "/api/setup", {"theme": 42})
+        assert status == 400
+        assert "string" in _json_body(body)["error"]
+
+    def test_get_after_post_reflects_complete_true(self, live_server):
+        """Once dismissed, subsequent GETs report the wizard is done so the
+        UI doesn't re-overlay it on every page reload."""
+        server, _state, _args = live_server
+        _post(server, "/api/setup", {})
+        status, body = _get(server, "/api/setup")
+        assert status == 200
+        assert _json_body(body)["setup_complete"] is True
+
+
+# ============================================================================
+# v2: webhook fan-out from append_telemetry
+# ============================================================================
+
+class TestTelemetryWebhookFanout:
+    def test_append_telemetry_calls_webhook_when_configured(self, tmp_path):
+        """append_telemetry reads the module-level webhook config; an error
+        entry should fan out to the webhook on a daemon thread."""
+        import runtime_telemetry
+        import runtime_webhook
+        runtime_webhook.configure("https://x.test/h")
+        try:
+            with patch("runtime_webhook.post_event") as post:
+                runtime_telemetry.append_telemetry(
+                    str(tmp_path / "telemetry.jsonl"),
+                    {"error": "boom", "bucket": "h3_exact"},
+                )
+            post.assert_called_once()
+            args, kwargs = post.call_args
+            assert args[0] == "https://x.test/h"
+            assert args[1]["error"] == "boom"
+        finally:
+            runtime_webhook.configure(None)
+
+    def test_append_telemetry_skips_webhook_when_unconfigured(self, tmp_path):
+        """An unconfigured webhook URL must not fire post_event at all."""
+        import runtime_telemetry
+        import runtime_webhook
+        runtime_webhook.configure(None)
+        with patch("runtime_webhook.post_event") as post:
+            runtime_telemetry.append_telemetry(
+                str(tmp_path / "telemetry.jsonl"),
+                {"error": "boom"},
+            )
+        post.assert_not_called()

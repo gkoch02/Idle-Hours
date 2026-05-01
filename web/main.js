@@ -558,6 +558,64 @@ async function refreshHistory() {
 
 // ------- Wiring -------------------------------------------------------------
 
+// ------- First-run wizard ---------------------------------------------------
+
+async function maybeShowWizard() {
+  const { ok, data } = await jsonFetch("/api/setup");
+  if (!ok || !data || data.setup_complete) return;
+  const overlay = $("setup-wizard");
+  if (!overlay) return;
+  // Populate the quiet-hours line with whatever the loop is configured to use.
+  const quietEl = $("wizard-quiet");
+  if (quietEl) {
+    if (data.quiet_off) {
+      quietEl.textContent = "Quiet hours are disabled (--quiet-off). The clock renders 24/7.";
+    } else if (data.quiet_start && data.quiet_end) {
+      quietEl.textContent = `Currently configured for ${data.quiet_start}–${data.quiet_end}.`;
+    } else {
+      quietEl.textContent = "Quiet hours not configured.";
+    }
+  }
+  // Lazy-load the theme grid using /api/preview so the wizard mirrors the
+  // Now tab's thumbnail UX (and the operator picks a theme by clicking, not
+  // by reading names off a dropdown they haven't learned yet).
+  const grid = $("wizard-theme-grid");
+  grid.innerHTML = "";
+  for (const theme of data.themes || []) {
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "theme-thumb";
+    cell.title = `Use ${theme}`;
+    if (theme === (data.manual_theme || data.theme_arg)) cell.classList.add("selected");
+    const url = `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`;
+    cell.innerHTML = `
+      <img alt="${escapeHtml(theme)} preview" loading="lazy" src="${url}" />
+      <span>${escapeHtml(theme)}</span>
+    `;
+    cell.onclick = () => completeWizard(theme);
+    grid.appendChild(cell);
+  }
+  overlay.hidden = false;
+}
+
+async function completeWizard(theme) {
+  setStatus("wizard-status", theme ? `Applying ${theme}…` : "Saving…", "");
+  const body = theme ? { theme } : {};
+  const { ok, status, data } = await jsonFetch("/api/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!ok) {
+    setStatus("wizard-status", `Setup save failed (${status}): ${data?.error || "?"}`, "err");
+    return;
+  }
+  // Hide the overlay, refresh the underlying view so the freshly-applied
+  // theme is reflected on the Now tab once the operator looks.
+  $("setup-wizard").hidden = true;
+  await Promise.all([refreshCurrent(), refreshThemes()]);
+}
+
 function init() {
   wireTabs();
   wireControls();
@@ -569,8 +627,13 @@ function init() {
   $("content-overrides-reload").addEventListener("click", loadContentOverrides);
   $("bake-now").addEventListener("click", bakeNow);
   $("gap-refresh").addEventListener("click", refreshGaps);
+  const dismiss = $("wizard-dismiss");
+  if (dismiss) dismiss.addEventListener("click", () => completeWizard(null));
 
   refreshAll();
+  // Wizard check runs after refreshAll so the underlying UI is populated
+  // when the operator dismisses the overlay.
+  maybeShowWizard();
   setInterval(refreshCurrent, 30000);
   setInterval(refreshTelemetry, 30000);
   setInterval(refreshHistory, 60000);

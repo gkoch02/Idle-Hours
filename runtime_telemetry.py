@@ -86,8 +86,25 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     buffered in the kernel and lost — that's exactly when ``litclock_health``
     needs the last few entries to distinguish "wedged" from "idle".
     Heartbeats skip the fsync via ``append_heartbeat`` (see its docstring).
+
+    Webhook fan-out: if ``runtime_webhook.configure(...)`` has been called
+    with a URL (typically once at ``run_clock.main`` startup), we
+    additionally fire a fire-and-forget POST for entries that pass
+    ``runtime_webhook``'s alert filter. This runs on a daemon thread so the
+    render path never blocks on network I/O. Heartbeats deliberately don't
+    reach this path — ``append_heartbeat`` calls ``_append_entry`` directly
+    without webhook plumbing, since alerting on every 60s liveness ping
+    would be spam.
     """
     _append_entry(telemetry_path, entry, fsync=True)
+    # Lazy import: webhook config is read at the call boundary so a test that
+    # never configures one pays no import cost. The module is tiny anyway,
+    # but the deferred import also keeps the import graph clean —
+    # ``runtime_webhook`` doesn't depend on us, so there's no cycle.
+    from runtime_webhook import get_config, post_event
+    url, all_events = get_config()
+    if url:
+        post_event(url, entry, send_all=all_events)
 
 
 def _append_entry(telemetry_path: str | None, entry: dict, *, fsync: bool) -> None:

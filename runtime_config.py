@@ -60,6 +60,8 @@ CONFIG_SCHEMA: dict[str, object] = {
     "web_token": str,
     "web_token_file": str,
     "pidfile": str,
+    "webhook_url": str,
+    "webhook_all_events": bool,
 }
 
 # Flags that exist on the CLI but are intentionally refused in the config

@@ -452,6 +452,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 return self._serve_static(WEB_ROOT / "style.css", "text/css; charset=utf-8")
             if path == "/current.png":
                 return self._serve_static(self._ctx().output_path, "image/png")
+            if path == "/metrics":
+                return self._api_metrics()
             if path == "/api/current":
                 return self._api_current()
             if path == "/api/telemetry":
@@ -462,6 +464,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 return self._api_gaps(query)
             if path == "/api/themes":
                 return self._api_themes()
+            if path == "/api/setup":
+                return self._api_setup_get()
             if path == "/api/overrides":
                 return self._api_overrides_get()
             if path == "/api/content-overrides":
@@ -490,6 +494,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "/api/overrides": self._api_overrides_post,
             "/api/content-overrides": self._api_content_overrides_post,
             "/api/bake": self._api_bake_post,
+            "/api/setup": self._api_setup_post,
             "/api/action/skip": self._action_skip,
             "/api/action/unskip": self._action_unskip,
             "/api/action/theme": self._action_theme,
@@ -565,6 +570,112 @@ class CuratorHandler(BaseHTTPRequestHandler):
         summary = litclock_health.summarise(entries)
         self._json(HTTPStatus.OK, {"hours": hours, **summary})
 
+    def _api_metrics(self) -> None:
+        """Prometheus text-format scrape endpoint over a 24h window.
+
+        Re-uses :func:`litclock_health.load_entries` + :func:`litclock_health.summarise`
+        so the metric values match exactly what ``litclock-health --json`` reports;
+        no parallel aggregation logic to drift. Window is fixed at 24h because
+        Prometheus is responsible for time-windowing on its end (rate(),
+        increase()): exposing a configurable window via query string here would
+        confuse the scraper, since Prometheus expects counters to be cumulative
+        OR a fixed-window gauge.
+
+        Output is the standard ``# HELP`` / ``# TYPE`` text exposition format
+        (Prometheus 0.0.4) — no client_python dependency, just stdlib string
+        formatting. Counters are exported as ``_total``-suffixed gauges over
+        the 24h window because we don't have process-lifetime monotonic
+        counters; that's good enough for "is the appliance rendering and is
+        the error rate sane" alerting. Histograms are summarised as p50 / p95
+        gauges (no native histogram bucket support) — same reason.
+
+        Stays open without auth (matches the rest of the GET surface) so a
+        Prometheus scraper running on the same LAN can hit it without
+        managing a token. Operators concerned about leaking telemetry to
+        the LAN already bind to 127.0.0.1.
+        """
+        import litclock_health
+        ctx = self._ctx()
+        lines: list[str] = []
+        if ctx.telemetry_path:
+            since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
+            entries = litclock_health.load_entries(Path(ctx.telemetry_path).expanduser(), since)
+            summary = litclock_health.summarise(entries)
+        else:
+            # Telemetry disabled: still emit the metric names with zero values
+            # so a Prometheus scrape against a fresh appliance doesn't 500 or
+            # produce missing-series gaps that confuse rate() on first
+            # success.
+            summary = {
+                "render_count": 0, "error_count": 0, "heartbeat_count": 0,
+                "action_count": 0, "press_dropped_count": 0,
+                "web_auth_fail_count": 0, "web_error_count": 0,
+                "quiet_enter_count": 0, "quiet_exit_count": 0,
+                "render_p50_ms": None, "render_p95_ms": None,
+                "display_p50_ms": None, "display_p95_ms": None,
+                "last_heartbeat_ts": None,
+            }
+
+        def metric(name: str, value: float | int | None, help_text: str, mtype: str = "gauge") -> None:
+            lines.append(f"# HELP {name} {help_text}")
+            lines.append(f"# TYPE {name} {mtype}")
+            # Prometheus convention: missing/null gauge → omit the sample line
+            # (HELP/TYPE alone is fine). A literal NaN would also work but
+            # alerting rules then have to handle NaN explicitly.
+            if value is not None:
+                lines.append(f"{name} {value}")
+
+        metric("litclock_renders_total", summary.get("render_count", 0),
+               "Successful renders in the last 24 hours.", mtype="gauge")
+        metric("litclock_errors_total", summary.get("error_count", 0),
+               "Render / display / runtime errors in the last 24 hours.", mtype="gauge")
+        metric("litclock_heartbeats_total", summary.get("heartbeat_count", 0),
+               "Loop heartbeat pings in the last 24 hours.", mtype="gauge")
+        metric("litclock_actions_total", summary.get("action_count", 0),
+               "Operator actions (button + web) in the last 24 hours.", mtype="gauge")
+        metric("litclock_press_dropped_total", summary.get("press_dropped_count", 0),
+               "Button presses dropped because a render was in flight.", mtype="gauge")
+        metric("litclock_web_auth_fails_total", summary.get("web_auth_fail_count", 0),
+               "Web UI POSTs that failed token auth in the last 24 hours.", mtype="gauge")
+        metric("litclock_web_errors_total", summary.get("web_error_count", 0),
+               "Web UI 4xx/5xx responses in the last 24 hours.", mtype="gauge")
+        metric("litclock_quiet_enter_total", summary.get("quiet_enter_count", 0),
+               "Quiet-hours rising-edge transitions in the last 24 hours.", mtype="gauge")
+        metric("litclock_quiet_exit_total", summary.get("quiet_exit_count", 0),
+               "Quiet-hours falling-edge transitions in the last 24 hours.", mtype="gauge")
+        metric("litclock_render_p50_ms", summary.get("render_p50_ms"),
+               "Median render subprocess duration over the last 24 hours.")
+        metric("litclock_render_p95_ms", summary.get("render_p95_ms"),
+               "p95 render subprocess duration over the last 24 hours.")
+        metric("litclock_display_p50_ms", summary.get("display_p50_ms"),
+               "Median Inky display push duration over the last 24 hours.")
+        metric("litclock_display_p95_ms", summary.get("display_p95_ms"),
+               "p95 Inky display push duration over the last 24 hours.")
+
+        # Heartbeat age is the metric an operator alerts on for "is the loop
+        # alive" — equivalent to litclock-health's --max-heartbeat-age-minutes.
+        last_hb = summary.get("last_heartbeat_ts")
+        if last_hb:
+            try:
+                hb_dt = dt.datetime.fromisoformat(last_hb)
+                if hb_dt.tzinfo is None:
+                    hb_dt = hb_dt.replace(tzinfo=dt.timezone.utc)
+                age_seconds = (dt.datetime.now(dt.timezone.utc) - hb_dt).total_seconds()
+                metric("litclock_last_heartbeat_age_seconds", int(max(0, age_seconds)),
+                       "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
+            except ValueError:
+                pass
+
+        body = ("\n".join(lines) + "\n").encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        # Prometheus text format 0.0.4. The scraper picks up the version
+        # from the Content-Type and parses accordingly.
+        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _api_coverage(self) -> None:
         ctx = self._ctx()
         if not ctx.coverage_path.exists():
@@ -631,6 +742,85 @@ class CuratorHandler(BaseHTTPRequestHandler):
         # Sort emptiest-first so the UI naturally surfaces the worst gaps.
         gaps.sort(key=lambda g: (g["count"], g["bucket"]))
         self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": gaps, "total": len(gaps)})
+
+    def _api_setup_get(self) -> None:
+        """Return the first-run wizard's status + the values it needs to render.
+
+        Returns ``setup_complete`` (whether the operator has dismissed the
+        wizard already), plus a snapshot of the values the UI shows the
+        operator: the active theme, the configured quiet hours, and the
+        registered theme list. The wizard reads from this single endpoint
+        so a freshly-booted appliance hits one URL on first paint to decide
+        whether to overlay the wizard or load the normal UI.
+        """
+        from theme_names import theme_cycle
+        ctx = self._ctx()
+        with ctx.state.lock:
+            setup_complete = ctx.state.setup_complete
+            manual_theme = ctx.state.manual_theme
+            theme_arg = ctx.state.theme_arg
+        self._json(HTTPStatus.OK, {
+            "setup_complete": setup_complete,
+            "themes": list(theme_cycle()),
+            "theme_arg": theme_arg,
+            "manual_theme": manual_theme,
+            "quiet_start": getattr(ctx.args, "quiet_start", None),
+            "quiet_end": getattr(ctx.args, "quiet_end", None),
+            "quiet_off": getattr(ctx.args, "quiet_off", False),
+            "mode": getattr(ctx.args, "mode", "debug"),
+        })
+
+    def _api_setup_post(self) -> None:
+        """Mark the first-run wizard complete; optionally apply a chosen theme.
+
+        Body shape: ``{"theme": "<name>"?}``. When ``theme`` is present the
+        target is applied via the same ``run_clock.action_theme`` path the
+        web dropdown uses, so the panel updates and ``manual_theme`` is
+        persisted. With or without a theme, ``setup_complete`` flips to
+        ``True`` and is persisted to ``state.json`` so the wizard doesn't
+        reappear on next page load.
+
+        Returns the same shape as ``GET /api/setup`` so the UI doesn't need
+        a follow-up request to update its in-memory state.
+        """
+        import run_clock
+        ctx = self._ctx()
+        body = self._read_json_body()
+        target_theme = body.get("theme") if isinstance(body, dict) else None
+        if target_theme is not None and not isinstance(target_theme, str):
+            return self._json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "theme must be a string"},
+            )
+        applied_theme: dict | None = None
+        if target_theme:
+            applied_theme = run_clock.action_theme(
+                ctx.args, ctx.state, label="web", target=target_theme,
+            )
+            if applied_theme.get("error") == "unknown_theme":
+                return self._json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": f"unknown theme {target_theme!r}"},
+                )
+            # If the render is in flight we still mark setup complete — the
+            # wizard's job is to dismiss itself, not to gate on a successful
+            # repaint. The operator can pick the theme again from the Now tab.
+        with ctx.state.lock:
+            ctx.state.setup_complete = True
+            snapshot = ctx.state.snapshot_for_persistence()
+        try:
+            from runtime_store import save_runtime_state
+            save_runtime_state(getattr(ctx.args, "state_path", None), snapshot)
+        except Exception as exc:  # noqa: BLE001
+            _log(f"web: setup_complete persist failed: {exc!r}", err=True)
+            # Don't fail the request — the in-memory flip is durable for the
+            # session, and the wizard will retry next reload if state.json
+            # is genuinely unwritable. Log so operators see it.
+        _log("web: first-run setup wizard dismissed")
+        self._json(HTTPStatus.OK, {
+            "ok": True,
+            "setup_complete": True,
+            "applied_theme": applied_theme,
+        })
 
     def _api_themes(self) -> None:
         """Expose the theme cycle so the UI dropdown and the Python cycle stay aligned.

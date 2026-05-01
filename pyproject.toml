@@ -16,6 +16,13 @@ dependencies = [
 dev = ["pytest", "pytest-cov", "pytest-xdist", "ruff"]
 pi = ["inky", "gpiozero"]
 
+[project.scripts]
+# Single umbrella entry point — `litclock <subcommand>` dispatches to the
+# matching script's main(). Backwards-compat: `python3 <script>.py …` keeps
+# working for every subcommand. Defined here so `pip install .` registers
+# the console script in the bin/ directory of the active environment.
+litclock = "litclock_cli:main"
+
 [tool.setuptools]
 # Keep this list in sync with the top-level *.py files in the repo root.
 # tests/test_packaging.py::test_py_modules_covers_top_level_modules enforces
@@ -37,6 +44,7 @@ py-modules = [
     "import_targeted_hits",
     "inky_buttons",
     "jsonl_io",
+    "litclock_cli",
     "litclock_health",
     "merge_candidates",
     "pick_quote",
@@ -53,6 +61,7 @@ py-modules = [
     "runtime_store",
     "runtime_telemetry",
     "runtime_theme",
+    "runtime_webhook",
     "sd_notify",
     "target_sparse_buckets",
     "theme_names",

@@ -417,6 +417,71 @@ textarea {
 .history-list, #history-list { padding-left: 24px; margin: 0; font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; }
 #history-list li { margin-bottom: 2px; color: var(--muted); }
 
+/* First-run wizard ------------------------------------------------------- */
+
+.wizard {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 22, 22, 0.72);
+  z-index: 100;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.wizard[hidden] { display: none; }
+
+.wizard-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 720px;
+  width: 100%;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.wizard-card h2 {
+  margin: 0 0 12px 0;
+  font-size: 1.4rem;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.wizard-intro {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.95rem;
+  margin: 0 0 20px 0;
+  color: var(--muted);
+}
+
+.wizard-step {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.wizard-step h3 {
+  margin: 0 0 6px 0;
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.wizard-theme-grid {
+  margin-top: 8px;
+}
+
+.theme-thumb.selected {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
 /* Desktop layout --------------------------------------------------------- */
 
 @media (min-width: 768px) {

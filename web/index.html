@@ -8,6 +8,43 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <!-- First-run wizard overlay. Hidden by default; main.js shows it on
+       initial load when GET /api/setup reports setup_complete=false. -->
+  <div id="setup-wizard" class="wizard" hidden role="dialog" aria-labelledby="wizard-title">
+    <div class="wizard-card">
+      <h2 id="wizard-title">Welcome to LitClock</h2>
+      <p class="wizard-intro">
+        This appliance picks a literary quote that mentions the current time and
+        renders it to your eInk panel. Two minutes here gets you set up.
+      </p>
+      <section class="wizard-step">
+        <h3>1 · Pick a theme</h3>
+        <p class="hint">Each theme uses a different palette and typeface. Tap one to apply it.</p>
+        <div id="wizard-theme-grid" class="theme-preview-grid wizard-theme-grid"></div>
+      </section>
+      <section class="wizard-step">
+        <h3>2 · Quiet hours</h3>
+        <p class="hint" id="wizard-quiet">—</p>
+        <p class="hint">
+          The panel sleeps overnight by default (22:00–06:00). Adjust via
+          <code>--quiet-start</code> / <code>--quiet-end</code> in the systemd unit
+          if you want different times — runtime quiet-toggle is bound to the
+          physical D button or the "Quiet / wake" control on the Now tab.
+        </p>
+      </section>
+      <section class="wizard-step">
+        <h3>3 · You're done</h3>
+        <p class="hint">
+          Browse the four tabs (Now / Curate / Coverage / Activity) to manage
+          quotes, search the corpus, and inspect telemetry. Press the button below
+          to dismiss this wizard.
+        </p>
+        <button id="wizard-dismiss" type="button" class="btn btn-primary">I'm ready</button>
+        <div id="wizard-status" class="override-status"></div>
+      </section>
+    </div>
+  </div>
+
   <header>
     <div class="title">
       <h1>LitClock</h1>
