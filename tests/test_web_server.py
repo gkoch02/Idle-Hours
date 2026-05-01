@@ -463,13 +463,15 @@ class TestReadEndpoints:
 
     def test_api_overrides_round_trip(self, tmp_path, live_server):
         server, _, args = live_server
-        # Initial GET when file doesn't exist returns empty schema
+        # Initial GET when file doesn't exist returns empty schema (including
+        # the v2 ban_quote_keys field defaulted to []).
         status, body = _get(server, "/api/overrides")
         assert status == 200
         assert _json_body(body) == {
             "ban_source_ids": [],
             "boost_source_ids": [],
             "preferred_buckets": {},
+            "ban_quote_keys": [],
         }
         # POST a payload, then GET and confirm it's persisted
         payload = {
@@ -765,13 +767,19 @@ class TestOverrideValidation:
             web_server.validate_overrides_payload({})
 
     def test_explicit_empty_collections_are_allowed(self):
-        """Callers who really want to clear state spell it out explicitly."""
+        """Callers who really want to clear state spell it out explicitly.
+        ban_quote_keys is defaulted to [] when omitted so v1 clients keep working."""
         out = web_server.validate_overrides_payload({
             "ban_source_ids": [],
             "boost_source_ids": [],
             "preferred_buckets": {},
         })
-        assert out == {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
+        assert out == {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
 
     def test_reject_bool_in_id_list(self):
         """bool is a subclass of int — make sure we don't silently coerce True/False to strings."""
@@ -1338,3 +1346,457 @@ class TestContentLengthEdges:
             assert resp.status in {400, 500}
         finally:
             run_clock.stop_web_server((server, thread))
+
+
+# ============================================================================
+# v2: Per-row content overrides
+# ============================================================================
+
+def _make_args_v2(tmp_path: Path, **overrides) -> argparse.Namespace:
+    """Args helper that also wires the v2 corpus / sidecar / baked-DB paths.
+
+    Kept separate from the v1 ``_make_args`` to keep existing tests untouched.
+    """
+    args = _make_args(tmp_path, **overrides)
+    args.content_overrides = overrides.get(
+        "content_overrides", str(tmp_path / "content_overrides.json"),
+    )
+    args.raw_corpus = overrides.get("raw_corpus", str(tmp_path / "candidates-attributed.jsonl"))
+    args.baked_db = overrides.get("baked_db", str(tmp_path / "quote_database.jsonl"))
+    return args
+
+
+def _start_v2(tmp_path: Path, *, token: str = "", args: argparse.Namespace | None = None,
+              state: run_clock.RuntimeState | None = None):
+    args = args or _make_args_v2(tmp_path)
+    state = state or run_clock.RuntimeState(args.theme)
+    server, thread = web_server.start_web_server(args, state, token=token)
+    return server, thread, state, args
+
+
+@pytest.fixture
+def v2_server(tmp_path):
+    server, thread, state, args = _start_v2(tmp_path)
+    yield server, state, args
+    run_clock.stop_web_server((server, thread))
+
+
+class TestApiContentOverrides:
+    def test_get_returns_empty_when_sidecar_missing(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/content-overrides")
+        assert status == 200
+        assert _json_body(body) == {}
+
+    def test_get_returns_existing_sidecar(self, v2_server):
+        server, _state, args = v2_server
+        Path(args.content_overrides).write_text(json.dumps(
+            {"141:482": {"display_quote": "patched text"}},
+        ), encoding="utf-8")
+        status, body = _get(server, "/api/content-overrides")
+        assert status == 200
+        assert _json_body(body) == {"141:482": {"display_quote": "patched text"}}
+
+    def test_get_fail_open_on_corrupt_sidecar(self, v2_server):
+        server, _state, args = v2_server
+        Path(args.content_overrides).write_text("not-valid-json{", encoding="utf-8")
+        # apply_content_overrides.load_overrides logs and returns {} — UI never 500s.
+        status, body = _get(server, "/api/content-overrides")
+        assert status == 200
+        assert _json_body(body) == {}
+
+    def test_post_round_trip(self, v2_server):
+        server, _state, args = v2_server
+        payload = {"141:482": {"display_quote": "It was three o'clock."}}
+        status, body = _post(server, "/api/content-overrides", payload)
+        assert status == 200, _json_body(body)
+        on_disk = json.loads(Path(args.content_overrides).read_text(encoding="utf-8"))
+        assert on_disk == payload
+
+    def test_post_empty_payload_wipes_sidecar(self, v2_server):
+        """An empty {} POST is a legitimate "wipe all per-row overrides" action
+        — different from selection_overrides where the keys must be present
+        because their absence couldn't be distinguished from a wipe."""
+        server, _state, args = v2_server
+        Path(args.content_overrides).write_text(
+            json.dumps({"141:482": {"display_quote": "old"}}), encoding="utf-8",
+        )
+        status, _ = _post(server, "/api/content-overrides", {})
+        assert status == 200
+        on_disk = json.loads(Path(args.content_overrides).read_text(encoding="utf-8"))
+        assert on_disk == {}
+
+    def test_post_rejects_bad_key_shape(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _post(server, "/api/content-overrides",
+                             {"not-a-valid-key": {"display_quote": "x"}})
+        assert status == 400
+        assert "source_id" in _json_body(body)["error"]
+
+    def test_post_rejects_unknown_field(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _post(server, "/api/content-overrides",
+                             {"141:482": {"unknown_field": "x"}})
+        assert status == 400
+        assert "unsupported" in _json_body(body)["error"]
+
+    def test_post_rejects_wrong_field_type_for_string(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _post(server, "/api/content-overrides",
+                             {"141:482": {"display_quote": 123}})
+        assert status == 400
+        assert "must be a string" in _json_body(body)["error"]
+
+    def test_post_rejects_wrong_field_type_for_int(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _post(server, "/api/content-overrides",
+                             {"141:482": {"hour": "not an int"}})
+        assert status == 400
+        assert "must be an int" in _json_body(body)["error"]
+
+
+# ============================================================================
+# v2: ban_quote_keys
+# ============================================================================
+
+class TestBanQuoteKeys:
+    def test_get_overrides_surfaces_default_ban_quote_keys(self, live_server):
+        """Legacy on-disk files don't have ban_quote_keys; the GET endpoint
+        defaults the field so the UI editor doesn't need to special-case it."""
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps({
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+        }), encoding="utf-8")
+        status, body = _get(server, "/api/overrides")
+        assert status == 200
+        assert _json_body(body)["ban_quote_keys"] == []
+
+    def test_post_round_trip_ban_quote_keys(self, live_server):
+        server, _, args = live_server
+        payload = {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": ["141:482", "1342:99"],
+        }
+        status, body = _post(server, "/api/overrides", payload)
+        assert status == 200, _json_body(body)
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert on_disk["ban_quote_keys"] == ["141:482", "1342:99"]
+
+    def test_post_rejects_bad_ban_quote_key_shape(self, live_server):
+        server, _, _ = live_server
+        status, body = _post(server, "/api/overrides", {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": ["not-valid"],
+        })
+        assert status == 400
+        assert "source_id" in _json_body(body)["error"]
+
+    def test_post_rejects_non_list_ban_quote_keys(self, live_server):
+        server, _, _ = live_server
+        status, body = _post(server, "/api/overrides", {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": "141:482",  # string, not list
+        })
+        assert status == 400
+        assert "list" in _json_body(body)["error"]
+
+    def test_payload_with_only_ban_quote_keys_is_accepted(self, live_server):
+        """OVERRIDES_KEYS includes ban_quote_keys, so a POST that only sets it
+        is valid (the validator's "at least one key" guard accepts it)."""
+        server, _, args = live_server
+        status, _ = _post(server, "/api/overrides", {"ban_quote_keys": ["141:482"]})
+        assert status == 200
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert on_disk["ban_quote_keys"] == ["141:482"]
+
+
+# ============================================================================
+# v2: /api/bake
+# ============================================================================
+
+class TestApiBake:
+    def _write_corpus(self, args, rows):
+        Path(args.raw_corpus).write_text(
+            "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8",
+        )
+
+    def test_bake_succeeds_and_writes_baked_db(self, v2_server):
+        server, _state, args = v2_server
+        rows = [
+            {
+                "source_id": "141", "line_number": 1,
+                "display_quote": "It was three o'clock in the afternoon, exactly.",
+                "matched_text": "three o'clock", "normalized_time": "03:00",
+                "fuzzy_bucket": "h3_exact", "quality_score": 80,
+                "display_fragment": False, "cleanup_status": "complete_sentence",
+                "author": "Jane Austen", "title": "Mansfield Park",
+            },
+        ]
+        self._write_corpus(args, rows)
+        status, body = _post(server, "/api/bake", None)
+        assert status == 200, _json_body(body)
+        data = _json_body(body)
+        assert data["ok"] is True
+        assert data["kept"] == 1
+        assert Path(args.baked_db).exists()
+        baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
+        assert len(baked) == 1
+        assert "baked_score" in baked[0]
+
+    def test_bake_applies_content_overrides_first(self, v2_server):
+        """Overrides edited just before the bake must be reflected in the
+        baked DB on the very next render — that's the whole point of in-UI bake."""
+        server, _state, args = v2_server
+        rows = [{
+            "source_id": "141", "line_number": 1,
+            "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00",
+            "fuzzy_bucket": "h3_exact", "quality_score": 80,
+            "display_fragment": False, "cleanup_status": "complete_sentence",
+        }]
+        self._write_corpus(args, rows)
+        Path(args.content_overrides).write_text(json.dumps({
+            "141:1": {"display_quote": "PATCHED TEXT."},
+        }), encoding="utf-8")
+        status, body = _post(server, "/api/bake", None)
+        assert status == 200, _json_body(body)
+        baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
+        assert baked[0]["display_quote"] == "PATCHED TEXT."
+        assert _json_body(body)["applied_overrides"] == 1
+
+    def test_bake_returns_409_when_render_in_flight(self, v2_server):
+        server, state, _args = v2_server
+        # Hold the lock to simulate an in-flight render.
+        state.render_lock.acquire()
+        try:
+            status, body = _post(server, "/api/bake", None)
+        finally:
+            state.render_lock.release()
+        assert status == 409
+        assert _json_body(body)["error"] == "busy"
+
+    def test_bake_500_when_corpus_missing(self, v2_server):
+        server, _state, args = v2_server
+        # Make sure the raw corpus really is absent.
+        p = Path(args.raw_corpus)
+        if p.exists():
+            p.unlink()
+        status, body = _post(server, "/api/bake", None)
+        assert status == 500
+        assert "missing" in _json_body(body)["error"]
+
+
+# ============================================================================
+# v2: /api/search
+# ============================================================================
+
+class TestApiSearch:
+    def _write_corpus(self, args, rows):
+        Path(args.raw_corpus).write_text(
+            "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8",
+        )
+
+    def test_search_by_text(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [
+            {"source_id": "141", "line_number": 1, "display_quote": "Tea at three.",
+             "author": "Jane Austen", "title": "Emma", "fuzzy_bucket": "h3_exact"},
+            {"source_id": "141", "line_number": 2, "display_quote": "Coffee at four.",
+             "author": "Jane Austen", "title": "Emma", "fuzzy_bucket": "h4_exact"},
+        ])
+        status, body = _get(server, "/api/search?q=tea")
+        assert status == 200
+        data = _json_body(body)
+        assert data["total"] == 1
+        assert data["results"][0]["display_quote"] == "Tea at three."
+
+    def test_search_by_author_and_bucket(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [
+            {"source_id": "141", "line_number": 1, "display_quote": "x",
+             "author": "Dickens", "title": "Bleak House", "fuzzy_bucket": "h3_exact"},
+            {"source_id": "200", "line_number": 1, "display_quote": "y",
+             "author": "Austen", "title": "Emma", "fuzzy_bucket": "h3_exact"},
+            {"source_id": "141", "line_number": 2, "display_quote": "z",
+             "author": "Dickens", "title": "Bleak House", "fuzzy_bucket": "h4_exact"},
+        ])
+        status, body = _get(server, "/api/search?author=dickens&bucket=h3_exact")
+        assert status == 200
+        data = _json_body(body)
+        assert data["total"] == 1
+        assert data["results"][0]["source_id"] == "141"
+
+    def test_search_requires_at_least_one_filter(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/search")
+        assert status == 400
+        assert "required" in _json_body(body)["error"]
+
+    def test_search_rejects_bad_bucket(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/search?bucket=not_a_bucket")
+        assert status == 400
+        assert "unknown bucket" in _json_body(body)["error"]
+
+    def test_search_clamps_limit(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [
+            {"source_id": str(i), "line_number": 1, "display_quote": "match me",
+             "fuzzy_bucket": "h3_exact"} for i in range(20)
+        ])
+        status, body = _get(server, "/api/search?q=match&limit=5")
+        assert status == 200
+        assert len(_json_body(body)["results"]) == 5
+
+    def test_search_handles_missing_corpus(self, v2_server):
+        server, _state, args = v2_server
+        p = Path(args.raw_corpus)
+        if p.exists():
+            p.unlink()
+        status, body = _get(server, "/api/search?q=anything")
+        assert status == 200
+        data = _json_body(body)
+        assert data["total"] == 0
+        assert "missing" in data.get("note", "")
+
+
+# ============================================================================
+# v2: /api/preview
+# ============================================================================
+
+class TestApiPreview:
+    def test_preview_returns_png(self, v2_server):
+        server, _state, _args = v2_server
+        # Mock the picker so the test doesn't depend on the full corpus being baked.
+        fake_row = {
+            "display_quote": "It was three o'clock in the afternoon, exactly.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen", "title": "Emma",
+            "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "source_id": "141", "line_number": 42,
+        }
+        with patch("pick_quote.select_quote", return_value=fake_row):
+            status, body = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+        assert status == 200
+        # Spectra 6 PNG signature.
+        assert body.startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_preview_rejects_unknown_theme(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/preview?theme=not-a-theme")
+        assert status == 400
+        assert "unknown theme" in _json_body(body)["error"]
+
+    def test_preview_rejects_bad_time(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/preview?theme=default&time=garbage")
+        assert status == 400
+        assert "HH:MM" in _json_body(body)["error"]
+
+    def test_preview_swallows_picker_failure(self, v2_server):
+        server, _state, _args = v2_server
+        with patch("pick_quote.select_quote", side_effect=SystemExit("no picks")):
+            status, body = _get(server, "/api/preview?theme=default&time=03:00")
+        assert status == 404
+
+    def test_preview_clamps_dimensions(self, v2_server):
+        """A scanner asking for 100000x100000 must not be honoured."""
+        server, _state, _args = v2_server
+        fake_row = {
+            "display_quote": "x", "matched_text": "x",
+            "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "source_id": "1", "line_number": 1,
+        }
+        with patch("pick_quote.select_quote", return_value=fake_row):
+            status, body = _get(server, "/api/preview?theme=default&time=03:00&width=100000&height=100000")
+        # Should not OOM — capped at 1600x960. Status 200 means render survived.
+        assert status == 200
+        assert body.startswith(b"\x89PNG")
+
+
+# ============================================================================
+# v2: /api/gaps
+# ============================================================================
+
+class TestApiGaps:
+    def test_gaps_lists_empty_buckets(self, v2_server):
+        server, _state, _args = v2_server
+        coverage = {
+            "bucket_counts": {
+                "h1_exact": 100, "h1_five_past": 0, "h1_ten_past": 2,
+                "h2_quarter_to": 5, "h3_twenty_to": 0,
+            },
+        }
+        fake = Path(_args.state_path).parent / "coverage.json"
+        fake.write_text(json.dumps(coverage), encoding="utf-8")
+        server.context.coverage_path = fake
+        status, body = _get(server, "/api/gaps?threshold=3")
+        assert status == 200
+        data = _json_body(body)
+        # Three buckets at-or-below threshold of 3: 1×0 (h1_five_past),
+        # 1×0 (h3_twenty_to), 1×2 (h1_ten_past)
+        assert data["total"] == 3
+        # Sorted emptiest-first.
+        assert data["buckets"][0]["count"] == 0
+        # Phrases populated for non-exact states.
+        twenty_to = next(b for b in data["buckets"] if b["bucket"] == "h3_twenty_to")
+        assert any("twenty to" in p for p in twenty_to["phrases"])
+
+    def test_gaps_handles_missing_coverage(self, v2_server):
+        server, _state, _args = v2_server
+        server.context.coverage_path = Path(_args.state_path).parent / "no_such_coverage.json"
+        status, body = _get(server, "/api/gaps")
+        assert status == 200
+        assert _json_body(body)["buckets"] == []
+
+    def test_gaps_rejects_bad_threshold(self, v2_server):
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/gaps?threshold=abc")
+        assert status == 400
+        assert "threshold" in _json_body(body)["error"]
+
+
+# ============================================================================
+# v2: validators
+# ============================================================================
+
+class TestContentOverridesValidator:
+    def test_accepts_minimal(self):
+        cleaned = web_server.validate_content_overrides_payload({"141:42": {"display_quote": "x"}})
+        assert cleaned == {"141:42": {"display_quote": "x"}}
+
+    def test_accepts_empty(self):
+        # Wipe semantics: explicit choice, allowed.
+        assert web_server.validate_content_overrides_payload({}) == {}
+
+    def test_rejects_non_dict(self):
+        with pytest.raises(ValueError, match="JSON object"):
+            web_server.validate_content_overrides_payload([])
+
+    def test_rejects_bad_key(self):
+        with pytest.raises(ValueError, match="source_id"):
+            web_server.validate_content_overrides_payload({"abc": {"display_quote": "x"}})
+
+    def test_rejects_non_dict_value(self):
+        with pytest.raises(ValueError, match="object"):
+            web_server.validate_content_overrides_payload({"141:42": "not an object"})
+
+    def test_rejects_unknown_field(self):
+        with pytest.raises(ValueError, match="unsupported"):
+            web_server.validate_content_overrides_payload({"141:42": {"bogus": "x"}})
+
+    def test_validates_field_types(self):
+        # display_quote must be a string
+        with pytest.raises(ValueError, match="must be a string"):
+            web_server.validate_content_overrides_payload({"141:42": {"display_quote": 5}})
+        # hour must be an int (not bool)
+        with pytest.raises(ValueError, match="must be an int"):
+            web_server.validate_content_overrides_payload({"141:42": {"hour": True}})

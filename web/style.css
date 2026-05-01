@@ -1,3 +1,5 @@
+/* LitClock curator — mobile-first, no framework. */
+
 :root {
   --bg: #f7f4ee;
   --panel: #ffffff;
@@ -8,37 +10,46 @@
   --ok: #1f8a4c;
   --warn: #b8860b;
   --err: #b03a2e;
+  --tap: 44px;  /* iOS HIG minimum touch target */
 }
 
 * { box-sizing: border-box; }
 
+html, body { margin: 0; padding: 0; }
+
 body {
-  margin: 0;
   font-family: "Playfair Display", Georgia, "Liberation Serif", serif;
   background: var(--bg);
   color: var(--ink);
   line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Header ------------------------------------------------------------------- */
 
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 18px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   position: sticky;
   top: 0;
   z-index: 10;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-header h1 { margin: 0; font-size: 1.3rem; letter-spacing: 0.08em; }
+.title { display: flex; align-items: baseline; gap: 12px; }
+.title h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.08em; }
+.clock { font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: bold; }
 
-.identity { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.clock { font-variant-numeric: tabular-nums; font-size: 1.3rem; font-weight: bold; }
+.identity { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pill {
   font-family: "DejaVu Sans", system-ui, sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   padding: 2px 8px;
   border-radius: 12px;
   background: var(--bg);
@@ -46,44 +57,75 @@ header h1 { margin: 0; font-size: 1.3rem; letter-spacing: 0.08em; }
   text-transform: lowercase;
 }
 
+/* Tabs --------------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 53px;  /* below header */
+  z-index: 9;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  flex: 1 0 auto;
+  min-width: 80px;
+  min-height: var(--tap);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+/* Layout ------------------------------------------------------------------- */
+
 main {
-  display: grid;
-  gap: 18px;
-  padding: 18px;
+  display: block;
+  padding: 12px;
   max-width: 1200px;
   margin: 0 auto;
 }
 
-@media (min-width: 900px) {
-  main {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-    grid-template-areas:
-      "now       controls"
-      "now       telemetry"
-      "coverage  coverage"
-      "inspector inspector"
-      "overrides overrides"
-      "history   history";
-  }
-  .now { grid-area: now; }
-  .controls { grid-area: controls; }
-  .telemetry { grid-area: telemetry; }
-  .coverage { grid-area: coverage; }
-  .inspector { grid-area: inspector; }
-  .overrides { grid-area: overrides; }
-  .history { grid-area: history; }
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
+.tab-panel[hidden] { display: none; }
 
-section {
+.card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 16px;
+  padding: 14px;
 }
 
-section h2 {
-  font-size: 1rem;
-  margin: 0 0 12px 0;
+.card h2 {
+  font-size: 0.95rem;
+  margin: 0 0 10px 0;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
@@ -91,10 +133,12 @@ section h2 {
 
 .hint {
   font-family: "DejaVu Sans", system-ui, sans-serif;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--muted);
   margin: 0 0 10px 0;
 }
+
+/* Now-showing card --------------------------------------------------------- */
 
 .preview img {
   width: 100%;
@@ -103,32 +147,46 @@ section h2 {
   border: 1px solid var(--border);
   image-rendering: pixelated;
   background: #000;
+  display: block;
 }
 
 .identity-strip { margin-top: 10px; }
-.quote { font-size: 1.05rem; margin-bottom: 6px; }
-.attribution { color: var(--muted); font-style: italic; font-size: 0.95rem; }
-.matched { font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; color: var(--accent); margin-top: 4px; }
+.quote { font-size: 1rem; margin-bottom: 6px; line-height: 1.4; }
+.attribution { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+.matched { font-family: "DejaVu Sans Mono", monospace; font-size: 0.8rem; color: var(--accent); margin-top: 4px; word-break: break-word; }
+.now-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Buttons ------------------------------------------------------------------ */
+
+.btn {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.9rem;
+  min-height: var(--tap);
+  padding: 10px 14px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 4px;
+  touch-action: manipulation;
+}
+
+.btn:hover { background: var(--ink); color: var(--panel); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; background: var(--panel); color: var(--ink); }
+
+.btn-small { padding: 6px 10px; font-size: 0.82rem; min-height: 36px; }
+
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #8a2c22; border-color: #8a2c22; }
+
+.btn-danger { color: var(--err); border-color: var(--err); }
+.btn-danger:hover { background: var(--err); color: #fff; }
 
 .button-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
-
-.btn {
-  font-family: "DejaVu Sans", system-ui, sans-serif;
-  font-size: 0.9rem;
-  padding: 10px;
-  border: 1px solid var(--ink);
-  background: var(--panel);
-  color: var(--ink);
-  cursor: pointer;
-  border-radius: 4px;
-}
-
-.btn:hover { background: var(--ink); color: var(--panel); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; background: var(--panel); color: var(--ink); }
 
 .action-log {
   margin-top: 10px;
@@ -137,6 +195,8 @@ section h2 {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* Theme picker ------------------------------------------------------------- */
 
 .theme-picker {
   display: flex;
@@ -151,19 +211,57 @@ section h2 {
 }
 .theme-picker label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; }
 .theme-picker select {
-  padding: 6px 8px;
+  padding: 8px;
   font-family: "DejaVu Sans", system-ui, sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--panel);
   color: var(--ink);
+  min-height: var(--tap);
 }
-.btn-small { padding: 6px 10px; font-size: 0.82rem; }
+
+/* Theme preview grid ------------------------------------------------------- */
+
+.theme-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.theme-thumb {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.theme-thumb img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+  background: #000;
+}
+
+.theme-thumb span {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.theme-thumb:hover { border-color: var(--accent); }
+
+/* Telemetry --------------------------------------------------------------- */
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
 }
 
@@ -188,7 +286,9 @@ section h2 {
   font-weight: bold;
 }
 
-.last-error { margin-top: 10px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; color: var(--err); }
+.last-error { margin-top: 10px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; color: var(--err); word-break: break-word; }
+
+/* Coverage grid ----------------------------------------------------------- */
 
 .coverage-grid {
   display: grid;
@@ -199,7 +299,7 @@ section h2 {
 .coverage-cell {
   aspect-ratio: 1;
   font-family: "DejaVu Sans", system-ui, sans-serif;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -216,24 +316,61 @@ section h2 {
 .coverage-cell.high { background: #a0c99a; color: #fff; }
 .coverage-cell:hover { outline: 2px solid var(--ink); }
 
-.inspector form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.inspector input {
-  flex: 1 1 140px;
-  padding: 8px;
+.coverage-legend {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.coverage-legend .coverage-cell {
+  width: 16px; height: 16px; aspect-ratio: 1; cursor: default;
+}
+
+/* Bucket gaps ------------------------------------------------------------- */
+
+.gap-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.gap-controls input { width: 80px; padding: 8px; font-family: "DejaVu Sans Mono", monospace; border: 1px solid var(--border); border-radius: 4px; min-height: var(--tap); }
+.gap-controls label { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.82rem; color: var(--muted); }
+
+.gap-results { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.85rem; }
+.gap-row {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+.gap-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.gap-count { font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; color: var(--muted); }
+.gap-phrases { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.82rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; }
+.gap-phrases code { background: var(--panel); padding: 2px 6px; border-radius: 3px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; }
+
+/* Search ------------------------------------------------------------------ */
+
+.search-form, .inspector-form { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 10px; }
+.search-form input, .inspector-form input {
+  padding: 10px;
   font-family: "DejaVu Sans Mono", monospace;
   border: 1px solid var(--border);
   border-radius: 4px;
+  min-height: var(--tap);
+  font-size: 0.9rem;
 }
-.inspector button {
+.search-form button, .inspector-form button { min-height: var(--tap); }
+
+.search-summary {
   font-family: "DejaVu Sans", system-ui, sans-serif;
-  padding: 8px 14px;
-  border: 1px solid var(--ink);
-  background: var(--panel);
-  cursor: pointer;
-  border-radius: 4px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 8px;
 }
 
-.inspector-results { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.82rem; }
+.search-results, .inspector-results { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.85rem; }
+
 .candidate {
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -242,20 +379,25 @@ section h2 {
   background: var(--bg);
 }
 .candidate.winner { border-color: var(--ok); border-width: 2px; }
-.candidate-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
-.candidate-quote { font-family: "Playfair Display", Georgia, serif; font-size: 0.95rem; margin: 4px 0; }
+.candidate-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; font-size: 0.85rem; }
+.candidate-quote { font-family: "Playfair Display", Georgia, serif; font-size: 0.95rem; margin: 4px 0; word-break: break-word; }
+.candidate-meta { font-size: 0.82rem; color: var(--muted); margin-bottom: 4px; }
 .candidate-score {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 2px 8px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--muted);
+  margin-top: 6px;
 }
 .candidate-score span.nonzero { color: var(--accent); font-weight: bold; }
+.candidate-actions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Overrides editors ------------------------------------------------------- */
 
 textarea {
   width: 100%;
-  min-height: 180px;
+  min-height: 200px;
   font-family: "DejaVu Sans Mono", monospace;
   font-size: 0.82rem;
   border: 1px solid var(--border);
@@ -264,18 +406,34 @@ textarea {
   resize: vertical;
 }
 
-.override-actions { display: flex; gap: 8px; margin-top: 8px; }
-.override-actions button {
-  font-family: "DejaVu Sans", system-ui, sans-serif;
-  padding: 8px 14px;
-  border: 1px solid var(--ink);
-  background: var(--panel);
-  cursor: pointer;
-  border-radius: 4px;
-}
-.override-status { margin-top: 8px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; min-height: 1.2em; }
+.override-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.override-status { margin-top: 8px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; min-height: 1.2em; word-break: break-word; }
 .override-status.ok { color: var(--ok); }
 .override-status.err { color: var(--err); }
+.override-status.warn { color: var(--warn); }
 
-.history ol { padding-left: 24px; margin: 0; font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; }
-.history li { margin-bottom: 2px; color: var(--muted); }
+/* History ----------------------------------------------------------------- */
+
+.history-list, #history-list { padding-left: 24px; margin: 0; font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; }
+#history-list li { margin-bottom: 2px; color: var(--muted); }
+
+/* Desktop layout --------------------------------------------------------- */
+
+@media (min-width: 768px) {
+  main { padding: 18px; }
+  .tab { flex: 0 0 auto; }
+  .title h1 { font-size: 1.3rem; }
+  .clock { font-size: 1.3rem; }
+  .quote { font-size: 1.05rem; }
+  .search-form { grid-template-columns: 2fr 1fr 1fr 1fr auto; }
+  .inspector-form { grid-template-columns: 2fr 1fr auto; }
+}
+
+@media (min-width: 1024px) {
+  .tab-panel#tab-now {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 14px;
+  }
+  .tab-panel#tab-now .preview-card { grid-column: 1; grid-row: 1 / span 2; }
+}

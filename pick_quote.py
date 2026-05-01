@@ -201,9 +201,17 @@ def _warn_unknown_preferred_buckets(overrides: dict) -> None:
 
 def load_overrides(path: Path) -> dict:
     if not path.exists():
-        return {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
+        return {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
     overrides = json.loads(path.read_text(encoding="utf-8"))
     _warn_unknown_preferred_buckets(overrides)
+    # Older v1 sidecar files predate ban_quote_keys; default it so the rest of
+    # the picker doesn't have to special-case its absence.
+    overrides.setdefault("ban_quote_keys", [])
     return overrides
 
 
@@ -242,8 +250,26 @@ def override_bonus(row: dict, overrides: dict, bucket: str) -> int:
 
 
 def is_banned(row: dict, overrides: dict) -> bool:
+    """True when ``row`` should be excluded from picking entirely.
+
+    Two ban tiers:
+
+    * ``ban_source_ids`` — coarse, drops every row from the named Gutenberg ID.
+      The original v1 mechanism, kept for "this whole book is unsuitable."
+    * ``ban_quote_keys`` — fine, drops one specific row by
+      ``"<source_id>:<line_number>"``. Added in v2 to let the curator UI
+      blacklist a single quote without nuking the rest of its source. Keys are
+      strings; the line_number portion is compared as text so we match what the
+      web UI's "Ban this quote" button writes.
+    """
     source_id = str(row.get("source_id") or "")
-    return source_id in {str(x) for x in overrides.get("ban_source_ids", [])}
+    if source_id in {str(x) for x in overrides.get("ban_source_ids", [])}:
+        return True
+    line_number = row.get("line_number")
+    if line_number is None or not source_id:
+        return False
+    row_key = f"{source_id}:{line_number}"
+    return row_key in {str(x) for x in overrides.get("ban_quote_keys", [])}
 
 
 def parse_requested_minute(bucket: str, requested_time: str | None) -> int | None:
