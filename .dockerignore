@@ -1,0 +1,30 @@
+# Build context excludes — keep `docker buildx build` fast by not shipping
+# multi-GB caches and runtime artefacts to the daemon.
+
+# Cached Gutenberg downloads — used by the corpus pipeline, not needed
+# inside the container (the appliance ships the prebuilt baked DB instead).
+data/
+
+# Per-render outputs and runtime state.
+output/
+*.pid
+.litclock/
+
+# Test / dev / VCS noise.
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+**/__pycache__/
+**/*.pyc
+
+# Editor scratch
+.vscode/
+.idea/
+
+# CI / docs artefacts that don't affect the runtime image
+tests/golden/
+*.md
+!README.md

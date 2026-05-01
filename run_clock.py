@@ -17,6 +17,7 @@ from pathlib import Path
 import pick_quote as pick_quote_module
 import pidfile
 import runtime_config
+import runtime_webhook
 import sd_notify
 from buckets import bucket_for_time
 from runtime_actions import (  # noqa: F401  re-exported for web_server + tests
@@ -240,6 +241,28 @@ def parse_args() -> argparse.Namespace:
             "Path to the JSONL telemetry log. Each successful render appends one line "
             "with bucket, render_ms, display_ms, source_id, line_number. Loop-level "
             "errors append an entry with an 'error' field. Pass an empty string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--webhook-url",
+        default="",
+        metavar="URL",
+        help=(
+            "Optional HTTP endpoint that receives a JSON POST for each "
+            "interesting telemetry event (errors, render/display/shutdown timeouts, "
+            "backoff entered, button listener died, state validation issues). "
+            "Successful renders and heartbeats are NOT posted by default. "
+            "Best-effort: dispatched on a daemon thread with a 5s timeout, "
+            "failures are logged but never block the loop."
+        ),
+    )
+    parser.add_argument(
+        "--webhook-all-events",
+        action="store_true",
+        help=(
+            "Post every telemetry event to --webhook-url (except heartbeats and "
+            "successful renders, which would generate alert spam). Default behaviour "
+            "is to post only operationally-interesting modes — see runtime_webhook.ALERT_MODES."
         ),
     )
     parser.add_argument(
@@ -1168,6 +1191,15 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     startup instead of at first use (first bucket change, first quiet-hours
     entry, first cold boot). All paths are resolved against ``BASE_DIR`` to
     match how ``render_now`` / ``_display_quiet_image`` look them up.
+
+    Also catches the "the wheel doesn't ship static assets" class of failure
+    that ``pip install litclock`` produces today: when ``BASE_DIR`` doesn't
+    contain ``assets/quote_database.jsonl`` (the baked runtime corpus the
+    picker reads by default) we surface a clear error pointing at the two
+    supported install paths (``pip install -e .`` from a checkout, or the
+    bundled Dockerfile). Without this, a wheel-only install would only fail
+    at first render with a cryptic ``FileNotFoundError`` deep inside
+    ``pick_quote``.
     """
     errors: list[str] = []
     for attr, required in _PREFLIGHT_PATH_FLAGS:
@@ -1186,6 +1218,19 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
             path = BASE_DIR / path
         if not path.exists():
             errors.append(f"--{attr.replace('_', '-')} {value!r} does not exist (resolved to {path})")
+    # Static-asset guard: the corpus is the one runtime input we cannot
+    # operate without. Web assets / fonts degrade gracefully (the curator
+    # UI 404s, the renderer falls back to bitmap fonts), but the picker
+    # has no fallback for a missing baked DB.
+    baked_db = BASE_DIR / "assets" / "quote_database.jsonl"
+    raw_corpus = BASE_DIR / "assets" / "candidates-attributed.jsonl"
+    if not baked_db.exists() and not raw_corpus.exists():
+        errors.append(
+            f"corpus assets missing at {BASE_DIR / 'assets'} (no quote_database.jsonl "
+            "or candidates-attributed.jsonl). The wheel ships only Python modules; "
+            "the static assets need a checkout. Install via `pip install -e .` from a "
+            "git clone, or use the bundled Dockerfile."
+        )
     return errors
 
 
@@ -1215,6 +1260,15 @@ def main() -> int:
 
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
+
+    # Wire webhook config once at startup so every later append_telemetry
+    # call (across run_clock, runtime_actions, runtime_quiet, web_server)
+    # picks up the destination without per-call plumbing. Empty URL =
+    # disabled; runtime_webhook.configure handles that explicitly.
+    runtime_webhook.configure(
+        getattr(args, "webhook_url", "") or None,
+        all_events=getattr(args, "webhook_all_events", False),
+    )
 
     _run_preflight(args)
 

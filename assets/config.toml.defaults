@@ -66,3 +66,13 @@ shutdown_command = "sudo -n shutdown -h now"
 web_bind       = ""
 web_token      = ""
 web_token_file = ""
+
+# ---- Webhook notifications -------------------------------------------------
+# Off by default (empty webhook_url). When set, an HTTP POST with a JSON
+# body fires for each interesting telemetry event (errors, render/display/
+# shutdown timeouts, backoff entered, button listener died, state validation
+# issues). Heartbeats and successful renders are NOT posted by default;
+# `webhook_all_events = true` widens the filter to "everything except
+# heartbeats and successful renders".
+webhook_url        = ""
+webhook_all_events = false

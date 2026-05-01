@@ -83,3 +83,17 @@ shutdown_command = "systemctl poweroff"
 # so the secret never appears in `ps` / journald.
 # web_bind       = "127.0.0.1:8080"
 # web_token_file = "/var/lib/litclock/web.token"
+
+# ---- Webhook notifications (optional, v2) ----------------------------------
+# When set, the loop POSTs a JSON body for each alert-worthy telemetry event
+# (errors, render/display/shutdown timeouts, backoff entered, button-died,
+# state validation issues, web auth failures). Heartbeats and successful
+# renders are always filtered (alerting once a minute is spam, not signal),
+# even when webhook_all_events = true. Best-effort: dispatched on a daemon
+# thread with a 5s timeout, failures log but never block the render path.
+#
+# Set webhook_all_events = true to widen the filter to "everything except
+# heartbeats and successful renders" (operator actions, quiet-hours
+# transitions, etc.).
+# webhook_url        = "https://hooks.example.test/litclock"
+# webhook_all_events = false

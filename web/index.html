@@ -2,97 +2,212 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f4ee" />
   <title>LitClock Curator</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <!-- First-run wizard overlay. Hidden by default; main.js shows it on
+       initial load when GET /api/setup reports setup_complete=false. -->
+  <div id="setup-wizard" class="wizard" hidden role="dialog" aria-labelledby="wizard-title">
+    <div class="wizard-card">
+      <h2 id="wizard-title">Welcome to LitClock</h2>
+      <p class="wizard-intro">
+        This appliance picks a literary quote that mentions the current time and
+        renders it to your eInk panel. Two minutes here gets you set up.
+      </p>
+      <section class="wizard-step">
+        <h3>1 · Pick a theme</h3>
+        <p class="hint">Each theme uses a different palette and typeface. Tap one to apply it.</p>
+        <div id="wizard-theme-grid" class="theme-preview-grid wizard-theme-grid"></div>
+      </section>
+      <section class="wizard-step">
+        <h3>2 · Quiet hours</h3>
+        <p class="hint" id="wizard-quiet">—</p>
+        <p class="hint">
+          The panel sleeps overnight by default (22:00–06:00). Adjust via
+          <code>--quiet-start</code> / <code>--quiet-end</code> in the systemd unit
+          if you want different times — runtime quiet-toggle is bound to the
+          physical D button or the "Quiet / wake" control on the Now tab.
+        </p>
+      </section>
+      <section class="wizard-step">
+        <h3>3 · You're done</h3>
+        <p class="hint">
+          Browse the four tabs (Now / Curate / Coverage / Activity) to manage
+          quotes, search the corpus, and inspect telemetry. Press the button below
+          to dismiss this wizard.
+        </p>
+        <button id="wizard-dismiss" type="button" class="btn btn-primary">I'm ready</button>
+        <div id="wizard-status" class="override-status"></div>
+      </section>
+    </div>
+  </div>
+
   <header>
-    <h1>LitClock</h1>
-    <div id="identity" class="identity">
+    <div class="title">
+      <h1>LitClock</h1>
       <span id="clock" class="clock">--:--</span>
+    </div>
+    <div id="identity" class="identity">
       <span id="bucket" class="pill">--</span>
       <span id="theme" class="pill">--</span>
       <span id="mode" class="pill">--</span>
     </div>
   </header>
 
+  <nav class="tabs" role="tablist">
+    <button class="tab" data-tab="now" role="tab" aria-selected="true">Now</button>
+    <button class="tab" data-tab="curate" role="tab">Curate</button>
+    <button class="tab" data-tab="coverage" role="tab">Coverage</button>
+    <button class="tab" data-tab="activity" role="tab">Activity</button>
+  </nav>
+
   <main>
-    <section class="now">
-      <h2>Now showing</h2>
-      <div class="preview">
-        <img id="current-png" src="/current.png" alt="Currently rendered frame" />
+    <!-- Tab: Now ============================================================= -->
+    <section class="tab-panel" id="tab-now" role="tabpanel">
+      <div class="card preview-card">
+        <div class="preview">
+          <img id="current-png" src="/current.png" alt="Currently rendered frame" />
+        </div>
+        <div class="identity-strip">
+          <div id="quote" class="quote">—</div>
+          <div id="attribution" class="attribution">—</div>
+          <div id="matched" class="matched"></div>
+          <div class="now-actions">
+            <button id="ban-current" class="btn btn-danger" type="button" title="Add this exact quote to ban_quote_keys and re-pick">Ban this quote</button>
+          </div>
+        </div>
       </div>
-      <div class="identity-strip">
-        <div id="quote" class="quote">—</div>
-        <div id="attribution" class="attribution">—</div>
-        <div id="matched" class="matched"></div>
+
+      <div class="card">
+        <h2>Controls</h2>
+        <p class="hint">Mirrors the four physical Inky buttons. A render in flight returns 409 — taps during a refresh are dropped.</p>
+        <div class="button-grid">
+          <button data-action="skip" class="btn">A · Skip</button>
+          <button data-action="unskip" class="btn">A-hold · Un-skip</button>
+          <button data-action="theme" class="btn">B · Cycle theme</button>
+          <button data-action="rerender" class="btn">C · Re-render</button>
+          <button data-action="quiet" class="btn">D · Quiet / wake</button>
+        </div>
+        <div class="theme-picker">
+          <label for="theme-select">Theme</label>
+          <select id="theme-select"></select>
+          <button id="theme-apply" type="button" class="btn btn-small">Apply</button>
+          <span id="theme-current" class="pill"></span>
+        </div>
+        <div id="action-log" class="action-log" aria-live="polite"></div>
+      </div>
+
+      <div class="card">
+        <h2>Preview themes</h2>
+        <p class="hint">All registered themes rendered at the current time. Click a thumbnail to apply that theme.</p>
+        <div id="theme-preview-grid" class="theme-preview-grid"></div>
       </div>
     </section>
 
-    <section class="controls">
-      <h2>Controls</h2>
-      <p class="hint">Mirrors the four physical Inky buttons. Each POST respects the render lock: if a render is already in flight the action returns 409 and is dropped.</p>
-      <div class="button-grid">
-        <button data-action="skip" class="btn">A · Skip</button>
-        <button data-action="unskip" class="btn">A-hold · Un-skip</button>
-        <button data-action="theme" class="btn">B · Cycle theme</button>
-        <button data-action="rerender" class="btn">C · Re-render</button>
-        <button data-action="quiet" class="btn">D · Quiet / wake</button>
+    <!-- Tab: Curate ========================================================== -->
+    <section class="tab-panel" id="tab-curate" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Search corpus</h2>
+        <p class="hint">Linear scan across the raw attributed corpus. Combine fields to narrow the result set.</p>
+        <form id="search-form" class="search-form">
+          <input id="search-q" name="q" placeholder="text contains…" />
+          <input id="search-author" name="author" placeholder="author" />
+          <input id="search-title" name="title" placeholder="title" />
+          <input id="search-bucket" name="bucket" placeholder="bucket (optional)" />
+          <button type="submit" class="btn">Search</button>
+        </form>
+        <div id="search-results" class="search-results"></div>
       </div>
-      <div class="theme-picker">
-        <label for="theme-select">Theme</label>
-        <select id="theme-select"></select>
-        <button id="theme-apply" type="button" class="btn btn-small">Apply</button>
-        <span id="theme-current" class="pill"></span>
+
+      <div class="card">
+        <h2>Bucket inspector</h2>
+        <p class="hint">Pick a bucket (or click a coverage cell) to see ranked candidates with full score breakdown. Lower is better at every position.</p>
+        <form id="inspector-form" class="inspector-form">
+          <input id="inspector-bucket" name="bucket" placeholder="e.g. h3_half_past" />
+          <input id="inspector-time" name="time" placeholder="HH:MM (optional)" />
+          <button type="submit" class="btn">Inspect</button>
+        </form>
+        <div id="inspector-results" class="inspector-results"></div>
       </div>
-      <div id="action-log" class="action-log" aria-live="polite"></div>
-    </section>
 
-    <section class="telemetry">
-      <h2>Telemetry (last <span id="telemetry-hours">24</span>h)</h2>
-      <div class="stats">
-        <div><label>Renders</label><span id="t-renders">—</span></div>
-        <div><label>Errors</label><span id="t-errors">—</span></div>
-        <div><label>Render p50</label><span id="t-render-p50">—</span></div>
-        <div><label>Render p95</label><span id="t-render-p95">—</span></div>
-        <div><label>Display p50</label><span id="t-display-p50">—</span></div>
-        <div><label>Display p95</label><span id="t-display-p95">—</span></div>
+      <div class="card">
+        <h2>Selection overrides</h2>
+        <p class="hint">Edits to <code>assets/selection_overrides.json</code>. Bans, boosts, preferred buckets, and per-row bans (<code>ban_quote_keys</code>). Server-validated — bad shapes return 400.</p>
+        <textarea id="overrides-text" spellcheck="false"></textarea>
+        <div class="override-actions">
+          <button id="overrides-save" class="btn">Save</button>
+          <button id="overrides-reload" type="button" class="btn">Reload from disk</button>
+        </div>
+        <div id="overrides-status" class="override-status"></div>
       </div>
-      <div id="t-last-error" class="last-error"></div>
-    </section>
 
-    <section class="coverage">
-      <h2>Coverage grid</h2>
-      <p class="hint">Each cell is one of the 144 <code>h{hour}_{state}</code> buckets. Colour encodes how many corpus rows target that bucket.</p>
-      <div id="coverage-grid" class="coverage-grid"></div>
-    </section>
-
-    <section class="inspector">
-      <h2>Bucket inspector</h2>
-      <p class="hint">Pick a bucket above (or type one) to see the ranked candidate list the scorer would have considered. Lower score is better at every position.</p>
-      <form id="inspector-form">
-        <input id="inspector-bucket" name="bucket" placeholder="e.g. h3_half_past" />
-        <input id="inspector-time" name="time" placeholder="HH:MM (optional)" />
-        <button type="submit">Inspect</button>
-      </form>
-      <div id="inspector-results" class="inspector-results"></div>
-    </section>
-
-    <section class="overrides">
-      <h2>Overrides editor</h2>
-      <p class="hint">Edit <code>assets/selection_overrides.json</code>. Validated server-side; bad bucket keys or non-list IDs are rejected with 400.</p>
-      <textarea id="overrides-text" spellcheck="false"></textarea>
-      <div class="override-actions">
-        <button id="overrides-save">Save</button>
-        <button id="overrides-reload" type="button">Reload from disk</button>
+      <div class="card">
+        <h2>Content overrides</h2>
+        <p class="hint">Per-row fixes layered onto the corpus by <code>apply_content_overrides.py</code> at bake time. After saving, click <strong>Bake now</strong> below to make the changes visible on the panel.</p>
+        <textarea id="content-overrides-text" spellcheck="false"></textarea>
+        <div class="override-actions">
+          <button id="content-overrides-save" class="btn">Save</button>
+          <button id="content-overrides-reload" type="button" class="btn">Reload from disk</button>
+        </div>
+        <div id="content-overrides-status" class="override-status"></div>
       </div>
-      <div id="overrides-status" class="override-status"></div>
+
+      <div class="card">
+        <h2>Re-bake quote database</h2>
+        <p class="hint">Runs <code>bake_quote_database.py</code> in-process: re-applies the content-overrides sidecar to the raw corpus and writes <code>assets/quote_database.jsonl</code>. The runtime picker reads the new file on the next tick.</p>
+        <button id="bake-now" type="button" class="btn btn-primary">Bake now</button>
+        <div id="bake-status" class="override-status"></div>
+      </div>
     </section>
 
-    <section class="history">
-      <h2>History (most recent first)</h2>
-      <ol id="history-list"></ol>
+    <!-- Tab: Coverage ======================================================== -->
+    <section class="tab-panel" id="tab-coverage" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Coverage grid</h2>
+        <p class="hint">144 buckets, one per (hour × minute-state). Cell colour encodes corpus row count. Tap to inspect.</p>
+        <div id="coverage-grid" class="coverage-grid"></div>
+        <div class="coverage-legend">
+          <span class="coverage-cell zero"></span>empty
+          <span class="coverage-cell low"></span>1–2
+          <span class="coverage-cell mid"></span>3–9
+          <span class="coverage-cell high"></span>10+
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Bucket gaps</h2>
+        <p class="hint">Empty / sparse buckets with suggested phrases. Pass these to <code>target_sparse_buckets.py</code> or use them as harvester hints.</p>
+        <div class="gap-controls">
+          <label for="gap-threshold">Threshold</label>
+          <input id="gap-threshold" type="number" min="0" max="50" value="3" />
+          <button id="gap-refresh" type="button" class="btn btn-small">Refresh</button>
+        </div>
+        <div id="gap-results" class="gap-results"></div>
+      </div>
+    </section>
+
+    <!-- Tab: Activity ======================================================== -->
+    <section class="tab-panel" id="tab-activity" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Telemetry (last <span id="telemetry-hours">24</span>h)</h2>
+        <div class="stats">
+          <div><label>Renders</label><span id="t-renders">—</span></div>
+          <div><label>Errors</label><span id="t-errors">—</span></div>
+          <div><label>Render p50</label><span id="t-render-p50">—</span></div>
+          <div><label>Render p95</label><span id="t-render-p95">—</span></div>
+          <div><label>Display p50</label><span id="t-display-p50">—</span></div>
+          <div><label>Display p95</label><span id="t-display-p95">—</span></div>
+        </div>
+        <div id="t-last-error" class="last-error"></div>
+      </div>
+
+      <div class="card">
+        <h2>History (newest first)</h2>
+        <ol id="history-list"></ol>
+      </div>
     </section>
   </main>
 

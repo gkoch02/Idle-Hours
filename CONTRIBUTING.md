@@ -31,7 +31,14 @@ Verify:
 pytest
 ruff check .
 python3 run_clock.py --once --buttons-off     # one-shot render to output/current.png
+# or, with the unified CLI (v2):
+litclock run --once --buttons-off
 ```
+
+`pip install -e ".[dev]"` registers `litclock` as a console script — every
+backing module is reachable via `litclock <subcommand>`, with `python3
+<script>.py` continuing to work for backwards compat. Run `litclock --help`
+for the full subcommand list.
 
 `pip install -e ".[dev]"` is the single source of truth for dev deps; CI
 installs the same way. Don't hardcode `pytest pytest-cov ruff Pillow` in new
@@ -50,11 +57,13 @@ workflow files — they'll drift.
 
 ## What kind of change are you making?
 
-### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote.py`, `pick_quote.py`, `web_server.py`, …)
+### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote.py`, `pick_quote.py`, `web_server.py`, `litclock_cli.py`, …)
 
-The runtime is a thin orchestrator (`run_clock.py`) that delegates to seven
-`runtime_*` siblings. The module boundary, lock discipline, and thread
-ownership rules are documented in the "Runtime Module Architecture" section of
+The runtime is a thin orchestrator (`run_clock.py`) that delegates to eight
+`runtime_*` siblings (`runtime_state` / `runtime_store` / `runtime_telemetry`
+/ `runtime_webhook` / `runtime_quiet` / `runtime_theme` / `runtime_actions` /
+`runtime_log`). The module boundary, lock discipline, and thread ownership
+rules are documented in the "Runtime Module Architecture" section of
 `CLAUDE.md` — please read that section before restructuring any of those
 modules. Highlights:
 
@@ -67,6 +76,33 @@ modules. Highlights:
   on one path is the point of the refactor.
 - Any new file the next tick reads needs to go through
   `atomic_io.atomic_write_*`. Don't reintroduce naive `open("w")`.
+- Webhooks and `/metrics` reuse the existing telemetry pipeline:
+  `runtime_telemetry.append_telemetry` is the single seam, and
+  `runtime_webhook` reads its config via a module-level `configure()` set
+  once at startup. Don't add a parallel telemetry sink — extend the entry
+  shape (a new `mode` value) instead.
+- New web endpoints belong in `web_server.py`'s route dispatch and should
+  reuse `pick_quote.valid_bucket_names()` / `apply_content_overrides.ALLOWED_FIELDS`
+  / `litclock_health.summarise` rather than reimplementing validation /
+  aggregation.
+
+### Adding a subcommand to the umbrella CLI
+
+`litclock_cli.py` registers every backing module in a single `SUBCOMMANDS`
+dict mapping `<kebab-case-name>` to `(module_name, description)`. To expose
+a new script as `litclock <name>`:
+
+1. Add the `(name → module)` entry to `SUBCOMMANDS` in `litclock_cli.py`.
+2. Make sure the backing module has a callable `main()` (every script in
+   the repo already does).
+3. Add the module name to `[tool.setuptools] py-modules` in `pyproject.toml`
+   so the wheel ships it.
+4. `tests/test_litclock_cli.py::TestSubcommandRegistry` will catch a
+   `SUBCOMMANDS` entry that points at a missing module or a module without
+   a `main`. `tests/test_packaging.py` will catch the `py-modules` drift.
+
+The umbrella CLI is purely additive — `python3 <script>.py …` keeps working
+unchanged.
 
 ### Corpus / quote content
 

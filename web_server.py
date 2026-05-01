@@ -36,6 +36,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import apply_content_overrides
 import atomic_io
 import pick_quote as pick_quote_module
 from buckets import bucket_for_time
@@ -45,11 +46,22 @@ BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web"
 DEFAULT_COVERAGE_PATH = BASE_DIR / "assets" / "bucket-coverage.json"
 DEFAULT_OVERRIDES_PATH = BASE_DIR / "assets" / "selection_overrides.json"
+DEFAULT_CONTENT_OVERRIDES_PATH = BASE_DIR / "assets" / "content_overrides.json"
+DEFAULT_RAW_CORPUS_PATH = BASE_DIR / "assets" / "candidates-attributed.jsonl"
+DEFAULT_BAKED_DB_PATH = BASE_DIR / "assets" / "quote_database.jsonl"
 DEFAULT_OUTPUT_PATH = BASE_DIR / "output" / "current.png"
 
 TOKEN_HEADER = "X-LitClock-Token"
 MAX_BODY_BYTES = 64 * 1024  # Overrides payloads are tiny; cap to stop runaway requests.
+PREVIEW_MIN_WIDTH = 80
+PREVIEW_MIN_HEIGHT = 60
+PREVIEW_MAX_WIDTH = 800
+PREVIEW_MAX_HEIGHT = 480
 BUCKET_PATH_RE = re.compile(r"^/api/bucket/(?P<bucket>h(?:[1-9]|1[0-2])_[a-z_]+)$")
+# Per-row content-override key: "<source_id>:<line_number>". Source IDs are
+# numeric strings in the corpus (Gutenberg IDs like "141"); line_number is a
+# positive int. Matches what ``apply_content_overrides.row_key`` produces.
+CONTENT_OVERRIDE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+:\d+$")
 LOCALHOST_HOSTS = {"", "127.0.0.1", "localhost", "::1"}
 
 
@@ -104,6 +116,17 @@ class WebContext:
         self.history_path: str | None = args.history_path or None
         self.telemetry_path: str | None = args.telemetry_path or None
         self.overrides_path = _resolve_path(args.overrides) if getattr(args, "overrides", None) else DEFAULT_OVERRIDES_PATH
+        self.content_overrides_path = (
+            _resolve_path(args.content_overrides)
+            if getattr(args, "content_overrides", None)
+            else DEFAULT_CONTENT_OVERRIDES_PATH
+        )
+        self.raw_corpus_path = (
+            _resolve_path(args.raw_corpus) if getattr(args, "raw_corpus", None) else DEFAULT_RAW_CORPUS_PATH
+        )
+        self.baked_db_path = (
+            _resolve_path(args.baked_db) if getattr(args, "baked_db", None) else DEFAULT_BAKED_DB_PATH
+        )
         self.coverage_path = DEFAULT_COVERAGE_PATH
         self.output_path = _resolve_path(args.output) if getattr(args, "output", None) else DEFAULT_OUTPUT_PATH
         if self._token_file is not None:
@@ -196,7 +219,7 @@ class _LitClockHTTPServer(ThreadingHTTPServer):
 # Validation helpers
 # ----------------------------------------------------------------------------
 
-OVERRIDES_KEYS = ("ban_source_ids", "boost_source_ids", "preferred_buckets")
+OVERRIDES_KEYS = ("ban_source_ids", "boost_source_ids", "preferred_buckets", "ban_quote_keys")
 
 
 def _is_id(value: object) -> bool:
@@ -233,12 +256,20 @@ def validate_overrides_payload(payload: object) -> dict:
     ban = payload.get("ban_source_ids", [])
     boost = payload.get("boost_source_ids", [])
     preferred = payload.get("preferred_buckets", {})
+    ban_quote_keys = payload.get("ban_quote_keys", [])
     if not isinstance(ban, list) or not all(_is_id(x) for x in ban):
         raise ValueError("ban_source_ids must be a list of string/int ids")
     if not isinstance(boost, list) or not all(_is_id(x) for x in boost):
         raise ValueError("boost_source_ids must be a list of string/int ids")
     if not isinstance(preferred, dict):
         raise ValueError("preferred_buckets must be an object")
+    if not isinstance(ban_quote_keys, list):
+        raise ValueError("ban_quote_keys must be a list of '<source_id>:<line_number>' strings")
+    for entry in ban_quote_keys:
+        if not isinstance(entry, str) or not CONTENT_OVERRIDE_KEY_RE.match(entry):
+            raise ValueError(
+                f"ban_quote_keys entry {entry!r} must be of the form '<source_id>:<line_number>'"
+            )
     valid_buckets = pick_quote_module.valid_bucket_names()
     for key, value in preferred.items():
         if key not in valid_buckets:
@@ -249,6 +280,7 @@ def validate_overrides_payload(payload: object) -> dict:
         "ban_source_ids": [str(x) for x in ban],
         "boost_source_ids": [str(x) for x in boost],
         "preferred_buckets": {k: str(v) for k, v in preferred.items()},
+        "ban_quote_keys": list(ban_quote_keys),
     }
 
 
@@ -259,6 +291,51 @@ def write_overrides_atomic(path: Path, payload: dict) -> None:
     same tmp → fsync → replace → dir-fsync durability contract as persisted
     runtime state and the attributed corpus.
     """
+    atomic_io.atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def validate_content_overrides_payload(payload: object) -> dict:
+    """Return a cleaned content-overrides dict, or raise ``ValueError``.
+
+    The sidecar is keyed by ``"<source_id>:<line_number>"``; values are partial
+    row dicts whose fields are restricted to
+    :data:`apply_content_overrides.ALLOWED_FIELDS`. Strict validation here
+    keeps malformed UI input from poisoning the next pipeline re-bake — the
+    baker's loader is fail-open by design and would silently drop a bad file
+    rather than refuse to bake.
+
+    Empty payload (``{}``) is permitted: it represents "wipe every per-row
+    override," which is a legitimate operator action (unlike the selection-
+    overrides validator, where the keys themselves must be present so a bare
+    ``{}`` POST can't accidentally clear the bans/boosts shape).
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object, got {type(payload).__name__}")
+    cleaned: dict[str, dict] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not CONTENT_OVERRIDE_KEY_RE.match(key):
+            raise ValueError(f"override key {key!r} must be of the form '<source_id>:<line_number>'")
+        if not isinstance(value, dict):
+            raise ValueError(f"override for {key!r} must be a JSON object")
+        unknown = sorted(f for f in value if f not in apply_content_overrides.ALLOWED_FIELDS)
+        if unknown:
+            raise ValueError(
+                f"override for {key!r} has unsupported field(s): {', '.join(unknown)}. "
+                f"Allowed: {sorted(apply_content_overrides.ALLOWED_FIELDS)}"
+            )
+        for field, fval in value.items():
+            if field in {"display_quote", "matched_text", "author", "title", "normalized_time"}:
+                if not isinstance(fval, str):
+                    raise ValueError(f"override {key!r}.{field} must be a string")
+            elif field in {"hour", "minute", "quality_score"}:
+                if isinstance(fval, bool) or not isinstance(fval, int):
+                    raise ValueError(f"override {key!r}.{field} must be an int")
+        cleaned[key] = dict(value)
+    return cleaned
+
+
+def write_content_overrides_atomic(path: Path, payload: dict) -> None:
+    """Atomically write the per-row content-overrides sidecar."""
     atomic_io.atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
@@ -379,16 +456,28 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 return self._serve_static(WEB_ROOT / "style.css", "text/css; charset=utf-8")
             if path == "/current.png":
                 return self._serve_static(self._ctx().output_path, "image/png")
+            if path == "/metrics":
+                return self._api_metrics()
             if path == "/api/current":
                 return self._api_current()
             if path == "/api/telemetry":
                 return self._api_telemetry(query)
             if path == "/api/coverage":
                 return self._api_coverage()
+            if path == "/api/gaps":
+                return self._api_gaps(query)
             if path == "/api/themes":
                 return self._api_themes()
+            if path == "/api/setup":
+                return self._api_setup_get()
             if path == "/api/overrides":
                 return self._api_overrides_get()
+            if path == "/api/content-overrides":
+                return self._api_content_overrides_get()
+            if path == "/api/search":
+                return self._api_search(query)
+            if path == "/api/preview":
+                return self._api_preview(query)
             if path == "/api/history":
                 return self._api_history(query)
             m = BUCKET_PATH_RE.match(path)
@@ -407,6 +496,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
         # told "401 token required" and learn that the service exists.
         routes = {
             "/api/overrides": self._api_overrides_post,
+            "/api/content-overrides": self._api_content_overrides_post,
+            "/api/bake": self._api_bake_post,
+            "/api/setup": self._api_setup_post,
             "/api/action/skip": self._action_skip,
             "/api/action/unskip": self._action_unskip,
             "/api/action/theme": self._action_theme,
@@ -482,6 +574,112 @@ class CuratorHandler(BaseHTTPRequestHandler):
         summary = litclock_health.summarise(entries)
         self._json(HTTPStatus.OK, {"hours": hours, **summary})
 
+    def _api_metrics(self) -> None:
+        """Prometheus text-format scrape endpoint over a 24h window.
+
+        Re-uses :func:`litclock_health.load_entries` + :func:`litclock_health.summarise`
+        so the metric values match exactly what ``litclock-health --json`` reports;
+        no parallel aggregation logic to drift. Window is fixed at 24h because
+        Prometheus is responsible for time-windowing on its end (rate(),
+        increase()): exposing a configurable window via query string here would
+        confuse the scraper, since Prometheus expects counters to be cumulative
+        OR a fixed-window gauge.
+
+        Output is the standard ``# HELP`` / ``# TYPE`` text exposition format
+        (Prometheus 0.0.4) — no client_python dependency, just stdlib string
+        formatting. Counters are exported as ``_total``-suffixed gauges over
+        the 24h window because we don't have process-lifetime monotonic
+        counters; that's good enough for "is the appliance rendering and is
+        the error rate sane" alerting. Histograms are summarised as p50 / p95
+        gauges (no native histogram bucket support) — same reason.
+
+        Stays open without auth (matches the rest of the GET surface) so a
+        Prometheus scraper running on the same LAN can hit it without
+        managing a token. Operators concerned about leaking telemetry to
+        the LAN already bind to 127.0.0.1.
+        """
+        import litclock_health
+        ctx = self._ctx()
+        lines: list[str] = []
+        if ctx.telemetry_path:
+            since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
+            entries = litclock_health.load_entries(Path(ctx.telemetry_path).expanduser(), since)
+            summary = litclock_health.summarise(entries)
+        else:
+            # Telemetry disabled: still emit the metric names with zero values
+            # so a Prometheus scrape against a fresh appliance doesn't 500 or
+            # produce missing-series gaps that confuse rate() on first
+            # success.
+            summary = {
+                "render_count": 0, "error_count": 0, "heartbeat_count": 0,
+                "action_count": 0, "press_dropped_count": 0,
+                "web_auth_fail_count": 0, "web_error_count": 0,
+                "quiet_enter_count": 0, "quiet_exit_count": 0,
+                "render_p50_ms": None, "render_p95_ms": None,
+                "display_p50_ms": None, "display_p95_ms": None,
+                "last_heartbeat_ts": None,
+            }
+
+        def metric(name: str, value: float | int | None, help_text: str, mtype: str = "gauge") -> None:
+            lines.append(f"# HELP {name} {help_text}")
+            lines.append(f"# TYPE {name} {mtype}")
+            # Prometheus convention: missing/null gauge → omit the sample line
+            # (HELP/TYPE alone is fine). A literal NaN would also work but
+            # alerting rules then have to handle NaN explicitly.
+            if value is not None:
+                lines.append(f"{name} {value}")
+
+        metric("litclock_renders_total", summary.get("render_count", 0),
+               "Successful renders in the last 24 hours.", mtype="gauge")
+        metric("litclock_errors_total", summary.get("error_count", 0),
+               "Render / display / runtime errors in the last 24 hours.", mtype="gauge")
+        metric("litclock_heartbeats_total", summary.get("heartbeat_count", 0),
+               "Loop heartbeat pings in the last 24 hours.", mtype="gauge")
+        metric("litclock_actions_total", summary.get("action_count", 0),
+               "Operator actions (button + web) in the last 24 hours.", mtype="gauge")
+        metric("litclock_press_dropped_total", summary.get("press_dropped_count", 0),
+               "Button presses dropped because a render was in flight.", mtype="gauge")
+        metric("litclock_web_auth_fails_total", summary.get("web_auth_fail_count", 0),
+               "Web UI POSTs that failed token auth in the last 24 hours.", mtype="gauge")
+        metric("litclock_web_errors_total", summary.get("web_error_count", 0),
+               "Web UI 4xx/5xx responses in the last 24 hours.", mtype="gauge")
+        metric("litclock_quiet_enter_total", summary.get("quiet_enter_count", 0),
+               "Quiet-hours rising-edge transitions in the last 24 hours.", mtype="gauge")
+        metric("litclock_quiet_exit_total", summary.get("quiet_exit_count", 0),
+               "Quiet-hours falling-edge transitions in the last 24 hours.", mtype="gauge")
+        metric("litclock_render_p50_ms", summary.get("render_p50_ms"),
+               "Median render subprocess duration over the last 24 hours.")
+        metric("litclock_render_p95_ms", summary.get("render_p95_ms"),
+               "p95 render subprocess duration over the last 24 hours.")
+        metric("litclock_display_p50_ms", summary.get("display_p50_ms"),
+               "Median Inky display push duration over the last 24 hours.")
+        metric("litclock_display_p95_ms", summary.get("display_p95_ms"),
+               "p95 Inky display push duration over the last 24 hours.")
+
+        # Heartbeat age is the metric an operator alerts on for "is the loop
+        # alive" — equivalent to litclock-health's --max-heartbeat-age-minutes.
+        last_hb = summary.get("last_heartbeat_ts")
+        if last_hb:
+            try:
+                hb_dt = dt.datetime.fromisoformat(last_hb)
+                if hb_dt.tzinfo is None:
+                    hb_dt = hb_dt.replace(tzinfo=dt.timezone.utc)
+                age_seconds = (dt.datetime.now(dt.timezone.utc) - hb_dt).total_seconds()
+                metric("litclock_last_heartbeat_age_seconds", int(max(0, age_seconds)),
+                       "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
+            except ValueError:
+                pass
+
+        body = ("\n".join(lines) + "\n").encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        # Prometheus text format 0.0.4. The scraper picks up the version
+        # from the Content-Type and parses accordingly.
+        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _api_coverage(self) -> None:
         ctx = self._ctx()
         if not ctx.coverage_path.exists():
@@ -491,6 +689,179 @@ class CuratorHandler(BaseHTTPRequestHandler):
         except (OSError, ValueError) as exc:
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
         self._json(HTTPStatus.OK, payload)
+
+    def _api_gaps(self, query: dict) -> None:
+        """Return empty / sparse buckets with phrase suggestions for the harvester.
+
+        Reuses :data:`target_sparse_buckets.STATE_TEMPLATES` so the suggested
+        phrases match what ``target_sparse_buckets.py`` would actually search
+        for if invoked from the CLI — same bucket → same phrase set, so an
+        operator who runs the CLI mining job after seeing the UI gap-list gets
+        consistent results. ``--threshold`` controls "sparse" (default ≤3
+        candidates, matching the bucket-coverage shading).
+        """
+        import target_sparse_buckets
+        ctx = self._ctx()
+        try:
+            threshold = int(query.get("threshold", ["3"])[0])
+        except (TypeError, ValueError):
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "threshold must be int"})
+        threshold = max(0, min(threshold, 50))
+        if not ctx.coverage_path.exists():
+            return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
+        try:
+            coverage = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
+        bucket_counts = coverage.get("bucket_counts") or {}
+        gaps: list[dict] = []
+        for bucket, count in bucket_counts.items():
+            if count > threshold:
+                continue
+            # bucket like "h7_twenty_to" → ("h7", "twenty_to")
+            try:
+                hour_part, state = bucket.split("_", 1)
+                hour = int(hour_part.lstrip("h"))
+            except (ValueError, AttributeError):
+                continue
+            if state == "exact":
+                # The exact-hour bucket is a single canonical phrase per hour
+                # ("seven o'clock"); STATE_TEMPLATES doesn't enumerate it
+                # because the harvester already saturates it from the
+                # bare ``oclock_word`` regex. Emit a hint anyway so the UI can
+                # show something for the rare empty exact-hour bucket.
+                hour_word = target_sparse_buckets.HOUR_WORDS.get(hour, "")
+                phrases = [f"{hour_word} o'clock", f"{hour_word} o’clock"] if hour_word else []
+            else:
+                templates = target_sparse_buckets.STATE_TEMPLATES.get(state, [])
+                hour_word = target_sparse_buckets.HOUR_WORDS.get(hour, "")
+                next_hour_word = target_sparse_buckets.HOUR_WORDS.get(
+                    (hour % 12) + 1 if hour < 12 else 1, ""
+                )
+                phrases = [
+                    template.format(hour=hour_word, next_hour=next_hour_word)
+                    for template, _label in templates
+                ]
+            gaps.append({"bucket": bucket, "count": count, "phrases": phrases})
+        # Sort emptiest-first so the UI naturally surfaces the worst gaps.
+        gaps.sort(key=lambda g: (g["count"], g["bucket"]))
+        self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": gaps, "total": len(gaps)})
+
+    def _api_setup_get(self) -> None:
+        """Return the first-run wizard's status + the values it needs to render.
+
+        Returns ``setup_complete`` (whether the operator has dismissed the
+        wizard already), plus a snapshot of the values the UI shows the
+        operator: the active theme, the configured quiet hours, and the
+        registered theme list. The wizard reads from this single endpoint
+        so a freshly-booted appliance hits one URL on first paint to decide
+        whether to overlay the wizard or load the normal UI.
+        """
+        from theme_names import theme_cycle
+        ctx = self._ctx()
+        with ctx.state.lock:
+            setup_complete = ctx.state.setup_complete
+            manual_theme = ctx.state.manual_theme
+            theme_arg = ctx.state.theme_arg
+        self._json(HTTPStatus.OK, {
+            "setup_complete": setup_complete,
+            "themes": list(theme_cycle()),
+            "theme_arg": theme_arg,
+            "manual_theme": manual_theme,
+            "quiet_start": getattr(ctx.args, "quiet_start", None),
+            "quiet_end": getattr(ctx.args, "quiet_end", None),
+            "quiet_off": getattr(ctx.args, "quiet_off", False),
+            "mode": getattr(ctx.args, "mode", "debug"),
+        })
+
+    def _api_setup_post(self) -> None:
+        """Mark the first-run wizard complete; optionally apply a chosen theme.
+
+        Body shape: ``{"theme": "<name>"?}``. When ``theme`` is present the
+        target is applied via the same ``run_clock.action_theme`` path the
+        web dropdown uses, so the panel updates and ``manual_theme`` is
+        persisted.
+
+        Failure handling:
+
+        * **Unknown theme** → 400, ``setup_complete`` stays False so the
+          wizard reappears with no state mutation.
+        * **Render in flight (``error: "busy"``)** → 409, ``setup_complete``
+          stays False. Re-flipping setup_complete=True without a successful
+          theme apply would close the wizard while the panel still shows
+          the old theme — confusing UX. The operator's next click will
+          retry once the in-flight render finishes.
+        * **Generic 5xx from action_theme** → 500, same rollback. Theme
+          handler errors are not the operator's problem to debug from a
+          wizard.
+        * **Persist failure (state.json write)** → log and swallow; the
+          in-memory flag stays True so the current session works. The
+          wizard will retry on next reload if state.json is genuinely
+          unwritable.
+
+        State-mutation discipline: the ``setup_complete`` flip and the
+        ``save_runtime_state`` call are both inside ``state.lock`` to
+        match the persist seams in ``runtime_actions.action_theme`` /
+        ``action_quiet``. Without this, a near-simultaneous button-press
+        snapshot taken between our flip and our save could persist a
+        ``setup_complete=False`` over our True, silently re-triggering
+        the wizard on next page load.
+
+        Returns the same shape as ``GET /api/setup`` so the UI doesn't need
+        a follow-up request to update its in-memory state.
+        """
+        import run_clock
+        ctx = self._ctx()
+        body = self._read_json_body()
+        target_theme = body.get("theme") if isinstance(body, dict) else None
+        if target_theme is not None and not isinstance(target_theme, str):
+            return self._json(
+                HTTPStatus.BAD_REQUEST, {"ok": False, "error": "theme must be a string"},
+            )
+        applied_theme: dict | None = None
+        if target_theme:
+            applied_theme = run_clock.action_theme(
+                ctx.args, ctx.state, label="web", target=target_theme,
+            )
+            if applied_theme.get("error") == "unknown_theme":
+                return self._json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"ok": False, "error": f"unknown theme {target_theme!r}"},
+                )
+            if not applied_theme.get("ok"):
+                # Theme apply failed (busy / handler exception). Don't
+                # silently flip setup_complete — the operator clicked a
+                # theme thumbnail expecting the panel to update, and
+                # closing the wizard now hides the failure.
+                status = HTTPStatus.CONFLICT if applied_theme.get("error") == "busy" else HTTPStatus.INTERNAL_SERVER_ERROR
+                return self._json(status, {
+                    "ok": False,
+                    "setup_complete": False,
+                    "applied_theme": applied_theme,
+                })
+        # Hold state.lock across both the in-memory flip AND the disk
+        # persist. The save_runtime_state call routes through atomic_io
+        # so it doesn't block long; serialising it against concurrent
+        # snapshotters (button presses, action_theme persists) is the
+        # only way to guarantee the wizard's flip lands durably.
+        with ctx.state.lock:
+            ctx.state.setup_complete = True
+            snapshot = ctx.state.snapshot_for_persistence()
+            try:
+                from runtime_store import save_runtime_state
+                save_runtime_state(getattr(ctx.args, "state_path", None), snapshot)
+            except Exception as exc:  # noqa: BLE001
+                _log(f"web: setup_complete persist failed: {exc!r}", err=True)
+                # In-memory flip stays — the current session's UI no longer
+                # shows the wizard. Next process restart re-triggers it if
+                # state.json is genuinely unwritable; that's a separate,
+                # louder failure mode the operator will see in the journal.
+        _log("web: first-run setup wizard dismissed")
+        self._json(HTTPStatus.OK, {
+            "ok": True,
+            "setup_complete": True,
+            "applied_theme": applied_theme,
+        })
 
     def _api_themes(self) -> None:
         """Expose the theme cycle so the UI dropdown and the Python cycle stay aligned.
@@ -532,10 +903,164 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _api_overrides_get(self) -> None:
         ctx = self._ctx()
         if not ctx.overrides_path.exists():
-            payload = {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
+            payload = {
+                "ban_source_ids": [],
+                "boost_source_ids": [],
+                "preferred_buckets": {},
+                "ban_quote_keys": [],
+            }
         else:
             payload = json.loads(ctx.overrides_path.read_text(encoding="utf-8"))
+            # Surface ban_quote_keys to the UI even on legacy files that
+            # pre-date it, so the editor doesn't have to special-case the
+            # missing key.
+            payload.setdefault("ban_quote_keys", [])
         self._json(HTTPStatus.OK, payload)
+
+    def _api_content_overrides_get(self) -> None:
+        """Return the per-row content-overrides sidecar.
+
+        Read directly from disk on every request rather than caching: the
+        sidecar is operator-edited and small (a few KB at most), and a stale
+        cache after a CLI re-edit would surprise an operator who flips between
+        SSH and the web UI. ``apply_content_overrides.load_overrides`` is
+        already fail-open on a corrupt file — if the sidecar is malformed we
+        return ``{}`` rather than 5xx so the UI's editor can still load and the
+        operator can replace the bad content.
+        """
+        ctx = self._ctx()
+        payload = apply_content_overrides.load_overrides(ctx.content_overrides_path)
+        self._json(HTTPStatus.OK, payload)
+
+    def _api_search(self, query: dict) -> None:
+        """Linear search across the raw corpus by text / author / title / bucket.
+
+        Stdlib only, case-insensitive substring match. The corpus is ~3K rows
+        so a per-request scan is well under 50 ms — no need for an index. The
+        raw corpus is the right source here (not the baked DB) because an
+        operator searching "is this quote in the corpus?" wants to find rows
+        the baker dropped (low quality, daypart-only) too, so they understand
+        why the row isn't appearing.
+        """
+        ctx = self._ctx()
+        q = (query.get("q", [""])[0] or "").strip().lower()
+        author = (query.get("author", [""])[0] or "").strip().lower()
+        title = (query.get("title", [""])[0] or "").strip().lower()
+        bucket = (query.get("bucket", [""])[0] or "").strip()
+        try:
+            limit = int(query.get("limit", ["50"])[0])
+        except (TypeError, ValueError):
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "limit must be int"})
+        limit = max(1, min(limit, 500))
+        if not (q or author or title or bucket):
+            return self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "at least one of q / author / title / bucket is required"},
+            )
+        if bucket and bucket not in pick_quote_module.valid_bucket_names():
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": f"unknown bucket {bucket!r}"})
+        results: list[dict] = []
+        if not ctx.raw_corpus_path.exists():
+            return self._json(HTTPStatus.OK, {"results": [], "total": 0, "note": "raw corpus missing"})
+        # Stream so we don't load the full corpus into memory just to scan it.
+        from jsonl_io import iter_jsonl
+        scanned = 0
+        for row in iter_jsonl(ctx.raw_corpus_path):
+            scanned += 1
+            if bucket and row.get("fuzzy_bucket") != bucket:
+                continue
+            if q:
+                hay = (row.get("display_quote") or "").lower()
+                if q not in hay:
+                    continue
+            if author:
+                if author not in (row.get("author") or "").lower():
+                    continue
+            if title:
+                if title not in (row.get("title") or "").lower():
+                    continue
+            results.append({
+                "source_id": row.get("source_id"),
+                "line_number": row.get("line_number"),
+                "fuzzy_bucket": row.get("fuzzy_bucket"),
+                "normalized_time": row.get("normalized_time"),
+                "display_quote": row.get("display_quote"),
+                "matched_text": row.get("matched_text"),
+                "author": row.get("author"),
+                "title": row.get("title"),
+                "quality_score": row.get("quality_score"),
+            })
+            if len(results) >= limit:
+                break
+        self._json(HTTPStatus.OK, {"results": results, "total": len(results), "scanned": scanned})
+
+    def _api_preview(self, query: dict) -> None:
+        """Render a PNG of the current quote in the requested theme without committing.
+
+        Returns image/png bytes so the UI can show side-by-side theme thumbnails
+        cheaply (one ``<img>`` per theme). Does not touch the panel or the state
+        — purely a renderer-only path. Picks the quote at the requested time
+        (default: now) just like the live picker would, so what you see matches
+        what the clock would actually show in that theme.
+        """
+        from io import BytesIO
+
+        import render_quote
+        ctx = self._ctx()
+        theme = (query.get("theme", [""])[0] or "default").strip()
+        if theme not in render_quote.THEMES:
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": f"unknown theme {theme!r}"})
+        time_str = (query.get("time", [""])[0] or "").strip() or dt.datetime.now().strftime("%H:%M")
+        # Validate HH:MM shape AND ranges. ``bucket_for_time`` calls
+        # ``minute_bucket`` which uses ``((minute + 2) // 5) * 5`` to round —
+        # an out-of-range minute (e.g. ``03:99``) silently yields a list
+        # index past ``BUCKET_ORDER`` and surfaces as a ``KeyError`` /
+        # ``IndexError`` that the GET-handler catches as 500. We want a 400
+        # at the API boundary instead so a fat-finger client gets a clear
+        # error and the operator's telemetry doesn't fill with bogus 5xx.
+        try:
+            h_str, m_str = time_str.split(":", 1)
+            h = int(h_str)
+            m = int(m_str)
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError(f"time {time_str!r} out of range (need 00:00–23:59)")
+        except (ValueError, AttributeError):
+            return self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "time must be HH:MM (00:00–23:59)"},
+            )
+        try:
+            row = pick_quote_module.select_quote(
+                time_str=time_str,
+                database_path=str(ctx.baked_db_path),
+                history_path=None,  # Preview should be deterministic — don't tie it to ledger state.
+            )
+        except SystemExit as exc:
+            return self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+        try:
+            mode = (query.get("mode", [""])[0] or "production").strip()
+            width = int(query.get("width", [str(ctx.args.width)])[0])
+            height = int(query.get("height", [str(ctx.args.height)])[0])
+        except (TypeError, ValueError):
+            return self._json(HTTPStatus.BAD_REQUEST, {"error": "width/height must be int"})
+        # Cap dimensions: preview is used for thumbnails, and full panel size is
+        # already enough detail while avoiding slow/high-memory renders from a
+        # hostile or buggy client.
+        width = max(PREVIEW_MIN_WIDTH, min(width, PREVIEW_MAX_WIDTH))
+        height = max(PREVIEW_MIN_HEIGHT, min(height, PREVIEW_MAX_HEIGHT))
+        image = render_quote.render(time_str, row, width, height, mode=mode, theme=theme)
+        buf = BytesIO()
+        try:
+            image.save(buf, format="PNG")
+        finally:
+            image.close()
+        data = buf.getvalue()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _api_history(self, query: dict) -> None:
         ctx = self._ctx()
@@ -590,6 +1115,114 @@ class CuratorHandler(BaseHTTPRequestHandler):
         write_overrides_atomic(ctx.overrides_path, cleaned)
         _log(f"web: overrides updated -> {ctx.overrides_path}")
         self._json(HTTPStatus.OK, {"ok": True, "path": str(ctx.overrides_path)})
+
+    def _api_content_overrides_post(self) -> None:
+        """Replace the per-row content-overrides sidecar atomically.
+
+        Validation is strict (every key must look like ``"<source_id>:<line_number>"``,
+        every value field must be in ``apply_content_overrides.ALLOWED_FIELDS``).
+        Writing through here does NOT immediately affect what the panel shows —
+        the bake stage that consumes the sidecar runs separately. The UI's
+        "Bake now" button (``POST /api/bake``) is the second step.
+
+        We record this as an operator action for audit-grep purposes, but
+        deliberately as ``mode="action"`` rather than as a successful
+        render-class entry.
+        """
+        ctx = self._ctx()
+        payload = self._read_json_body()
+        cleaned = validate_content_overrides_payload(payload)
+        write_content_overrides_atomic(ctx.content_overrides_path, cleaned)
+        _log(f"web: content overrides updated -> {ctx.content_overrides_path} ({len(cleaned)} entries)")
+        self._emit_web_telemetry({
+            "mode": "action",
+            "action": "content_overrides_save",
+            "label": "web",
+            "ok": True,
+            "entries": len(cleaned),
+        })
+        self._json(HTTPStatus.OK, {"ok": True, "path": str(ctx.content_overrides_path), "entries": len(cleaned)})
+
+    def _api_bake_post(self) -> None:
+        """Re-bake ``assets/quote_database.jsonl`` from the raw corpus + sidecar.
+
+        Runs the bake in-process (it's pure-Python and finishes in <1s for the
+        ~3K-row corpus). Then re-applies the content-overrides sidecar so a
+        recent ``POST /api/content-overrides`` is reflected in the freshly-baked
+        DB without requiring a CLI step.
+
+        The runtime picker reloads the baked DB on every ``select_quote`` call
+        (it goes through ``_resolve_corpus`` which reads from disk), so the next
+        tick will see the newly-baked rows automatically — no in-memory cache
+        invalidation is needed.
+
+        Held under ``state.render_lock`` so a concurrent render isn't reading
+        the baked DB while we're swapping it (atomic_write_lines makes the swap
+        atomic at the FS level, but the picker's read+score is non-atomic above
+        that). Returns 409 (busy) if a render is already in flight rather than
+        queueing — the operator can retry.
+        """
+        import bake_quote_database
+        from jsonl_io import iter_jsonl
+        ctx = self._ctx()
+        state = ctx.state
+        # Non-blocking acquire so a long render doesn't pin the HTTP thread.
+        if not state.render_lock.acquire(blocking=False):
+            return self._json(HTTPStatus.CONFLICT, {"ok": False, "error": "busy"})
+        try:
+            if not ctx.raw_corpus_path.exists():
+                return self._json(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"ok": False, "error": f"raw corpus missing at {ctx.raw_corpus_path}"},
+                )
+            # Re-apply content overrides to a fresh in-memory copy of the raw
+            # corpus before baking, so a just-saved ``POST /api/content-overrides``
+            # is reflected in the baked DB. Operator workflow: edit row → save
+            # overrides → click Bake; both should land on the panel within seconds.
+            sidecar = apply_content_overrides.load_overrides(ctx.content_overrides_path)
+            rows = list(iter_jsonl(ctx.raw_corpus_path))
+            if sidecar:
+                rows, applied = apply_content_overrides.apply_overrides(
+                    rows, sidecar, overrides_path=str(ctx.content_overrides_path),
+                )
+            else:
+                applied = 0
+            # Re-derive fuzzy_bucket from the post-override normalized_time so
+            # the baker sees the same buckets it would after a full pipeline run.
+            for row in rows:
+                normalized = row.get("normalized_time")
+                if isinstance(normalized, str) and ":" in normalized:
+                    try:
+                        row["fuzzy_bucket"] = bucket_for_time(normalized)
+                    except (ValueError, KeyError):
+                        pass
+            baked, stats = bake_quote_database.bake_rows(rows, min_quality=60)
+            atomic_io.atomic_write_lines(
+                ctx.baked_db_path,
+                (json.dumps(row, ensure_ascii=False) for row in baked),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log(f"web: bake failed: {exc!r}", err=True)
+            self._emit_web_telemetry({
+                "mode": "action", "action": "bake", "label": "web", "ok": False, "error": repr(exc),
+            })
+            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": repr(exc)})
+        finally:
+            state.render_lock.release()
+        _log(f"web: baked {stats['kept']} rows -> {ctx.baked_db_path}")
+        self._emit_web_telemetry({
+            "mode": "action", "action": "bake", "label": "web", "ok": True,
+            "kept": stats["kept"], "applied": applied,
+        })
+        self._json(HTTPStatus.OK, {
+            "ok": True,
+            "path": str(ctx.baked_db_path),
+            "kept": stats["kept"],
+            "input": stats["input"],
+            "applied_overrides": applied,
+            "drops": stats["drops"],
+            "per_bucket": stats["per_bucket"],
+        })
 
     def _action_skip(self) -> None:
         import run_clock

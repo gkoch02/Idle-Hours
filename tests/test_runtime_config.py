@@ -66,6 +66,8 @@ class TestLoadConfigHappyPath:
             'web_token = ""',
             'web_token_file = "/var/lib/litclock/web.token"',
             'pidfile = "/var/lib/litclock/run_clock.pid"',
+            'webhook_url = "https://example.test/hook"',
+            "webhook_all_events = false",
         ]
         p = tmp_path / "cfg.toml"
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")

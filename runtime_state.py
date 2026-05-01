@@ -89,6 +89,10 @@ class RuntimeState:
         # ``commit_render_result``) so a genuinely new error after recovery
         # still logs normally.
         self.last_logged_error: str | None = None
+        # First-run wizard dismissal. ``False`` until the operator clicks
+        # "Done" on the curator UI's setup overlay; persisted to state.json
+        # so the wizard doesn't reappear on every page load.
+        self.setup_complete: bool = False
         # Pending ``threading.Timer`` objects that must be cancelled on
         # shutdown to stop them firing after ``_shutdown`` has torn down the
         # display handle. Currently only the source-card 5s restore timer
@@ -145,6 +149,10 @@ class RuntimeState:
                 # shape that doesn't match the current peek will just miss
                 # the dedup check and force a redraw — safe, not a crash.
                 self.last_quote_id = tuple(last_quote_id)
+            # Wizard dismissal flag — defaults False so a fresh appliance
+            # triggers the wizard on first visit. Schema validation in
+            # runtime_store.load_runtime_state already enforces bool.
+            self.setup_complete = bool(persisted.get("setup_complete", False))
 
     def snapshot_for_persistence(self) -> dict:
         """Serialise the fields the operator (or the main loop) needs across restarts.
@@ -164,6 +172,7 @@ class RuntimeState:
             "last_bucket": self.last_bucket,
             "last_quote_id": last_quote_id,
             "last_effective_theme": self.last_effective_theme,
+            "setup_complete": self.setup_complete,
         }
 
     def commit_render_result(

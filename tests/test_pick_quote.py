@@ -97,6 +97,33 @@ class TestOverrides:
         row = make_row(source_id="1234")
         assert pq.is_banned(row, overrides) is False
 
+    def test_is_banned_per_row_key(self):
+        """A specific (source_id, line_number) pair in ban_quote_keys is dropped
+        even though the source's other rows still pick normally."""
+        overrides = {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": ["1234:42"],
+        }
+        banned = make_row(source_id="1234", line_number=42)
+        sibling = make_row(source_id="1234", line_number=99)
+        assert pq.is_banned(banned, overrides) is True
+        assert pq.is_banned(sibling, overrides) is False
+
+    def test_is_banned_quote_keys_int_source_id_normalised(self):
+        """Source IDs may be stored as int or str; comparison goes through str()."""
+        overrides = {"ban_quote_keys": ["1234:42"]}
+        row = make_row(source_id=1234, line_number=42)
+        assert pq.is_banned(row, overrides) is True
+
+    def test_is_banned_missing_line_number_does_not_match(self):
+        """A row with no line_number can't satisfy a per-row ban — defensive
+        guard so a malformed row isn't accidentally banned by all entries."""
+        overrides = {"ban_quote_keys": ["1234:42"]}
+        row = make_row(source_id="1234", line_number=None)
+        assert pq.is_banned(row, overrides) is False
+
 
 class TestScoreRow:
     def _overrides(self):
@@ -670,7 +697,25 @@ class TestCompactHistory:
 class TestLoadOverrides:
     def test_missing_file_returns_defaults(self, tmp_path):
         result = pq.load_overrides(tmp_path / "does-not-exist.json")
-        assert result == {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}
+        assert result == {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
+
+    def test_legacy_file_without_ban_quote_keys_gets_default(self, tmp_path):
+        """v1 sidecar files don't have ban_quote_keys; load_overrides defaults
+        the field so the rest of the picker doesn't have to special-case it."""
+        path = tmp_path / "legacy.json"
+        path.write_text(json.dumps({
+            "ban_source_ids": ["48"],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+        }))
+        result = pq.load_overrides(path)
+        assert result["ban_quote_keys"] == []
+        assert result["ban_source_ids"] == ["48"]
 
     def test_valid_file_parsed(self, tmp_path):
         path = tmp_path / "ov.json"

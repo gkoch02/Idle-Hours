@@ -27,6 +27,11 @@ _STATE_SCHEMA: dict[str, tuple[type, ...] | tuple] = {
     "last_bucket": (str, type(None)),
     "last_quote_id": (list, type(None)),
     "last_effective_theme": (str, type(None)),
+    # First-run setup wizard. ``True`` once an operator has dismissed the
+    # wizard from the curator UI; absent / ``False`` triggers the wizard
+    # overlay on next visit. Plain bool so tests / hand-edits can flip it
+    # back to ``False`` to re-trigger the wizard.
+    "setup_complete": (bool,),
 }
 
 
