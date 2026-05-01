@@ -1728,6 +1728,49 @@ class TestApiPreview:
         assert status == 400
         assert "HH:MM" in _json_body(body)["error"]
 
+    def test_preview_rejects_out_of_range_minute(self, v2_server):
+        """``time=03:99`` parses as two ints but is out of range. Without
+        explicit bound checking, the request reaches ``bucket_for_time``,
+        which raises ``KeyError`` from ``minute_bucket`` and surfaces as
+        a 500 instead of a 400 client error. Regression guard for the
+        Codex review finding on PR #96."""
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/preview?theme=default&time=03:99")
+        assert status == 400, _json_body(body)
+        assert "HH:MM" in _json_body(body)["error"]
+
+    def test_preview_rejects_out_of_range_hour(self, v2_server):
+        """``time=25:00`` doesn't crash bucket_for_time today (hour wraps
+        modulo 12) but the minute_distance penalty math has no bound, so
+        a future change could turn this into a crash. Reject at the API
+        boundary regardless."""
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/preview?theme=default&time=25:00")
+        assert status == 400
+        assert "HH:MM" in _json_body(body)["error"]
+
+    def test_preview_rejects_negative_minute(self, v2_server):
+        """``time=03:-1`` parses as two ints; without the lower-bound check
+        we'd index BUCKET_ORDER with a negative wrap and silently return
+        the wrong bucket."""
+        server, _state, _args = v2_server
+        status, body = _get(server, "/api/preview?theme=default&time=03:-1")
+        assert status == 400
+        assert "HH:MM" in _json_body(body)["error"]
+
+    def test_preview_accepts_boundary_times(self, v2_server):
+        """00:00 and 23:59 are both inclusive bounds — they must pass."""
+        server, _state, _args = v2_server
+        fake_row = {
+            "display_quote": "x", "matched_text": "x",
+            "normalized_time": "00:00", "fuzzy_bucket": "h12_exact",
+            "source_id": "1", "line_number": 1,
+        }
+        with patch("pick_quote.select_quote", return_value=fake_row):
+            for boundary in ("00:00", "23:59"):
+                status, _body = _get(server, f"/api/preview?theme=default&time={boundary}")
+                assert status == 200, f"{boundary} should be accepted"
+
     def test_preview_swallows_picker_failure(self, v2_server):
         server, _state, _args = v2_server
         with patch("pick_quote.select_quote", side_effect=SystemExit("no picks")):

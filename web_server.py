@@ -1007,13 +1007,24 @@ class CuratorHandler(BaseHTTPRequestHandler):
         if theme not in render_quote.THEMES:
             return self._json(HTTPStatus.BAD_REQUEST, {"error": f"unknown theme {theme!r}"})
         time_str = (query.get("time", [""])[0] or "").strip() or dt.datetime.now().strftime("%H:%M")
-        # Validate HH:MM shape early so the picker doesn't blow up on garbage.
+        # Validate HH:MM shape AND ranges. ``bucket_for_time`` calls
+        # ``minute_bucket`` which uses ``((minute + 2) // 5) * 5`` to round —
+        # an out-of-range minute (e.g. ``03:99``) silently yields a list
+        # index past ``BUCKET_ORDER`` and surfaces as a ``KeyError`` /
+        # ``IndexError`` that the GET-handler catches as 500. We want a 400
+        # at the API boundary instead so a fat-finger client gets a clear
+        # error and the operator's telemetry doesn't fill with bogus 5xx.
         try:
-            h, m = time_str.split(":", 1)
-            int(h)
-            int(m)
+            h_str, m_str = time_str.split(":", 1)
+            h = int(h_str)
+            m = int(m_str)
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError(f"time {time_str!r} out of range (need 00:00–23:59)")
         except (ValueError, AttributeError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "time must be HH:MM"})
+            return self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "time must be HH:MM (00:00–23:59)"},
+            )
         try:
             row = pick_quote_module.select_quote(
                 time_str=time_str,
