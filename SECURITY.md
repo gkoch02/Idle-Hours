@@ -46,10 +46,35 @@ These are the surfaces where a security bug would matter:
   `hmac.compare_digest` against the `X-LitClock-Token` header only. Report
   anything that lets an unauthenticated caller mutate state, read tokens from
   logs, or bypass the bind check.
-- **Mutating endpoints (`POST /api/overrides`, `POST /api/action/*`).** These
-  rewrite `assets/selection_overrides.json` and trigger renders / theme
-  changes / shutdown. Report auth bypass, path traversal, injection, or
-  writes outside the intended paths.
+- **Mutating endpoints (`POST /api/overrides`, `POST /api/content-overrides`,
+  `POST /api/bake`, `POST /api/setup`, `POST /api/action/*`).** These rewrite
+  `assets/selection_overrides.json` and `assets/content_overrides.json`,
+  re-bake `assets/quote_database.jsonl` in-process, mutate persisted runtime
+  state, and trigger renders / theme changes / shutdown. Report auth bypass,
+  path traversal, injection (including via the `<source_id>:<line_number>`
+  override keys), or writes outside the intended paths. Validation lives in
+  `web_server.validate_overrides_payload` /
+  `web_server.validate_content_overrides_payload` and rejects unknown fields,
+  bad key shapes, and wrong-type values with 400.
+- **Read-only endpoints with corpus reach (`GET /api/search`,
+  `GET /api/preview`, `GET /api/bucket/*`, `GET /metrics`).** v2 added
+  full-text search across the raw corpus and a side-effect-free render
+  endpoint. Both stay open on every bind (matching the rest of the GET
+  surface). Report anything that lets a caller exfiltrate state outside the
+  corpus (e.g. arbitrary file reads via the search filter), trigger
+  unbounded resource use (the preview width/height are clamped to
+  `1600×960` and the search limit to 500), or bypass the bind check.
+  `/metrics` reuses `litclock_health.summarise` over a fixed 24 h window —
+  if the summariser ever leaks request data into the metric values, that's
+  in scope.
+- **Webhook fan-out (`runtime_webhook.py`).** When `--webhook-url` is set,
+  the loop posts a JSON body for each alert-worthy telemetry event to that
+  URL. The dispatch is best-effort on a daemon thread with a 5 s timeout —
+  it's an outbound HTTP client, not an inbound surface, but report:
+  payloads containing operator secrets (token files, credentials) that the
+  telemetry layer accidentally surfaces; URL handling that could allow
+  redirect-to-internal-host scenarios; or the post-thread blocking the
+  render path despite the timeout guard.
 - **Button-D long-press shutdown.** Default command is
   `sudo -n shutdown -h now` and requires passwordless sudo. Report anything
   that lets a non-operator trigger shutdown, or any way the

@@ -65,8 +65,10 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 ### Runtime
 
+- `litclock_cli.py` - **unified `litclock <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `litclock` as a console script. Backwards-compatible — `python3 <script>.py` still works for every subcommand.
 - `run_clock.py` - long-running clock loop, bucket-change refresh logic, optional display handoff
 - `runtime_*.py` - the seven siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` (architecture in [`CLAUDE.md`](CLAUDE.md))
+- `runtime_webhook.py` - v2 alert-firehose: posts alert-worthy telemetry events to an operator-configured HTTP endpoint on a daemon thread (errors, backoff, timeouts, button-died); never blocks the render path
 - `render_quote.py` - quote renderer, typography, highlighting, theme handling, Spectra 6 palette snapping
 - `pick_quote.py` - runtime quote selection from the attributed dataset
 - `display_inky.py` - thin bridge that sends a rendered image to the Inky display
@@ -77,13 +79,14 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 - `atomic_io.py` - shared atomic-write primitive (tmp → fsync → rename → fsync dir) used by every file the next tick reads
 - `pidfile.py` - single-instance `fcntl.flock` pidfile so overlapping `systemctl restart` cycles can't race
 - `sd_notify.py` - pure-stdlib systemd `READY=1` / `WATCHDOG=1` client; no-op when `$NOTIFY_SOCKET` is unset
-- `web_server.py` + `web/` - optional local curator UI (off by default; enable with `--web-bind`)
+- `web_server.py` + `web/` - optional local curator UI (off by default; enable with `--web-bind`). v2 adds full corpus search, per-row content overrides editor, in-UI re-bake, side-by-side theme preview, gap finder, first-run wizard, Prometheus `/metrics`, mobile-first four-tab layout
 
 ### Runtime assets
 
 - `assets/quote_database.jsonl` - **baked, display-ready runtime DB** (what the clock reads by default; produced by `bake_quote_database.py`)
-- `assets/candidates-attributed.jsonl` - raw attributed corpus (baker input; curator-UI bucket inspector; defensive fallback if the baked DB is missing)
-- `assets/selection_overrides.json` - selection tweaks/overrides used at runtime (bans, boosts, preferred buckets; editable via the curator UI)
+- `assets/candidates-attributed.jsonl` - raw attributed corpus (baker input; curator-UI bucket inspector + full-text search; defensive fallback if the baked DB is missing)
+- `assets/selection_overrides.json` - selection tweaks/overrides used at runtime (bans, boosts, preferred buckets, **per-row bans via `ban_quote_keys` (v2)**; editable via the curator UI)
+- `assets/content_overrides.json` - per-row hand fixes layered onto the corpus at bake time; editable from the curator UI (v2) followed by `POST /api/bake` to make the edits visible
 - `assets/goodnight.png` - pre-rendered dark-theme "good night" frame shown during quiet hours
 - `assets/preview.png` - README preview image
 
@@ -111,6 +114,7 @@ The full pipeline order is documented in [Build pipeline notes](#build-pipeline-
 - `litclock.service.example` - example systemd service for Pi deployment
 - `pi_setup_inky_impression.md` - Pi setup notes
 - `bootstrap_pi_inky.sh` - helper bootstrap script for Pi setup
+- `Dockerfile` + `.dockerignore` - v2 multi-stage OCI build (ARM64-first, Pi-runtime extra not bundled). `docker buildx build --platform linux/arm64,linux/amd64 -t litclock:2.0 .`
 - `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` - process and policy docs
 - `FOLLOWUPS.md` - deferred-work list (carved out of larger PRs to keep them focused)
 
@@ -120,10 +124,10 @@ For normal runtime use, the clock expects prebuilt assets and does **not** need 
 
 | Path | Role | Committed | Ships to Pi | Produced by |
 |---|---|---|---|---|
-| `assets/quote_database.jsonl` | **baked display-ready DB — the runtime picker reads this** | yes | yes | `bake_quote_database.py` |
+| `assets/quote_database.jsonl` | **baked display-ready DB — the runtime picker reads this** | yes | yes | `bake_quote_database.py` (CLI or web UI `POST /api/bake`) |
 | `assets/candidates-attributed.jsonl` | raw attributed corpus | yes | yes (baker input + curator UI + fallback) | `enrich_metadata.py` → `apply_content_overrides.py` |
-| `assets/content_overrides.json` | per-row hand fixes (source-of-truth) | yes | no (build-time only) | hand-edited |
-| `assets/selection_overrides.json` | bans / boosts / preferred buckets (runtime-editable) | yes | yes | hand-edited or web UI |
+| `assets/content_overrides.json` | per-row hand fixes (source-of-truth) | yes | no (build-time only) | hand-edited or web UI `POST /api/content-overrides` |
+| `assets/selection_overrides.json` | bans / boosts / preferred buckets / per-row bans (runtime-editable) | yes | yes | hand-edited or web UI `POST /api/overrides` |
 | `assets/bucket-coverage.{json,md}` | coverage snapshot | yes | optional | `bucket_coverage.py` |
 | `~/.litclock/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
 | `~/.litclock/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
@@ -145,6 +149,26 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
+### The `litclock` CLI (v2)
+
+After `pip install -e .` the project ships a single `litclock` command
+that dispatches to every script in the repo:
+
+```bash
+litclock --help                          # list every subcommand
+litclock run --display-script display_inky.py
+litclock render --time 14:30
+litclock pick --bucket h3_half_past
+litclock health --hours 24 --json
+litclock bake
+litclock contact-sheet --output output/contact-sheet.png
+```
+
+`litclock <sub> --help` forwards to the backing script's argparse so the
+flag list is identical to `python3 <sub>.py --help`. The umbrella CLI is
+purely additive — every `python3 <script>.py` invocation in the rest of
+this doc continues to work unchanged.
+
 ### Render once locally (smoke test)
 
 Zero-setup sanity check — renders one frame using argparse defaults and
@@ -152,6 +176,8 @@ writes it to `output/current.png`:
 
 ```bash
 python3 run_clock.py --once
+# or, with the unified CLI (v2):
+litclock run --once
 ```
 
 ### Set up the config file
@@ -365,30 +391,60 @@ Browsers can still `GET` the UI without credentials (telemetry, coverage, `curre
 
 **How to tell it's working.** `journalctl -u litclock.service -n 20` should show a line like `web UI listening on 127.0.0.1:8080 (no token)` (or `(token required)` on a LAN bind). If the bind fails (port busy, missing token on a non-loopback bind) the main render loop keeps running and logs `web UI failed to start on …` — the panel won't go dark just because the web UI couldn't start.
 
-The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. When you open it you get:
+The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. **v2 reorganises it into a mobile-first four-tab layout** (Now / Curate / Coverage / Activity) with 44px tap targets and breakpoints at 768px (tablet) and 1024px (desktop), so the same UI works equally well from a phone-on-the-counter and a laptop. Tab state is kept in `location.hash` so a bookmark like `litclock.local#curate` jumps straight to the editor.
 
-- **Now showing** — live preview of `output/current.png`, the picked quote text, its attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
-- **Controls** — five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a **theme dropdown** that jumps directly to any registered theme without stepping through the cycle. Each press returns `{ok: true}` or `{ok: false, error: "busy"}` and is appended to a small in-browser action log. A state pill next to the dropdown reports `manual: X` / `auto: X` / `fixed: X` so operators can see at a glance whether wall-clock switching is active.
-- **Telemetry** — renders / errors / p50 / p95 latencies over the last 24h, reading the same date-rotated sidecar that `litclock_health.py` does.
-- **Coverage grid** — 144 bucket cells coloured by corpus depth (from `assets/bucket-coverage.json`); click-through feeds the inspector.
-- **Bucket inspector** — ranked candidate list for any bucket (or `HH:MM`), with every scorer component named so you can see *why* a different quote was not picked.
-- **Overrides editor** — edits `assets/selection_overrides.json` inline; the server validates and atomically rewrites the file, rejecting bad bucket keys with 400.
-- **History** — the anti-repeat ledger, newest first.
+#### First-run wizard (v2)
 
-The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, quiet, re-render, overrides save) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
+A modal overlay appears on the very first visit to a fresh appliance: pick a theme from a thumbnail grid (each tile is a live `/api/preview` PNG of the current quote in that theme), confirm the configured quiet hours, dismiss. Choices are persisted to `state.json` so the wizard never reappears. Nothing about the clock loop changes — it's the discovery surface for knobs that were already CLI-configurable.
+
+#### Tab: Now
+
+- Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
+- Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
+- **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
+- Theme thumbnail grid: side-by-side previews of all ten registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
+
+#### Tab: Curate
+
+- **Corpus search** (v2): full-text + author + title + bucket filters. Linear stdlib scan over the raw attributed corpus (~3K rows, <50 ms). Reads the raw corpus, not the baked DB, so an operator looking for "where did this quote go?" can find rows the baker dropped (low quality / daypart-only) and see why they're not appearing.
+- **Bucket inspector**: ranked candidate list for any bucket (or `HH:MM`), with every scorer component named so you can see *why* a different quote was not picked. Each candidate has its own "Ban this quote" button.
+- **Selection-overrides editor**: edits `assets/selection_overrides.json` inline; server validates (rejects bad bucket keys, malformed `ban_quote_keys` entries) and atomically rewrites.
+- **Content-overrides editor (v2)**: edits `assets/content_overrides.json` — the per-row content sidecar applied at bake time. Strict per-field validation; allowed fields match `apply_content_overrides.ALLOWED_FIELDS` exactly.
+- **Bake now (v2)**: re-runs `bake_quote_database.bake_rows` in-process, re-applying the content-overrides sidecar first so a "edit row → save → bake" flow drops new excerpts onto the panel within seconds. Held under `render_lock`; returns 409 (busy) if a render is in flight.
+
+#### Tab: Coverage
+
+- 144-cell bucket grid coloured by corpus depth; click-through feeds the inspector.
+- **Bucket gap finder (v2)**: empty/sparse buckets surfaced with phrase suggestions lifted from `target_sparse_buckets.STATE_TEMPLATES`, so the suggested phrases match what the targeted-mining CLI would actually look for. Adjustable threshold; sorted emptiest-first.
+
+#### Tab: Activity
+
+- Telemetry: renders / errors / p50 / p95 latencies over the last 24 h, reading the same date-rotated sidecar that `litclock_health.py` does.
+- History: the anti-repeat ledger, newest first.
+
+The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, quiet, re-render, overrides save, bake) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /` | Curator HTML/JS/CSS |
+| `GET /` | Curator HTML/JS/CSS (mobile-first four-tab layout) |
 | `GET /current.png` | Streams the current rendered frame |
+| `GET /metrics` | **v2** — Prometheus text-exposition format over a 24 h window (renders / errors / heartbeats / actions / latency p50+p95 / `last_heartbeat_age_seconds`). Unauthed on every bind. |
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
 | `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `litclock_health`) |
 | `GET /api/coverage` | The 144-bucket coverage snapshot from `assets/bucket-coverage.json` |
+| `GET /api/gaps?threshold=N` | **v2** — empty/sparse buckets with harvester phrase suggestions |
 | `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
 | `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |
-| `GET /api/overrides` | Current `assets/selection_overrides.json` |
+| `GET /api/search?q=&author=&title=&bucket=&limit=N` | **v2** — linear-scan full-text search over the raw corpus |
+| `GET /api/preview?theme=&time=HH:MM&width=&height=` | **v2** — render the current quote as PNG bytes in any theme (history disabled for determinism); side-effect-free |
+| `GET /api/overrides` | Current `assets/selection_overrides.json` (now includes `ban_quote_keys`) |
+| `GET /api/content-overrides` | **v2** — current `assets/content_overrides.json` (fail-open on corrupt sidecar) |
+| `GET /api/setup` | **v2** — first-run wizard status + the values it shows (themes, quiet hours) |
 | `GET /api/history?limit=N` | Recent anti-repeat ledger entries |
-| `POST /api/overrides` | Validate + atomically rewrite overrides |
+| `POST /api/overrides` | Validate + atomically rewrite selection overrides (now accepts `ban_quote_keys`) |
+| `POST /api/content-overrides` | **v2** — validate + atomically rewrite the per-row content sidecar; empty `{}` is a legitimate "wipe everything" |
+| `POST /api/bake` | **v2** — re-run `bake_quote_database.bake_rows` in-process under `render_lock`; re-applies the content-overrides sidecar first so save → bake reflects on the next tick. 409 when busy. |
+| `POST /api/setup` | **v2** — mark first-run wizard complete; optional `{"theme": "<name>"}` body applies a theme before dismissing |
 | `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field cycles. Malformed JSON returns 400 without mutating state. |
 
 Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-LitClock-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
@@ -590,6 +646,9 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
 - If the Inky button listener dies mid-run (pin claim lost, background thread failed), the loop logs one loud warning plus a telemetry entry with `mode=buttons_dead` and stops retrying — restart the process to reclaim the pins.
 - The optional curator web UI (`--web-bind`) runs in-process on a daemon thread and shares the render lock with the button handlers; it's the safe remote alternative to SSHing in to tap the panel or edit `selection_overrides.json` by hand. LAN binds require `--web-token` / `--web-token-file`.
+- **Webhook notifications (v2):** `--webhook-url <url>` posts a JSON body for each alert-worthy telemetry event (errors, backoff, render/display/shutdown timeouts, button-died, state-validation issues, web-auth failures). Heartbeats and successful renders are always filtered (alerting once a minute is spam, not signal). Best-effort: dispatched on a daemon thread with a 5 s timeout, failures log but never block the render path. Pass `--webhook-all-events` to widen the filter.
+- **Prometheus `/metrics` (v2):** the curator UI exposes a standard text-exposition endpoint over a fixed 24 h window. Reuses the same `litclock_health.summarise` aggregation as `litclock-health --json`, so the values match exactly. Stays open without auth on every bind so a Prometheus scraper on the LAN can hit it without managing a token.
+- **OCI container (v2):** `Dockerfile` provides a multi-stage build (ARM64-first) so the appliance can ship as a container instead of a git clone. Run with `docker run --rm -p 8080:8080 -v litclock-state:/state litclock:2.0 litclock run --buttons-off --skip-preflight --web-bind 0.0.0.0:8080 --state-path /state/state.json --history-path /state/history.jsonl --telemetry-path /state/telemetry.jsonl --pidfile /state/run_clock.pid` for a headless dev instance. The Pi-only `[pi]` extra (`gpiozero` / `inky`) is *not* installed by default — that's a Pi-runtime concern.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.
