@@ -240,8 +240,8 @@ The canonical runtime input is **`assets/quote_database.jsonl`** — the baked, 
 |---|---|---|---|---|
 | `assets/quote_database.jsonl` | **baked display-ready DB — the runtime picker reads this** | yes | yes | `bake_quote_database.py` |
 | `assets/candidates-attributed.jsonl` | raw attributed corpus | yes | yes (baker input + curator UI + fallback) | `enrich_metadata.py` → `apply_content_overrides.py` |
-| `assets/content_overrides.json` | per-row hand fixes (source-of-truth) | yes | no (build-time only) | hand-edited |
-| `assets/selection_overrides.json` | bans / boosts / preferred buckets (runtime-editable) | yes | yes | hand-edited or web UI `POST /api/overrides` |
+| `assets/content_overrides.json` | per-row hand fixes (source-of-truth) | yes | no (build-time only) | hand-edited or web UI `POST /api/content-overrides` (followed by `POST /api/bake`) |
+| `assets/selection_overrides.json` | bans / boosts / preferred buckets / per-row bans (runtime-editable) | yes | yes | hand-edited or web UI `POST /api/overrides` |
 | `assets/bucket-coverage.{json,md}` | coverage snapshot | yes | optional | `bucket_coverage.py` |
 | `~/.litclock/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
 | `~/.litclock/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
@@ -362,6 +362,8 @@ Allowed override fields: `display_quote`, `matched_text`, `author`, `title`, `qu
 
 **Soft discipline:** if you find yourself overriding more than a handful of rows for the same reason, that's a signal the upstream stage has a bug — push the fix into the miner / cleaner / quality filter rather than accumulating per-row patches.
 
+**Curator UI editing.** As of v2 the sidecar is editable from the web UI via `GET /api/content-overrides` (returns the raw dict) and `POST /api/content-overrides` (validated atomic rewrite). The UI's "Bake now" button (`POST /api/bake`) runs `bake_quote_database.bake_rows` in-process so a save-then-bake round-trip drops the new excerpts onto the panel within seconds without an SSH session. Validation rejects unknown fields and bad key shapes with a 400; the same `apply_content_overrides.ALLOWED_FIELDS` set is the single source of truth.
+
 **Legacy fix scripts.** `fix_substring_time_matches.py` and `fix_legacy_buckets.py` are retained as one-shot migration tools for corpus rows harvested by earlier miner revisions (the miner now collapses `matched_text` whitespace and the shared `buckets.py` prevents legacy 8-state names). Fresh mines should make them no-ops; see each script's docstring.
 
 ### Baked Quote Database (`assets/quote_database.jsonl`)
@@ -424,11 +426,14 @@ A small editable JSON doc consulted by `pick_quote.py` (its default `--overrides
 {
   "ban_source_ids": [],        // source_ids excluded entirely
   "boost_source_ids": [],      // −3 in the ranking tuple
-  "preferred_buckets": {}      // { "h3_late_past": 12345 } → that source_id wins in that bucket (−5)
+  "preferred_buckets": {},     // { "h3_late_past": 12345 } → that source_id wins in that bucket (−5)
+  "ban_quote_keys": []         // ["141:482", ...] — per-row permanent bans (v2)
 }
 ```
 
 IDs are compared as strings. Edit this file rather than editing the scorer when you want to manually curate a specific bucket. `pick_quote.load_overrides` warns on stderr if any `preferred_buckets` key is not a valid `h{1..12}_{state}` bucket, so typos surface loudly instead of silently never firing.
+
+**Per-row bans (`ban_quote_keys`, v2).** `ban_source_ids` blacklists every row from a Gutenberg ID — coarse but useful for "this whole book is unsuitable." `ban_quote_keys` is the fine-grained companion: a list of `"<source_id>:<line_number>"` strings, each dropping exactly one row from the candidate pool. Powers the curator UI's "Ban this quote" buttons (Now tab, bucket inspector, search results) so an operator can blacklist a single bad quote without nuking the rest of its source. `pick_quote.is_banned` checks both lists; the per-row check requires both `source_id` and `line_number` to be set on the row, so a malformed row can't be accidentally banned by a list entry. `load_overrides` defaults the field on legacy v1 sidecars so the rest of the picker doesn't have to special-case its absence. `web_server.validate_overrides_payload` enforces the same `<source_id>:<line_number>` regex shape as the content-overrides keys (`CONTENT_OVERRIDE_KEY_RE`).
 
 ### Anti-Repeat History Ledger
 
@@ -628,7 +633,7 @@ Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the pa
 
 ### Curator Web UI (`web_server.py`, `web/`)
 
-Optional in-process HTTP surface for browsing telemetry/coverage/candidates and curating `selection_overrides.json` without SSHing into the appliance. **Off by default** — only starts when `run_clock.py --web-bind HOST:PORT` is passed. Served from a `ThreadingHTTPServer` on a daemon background thread so the main render loop doesn't share an event loop with HTTP, but the two threads share `state.render_lock` / `state.lock` / `state.ledger_lock` via the same `RuntimeState` instance. **In-process is non-negotiable**: every mutating POST routes through the same `_button_render_gate` (non-blocking `render_lock.acquire`) that GPIO button handlers use, and atomic state/override writes are only safe when one process owns the file.
+Optional in-process HTTP surface for browsing telemetry / coverage / candidates and curating the corpus end-to-end without SSHing into the appliance. As of v2 the UI is the full curation seat: it edits both override sidecars, re-bakes the runtime database, runs full-text search across the corpus, renders side-by-side theme previews, and surfaces empty/sparse buckets with phrase suggestions for the harvester. **Off by default** — only starts when `run_clock.py --web-bind HOST:PORT` is passed. Served from a `ThreadingHTTPServer` on a daemon background thread so the main render loop doesn't share an event loop with HTTP, but the two threads share `state.render_lock` / `state.lock` / `state.ledger_lock` via the same `RuntimeState` instance. **In-process is non-negotiable**: every mutating POST routes through the same `_button_render_gate` (non-blocking `render_lock.acquire`) that GPIO button handlers use, and atomic state/override writes are only safe when one process owns the file.
 
 **Lifecycle.** `run_clock._maybe_start_web_server(args, state)` runs after `_maybe_start_buttons`, imports `web_server` lazily (so unit tests and `--buttons-off` dev hosts never pay for it), and calls `web_server.start_web_server(args, state, token=...)`. The `(server, thread)` handle is stashed so `stop_web_server` can be called by tests for deterministic teardown; the daemon thread flag means the process's own exit tears it down automatically under systemd. A startup failure (malformed bind, port busy, missing token on non-localhost bind) is **logged but not fatal** — the panel keeps rendering.
 
@@ -637,17 +642,38 @@ Optional in-process HTTP surface for browsing telemetry/coverage/candidates and 
 **Endpoints.**
 
 ```
+# Static
 GET  /                                → web/index.html
 GET  /main.js, /style.css             → web/main.js, web/style.css
 GET  /current.png                     → streams output/current.png
+
+# State + telemetry (read-only)
 GET  /api/current                     → {time, bucket, theme, source_id, line_number, ...}
 GET  /api/telemetry?hours=24          → {render_count, error_count, p50/p95 latencies, last_error}
 GET  /api/coverage                    → assets/bucket-coverage.json payload
 GET  /api/themes                      → {themes: [...THEME_ORDER], theme_arg, manual_theme, effective}
-GET  /api/bucket/<bucket>?time=HH:MM&top=N → ranked candidates with named score components
-GET  /api/overrides                   → assets/selection_overrides.json
 GET  /api/history?limit=N             → anti-repeat ledger entries, newest-first
-POST /api/overrides                   → validate + atomic rewrite
+
+# Curation (read)
+GET  /api/bucket/<bucket>?time=HH:MM&top=N → ranked candidates with named score components
+GET  /api/overrides                   → assets/selection_overrides.json (defaults ban_quote_keys=[])
+GET  /api/content-overrides           → assets/content_overrides.json (v2; fail-open on corrupt file)
+GET  /api/search?q=&author=&title=&bucket=&limit=N
+                                      → linear-scan search across the raw corpus (v2)
+GET  /api/gaps?threshold=N            → empty / sparse buckets + phrase suggestions
+                                          from target_sparse_buckets.STATE_TEMPLATES (v2)
+GET  /api/preview?theme=&time=HH:MM&width=&height=&mode=
+                                      → image/png of the picker's pick rendered in any theme,
+                                          history disabled for determinism (v2)
+
+# Curation (write)
+POST /api/overrides                   → validate + atomic rewrite (now accepts ban_quote_keys)
+POST /api/content-overrides           → validate + atomic rewrite of the per-row sidecar (v2);
+                                          empty {} is a legitimate "wipe everything"
+POST /api/bake                        → run bake_quote_database.bake_rows in-process under
+                                          render_lock; re-applies the content-overrides sidecar
+                                          first so save → bake reflects on the next tick (v2);
+                                          409 when busy
 POST /api/action/{skip,unskip,theme,quiet,rerender} → mirror physical buttons
      (theme accepts optional {"theme": "<name>"} body to jump directly;
       empty body / missing field advances one step through THEME_ORDER)
@@ -665,9 +691,17 @@ POST /api/action/{skip,unskip,theme,quiet,rerender} → mirror physical buttons
 
 **Static assets.** `web/index.html` + `web/main.js` + `web/style.css` are plain HTML/JS/CSS, **no build step** and no framework. Resolved via `BASE_DIR / "web"` so the service file doesn't depend on CWD. `main.js` polls `/api/current`, `/api/telemetry`, and `/api/themes` every 30s; the coverage grid and overrides editor load once and refresh on click. The theme dropdown rebuild skips when it has keyboard/mouse focus so a polled refresh can't clobber an open selection, and the theme-state pill distinguishes three runtime shapes: `manual: X` (override active), `auto: X` (wall-clock-derived), and `fixed: X` (explicit `--theme X` pin with no manual override).
 
+**Mobile-first layout (v2).** The UI is organised as four tabs — **Now** (preview + button mirrors + theme thumbnail grid), **Curate** (search, bucket inspector, dual-sidecar editors, bake button), **Coverage** (12×12 grid + gap finder), **Activity** (telemetry + history). CSS is mobile-first with two breakpoints (768px tablet widens form rows, 1024px desktop puts the Now tab into a two-column layout); buttons and inputs honour the iOS HIG 44px minimum tap target so a phone-on-the-counter operator can curate without zooming. Tabs are kept in `location.hash` so a bookmark like `litclock.local#curate` jumps straight to the editor. Lazy loads: content-overrides + the gap finder + the theme preview grid are only fetched on first activation of their tab — first paint stays snappy on slow phones over LAN. The four tab-state booleans live on a module-level `state` object; tab switches don't re-fetch the same data.
+
 **No-op guard on `action_theme`.** The web dropdown pre-selects the active theme, so a "click Apply without changing anything" would otherwise burn a 10–20 s Spectra 6 refresh. Worse, if `manual_theme` was `None` (because `--theme auto` is running) and the target equals the auto-resolved value, setting `state.manual_theme = target` would silently pin auto mode off until the next midnight reset. `action_theme` returns `{"ok": True, "noop": True}` without mutating state when `target is not None and target == current_effective`. The button-B cycle path (`target is None`) deliberately bypasses the guard so it always advances.
 
-**Scope boundary — what the curator UI doesn't (yet) edit.** `POST /api/overrides` writes `assets/selection_overrides.json` (source-level bans/boosts/preferred buckets). It does **not** edit `assets/content_overrides.json` — the per-row content sidecar applied by `apply_content_overrides.py` at corpus-build time is still SSH-and-editor-only, because its fixes have to be re-applied through the pipeline rather than picked up at next render. A UI editor for per-`(source_id, line_number)` content patches (and a separate "permanent ban this exact row" action) is the natural v2.1 extension — `/api/bucket/<bucket>` already surfaces the `source_id:line_number` key that the sidecar is keyed on.
+**v2 closes the v2.1 carve-out.** The earlier scope boundary — "the curator UI doesn't edit `content_overrides.json`, and there's no way to ban a single row" — is gone. `POST /api/content-overrides` writes the per-row sidecar; `POST /api/bake` re-runs the baker in-process so the runtime picker sees the patched rows on the very next tick (no SSH session, no separate CLI step). Per-row bans land on the same flow: `ban_quote_keys` on the selection-overrides sidecar drops a single `(source_id, line_number)` row, and the UI's "Ban this quote" buttons (Now tab, bucket inspector, search results) read-modify-write the sidecar through the existing `POST /api/overrides`.
+
+**v2 search and gap-finder.** `GET /api/search` is a stdlib linear scan across the raw corpus (~3K rows, <50 ms) supporting `q` / `author` / `title` / `bucket` filters in any combination — at least one is required, all are case-insensitive substring. Hard-caps `limit` at 500 to bound response sizes. Reads the raw corpus (not the baked DB) on purpose so an operator searching for "where did that quote go?" can find rows the baker dropped (low quality / daypart-only) and understand why they're not appearing. `GET /api/gaps` reads `assets/bucket-coverage.json` and joins each below-threshold bucket against `target_sparse_buckets.STATE_TEMPLATES`, so the suggested phrases match what `target_sparse_buckets.py --search-dir data/gutenberg` would actually look for if invoked from the CLI.
+
+**Theme preview endpoint.** `GET /api/preview?theme=...&time=HH:MM` calls `pick_quote.select_quote` (history disabled for determinism), feeds the result into `render_quote.render`, and streams the PNG bytes back. The Now tab's theme thumbnail grid issues one request per registered theme so an operator can compare all ten themes side-by-side on the actual current quote before applying. Width/height are clamped to `1600×960` so a hostile/buggy client can't request a multi-GB allocation. Does not touch the panel and never commits to `state` — preview is intentionally side-effect-free.
+
+**`POST /api/bake` semantics.** Runs `bake_quote_database.bake_rows` in-process; non-blocking acquire of `render_lock` returns 409 (busy) when a render is already in flight rather than queueing behind a 10–20 s Spectra 6 refresh. Re-applies `assets/content_overrides.json` to the raw corpus *before* baking so a UI workflow of "edit row → save → bake" round-trips edits onto the panel within seconds. The runtime picker reads the baked DB from disk on every `select_quote` call (it goes through `_resolve_corpus`), so no in-memory cache invalidation is needed — the next tick picks up the new file automatically. Stats are returned in the response (`kept` / `input` / `applied_overrides` / `drops` / `per_bucket`) so the UI can render an operator-readable summary.
 
 ### Appliance / Pi Setup
 
@@ -742,7 +776,7 @@ inky_buttons.py                    Pi-only gpiozero button listener (A/B/C/D →
 probe_buttons.py                   Pi-only GPIO press probe — confirms which pin each physical button actually fires
 litclock_health.py                 telemetry summariser (render count, p50/p95 latency, last error; reads date-rotated sidecar)
 web_server.py                      optional curator HTTP UI (off by default, --web-bind to enable; shares render_lock with button handlers)
-web/                               vanilla HTML/JS/CSS served by web_server (index.html, main.js, style.css — no build step)
+web/                               vanilla HTML/JS/CSS served by web_server (index.html, main.js, style.css — no build step; mobile-first, four-tab layout: Now / Curate / Coverage / Activity)
 bootstrap_pi_inky.sh               first-time Pi setup helper
 litclock.service.example           sample systemd unit
 pi_setup_inky_impression.md        long-form Pi setup doc
