@@ -3,6 +3,24 @@
 // entirely on the server side and is only required for LAN binds (see README).
 
 const $ = (id) => document.getElementById(id);
+
+// Token storage. Loopback binds need no token (server ignores the header);
+// LAN binds reject every POST with 401 unless `X-LitClock-Token` matches the
+// configured value. We persist the operator's token in localStorage so a
+// page reload doesn't re-prompt, and reactively recover from 401 by asking
+// the operator to paste the current token. No token is ever embedded in
+// the served HTML — that would leak it into shoulder-surf and HTTP caches.
+const TOKEN_KEY = "litclock.web.token";
+const getToken = () => {
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+};
+const setToken = (value) => {
+  try {
+    if (value) localStorage.setItem(TOKEN_KEY, value);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* localStorage may be disabled; degrade silently */ }
+};
+
 const log = (msg, cls = "") => {
   const el = $("action-log");
   if (!el) return;
@@ -13,14 +31,42 @@ const log = (msg, cls = "") => {
   while (el.children.length > 8) el.removeChild(el.lastChild);
 };
 
-async function jsonFetch(url, opts = {}) {
-  const resp = await fetch(url, opts);
+async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
+  const headers = { ...(opts.headers || {}) };
+  const token = getToken();
+  if (token) headers["X-LitClock-Token"] = token;
+  const resp = await fetch(url, { ...opts, headers });
   const text = await resp.text();
   let data = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = { error: text }; }
   }
+  // 401 recovery: prompt for the token, store it, and retry once. Loopback
+  // binds never 401 (server ignores tokens), so this only fires on LAN
+  // deployments where the operator must supply the configured value.
+  if (resp.status === 401 && retryAfterAuth) {
+    const entered = promptForToken();
+    if (entered) {
+      return jsonFetch(url, opts, false);
+    }
+  }
   return { status: resp.status, ok: resp.ok, data };
+}
+
+function promptForToken() {
+  // Browser prompt is intentionally minimal — operators don't need a fancy
+  // modal for a one-time token paste. The README's LAN deploy section
+  // documents that they'll be asked. Returning the trimmed value (or "")
+  // lets the caller decide whether to retry the failed request.
+  const value = window.prompt(
+    "This LitClock instance requires a token for write operations.\n" +
+    "Paste the contents of --web-token-file:",
+    "",
+  );
+  if (value == null) return "";
+  const trimmed = value.trim();
+  if (trimmed) setToken(trimmed);
+  return trimmed;
 }
 
 const escapeHtml = (s) =>

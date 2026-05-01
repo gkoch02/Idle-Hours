@@ -28,6 +28,24 @@ litclock = "litclock_cli:main"
 # tests/test_packaging.py::test_py_modules_covers_top_level_modules enforces
 # the invariant — a module that exists on disk but is missing here will
 # silently break ``pip install .`` (the installed wheel won't contain it).
+#
+# **Known limitation (v2):** the wheel currently ships ONLY the Python
+# modules below — not the static assets in ``web/``, ``assets/``, or
+# ``fonts/``. ``pip install litclock`` (without ``-e`` and without Docker)
+# produces a CLI that 404s the curator UI, can't find bundled fonts, and
+# can't find the prebuilt corpus. Workable installation paths today:
+#
+# * ``pip install -e .`` from a git checkout (assets resolve via
+#   ``BASE_DIR = Path(__file__).resolve().parent``).
+# * The bundled ``Dockerfile`` (multi-stage build that COPYs assets next
+#   to the installed wheel inside the container).
+#
+# A proper fix requires moving ``web/`` / ``assets/`` / ``fonts/`` inside
+# a real ``litclock/`` package directory and declaring them via
+# ``[tool.setuptools.package-data]`` — that's tracked as a follow-up
+# in FOLLOWUPS.md. Until then, ``run_clock`` runs a startup guard that
+# fails loudly if the baked corpus is missing so a wheel-install operator
+# sees the breakage at first run rather than at first render.
 py-modules = [
     "apply_content_overrides",
     "atomic_io",

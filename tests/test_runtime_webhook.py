@@ -26,8 +26,17 @@ import runtime_webhook
 def _reset_webhook_config():
     """Each test runs against a clean global config — leaking config between
     tests is exactly the kind of cross-test pollution the autouse fixture
-    prevents."""
+    prevents.
+
+    Also resets the in-flight semaphore: a test that exercises the
+    concurrency cap might leave permits acquired if a thread leak occurs;
+    re-creating the semaphore between tests guarantees a known starting
+    state regardless of leftovers.
+    """
     runtime_webhook.configure(None, all_events=False)
+    runtime_webhook._inflight_semaphore = threading.BoundedSemaphore(
+        runtime_webhook._WEBHOOK_MAX_INFLIGHT,
+    )
     yield
     runtime_webhook.configure(None, all_events=False)
 
@@ -225,3 +234,147 @@ class TestPostBlocking:
         runtime_webhook._post_blocking("https://x.test/h", {"obj": object()}, 5.0)
         err = capsys.readouterr().err
         assert "webhook" in err and "JSON" in err
+
+
+class TestUrlSchemeValidation:
+    """``configure`` rejects URL schemes other than http/https.
+
+    Without this guard, an operator typo (``--webhook-url file:///tmp/x``)
+    would be accepted at startup and silently fail per-event in the log;
+    worse, ``urllib.urlopen`` is happy to read/write to those schemes.
+    """
+
+    def test_http_url_accepted(self):
+        runtime_webhook.configure("http://example.test/hook")
+        url, _ = runtime_webhook.get_config()
+        assert url == "http://example.test/hook"
+
+    def test_https_url_accepted(self):
+        runtime_webhook.configure("https://example.test/hook")
+        url, _ = runtime_webhook.get_config()
+        assert url == "https://example.test/hook"
+
+    def test_file_url_rejected(self, capsys):
+        runtime_webhook.configure("file:///tmp/x")
+        url, _ = runtime_webhook.get_config()
+        assert url == ""
+        assert "refusing URL scheme" in capsys.readouterr().err
+
+    def test_ftp_url_rejected(self, capsys):
+        runtime_webhook.configure("ftp://example.test/hook")
+        url, _ = runtime_webhook.get_config()
+        assert url == ""
+        assert "refusing URL scheme" in capsys.readouterr().err
+
+    def test_data_url_rejected(self, capsys):
+        runtime_webhook.configure("data:text/plain,hello")
+        url, _ = runtime_webhook.get_config()
+        assert url == ""
+        assert "refusing URL scheme" in capsys.readouterr().err
+
+    def test_url_without_host_rejected(self, capsys):
+        """``http:///path`` parses as a valid scheme but no netloc — would
+        crash on send. Caught at configure time."""
+        runtime_webhook.configure("http:///no-host")
+        url, _ = runtime_webhook.get_config()
+        assert url == ""
+        assert "no host" in capsys.readouterr().err
+
+    def test_empty_url_disables_silently(self, capsys):
+        """Empty / None is the documented "disabled" sentinel — no warning."""
+        runtime_webhook.configure(None)
+        runtime_webhook.configure("")
+        runtime_webhook.configure("   ")
+        assert capsys.readouterr().err == ""
+
+
+class TestConcurrencyCap:
+    """A fault storm must not pile up unbounded daemon threads."""
+
+    def test_drops_event_when_at_cap(self, capsys):
+        """When :data:`_WEBHOOK_MAX_INFLIGHT` permits are held, additional
+        events drop with a log line instead of spawning fresh threads."""
+        # Acquire every permit so the next post_event finds the semaphore empty.
+        for _ in range(runtime_webhook._WEBHOOK_MAX_INFLIGHT):
+            assert runtime_webhook._inflight_semaphore.acquire(blocking=False)
+        try:
+            with patch("runtime_webhook._post_blocking") as blocking:
+                runtime_webhook.post_event(
+                    "https://x.test/h", {"error": "storm"},
+                )
+            blocking.assert_not_called()
+            assert "concurrency cap" in capsys.readouterr().err
+        finally:
+            # Release the permits we acquired so the autouse fixture's
+            # re-creation doesn't race anything.
+            for _ in range(runtime_webhook._WEBHOOK_MAX_INFLIGHT):
+                runtime_webhook._inflight_semaphore.release()
+
+    def test_releases_permit_after_post(self):
+        """After a post completes (success or failure), the permit goes back.
+        Otherwise a few errors would permanently exhaust the cap."""
+        completed = threading.Event()
+
+        def fake_blocking(url, entry, timeout):
+            completed.set()
+
+        with patch("runtime_webhook._post_blocking", side_effect=fake_blocking):
+            runtime_webhook.post_event("https://x.test/h", {"error": "x"})
+            assert completed.wait(timeout=2)
+        # Wait for the wrapper's finally to run — give the thread a moment
+        # to release after _post_blocking returns.
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            if runtime_webhook._inflight_semaphore.acquire(blocking=False):
+                runtime_webhook._inflight_semaphore.release()
+                return
+            time.sleep(0.01)
+        pytest.fail("permit was never released back to the semaphore")
+
+    def test_releases_permit_when_post_raises(self):
+        """If _post_blocking somehow raises through the try/except, the
+        permit must still be returned (defensive — _post_blocking already
+        swallows everything internally, but the wrapper's finally is the
+        safety net)."""
+        with patch("runtime_webhook._post_blocking", side_effect=RuntimeError("boom")):
+            runtime_webhook.post_event("https://x.test/h", {"error": "x"})
+        # Permit eventually returned.
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            if runtime_webhook._inflight_semaphore.acquire(blocking=False):
+                runtime_webhook._inflight_semaphore.release()
+                return
+            time.sleep(0.01)
+        pytest.fail("permit leaked on exception")
+
+
+class TestRenderEntryFloatHandling:
+    """``_is_render_entry`` must accept both int and float render_ms but
+    NOT bool, regardless of whether bool is technically a subclass of int."""
+
+    def test_int_render_ms_treated_as_render(self):
+        assert runtime_webhook._is_render_entry({"render_ms": 120})
+
+    def test_float_render_ms_treated_as_render(self):
+        """Future-proof: a perf-sensitive timer that returns floats must
+        not start spamming the webhook."""
+        assert runtime_webhook._is_render_entry({"render_ms": 119.5})
+
+    def test_bool_render_ms_not_treated_as_render(self):
+        """isinstance(True, int) is True in Python; the explicit bool
+        guard means a bogus render_ms=True doesn't masquerade as success
+        and accidentally suppress a real alert."""
+        assert not runtime_webhook._is_render_entry({"render_ms": True})
+
+    def test_missing_render_ms(self):
+        assert not runtime_webhook._is_render_entry({})
+
+    def test_none_render_ms(self):
+        assert not runtime_webhook._is_render_entry({"render_ms": None})
+
+    def test_alert_filter_skips_float_render(self):
+        """Integration: float render_ms passes through _is_alert as
+        a non-alert, both default and send_all paths."""
+        entry = {"render_ms": 119.5, "mode": "debug"}
+        assert not runtime_webhook._is_alert(entry, send_all=False)
+        assert not runtime_webhook._is_alert(entry, send_all=True)

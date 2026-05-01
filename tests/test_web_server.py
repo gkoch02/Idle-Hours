@@ -284,6 +284,33 @@ class TestReadEndpoints:
         assert css_status == 200
         assert b"jsonFetch" in js_body
 
+    def test_main_js_attaches_x_litclock_token_header(self, live_server):
+        """Regression guard for the LAN+token UX gap: the bundled UI must
+        attach ``X-LitClock-Token`` from localStorage to every fetch.
+        Without this header, every POST on a tokenised LAN bind 401s and
+        the documented operator workflow is unusable.
+
+        This is a JS source check rather than an integration test —
+        running an actual browser is out of scope for the test suite,
+        but a future regression that drops the header from main.js would
+        silently break LAN deployments and is worth pinning."""
+        server, _, _ = live_server
+        _, js_body = _get(server, "/main.js")
+        text = js_body.decode("utf-8")
+        # Sentinel strings — the implementation may evolve, but these
+        # invariants must hold:
+        assert "X-LitClock-Token" in text, (
+            "main.js no longer references the X-LitClock-Token header — "
+            "LAN+token deployments will break. See fix #1 in the v2 review."
+        )
+        assert "localStorage" in text, (
+            "main.js no longer persists the operator's token via localStorage — "
+            "every page reload would re-prompt for it."
+        )
+        # 401 recovery loop: verify the JS at least has the prompt-on-401
+        # path so a fresh visit can recover without a manual settings UI.
+        assert "401" in text and "promptForToken" in text
+
     def test_current_png_streams_file(self, tmp_path, live_server):
         server, _, args = live_server
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
@@ -1952,6 +1979,49 @@ class TestApiSetup:
         status, body = _get(server, "/api/setup")
         assert status == 200
         assert _json_body(body)["setup_complete"] is True
+
+    def test_post_does_not_complete_when_theme_apply_busy(self, live_server):
+        """If a render is in flight when the wizard tries to apply a theme,
+        ``action_theme`` returns ``error="busy"``. We must NOT flip
+        ``setup_complete`` — closing the wizard while the panel still shows
+        the old theme is confusing UX. Operator's next click retries."""
+        server, state, args = live_server
+        with patch("run_clock.action_theme", return_value={"ok": False, "error": "busy"}):
+            status, body = _post(server, "/api/setup", {"theme": "scholar"})
+        assert status == 409, _json_body(body)
+        data = _json_body(body)
+        assert data["setup_complete"] is False
+        assert data["applied_theme"]["error"] == "busy"
+        # In-memory flag must not have flipped.
+        with state.lock:
+            assert state.setup_complete is False
+        # state.json must not have a setup_complete=True written either.
+        if Path(args.state_path).exists():
+            on_disk = json.loads(Path(args.state_path).read_text(encoding="utf-8"))
+            assert on_disk.get("setup_complete", False) is False
+
+    def test_post_does_not_complete_when_theme_apply_5xx(self, live_server):
+        """Generic theme-handler exception → 500 + setup stays incomplete."""
+        server, state, _args = live_server
+        with patch("run_clock.action_theme",
+                   return_value={"ok": False, "error": "RuntimeError('boom')"}):
+            status, body = _post(server, "/api/setup", {"theme": "scholar"})
+        assert status == 500
+        data = _json_body(body)
+        assert data["setup_complete"] is False
+        with state.lock:
+            assert state.setup_complete is False
+
+    def test_post_persist_failure_does_not_block_in_memory_flip(self, live_server):
+        """If state.json write fails, we keep the in-memory flag flipped
+        for the current session and log. Operator can fix the disk later."""
+        server, state, _args = live_server
+        with patch("runtime_store.save_runtime_state", side_effect=OSError("disk full")):
+            status, body = _post(server, "/api/setup", {})
+        assert status == 200, _json_body(body)
+        assert _json_body(body)["setup_complete"] is True
+        with state.lock:
+            assert state.setup_complete is True
 
 
 # ============================================================================

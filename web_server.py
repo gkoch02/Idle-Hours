@@ -776,9 +776,32 @@ class CuratorHandler(BaseHTTPRequestHandler):
         Body shape: ``{"theme": "<name>"?}``. When ``theme`` is present the
         target is applied via the same ``run_clock.action_theme`` path the
         web dropdown uses, so the panel updates and ``manual_theme`` is
-        persisted. With or without a theme, ``setup_complete`` flips to
-        ``True`` and is persisted to ``state.json`` so the wizard doesn't
-        reappear on next page load.
+        persisted.
+
+        Failure handling:
+
+        * **Unknown theme** → 400, ``setup_complete`` stays False so the
+          wizard reappears with no state mutation.
+        * **Render in flight (``error: "busy"``)** → 409, ``setup_complete``
+          stays False. Re-flipping setup_complete=True without a successful
+          theme apply would close the wizard while the panel still shows
+          the old theme — confusing UX. The operator's next click will
+          retry once the in-flight render finishes.
+        * **Generic 5xx from action_theme** → 500, same rollback. Theme
+          handler errors are not the operator's problem to debug from a
+          wizard.
+        * **Persist failure (state.json write)** → log and swallow; the
+          in-memory flag stays True so the current session works. The
+          wizard will retry on next reload if state.json is genuinely
+          unwritable.
+
+        State-mutation discipline: the ``setup_complete`` flip and the
+        ``save_runtime_state`` call are both inside ``state.lock`` to
+        match the persist seams in ``runtime_actions.action_theme`` /
+        ``action_quiet``. Without this, a near-simultaneous button-press
+        snapshot taken between our flip and our save could persist a
+        ``setup_complete=False`` over our True, silently re-triggering
+        the wizard on next page load.
 
         Returns the same shape as ``GET /api/setup`` so the UI doesn't need
         a follow-up request to update its in-memory state.
@@ -801,20 +824,34 @@ class CuratorHandler(BaseHTTPRequestHandler):
                     HTTPStatus.BAD_REQUEST,
                     {"ok": False, "error": f"unknown theme {target_theme!r}"},
                 )
-            # If the render is in flight we still mark setup complete — the
-            # wizard's job is to dismiss itself, not to gate on a successful
-            # repaint. The operator can pick the theme again from the Now tab.
+            if not applied_theme.get("ok"):
+                # Theme apply failed (busy / handler exception). Don't
+                # silently flip setup_complete — the operator clicked a
+                # theme thumbnail expecting the panel to update, and
+                # closing the wizard now hides the failure.
+                status = HTTPStatus.CONFLICT if applied_theme.get("error") == "busy" else HTTPStatus.INTERNAL_SERVER_ERROR
+                return self._json(status, {
+                    "ok": False,
+                    "setup_complete": False,
+                    "applied_theme": applied_theme,
+                })
+        # Hold state.lock across both the in-memory flip AND the disk
+        # persist. The save_runtime_state call routes through atomic_io
+        # so it doesn't block long; serialising it against concurrent
+        # snapshotters (button presses, action_theme persists) is the
+        # only way to guarantee the wizard's flip lands durably.
         with ctx.state.lock:
             ctx.state.setup_complete = True
             snapshot = ctx.state.snapshot_for_persistence()
-        try:
-            from runtime_store import save_runtime_state
-            save_runtime_state(getattr(ctx.args, "state_path", None), snapshot)
-        except Exception as exc:  # noqa: BLE001
-            _log(f"web: setup_complete persist failed: {exc!r}", err=True)
-            # Don't fail the request — the in-memory flip is durable for the
-            # session, and the wizard will retry next reload if state.json
-            # is genuinely unwritable. Log so operators see it.
+            try:
+                from runtime_store import save_runtime_state
+                save_runtime_state(getattr(ctx.args, "state_path", None), snapshot)
+            except Exception as exc:  # noqa: BLE001
+                _log(f"web: setup_complete persist failed: {exc!r}", err=True)
+                # In-memory flip stays — the current session's UI no longer
+                # shows the wizard. Next process restart re-triggers it if
+                # state.json is genuinely unwritable; that's a separate,
+                # louder failure mode the operator will see in the journal.
         _log("web: first-run setup wizard dismissed")
         self._json(HTTPStatus.OK, {
             "ok": True,

@@ -3770,6 +3770,45 @@ class TestPreflightPaths:
         )
         assert run_clock._preflight_paths(args) == []
 
+    def test_corpus_assets_present_in_repo_checkout(self):
+        """The committed repo ships ``assets/quote_database.jsonl`` and the
+        raw corpus, so a default-args preflight in CI should not flag a
+        missing-corpus error. If this test fails, the repo's `assets/`
+        directory has drifted out of source control."""
+        errors = run_clock._preflight_paths(self._args())
+        corpus_errors = [e for e in errors if "corpus assets missing" in e]
+        assert corpus_errors == [], (
+            "Expected committed corpus assets to satisfy the preflight guard; "
+            f"got {corpus_errors}"
+        )
+
+    def test_corpus_missing_surfaces(self, tmp_path, monkeypatch):
+        """A wheel-only install (Python modules + no static assets) must
+        fail preflight with a clear pointer to the supported install paths."""
+        # Redirect BASE_DIR to a tmp dir with NO assets/ subdirectory so the
+        # corpus guard fires. The render_script default also lives under
+        # BASE_DIR so we have to write it first.
+        monkeypatch.setattr(run_clock, "BASE_DIR", tmp_path)
+        (tmp_path / "render_quote.py").write_text("")
+        errors = run_clock._preflight_paths(self._args())
+        corpus_errors = [e for e in errors if "corpus assets missing" in e]
+        assert len(corpus_errors) == 1
+        # Pointer to the supported install paths must be in the message so an
+        # operator hitting this for the first time knows what to do.
+        assert "pip install -e ." in corpus_errors[0]
+        assert "Dockerfile" in corpus_errors[0]
+
+    def test_corpus_check_passes_when_only_raw_corpus_exists(self, tmp_path, monkeypatch):
+        """The fallback path: an old install that has the raw corpus but no
+        baked DB still works (pick_quote falls back), so preflight allows it."""
+        monkeypatch.setattr(run_clock, "BASE_DIR", tmp_path)
+        (tmp_path / "render_quote.py").write_text("")
+        (tmp_path / "assets").mkdir()
+        (tmp_path / "assets" / "candidates-attributed.jsonl").write_text("")
+        errors = run_clock._preflight_paths(self._args())
+        corpus_errors = [e for e in errors if "corpus assets missing" in e]
+        assert corpus_errors == []
+
 
 class TestOnceSignalHandlers:
     """Issue #53: ``--once`` must install signal handlers so a mid-render
