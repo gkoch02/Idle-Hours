@@ -39,8 +39,12 @@ class RuntimeState:
         # to an effective render theme per-tick via ``resolve_effective_theme``.
         self.theme_arg = theme_arg
         # Button-B / web dropdown override, cleared at midnight when
-        # ``theme_arg == "auto"``. Any registered theme name or ``None``.
+        # ``theme_arg`` is ``"auto"`` or ``"random"``. Any registered theme name or ``None``.
         self.manual_theme: str | None = None
+        # Current theme for ``--theme random``; updated by the main loop when
+        # the displayed quote changes. Not persisted — a restart picks a fresh
+        # random theme on the first render.
+        self.current_random_theme: str | None = None
         self.manual_quiet = False             # toggled by button D
         self.last_bucket: str | None = None
         self.last_quote_id: tuple | None = None

@@ -54,6 +54,7 @@ from runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-ex
     _auto_theme_kwargs,
     _maybe_reset_manual_theme_at_midnight,
     auto_theme_for,
+    pick_random_theme,
     resolve_effective_theme,
 )
 
@@ -168,7 +169,7 @@ def parse_args() -> argparse.Namespace:
     ]
     parser.add_argument(
         "--theme",
-        choices=[*_theme_choices, "auto"],
+        choices=[*_theme_choices, "auto", "random"],
         default="default",
         help=(
             "Render theme passed through to render_quote.py. "
@@ -182,7 +183,8 @@ def parse_args() -> argparse.Namespace:
             "'nightvision' (black/green/yellow). 'auto' selects 'dark' between "
             "18:00 and 06:00 and 'default' otherwise — broaden the rotation via "
             "--auto-day-theme / --auto-night-theme. "
-            "Pressing button B cycles themes manually and overrides 'auto' until midnight."
+            "'random' picks a theme at random each time the displayed quote changes. "
+            "Pressing button B cycles themes manually and overrides 'auto'/'random' until midnight."
         ),
     )
     parser.add_argument(
@@ -603,7 +605,9 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
     instead of queuing behind it.
     """
     effective_theme = resolve_effective_theme(
-        state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+        state.theme_arg, time_str, state.manual_theme,
+        current_random_theme=state.current_random_theme,
+        **_auto_theme_kwargs(args),
     )
     actual_mode = mode or args.mode
     actual_bucket = bucket or bucket_for_time(time_str)
@@ -1283,8 +1287,12 @@ def main() -> int:
         once_state = RuntimeState(args.theme)
         _install_signal_handlers(once_state)
         time_str = current_time_str()
+        if args.theme == "random" and once_state.manual_theme is None:
+            once_state.current_random_theme = pick_random_theme()
         effective_theme = resolve_effective_theme(
-            args.theme, time_str, manual_theme=None, **_auto_theme_kwargs(args),
+            args.theme, time_str, manual_theme=None,
+            current_random_theme=once_state.current_random_theme,
+            **_auto_theme_kwargs(args),
         )
         # Peek before rendering so the ledger entry matches what render_quote picks.
         # Both see the same ledger state because run_clock appends only after render succeeds.
@@ -1331,7 +1339,9 @@ def main() -> int:
         try:
             time_str = current_time_str()
             effective_theme = resolve_effective_theme(
-                args.theme, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+                args.theme, time_str, state.manual_theme,
+                current_random_theme=state.current_random_theme,
+                **_auto_theme_kwargs(args),
             )
             render_now(
                 args.render_script, args.output, args.width, args.height, args.display_script,
@@ -1418,13 +1428,31 @@ def main() -> int:
 
             bucket = current_bucket()
             effective_theme = resolve_effective_theme(
-                state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+                state.theme_arg, time_str, state.manual_theme,
+                current_random_theme=state.current_random_theme,
+                **_auto_theme_kwargs(args),
             )
             bucket_changed = bucket != state.last_bucket
             theme_changed = effective_theme != state.last_effective_theme and state.last_effective_theme is not None
             if bucket_changed or theme_changed:
                 try:
                     quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                    # Random mode: pick a new theme whenever the quote changes (or on first render).
+                    if state.theme_arg == "random" and state.manual_theme is None:
+                        quote_changed = (
+                            (quote_id is not None and quote_id != state.last_quote_id)
+                            or state.current_random_theme is None
+                        )
+                        if quote_changed:
+                            new_rnd = pick_random_theme()
+                            with state.lock:
+                                state.current_random_theme = new_rnd
+                            effective_theme = new_rnd
+                            # Recompute so the dedup check below reflects the new pick.
+                            theme_changed = (
+                                effective_theme != state.last_effective_theme
+                                and state.last_effective_theme is not None
+                            )
                     if quote_id is not None and quote_id == state.last_quote_id and not theme_changed:
                         _log(f"bucket {bucket}: quote unchanged, skipping redraw")
                         # A successful peek that matches the last-rendered quote is still

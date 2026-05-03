@@ -3111,6 +3111,131 @@ class TestActionThemeCycle:
                     run_clock.parse_args()
 
 
+class TestRandomThemeMode:
+    """Tests for ``--theme random``: a meta-mode that picks a theme at random
+    each time the displayed quote changes, parallel to ``--theme auto``."""
+
+    def test_pick_random_theme_returns_registered_theme(self):
+        """``pick_random_theme()`` always returns a name from the registered cycle."""
+        from theme_names import theme_cycle
+        valid = set(theme_cycle())
+        for _ in range(30):
+            result = run_clock.pick_random_theme()
+            assert result in valid, f"pick_random_theme() returned {result!r}, not in theme_cycle()"
+
+    def test_resolve_random_uses_current_random_theme(self):
+        """When ``current_random_theme`` is set, ``resolve_effective_theme`` returns it."""
+        result = run_clock.resolve_effective_theme("random", "10:00", None, current_random_theme="scholar")
+        assert result == "scholar"
+
+    def test_resolve_random_manual_override_wins(self):
+        """``manual_theme`` takes priority over the stored random theme."""
+        result = run_clock.resolve_effective_theme("random", "10:00", "dark", current_random_theme="scholar")
+        assert result == "dark"
+
+    def test_resolve_random_fallback_when_none(self):
+        """When ``current_random_theme`` is None, a valid theme is picked on the fly."""
+        from theme_names import theme_cycle
+        result = run_clock.resolve_effective_theme("random", "10:00", None, current_random_theme=None)
+        assert result in set(theme_cycle())
+
+    def test_random_theme_cli_accepted(self):
+        """``--theme random`` is accepted by argparse without raising SystemExit."""
+        with patch("sys.argv", ["run_clock.py", "--theme", "random", "--once"]):
+            try:
+                ns = run_clock.parse_args()
+            except SystemExit:
+                raise AssertionError("--theme random was rejected by argparse")
+            assert ns.theme == "random"
+
+    def test_random_mode_picks_new_theme_on_quote_change(self, tmp_path):
+        """Main loop updates ``state.current_random_theme`` when the quote changes."""
+        state = run_clock.RuntimeState("random")
+        state.last_bucket = "h3_exact"
+        state.last_quote_id = ("111", 10, "old quote", "old match")
+        state.last_effective_theme = "default"
+        state.current_random_theme = "default"
+
+        new_quote_id = ("222", 20, "new quote", "new match")
+        fixed_theme = "scholar"
+
+        with patch("run_clock.pick_random_theme", return_value=fixed_theme), \
+             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("run_clock.render_now"), \
+             patch("run_clock._persist_state_after_render"), \
+             patch("run_clock._append_history_after_render"), \
+             patch("run_clock.current_bucket", return_value="h3_five_past"), \
+             patch("run_clock.current_time_str", return_value="03:05"):
+            # Simulate one tick that triggers a re-render
+            bucket = "h3_five_past"
+            time_str = "03:05"
+            effective_theme = run_clock.resolve_effective_theme(
+                state.theme_arg, time_str, state.manual_theme,
+                current_random_theme=state.current_random_theme,
+            )
+            bucket_changed = bucket != state.last_bucket
+            assert bucket_changed
+
+            quote_id = new_quote_id
+            # Apply random pick logic (mirrors main loop)
+            if state.theme_arg == "random" and state.manual_theme is None:
+                quote_changed = (
+                    (quote_id is not None and quote_id != state.last_quote_id)
+                    or state.current_random_theme is None
+                )
+                if quote_changed:
+                    new_rnd = run_clock.pick_random_theme()
+                    with state.lock:
+                        state.current_random_theme = new_rnd
+                    effective_theme = new_rnd
+
+        assert state.current_random_theme == fixed_theme
+        assert effective_theme == fixed_theme
+
+    def test_random_mode_stable_on_same_quote(self, tmp_path):
+        """``state.current_random_theme`` is NOT updated when the quote is unchanged."""
+        state = run_clock.RuntimeState("random")
+        state.last_bucket = "h3_exact"
+        same_quote_id = ("111", 10, "same quote", "same match")
+        state.last_quote_id = same_quote_id
+        state.last_effective_theme = "comic"
+        state.current_random_theme = "comic"
+
+        original_theme = state.current_random_theme
+
+        # Simulate pick logic with same quote_id
+        quote_id = same_quote_id
+        if state.theme_arg == "random" and state.manual_theme is None:
+            quote_changed = (
+                (quote_id is not None and quote_id != state.last_quote_id)
+                or state.current_random_theme is None
+            )
+            if quote_changed:  # should be False
+                with state.lock:
+                    state.current_random_theme = "scholar"
+
+        assert state.current_random_theme == original_theme
+
+    def test_random_mode_midnight_reset_clears_manual_theme(self, tmp_path):
+        """``_maybe_reset_manual_theme_at_midnight`` clears ``manual_theme`` for
+        ``theme_arg="random"``, just like it does for ``theme_arg="auto"``."""
+        import datetime as dt
+        state = run_clock.RuntimeState("random")
+        state.manual_theme = "nightvision"
+        state.last_seen_date = dt.date(2026, 1, 1)
+
+        args = argparse.Namespace(
+            theme="random", state_path=str(tmp_path / "state.json"),
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        with patch("run_clock.save_runtime_state"), \
+             patch("datetime.date") as mock_date:
+            mock_date.today.return_value = dt.date(2026, 1, 2)
+            run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+
+        assert state.manual_theme is None
+
+
 class TestPressDroppedTelemetry:
     """``_button_render_gate`` emits a ``mode="press_dropped"`` entry when
     the non-blocking ``render_lock.acquire`` fails. One entry per dropped

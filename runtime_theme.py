@@ -10,6 +10,7 @@ existing call sites and test patches keep resolving.
 from __future__ import annotations
 
 import datetime as dt
+import random
 
 from runtime_log import _log
 from runtime_state import RuntimeState
@@ -54,11 +55,18 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
     }
 
 
+def pick_random_theme() -> str:
+    """Pick a random theme from the registered cycle."""
+    from theme_names import theme_cycle
+    return random.choice(list(theme_cycle()))
+
+
 def resolve_effective_theme(
     theme_arg: str,
     time_str: str,
     manual_theme: str | None,
     *,
+    current_random_theme: str | None = None,
     auto_day_theme: str = "default",
     auto_night_theme: str = "dark",
 ) -> str:
@@ -76,6 +84,11 @@ def resolve_effective_theme(
     """
     if manual_theme is not None and manual_theme in _registered_themes():
         return manual_theme
+    if theme_arg == "random":
+        # current_random_theme is set by the main loop when the quote changes.
+        # Fall back to a fresh pick only when called from --once or startup
+        # (where no main-loop tick has populated the field yet).
+        return current_random_theme if current_random_theme is not None else pick_random_theme()
     if theme_arg == "auto":
         return auto_theme_for(time_str, auto_day_theme, auto_night_theme)
     return theme_arg
@@ -89,7 +102,7 @@ def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
         if state.last_seen_date is None:
             state.last_seen_date = today
             return
-        if today != state.last_seen_date and state.theme_arg == "auto" and state.manual_theme is not None:
+        if today != state.last_seen_date and state.theme_arg in ("auto", "random") and state.manual_theme is not None:
             _log(f"midnight rollover: clearing manual theme override ({state.manual_theme})")
             state.manual_theme = None
             run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
