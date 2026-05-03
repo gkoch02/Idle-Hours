@@ -236,7 +236,9 @@ def action_theme(
             previous_theme = state.manual_theme
             time_str = run_clock.current_time_str()
             current = state.last_effective_theme or resolve_effective_theme(
-                state.theme_arg, time_str, previous_theme, **_auto_theme_kwargs(args),
+                state.theme_arg, time_str, previous_theme,
+                current_random_theme=state.current_random_theme,
+                **_auto_theme_kwargs(args),
             )
             new_theme = target if target is not None else _next_theme(current)
             # Guard against "Apply" on an unchanged dropdown selection. The

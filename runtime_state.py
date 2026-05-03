@@ -35,8 +35,8 @@ class RuntimeState:
         self.ledger_lock = threading.Lock()
         # CLI ``--theme`` value — any registered theme name in
         # ``render_quote.THEMES`` (default/dark/scholar/newsprint/nightvision
-        # at the time of writing) or ``"auto"``. Stored verbatim; resolved
-        # to an effective render theme per-tick via ``resolve_effective_theme``.
+        # at the time of writing), ``"auto"``, or ``"random"``. Stored verbatim;
+        # resolved to an effective render theme per-tick via ``resolve_effective_theme``.
         self.theme_arg = theme_arg
         # Button-B / web dropdown override, cleared at midnight when
         # ``theme_arg`` is ``"auto"`` or ``"random"``. Any registered theme name or ``None``.

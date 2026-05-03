@@ -3148,73 +3148,58 @@ class TestRandomThemeMode:
                 raise AssertionError("--theme random was rejected by argparse")
             assert ns.theme == "random"
 
-    def test_random_mode_picks_new_theme_on_quote_change(self, tmp_path):
-        """Main loop updates ``state.current_random_theme`` when the quote changes."""
+    def test_random_mode_picks_new_theme_on_quote_change(self):
+        """``_maybe_pick_random_theme`` updates ``state.current_random_theme``
+        and returns the new theme when the quote changes."""
         state = run_clock.RuntimeState("random")
-        state.last_bucket = "h3_exact"
         state.last_quote_id = ("111", 10, "old quote", "old match")
-        state.last_effective_theme = "default"
         state.current_random_theme = "default"
 
         new_quote_id = ("222", 20, "new quote", "new match")
-        fixed_theme = "scholar"
+        with patch("run_clock.pick_random_theme", return_value="scholar"):
+            result = run_clock._maybe_pick_random_theme(state, new_quote_id)
 
-        with patch("run_clock.pick_random_theme", return_value=fixed_theme), \
-             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
-             patch("run_clock.render_now"), \
-             patch("run_clock._persist_state_after_render"), \
-             patch("run_clock._append_history_after_render"), \
-             patch("run_clock.current_bucket", return_value="h3_five_past"), \
-             patch("run_clock.current_time_str", return_value="03:05"):
-            # Simulate one tick that triggers a re-render
-            bucket = "h3_five_past"
-            time_str = "03:05"
-            effective_theme = run_clock.resolve_effective_theme(
-                state.theme_arg, time_str, state.manual_theme,
-                current_random_theme=state.current_random_theme,
-            )
-            bucket_changed = bucket != state.last_bucket
-            assert bucket_changed
+        assert result == "scholar"
+        assert state.current_random_theme == "scholar"
 
-            quote_id = new_quote_id
-            # Apply random pick logic (mirrors main loop)
-            if state.theme_arg == "random" and state.manual_theme is None:
-                quote_changed = (
-                    (quote_id is not None and quote_id != state.last_quote_id)
-                    or state.current_random_theme is None
-                )
-                if quote_changed:
-                    new_rnd = run_clock.pick_random_theme()
-                    with state.lock:
-                        state.current_random_theme = new_rnd
-                    effective_theme = new_rnd
-
-        assert state.current_random_theme == fixed_theme
-        assert effective_theme == fixed_theme
-
-    def test_random_mode_stable_on_same_quote(self, tmp_path):
-        """``state.current_random_theme`` is NOT updated when the quote is unchanged."""
+    def test_random_mode_stable_on_same_quote(self):
+        """``_maybe_pick_random_theme`` returns None and leaves
+        ``state.current_random_theme`` unchanged when the quote is identical."""
         state = run_clock.RuntimeState("random")
-        state.last_bucket = "h3_exact"
         same_quote_id = ("111", 10, "same quote", "same match")
         state.last_quote_id = same_quote_id
-        state.last_effective_theme = "comic"
         state.current_random_theme = "comic"
 
-        original_theme = state.current_random_theme
+        result = run_clock._maybe_pick_random_theme(state, same_quote_id)
 
-        # Simulate pick logic with same quote_id
-        quote_id = same_quote_id
-        if state.theme_arg == "random" and state.manual_theme is None:
-            quote_changed = (
-                (quote_id is not None and quote_id != state.last_quote_id)
-                or state.current_random_theme is None
-            )
-            if quote_changed:  # should be False
-                with state.lock:
-                    state.current_random_theme = "scholar"
+        assert result is None
+        assert state.current_random_theme == "comic"
 
-        assert state.current_random_theme == original_theme
+    def test_random_mode_picks_on_first_render_when_no_theme_set(self):
+        """``_maybe_pick_random_theme`` picks on first render even when
+        ``quote_id`` matches ``last_quote_id`` (both None / startup)."""
+        state = run_clock.RuntimeState("random")
+        state.last_quote_id = None
+        state.current_random_theme = None  # not yet set
+
+        with patch("run_clock.pick_random_theme", return_value="nightvision"):
+            result = run_clock._maybe_pick_random_theme(state, None)
+
+        assert result == "nightvision"
+        assert state.current_random_theme == "nightvision"
+
+    def test_random_mode_skipped_when_manual_theme_set(self):
+        """``_maybe_pick_random_theme`` is a no-op when ``manual_theme`` is active
+        (button B override pins a specific theme until midnight)."""
+        state = run_clock.RuntimeState("random")
+        state.manual_theme = "dark"
+        state.current_random_theme = "default"
+        state.last_quote_id = ("111", 10, "q", "m")
+
+        result = run_clock._maybe_pick_random_theme(state, ("222", 20, "q2", "m2"))
+
+        assert result is None
+        assert state.current_random_theme == "default"
 
     def test_random_mode_midnight_reset_clears_manual_theme(self, tmp_path):
         """``_maybe_reset_manual_theme_at_midnight`` clears ``manual_theme`` for

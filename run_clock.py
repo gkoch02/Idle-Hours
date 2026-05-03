@@ -594,6 +594,28 @@ def render_now(
 _IDENTITY_RENDER_MODES: frozenset[str] = frozenset({"production", "debug"})
 
 
+def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str | None:
+    """Pick a new random theme when the quote changes in ``--theme random`` mode.
+
+    Returns the newly-chosen theme name when a pick was made (the caller should
+    update ``effective_theme`` and recompute ``theme_changed``), or ``None``
+    when the mode is inactive, a manual override is in effect, or the quote
+    hasn't changed and a theme is already stored.
+    """
+    if state.theme_arg != "random" or state.manual_theme is not None:
+        return None
+    quote_changed = (
+        (quote_id is not None and quote_id != state.last_quote_id)
+        or state.current_random_theme is None
+    )
+    if not quote_changed:
+        return None
+    new_theme = pick_random_theme()
+    with state.lock:
+        state.current_random_theme = new_theme
+    return new_theme
+
+
 def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: str, history_path: str | None,
                      mode: str | None = None, bucket: str | None = None, quote_id: tuple | None = None) -> None:
     """Core render-and-push. The caller MUST already hold ``state.render_lock``.
@@ -1437,22 +1459,14 @@ def main() -> int:
             if bucket_changed or theme_changed:
                 try:
                     quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
-                    # Random mode: pick a new theme whenever the quote changes (or on first render).
-                    if state.theme_arg == "random" and state.manual_theme is None:
-                        quote_changed = (
-                            (quote_id is not None and quote_id != state.last_quote_id)
-                            or state.current_random_theme is None
+                    new_rnd = _maybe_pick_random_theme(state, quote_id)
+                    if new_rnd is not None:
+                        effective_theme = new_rnd
+                        # Recompute so the dedup check below reflects the new pick.
+                        theme_changed = (
+                            effective_theme != state.last_effective_theme
+                            and state.last_effective_theme is not None
                         )
-                        if quote_changed:
-                            new_rnd = pick_random_theme()
-                            with state.lock:
-                                state.current_random_theme = new_rnd
-                            effective_theme = new_rnd
-                            # Recompute so the dedup check below reflects the new pick.
-                            theme_changed = (
-                                effective_theme != state.last_effective_theme
-                                and state.last_effective_theme is not None
-                            )
                     if quote_id is not None and quote_id == state.last_quote_id and not theme_changed:
                         _log(f"bucket {bucket}: quote unchanged, skipping redraw")
                         # A successful peek that matches the last-rendered quote is still
