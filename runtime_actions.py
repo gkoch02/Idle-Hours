@@ -136,6 +136,7 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
             quote_id = run_clock.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
             )
+            run_clock._maybe_pick_random_theme(state, quote_id)
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)
@@ -178,6 +179,7 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
             quote_id = run_clock.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
             )
+            run_clock._maybe_pick_random_theme(state, quote_id)
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)

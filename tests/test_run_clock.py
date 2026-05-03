@@ -3220,6 +3220,55 @@ class TestRandomThemeMode:
 
         assert state.manual_theme is None
 
+    def test_action_skip_picks_new_random_theme(self, tmp_path):
+        """``action_skip`` updates ``state.current_random_theme`` when in random mode."""
+        state = run_clock.RuntimeState("random")
+        state.current_random_theme = "default"
+        state.last_quote_id = ("111", 10, "old", "old match")
+        state.last_effective_theme = "default"
+        new_quote_id = ("222", 20, "new", "new match")
+
+        args = argparse.Namespace(
+            theme="random", history_path="", history_days=7, mode="debug",
+            render_script="render_quote.py", output="output/current.png",
+            width=800, height=480, display_script=None, telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        with patch("run_clock.pick_random_theme", return_value="scholar"), \
+             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("run_clock._render_unlocked"), \
+             patch("run_clock._append_history_after_render"):
+            run_clock.action_skip(args, state, label="button A")
+
+        assert state.current_random_theme == "scholar"
+
+    def test_action_unskip_picks_new_random_theme(self, tmp_path):
+        """``action_unskip`` updates ``state.current_random_theme`` when in random mode."""
+        state = run_clock.RuntimeState("random")
+        state.current_random_theme = "comic"
+        state.last_skipped = ("111", 10, "old", "old match")
+        state.last_quote_id = ("111", 10, "old", "old match")
+        state.last_effective_theme = "comic"
+        new_quote_id = ("333", 30, "restored", "restored match")
+
+        args = argparse.Namespace(
+            theme="random", history_path="", history_days=7, mode="debug",
+            render_script="render_quote.py", output="output/current.png",
+            width=800, height=480, display_script=None, telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        with patch("run_clock.pick_random_theme", return_value="nightvision"), \
+             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("run_clock._render_unlocked"), \
+             patch("run_clock._append_history_after_render"), \
+             patch("run_clock.pick_quote_module") as mock_pq:
+            mock_pq.remove_last_history_entry.return_value = True
+            run_clock.action_unskip(args, state, label="button A")
+
+        assert state.current_random_theme == "nightvision"
+
 
 class TestPressDroppedTelemetry:
     """``_button_render_gate`` emits a ``mode="press_dropped"`` entry when
