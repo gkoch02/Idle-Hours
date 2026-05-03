@@ -173,7 +173,9 @@ def enter_quiet(
             # tells render_quote.py to skip pick_quote and paint a centred
             # message instead — no quote, no history append.
             effective_theme = resolve_effective_theme(
-                state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+                state.theme_arg, time_str, state.manual_theme,
+                current_random_theme=state.current_random_theme,
+                **_auto_theme_kwargs(args),
             )
             with state.render_lock:
                 run_clock.render_now(
@@ -190,7 +192,9 @@ def enter_quiet(
                 )
         else:
             effective_theme = resolve_effective_theme(
-                state.theme_arg, time_str, state.manual_theme, **_auto_theme_kwargs(args),
+                state.theme_arg, time_str, state.manual_theme,
+                current_random_theme=state.current_random_theme,
+                **_auto_theme_kwargs(args),
             )
             with state.render_lock:
                 run_clock.render_now(

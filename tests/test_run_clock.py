@@ -3111,6 +3111,165 @@ class TestActionThemeCycle:
                     run_clock.parse_args()
 
 
+class TestRandomThemeMode:
+    """Tests for ``--theme random``: a meta-mode that picks a theme at random
+    each time the displayed quote changes, parallel to ``--theme auto``."""
+
+    def test_pick_random_theme_returns_registered_theme(self):
+        """``pick_random_theme()`` always returns a name from the registered cycle."""
+        from theme_names import theme_cycle
+        valid = set(theme_cycle())
+        for _ in range(30):
+            result = run_clock.pick_random_theme()
+            assert result in valid, f"pick_random_theme() returned {result!r}, not in theme_cycle()"
+
+    def test_resolve_random_uses_current_random_theme(self):
+        """When ``current_random_theme`` is set, ``resolve_effective_theme`` returns it."""
+        result = run_clock.resolve_effective_theme("random", "10:00", None, current_random_theme="scholar")
+        assert result == "scholar"
+
+    def test_resolve_random_manual_override_wins(self):
+        """``manual_theme`` takes priority over the stored random theme."""
+        result = run_clock.resolve_effective_theme("random", "10:00", "dark", current_random_theme="scholar")
+        assert result == "dark"
+
+    def test_resolve_random_fallback_when_none(self):
+        """When ``current_random_theme`` is None, a valid theme is picked on the fly."""
+        from theme_names import theme_cycle
+        result = run_clock.resolve_effective_theme("random", "10:00", None, current_random_theme=None)
+        assert result in set(theme_cycle())
+
+    def test_random_theme_cli_accepted(self):
+        """``--theme random`` is accepted by argparse without raising SystemExit."""
+        with patch("sys.argv", ["run_clock.py", "--theme", "random", "--once"]):
+            try:
+                ns = run_clock.parse_args()
+            except SystemExit:
+                raise AssertionError("--theme random was rejected by argparse")
+            assert ns.theme == "random"
+
+    def test_random_mode_picks_new_theme_on_quote_change(self):
+        """``_maybe_pick_random_theme`` updates ``state.current_random_theme``
+        and returns the new theme when the quote changes."""
+        state = run_clock.RuntimeState("random")
+        state.last_quote_id = ("111", 10, "old quote", "old match")
+        state.current_random_theme = "default"
+
+        new_quote_id = ("222", 20, "new quote", "new match")
+        with patch("run_clock.pick_random_theme", return_value="scholar"):
+            result = run_clock._maybe_pick_random_theme(state, new_quote_id)
+
+        assert result == "scholar"
+        assert state.current_random_theme == "scholar"
+
+    def test_random_mode_stable_on_same_quote(self):
+        """``_maybe_pick_random_theme`` returns None and leaves
+        ``state.current_random_theme`` unchanged when the quote is identical."""
+        state = run_clock.RuntimeState("random")
+        same_quote_id = ("111", 10, "same quote", "same match")
+        state.last_quote_id = same_quote_id
+        state.current_random_theme = "comic"
+
+        result = run_clock._maybe_pick_random_theme(state, same_quote_id)
+
+        assert result is None
+        assert state.current_random_theme == "comic"
+
+    def test_random_mode_picks_on_first_render_when_no_theme_set(self):
+        """``_maybe_pick_random_theme`` picks on first render even when
+        ``quote_id`` matches ``last_quote_id`` (both None / startup)."""
+        state = run_clock.RuntimeState("random")
+        state.last_quote_id = None
+        state.current_random_theme = None  # not yet set
+
+        with patch("run_clock.pick_random_theme", return_value="nightvision"):
+            result = run_clock._maybe_pick_random_theme(state, None)
+
+        assert result == "nightvision"
+        assert state.current_random_theme == "nightvision"
+
+    def test_random_mode_skipped_when_manual_theme_set(self):
+        """``_maybe_pick_random_theme`` is a no-op when ``manual_theme`` is active
+        (button B override pins a specific theme until midnight)."""
+        state = run_clock.RuntimeState("random")
+        state.manual_theme = "dark"
+        state.current_random_theme = "default"
+        state.last_quote_id = ("111", 10, "q", "m")
+
+        result = run_clock._maybe_pick_random_theme(state, ("222", 20, "q2", "m2"))
+
+        assert result is None
+        assert state.current_random_theme == "default"
+
+    def test_random_mode_midnight_reset_clears_manual_theme(self, tmp_path):
+        """``_maybe_reset_manual_theme_at_midnight`` clears ``manual_theme`` for
+        ``theme_arg="random"``, just like it does for ``theme_arg="auto"``."""
+        import datetime as dt
+        state = run_clock.RuntimeState("random")
+        state.manual_theme = "nightvision"
+        state.last_seen_date = dt.date(2026, 1, 1)
+
+        args = argparse.Namespace(
+            theme="random", state_path=str(tmp_path / "state.json"),
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        with patch("run_clock.save_runtime_state"), \
+             patch("datetime.date") as mock_date:
+            mock_date.today.return_value = dt.date(2026, 1, 2)
+            run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+
+        assert state.manual_theme is None
+
+    def test_action_skip_picks_new_random_theme(self, tmp_path):
+        """``action_skip`` updates ``state.current_random_theme`` when in random mode."""
+        state = run_clock.RuntimeState("random")
+        state.current_random_theme = "default"
+        state.last_quote_id = ("111", 10, "old", "old match")
+        state.last_effective_theme = "default"
+        new_quote_id = ("222", 20, "new", "new match")
+
+        args = argparse.Namespace(
+            theme="random", history_path="", history_days=7, mode="debug",
+            render_script="render_quote.py", output="output/current.png",
+            width=800, height=480, display_script=None, telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        with patch("run_clock.pick_random_theme", return_value="scholar"), \
+             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("run_clock._render_unlocked"), \
+             patch("run_clock._append_history_after_render"):
+            run_clock.action_skip(args, state, label="button A")
+
+        assert state.current_random_theme == "scholar"
+
+    def test_action_unskip_picks_new_random_theme(self, tmp_path):
+        """``action_unskip`` updates ``state.current_random_theme`` when in random mode."""
+        state = run_clock.RuntimeState("random")
+        state.current_random_theme = "comic"
+        state.last_skipped = ("111", 10, "old", "old match")
+        state.last_quote_id = ("111", 10, "old", "old match")
+        state.last_effective_theme = "comic"
+        new_quote_id = ("333", 30, "restored", "restored match")
+
+        args = argparse.Namespace(
+            theme="random", history_path="", history_days=7, mode="debug",
+            render_script="render_quote.py", output="output/current.png",
+            width=800, height=480, display_script=None, telemetry_path="",
+            state_path=str(tmp_path / "state.json"),
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        with patch("run_clock.pick_random_theme", return_value="nightvision"), \
+             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("run_clock._render_unlocked"), \
+             patch("run_clock._append_history_after_render"), \
+             patch("run_clock.pick_quote_module") as mock_pq:
+            mock_pq.remove_last_history_entry.return_value = True
+            run_clock.action_unskip(args, state, label="button A")
+
+        assert state.current_random_theme == "nightvision"
+
+
 class TestPressDroppedTelemetry:
     """``_button_render_gate`` emits a ``mode="press_dropped"`` entry when
     the non-blocking ``render_lock.acquire`` fails. One entry per dropped
