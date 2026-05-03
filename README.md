@@ -268,11 +268,28 @@ Ten themes ship built-in, all constrained to the Spectra 6 panel palette (white 
 | `risograph`   | <img src="assets/previews/risograph.png" width="240" alt="risograph theme preview">     | white   | red       | blue    | Rubik (rounded sans) | Zine / two-colour riso — no black plate   |
 | `comic`       | <img src="assets/previews/comic.png" width="240" alt="comic theme preview">             | yellow  | black     | red     | Bangers (comic)  | Golden-age comic panel                        |
 
-Pass `--theme auto` to let the clock pick by wall-clock time — `dark` between 18:00 and 06:00, `default` otherwise. `auto` is deliberately binary; the eight "operator-choice" themes (`scholar`, `newsprint`, `nightvision`, `blueprint`, `illuminated`, `bauhaus`, `risograph`, `comic`) are never auto-selected. A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover.
+Pass `--theme auto` to let the clock pick by wall-clock time. The defaults are `default` during the day (06:00–18:00) and `dark` at night (18:00–06:00) — the legacy binary contract. Broaden the rotation by setting `--auto-day-theme` and/or `--auto-night-theme` to any other registered theme, e.g.
 
-Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` mode.
+```bash
+python3 run_clock.py --theme auto --auto-day-theme scholar --auto-night-theme nightvision
+```
 
-> Regenerate previews: the images under `assets/previews/` can be rebuilt from the renderer with a one-liner that loops over `render_quote.THEME_ORDER` and calls `render_quote.render(...)` with a fixed quote row (see the generator block in the Testing section). They're checked in so the README renders on GitHub without a build step. Every bundled OFL typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers) so the previews are reproducible without any system-font install.
+`auto` itself is rejected for the day/night picks (would be a config typo, not a useful recursion). A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover, when the override clears and `auto` resumes.
+
+Pass `--theme random` to pick a theme at random each time the displayed quote changes (so every new bucket gets a fresh look). The pick is held for the lifetime of the displayed quote and is **not persisted** — a restart picks a fresh theme on the first render. Button B / the web-UI dropdown still wins over the random pick until midnight, the same way it wins over `auto`.
+
+Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` / `random` mode.
+
+> Regenerate previews: the images under `assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
+>
+> ```bash
+> for theme in default dark scholar newsprint nightvision blueprint illuminated bauhaus risograph comic; do
+>   python3 render_quote.py --time 14:15 --theme "$theme" --mode production \
+>     --output "assets/previews/$theme.png"
+> done
+> ```
+>
+> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled OFL typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers) so the previews are reproducible without any system-font install.
 
 ### Inky buttons (short and long press)
 
@@ -640,7 +657,7 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
 - Button B cycles through the full theme list and persists the choice to `--state-path`; the web UI dropdown jumps directly to any named theme. Button A's long press reverses the most recent skip.
 - Ten themes ship built-in: `default` (white/black/red), `dark` (black/white/yellow), `scholar` (white/blue/red slab serif), `newsprint` (white/black, no colour accent — bold-weight differentiation only), `nightvision` (black/green/yellow retro-terminal), `blueprint` (white/blue/red geometric sans — drafting aesthetic), `illuminated` (white/red/blue rubricated manuscript serif + blackletter ornaments), `bauhaus` (white/black/blue + red ornaments — three primaries at once, geometric sans), `risograph` (white/red/blue, zero black ink — zine two-colour print), and `comic` (yellow ground / black body / red accent — comic-book display face). Every theme colour stays on the Spectra 6 palette.
-- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); a manual button-B / web override wins until the next midnight rollover.
+- `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); broaden the rotation past the binary default with `--auto-day-theme` / `--auto-night-theme`. `--theme random` rerolls the theme each time the picked quote changes (not persisted across restarts). A manual button-B / web override wins over either mode until the next midnight rollover.
 - Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
 - Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
 - The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.

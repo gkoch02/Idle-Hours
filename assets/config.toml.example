@@ -18,7 +18,11 @@ render_script  = "render_quote.py"
 display_script = "display_inky.py"
 output         = "output/current.png"
 mode           = "production"         # production | debug
-theme          = "auto"               # default | dark | scholar | newsprint | nightvision | blueprint | illuminated | bauhaus | risograph | comic | auto
+theme          = "auto"               # default | dark | scholar | newsprint | nightvision | blueprint | illuminated | bauhaus | risograph | comic | auto | random
+# `theme = "random"` picks a fresh theme each time the displayed quote
+# changes; the pick is not persisted across restarts. Button B / the web
+# UI dropdown still overrides until midnight, same as for `auto`.
+#
 # When `theme = "auto"`, these pick the day-window (06:00–18:00) and
 # night-window (18:00–06:00) themes. Defaults match the historical binary
 # contract; broaden the rotation by setting one or both, e.g.
