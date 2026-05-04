@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import math
 import re
 import sys
 from pathlib import Path
@@ -38,9 +39,12 @@ THEME_ORDER: tuple[str, ...] = (
     "nightvision",
     "blueprint",
     "illuminated",
+    "gothic",
     "bauhaus",
     "risograph",
     "comic",
+    "dispatch",
+    "atomic",
 )
 THEMES = {
     "default": {
@@ -132,6 +136,35 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["red"],
     },
+    # Cathedral chronicle. Black ground (candle-lit vellum / cathedral
+    # interior), white body for legibility on the panel, red rubric for
+    # the matched time phrase and the oversized blackletter quotation
+    # marks. Pairs with UnifrakturMaguntia (blackletter) in *both* the
+    # ornament and quote-bold slots so the font defines the theme rather
+    # than appearing as a guest accessory — body text stays in EB Garamond
+    # so a 200-character dense layout still reads cleanly. Visually the
+    # opposite polarity of ``illuminated`` (white parchment / red body /
+    # blue jewels) so the two blackletter themes complement rather than
+    # duplicate.
+    "gothic": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto red — the oversized blackletter
+        # quote marks dither between ``ornament_dark`` and
+        # ``ornament_light`` (see ``draw_faux_gray_text``); on a white
+        # ground the ``ornament_light=white`` half sinks into the page,
+        # leaving a half-density rubric (cf. ``illuminated``), but on
+        # ``gothic``'s black ground the white half would *show* and
+        # wash the rubric pinkish-grey. Pinning both to red collapses
+        # the dither to solid red, so the marks stay punchy against
+        # the cathedral ground.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["white"],
+    },
     # Bauhaus poster. White ground, black body, blue for the matched time
     # phrase, red for the oversized quotation marks — the three primaries
     # used simultaneously, as in the Bauhaus palette. Jost (a Futura-adjacent
@@ -180,6 +213,59 @@ THEMES = {
         "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
+    # Field dispatch / typewritten dossier. White paper, black typewriter
+    # ink for the body, and red for the matched time phrase — the
+    # classic two-colour bichrome typewriter ribbon (black for normal
+    # text, red for emphasis / numerals / official marks). Special
+    # Elite is a slab-mono typewriter face whose deliberately uneven
+    # inking does most of the visual work; the ``draw_dispatch_border``
+    # frame, tractor-feed perforations on the side margins, and red
+    # rubber-stamp imprint in the top-right corner finish the
+    # vintage-office composition. Same palette as ``default`` (which
+    # uses Playfair Display — high-contrast transitional serif), but
+    # the slab-mono typewriter face plus the dossier graphics give it
+    # a completely different silhouette on the panel.
+    "dispatch": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        # Half-density quote marks (dither between black and white)
+        # mimic the irregular inking of a worn typewriter ribbon — the
+        # signature texture of a Special Elite render that a clean
+        # solid-fill mark would erase.
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Mid-century atomic age. Sputnik-green ground (the only theme to
+    # claim Spectra 6's flat green as a *background* — every other
+    # theme uses green only as ink), chunky black body in the Atomic
+    # Age display face, atomic-energy red for the matched time
+    # phrase and the decorative graphics. Pairs with a
+    # ``draw_atomic_border`` of a rounded-corner red frame
+    # (Googie / streamlined-modern curves), a centred atom symbol at
+    # the top of the page (three rotated red ellipse "orbits" plus a
+    # central red nucleus), and small red starbursts at the
+    # mid-edges (the radiating-rays motif of 1950s diner / motel
+    # signage). Reads as a vintage atomic-age advertisement at a
+    # glance — bright, optimistic, slightly garish.
+    "atomic": {
+        "page_bg": SPECTRA6["green"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto red so the oversized
+        # quote marks render as solid red against the green ground —
+        # otherwise the dither's green half would blend into the bg
+        # and leave half-density ornaments. Same trick `gothic`
+        # uses to keep its red blackletter quote marks dramatic.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
 }
@@ -303,6 +389,8 @@ UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
 JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
 RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
 BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
+SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
+ATOMICAGE_REGULAR = str(BASE_DIR / "fonts/atomic-age/AtomicAge-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -421,6 +509,31 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "gothic": {
+        # Promotes UnifrakturMaguntia from the ornament-only role it
+        # plays in ``illuminated`` to also cover the matched-phrase bold:
+        # short matched phrases ("half past two") render in dramatic red
+        # blackletter, sitting in the body like a chapter heading. Body
+        # text stays in EB Garamond so the rest of the line reads cleanly
+        # at dense-layout sizes — a full blackletter body would shred
+        # legibility on a 4-bit eInk panel. The EB Garamond Bold second
+        # rank covers a missing-Unifraktur install so the matched phrase
+        # degrades to a heavy serif rather than the bitmap fallback.
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     "bauhaus": {
         # Jost is a variable font defaulting to weight 400; every
         # variation candidate below pins the instance explicitly so a
@@ -503,6 +616,70 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             BANGERS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "dispatch": {
+        # Special Elite ships only one weight (Regular) and is a
+        # slab-mono typewriter face whose deliberately uneven inking
+        # is the whole point — there is no "true bold" Special Elite,
+        # nor would a heavier weight match the visual register. The
+        # matched-phrase role re-uses the same file and gains
+        # differentiation purely through the accent colour (red), the
+        # way a real bichrome typewriter ribbon shifted between black
+        # and red without changing weight. Falls back through Space
+        # Mono / DejaVu Sans Mono before degrading to the Playfair
+        # serif chain — a missing Special Elite install lands on the
+        # closest in-rotation typewriter-adjacent face (mono) rather
+        # than dropping a slab-typewriter theme onto a transitional
+        # serif silhouette.
+        "quote_regular": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "atomic": {
+        # Atomic Age is a chunky 1950s display face (Sorkin Type, OFL)
+        # — pointed angular terminals on slab bodies, very mid-century
+        # signage / Sputnik-poster register. Like Bangers (comic) and
+        # Special Elite (dispatch) it ships only Regular, so the
+        # matched-phrase role re-uses the same file and gains
+        # differentiation through the accent colour alone. Body text
+        # in a display face is loud by design — that's the point. The
+        # fallback chain ends at a heavy sans (DejaVu / Liberation /
+        # Noto Sans Bold) before degrading to the Playfair serif
+        # chain, since a missing-Atomic-Age install should land on a
+        # heavy display silhouette rather than an elegant serif.
+        "quote_regular": [
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            ATOMICAGE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -784,6 +961,27 @@ def resolve_display_match(text: str, match_text: str) -> str:
                 return candidate
 
     return normalized_match
+
+
+def _font_ascent(font) -> int:
+    """Return the font's ascent in pixels, or 0 when unavailable.
+
+    Used by the per-chunk baseline-alignment offset in the body draw
+    loop: PIL's default text anchor is ``"la"`` (left, ascender top),
+    so when a line mixes two fonts whose ascents differ (e.g. gothic
+    pairs EB Garamond body with UnifrakturMaguntia bold), drawing
+    both chunks at the same ``y`` leaves the bold phrase floating
+    above the body baseline by ``body_ascent − bold_ascent`` pixels.
+    The bitmap fallback (``ImageFont.load_default()`` from a
+    misconfigured install) doesn't expose ``getmetrics`` reliably; in
+    that case we return 0 so every chunk gets the same offset and the
+    baseline misalignment falls back to today's behaviour rather than
+    crashing.
+    """
+    try:
+        return font.getmetrics()[0]
+    except (AttributeError, OSError):
+        return 0
 
 
 def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
@@ -1193,6 +1391,248 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+def draw_gothic_border(image: Image.Image, colors: dict) -> None:
+    """Paint a Gothic-tracery border: double rule + corner quatrefoils + mid-edge diamonds.
+
+    The outer red rule and inner white rule echo the doubled rubrication
+    line of medieval manuscripts but flip the colour split that
+    ``illuminated`` uses (single ink colour for both rules) — the
+    polychrome Scotch-rule is the giveaway that this is the cathedral
+    chronicle, not the scriptorium page. Four corner quatrefoils — four
+    small red lobes around a tiny white centre dot — are the iconic
+    four-lobed Gothic motif found in cathedral tracery, rose windows,
+    and printed-book ornaments; the centre dot keeps the four lobes
+    legible on the panel rather than reading as an indistinct red blob.
+    Four small red diamonds at the mid-edges nod to the chapter
+    dividers used in early printed German books, and break up the long
+    rules without competing visually with the corner ornaments.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    body = colors["text"]      # white ink
+    accent = colors["accent"]  # rubric red
+
+    outer_inset = 14
+    inner_inset = 22
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=accent,
+        width=1,
+    )
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=body,
+        width=1,
+    )
+
+    # Corner quatrefoils: four small lobes arranged in a + around the
+    # corner anchor, then a smaller white centre dot to give the
+    # four-lobed clover silhouette legibility on a 4-bit panel.
+    lobe_radius = 5
+    lobe_offset = 4
+    centres = [
+        (outer_inset, outer_inset),
+        (width - 1 - outer_inset, outer_inset),
+        (outer_inset, height - 1 - outer_inset),
+        (width - 1 - outer_inset, height - 1 - outer_inset),
+    ]
+    for cx, cy in centres:
+        for dx, dy in ((0, -lobe_offset), (lobe_offset, 0), (0, lobe_offset), (-lobe_offset, 0)):
+            lx, ly = cx + dx, cy + dy
+            draw.ellipse(
+                (lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius),
+                fill=accent,
+            )
+        draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=body)
+
+    # Mid-edge red diamonds — small ornaments centred on each side of
+    # the outer rule.
+    diamond = 4
+    midpoints = [
+        (width // 2, outer_inset),
+        (width // 2, height - 1 - outer_inset),
+        (outer_inset, height // 2),
+        (width - 1 - outer_inset, height // 2),
+    ]
+    for cx, cy in midpoints:
+        draw.polygon(
+            [(cx, cy - diamond), (cx + diamond, cy), (cx, cy + diamond), (cx - diamond, cy)],
+            fill=accent,
+        )
+
+
+def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
+    """Paint a vintage-office dispatch border: thin frame + tractor-feed perforations + red rubber-stamp imprint.
+
+    Three motifs from the typewriter / dot-matrix / dossier era:
+
+    * **Outer thin black frame** at a small inset frames the page like
+      a typed memo's letterhead rule.
+    * **Tractor-feed perforations** — a column of small black filled
+      circles spaced ~40px apart on each side margin, between the
+      frame and the page edge — echoes the sprocket holes punched
+      down the side of continuous-feed dot-matrix printer paper. No
+      other theme uses this motif, and it's instantly recognisable as
+      mid-century office-document texture.
+    * **Red rubber-stamp imprint** in the upper right (inside the
+      frame, well below the debug-mode label band): two concentric
+      ellipse outlines plus four short diagonal hatch lines, evoking
+      a smudged ink rubber stamp without committing to any specific
+      lettering. Sits at y≈40–70 so the oversized opening quote mark
+      (drawn from the left at quote_top − open_h//3, ≥ 42 in every
+      layout) and the matched-phrase text block (centred horizontally,
+      block_top ≥ 72) both stay clear.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    ink = colors["text"]
+    accent = colors["accent"]
+
+    # Outer thin frame.
+    frame_inset = 14
+    draw.rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        outline=ink,
+        width=1,
+    )
+
+    # Tractor-feed perforations on the left and right margins.
+    hole_radius = 2
+    hole_spacing = 40
+    hole_top = 22
+    hole_bottom = height - 22
+    left_x = 7
+    right_x = width - 1 - 7
+    y = hole_top
+    while y <= hole_bottom:
+        draw.ellipse(
+            (left_x - hole_radius, y - hole_radius, left_x + hole_radius, y + hole_radius),
+            fill=ink,
+        )
+        draw.ellipse(
+            (right_x - hole_radius, y - hole_radius, right_x + hole_radius, y + hole_radius),
+            fill=ink,
+        )
+        y += hole_spacing
+
+    # Red rubber-stamp imprint: two concentric ellipse outlines plus
+    # short diagonal hatch lines. Positioned below the DEBUG MODE
+    # banner band (y=14–29 at SIDE_MARGIN x-position) so debug mode
+    # doesn't need a label inset adjustment.
+    stamp_cx = width - 55
+    stamp_cy = 55
+    outer_hw, outer_hh = 25, 15
+    inner_hw, inner_hh = 19, 10
+    draw.ellipse(
+        (stamp_cx - outer_hw, stamp_cy - outer_hh, stamp_cx + outer_hw, stamp_cy + outer_hh),
+        outline=accent,
+        width=1,
+    )
+    draw.ellipse(
+        (stamp_cx - inner_hw, stamp_cy - inner_hh, stamp_cx + inner_hw, stamp_cy + inner_hh),
+        outline=accent,
+        width=1,
+    )
+    # Four diagonal hatch lines suggest smudged rubber-stamp ink
+    # without spelling any specific word.
+    for dx in (-9, -3, 3, 9):
+        draw.line(
+            (stamp_cx + dx - 3, stamp_cy + 3, stamp_cx + dx + 3, stamp_cy - 3),
+            fill=accent,
+            width=1,
+        )
+
+
+def draw_atomic_border(image: Image.Image, colors: dict) -> None:
+    """Atomic-age decorative border: rounded frame + atom symbol + starbursts.
+
+    Three motifs from the 1950s-60s atomic / Sputnik / Googie design
+    vocabulary:
+
+    * **Rounded-corner outer frame** in red — the streamlined-modern
+      curve language of Googie coffee-shop architecture and motel
+      signage. ``draw.rounded_rectangle`` is Pillow ≥ 8.2.
+    * **Atom symbol centred at the top of the page** — three
+      tilted ellipse "orbits" (at 0°, 60°, 120°) plus a small filled
+      red nucleus. PIL's ``ellipse`` doesn't accept rotation, so each
+      orbit is drawn as a polygon-line approximation: 64 points sampled
+      around an unrotated ellipse, rotated through ``angle`` via 2×2
+      cosine/sine matrix, and connected with ``draw.line``. Centred
+      horizontally so it doesn't collide with the right-aligned
+      ``DEBUG MODE`` banner; positioned at y=44 with orbit semi-major
+      24 so the atom fits in the page-header zone (block_top ≥ 72) and
+      stays clear of the body quote text.
+    * **Twin starbursts at the mid-edges** (left and right) — eight
+      red rays radiating from a small filled red dot, the iconic
+      "atomic-energy spark" motif of mid-century diner / motel signage
+      and Sputnik-era propaganda. Mid-edge placement (y = height // 2)
+      keeps them outside the centred body text block and balances the
+      composition top-to-bottom.
+
+    Every glyph is in the theme's ``accent`` colour (red), so a future
+    palette tweak in ``THEMES["atomic"]`` flows through automatically.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    accent = colors["accent"]
+
+    # Rounded outer frame.
+    frame_inset = 14
+    frame_radius = 24
+    draw.rounded_rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        radius=frame_radius,
+        outline=accent,
+        width=2,
+    )
+
+    # Atom symbol — three rotated ellipse outlines + nucleus.
+    atom_cx = width // 2
+    atom_cy = 44
+    orbit_a = 24  # semi-major axis (fits below frame at y=14, above quote_top ≥ 72)
+    orbit_b = 8
+    n_points = 64
+    for angle_deg in (0, 60, 120):
+        angle = math.radians(angle_deg)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        points = []
+        for i in range(n_points + 1):
+            t = 2.0 * math.pi * i / n_points
+            x_unrot = orbit_a * math.cos(t)
+            y_unrot = orbit_b * math.sin(t)
+            px = atom_cx + x_unrot * cos_a - y_unrot * sin_a
+            py = atom_cy + x_unrot * sin_a + y_unrot * cos_a
+            points.append((px, py))
+        draw.line(points, fill=accent, width=1)
+    # Nucleus.
+    nucleus_r = 4
+    draw.ellipse(
+        (atom_cx - nucleus_r, atom_cy - nucleus_r, atom_cx + nucleus_r, atom_cy + nucleus_r),
+        fill=accent,
+    )
+
+    # Twin starbursts at the mid-edges.
+    starburst_outer = 11
+    starburst_inner = 4
+    centres = ((34, height // 2), (width - 34, height // 2))
+    for star_cx, star_cy in centres:
+        for angle_deg in range(0, 360, 45):
+            angle = math.radians(angle_deg)
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
+            x1 = star_cx + starburst_inner * cos_a
+            y1 = star_cy + starburst_inner * sin_a
+            x2 = star_cx + starburst_outer * cos_a
+            y2 = star_cy + starburst_outer * sin_a
+            draw.line((x1, y1, x2, y2), fill=accent, width=1)
+        # Centre dot.
+        draw.ellipse(
+            (star_cx - 2, star_cy - 2, star_cx + 2, star_cy + 2),
+            fill=accent,
+        )
+
+
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
@@ -1392,6 +1832,9 @@ _BORDER_PAINTERS = {
     "comic": draw_comic_corner_stripes,
     "scholar": draw_scholar_border,
     "illuminated": draw_illuminated_border,
+    "gothic": draw_gothic_border,
+    "dispatch": draw_dispatch_border,
+    "atomic": draw_atomic_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -1412,10 +1855,20 @@ _BORDER_PAINTERS = {
 #   - nightvision: HUD corner bracket's TR vertical arm paints x=width-13 to
 #     width-12 (y>=12), leaving ~7px of clearance; the horizontal arm sits at
 #     y=12-13, a row above the label's y=14 baseline.
+#   - dispatch: rubber-stamp imprint sits at y=40-70 (centre y=55), well
+#     below the label's y=14-29 band; no horizontal-overlap concern since
+#     the two graphics are vertically separated. The frame and tractor-feed
+#     perforations don't reach into the label's bbox either.
+#   - atomic: atom symbol is centred at (width//2, 44) — far from the
+#     right-aligned label's x range. Mid-edge starbursts sit at y=height//2,
+#     also clear of the label band. The rounded outer frame at inset 14 is
+#     identical to other framed themes here.
 _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
     "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
+    "gothic": 30,       # past the TR quatrefoil right lobe (frame at 14,
+                        # lobe centre offset +4 with radius 5 → x=width-6)
     "risograph": 44,    # past the shifted TR registration mark at x=width-15
 }
 
@@ -1748,10 +2201,23 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
         x = (width - layout["max_width"]) // 2
         space_idx = 0
+        # PIL's default text anchor is "la" (left, ascender top), so
+        # ``y`` is interpreted as the top of each font's ASCENT band,
+        # not a shared baseline. When ``quote_font`` and
+        # ``quote_font_bold`` come from the same family their ascents
+        # are identical and the per-chunk shift is zero; when they
+        # come from different families (e.g. gothic = EB Garamond
+        # body + UnifrakturMaguntia bold, ascent 41 vs 32 at body
+        # font_size), drawing both at the same ``y`` leaves the bold
+        # phrase visually floating above the body baseline. Shift each
+        # chunk's draw point by ``body_ascent − chunk_ascent`` so all
+        # chunks share a baseline regardless of metric drift.
+        body_ascent = _font_ascent(quote_font)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
-            draw_text(draw, (x, y), chunk, font=font, fill=fill)
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            draw_text(draw, (x, chunk_y), chunk, font=font, fill=fill)
             bbox = draw.textbbox((0, 0), chunk, font=font)
             x += bbox[2] - bbox[0]
             if distribute and chunk == " ":

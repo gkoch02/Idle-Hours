@@ -38,6 +38,10 @@ THEME_SATURATION: dict[str, float] = {
     "blueprint": 0.5,
     "illuminated": 0.5,
     "bauhaus": 0.5,
+    # Black ground with a chromatic accent — same tier as ``dark`` /
+    # ``nightvision`` so the rubric red and white body don't desaturate
+    # against the panel's anchored black.
+    "gothic": 0.7,
     # Non-standard grounds (``risograph`` has no black ink to anchor the
     # two spot colours; ``comic`` has a high-chroma yellow ground rather
     # than white) start at the 0.7 tier used by dark-background themes,
@@ -46,6 +50,17 @@ THEME_SATURATION: dict[str, float] = {
     # Revisit once we have real-panel samples — `--saturation` overrides.
     "risograph": 0.7,
     "comic": 0.7,
+    # White ground with chromatic accent — same tier as ``default`` /
+    # ``scholar`` / ``newsprint`` / ``blueprint`` / ``illuminated`` /
+    # ``bauhaus``. Black typewriter ink + red rubber stamp on white
+    # paper sits squarely in the light-background tier.
+    "dispatch": 0.5,
+    # Saturated green ground (the only theme whose page_bg is green) —
+    # same tier as other coloured-ground / non-white themes (`comic` /
+    # `risograph` / `dark` / `nightvision`) so the red atomic accents
+    # and oversized red quote marks don't desaturate against the
+    # vivid Sputnik-green background.
+    "atomic": 0.7,
 }
 
 
