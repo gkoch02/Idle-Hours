@@ -169,6 +169,7 @@ def parse_args() -> argparse.Namespace:
         "comic",
         "dispatch",
         "atomic",
+        "marker",
     ]
     parser.add_argument(
         "--theme",
@@ -187,7 +188,10 @@ def parse_args() -> argparse.Namespace:
             "tractor-feed perforations and red rubber-stamp imprint), "
             "'atomic' (green-bg/black-body/red-accent, Atomic Age display "
             "face, mid-century border with rounded frame, atom symbol "
-            "and starbursts). "
+            "and starbursts), "
+            "'marker' (white/black/blue + multi-colour decorative border, "
+            "Permanent Marker hand-drawn face — fridge-doodle vibe, lights "
+            "up every spot colour the Spectra 6 panel can produce). "
             "Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow), 'gothic' (black/white/red, "
             "blackletter ornaments + matched phrase, cathedral-tracery border). "

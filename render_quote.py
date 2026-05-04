@@ -45,6 +45,7 @@ THEME_ORDER: tuple[str, ...] = (
     "comic",
     "dispatch",
     "atomic",
+    "marker",
 )
 THEMES = {
     "default": {
@@ -268,6 +269,26 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
+    # Permanent-marker fridge-doodle / sticky-note vibe. White paper, black
+    # Sharpie body in the Permanent Marker hand, blue accent for the matched
+    # time phrase (a "second marker" picked from the cup), red oversized
+    # quotation marks. The signature move is the decorative
+    # ``draw_marker_border`` which paints in *all four* non-white panel ink
+    # colours simultaneously (red / yellow / blue / green) plus black — the
+    # only theme that lights up every spot colour the Spectra 6 panel can
+    # produce, satisfying the "use the full capabilities of the display"
+    # brief. Reads as a kid's notebook page or a fridge-magnet message
+    # board: bold, casual, exuberant.
+    "marker": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -391,6 +412,7 @@ RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
 BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
 ATOMICAGE_REGULAR = str(BASE_DIR / "fonts/atomic-age/AtomicAge-Regular.ttf")
+PERMANENTMARKER_REGULAR = str(BASE_DIR / "fonts/permanent-marker/PermanentMarker-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -680,6 +702,39 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "marker": {
+        # Permanent Marker (Apache 2.0, Font Diner / Google Fonts) — a
+        # single-weight hand-drawn marker face whose deliberately uneven
+        # strokes do all the visual work. Like Bangers (comic), Special
+        # Elite (dispatch), and Atomic Age (atomic) it ships only Regular,
+        # so the matched-phrase role re-uses the same file and gains
+        # differentiation through the accent colour (blue) alone — same
+        # trick the bichrome typewriter and comic-book themes use. The
+        # fallback chain ends at a heavy sans (DejaVu / Liberation / Noto
+        # Sans Bold) before degrading to the Playfair serif chain, so a
+        # missing-Permanent-Marker install lands on a chunky display
+        # silhouette rather than dropping the marker theme onto an
+        # elegant transitional serif.
+        "quote_regular": [
+            PERMANENTMARKER_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            PERMANENTMARKER_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PERMANENTMARKER_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -1633,6 +1688,155 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+# Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded at
+# module scope (rather than pulled from ``colors``) for the same reason as
+# ``_COMIC_STRIPE_PALETTE``: the marker theme's THEMES dict only exposes
+# four of the five Spectra 6 ink colours (text=black, accent=blue,
+# ornament_dark=red, source=black) — there is no slot for yellow or green —
+# and forcing a THEMES schema extension just to unlock those two greenfield
+# accents would re-pin every cross-theme invariant test for one border. The
+# whole point of the marker theme is to light up *every* spot colour the
+# panel can produce, so the decoration reaches past the theme dict.
+_MARKER_BORDER_PALETTE = (
+    SPECTRA6["red"],
+    SPECTRA6["blue"],
+    SPECTRA6["green"],
+    SPECTRA6["yellow"],
+    SPECTRA6["black"],
+)
+
+
+def draw_marker_border(image: Image.Image, colors: dict) -> None:
+    """Paint a fridge-doodle marker frame: multi-colour dashed perimeter,
+    asterisk sparkles at every corner, and mid-edge filled marker dots.
+
+    The marker theme's brief is "use the full capabilities of the display"
+    — the Spectra 6 panel can render five non-white spot colours (red,
+    yellow, blue, green, black) and this border lights up *every one of
+    them* across three motifs:
+
+    * **Perimeter dashed scribble.** Short marker-stroke dashes stepped
+      around all four canvas edges at a thin inset, cycling through the
+      five-colour palette so each edge picks up roughly one full rotation
+      of the cycle. Leaves the canvas corners empty so the corner
+      asterisks below sit cleanly without overlap. Thicker (3px) than the
+      typical hairline frame to read as Sharpie ink rather than an
+      engineering rule.
+    * **Corner asterisks.** A six-ray asterisk (vertical + diagonal pairs)
+      with a small filled dot at the centre, painted into each canvas
+      corner — red top-left, blue top-right, green bottom-left, yellow
+      bottom-right. The four-different-colours rotation is the visual
+      signal that this is a "marker pot" theme, not a single-Sharpie
+      doodle. The TR asterisk overlaps the debug-mode banner band, so
+      ``_DEBUG_LABEL_RIGHT_INSET`` pushes the label inward past it.
+    * **Mid-edge marker dots.** Two filled circles (yellow at left-mid,
+      green at right-mid) hug the inner edge of the dashed frame to
+      finish the colour balance — without them the green and yellow
+      cycle in the dashed perimeter is the only place those two ink
+      colours land, and they read as accidental rather than intentional.
+
+    The colour cycle ``_MARKER_BORDER_PALETTE`` lives at module scope
+    (see its docstring) — pulling from ``colors`` would force a
+    THEMES-schema extension for two greenfield slots and re-pin every
+    cross-theme invariant test. ``colors`` is still threaded through
+    the signature so the function shape matches other border painters
+    and a future palette swap inside the marker theme can extend here.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+
+    # Perimeter dashed scribble. ``inset`` is the distance from the
+    # canvas edge to the dash centre line; ``corner_clear`` keeps the
+    # dash sequence away from the corners so the asterisks below sit
+    # cleanly. ``dash_len`` / ``gap_len`` are tuned so each edge holds
+    # ~10–14 dashes, which lands roughly two full cycles of the
+    # five-colour palette per edge.
+    inset = 12
+    corner_clear = 36
+    dash_len = 18
+    gap_len = 10
+    stride = dash_len + gap_len
+    thickness = 3
+
+    palette = _MARKER_BORDER_PALETTE
+    palette_len = len(palette)
+    dash_index = 0
+
+    def _next_colour() -> tuple[int, int, int]:
+        nonlocal dash_index
+        col = palette[dash_index % palette_len]
+        dash_index += 1
+        return col
+
+    # Top edge — left to right.
+    x = corner_clear
+    while x + dash_len <= width - corner_clear:
+        draw.line((x, inset, x + dash_len, inset), fill=_next_colour(), width=thickness)
+        x += stride
+    # Right edge — top to bottom.
+    y = corner_clear
+    while y + dash_len <= height - corner_clear:
+        draw.line(
+            (width - 1 - inset, y, width - 1 - inset, y + dash_len),
+            fill=_next_colour(),
+            width=thickness,
+        )
+        y += stride
+    # Bottom edge — right to left.
+    x = width - corner_clear
+    while x - dash_len >= corner_clear:
+        draw.line((x - dash_len, height - 1 - inset, x, height - 1 - inset), fill=_next_colour(), width=thickness)
+        x -= stride
+    # Left edge — bottom to top.
+    y = height - corner_clear
+    while y - dash_len >= corner_clear:
+        draw.line((inset, y - dash_len, inset, y), fill=_next_colour(), width=thickness)
+        y -= stride
+
+    # Corner asterisks. Six-ray rosette: horizontal + vertical + two
+    # diagonals, with a filled dot at the centre to anchor the cluster
+    # on the panel. Rays cleared of the dashed frame's reach so the two
+    # motifs don't blur into one indistinct corner blot.
+    aster_inset = 24
+    ray = 11
+    centre_radius = 3
+    corners = (
+        (aster_inset, aster_inset, SPECTRA6["red"]),
+        (width - 1 - aster_inset, aster_inset, SPECTRA6["blue"]),
+        (aster_inset, height - 1 - aster_inset, SPECTRA6["green"]),
+        (width - 1 - aster_inset, height - 1 - aster_inset, SPECTRA6["yellow"]),
+    )
+    for cx, cy, ink in corners:
+        # Cardinal arms.
+        draw.line((cx - ray, cy, cx + ray, cy), fill=ink, width=2)
+        draw.line((cx, cy - ray, cx, cy + ray), fill=ink, width=2)
+        # Diagonal arms — slightly shorter so the asterisk reads as
+        # a hand-drawn star rather than a pinwheel.
+        diag = int(ray * 0.78)
+        draw.line((cx - diag, cy - diag, cx + diag, cy + diag), fill=ink, width=2)
+        draw.line((cx - diag, cy + diag, cx + diag, cy - diag), fill=ink, width=2)
+        # Filled centre dot.
+        draw.ellipse(
+            (cx - centre_radius, cy - centre_radius, cx + centre_radius, cy + centre_radius),
+            fill=ink,
+        )
+
+    # Mid-edge filled marker dots. Yellow on the left, green on the
+    # right — the two ink colours that the corner-asterisk rotation
+    # leaves on the bottom row, lifted to mid-edge so they don't read
+    # as biased toward the bottom of the page.
+    dot_radius = 7
+    mid_dots = (
+        (inset + 2, height // 2, SPECTRA6["yellow"]),
+        (width - 1 - inset - 2, height // 2, SPECTRA6["green"]),
+    )
+    for cx, cy, ink in mid_dots:
+        draw.ellipse(
+            (cx - dot_radius, cy - dot_radius, cx + dot_radius, cy + dot_radius),
+            fill=ink,
+        )
+
+
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
@@ -1835,6 +2039,7 @@ _BORDER_PAINTERS = {
     "gothic": draw_gothic_border,
     "dispatch": draw_dispatch_border,
     "atomic": draw_atomic_border,
+    "marker": draw_marker_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -1870,6 +2075,8 @@ _DEBUG_LABEL_RIGHT_INSET = {
     "gothic": 30,       # past the TR quatrefoil right lobe (frame at 14,
                         # lobe centre offset +4 with radius 5 → x=width-6)
     "risograph": 44,    # past the shifted TR registration mark at x=width-15
+    "marker": 44,       # past the TR asterisk (centre at width-25, ray 11
+                        # → rightmost arm at x=width-14) plus breathing gap
 }
 
 
