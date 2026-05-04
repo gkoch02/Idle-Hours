@@ -170,6 +170,7 @@ def parse_args() -> argparse.Namespace:
         "dispatch",
         "atomic",
         "marker",
+        "saloon",
     ]
     parser.add_argument(
         "--theme",
@@ -191,7 +192,12 @@ def parse_args() -> argparse.Namespace:
             "and starbursts), "
             "'marker' (white/black/blue + multi-colour decorative border, "
             "Permanent Marker hand-drawn face — fridge-doodle vibe, lights "
-            "up every spot colour the Spectra 6 panel can produce). "
+            "up every spot colour the Spectra 6 panel can produce), "
+            "'saloon' (white/black/red, Rye wood-engraved slab serif — "
+            "19th-century Wild West wanted-poster vibe, layered "
+            "background with red foxing speckles, decorative banner "
+            "bands, double-rule frame, corner fleurons and mid-edge "
+            "diamonds). "
             "Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow), 'gothic' (black/white/red, "
             "blackletter ornaments + matched phrase, cathedral-tracery border). "

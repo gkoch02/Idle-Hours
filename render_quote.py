@@ -46,6 +46,7 @@ THEME_ORDER: tuple[str, ...] = (
     "dispatch",
     "atomic",
     "marker",
+    "saloon",
 )
 THEMES = {
     "default": {
@@ -289,6 +290,27 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # 19th-century wood-engraved saloon poster / Wild West "WANTED"
+    # broadside. Same default-palette shape (white paper, black ink, red
+    # accent) that ``default`` and ``dispatch`` use, but the heavy slab
+    # display face (Rye) plus an elaborately layered background — sparse
+    # red foxing speckles across the entire page, double-rule wanted-
+    # poster frame, top + bottom decorative banner bands with mirrored
+    # ornaments, corner fleurons, and mid-edge red diamonds — give the
+    # theme a visibly more sophisticated ground than any of its
+    # white/black/red siblings, satisfying the "more sophisticated
+    # background" brief. Reads as a hand-printed Western broadside at a
+    # glance: aged paper, heavy ink, ornate engraver's frame.
+    "saloon": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -413,6 +435,7 @@ BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
 ATOMICAGE_REGULAR = str(BASE_DIR / "fonts/atomic-age/AtomicAge-Regular.ttf")
 PERMANENTMARKER_REGULAR = str(BASE_DIR / "fonts/permanent-marker/PermanentMarker-Regular.ttf")
+RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -736,6 +759,41 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             PERMANENTMARKER_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "saloon": {
+        # Rye (OFL, Sorkin Type / Google Fonts) — a 19th-century
+        # wood-engraved display slab serif designed to look like the
+        # block-printed type used on Wild West saloon signs and wanted
+        # posters. Like Bangers (comic), Special Elite (dispatch),
+        # Atomic Age (atomic), and Permanent Marker (marker) it ships
+        # only Regular, so the matched-phrase role re-uses the same
+        # file and gains differentiation purely through the accent
+        # colour (red), exactly the way two-colour letterpress
+        # broadsides shifted between black and red ink on the same
+        # type plate. Fallback chain ends at a heavy serif (DejaVu /
+        # Liberation / Noto Serif Bold) before degrading to the
+        # Playfair chain — the broadside silhouette degrades to "heavy
+        # serif" rather than to a transitional / display alternative
+        # so a missing-Rye install still reads as bookish broadside.
+        "quote_regular": [
+            RYE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            RYE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            RYE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -1837,6 +1895,283 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+# Deterministic foxing-speckle layout for ``draw_saloon_border``.
+# Pre-computed once at module load (rather than re-randomised per render)
+# so a given quote renders byte-identically every tick — the renderer
+# golden-image suite, the contact-sheet QA tool, and the pick-equivalence
+# tests all rely on the bit-exact-output contract, and a per-render
+# reseed would break it. ``random.Random(seed)`` is used over hashing so
+# the distribution is statistically uniform; the seed is fixed at module
+# scope so test fixtures don't have to thread a seed through.
+def _build_saloon_foxing_points(
+    width: int, height: int, density: int, *, seed: int
+) -> list[tuple[int, int, int]]:
+    """Scatter ``density`` foxing speckles across a (width × height) field.
+
+    Each speckle is a (x, y, radius) tuple where radius is 0 (single
+    pixel) or 1 (3×3 cluster). The mix gives a worn-paper texture
+    rather than a uniform stipple grid: most spots are single-pixel
+    aging marks, a smaller fraction are three-pixel "darker" foxing.
+
+    Density is the *target* count of speckles for the canvas; the
+    actual count matches exactly because the function loops fixed times.
+    """
+    import random as _random
+    rng = _random.Random(seed)
+    points: list[tuple[int, int, int]] = []
+    for _ in range(density):
+        x = rng.randint(2, width - 3)
+        y = rng.randint(2, height - 3)
+        # ~85% single pixel (subtle), ~15% 3×3 cluster (darker spot).
+        radius = 1 if rng.random() < 0.15 else 0
+        points.append((x, y, radius))
+    return points
+
+
+# Density tuned at 800×480: ~360 speckles is enough to read as aged
+# paper at the panel's viewing distance without crowding the body
+# text. Body text painted on top dominates wherever glyphs land; the
+# speckles only show through the white inter-glyph and inter-line gaps,
+# so legibility stays clean.
+_SALOON_FOXING = _build_saloon_foxing_points(
+    DEFAULT_WIDTH, DEFAULT_HEIGHT, density=360, seed=0xB2A1
+)
+
+
+def draw_saloon_border(image: Image.Image, colors: dict) -> None:
+    """Paint a 19th-century saloon-broadside / wanted-poster background.
+
+    The marker theme's draw_marker_border is *colourful* — the saloon
+    theme's brief is *sophisticated*: a multi-layered ground that
+    reads as aged hand-printed paper rather than a single painted
+    border. Five layers, painted bottom to top so the upper layers
+    sit visibly on the lower:
+
+    1. **Foxing speckles.** Sparse red dots scattered across the entire
+       canvas via ``_SALOON_FOXING`` — pre-computed at module scope
+       with a fixed seed so every render is byte-identical (the golden
+       suite and contact sheet rely on this). Density tuned so body
+       text remains fully legible; the dots only show through in
+       white inter-glyph and inter-line gaps where they read as
+       oxidation foxing on the paper rather than surface noise.
+    2. **Top + bottom decorative banner bands.** A thick black
+       horizontal rule, a thin black hairline rule below it, plus a
+       row of red ornaments (alternating diamonds and short horizontal
+       dashes) sandwiched between the rules. Mirrored at the bottom
+       of the page. These bands sit in the "header / footer" zones
+       (y < ~58 and y > height-58) where no body text ever lands, so
+       they can be dense without legibility cost — same conservative
+       safe-zone analysis the atomic atom and dispatch rubber stamp
+       use.
+    3. **Outer + inner double-rule frame.** Two black rectangles
+       (3px outer, 1px inner) at modest insets, finishing the
+       wanted-poster border treatment.
+    4. **Corner fleurons.** A filled black diamond at each frame
+       corner with two short flanking red triangle "wings" — the
+       wood-engraved cornerpiece terminal used on Wild West saloon
+       signs and 19th-century hand-printed broadsides.
+    5. **Mid-edge red diamonds.** Small filled red ornaments on the
+       outer rule's mid-edges, picking up the diamond motif from the
+       corner fleurons and breaking up the long horizontal ink runs.
+
+    Every shape draws from ``colors``; the saloon palette uses the
+    default white/black/red triple so a future palette swap inside
+    ``THEMES["saloon"]`` flows through automatically.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    ink = colors["text"]       # black
+    accent = colors["accent"]  # red (foxing, ornaments, fleuron wings)
+    bg = colors["page_bg"]
+
+    # ------------------------------------------------------------------
+    # Layer 1: Foxing speckles. ``_SALOON_FOXING`` is pre-computed for
+    # the default (800, 480) canvas; if a caller renders at a different
+    # size (e.g. the contact-sheet tile), rescale point coordinates so
+    # the texture fills the canvas at the same visual density. Single-
+    # pixel and 3×3-pixel spots intermix for a non-uniform "aged paper"
+    # texture rather than a regular stipple grid.
+    sx = width / DEFAULT_WIDTH
+    sy = height / DEFAULT_HEIGHT
+    for px, py, radius in _SALOON_FOXING:
+        x = int(px * sx)
+        y = int(py * sy)
+        if radius == 0:
+            draw.point((x, y), fill=accent)
+        else:
+            draw.rectangle((x - 1, y - 1, x + 1, y + 1), fill=accent)
+
+    # ------------------------------------------------------------------
+    # Layer 2: Top + bottom decorative banner bands.
+    # Each band: a thick rule on the outer side, a hairline rule on the
+    # inner side, with a row of alternating red diamonds + black dashes
+    # between them. The two rules sandwich the ornament strip so the
+    # band reads as a typeset divider rather than a row of free-floating
+    # ornaments — the broadside-printer's idiom.
+    #
+    # Y-positions are chosen to clear the debug-mode chrome:
+    #   * the ``DEBUG MODE`` banner sits at y=14 with ~15px height, so
+    #     the top band's thick outer rule starts at y=34 (5px buffer);
+    #   * the bottom debug dotted rule sits at y=443 and the text strip
+    #     at y=451-466, so the bottom band's thick outer rule ends at
+    #     y=440 (3px buffer above the dotted rule).
+    # Body quote_top is around y=72 in every layout, so the top band's
+    # inner rule at y=58 leaves 14px of clearance to body text.
+    band_outer_y_top = 34
+    band_inner_y_top = 58
+    band_outer_y_bot = height - 1 - 39
+    band_inner_y_bot = height - 1 - 63
+    band_rule_thick = 3
+    band_rule_thin = 1
+
+    # Top: thick rule (outer), hairline rule (inner).
+    draw.rectangle(
+        (40, band_outer_y_top, width - 1 - 40, band_outer_y_top + band_rule_thick - 1),
+        fill=ink,
+    )
+    draw.rectangle(
+        (40, band_inner_y_top, width - 1 - 40, band_inner_y_top + band_rule_thin - 1),
+        fill=ink,
+    )
+    # Bottom: hairline rule (inner), thick rule (outer).
+    draw.rectangle(
+        (40, band_inner_y_bot - band_rule_thin + 1, width - 1 - 40, band_inner_y_bot),
+        fill=ink,
+    )
+    draw.rectangle(
+        (40, band_outer_y_bot - band_rule_thick + 1, width - 1 - 40, band_outer_y_bot),
+        fill=ink,
+    )
+
+    # Banner ornaments — alternating red diamonds + short black dashes
+    # in the row between the two rules. The ``DEBUG MODE`` banner sits
+    # at y=14 (above band_outer_y_top=22), so the entire ornament strip
+    # is below the debug label and no _DEBUG_LABEL_RIGHT_INSET tweak is
+    # needed.
+    diamond_size = 5
+    dash_len = 14
+    ornament_step = 36
+    band_mid_y_top = (band_outer_y_top + band_rule_thick + band_inner_y_top) // 2
+    band_mid_y_bot = (band_inner_y_bot + band_outer_y_bot - band_rule_thick) // 2
+    n_ornaments = (width - 160) // ornament_step
+    start_x = (width - n_ornaments * ornament_step) // 2 + ornament_step // 2
+    for i in range(n_ornaments):
+        cx = start_x + i * ornament_step
+        if i % 2 == 0:
+            # Red diamond.
+            for cy in (band_mid_y_top, band_mid_y_bot):
+                draw.polygon(
+                    [
+                        (cx, cy - diamond_size),
+                        (cx + diamond_size, cy),
+                        (cx, cy + diamond_size),
+                        (cx - diamond_size, cy),
+                    ],
+                    fill=accent,
+                )
+        else:
+            # Short black dash.
+            for cy in (band_mid_y_top, band_mid_y_bot):
+                draw.line(
+                    (cx - dash_len // 2, cy, cx + dash_len // 2, cy),
+                    fill=ink,
+                    width=2,
+                )
+
+    # ------------------------------------------------------------------
+    # Layer 3: Outer + inner double-rule frame. Tight insets so the
+    # foxing speckles between the page edge and the frame remain
+    # visible (otherwise the frame would mask them and the texture
+    # would only read inside the body region).
+    outer_inset = 12
+    inner_inset = 18
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=ink,
+        width=3,
+    )
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=ink,
+        width=1,
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 4: Corner fleurons. A filled black diamond at each outer
+    # corner with two short red triangular "wings" pointing along the
+    # frame edges — the wood-engraved cornerpiece motif on 19th-century
+    # broadsides and saloon signs. The diamond sits on the outer-rule
+    # corner; the wings extend a short distance along the top/bottom
+    # and side edges, evoking the spreading cornerpiece flourish.
+    diamond_corner = 9
+    wing_len = 14
+    wing_w = 5
+    corners = (
+        # (cx, cy, dx_along_top_or_bot, dy_along_side)
+        (outer_inset, outer_inset, 1, 1),                              # TL
+        (width - 1 - outer_inset, outer_inset, -1, 1),                 # TR
+        (outer_inset, height - 1 - outer_inset, 1, -1),                # BL
+        (width - 1 - outer_inset, height - 1 - outer_inset, -1, -1),   # BR
+    )
+    for cx, cy, dx, dy in corners:
+        # Black filled diamond on the corner anchor.
+        draw.polygon(
+            [
+                (cx, cy - diamond_corner),
+                (cx + diamond_corner, cy),
+                (cx, cy + diamond_corner),
+                (cx - diamond_corner, cy),
+            ],
+            fill=ink,
+        )
+        # Red wing along the horizontal edge.
+        draw.polygon(
+            [
+                (cx + dx * (diamond_corner + 2), cy - wing_w),
+                (cx + dx * (diamond_corner + 2 + wing_len), cy),
+                (cx + dx * (diamond_corner + 2), cy + wing_w),
+            ],
+            fill=accent,
+        )
+        # Red wing along the vertical edge.
+        draw.polygon(
+            [
+                (cx - wing_w, cy + dy * (diamond_corner + 2)),
+                (cx, cy + dy * (diamond_corner + 2 + wing_len)),
+                (cx + wing_w, cy + dy * (diamond_corner + 2)),
+            ],
+            fill=accent,
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 5: Mid-edge red diamonds on the outer rule. Picks up the
+    # corner fleuron motif and breaks the long horizontal/vertical
+    # rules into shorter visual segments. Painted on top of the rule
+    # itself so the diamond reads as a "punched" ornament rather than
+    # a separate floating element.
+    mid_diamond = 7
+    midpoints = (
+        (width // 2, outer_inset),
+        (width // 2, height - 1 - outer_inset),
+        (outer_inset, height // 2),
+        (width - 1 - outer_inset, height // 2),
+    )
+    for cx, cy in midpoints:
+        draw.polygon(
+            [
+                (cx, cy - mid_diamond),
+                (cx + mid_diamond, cy),
+                (cx, cy + mid_diamond),
+                (cx - mid_diamond, cy),
+            ],
+            fill=accent,
+        )
+    # Fall-through to silence the "unused bg" — kept in the signature
+    # so a future palette extension (e.g. cream foxing on a tinted
+    # ground) has the field already wired.
+    del bg
+
+
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
@@ -2040,6 +2375,7 @@ _BORDER_PAINTERS = {
     "dispatch": draw_dispatch_border,
     "atomic": draw_atomic_border,
     "marker": draw_marker_border,
+    "saloon": draw_saloon_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -2077,6 +2413,10 @@ _DEBUG_LABEL_RIGHT_INSET = {
     "risograph": 44,    # past the shifted TR registration mark at x=width-15
     "marker": 44,       # past the TR asterisk (centre at width-25, ray 11
                         # → rightmost arm at x=width-14) plus breathing gap
+    "saloon": 44,       # past the TR fleuron horizontal wing (corner at
+                        # width-13, wing tip at width-38) plus breathing gap.
+                        # The decorative banner band starts at y=34 so it's
+                        # already below the label's y=14-29 band.
 }
 
 
