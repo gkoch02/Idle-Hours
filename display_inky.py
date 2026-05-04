@@ -55,6 +55,12 @@ THEME_SATURATION: dict[str, float] = {
     # ``bauhaus``. Black typewriter ink + red rubber stamp on white
     # paper sits squarely in the light-background tier.
     "dispatch": 0.5,
+    # Saturated green ground (the only theme whose page_bg is green) —
+    # same tier as other coloured-ground / non-white themes (`comic` /
+    # `risograph` / `dark` / `nightvision`) so the red atomic accents
+    # and oversized red quote marks don't desaturate against the
+    # vivid Sputnik-green background.
+    "atomic": 0.7,
 }
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import math
 import re
 import sys
 from pathlib import Path
@@ -43,6 +44,7 @@ THEME_ORDER: tuple[str, ...] = (
     "risograph",
     "comic",
     "dispatch",
+    "atomic",
 )
 THEMES = {
     "default": {
@@ -239,6 +241,33 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Mid-century atomic age. Sputnik-green ground (the only theme to
+    # claim Spectra 6's flat green as a *background* — every other
+    # theme uses green only as ink), chunky black body in the Atomic
+    # Age display face, atomic-energy red for the matched time
+    # phrase and the decorative graphics. Pairs with a
+    # ``draw_atomic_border`` of a rounded-corner red frame
+    # (Googie / streamlined-modern curves), a centred atom symbol at
+    # the top of the page (three rotated red ellipse "orbits" plus a
+    # central red nucleus), and small red starbursts at the
+    # mid-edges (the radiating-rays motif of 1950s diner / motel
+    # signage). Reads as a vintage atomic-age advertisement at a
+    # glance — bright, optimistic, slightly garish.
+    "atomic": {
+        "page_bg": SPECTRA6["green"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto red so the oversized
+        # quote marks render as solid red against the green ground —
+        # otherwise the dither's green half would blend into the bg
+        # and leave half-density ornaments. Same trick `gothic`
+        # uses to keep its red blackletter quote marks dramatic.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -361,6 +390,7 @@ JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
 RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
 BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
 SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
+ATOMICAGE_REGULAR = str(BASE_DIR / "fonts/atomic-age/AtomicAge-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -619,6 +649,38 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             SPECIALELITE_REGULAR,
             SPACEMONO_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "atomic": {
+        # Atomic Age is a chunky 1950s display face (Sorkin Type, OFL)
+        # — pointed angular terminals on slab bodies, very mid-century
+        # signage / Sputnik-poster register. Like Bangers (comic) and
+        # Special Elite (dispatch) it ships only Regular, so the
+        # matched-phrase role re-uses the same file and gains
+        # differentiation through the accent colour alone. Body text
+        # in a display face is loud by design — that's the point. The
+        # fallback chain ends at a heavy sans (DejaVu / Liberation /
+        # Noto Sans Bold) before degrading to the Playfair serif
+        # chain, since a missing-Atomic-Age install should land on a
+        # heavy display silhouette rather than an elegant serif.
+        "quote_regular": [
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -1481,6 +1543,96 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+def draw_atomic_border(image: Image.Image, colors: dict) -> None:
+    """Atomic-age decorative border: rounded frame + atom symbol + starbursts.
+
+    Three motifs from the 1950s-60s atomic / Sputnik / Googie design
+    vocabulary:
+
+    * **Rounded-corner outer frame** in red — the streamlined-modern
+      curve language of Googie coffee-shop architecture and motel
+      signage. ``draw.rounded_rectangle`` is Pillow ≥ 8.2.
+    * **Atom symbol centred at the top of the page** — three
+      tilted ellipse "orbits" (at 0°, 60°, 120°) plus a small filled
+      red nucleus. PIL's ``ellipse`` doesn't accept rotation, so each
+      orbit is drawn as a polygon-line approximation: 64 points sampled
+      around an unrotated ellipse, rotated through ``angle`` via 2×2
+      cosine/sine matrix, and connected with ``draw.line``. Centred
+      horizontally so it doesn't collide with the right-aligned
+      ``DEBUG MODE`` banner; positioned at y=44 with orbit semi-major
+      24 so the atom fits in the page-header zone (block_top ≥ 72) and
+      stays clear of the body quote text.
+    * **Twin starbursts at the mid-edges** (left and right) — eight
+      red rays radiating from a small filled red dot, the iconic
+      "atomic-energy spark" motif of mid-century diner / motel signage
+      and Sputnik-era propaganda. Mid-edge placement (y = height // 2)
+      keeps them outside the centred body text block and balances the
+      composition top-to-bottom.
+
+    Every glyph is in the theme's ``accent`` colour (red), so a future
+    palette tweak in ``THEMES["atomic"]`` flows through automatically.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    accent = colors["accent"]
+
+    # Rounded outer frame.
+    frame_inset = 14
+    frame_radius = 24
+    draw.rounded_rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        radius=frame_radius,
+        outline=accent,
+        width=2,
+    )
+
+    # Atom symbol — three rotated ellipse outlines + nucleus.
+    atom_cx = width // 2
+    atom_cy = 44
+    orbit_a = 24  # semi-major axis (fits below frame at y=14, above quote_top ≥ 72)
+    orbit_b = 8
+    n_points = 64
+    for angle_deg in (0, 60, 120):
+        angle = math.radians(angle_deg)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        points = []
+        for i in range(n_points + 1):
+            t = 2.0 * math.pi * i / n_points
+            x_unrot = orbit_a * math.cos(t)
+            y_unrot = orbit_b * math.sin(t)
+            px = atom_cx + x_unrot * cos_a - y_unrot * sin_a
+            py = atom_cy + x_unrot * sin_a + y_unrot * cos_a
+            points.append((px, py))
+        draw.line(points, fill=accent, width=1)
+    # Nucleus.
+    nucleus_r = 4
+    draw.ellipse(
+        (atom_cx - nucleus_r, atom_cy - nucleus_r, atom_cx + nucleus_r, atom_cy + nucleus_r),
+        fill=accent,
+    )
+
+    # Twin starbursts at the mid-edges.
+    starburst_outer = 11
+    starburst_inner = 4
+    centres = ((34, height // 2), (width - 34, height // 2))
+    for star_cx, star_cy in centres:
+        for angle_deg in range(0, 360, 45):
+            angle = math.radians(angle_deg)
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
+            x1 = star_cx + starburst_inner * cos_a
+            y1 = star_cy + starburst_inner * sin_a
+            x2 = star_cx + starburst_outer * cos_a
+            y2 = star_cy + starburst_outer * sin_a
+            draw.line((x1, y1, x2, y2), fill=accent, width=1)
+        # Centre dot.
+        draw.ellipse(
+            (star_cx - 2, star_cy - 2, star_cx + 2, star_cy + 2),
+            fill=accent,
+        )
+
+
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
@@ -1682,6 +1834,7 @@ _BORDER_PAINTERS = {
     "illuminated": draw_illuminated_border,
     "gothic": draw_gothic_border,
     "dispatch": draw_dispatch_border,
+    "atomic": draw_atomic_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -1706,6 +1859,10 @@ _BORDER_PAINTERS = {
 #     below the label's y=14-29 band; no horizontal-overlap concern since
 #     the two graphics are vertically separated. The frame and tractor-feed
 #     perforations don't reach into the label's bbox either.
+#   - atomic: atom symbol is centred at (width//2, 44) — far from the
+#     right-aligned label's x range. Mid-edge starbursts sit at y=height//2,
+#     also clear of the label band. The rounded outer frame at inset 14 is
+#     identical to other framed themes here.
 _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)

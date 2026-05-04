@@ -168,6 +168,7 @@ def parse_args() -> argparse.Namespace:
         "risograph",
         "comic",
         "dispatch",
+        "atomic",
     ]
     parser.add_argument(
         "--theme",
@@ -183,7 +184,10 @@ def parse_args() -> argparse.Namespace:
             "rounded sans), 'comic' (yellow bg / black body / red accent, "
             "comic-book display face), 'dispatch' (white/black/red, Special "
             "Elite typewriter face, vintage-office dossier border with "
-            "tractor-feed perforations and red rubber-stamp imprint). "
+            "tractor-feed perforations and red rubber-stamp imprint), "
+            "'atomic' (green-bg/black-body/red-accent, Atomic Age display "
+            "face, mid-century border with rounded frame, atom symbol "
+            "and starbursts). "
             "Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow), 'gothic' (black/white/red, "
             "blackletter ornaments + matched phrase, cathedral-tracery border). "
