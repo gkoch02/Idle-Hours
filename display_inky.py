@@ -61,6 +61,22 @@ THEME_SATURATION: dict[str, float] = {
     # and oversized red quote marks don't desaturate against the
     # vivid Sputnik-green background.
     "atomic": 0.7,
+    # White ground but the decorative border lights up every Spectra 6
+    # spot colour the panel can produce (red / yellow / blue / green /
+    # black). Push to the higher 0.7 tier so all four chromatic accents
+    # in the dashed perimeter and corner asterisks stay punchy — at the
+    # default 0.5 the green dashes can read pale-mint against the white
+    # paper rather than as confident marker ink. Black body text isn't
+    # affected by saturation either way.
+    "marker": 0.7,
+    # White ground / black body / red accent — same chromatic pressure
+    # as ``default`` / ``dispatch`` so the gentler 0.5 tier is the
+    # right starting point. The saloon theme's red foxing speckles
+    # are sparse enough that they read as aged-paper texture at any
+    # saturation; pushing higher would risk turning the speckles into
+    # vivid spots that compete with the body text. Override at runtime
+    # via ``--saturation`` if real-panel calibration suggests otherwise.
+    "saloon": 0.5,
 }
 
 
