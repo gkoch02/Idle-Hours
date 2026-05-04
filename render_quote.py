@@ -42,6 +42,7 @@ THEME_ORDER: tuple[str, ...] = (
     "bauhaus",
     "risograph",
     "comic",
+    "dispatch",
 )
 THEMES = {
     "default": {
@@ -212,6 +213,32 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
+    # Field dispatch / typewritten dossier. White paper, black typewriter
+    # ink for the body, and red for the matched time phrase — the
+    # classic two-colour bichrome typewriter ribbon (black for normal
+    # text, red for emphasis / numerals / official marks). Special
+    # Elite is a slab-mono typewriter face whose deliberately uneven
+    # inking does most of the visual work; the ``draw_dispatch_border``
+    # frame, tractor-feed perforations on the side margins, and red
+    # rubber-stamp imprint in the top-right corner finish the
+    # vintage-office composition. Same palette as ``default`` (which
+    # uses Playfair Display — high-contrast transitional serif), but
+    # the slab-mono typewriter face plus the dossier graphics give it
+    # a completely different silhouette on the panel.
+    "dispatch": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        # Half-density quote marks (dither between black and white)
+        # mimic the irregular inking of a worn typewriter ribbon — the
+        # signature texture of a Special Elite render that a clean
+        # solid-fill mark would erase.
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -333,6 +360,7 @@ UNIFRAKTUR_BOOK = str(BASE_DIR / "fonts/unifraktur/UnifrakturMaguntia-Book.ttf")
 JOST_VARIABLE = str(BASE_DIR / "fonts/jost/Jost-Variable.ttf")
 RUBIK_VARIABLE = str(BASE_DIR / "fonts/rubik/Rubik-Variable.ttf")
 BANGERS_REGULAR = str(BASE_DIR / "fonts/bangers/Bangers-Regular.ttf")
+SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -559,6 +587,38 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             BANGERS_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "dispatch": {
+        # Special Elite ships only one weight (Regular) and is a
+        # slab-mono typewriter face whose deliberately uneven inking
+        # is the whole point — there is no "true bold" Special Elite,
+        # nor would a heavier weight match the visual register. The
+        # matched-phrase role re-uses the same file and gains
+        # differentiation purely through the accent colour (red), the
+        # way a real bichrome typewriter ribbon shifted between black
+        # and red without changing weight. Falls back through Space
+        # Mono / DejaVu Sans Mono before degrading to the Playfair
+        # serif chain — a missing Special Elite install lands on the
+        # closest in-rotation typewriter-adjacent face (mono) rather
+        # than dropping a slab-typewriter theme onto a transitional
+        # serif silhouette.
+        "quote_regular": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -1318,6 +1378,88 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
+    """Paint a vintage-office dispatch border: thin frame + tractor-feed perforations + red rubber-stamp imprint.
+
+    Three motifs from the typewriter / dot-matrix / dossier era:
+
+    * **Outer thin black frame** at a small inset frames the page like
+      a typed memo's letterhead rule.
+    * **Tractor-feed perforations** — a column of small black filled
+      circles spaced ~40px apart on each side margin, between the
+      frame and the page edge — echoes the sprocket holes punched
+      down the side of continuous-feed dot-matrix printer paper. No
+      other theme uses this motif, and it's instantly recognisable as
+      mid-century office-document texture.
+    * **Red rubber-stamp imprint** in the upper right (inside the
+      frame, well below the debug-mode label band): two concentric
+      ellipse outlines plus four short diagonal hatch lines, evoking
+      a smudged ink rubber stamp without committing to any specific
+      lettering. Sits at y≈40–70 so the oversized opening quote mark
+      (drawn from the left at quote_top − open_h//3, ≥ 42 in every
+      layout) and the matched-phrase text block (centred horizontally,
+      block_top ≥ 72) both stay clear.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    ink = colors["text"]
+    accent = colors["accent"]
+
+    # Outer thin frame.
+    frame_inset = 14
+    draw.rectangle(
+        (frame_inset, frame_inset, width - 1 - frame_inset, height - 1 - frame_inset),
+        outline=ink,
+        width=1,
+    )
+
+    # Tractor-feed perforations on the left and right margins.
+    hole_radius = 2
+    hole_spacing = 40
+    hole_top = 22
+    hole_bottom = height - 22
+    left_x = 7
+    right_x = width - 1 - 7
+    y = hole_top
+    while y <= hole_bottom:
+        draw.ellipse(
+            (left_x - hole_radius, y - hole_radius, left_x + hole_radius, y + hole_radius),
+            fill=ink,
+        )
+        draw.ellipse(
+            (right_x - hole_radius, y - hole_radius, right_x + hole_radius, y + hole_radius),
+            fill=ink,
+        )
+        y += hole_spacing
+
+    # Red rubber-stamp imprint: two concentric ellipse outlines plus
+    # short diagonal hatch lines. Positioned below the DEBUG MODE
+    # banner band (y=14–29 at SIDE_MARGIN x-position) so debug mode
+    # doesn't need a label inset adjustment.
+    stamp_cx = width - 55
+    stamp_cy = 55
+    outer_hw, outer_hh = 25, 15
+    inner_hw, inner_hh = 19, 10
+    draw.ellipse(
+        (stamp_cx - outer_hw, stamp_cy - outer_hh, stamp_cx + outer_hw, stamp_cy + outer_hh),
+        outline=accent,
+        width=1,
+    )
+    draw.ellipse(
+        (stamp_cx - inner_hw, stamp_cy - inner_hh, stamp_cx + inner_hw, stamp_cy + inner_hh),
+        outline=accent,
+        width=1,
+    )
+    # Four diagonal hatch lines suggest smudged rubber-stamp ink
+    # without spelling any specific word.
+    for dx in (-9, -3, 3, 9):
+        draw.line(
+            (stamp_cx + dx - 3, stamp_cy + 3, stamp_cx + dx + 3, stamp_cy - 3),
+            fill=accent,
+            width=1,
+        )
+
+
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
@@ -1518,6 +1660,7 @@ _BORDER_PAINTERS = {
     "scholar": draw_scholar_border,
     "illuminated": draw_illuminated_border,
     "gothic": draw_gothic_border,
+    "dispatch": draw_dispatch_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -1538,6 +1681,10 @@ _BORDER_PAINTERS = {
 #   - nightvision: HUD corner bracket's TR vertical arm paints x=width-13 to
 #     width-12 (y>=12), leaving ~7px of clearance; the horizontal arm sits at
 #     y=12-13, a row above the label's y=14 baseline.
+#   - dispatch: rubber-stamp imprint sits at y=40-70 (centre y=55), well
+#     below the label's y=14-29 band; no horizontal-overlap concern since
+#     the two graphics are vertically separated. The frame and tractor-feed
+#     perforations don't reach into the label's bbox either.
 _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)

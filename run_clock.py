@@ -167,6 +167,7 @@ def parse_args() -> argparse.Namespace:
         "bauhaus",
         "risograph",
         "comic",
+        "dispatch",
     ]
     parser.add_argument(
         "--theme",
@@ -180,7 +181,10 @@ def parse_args() -> argparse.Namespace:
             "blackletter ornaments), 'bauhaus' (white/black/blue with red "
             "ornaments, geometric sans), 'risograph' (white/red/blue, no black, "
             "rounded sans), 'comic' (yellow bg / black body / red accent, "
-            "comic-book display face). Dark: 'dark' (black/white/yellow), "
+            "comic-book display face), 'dispatch' (white/black/red, Special "
+            "Elite typewriter face, vintage-office dossier border with "
+            "tractor-feed perforations and red rubber-stamp imprint). "
+            "Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow), 'gothic' (black/white/red, "
             "blackletter ornaments + matched phrase, cathedral-tracery border). "
             "'auto' selects 'dark' between "

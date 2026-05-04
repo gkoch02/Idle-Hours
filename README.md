@@ -253,7 +253,7 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Eleven themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
+Twelve themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
 
 | `--theme`     | Preview | Page bg | Body text | Accent  | Typeface         | Feel                                          |
 |---------------|---------|---------|-----------|---------|------------------|-----------------------------------------------|
@@ -268,6 +268,7 @@ Eleven themes ship built-in, all constrained to the Spectra 6 panel palette (whi
 | `bauhaus`     | <img src="assets/previews/bauhaus.png" width="240" alt="bauhaus theme preview">         | white   | black     | blue (+ red ornaments) | Jost (geometric sans) | Bauhaus poster — three primaries at once |
 | `risograph`   | <img src="assets/previews/risograph.png" width="240" alt="risograph theme preview">     | white   | red       | blue    | Rubik (rounded sans) | Zine / two-colour riso — no black plate   |
 | `comic`       | <img src="assets/previews/comic.png" width="240" alt="comic theme preview">             | yellow  | black     | red     | Bangers (comic)  | Golden-age comic panel                        |
+| `dispatch`    | <img src="assets/previews/dispatch.png" width="240" alt="dispatch theme preview">       | white   | black     | red     | Special Elite (typewriter slab-mono) | Vintage field dispatch — typewritten body, bichrome ribbon-shift accent, tractor-feed perforations on the side margins, red rubber-stamp imprint top-right |
 
 Pass `--theme auto` to let the clock pick by wall-clock time. The defaults are `default` during the day (06:00–18:00) and `dark` at night (18:00–06:00) — the legacy binary contract. Broaden the rotation by setting `--auto-day-theme` and/or `--auto-night-theme` to any other registered theme, e.g.
 
@@ -284,13 +285,13 @@ Button B cycles forward through the list and wraps; the curator web UI at `/api/
 > Regenerate previews: the images under `assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
 >
 > ```bash
-> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic; do
+> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch; do
 >   python3 render_quote.py --time 14:15 --theme "$theme" --mode production \
 >     --output "assets/previews/$theme.png"
 > done
 > ```
 >
-> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled OFL typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers) so the previews are reproducible without any system-font install.
+> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Special Elite) so the previews are reproducible without any system-font install. All bundled faces are OFL-licensed except Special Elite, which ships under Apache 2.0 (see `fonts/special-elite/LICENSE.txt`).
 
 ### Inky buttons (short and long press)
 
@@ -420,7 +421,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
 - Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
-- Theme thumbnail grid: side-by-side previews of all eleven registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
+- Theme thumbnail grid: side-by-side previews of all twelve registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
 #### Tab: Curate
 

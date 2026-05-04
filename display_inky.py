@@ -50,6 +50,11 @@ THEME_SATURATION: dict[str, float] = {
     # Revisit once we have real-panel samples — `--saturation` overrides.
     "risograph": 0.7,
     "comic": 0.7,
+    # White ground with chromatic accent — same tier as ``default`` /
+    # ``scholar`` / ``newsprint`` / ``blueprint`` / ``illuminated`` /
+    # ``bauhaus``. Black typewriter ink + red rubber stamp on white
+    # paper sits squarely in the light-background tier.
+    "dispatch": 0.5,
 }
 
 
