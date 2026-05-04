@@ -901,6 +901,27 @@ def resolve_display_match(text: str, match_text: str) -> str:
     return normalized_match
 
 
+def _font_ascent(font) -> int:
+    """Return the font's ascent in pixels, or 0 when unavailable.
+
+    Used by the per-chunk baseline-alignment offset in the body draw
+    loop: PIL's default text anchor is ``"la"`` (left, ascender top),
+    so when a line mixes two fonts whose ascents differ (e.g. gothic
+    pairs EB Garamond body with UnifrakturMaguntia bold), drawing
+    both chunks at the same ``y`` leaves the bold phrase floating
+    above the body baseline by ``body_ascent − bold_ascent`` pixels.
+    The bitmap fallback (``ImageFont.load_default()`` from a
+    misconfigured install) doesn't expose ``getmetrics`` reliably; in
+    that case we return 0 so every chunk gets the same offset and the
+    baseline misalignment falls back to today's behaviour rather than
+    crashing.
+    """
+    try:
+        return font.getmetrics()[0]
+    except (AttributeError, OSError):
+        return 0
+
+
 def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     normalized_match = resolve_display_match(text, match_text)
     if not normalized_match:
@@ -2023,10 +2044,23 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
         x = (width - layout["max_width"]) // 2
         space_idx = 0
+        # PIL's default text anchor is "la" (left, ascender top), so
+        # ``y`` is interpreted as the top of each font's ASCENT band,
+        # not a shared baseline. When ``quote_font`` and
+        # ``quote_font_bold`` come from the same family their ascents
+        # are identical and the per-chunk shift is zero; when they
+        # come from different families (e.g. gothic = EB Garamond
+        # body + UnifrakturMaguntia bold, ascent 41 vs 32 at body
+        # font_size), drawing both at the same ``y`` leaves the bold
+        # phrase visually floating above the body baseline. Shift each
+        # chunk's draw point by ``body_ascent − chunk_ascent`` so all
+        # chunks share a baseline regardless of metric drift.
+        body_ascent = _font_ascent(quote_font)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
-            draw_text(draw, (x, y), chunk, font=font, fill=fill)
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            draw_text(draw, (x, chunk_y), chunk, font=font, fill=fill)
             bbox = draw.textbbox((0, 0), chunk, font=font)
             x += bbox[2] - bbox[0]
             if distribute and chunk == " ":
