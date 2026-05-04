@@ -38,6 +38,10 @@ THEME_SATURATION: dict[str, float] = {
     "blueprint": 0.5,
     "illuminated": 0.5,
     "bauhaus": 0.5,
+    # Black ground with a chromatic accent — same tier as ``dark`` /
+    # ``nightvision`` so the rubric red and white body don't desaturate
+    # against the panel's anchored black.
+    "gothic": 0.7,
     # Non-standard grounds (``risograph`` has no black ink to anchor the
     # two spot colours; ``comic`` has a high-chroma yellow ground rather
     # than white) start at the 0.7 tier used by dark-background themes,

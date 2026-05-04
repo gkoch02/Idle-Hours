@@ -253,7 +253,7 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Ten themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
+Eleven themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
 
 | `--theme`     | Preview | Page bg | Body text | Accent  | Typeface         | Feel                                          |
 |---------------|---------|---------|-----------|---------|------------------|-----------------------------------------------|
@@ -264,6 +264,7 @@ Ten themes ship built-in, all constrained to the Spectra 6 panel palette (white 
 | `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black   | green     | yellow  | Space Mono       | Retro terminal / Apollo-era monitor           |
 | `blueprint`   | <img src="assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | white   | blue      | red     | Archivo (sans)   | Drafting blueprint / engineering sheet        |
 | `illuminated` | <img src="assets/previews/illuminated.png" width="240" alt="illuminated theme preview"> | white   | red       | blue    | EB Garamond + UnifrakturMaguntia | Rubricated medieval manuscript  |
+| `gothic`      | <img src="assets/previews/gothic.png" width="240" alt="gothic theme preview">           | black   | white     | red     | EB Garamond + UnifrakturMaguntia | Cathedral chronicle — blackletter matched phrase + oversized rubricated quote marks, double-rule frame with corner quatrefoils and mid-edge diamonds |
 | `bauhaus`     | <img src="assets/previews/bauhaus.png" width="240" alt="bauhaus theme preview">         | white   | black     | blue (+ red ornaments) | Jost (geometric sans) | Bauhaus poster — three primaries at once |
 | `risograph`   | <img src="assets/previews/risograph.png" width="240" alt="risograph theme preview">     | white   | red       | blue    | Rubik (rounded sans) | Zine / two-colour riso — no black plate   |
 | `comic`       | <img src="assets/previews/comic.png" width="240" alt="comic theme preview">             | yellow  | black     | red     | Bangers (comic)  | Golden-age comic panel                        |
@@ -283,7 +284,7 @@ Button B cycles forward through the list and wraps; the curator web UI at `/api/
 > Regenerate previews: the images under `assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
 >
 > ```bash
-> for theme in default dark scholar newsprint nightvision blueprint illuminated bauhaus risograph comic; do
+> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic; do
 >   python3 render_quote.py --time 14:15 --theme "$theme" --mode production \
 >     --output "assets/previews/$theme.png"
 > done
@@ -419,7 +420,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
 - Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
-- Theme thumbnail grid: side-by-side previews of all ten registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
+- Theme thumbnail grid: side-by-side previews of all eleven registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
 #### Tab: Curate
 

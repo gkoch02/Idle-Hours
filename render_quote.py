@@ -38,6 +38,7 @@ THEME_ORDER: tuple[str, ...] = (
     "nightvision",
     "blueprint",
     "illuminated",
+    "gothic",
     "bauhaus",
     "risograph",
     "comic",
@@ -131,6 +132,35 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["red"],
+    },
+    # Cathedral chronicle. Black ground (candle-lit vellum / cathedral
+    # interior), white body for legibility on the panel, red rubric for
+    # the matched time phrase and the oversized blackletter quotation
+    # marks. Pairs with UnifrakturMaguntia (blackletter) in *both* the
+    # ornament and quote-bold slots so the font defines the theme rather
+    # than appearing as a guest accessory — body text stays in EB Garamond
+    # so a 200-character dense layout still reads cleanly. Visually the
+    # opposite polarity of ``illuminated`` (white parchment / red body /
+    # blue jewels) so the two blackletter themes complement rather than
+    # duplicate.
+    "gothic": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto red — the oversized blackletter
+        # quote marks dither between ``ornament_dark`` and
+        # ``ornament_light`` (see ``draw_faux_gray_text``); on a white
+        # ground the ``ornament_light=white`` half sinks into the page,
+        # leaving a half-density rubric (cf. ``illuminated``), but on
+        # ``gothic``'s black ground the white half would *show* and
+        # wash the rubric pinkish-grey. Pinning both to red collapses
+        # the dither to solid red, so the marks stay punchy against
+        # the cathedral ground.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["white"],
     },
     # Bauhaus poster. White ground, black body, blue for the matched time
     # phrase, red for the oversized quotation marks — the three primaries
@@ -412,6 +442,31 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "gothic": {
+        # Promotes UnifrakturMaguntia from the ornament-only role it
+        # plays in ``illuminated`` to also cover the matched-phrase bold:
+        # short matched phrases ("half past two") render in dramatic red
+        # blackletter, sitting in the body like a chapter heading. Body
+        # text stays in EB Garamond so the rest of the line reads cleanly
+        # at dense-layout sizes — a full blackletter body would shred
+        # legibility on a 4-bit eInk panel. The EB Garamond Bold second
+        # rank covers a missing-Unifraktur install so the matched phrase
+        # degrades to a heavy serif rather than the bitmap fallback.
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            UNIFRAKTUR_BOOK,
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
@@ -1193,6 +1248,76 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+def draw_gothic_border(image: Image.Image, colors: dict) -> None:
+    """Paint a Gothic-tracery border: double rule + corner quatrefoils + mid-edge diamonds.
+
+    The outer red rule and inner white rule echo the doubled rubrication
+    line of medieval manuscripts but flip the colour split that
+    ``illuminated`` uses (single ink colour for both rules) — the
+    polychrome Scotch-rule is the giveaway that this is the cathedral
+    chronicle, not the scriptorium page. Four corner quatrefoils — four
+    small red lobes around a tiny white centre dot — are the iconic
+    four-lobed Gothic motif found in cathedral tracery, rose windows,
+    and printed-book ornaments; the centre dot keeps the four lobes
+    legible on the panel rather than reading as an indistinct red blob.
+    Four small red diamonds at the mid-edges nod to the chapter
+    dividers used in early printed German books, and break up the long
+    rules without competing visually with the corner ornaments.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    body = colors["text"]      # white ink
+    accent = colors["accent"]  # rubric red
+
+    outer_inset = 14
+    inner_inset = 22
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=accent,
+        width=1,
+    )
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=body,
+        width=1,
+    )
+
+    # Corner quatrefoils: four small lobes arranged in a + around the
+    # corner anchor, then a smaller white centre dot to give the
+    # four-lobed clover silhouette legibility on a 4-bit panel.
+    lobe_radius = 5
+    lobe_offset = 4
+    centres = [
+        (outer_inset, outer_inset),
+        (width - 1 - outer_inset, outer_inset),
+        (outer_inset, height - 1 - outer_inset),
+        (width - 1 - outer_inset, height - 1 - outer_inset),
+    ]
+    for cx, cy in centres:
+        for dx, dy in ((0, -lobe_offset), (lobe_offset, 0), (0, lobe_offset), (-lobe_offset, 0)):
+            lx, ly = cx + dx, cy + dy
+            draw.ellipse(
+                (lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius),
+                fill=accent,
+            )
+        draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=body)
+
+    # Mid-edge red diamonds — small ornaments centred on each side of
+    # the outer rule.
+    diamond = 4
+    midpoints = [
+        (width // 2, outer_inset),
+        (width // 2, height - 1 - outer_inset),
+        (outer_inset, height // 2),
+        (width - 1 - outer_inset, height // 2),
+    ]
+    for cx, cy in midpoints:
+        draw.polygon(
+            [(cx, cy - diamond), (cx + diamond, cy), (cx, cy + diamond), (cx - diamond, cy)],
+            fill=accent,
+        )
+
+
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
@@ -1392,6 +1517,7 @@ _BORDER_PAINTERS = {
     "comic": draw_comic_corner_stripes,
     "scholar": draw_scholar_border,
     "illuminated": draw_illuminated_border,
+    "gothic": draw_gothic_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -1416,6 +1542,8 @@ _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
     "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
+    "gothic": 30,       # past the TR quatrefoil right lobe (frame at 14,
+                        # lobe centre offset +4 with radius 5 → x=width-6)
     "risograph": 44,    # past the shifted TR registration mark at x=width-15
 }
 

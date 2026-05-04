@@ -163,6 +163,7 @@ def parse_args() -> argparse.Namespace:
         "nightvision",
         "blueprint",
         "illuminated",
+        "gothic",
         "bauhaus",
         "risograph",
         "comic",
@@ -180,7 +181,9 @@ def parse_args() -> argparse.Namespace:
             "ornaments, geometric sans), 'risograph' (white/red/blue, no black, "
             "rounded sans), 'comic' (yellow bg / black body / red accent, "
             "comic-book display face). Dark: 'dark' (black/white/yellow), "
-            "'nightvision' (black/green/yellow). 'auto' selects 'dark' between "
+            "'nightvision' (black/green/yellow), 'gothic' (black/white/red, "
+            "blackletter ornaments + matched phrase, cathedral-tracery border). "
+            "'auto' selects 'dark' between "
             "18:00 and 06:00 and 'default' otherwise — broaden the rotation via "
             "--auto-day-theme / --auto-night-theme. "
             "'random' picks a theme at random each time the displayed quote changes. "
