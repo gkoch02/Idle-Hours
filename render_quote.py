@@ -2468,12 +2468,16 @@ def _build_roman_stone_grain(
     return points
 
 
-# 800×480 canvas, ring outside an inset-44 central exclusion. ~140 speckles
+# 800×480 canvas, ring outside an inset-26 central exclusion. ~140 speckles
 # is dense enough to read as limestone grain in the margin between the
-# canvas edge and the inner tabula rule but sparse enough that body text
+# canvas edge and the outer tabula rule but sparse enough that body text
 # never has to compete with it (the central exclusion guarantees that).
+# Tuned to sit just inside the tabula's outer rule (rect_inset_x=30,
+# rect_inset_y=14) so the speckles fill the page-edge ring AND the
+# narrow band between the page edge and the frame line, but never bleed
+# into the inscribed face.
 _ROMAN_STONE_GRAIN = _build_roman_stone_grain(
-    DEFAULT_WIDTH, DEFAULT_HEIGHT, density=140, seed=0x5C1B, exclude_inset=44
+    DEFAULT_WIDTH, DEFAULT_HEIGHT, density=140, seed=0x5C1B, exclude_inset=26
 )
 
 
@@ -2553,8 +2557,13 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     # see e.g. the Arch of Titus inscription frame. Handle height is
     # roughly half the central rectangle's height so the silhouette
     # reads as "tablet with ears" rather than "tablet with pegs".
-    rect_inset_x = 56
-    rect_inset_y = 22
+    # Frame insets are tight against the page edges so the inscribed
+    # face inside the tabula has the maximum amount of breathing room
+    # for body text. The tabula's ansae extend OUTWARD from these
+    # insets, so leave room on the left/right edges for the
+    # ``handle_outer_offset`` flange.
+    rect_inset_x = 30
+    rect_inset_y = 14
     rect_left = rect_inset_x
     rect_right = width - 1 - rect_inset_x
     rect_top = rect_inset_y
@@ -2565,7 +2574,7 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     # reads as "Roman tablet" is roughly 70:40 (inner:outer) regardless
     # of canvas size; scaling by ``rect_bot - rect_top`` would give
     # absurd 218px-tall handles on an 800×480 panel.
-    handle_outer_offset = 30       # how far the ansa extends past the rectangle
+    handle_outer_offset = 22       # how far the ansa extends past the rectangle
     handle_inner_height = 90       # vertical span where the ansa meets the rectangle
     handle_outer_height = 56       # vertical span at the ansa's outer edge
     rect_mid = (rect_top + rect_bot) // 2
@@ -2781,6 +2790,12 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # width-13, wing tip at width-38) plus breathing gap.
                         # The decorative banner band starts at y=34 so it's
                         # already below the label's y=14-29 band.
+    "roman": 38,        # past the tabula's right vertical rule (frame at
+                        # rect_inset_x=30, 3px width → outer edge at
+                        # x=width-30, rule painted from x=width-33 to
+                        # x=width-31) plus breathing gap. The SPQR
+                        # cartouche is centred horizontally so it never
+                        # reaches the label's x range.
 }
 
 
