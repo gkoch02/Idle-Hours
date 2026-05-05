@@ -171,6 +171,7 @@ def parse_args() -> argparse.Namespace:
         "atomic",
         "marker",
         "saloon",
+        "roman",
     ]
     parser.add_argument(
         "--theme",
@@ -197,7 +198,12 @@ def parse_args() -> argparse.Namespace:
             "19th-century Wild West wanted-poster vibe, layered "
             "background with red foxing speckles, decorative banner "
             "bands, double-rule frame, corner fleurons and mid-edge "
-            "diamonds). "
+            "diamonds), "
+            "'roman' (white limestone / black body / red rubrum accent, "
+            "Cinzel Decorative Trajan-column inscriptional capitals — "
+            "Roman lapidary inscription vibe, tabula ansata frame with "
+            "trapezoidal handles, SPQR cartouche, stone-grain speckles, "
+            "mid-edge interpunct dots, and a laurel sprig). "
             "Dark: 'dark' (black/white/yellow), "
             "'nightvision' (black/green/yellow), 'gothic' (black/white/red, "
             "blackletter ornaments + matched phrase, cathedral-tracery border). "
