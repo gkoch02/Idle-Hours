@@ -140,8 +140,6 @@ class TestPidfileHandleReleaseErrorPaths:
         """An OSError (not FileNotFoundError) from unlink is logged but not raised."""
         path = tmp_path / "run_clock.pid"
         handle = pidfile.acquire_pidfile(str(path))
-        # Monkeypatch Path.unlink to raise OSError after first real call.
-        original_unlink = pidfile.Path.unlink
 
         def _bad_unlink(self, missing_ok=False):
             raise OSError("permission denied")
@@ -246,7 +244,6 @@ class TestAcquirePidfileExceptionCleanup:
                 return original_close()
 
             fh.close = _close_and_record
-            original_write = fh.write
 
             def _bad_write(data):
                 raise OSError("disk full")

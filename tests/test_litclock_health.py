@@ -669,7 +669,8 @@ class TestActionsOnlyView:
         assert "web auth failures: 0" in out
         assert "last action: never" in out
 
-    def test_actions_only_stable_shape_on_empty_window(self, tmp_path, capsys):
+    def test_actions_only_stable_shape_on_empty_ledger(self, tmp_path, capsys):
+        """Output is non-empty even when the telemetry file has no entries."""
         path = _ledger(tmp_path, [])
         argv = [
             "litclock_health.py",

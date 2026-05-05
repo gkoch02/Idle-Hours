@@ -3579,8 +3579,6 @@ class TestParseArgsBasic:
         This exercises the ``output_target = BASE_DIR / output_target`` branch
         that was previously uncovered.
         """
-        import argparse
-
         # Minimal args that let main() exit before the loop via pidfile-locked or --once.
         argv = [
             "run_clock.py",
@@ -3607,7 +3605,7 @@ class TestParseArgsBasic:
              patch("run_clock.current_bucket", return_value="h12_exact"), \
              patch("run_clock.current_time_str", return_value="12:00"), \
              patch.object(_Path, "mkdir", _capture_mkdir):
-            rc = run_clock.main()
+            run_clock.main()
         # render_now was called; what matters is that the output *parent directory*
         # was created via the resolved absolute path (BASE_DIR / "output/current.png").parent.
         assert mock_render.called
