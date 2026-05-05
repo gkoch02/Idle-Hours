@@ -237,6 +237,41 @@ class TestTokenFileHotReload:
         # No crash; the inline fallback is what we get back.
         assert ctx.current_token() == "fallback-inline"
 
+    def test_stat_failure_on_hot_reload_logs_and_keeps_previous_token(self, tmp_path, capsys):
+        """If stat() raises on a non-initial hot-reload call (file present at startup,
+        then permission revoked), the previous token must be kept and the failure logged.
+        This covers the ``if not initial: _log(...)`` branch at web_server.py:163-165.
+        """
+        token_file = tmp_path / "token"
+        token_file.write_text("secret\n", encoding="utf-8")
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="", token_file=str(token_file))
+        assert ctx.current_token() == "secret"
+
+        # Force mtime to differ so the next call doesn't short-circuit on mtime equality,
+        # then make stat() raise on the hot-reload path.
+        ctx._cached_token_mtime = -1  # anything != actual mtime
+
+        from pathlib import Path
+        from unittest.mock import patch as _patch
+
+        real_stat = Path.stat
+
+        def _bad_stat(self, *args, **kwargs):
+            if self == ctx._token_file:
+                raise OSError("permission denied")
+            return real_stat(self, *args, **kwargs)
+
+        with _patch.object(Path, "stat", _bad_stat):
+            result = ctx.current_token()
+
+        # Token unchanged.
+        assert result == "secret"
+        err = capsys.readouterr().err
+        assert "unreadable" in err or "permission" in err
+
     def test_rotation_to_empty_file_keeps_previous_token(self, tmp_path, capsys):
         """Security: if the token file is accidentally truncated to empty at
         runtime, we keep the previous token instead of silently disabling
@@ -532,6 +567,18 @@ class TestReadEndpoints:
         assert len(data["entries"]) == 3
         # Newest first
         assert data["entries"][0]["source_id"] == "4"
+
+    def test_api_history_empty_ledger_returns_empty_list(self, tmp_path, live_server):
+        """When the history ledger is empty or missing, the endpoint returns an
+        empty entries list without error (covers web_server.py:1092)."""
+        server, _, args = live_server
+        # Ensure the ledger does not exist.
+        Path(args.history_path).unlink(missing_ok=True)
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        data = _json_body(body)
+        assert data["entries"] == []
+        assert data["total"] == 0
 
     def test_api_history_rejects_bad_limit(self, live_server):
         server, _, _ = live_server
@@ -1482,6 +1529,26 @@ class TestApiContentOverrides:
         assert status == 400
         assert "must be an int" in _json_body(body)["error"]
 
+    def test_post_body_too_large_returns_400(self, v2_server):
+        """A POST body exceeding MAX_BODY_BYTES must be rejected with 400.
+        Exercises the ``length > MAX_BODY_BYTES`` branch in _read_json_body
+        (web_server.py:441)."""
+        server, _state, _args = v2_server
+        conn = _client(server)
+        # Send a Content-Length that exceeds the limit but don't send the body —
+        # the handler should reject before reading.
+        big = web_server.MAX_BODY_BYTES + 1
+        conn.request(
+            "POST", "/api/content-overrides",
+            headers={"Content-Length": str(big), "Content-Type": "application/json"},
+            body=b"",
+        )
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        assert resp.status == 400
+        assert "too large" in _json_body(body)["error"].lower()
+
 
 # ============================================================================
 # v2: ban_quote_keys
@@ -1777,6 +1844,21 @@ class TestApiPreview:
         with patch("pick_quote.select_quote", side_effect=SystemExit("no picks")):
             status, body = _get(server, "/api/preview?theme=default&time=03:00")
         assert status == 404
+
+    def test_preview_render_failure_returns_500(self, v2_server):
+        """If render_quote.render raises after a successful pick, the endpoint
+        must return 500 — not propagate the exception to the HTTP layer.
+        Covers web_server.py:1049-1050."""
+        server, _state, _args = v2_server
+        fake_row = {
+            "display_quote": "It was three.", "matched_text": "three",
+            "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "source_id": "1", "line_number": 1,
+        }
+        with patch("pick_quote.select_quote", return_value=fake_row), \
+             patch("render_quote.render", side_effect=RuntimeError("pillow exploded")):
+            status, body = _get(server, "/api/preview?theme=default&time=03:00")
+        assert status == 500
 
     def test_preview_clamps_dimensions(self, v2_server):
         """A scanner asking for 100000x100000 must not be honoured."""

@@ -474,6 +474,33 @@ class TestRecentHistory:
         pq.append_history(str(path), "1", None)
         assert not path.exists()
 
+    def test_load_recent_history_skips_entry_with_missing_source_id(self, tmp_path):
+        """An entry without source_id or line_number must be silently skipped —
+        the None branch at pick_quote.py:408 (source_id/line_number is None).
+        """
+        path = tmp_path / "history.jsonl"
+        now = dt.datetime.now(dt.timezone.utc)
+        entries = [
+            {"ts": now.isoformat(), "source_id": None, "line_number": 1},   # source_id is None
+            {"ts": now.isoformat(), "source_id": "42", "line_number": None}, # line_number is None
+            {"ts": now.isoformat(), "source_id": "42"},                       # line_number missing entirely
+            {"ts": now.isoformat(), "line_number": 1},                        # source_id missing entirely
+            {"ts": now.isoformat(), "source_id": "99", "line_number": 7},    # valid — should appear
+        ]
+        self._write_ledger(path, entries)
+        recent = pq.load_recent_history(str(path), 7)
+        assert recent == {("99", 7)}
+
+    def test_row_history_key_returns_none_for_missing_fields(self):
+        """_row_history_key must return None when source_id or line_number is absent."""
+        assert pq._row_history_key({}) is None
+        assert pq._row_history_key({"source_id": "1"}) is None
+        assert pq._row_history_key({"line_number": 5}) is None
+        assert pq._row_history_key({"source_id": None, "line_number": 5}) is None
+
+    def test_row_history_key_returns_tuple_when_both_present(self):
+        assert pq._row_history_key({"source_id": "42", "line_number": 7}) == ("42", 7)
+
     def test_append_history_creates_parent_dir(self, tmp_path):
         path = tmp_path / "sub" / "dir" / "history.jsonl"
         pq.append_history(str(path), "1234", 5678)
@@ -1037,3 +1064,69 @@ class TestSourceRarityPenalty:
     def test_unknown_source_returns_zero(self):
         counts = pq.Counter({"1234": 7})
         assert pq.source_rarity_penalty({"source_id": "9999"}, counts) == 0
+
+
+class TestPickQuoteCLI:
+    """The pick_quote.main() CLI must parse args and print valid JSON to stdout."""
+
+    def _make_corpus(self, tmp_jsonl) -> str:
+        """Write a minimal corpus file and return its path string."""
+        row = {
+            "display_quote": "It was exactly three o'clock.",
+            "matched_text": "three o'clock",
+            "source_id": "1", "line_number": 1,
+            "hour": 3, "minute": 0,
+            "normalized_time": "03:00",
+            "fuzzy_bucket": "h3_exact",
+            "quality_score": 80,
+            "display_fragment": False,
+            "cleanup_status": "complete_sentence",
+        }
+        return str(tmp_jsonl([row]))
+
+    def test_main_with_time_prints_json(self, capsys, tmp_jsonl, tmp_path):
+        """main() with --time should resolve a quote and print JSON."""
+        from unittest.mock import patch
+
+        corpus = self._make_corpus(tmp_jsonl)
+        argv = [
+            "pick_quote.py",
+            "--time", "03:00",
+            "--input", corpus,
+            "--database", "",
+            "--history-path", "",
+            "--overrides", str(tmp_path / "sel_overrides.json"),
+        ]
+        with patch("sys.argv", argv):
+            rc = pq.main()
+        assert rc == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "bucket" in data
+        assert "display_quote" in data
+
+    def test_main_without_time_or_bucket_exits_nonzero(self):
+        from unittest.mock import patch
+
+        argv = ["pick_quote.py", "--database", "", "--history-path", ""]
+        with patch("sys.argv", argv), pytest.raises(SystemExit) as exc_info:
+            pq.main()
+        assert exc_info.value.code != 0
+
+    def test_main_with_explicit_bucket(self, capsys, tmp_jsonl, tmp_path):
+        from unittest.mock import patch
+
+        corpus = self._make_corpus(tmp_jsonl)
+        argv = [
+            "pick_quote.py",
+            "--bucket", "h3_exact",
+            "--input", corpus,
+            "--database", "",
+            "--history-path", "",
+            "--overrides", str(tmp_path / "sel_overrides.json"),
+        ]
+        with patch("sys.argv", argv):
+            rc = pq.main()
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["bucket"] == "h3_exact"

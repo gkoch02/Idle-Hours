@@ -4,6 +4,8 @@ from __future__ import annotations
 import multiprocessing
 import os
 
+import pytest
+
 import pidfile
 
 
@@ -130,6 +132,130 @@ class TestAcquirePidfile:
             assert path.exists()
         finally:
             handle.release()
+
+class TestPidfileHandleReleaseErrorPaths:
+    """Coverage for the OSError branches inside PidfileHandle.release()."""
+
+    def test_release_swallows_unlink_oserror(self, tmp_path, monkeypatch, capsys):
+        """An OSError (not FileNotFoundError) from unlink is logged but not raised."""
+        path = tmp_path / "run_clock.pid"
+        handle = pidfile.acquire_pidfile(str(path))
+
+        def _bad_unlink(self, missing_ok=False):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(pidfile.Path, "unlink", _bad_unlink)
+        handle.release()  # must not raise
+        err = capsys.readouterr().err
+        assert "pidfile cleanup failed" in err
+
+    def test_release_swallows_flock_unlock_oserror(self, tmp_path, monkeypatch):
+        """OSError from flock(LOCK_UN) is swallowed — the file is already unlinked."""
+        path = tmp_path / "run_clock.pid"
+        handle = pidfile.acquire_pidfile(str(path))
+
+        import fcntl as _fcntl
+        original_flock = _fcntl.flock
+
+        def _bad_flock(fd, operation):
+            if operation == _fcntl.LOCK_UN:
+                raise OSError("bad flock")
+            return original_flock(fd, operation)
+
+        monkeypatch.setattr(pidfile.fcntl, "flock", _bad_flock)
+        handle.release()  # must not raise
+
+    def test_release_swallows_fh_close_oserror(self, tmp_path, monkeypatch):
+        """OSError from fh.close() is swallowed."""
+        path = tmp_path / "run_clock.pid"
+        handle = pidfile.acquire_pidfile(str(path))
+        fh = handle._fh
+
+        original_close = fh.close
+
+        def _bad_close():
+            original_close()
+            raise OSError("close failed")
+
+        fh.close = _bad_close
+        handle.release()  # must not raise
+
+    def test_release_on_null_fh_is_noop(self, tmp_path):
+        """If _fh is already None (double-release or corrupted handle), release() is a no-op."""
+        path = tmp_path / "run_clock.pid"
+        handle = pidfile.PidfileHandle(path, None)
+        handle.release()  # must not raise
+
+
+class TestReadExistingPid:
+    """Coverage for _read_existing_pid error branches."""
+
+    def test_returns_none_on_seek_oserror(self, tmp_path):
+        """If fh.seek() raises OSError, _read_existing_pid returns None."""
+        class BadFH:
+            def seek(self, pos):
+                raise OSError("bad seek")
+
+        result = pidfile._read_existing_pid(BadFH())
+        assert result is None
+
+    def test_returns_none_on_non_integer_contents(self, tmp_path):
+        """Pid file with non-integer content (e.g. garbage) returns None."""
+        class StringFH:
+            def seek(self, pos):
+                pass
+
+            def read(self):
+                return "not-a-pid\n"
+
+        result = pidfile._read_existing_pid(StringFH())
+        assert result is None
+
+    def test_returns_none_on_empty_contents(self, tmp_path):
+        """Pid file with empty content returns None without raising."""
+        class EmptyFH:
+            def seek(self, pos):
+                pass
+
+            def read(self):
+                return ""
+
+        result = pidfile._read_existing_pid(EmptyFH())
+        assert result is None
+
+
+class TestAcquirePidfileExceptionCleanup:
+    """The outer ``except Exception`` in acquire_pidfile must close the fd
+    before re-raising so we don't leak the file descriptor."""
+
+    def test_fd_closed_on_write_failure(self, tmp_path, monkeypatch):
+        """If fh.write() raises, the fd must be closed and the exception re-raised."""
+        path = tmp_path / "run_clock.pid"
+        closed: list[bool] = []
+
+        original_fdopen = os.fdopen
+
+        def _patched_fdopen(fd, mode, **kwargs):
+            fh = original_fdopen(fd, mode, **kwargs)
+            original_close = fh.close
+
+            def _close_and_record():
+                closed.append(True)
+                return original_close()
+
+            fh.close = _close_and_record
+
+            def _bad_write(data):
+                raise OSError("disk full")
+
+            fh.write = _bad_write
+            return fh
+
+        monkeypatch.setattr(pidfile.os, "fdopen", _patched_fdopen)
+        with pytest.raises(OSError, match="disk full"):
+            pidfile.acquire_pidfile(str(path))
+        assert closed, "fd must be closed after exception"
+
 
 class TestPidfileLockedError:
     def test_message_includes_pid(self, tmp_path):

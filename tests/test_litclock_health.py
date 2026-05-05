@@ -330,6 +330,103 @@ class TestHeartbeatSummarisation:
         assert summary["last_heartbeat_ts"] == new_ts
 
 
+class TestFormatSummary:
+    """Direct unit tests for format_summary() — the human-readable output path."""
+
+    def _base_summary(self, **overrides):
+        """Minimal summary dict that format_summary won't crash on."""
+        base = {
+            "render_count": 0,
+            "error_count": 0,
+            "heartbeat_count": 0,
+            "last_heartbeat_ts": None,
+            "render_p50_ms": None,
+            "render_p95_ms": None,
+            "display_p50_ms": None,
+            "display_p95_ms": None,
+            "action_count": 0,
+            "actions_by_type": {},
+            "last_action_ts": None,
+            "press_dropped_count": 0,
+            "web_auth_fail_count": 0,
+            "web_error_count": 0,
+            "quiet_enter_count": 0,
+            "quiet_exit_count": 0,
+            "last_error": None,
+            "stale_heartbeat": False,
+        }
+        base.update(overrides)
+        return base
+
+    def test_basic_counts_in_output(self):
+        out = litclock_health.format_summary(self._base_summary(render_count=5, error_count=2), hours=24)
+        assert "5 renders" in out
+        assert "2 errors" in out
+        assert "24h" in out
+
+    def test_latency_shown_when_renders_exist(self):
+        out = litclock_health.format_summary(
+            self._base_summary(render_count=2, render_p50_ms=120, render_p95_ms=300,
+                               display_p50_ms=14000, display_p95_ms=17000),
+            hours=1,
+        )
+        assert "120ms" in out
+        assert "14000ms" in out
+
+    def test_latency_hidden_when_no_renders(self):
+        out = litclock_health.format_summary(self._base_summary(), hours=1)
+        assert "latency" not in out
+
+    def test_last_error_shown_when_present(self):
+        out = litclock_health.format_summary(self._base_summary(last_error="boom"), hours=1)
+        assert "last error" in out
+        assert "boom" in out
+
+    def test_stale_heartbeat_warning_shown(self):
+        out = litclock_health.format_summary(self._base_summary(stale_heartbeat=True), hours=1)
+        assert "stale" in out.lower() or "wedged" in out.lower()
+
+    def test_actions_breakdown_shown_when_nonzero(self):
+        out = litclock_health.format_summary(
+            self._base_summary(
+                action_count=3,
+                actions_by_type={"skip": 2, "theme": 1},
+                last_action_ts=_ts(5),
+            ),
+            hours=1,
+        )
+        assert "3 actions" in out
+        assert "skip 2" in out
+        assert "theme 1" in out
+
+    def test_press_dropped_shown_when_nonzero(self):
+        out = litclock_health.format_summary(self._base_summary(press_dropped_count=4), hours=1)
+        assert "4 presses dropped" in out
+
+    def test_web_auth_fail_shown_when_nonzero(self):
+        out = litclock_health.format_summary(self._base_summary(web_auth_fail_count=2), hours=1)
+        assert "2 web auth failures" in out
+
+    def test_web_error_shown_when_nonzero(self):
+        out = litclock_health.format_summary(self._base_summary(web_error_count=1), hours=1)
+        assert "1 web POST errors" in out
+
+    def test_quiet_hours_shown_when_nonzero(self):
+        out = litclock_health.format_summary(
+            self._base_summary(quiet_enter_count=2, quiet_exit_count=1), hours=1,
+        )
+        assert "quiet hours" in out
+        assert "2 enters" in out
+        assert "1 exits" in out
+
+    def test_heartbeat_line_shown_when_present(self):
+        ts = _ts(1)
+        out = litclock_health.format_summary(
+            self._base_summary(heartbeat_count=10, last_heartbeat_ts=ts), hours=1,
+        )
+        assert "10 heartbeats" in out
+
+
 class TestHeartbeatStaleness:
     def test_fresh_heartbeat_is_not_stale(self):
         summary = {"last_heartbeat_ts": _ts(2)}
@@ -345,6 +442,16 @@ class TestHeartbeatStaleness:
         trip the staleness flag."""
         assert litclock_health.is_heartbeat_stale({"last_heartbeat_ts": None}, max_age_minutes=5) is True
         assert litclock_health.is_heartbeat_stale({}, max_age_minutes=5) is True
+
+    def test_malformed_timestamp_is_treated_as_stale(self):
+        """A corrupted last_heartbeat_ts that can't be parsed must return stale=True
+        rather than crashing — the ValueError branch at litclock_health.py:312-313."""
+        assert litclock_health.is_heartbeat_stale(
+            {"last_heartbeat_ts": "not-a-date"}, max_age_minutes=5,
+        ) is True
+        assert litclock_health.is_heartbeat_stale(
+            {"last_heartbeat_ts": "2026-99-99T00:00:00"}, max_age_minutes=5,
+        ) is True
 
     def test_cli_exits_2_when_heartbeat_stale(self, tmp_path, capsys):
         # Window has a render so --fail-if-no-renders wouldn't fire; only the
@@ -561,6 +668,21 @@ class TestActionsOnlyView:
         assert "presses dropped: 0" in out
         assert "web auth failures: 0" in out
         assert "last action: never" in out
+
+    def test_actions_only_stable_shape_on_empty_ledger(self, tmp_path, capsys):
+        """Output is non-empty even when the telemetry file has no entries."""
+        path = _ledger(tmp_path, [])
+        argv = [
+            "litclock_health.py",
+            "--telemetry-path", str(path),
+            "--hours", "1",
+            "--actions-only",
+        ]
+        with patch("sys.argv", argv):
+            rc = litclock_health.main()
+        assert rc in (0, 1)
+        out = capsys.readouterr().out
+        assert out.strip() != ""
 
     def test_actions_only_ignored_by_json_flag(self, tmp_path, capsys):
         """--json keeps its machine-readable shape regardless of --actions-only."""
