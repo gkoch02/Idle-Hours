@@ -47,6 +47,7 @@ THEME_ORDER: tuple[str, ...] = (
     "atomic",
     "marker",
     "saloon",
+    "roman",
 )
 THEMES = {
     "default": {
@@ -311,6 +312,32 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Roman lapidary inscription. White limestone / marble ground, black
+    # body for the V-cut letter shadow, red accent (rubrum — the red lead
+    # pigment Roman carvers painted into the engraved grooves to make
+    # inscriptions legible from a distance) for the matched time phrase
+    # and the SPQR cartouche. Pairs with Cinzel Decorative — a digital
+    # face directly modelled on Trajan's Column (113 AD), the canonical
+    # reference for Roman capitalis monumentalis, so the typography is
+    # the chisel work. The ``draw_roman_border`` decoration lays the
+    # rest of the stone-slab vocabulary on top of the page: scattered
+    # limestone grain speckles, a ``tabula ansata`` (Roman votive
+    # tablet) silhouette with two trapezoidal "dovetail" handles
+    # protruding from the left and right mid-edges, an SPQR cartouche
+    # at the top centre with interpunct dot separators between the
+    # letters, mirrored mid-edge interpunct dots, and a centred laurel
+    # sprig at the bottom — the same vocabulary you find on triumphal
+    # arches and altar plinths across the Forum.
+    "roman": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -436,6 +463,9 @@ SPECIALELITE_REGULAR = str(BASE_DIR / "fonts/special-elite/SpecialElite-Regular.
 ATOMICAGE_REGULAR = str(BASE_DIR / "fonts/atomic-age/AtomicAge-Regular.ttf")
 PERMANENTMARKER_REGULAR = str(BASE_DIR / "fonts/permanent-marker/PermanentMarker-Regular.ttf")
 RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
+CINZELDECORATIVE_REGULAR = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Regular.ttf")
+CINZELDECORATIVE_BOLD = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Bold.ttf")
+CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Black.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -759,6 +789,46 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             PERMANENTMARKER_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "roman": {
+        # Cinzel Decorative (OFL, Natanael Gama) — a digital revival of
+        # the Roman capitalis monumentalis cut on Trajan's Column, with
+        # the same flared serifs and even stroke contrast that a chisel
+        # produces in marble. The "Decorative" cut adds the small
+        # ornamental flourishes you see on Imperial-era inscriptions.
+        # Like Bangers (comic), Special Elite (dispatch), Atomic Age
+        # (atomic), Permanent Marker (marker), and Rye (saloon), the
+        # body and matched-phrase roles share the family — we step up
+        # one weight (Regular → Bold) for the matched phrase rather
+        # than picking a contrasting face, since switching face mid-line
+        # would shatter the inscription illusion. The Black weight
+        # carries the SPQR cartouche and oversized quote marks. The
+        # fallback chain ends at a heavy serif (DejaVu / Liberation /
+        # Noto Serif Bold) before degrading to the Playfair chain so a
+        # missing-Cinzel-Decorative install lands on a high-contrast
+        # serif silhouette rather than a sans, keeping the lapidary
+        # register at least directionally correct.
+        "quote_regular": [
+            CINZELDECORATIVE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CINZELDECORATIVE_BOLD,
+            CINZELDECORATIVE_BLACK,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CINZELDECORATIVE_BLACK,
+            CINZELDECORATIVE_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -2361,6 +2431,308 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     image.paste(quadrant, (qx, qy), mask=mask)
 
 
+# Deterministic stone-grain speckle layout for ``draw_roman_border``. Same
+# pre-compute-once-at-module-scope pattern as ``_SALOON_FOXING`` (see that
+# helper for why a per-render reseed would break the byte-exact-output
+# contract the renderer golden-image suite relies on). Density is tuned
+# lower than saloon's foxing — Roman limestone reads cleaner than
+# 19th-century pulp paper, and over-stippling fights the body text on
+# dense-layout quotes. Only the outer "stone slab" perimeter is
+# speckled; the central tabula ansata "carved face" stays clear so
+# the quote body never sits on a noisy field.
+def _build_roman_stone_grain(
+    width: int, height: int, density: int, *, seed: int, exclude_inset: int
+) -> list[tuple[int, int, int]]:
+    """Scatter ``density`` stone-grain speckles across a ring around the
+    canvas edge, leaving the central rectangle (``exclude_inset`` from
+    each edge) clear for the carved tabula.
+
+    Each speckle is an (x, y, radius) tuple where radius is 0 (single
+    pixel) or 1 (3×3 cluster), mirroring ``_build_saloon_foxing_points``
+    so a future shared helper would have an obvious factoring shape.
+    """
+    import random as _random
+    rng = _random.Random(seed)
+    points: list[tuple[int, int, int]] = []
+    attempts = 0
+    while len(points) < density and attempts < density * 8:
+        attempts += 1
+        x = rng.randint(2, width - 3)
+        y = rng.randint(2, height - 3)
+        # Skip points inside the central tabula carved face — the body
+        # quote sits there and we don't want speckle noise behind it.
+        if exclude_inset <= x < width - exclude_inset and exclude_inset <= y < height - exclude_inset:
+            continue
+        radius = 1 if rng.random() < 0.18 else 0
+        points.append((x, y, radius))
+    return points
+
+
+# 800×480 canvas, ring outside an inset-26 central exclusion. ~140 speckles
+# is dense enough to read as limestone grain in the margin between the
+# canvas edge and the outer tabula rule but sparse enough that body text
+# never has to compete with it (the central exclusion guarantees that).
+# Tuned to sit just inside the tabula's outer rule (rect_inset_x=30,
+# rect_inset_y=14) so the speckles fill the page-edge ring AND the
+# narrow band between the page edge and the frame line, but never bleed
+# into the inscribed face.
+_ROMAN_STONE_GRAIN = _build_roman_stone_grain(
+    DEFAULT_WIDTH, DEFAULT_HEIGHT, density=140, seed=0x5C1B, exclude_inset=26
+)
+
+
+def draw_roman_border(image: Image.Image, colors: dict) -> None:
+    """Paint a Roman lapidary stone-tablet frame.
+
+    Six stacked layers, painted bottom-to-top so each upper layer sits
+    cleanly on the ones below:
+
+    1. **Stone-grain speckles** in the outer margin ring — limestone /
+       marble grain that doesn't reach the central carved face. Pre-
+       computed via ``_ROMAN_STONE_GRAIN`` (see that helper for the
+       byte-exact-output contract). Mostly single-pixel; ~18% are 3×3
+       darker spots so the texture reads as natural quarry stone rather
+       than a uniform stipple grid.
+    2. **Tabula ansata silhouette** — the iconic Roman votive-tablet
+       shape: a central rectangle with two trapezoidal "dovetail"
+       handles (``ansae``) extending OUTWARD from the left and right
+       mid-edges. Drawn here as a thin black outline so the page_bg
+       limestone shows through both inside the rectangle AND inside the
+       handles. Found on triumphal arches, altar plinths, and votive
+       inscriptions across the Forum.
+    3. **Inner channel rule** — a hairline black rule a few pixels
+       inside the outer tabula outline, evoking the V-cut "carved
+       channel" that Roman stonemasons ran around the inscribed face
+       to delineate the carved zone from the rough-dressed margin.
+    4. **SPQR cartouche at top centre** — the four canonical letters
+       (Senatus Populusque Romanus) painted in red rubrum between the
+       outer rule and the inner channel rule, each pair separated by a
+       small filled red interpunct dot (``·``) — the dot-separator
+       Romans used between words on monumental inscriptions. The whole
+       cartouche is centred horizontally and clears the right-aligned
+       ``DEBUG MODE`` banner band by sitting in the top zone above
+       y=34, well above the body quote's quote_top ≥ 72.
+    5. **Mid-edge interpunct dots** — small filled red circles at the
+       four mid-edge points of the inner rule, picking up the
+       interpunct motif from the SPQR cartouche and breaking the long
+       vertical/horizontal rules into shorter visual segments.
+    6. **Laurel sprig at bottom centre** — two short curved black
+       branches mirrored around the bottom-centre, with three small
+       filled black "leaf" ovals on each branch. The laurel wreath
+       (``corona triumphalis``) was the Imperial victory crown; a
+       half-wreath sprig is the smallest motif that still reads as
+       "Roman" without crowding the bottom debug strip.
+
+    Every shape draws from ``colors``; the roman palette uses the
+    default white/black/red triple so a future palette tweak inside
+    ``THEMES["roman"]`` flows through automatically.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    ink = colors["text"]       # black
+    accent = colors["accent"]  # red rubrum
+
+    # ------------------------------------------------------------------
+    # Layer 1: Stone-grain speckles in the outer margin ring.
+    # ``_ROMAN_STONE_GRAIN`` is pre-computed for the default 800×480
+    # canvas; rescale x/y at render time so the texture fills any
+    # (e.g. contact-sheet) tile size at the same visual density.
+    sx = width / DEFAULT_WIDTH
+    sy = height / DEFAULT_HEIGHT
+    for px, py, radius in _ROMAN_STONE_GRAIN:
+        x = int(px * sx)
+        y = int(py * sy)
+        if radius == 0:
+            draw.point((x, y), fill=ink)
+        else:
+            draw.rectangle((x - 1, y - 1, x + 1, y + 1), fill=ink)
+
+    # ------------------------------------------------------------------
+    # Layer 2: Tabula ansata outline. Outer rectangle + two trapezoidal
+    # dovetail handles at the left and right mid-edges.
+    #
+    # Geometry choice: the ``ansa`` (handle) is a trapezoid whose
+    # vertical "outer" edge is shorter than its inner edge, with the
+    # narrower side facing OUT. That's the classic Roman silhouette —
+    # see e.g. the Arch of Titus inscription frame. Handle height is
+    # roughly half the central rectangle's height so the silhouette
+    # reads as "tablet with ears" rather than "tablet with pegs".
+    # Frame insets are tight against the page edges so the inscribed
+    # face inside the tabula has the maximum amount of breathing room
+    # for body text. The tabula's ansae extend OUTWARD from these
+    # insets, so leave room on the left/right edges for the
+    # ``handle_outer_offset`` flange.
+    rect_inset_x = 30
+    rect_inset_y = 14
+    rect_left = rect_inset_x
+    rect_right = width - 1 - rect_inset_x
+    rect_top = rect_inset_y
+    rect_bot = height - 1 - rect_inset_y
+
+    # ``ansa`` (handle) dimensions — measured in pixels rather than as a
+    # fraction of the rectangle height because the visual ratio that
+    # reads as "Roman tablet" is roughly 70:40 (inner:outer) regardless
+    # of canvas size; scaling by ``rect_bot - rect_top`` would give
+    # absurd 218px-tall handles on an 800×480 panel.
+    handle_outer_offset = 22       # how far the ansa extends past the rectangle
+    handle_inner_height = 90       # vertical span where the ansa meets the rectangle
+    handle_outer_height = 56       # vertical span at the ansa's outer edge
+    rect_mid = (rect_top + rect_bot) // 2
+
+    rule_thick = 3
+
+    # Outer tabula silhouette as one polygon traversal so the corners
+    # join cleanly without painting any inner cross-rule. Walk
+    # clockwise starting at the top-left corner.
+    tabula_outline = [
+        # Top edge.
+        (rect_left, rect_top),
+        (rect_right, rect_top),
+        # Right ansa: inner top → outer top → outer bottom → inner bottom.
+        (rect_right, rect_mid - handle_inner_height // 2),
+        (rect_right + handle_outer_offset, rect_mid - handle_outer_height // 2),
+        (rect_right + handle_outer_offset, rect_mid + handle_outer_height // 2),
+        (rect_right, rect_mid + handle_inner_height // 2),
+        # Bottom edge.
+        (rect_right, rect_bot),
+        (rect_left, rect_bot),
+        # Left ansa: inner bottom → outer bottom → outer top → inner top.
+        (rect_left, rect_mid + handle_inner_height // 2),
+        (rect_left - handle_outer_offset, rect_mid + handle_outer_height // 2),
+        (rect_left - handle_outer_offset, rect_mid - handle_outer_height // 2),
+        (rect_left, rect_mid - handle_inner_height // 2),
+    ]
+    # Close the polygon by repeating the first point.
+    draw.line(tabula_outline + [tabula_outline[0]], fill=ink, width=rule_thick)
+
+    # ------------------------------------------------------------------
+    # Layer 3: Inner channel rule. A hairline black rectangle a few
+    # pixels inside the central tabula rectangle (NOT inside the
+    # ansae — channels are only run around the inscribed face on
+    # actual Roman monuments). Reads as the V-cut groove a stonemason
+    # would run to delineate the inscribed area.
+    channel_inset = 8
+    draw.rectangle(
+        (
+            rect_left + channel_inset,
+            rect_top + channel_inset,
+            rect_right - channel_inset,
+            rect_bot - channel_inset,
+        ),
+        outline=ink,
+        width=1,
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 4: SPQR cartouche at top centre, painted INSIDE the tablet
+    # between the inner channel rule and the body quote_top (≈y=72 in
+    # every layout). Sitting on the carved face rather than between the
+    # outer/inner rules — the channel band is only ``channel_inset``
+    # wide which is too small for legible Cinzel glyphs at 20pt; an
+    # actual Roman inscription would have the SPQR cartouche carved on
+    # the inscribed face above the dedication, not crammed into the
+    # frame channel. The font is loaded via the theme's ornament chain
+    # so a missing-Cinzel install degrades to a heavy serif rather than
+    # the bitmap fallback.
+    cart_font = load_font(theme_font_candidates("roman", "ornament"), size=18)
+    cart_letters = ("S", "P", "Q", "R")
+    interpunct_r = 2
+    letter_gap = 18  # gap between adjacent letter centres' interpunct slots
+    # Measure the letters first so we can centre the whole cartouche
+    # band horizontally.
+    letter_widths = []
+    letter_height = 0
+    for ch in cart_letters:
+        bbox = draw.textbbox((0, 0), ch, font=cart_font)
+        letter_widths.append(bbox[2] - bbox[0])
+        letter_height = max(letter_height, bbox[3] - bbox[1])
+    cart_total_w = sum(letter_widths) + (len(cart_letters) - 1) * letter_gap
+    cart_start_x = (width - cart_total_w) // 2
+    # Vertical position: centred in the band between the inner channel
+    # rule (y = rect_top + channel_inset = 30) and the body quote_top
+    # (≈y=72). Lands at y≈42 so the bottom of the letter glyph is well
+    # above the body text.
+    cart_band_top = rect_top + channel_inset + 8
+    # Draw letters with red interpunct dots between each pair.
+    cursor_x = cart_start_x
+    for i, ch in enumerate(cart_letters):
+        draw.text((cursor_x, cart_band_top), ch, font=cart_font, fill=accent)
+        cursor_x += letter_widths[i]
+        if i < len(cart_letters) - 1:
+            dot_cx = cursor_x + letter_gap // 2
+            dot_cy = cart_band_top + letter_height // 2
+            draw.ellipse(
+                (
+                    dot_cx - interpunct_r,
+                    dot_cy - interpunct_r,
+                    dot_cx + interpunct_r,
+                    dot_cy + interpunct_r,
+                ),
+                fill=accent,
+            )
+            cursor_x += letter_gap
+
+    # ------------------------------------------------------------------
+    # Layer 5: Mid-edge interpunct dots on the inner channel rule. Picks
+    # up the interpunct motif from the SPQR cartouche and breaks the
+    # long inner rule's straight runs visually. Painted on top of the
+    # rule so each dot reads as a "punched" red ornament against the
+    # carved channel.
+    mid_dot_r = 4
+    mid_points = (
+        (width // 2, rect_top + channel_inset),                    # top
+        (width // 2, rect_bot - channel_inset),                    # bottom
+        (rect_left + channel_inset, (rect_top + rect_bot) // 2),   # left
+        (rect_right - channel_inset, (rect_top + rect_bot) // 2),  # right
+    )
+    for cx, cy in mid_points:
+        draw.ellipse(
+            (cx - mid_dot_r, cy - mid_dot_r, cx + mid_dot_r, cy + mid_dot_r),
+            fill=accent,
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 6: Laurel sprig at the bottom centre, painted INSIDE the
+    # tablet between the body text and the inner channel rule (mirror
+    # band of the SPQR cartouche above). Two short curved black stems
+    # mirrored around the bottom-centre, each carrying three small
+    # filled "leaf" ovals angled outward. The corona triumphalis was
+    # the Imperial victory crown; a single sprig is the smallest motif
+    # that still reads as "Roman" without crowding the bottom debug
+    # telemetry strip.
+    laurel_band_y = rect_bot - channel_inset - 8
+    laurel_cx = width // 2
+    stem_len = 36
+    leaf_count = 3
+    leaf_a, leaf_b = 5, 2  # leaf ellipse semi-axes (long, short)
+    for sign in (-1, 1):
+        # Stem: a short straight rule along the bottom band, slanted
+        # very slightly upward toward the centre so the two stems
+        # converge under the centre dot.
+        stem_x0 = laurel_cx + sign * 6
+        stem_y0 = laurel_band_y + 1
+        stem_x1 = stem_x0 + sign * stem_len
+        stem_y1 = laurel_band_y - 3
+        draw.line((stem_x0, stem_y0, stem_x1, stem_y1), fill=ink, width=1)
+        # Leaves: three small filled ellipses straddling the stem,
+        # rotated to point outward. PIL's ``ellipse`` is axis-aligned,
+        # but at this size axis-aligned reads as "leaf" perfectly well —
+        # save the polygon-rotation gymnastics for the atom orbits.
+        for j in range(1, leaf_count + 1):
+            t = j / (leaf_count + 1)
+            leaf_cx = int(stem_x0 + sign * stem_len * t)
+            leaf_cy = int(stem_y0 + (stem_y1 - stem_y0) * t) - 3
+            draw.ellipse(
+                (leaf_cx - leaf_a, leaf_cy - leaf_b, leaf_cx + leaf_a, leaf_cy + leaf_b),
+                fill=ink,
+            )
+    # Centre laurel "berry" — a small filled red dot at the join.
+    draw.ellipse(
+        (laurel_cx - 2, laurel_band_y - 4, laurel_cx + 2, laurel_band_y),
+        fill=accent,
+    )
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -2376,6 +2748,7 @@ _BORDER_PAINTERS = {
     "atomic": draw_atomic_border,
     "marker": draw_marker_border,
     "saloon": draw_saloon_border,
+    "roman": draw_roman_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -2417,6 +2790,12 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # width-13, wing tip at width-38) plus breathing gap.
                         # The decorative banner band starts at y=34 so it's
                         # already below the label's y=14-29 band.
+    "roman": 38,        # past the tabula's right vertical rule (frame at
+                        # rect_inset_x=30, 3px width → outer edge at
+                        # x=width-30, rule painted from x=width-33 to
+                        # x=width-31) plus breathing gap. The SPQR
+                        # cartouche is centred horizontally so it never
+                        # reaches the label's x range.
 }
 
 

@@ -77,6 +77,15 @@ THEME_SATURATION: dict[str, float] = {
     # vivid spots that compete with the body text. Override at runtime
     # via ``--saturation`` if real-panel calibration suggests otherwise.
     "saloon": 0.5,
+    # Light limestone ground / black body / red rubrum accent — same
+    # palette shape as ``default`` / ``dispatch`` / ``saloon`` so the
+    # gentler 0.5 tier is the natural starting point. The Roman theme's
+    # stone-grain speckles are sparse and confined to the outer margin
+    # ring; pushing saturation higher would risk turning the SPQR
+    # cartouche and mid-edge interpunct dots into vivid spots that
+    # compete with the body inscription. Override via ``--saturation``
+    # after real-panel calibration if the rubrum reads too pale.
+    "roman": 0.5,
 }
 
 
