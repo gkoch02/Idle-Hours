@@ -1008,6 +1008,18 @@ class TestRuntimeStatePersistence:
         entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
         assert any(e.get("mode") == "state_validation" for e in entries)
 
+    def test_load_non_object_json_telemetrises(self, tmp_path):
+        """A state.json that is valid JSON but not a dict (e.g. bare number) must
+        emit a telemetry entry so the drift is surfaced in litclock_health output."""
+        state_path = tmp_path / "state.json"
+        telemetry_path = tmp_path / "telemetry.jsonl"
+        state_path.write_text("42", encoding="utf-8")
+        result = run_clock.load_runtime_state(str(state_path), telemetry_path=str(telemetry_path))
+        assert result == {}
+        daily = run_clock.daily_telemetry_path(telemetry_path)
+        entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(e.get("mode") == "state_validation" for e in entries)
+
     def test_runtime_state_seeds_from_persisted(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
         assert s.manual_theme == "dark"
@@ -1712,6 +1724,25 @@ class TestButtonHandlers:
             second_call = mock_render.call_args_list[1]
             mode = second_call.kwargs.get("mode") or (second_call.args[5] if len(second_call.args) > 5 else None)
             assert mode == "debug"
+
+    def test_source_card_restore_exception_is_logged_not_raised(self, tmp_path, capsys):
+        """If the restore render itself raises, the exception must be logged on stderr
+        but not propagate out of the timer callback (that would silently kill the timer
+        thread without any useful error message)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("run_clock.render_now", side_effect=[None, RuntimeError("restore boom")]), \
+             patch("run_clock.threading.Timer") as mock_timer, \
+             patch("run_clock.current_time_str", return_value="10:00"), \
+             patch("run_clock.current_bucket", return_value="h10_exact"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            # Fire the restore callback — the second render_now raises.
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()  # must not raise
+        err = capsys.readouterr().err
+        assert "restore" in err.lower() or "boom" in err
 
     def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
@@ -2623,6 +2654,17 @@ class TestMaybePruneTelemetry:
         run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
         assert calls == []
 
+    def test_logs_removed_count_when_nonzero(self, tmp_path, monkeypatch, capsys):
+        """When prune_telemetry removes files, _maybe_prune_telemetry must log the count
+        (line 991 in run_clock.py — previously uncovered)."""
+        monkeypatch.setattr(run_clock, "prune_telemetry", lambda *a, **kw: 3)
+        state = run_clock.RuntimeState("default")
+        args = self._args(tmp_path, retain_days=30)
+        run_clock._maybe_prune_telemetry(args, state, telemetry_path=str(tmp_path / "t.jsonl"))
+        out = capsys.readouterr().out
+        assert "3" in out
+        assert "telemetry" in out.lower() or "dropped" in out.lower()
+
 
 class TestMaybeCompactHistory:
     """The main-loop wrapper must compact the ledger at most once per local-date rollover."""
@@ -2675,6 +2717,18 @@ class TestMaybeCompactHistory:
         monkeypatch.setattr(run_clock.pick_quote_module, "compact_history", boom)
         state = run_clock.RuntimeState("default")
         run_clock._maybe_compact_history(self._args(tmp_path), state)
+
+    def test_logs_dropped_count_when_nonzero(self, tmp_path, monkeypatch, capsys):
+        """When compact_history drops entries, _maybe_compact_history must log the count
+        (line 1027 in run_clock.py — previously uncovered)."""
+        monkeypatch.setattr(
+            run_clock.pick_quote_module, "compact_history", lambda *a, **kw: 12,
+        )
+        state = run_clock.RuntimeState("default")
+        run_clock._maybe_compact_history(self._args(tmp_path), state)
+        out = capsys.readouterr().out
+        assert "12" in out
+        assert "compact" in out.lower() or "dropped" in out.lower() or "histor" in out.lower()
 
 
 class TestActionExceptionBranches:
@@ -3148,6 +3202,38 @@ class TestRandomThemeMode:
                 raise AssertionError("--theme random was rejected by argparse")
             assert ns.theme == "random"
 
+    def test_once_mode_with_random_theme_picks_and_renders(self, tmp_path):
+        """``--theme random --once`` must call pick_random_theme() and pass the
+        resolved theme to render_now. This exercises the branch at
+        ``run_clock.py:1340`` that was previously uncovered."""
+        argv = [
+            "run_clock.py",
+            "--theme", "random",
+            "--once",
+            "--output", str(tmp_path / "current.png"),
+            "--buttons-off",
+            "--history-path", "",
+            "--telemetry-path", "",
+            "--state-path", "",
+            "--quiet-off",
+            "--skip-preflight",
+        ]
+        with patch("sys.argv", argv), \
+             patch("run_clock.pick_random_theme", return_value="scholar") as mock_pick, \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.peek_quote_id", return_value=None), \
+             patch("run_clock.current_bucket", return_value="h12_exact"), \
+             patch("run_clock.current_time_str", return_value="12:00"):
+            rc = run_clock.main()
+        assert rc == 0
+        mock_pick.assert_called_once()
+        # render_now must have been called with the random theme that was picked.
+        assert mock_render.called
+        # theme is the 7th positional arg (index 6) or a keyword arg.
+        ca = mock_render.call_args
+        called_theme = ca.kwargs.get("theme") if ca.kwargs.get("theme") else ca.args[6] if len(ca.args) > 6 else ca.kwargs.get("theme")
+        assert called_theme == "scholar"
+
     def test_random_mode_picks_new_theme_on_quote_change(self):
         """``_maybe_pick_random_theme`` updates ``state.current_random_theme``
         and returns the new theme when the quote changes."""
@@ -3446,6 +3532,95 @@ class TestParseArgsBasic:
         with pytest.raises(SystemExit):
             run_clock.parse_args()
 
+    def test_quiet_start_without_end_is_rejected(self, monkeypatch):
+        """Supplying --quiet-start without --quiet-end must call parser.error.
+
+        Both flags have non-None argparse defaults, so we monkeypatch
+        parse_known_args to inject the one-None scenario directly.
+        """
+        import argparse
+
+        real_parse = argparse.ArgumentParser.parse_known_args
+
+        def _patched(self, args=None, namespace=None):
+            ns, remaining = real_parse(self, args, namespace)
+            # Simulate: quiet_start set, quiet_end missing/None.
+            ns.quiet_start = "22:00"
+            ns.quiet_end = None
+            return ns, remaining
+
+        monkeypatch.setattr(argparse.ArgumentParser, "parse_known_args", _patched)
+        monkeypatch.setattr("sys.argv", ["run_clock.py"])
+        with pytest.raises(SystemExit) as exc_info:
+            run_clock.parse_args()
+        assert exc_info.value.code != 0
+
+    def test_quiet_end_without_start_is_rejected(self, monkeypatch):
+        """Supplying --quiet-end without --quiet-start must call parser.error."""
+        import argparse
+
+        real_parse = argparse.ArgumentParser.parse_known_args
+
+        def _patched(self, args=None, namespace=None):
+            ns, remaining = real_parse(self, args, namespace)
+            ns.quiet_start = None
+            ns.quiet_end = "06:00"
+            return ns, remaining
+
+        monkeypatch.setattr(argparse.ArgumentParser, "parse_known_args", _patched)
+        monkeypatch.setattr("sys.argv", ["run_clock.py"])
+        with pytest.raises(SystemExit) as exc_info:
+            run_clock.parse_args()
+        assert exc_info.value.code != 0
+
+    def test_relative_output_path_is_resolved_against_base_dir(self, monkeypatch, tmp_path):
+        """A relative --output path must be joined against BASE_DIR in main().
+
+        This exercises the ``output_target = BASE_DIR / output_target`` branch
+        that was previously uncovered.
+        """
+        import argparse
+
+        # Minimal args that let main() exit before the loop via pidfile-locked or --once.
+        argv = [
+            "run_clock.py",
+            "--output", "output/current.png",  # relative path — hits the branch
+            "--once",
+            "--buttons-off",
+            "--history-path", "",
+            "--telemetry-path", "",
+            "--state-path", "",
+            "--quiet-off",
+            "--skip-preflight",
+        ]
+        from pathlib import Path as _Path
+        mkdir_calls: list = []
+        real_mkdir = _Path.mkdir
+
+        def _capture_mkdir(self_path, **kwargs):
+            mkdir_calls.append(self_path)
+            real_mkdir(self_path, **kwargs)
+
+        with patch("sys.argv", argv), \
+             patch("run_clock.render_now") as mock_render, \
+             patch("run_clock.peek_quote_id", return_value=None), \
+             patch("run_clock.current_bucket", return_value="h12_exact"), \
+             patch("run_clock.current_time_str", return_value="12:00"), \
+             patch.object(_Path, "mkdir", _capture_mkdir):
+            rc = run_clock.main()
+        # render_now was called; what matters is that the output *parent directory*
+        # was created via the resolved absolute path (BASE_DIR / "output/current.png").parent.
+        assert mock_render.called
+        # At least one mkdir call should target an absolute path under BASE_DIR.
+        abs_mkdirs = [p for p in mkdir_calls if p.is_absolute()]
+        assert abs_mkdirs, "expected mkdir to be called with an absolute path"
+        # The resolved parent of "output/current.png" relative to BASE_DIR.
+        import run_clock as rc_mod
+        expected_parent = (rc_mod.BASE_DIR / "output/current.png").parent
+        assert any(p == expected_parent for p in abs_mkdirs), (
+            f"expected mkdir at {expected_parent}, got {abs_mkdirs}"
+        )
+
 
 class TestMaybeStartWebServer:
     """The web server is optional; startup failures must not abort the loop."""
@@ -3522,6 +3697,43 @@ class TestStopWebServer:
         thread = type("T", (), {"join": lambda self, timeout=None: None})()
         # Must not raise despite server_close failing.
         run_clock.stop_web_server((BadServer(), thread))
+
+    def test_real_server_is_stopped(self, tmp_path):
+        """stop_web_server calls server.shutdown() + server_close() and joins the thread."""
+        import web_server
+
+        args = argparse.Namespace(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            once=False,
+            interval_seconds=60,
+            width=800,
+            height=480,
+            display_script=None,
+            mode="debug",
+            theme="default",
+            buttons_off=True,
+            shutdown_command="",
+            startup_image=None,
+            state_path=str(tmp_path / "state.json"),
+            telemetry_path=str(tmp_path / "telemetry.jsonl"),
+            quiet_start="22:00",
+            quiet_end="06:00",
+            quiet_image="assets/goodnight.png",
+            quiet_off=True,
+            history_path=str(tmp_path / "history.jsonl"),
+            history_days=7,
+            web_bind="127.0.0.1:0",
+            web_token="",
+            web_token_file="",
+            overrides=str(tmp_path / "selection_overrides.json"),
+        )
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state)
+        assert thread.is_alive()
+        run_clock.stop_web_server((server, thread))
+        thread.join(timeout=3)
+        assert not thread.is_alive()
 
 
 class TestRenderSubprocessTimeout:
