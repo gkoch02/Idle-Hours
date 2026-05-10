@@ -153,15 +153,23 @@ class TestJustAfterBeforeMatchType:
         assert c.minute == 3
 
     def test_just_before_five(self):
+        # "just before five" means ~4:57, not 5:57 — the hour rolls back like quarter_to.
         c = _first_candidate("Just before five o'clock the shop closed.", "just_after_before")
         assert c is not None
-        assert c.hour == 5
+        assert c.hour == 4
         assert c.minute == 57
 
     def test_almost_ten(self):
         c = _first_candidate("Almost ten o'clock when the bell rang.", "just_after_before")
         assert c is not None
-        assert c.hour == 10
+        assert c.hour == 9
+        assert c.minute == 57
+
+    def test_just_before_one_rolls_to_twelve(self):
+        # 1 → 12 rollover, matching quarter_to / minutes_past_to.
+        c = _first_candidate("Nearly one o'clock the bell tolled.", "just_after_before")
+        assert c is not None
+        assert c.hour == 12
         assert c.minute == 57
 
     def test_towards_dusk_uses_daypart_branch(self):

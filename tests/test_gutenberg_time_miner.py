@@ -218,9 +218,10 @@ class TestCandidateFromMatch:
         assert c.minute == 3
 
     def test_just_before(self):
+        # "almost five" means ~4:57, not 5:57.
         c = self._make("just_after_before", "Almost five o'clock when he returned.")
         assert c is not None
-        assert c.hour == 5
+        assert c.hour == 4
         assert c.minute == 57
 
     def test_clock_struck(self):
