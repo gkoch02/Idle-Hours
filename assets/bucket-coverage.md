@@ -2,9 +2,9 @@
 
 - Total rows: **3053**
 - Expected buckets: **144**
-- Populated buckets: **122**
-- Empty buckets: **22**
-- Coverage: **84.72%**
+- Populated buckets: **121**
+- Empty buckets: **23**
+- Coverage: **84.03%**
 
 ## Strongest buckets
 
@@ -21,8 +21,8 @@
 - `h1_exact`: 151
 - `h7_exact`: 135
 - `h12_ten_to`: 48
-- `h9_five_to`: 18
-- `h10_five_to`: 17
+- `h7_five_to`: 18
+- `h8_five_to`: 18
 
 ## Sparse buckets (<=3 quotes)
 
@@ -70,8 +70,8 @@
 ## Empty buckets
 
 - `h1_twenty_five_to`, `h2_twenty_five_past`, `h3_twenty_past`, `h3_twenty_five_past`, `h3_twenty_five_to`, `h3_twenty_to`, `h4_ten_past`, `h4_twenty_past`
-- `h5_ten_past`, `h5_twenty_past`, `h5_twenty_five_past`, `h5_twenty_five_to`, `h5_twenty_to`, `h5_ten_to`, `h6_twenty_five_past`, `h7_twenty_five_to`
-- `h7_twenty_to`, `h9_twenty_past`, `h9_twenty_five_past`, `h9_ten_to`, `h10_ten_past`, `h12_twenty_five_to`
+- `h5_ten_past`, `h5_twenty_past`, `h5_twenty_five_past`, `h5_twenty_five_to`, `h5_twenty_to`, `h5_ten_to`, `h6_twenty_five_past`, `h6_five_to`
+- `h7_twenty_five_to`, `h7_twenty_to`, `h9_twenty_past`, `h9_twenty_five_past`, `h9_ten_to`, `h10_ten_past`, `h12_twenty_five_to`
 
 ## Daypart counts
 

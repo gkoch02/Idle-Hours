@@ -407,6 +407,9 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
             if prefix in {"just after", "a little after", "shortly after"}:
                 minute = 3
             elif prefix in {"just before", "almost", "nearly", "close on", "towards"}:
+                # "just before nine" means ~8:57, not 9:57 — same hour rollback
+                # as quarter_to / minutes_past_to above.
+                hour = 12 if hour == 1 else hour - 1
                 minute = 57
     elif match_type == "clock_struck":
         hw = groups["hourword"].lower()
