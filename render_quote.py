@@ -3103,6 +3103,56 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # the horizontal inset is what does the work.
 }
 
+# Themes whose matched-phrase (``quote_bold``) face has a distinctive
+# silhouette that breaks if its inter-word gaps are inflated by
+# justification slack. The default per-theme contract is "every inter-
+# word space on a justified line is equally elastic — slack is divided
+# evenly across them"; themes in this set treat the matched-phrase
+# spaces as *rigid* (kept at the bold face's natural space width) so
+# only the body's inter-word gaps absorb slack. Without the seam,
+# TFoust's "quarter past two" on a justified line in ``grimoire`` reads
+# as three disconnected ink-stained syllables rather than a single
+# inscription — the hollow / shaggy character of the face survives
+# only at its natural inter-letter rhythm. Strict superset is fine:
+# the ``score_row`` / wrap / fit pipeline does not depend on this set.
+_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire"})
+
+
+def _justify_distribution(space_is_bold: list[bool], slack: int, rigid_match: bool) -> list[int]:
+    """Return the per-space slack contribution for a justified line.
+
+    ``space_is_bold`` is the list of inter-word spaces on the line, in
+    visual order, with each entry telling whether the space sits
+    inside the bold matched phrase. ``slack`` is the leftover pixel
+    width to redistribute. When ``rigid_match`` is True, bold-internal
+    spaces are kept at the bold face's natural width (contribution 0)
+    and the full slack is split evenly across only the body's
+    inter-word gaps; otherwise every space is equally elastic, which
+    is the renderer's default contract. The returned list has the
+    same length as ``space_is_bold`` so the call site can iterate
+    over it lock-step with the line's space occurrences.
+
+    Returns an empty list when there's no elastic space to absorb
+    slack (e.g. ``rigid_match`` is True and every space on the line
+    happens to sit inside the matched phrase) — the call site falls
+    through to the unjustified ragged-right layout, same path the
+    "slack > 25% of max_width" guard takes.
+    """
+    elastic_count = sum(1 for is_bold in space_is_bold if not (rigid_match and is_bold))
+    if elastic_count == 0:
+        return []
+    base = slack // elastic_count
+    remainder = slack - base * elastic_count
+    distribute: list[int] = []
+    elastic_seen = 0
+    for is_bold in space_is_bold:
+        if rigid_match and is_bold:
+            distribute.append(0)
+        else:
+            distribute.append(base + (1 if elastic_seen < remainder else 0))
+            elastic_seen += 1
+    return distribute
+
 
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
     snapped = Image.new("RGB", image.size)
@@ -3424,17 +3474,21 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             bbox = draw.textbbox((0, 0), chunk, font=font)
             current_width += bbox[2] - bbox[0]
 
-        space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
+        # Themes in ``_THEMES_RIGID_MATCH_SPACING`` exclude the
+        # bold-internal inter-word gaps from slack distribution so the
+        # matched phrase keeps its face's natural rhythm on a justified
+        # line. Default for every other theme: all inter-word spaces
+        # are equally elastic.
+        space_is_bold = [is_bold for chunk, is_bold in drawable if chunk == " "]
+        rigid_match = theme in _THEMES_RIGID_MATCH_SPACING
         is_last = line_index == total_lines - 1
         slack = layout["max_width"] - current_width
 
-        distribute = []
+        distribute: list[int] = []
         # Only full-justify when the line is at least 75% full; looser lines look
         # worse justified than ragged-right due to excessive inter-word gaps.
-        if not is_last and space_slots > 0 and 0 < slack <= layout["max_width"] * 0.25:
-            base = slack // space_slots
-            remainder = slack - base * space_slots
-            distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
+        if not is_last and space_is_bold and 0 < slack <= layout["max_width"] * 0.25:
+            distribute = _justify_distribution(space_is_bold, slack, rigid_match)
 
         x = (width - layout["max_width"]) // 2
         space_idx = 0

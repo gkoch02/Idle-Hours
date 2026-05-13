@@ -1569,6 +1569,114 @@ class TestGrimoireBorder:
             "unknown theme's card_quote_bold didn't fall through to default's quote_bold"
         )
 
+    def test_grimoire_in_rigid_match_spacing_set(self):
+        """``_THEMES_RIGID_MATCH_SPACING`` controls whether a line's
+        bold-internal inter-word gaps absorb justification slack.
+        Grimoire must be in this set; pin it explicitly so a future
+        rename or reshuffle doesn't silently drop the rigid contract
+        and reintroduce the "quarter past two" stretched-across-the-
+        line readability bug."""
+        assert "grimoire" in rq._THEMES_RIGID_MATCH_SPACING
+
+    def test_rigid_match_spacing_keeps_bold_internal_spaces_at_zero(self):
+        """The helper splits slack across only the elastic (non-bold)
+        spaces when ``rigid_match`` is True. Two bold-internal spaces
+        out of five must contribute zero; the remaining three split
+        20 px of slack into 7 / 7 / 6 (base=6, remainder=2 distributed
+        to the first two elastic positions)."""
+        space_is_bold = [False, True, True, False, False]
+        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=True)
+        assert distribute == [7, 0, 0, 7, 6], distribute
+
+    def test_loose_match_spacing_distributes_evenly(self):
+        """Default contract (``rigid_match=False``) treats every space
+        equally — slack=20 across 5 spaces is 4 each."""
+        space_is_bold = [False, True, True, False, False]
+        distribute = rq._justify_distribution(space_is_bold, slack=20, rigid_match=False)
+        assert distribute == [4, 4, 4, 4, 4], distribute
+
+    def test_rigid_match_falls_through_to_ragged_when_all_spaces_bold(self):
+        """If every inter-word space on a line happens to sit inside
+        the matched phrase (a long matched phrase wrapping onto its
+        own line), there's nothing elastic left to absorb slack. The
+        helper returns an empty list so the call site short-circuits
+        to ragged-right rather than awkwardly stretching the bold
+        face's gaps."""
+        space_is_bold = [True, True, True]
+        distribute = rq._justify_distribution(space_is_bold, slack=30, rigid_match=True)
+        assert distribute == [], distribute
+
+    def test_loose_match_falls_through_to_ragged_when_no_spaces(self):
+        """Empty space list (no inter-word gaps on the line) → empty
+        distribution either way; the call site uses
+        ``space_is_bold and …`` to guard."""
+        assert rq._justify_distribution([], slack=15, rigid_match=False) == []
+        assert rq._justify_distribution([], slack=15, rigid_match=True) == []
+
+    def test_grimoire_render_packs_matched_phrase_tighter_than_loose_baseline(self, monkeypatch):
+        """End-to-end pin of the bold-internal-spacing contract.
+        Render the same row twice through grimoire's pipeline — once
+        with the real ``_THEMES_RIGID_MATCH_SPACING`` (containing
+        grimoire), once with that set monkey-patched empty so the
+        loose-justification path runs. Every other variable is
+        identical: same fonts, same layout, same line breaks. The
+        rigid render must pack the bold accent-coloured pixels into a
+        narrower row of x-positions than the loose render — i.e. the
+        rightmost red pixel on the matched-phrase line moves *left*
+        once bold-internal spaces stop absorbing slack."""
+        row = {
+            "display_quote": (
+                "At a quarter past two the breeze dropped entirely, "
+                "and such a stillness reigned all about us."
+            ),
+            "matched_text": "quarter past two",
+            "title": "T",
+            "author": "A",
+            "source_id": "1",
+            "bucket": "h2_quarter_past",
+            "resolved_bucket": "h2_quarter_past",
+            "quality_score": 80,
+            "used_fallback": False,
+        }
+        rigid = rq.render("02:15", row, 800, 480, mode="production", theme="grimoire")
+
+        monkeypatch.setattr(rq, "_THEMES_RIGID_MATCH_SPACING", frozenset())
+        loose = rq.render("02:15", row, 800, 480, mode="production", theme="grimoire")
+
+        red = rq.SPECTRA6["red"]
+
+        def matched_phrase_span(img) -> tuple[int, int]:
+            """Return (leftmost, rightmost) x-coordinate of the red
+            band that holds the matched phrase. We skip the canvas
+            border (outer red rectangle at y in {14, 465}) and the
+            mid-edge sigils (centred at x=400 with y around 14 / 465 /
+            240) by sampling only the dense quote-body region
+            (y in [80, 380]) and picking the row with the most red
+            pixels — the matched-phrase line."""
+            best_row = (0, 0, 0)  # (count, left, right)
+            for y in range(80, 380):
+                red_xs = [x for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN) if img.getpixel((x, y)) == red]
+                if len(red_xs) > best_row[0]:
+                    best_row = (len(red_xs), red_xs[0], red_xs[-1])
+            return best_row[1], best_row[2]
+
+        rigid_l, rigid_r = matched_phrase_span(rigid)
+        loose_l, loose_r = matched_phrase_span(loose)
+        rigid_span = rigid_r - rigid_l
+        loose_span = loose_r - loose_l
+        # Rigid run must occupy strictly fewer x-pixels than the loose
+        # baseline on this particular row (the matched-phrase line is
+        # justified by construction — the test quote was sized so the
+        # phrase lands on a non-last 75%+-full line). At least 4 px
+        # narrower for the typical two-bold-spaces / ~30 px-of-slack
+        # case; 1 px is too tight (PIL line-break math at the wrap
+        # boundary can shift by ±1 due to the elastic-only base+1
+        # distribution).
+        assert rigid_span + 4 <= loose_span, (
+            f"rigid bold-phrase span {rigid_span}px did not pack tighter than "
+            f"loose baseline {loose_span}px — bold-internal spaces are still elastic"
+        )
+
     def test_grimoire_debug_label_clears_top_right_pentagram(self):
         """The ``DEBUG MODE`` banner must not overlap the TR inscribed
         pentagram. The ring's leftmost pixel sits at
