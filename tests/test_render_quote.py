@@ -1349,11 +1349,17 @@ class TestComicCornerStripes:
 class TestGrimoireBorder:
     """The grimoire theme paints an alchemical spellbook border.
 
-    Single thin red outer rule plus a five-pointed-star pentagram in each
-    corner — the canonical sigil of the alchemical / magic-circle
-    vocabulary. Shares the black/white/red palette with ``gothic`` but
-    flips the silhouette: gothic stacks a doubled rule with quatrefoil
-    corners, grimoire is single-rule with pentagram corners.
+    Thin red outer rule, four corner *inscribed pentagrams* (five-pointed
+    star + surrounding ring — the magic-circle composition), and four
+    classical planetary sigils on the mid-edges (Sun ☉ top, Moon ☽
+    bottom, Mars ♂ left, Venus ♀ right). Shares the black/white/red
+    palette with ``gothic`` but is iconographically unrelated: gothic
+    stacks a doubled rule with quatrefoils + mid-edge diamonds (cathedral
+    tracery), grimoire is single-rule with pentagrams-in-circles +
+    planetary alchemical sigils (occult diagram). Pin the painted
+    pixels for each element here — the golden-image suite only covers
+    default / dark / scholar so these are the regression seam for
+    the grimoire decoration.
     """
 
     def _row(self):
@@ -1371,26 +1377,75 @@ class TestGrimoireBorder:
 
     def test_grimoire_outer_rule_paints_red_on_all_four_sides(self):
         """Single rectangle at outer_inset=14 — sample mid-side on each
-        edge well clear of the corner pentagrams."""
+        edge well clear of the corner pentagrams *and* of the mid-edge
+        sigils (which sit centred on the frame at the midpoint of each
+        side). x=200 / y=200 are off both."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
         red = rq.SPECTRA6["red"]
-        assert img.getpixel((400, 14)) == red, "top outer rule missing"
-        assert img.getpixel((400, 465)) == red, "bottom outer rule missing"
-        assert img.getpixel((14, 240)) == red, "left outer rule missing"
-        assert img.getpixel((785, 240)) == red, "right outer rule missing"
+        assert img.getpixel((200, 14)) == red, "top outer rule missing"
+        assert img.getpixel((200, 465)) == red, "bottom outer rule missing"
+        assert img.getpixel((14, 200)) == red, "left outer rule missing"
+        assert img.getpixel((785, 200)) == red, "right outer rule missing"
 
     def test_grimoire_corner_pentagrams_paint_red_top_vertex(self):
         """Each pentagram's top vertex (i=0, angle=-π/2) sits at
-        ``(cx, cy - pent_radius)``. With centres at
-        (27, 27) / (772, 27) / (27, 452) / (772, 452) and pent_radius=11,
-        the top vertices land at the y-values below. A 2px stroke
-        guarantees the exact endpoint pixel is painted."""
+        ``(cx, cy - pent_radius)``. With centres at (30, 30) / (769, 30)
+        / (30, 449) / (769, 449) (after the corner-offset bump to make
+        room for the inscribing ring) and pent_radius=11, the top
+        vertices land at the y-values below. A 2px stroke guarantees
+        the exact endpoint pixel is painted."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
         red = rq.SPECTRA6["red"]
-        assert img.getpixel((27, 16)) == red, "TL pentagram top vertex missing"
-        assert img.getpixel((772, 16)) == red, "TR pentagram top vertex missing"
-        assert img.getpixel((27, 441)) == red, "BL pentagram top vertex missing"
-        assert img.getpixel((772, 441)) == red, "BR pentagram top vertex missing"
+        assert img.getpixel((30, 19)) == red, "TL pentagram top vertex missing"
+        assert img.getpixel((769, 19)) == red, "TR pentagram top vertex missing"
+        assert img.getpixel((30, 438)) == red, "BL pentagram top vertex missing"
+        assert img.getpixel((769, 438)) == red, "BR pentagram top vertex missing"
+
+    def test_grimoire_pentagrams_inscribed_in_rings(self):
+        """Each pentagram is wrapped in a 14-px-radius ring (the magic-
+        circle composition). Sample the top of each ring at
+        ``(cx, cy - ring_radius)`` — a position that's on the ring's
+        outline but outside the pentagram's vertices (pent_radius=11),
+        so a ring-missing regression would leave page_bg here even
+        though the star tests still pass."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        red = rq.SPECTRA6["red"]
+        # Ring tops at (cx, cy - 14) for the four pentagram centres.
+        assert img.getpixel((30, 16)) == red, "TL ring top missing"
+        assert img.getpixel((769, 16)) == red, "TR ring top missing"
+        assert img.getpixel((30, 435)) == red, "BL ring top missing"
+        assert img.getpixel((769, 435)) == red, "BR ring top missing"
+
+    def test_grimoire_sun_sigil_paints_at_top_midpoint(self):
+        """☉ — outline circle + filled centre dot at (400, 14). The
+        centre pixel is on the filled dot so it must be red regardless
+        of the outline radius."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        assert img.getpixel((400, 14)) == rq.SPECTRA6["red"], "Sun centre dot missing"
+
+    def test_grimoire_moon_sigil_paints_at_bottom_midpoint(self):
+        """☽ — crescent carved from a filled disk by overdrawing with
+        a page-bg disk shifted +4 px in x. The crescent's leftmost
+        sliver (the visible red ring on the carved-out side) sits at
+        x in [bcx - r, bcx - r + 1]; sample (394, 465) — well inside
+        the visible crescent for r=7 / bcx=400."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        assert img.getpixel((394, 465)) == rq.SPECTRA6["red"], "Moon crescent missing"
+
+    def test_grimoire_mars_sigil_paints_at_left_midpoint(self):
+        """♂ — circle offset down-left + diagonal NE shaft + perpendicular
+        V-barb. Sample the arrow tip at (22, 232) — outside the circle
+        body but on the arrowhead, so a regression that dropped the
+        arrow would surface here."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        assert img.getpixel((22, 232)) == rq.SPECTRA6["red"], "Mars arrow tip missing"
+
+    def test_grimoire_venus_sigil_paints_at_right_midpoint(self):
+        """♀ — circle offset up + descending shaft + horizontal crossbar.
+        Sample the crossbar at (785, 246) — well below the circle body
+        so a regression that dropped the cross would surface here."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        assert img.getpixel((785, 246)) == rq.SPECTRA6["red"], "Venus crossbar missing"
 
     def test_grimoire_painter_is_registered(self):
         """A bad ``_BORDER_PAINTERS["grimoire"] = draw_atomic_border``
@@ -1404,12 +1459,10 @@ class TestGrimoireBorder:
         """``grimoire`` and ``gothic`` share the black/white/red palette
         but must NOT produce identical frames — the silhouette difference
         comes from the matched-phrase font (TFoust vs UnifrakturMaguntia)
-        and the corner decoration (pentagram vs quatrefoil). A regression
-        that pointed grimoire's painter at ``draw_gothic_border`` (or
-        copied gothic's THEME_FONTS chain) would surface here as an
-        identical-image hash. Compare a stripe of the TL corner area
-        (where the pentagram vs quatrefoil signatures differ) — a
-        nonzero pixel-difference count is enough."""
+        and the corner decoration (inscribed pentagram vs quatrefoil).
+        A regression that pointed grimoire's painter at
+        ``draw_gothic_border`` (or copied gothic's THEME_FONTS chain)
+        would surface here as an identical-image hash."""
         row = self._row()
         gothic = rq.render("03:00", row, 800, 480, mode="production", theme="gothic")
         grimoire = rq.render("03:00", row, 800, 480, mode="production", theme="grimoire")
@@ -1425,43 +1478,111 @@ class TestGrimoireBorder:
 
     def test_grimoire_border_appears_in_debug_and_card_modes_too(self):
         """The decoration is part of the theme's identity and must paint
-        in every render mode. Sample the TL pentagram top vertex against
-        the panel's black ground in each mode."""
+        in every render mode. Sample the TL ring top against the panel's
+        black ground in each mode."""
         red = rq.SPECTRA6["red"]
         for mode in ("production", "debug", "card"):
             img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="grimoire")
-            assert img.getpixel((27, 16)) == red, (
-                f"grimoire mode={mode} missing TL pentagram"
+            assert img.getpixel((30, 16)) == red, (
+                f"grimoire mode={mode} missing TL inscribing ring"
             )
 
     def test_grimoire_border_uses_theme_colours_not_hardcoded_rgb(self):
         """``draw_grimoire_border`` must source its colour from
-        ``colors['accent']``, not a baked-in red. Call the helper with a
-        non-default palette and assert the painted pixels reflect it."""
+        ``colors['accent']``, not a baked-in red. Call the helper with
+        a non-default palette and assert the painted pixels reflect it."""
         image = Image.new("RGB", (800, 480), color=(0, 0, 0))
-        custom = {"text": rq.SPECTRA6["white"], "accent": rq.SPECTRA6["green"]}
+        custom = {
+            "page_bg": rq.SPECTRA6["black"],
+            "text": rq.SPECTRA6["white"],
+            "accent": rq.SPECTRA6["green"],
+        }
         rq.draw_grimoire_border(image, custom)
-        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "outer rule should use accent"
-        assert image.getpixel((27, 16)) == rq.SPECTRA6["green"], "TL pentagram should use accent"
+        assert image.getpixel((200, 14)) == rq.SPECTRA6["green"], "outer rule should use accent"
+        assert image.getpixel((30, 19)) == rq.SPECTRA6["green"], "TL pentagram should use accent"
+        assert image.getpixel((30, 16)) == rq.SPECTRA6["green"], "TL ring should use accent"
+        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "Sun sigil should use accent"
+
+    def test_grimoire_moon_carves_with_page_bg_not_hardcoded(self):
+        """The crescent is carved from a filled red disk by overdrawing
+        with a smaller disk in ``colors['page_bg']``. Switching the
+        ground colour must show through the carved region — a
+        regression that hardcoded ``black`` would still display a
+        crescent against a white ground because the overlay would
+        clash. Bug-defensive pin."""
+        image = Image.new("RGB", (800, 480), color=(255, 255, 255))
+        custom = {
+            "page_bg": rq.SPECTRA6["white"],
+            "text": rq.SPECTRA6["black"],
+            "accent": rq.SPECTRA6["red"],
+        }
+        rq.draw_grimoire_border(image, custom)
+        # Inside the carved area (centre + 4 right of the moon midpoint
+        # at (400, 465), so around (403, 465)) should be page_bg=white,
+        # not red or black.
+        assert image.getpixel((403, 465)) == rq.SPECTRA6["white"], (
+            "moon overlay didn't carve with page_bg"
+        )
+
+    def test_grimoire_source_card_uses_unicode_safe_bold(self):
+        """``render_source_card`` wraps the matched phrase in U+201C /
+        U+201D curly quotes and runs the title through ``normalize_dashes``
+        (which emits U+2014 em-dashes). TFoust ships ASCII only (U+0020 →
+        U+007E) and PIL's font fallback is file-level, not glyph-level,
+        so without a card-specific override the grimoire card would paint
+        ``.notdef`` boxes for every curly quote and em-dash.
+
+        Pin two layers of the contract:
+
+        * The ``card_quote_bold`` chain for grimoire must NOT start with
+          TFoust — every leading entry's path must be unicode-safe.
+        * Every other theme's ``card_quote_bold`` chain must be exactly
+          ``quote_bold`` (the fallback case) — the new role is a per-
+          theme escape hatch, not a renderer-wide change.
+        """
+        # Grimoire's escape hatch: TFoust must NOT lead the card chain.
+        grimoire_card = rq.theme_font_candidates("grimoire", "card_quote_bold")
+        first = grimoire_card[0]
+        first_path = first[0] if isinstance(first, tuple) else first
+        assert "TFoust" not in first_path, (
+            f"grimoire card_quote_bold still starts with TFoust: {first_path}"
+        )
+        # Every other theme falls through unchanged.
+        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+                      "blueprint", "illuminated", "gothic", "bauhaus",
+                      "risograph", "comic", "dispatch", "atomic", "marker",
+                      "saloon", "roman"):
+            bold = rq.theme_font_candidates(theme, "quote_bold")
+            card = rq.theme_font_candidates(theme, "card_quote_bold")
+            assert card == bold, (
+                f"theme {theme} silently diverged card_quote_bold from quote_bold"
+            )
+
+    def test_card_role_fallback_chain_handles_unknown_themes(self):
+        """``theme_font_candidates`` resolves a ``card_<base>`` role
+        through three layers: theme's override, theme's base role, then
+        default's base role. A typoed theme name should still produce
+        the default's ``quote_bold`` chain rather than raising
+        ``KeyError`` mid-render."""
+        chain = rq.theme_font_candidates("nonexistent_theme", "card_quote_bold")
+        assert chain == rq.THEME_FONTS["default"]["quote_bold"], (
+            "unknown theme's card_quote_bold didn't fall through to default's quote_bold"
+        )
 
     def test_grimoire_debug_label_clears_top_right_pentagram(self):
-        """The ``DEBUG MODE`` banner must not overlap the TR pentagram.
-        Pin the inset to ensure the label is pushed inward past the
-        pentagram's leftmost extent — a regression that dropped
-        grimoire from ``_DEBUG_LABEL_RIGHT_INSET`` would silently let
-        the label clip the star.
-
-        The pentagram's leftmost vertex sits at x ≈ width-39 (vertex 4
-        at angle 198° from a centre at width-28). The label's right edge
-        is at ``width - inset``; we require ``inset >= 39 + breathing``.
-        """
+        """The ``DEBUG MODE`` banner must not overlap the TR inscribed
+        pentagram. The ring's leftmost pixel sits at
+        ``cx - ring_radius - 1`` (centre 769, radius 14, plus the 2-px
+        stroke half-width) = x=754; the label's right edge must end at
+        x ≤ 750 for a 4-px breathing gap. ``inset = width - 750 = 50``.
+        Pin the lower bound — a regression that left grimoire on the
+        old 44-px inset (sized for bare pentagrams without the ring)
+        would silently clip the label across the ring outline."""
         inset = rq._DEBUG_LABEL_RIGHT_INSET.get("grimoire")
         assert inset is not None, "grimoire missing from _DEBUG_LABEL_RIGHT_INSET"
-        # Pentagram leftmost vertex pixel: cx - round(pent_radius * cos(18°))
-        # = (800 - 28) - 10 = 762. Label must end at x ≤ 762 - 1 for clearance.
-        # With label right edge at width - inset = 800 - inset, that means
-        # inset >= 800 - 762 + 1 = 39 (we use 44 for a 5px breathing gap).
-        assert inset >= 39, f"grimoire inset {inset} too small to clear pentagram"
+        assert inset >= 46, (
+            f"grimoire inset {inset} too small to clear the inscribing ring"
+        )
 
 
 class TestRenderCard:

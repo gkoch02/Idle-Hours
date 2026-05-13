@@ -933,6 +933,19 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
+        # Source-card seam: ``render_source_card`` runs the title and the
+        # matched phrase through ``normalize_dashes`` (which emits U+2014
+        # em-dashes) and wraps the matched phrase in U+201C / U+201D curly
+        # quotes — both glyphs TFoust does not ship, and PIL's fallback is
+        # file-level so the renderer otherwise prints ``.notdef`` tofu in
+        # the card. Routing the card's bold weight through EB Garamond Bold
+        # (the unicode-safe second rank in ``quote_bold``) keeps the card
+        # readable while leaving TFoust as the matched-phrase face in the
+        # main render, where the matched text is pure-ASCII time phrases.
+        "card_quote_bold": [
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
     },
 }
 
@@ -943,9 +956,30 @@ def theme_font_candidates(theme: str, role: str) -> list:
     Unknown themes fall back to the ``default`` entry so a forgotten
     ``THEME_FONTS`` registration still renders (with the default face) rather
     than raising KeyError deep inside the layout engine.
+
+    ``card_<base>`` roles (e.g. ``card_quote_bold``, used by
+    ``render_source_card``) follow a layered fallback: theme's
+    ``card_<base>`` override → theme's ``<base>`` → default's
+    ``<base>``. This lets a theme whose ``quote_bold`` chain starts
+    with a deliberately-ASCII-only display face (TFoust on
+    ``grimoire``) override only the source-card seam, where the
+    rendered text passes through ``normalize_dashes`` (which produces
+    U+2014 em-dashes) and is wrapped in U+201C / U+201D curly quotes
+    — both glyphs the ASCII-only face cannot supply. PIL's font
+    fallback is file-level, not glyph-level, so without this seam
+    the source card would draw ``.notdef`` boxes for those characters.
     """
     fonts = THEME_FONTS.get(theme) or THEME_FONTS["default"]
-    return fonts.get(role) or THEME_FONTS["default"][role]
+    chain = fonts.get(role)
+    if chain is not None:
+        return chain
+    if role.startswith("card_"):
+        base = role[len("card_") :]
+        chain = fonts.get(base)
+        if chain is not None:
+            return chain
+        return THEME_FONTS["default"][base]
+    return THEME_FONTS["default"][role]
 
 LAYOUTS = {
     "hero": {
@@ -1711,30 +1745,129 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
         )
 
 
+def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
+    """Solar ☉ — outline circle with a filled centre dot. The
+    circumpunct is the alchemical sigil for gold / the Sun and the
+    most iconographically simple symbol in the four-planet set."""
+    r = 7
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=accent, width=2)
+    draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=accent)
+
+
+def _draw_grimoire_moon(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    accent: tuple[int, int, int],
+    page_bg: tuple[int, int, int],
+) -> None:
+    """Lunar ☽ — silver / mercurial. Filled red disk overdrawn by a
+    smaller page-bg disk offset rightward so the visible red collapses
+    to a left-opening crescent (horns pointing left, the alchemical
+    convention for the receptive/lunar principle)."""
+    r = 7
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accent)
+    # Smaller carving disk shifted +4 in x: the overlap region stays
+    # entirely within the outer disk so we never paint page_bg outside
+    # the symbol footprint.
+    inner_r = 6
+    offset = 4
+    draw.ellipse(
+        (cx - inner_r + offset, cy - inner_r, cx + inner_r + offset, cy + inner_r),
+        fill=page_bg,
+    )
+
+
+def _draw_grimoire_mars(
+    draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]
+) -> None:
+    """Martial ♂ — iron / aggressive. Outline circle offset slightly
+    down-left, with a long diagonal shaft + perpendicular V-barb
+    arrowhead pointing out toward the upper-right (NE). The classical
+    "active principle" sigil. Barbs are drawn as two short
+    perpendicular-to-shaft strokes meeting at the tip so the arrow
+    reads as an arrowhead rather than an indeterminate blob at the
+    small mid-edge symbol scale."""
+    r = 6
+    # Circle centre pushed down-left so the NE arrow has room without
+    # the circle bumping the mid-edge anchor.
+    bcx, bcy = cx - 3, cy + 3
+    draw.ellipse((bcx - r, bcy - r, bcx + r, bcy + r), outline=accent, width=2)
+    # Long diagonal shaft from upper-right of circle outward to NE.
+    shaft_start = (bcx + 4, bcy - 4)
+    tip = (bcx + 11, bcy - 11)
+    draw.line((*shaft_start, *tip), fill=accent, width=2)
+    # Two barbs at the tip, each perpendicular to the 45° shaft, forming
+    # the canonical arrowhead V. The first barb runs horizontal-left
+    # from the tip, the second runs vertical-down from the tip — taken
+    # together they "open" the arrowhead in the right direction.
+    barb = 5
+    draw.line((tip[0] - barb, tip[1], tip[0], tip[1]), fill=accent, width=2)
+    draw.line((tip[0], tip[1], tip[0], tip[1] + barb), fill=accent, width=2)
+
+
+def _draw_grimoire_venus(
+    draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]
+) -> None:
+    """Venusian ♀ — copper / receptive. Outline circle offset slightly
+    up, with a vertical shaft descending from the circle's bottom and
+    a horizontal crossbar — the alchemical "passive principle" sigil
+    and the visual complement to Mars in the four-planet set."""
+    r = 6
+    bcx, bcy = cx, cy - 4
+    draw.ellipse((bcx - r, bcy - r, bcx + r, bcy + r), outline=accent, width=2)
+    # Vertical shaft from circle bottom downward.
+    shaft_top = (bcx, bcy + r)
+    shaft_bottom = (bcx, bcy + r + 7)
+    draw.line((*shaft_top, *shaft_bottom), fill=accent, width=2)
+    # Horizontal crossbar across the shaft, ~2/3 of the way down.
+    crossbar_y = bcy + r + 4
+    draw.line((bcx - 4, crossbar_y, bcx + 4, crossbar_y), fill=accent, width=2)
+
+
 def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
-    """Paint an alchemical-grimoire border: single red rule + four red pentagrams at the corners.
+    """Paint an alchemical-grimoire border: outer rule + four magic-circle
+    inscribed pentagrams + four planetary sigils on the mid-edges.
 
-    The decoration intentionally inverts the ``gothic`` composition while
-    sharing its palette: gothic stacks a doubled outer rule (red + white)
-    with a quatrefoil — the cathedral-tracery motif — at each corner;
-    grimoire uses a single thin red rule with a pentagram — the
-    five-pointed star of the alchemical / magic-circle vocabulary — at
-    each corner. Same black ground, same red accent, completely different
-    iconographic register. No mid-edge ornaments: gothic owns the
-    "corners + mid-edges" composition and grimoire stays disciplined to
-    keep the spellbook page reading as inscription rather than book
-    decoration.
+    Shares the black/white/red palette with ``gothic`` but flips the
+    silhouette: gothic stacks a doubled outer rule (red + white) with a
+    quatrefoil — the cathedral-tracery motif — at each corner; grimoire
+    uses a single thin red rule with an *inscribed* pentagram (star +
+    surrounding ring) at each corner, then breaks the four mid-edges
+    with the four classical planetary alchemical sigils — Sun ☉ at the
+    top centre, Moon ☽ at the bottom, Mars ♂ on the left, Venus ♀ on
+    the right — pulling the iconographic vocabulary of medieval / early-
+    modern occult diagrams directly onto the page. Same ground, same
+    accent ink, completely different register from gothic.
 
-    Each pentagram is drawn deterministically by computing the five
+    **Pentagrams.** Drawn deterministically by computing the five
     vertices of a regular pentagon inscribed in a circle of radius
     ``pent_radius`` centred at the corner anchor, then connecting them
     in skip-one order (``0 → 2 → 4 → 1 → 3 → 0``) — the classic
-    single-stroke pentacle silhouette. The first vertex is placed at the
-    top (``angle = -π/2``) so the star reads upright at every corner.
+    single-stroke pentacle silhouette — and finally an outer outline
+    circle of radius ``ring_radius`` around the star, giving the
+    "pentagram inscribed in a circle" magic-circle composition. The
+    first vertex is placed at the top (``angle = -π/2``) so the star
+    reads upright at every corner; the ring sits ~3 px outside the
+    star's vertex tips so the two strokes don't visually merge.
+
+    **Mid-edge sigils.** Each of the four classical "wandering star"
+    symbols (Sun / Moon / Mars / Venus) is drawn deterministically
+    from PIL primitives so the renderer doesn't depend on glyph
+    coverage in any font (TFoust, the body font, and the bundled
+    fallbacks all vary in their unicode support for ``U+2609``
+    onward). Positioned on the outer frame rule at each mid-edge so
+    they punch through the line the way ``gothic``'s mid-edge diamonds
+    do — keeping the frame from reading as an unbroken rectangular
+    border. The Sun goes on top (the "highest" planet in geocentric
+    cosmology), Moon on bottom, Mars / Venus on the left / right —
+    pinning the active / receptive duality across the horizontal axis
+    of the page.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     accent = colors["accent"]  # rubric red
+    page_bg = colors.get("page_bg", SPECTRA6["black"])
 
     outer_inset = 14
     draw.rectangle(
@@ -1743,11 +1876,13 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
-    # Four red pentagrams at the inset corners. Centre offset inward from
-    # the frame corner by ``pent_radius + 2`` so the star sits just inside
-    # the frame rule rather than colliding with it.
+    # Four inscribed pentagrams at the inset corners. ``corner_offset``
+    # pushes each centre far enough inward that the surrounding ring
+    # (radius ``ring_radius`` + 2 px stroke half-width) stays clear of
+    # the outer rule at ``outer_inset``.
     pent_radius = 11
-    corner_offset = pent_radius + 2
+    ring_radius = 14
+    corner_offset = ring_radius + 2
     centres = [
         (outer_inset + corner_offset, outer_inset + corner_offset),
         (width - 1 - outer_inset - corner_offset, outer_inset + corner_offset),
@@ -1764,6 +1899,25 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
             vertices.append((vx, vy))
         path = [vertices[i] for i in skip_one]
         draw.line(path, fill=accent, width=2)
+        # Surrounding ring — the "magic circle" containing the pentacle.
+        draw.ellipse(
+            (cx - ring_radius, cy - ring_radius, cx + ring_radius, cy + ring_radius),
+            outline=accent,
+            width=2,
+        )
+
+    # Four planetary alchemical sigils centred on the mid-edges of the
+    # outer rule. Each helper draws a ~14 px-tall symbol; the moon
+    # carving uses ``page_bg`` to chisel a crescent out of a filled disk
+    # without painting outside its own footprint.
+    mid_top = (width // 2, outer_inset)
+    mid_bottom = (width // 2, height - 1 - outer_inset)
+    mid_left = (outer_inset, height // 2)
+    mid_right = (width - 1 - outer_inset, height // 2)
+    _draw_grimoire_sun(draw, *mid_top, accent)
+    _draw_grimoire_moon(draw, *mid_bottom, accent, page_bg)
+    _draw_grimoire_mars(draw, *mid_left, accent)
+    _draw_grimoire_venus(draw, *mid_right, accent)
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -2919,15 +3073,14 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # x=width-31) plus breathing gap. The SPQR
                         # cartouche is centred horizontally so it never
                         # reaches the label's x range.
-    "grimoire": 44,     # past the TR pentagram. Centre at
-                        # (width-28, 27) with pent_radius=11; leftmost
-                        # vertex (i=4) at cos(198°)·11 ≈ -10.46 → outer
-                        # pixel ~x=width-39 (+1 for the 2px stroke half-
-                        # width) plus a 4px breathing gap → label's
-                        # right edge must end at x ≤ width-44. The
-                        # pentagram's top vertex sits at y=16, well
-                        # inside the label's y=14-29 band, so the
-                        # horizontal inset is what does the work.
+    "grimoire": 50,     # past the TR inscribed pentagram. Centre at
+                        # (width-31, 30) with ring_radius=14 and 2px
+                        # stroke (half-width 1) → leftmost pixel of
+                        # the ring at x=width-46. Plus a 4px breathing
+                        # gap → label's right edge must end at x ≤
+                        # width-50. The ring's top vertex sits at y=15
+                        # (well inside the label's y=14-29 band), so
+                        # the horizontal inset is what does the work.
 }
 
 
@@ -2995,10 +3148,16 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     matched_text = normalize_dashes(strip_underscore_emphasis(matched_text))
 
     label_font = load_font(META_FONT_CANDIDATES, size=18)
-    title_font = load_font(theme_font_candidates(theme, "quote_bold"), size=44)
+    # ``card_quote_bold`` falls through to ``quote_bold`` for every theme
+    # that doesn't override it; the seam exists so themes whose bold
+    # chain starts with an ASCII-only display face (TFoust on grimoire)
+    # can route the card's title and matched phrase — both of which
+    # may contain em-dashes or curly quotes — through a unicode-safe
+    # face without changing their main-render typography.
+    title_font = load_font(theme_font_candidates(theme, "card_quote_bold"), size=44)
     author_font = load_font(theme_font_candidates(theme, "quote_regular"), size=28)
     id_font = load_font(META_FONT_CANDIDATES, size=18)
-    phrase_font = load_font(theme_font_candidates(theme, "quote_bold"), size=28)
+    phrase_font = load_font(theme_font_candidates(theme, "card_quote_bold"), size=28)
 
     max_text_width = width - 2 * SIDE_MARGIN - 40
     title_lines = wrap_text(draw, title_text, title_font, max_text_width)[:3]
