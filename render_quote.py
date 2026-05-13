@@ -112,17 +112,15 @@ THEMES = {
         "ornament_light": SPECTRA6["green"],
         "source": SPECTRA6["green"],
     },
-    # Cyanotype blueprint. Blue paper, white ink for every mark — the
-    # body text, the outer frame, the corner registration crosshairs,
-    # and the graph-paper grid — matching the authentic white-on-blue
-    # look of a photochemical drafting sheet. The blue ground is softened
-    # by a 50/50 white/blue checkerboard painted in
+    # Cyanotype blueprint. Blue paper, white ink for the body text,
+    # outer frame, and graph-paper grid, with the corner registration
+    # crosshairs and matched time phrase picked out in red — the
+    # "annotated dimension" in red pencil real drafters use to call out
+    # measurements on an otherwise monochromatic print. The blue ground
+    # is softened by a 50/50 white/blue checkerboard painted in
     # ``draw_blueprint_border``'s Layer 0 so the page reads as a paler
-    # cyanotype wash rather than the panel's flat saturated blue. No
-    # chromatic accent — the matched time phrase differentiates by bold
-    # weight (same pattern as ``newsprint``), staying true to the
-    # single-ink character of the cyanotype process. Sits visually
-    # distinct from ``scholar`` (white/blue/red) thanks to the
+    # cyanotype wash rather than the panel's flat saturated blue. Sits
+    # visually distinct from ``scholar`` (white/blue/red) thanks to the
     # inverted ground plus the geometric Archivo sans-serif in
     # THEME_FONTS — different palette polarity, different family.
     "blueprint": {
@@ -130,7 +128,7 @@ THEMES = {
         "text": SPECTRA6["white"],
         "subtle": SPECTRA6["white"],
         "faint": SPECTRA6["white"],
-        "accent": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["white"],
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["white"],
@@ -1699,7 +1697,9 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
       window so the text block gets a calmer field without losing the
       drafting-sheet frame and corner marks.
     * **Corner registration crosshairs** in the accent colour — the
-      small print-alignment ticks used on engineering drawings.
+      small print-alignment ticks used on engineering drawings. Pulled
+      from ``accent`` so they pop against the white body/grid ink,
+      matching the matched-time-phrase highlight.
     """
     width, height = image.size
     page_bg = colors.get("page_bg")
@@ -3412,11 +3412,10 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     rectangular ritual boundary + four corner pentagrams + big
     inscribed transmutation circle (double ring + incantation
     tick-band + inscribed pentagram + inner pentagon + vertex
-    sub-circles) + top row of four flanking planetary glyphs +
-    bottom-centre alchemical sun + bottom row of four flanking
-    elemental glyphs.
+    sub-circles) + the four classical-element glyphs at the outer
+    corners of the inner figure.
 
-    Six layers, painted bottom-to-top so each upper layer sits
+    Four layers, painted bottom-to-top so each upper layer sits
     cleanly on the ones below:
 
     1. **Outer rectangular ritual rule** — thin red rectangle around
@@ -3444,51 +3443,39 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
        lines are deliberately hairline-thin (width 1) so the black
        serif text dominates and the magic circle reads as a backdrop
        through which the operative phrase is being declared.
-    4. **Top row of four flanking planetary glyphs** — the
-       seven-planet vocabulary of pre-Newtonian alchemy reduced to
-       its four most recognisable members:
-         - ``☉ Sol``    (gold / solar principle) at far left
-         - ``☽ Luna``   (silver / lunar principle) at left of centre
-         - ``♂ Mars``   (iron / martial principle) at right of centre
-         - ``♀ Venus``  (copper / feminine principle) at far right
-       The top centre is deliberately left clear: the transmutation
-       circle's top arc with its tick-mark incantation band sits at
-       that cardinal position and reads as the principal seal on
-       its own — no glyph is overlaid there.
-    5. **Bottom-centre alchemical sun** — the operative-principle
-       glyph that the whole work converges on: gold / sulphur / the
-       perfected stone. Painted at radius 18 with its own outer
-       protective halo, sitting on the bottom cardinal axis as the
-       "this is the desired product" anchor of the page.
-    6. **Bottom row of four flanking elemental triangles** — the
-       four classical elements in their canonical alchemical glyphs:
-         - ``🜃 Earth`` (downward triangle with bar) at far left
-         - ``🜄 Water`` (downward triangle) at left of centre
-         - ``🜂 Fire``  (upward triangle) at right of centre
-         - ``🜁 Air``   (upward triangle with bar) at far right
-       Arranged left-to-right by alchemical heaviness; the
-       bar-marked "light" elements bracket the bar-less "heavy"
-       elements so the row reads as a deliberate sequence rather
-       than scattered ornaments.
+    4. **Four classical-element glyphs at the outer corners** of the
+       inner figure, the canonical alchemical vocabulary of the four
+       elements:
+         - ``🜃 Earth`` (downward triangle with bar) at top-left
+         - ``🜄 Water`` (downward triangle) at top-right
+         - ``🜂 Fire``  (upward triangle) at bottom-left
+         - ``🜁 Air``   (upward triangle with bar) at bottom-right
+       The "heavy" downward-pointing elements anchor the top of the
+       figure; the "light" upward-pointing elements anchor the
+       bottom — every corner of the inner field carrying one
+       cardinal element. The centre positions on both rows (and the
+       bottom-centre) stay clear: the transmutation circle's top
+       and bottom arcs with their tick-mark incantation bands sit
+       at those cardinal positions and read as the principal seals
+       on their own.
 
-    Together the seven layers paint a real Solomonic grimoire-page:
+    Together the four layers paint a real Solomonic grimoire-page:
     rectangular ritual binding rule outside, big inscribed
-    transmutation circle inside, every margin populated by
-    inscribed planetary / elemental / corner sigils, body quote
-    sitting in the operative chamber as the spoken phrase being
-    declared into the circle.
+    transmutation circle inside, every outer corner anchored by
+    one of the four elements, body quote sitting in the operative
+    chamber as the spoken phrase being declared into the circle.
 
     The two colour tracks are deliberate: the rectangular
     boundary + corner protective sigils are RED (the rubricated /
     sulphur / ritual-enclosure colour), while everything *inside*
     the boundary — magic circle, inscribed pentagram, pentagon,
-    planetary glyphs, elemental triangles, alchemical sun — is
-    BLUE (the philosophical-mercury / Hermetic / sapphire colour).
-    Real alchemical manuscripts used the same red / blue split to
+    and the four elemental triangles — is BLUE (the
+    philosophical-mercury / Hermetic / sapphire colour). Real
+    alchemical manuscripts used the same red / blue split to
     distinguish the operative / outer side of the work from the
     philosophical / inner side.
 
-    Before any of the six decoration layers paint, a Layer-0
+    Before any of the four decoration layers paint, a Layer-0
     parchment halftone keeps only 2 of every 16 page_bg yellow
     pixels and converts the other 14 to white via a 4×4 Bayer-dither
     pattern, so the rendered ground reads as a pale ivory parchment
@@ -3499,7 +3486,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     width, height = image.size
     rule_color = colors["accent"]               # red ritual boundary
     sigil_color = colors["accent"]              # red corner pentagrams
-    hermetic_color = colors["ornament_dark"]    # blue planetary / elemental glyphs
+    hermetic_color = colors["ornament_dark"]    # blue elemental glyphs
     page_bg = colors["page_bg"]                 # yellow — used by the Layer-0 halftone
     stroke = 2
 
@@ -3517,8 +3504,8 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     # ``snap_image_to_palette`` is a no-op on these pixels.
     #
     # We dither here at the very start of the painter, BEFORE the
-    # six decoration layers below, so the corner pentagrams /
-    # transmutation circle / planetary / elemental sigils all
+    # four decoration layers below, so the corner pentagrams /
+    # transmutation circle / elemental sigils all
     # overpaint the halftoned ground cleanly. Subsequent text
     # rendering uses these halftoned pixels as anti-aliasing source
     # colour; the Spectra-6 palette snap step rounds the resulting
@@ -3576,9 +3563,8 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     centre_y = height // 2
     top_y = pent_offset
     bot_y = height - 1 - pent_offset
-    flank_radius = 11               # planetary + elemental glyphs
-    flank_spacing = 80              # px between adjacent glyph centres
-    halo_pad = 5                    # protective-circle padding around the bottom sun
+    flank_radius = 11               # elemental glyphs at the four outer corners
+    flank_spacing = 80              # px between centre and outer-corner glyph
 
     # ------------------------------------------------------------------
     # Layer 3: Inscribed transmutation circle — the big Solomonic /
@@ -3691,57 +3677,30 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         )
 
     # ------------------------------------------------------------------
-    # Layer 4: Top-row flanking planetary glyphs. The top centre is
-    # deliberately left clear — the inscribed transmutation circle's
-    # top arc (with its tick-mark incantation band) sits at that
-    # cardinal position and reads as the principal seal on its own.
-    _draw_sol(
-        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
-    )
-    # Luna's crescent is carved out by an occlusion disc — pass
-    # white (not page_bg yellow) so the occluder blends with the
-    # halftoned ground above instead of showing up as a vivid
-    # yellow blob against the pale parchment.
-    _draw_luna(
-        draw, centre_x - flank_spacing, top_y, flank_radius, hermetic_color,
-        SPECTRA6["white"], line_width=stroke,
-    )
-    _draw_mars(
-        draw, centre_x + flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
-    )
-    _draw_venus(
-        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
-    )
-
-    # ------------------------------------------------------------------
-    # Layer 5: Bottom-centre alchemical sun with its protective halo.
-    sun_radius = 18
-    sun_halo = sun_radius + halo_pad
-    draw.ellipse(
-        (centre_x - sun_halo, bot_y - sun_halo, centre_x + sun_halo, bot_y + sun_halo),
-        outline=hermetic_color,
-        width=1,
-    )
-    _draw_sol(draw, centre_x, bot_y, sun_radius, hermetic_color, line_width=stroke)
-
-    # ------------------------------------------------------------------
-    # Layer 6: Bottom-row flanking elemental triangles.
+    # Layer 4: Four classical-element glyphs at the outer corners of
+    # the inner figure. Top-left + top-right are the "heavy" downward
+    # elements; bottom-left + bottom-right are the "light" upward ones.
+    # The centre positions on both rows (and the bottom-centre)
+    # are deliberately left clear — the transmutation circle's top and
+    # bottom arcs (with their tick-mark incantation bands) sit at
+    # those cardinal positions and read as the principal seals on
+    # their own — no glyph is overlaid there.
+    _draw_alchemical_triangle(
+        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=True, line_width=stroke,
+    )  # 🜃 Earth (top-left)
+    _draw_alchemical_triangle(
+        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=False, line_width=stroke,
+    )  # 🜄 Water (top-right)
     _draw_alchemical_triangle(
         draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=True, line_width=stroke,
-    )  # 🜃 Earth
-    _draw_alchemical_triangle(
-        draw, centre_x - flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=False, line_width=stroke,
-    )  # 🜄 Water
-    _draw_alchemical_triangle(
-        draw, centre_x + flank_spacing, bot_y, flank_radius, hermetic_color,
         point_up=True, with_bar=False, line_width=stroke,
-    )  # 🜂 Fire
+    )  # 🜂 Fire (bottom-left)
     _draw_alchemical_triangle(
         draw, centre_x + 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
         point_up=True, with_bar=True, line_width=stroke,
-    )  # 🜁 Air
+    )  # 🜁 Air (bottom-right)
 
 
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
@@ -3814,11 +3773,10 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # circle extends LEFT to x=width-63; inset
                         # clears that plus a 13px breathing gap so
                         # the ``DEBUG MODE`` glyphs sit cleanly inside
-                        # the ritual boundary. The top-centre hexagram
-                        # halo and the four flanking planetary glyphs
-                        # (Sol / Luna / Mars / Venus, rightmost centred
-                        # at x=560 with radius 11) all sit well left
-                        # of the label's x range.
+                        # the ritual boundary. The top-right elemental
+                        # triangle (🜄 Water at +2*flank_spacing,
+                        # centred at x=width//2+160=560 with radius 11)
+                        # sits well left of the label's x range.
     "grimoire": 50,     # past the TR inscribed pentagram. Centre at
                         # (width-31, 30) with ring_radius=14 and 2px
                         # stroke (half-width 1) → leftmost pixel of

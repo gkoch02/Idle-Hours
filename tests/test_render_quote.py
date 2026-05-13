@@ -616,16 +616,17 @@ class TestThemes:
         assert t["accent"] == rq.SPECTRA6["yellow"]
 
     def test_blueprint_theme_uses_white_on_blue_cyanotype_palette(self):
-        """Cyanotype blueprint: blue ground, white ink for every mark, no
-        chromatic accent (matched phrase differentiates by bold weight,
-        same pattern as ``newsprint``). Pin the inverted palette so a
-        regression that flipped it back to white/blue/red would collapse
-        the theme into a Scholar-adjacent layout and lose the
-        photochemical-drafting-sheet identity."""
+        """Cyanotype blueprint: blue ground, white ink for every
+        structural mark (body, frame, grid, crosshairs), red accent
+        for the matched time phrase (the "annotated dimension" in red
+        pencil over an otherwise monochromatic print). Pin the
+        inverted palette so a regression that flipped it back to
+        white/blue/red would collapse the theme into a Scholar-adjacent
+        layout and lose the photochemical-drafting-sheet identity."""
         t = rq.THEMES["blueprint"]
         assert t["page_bg"] == rq.SPECTRA6["blue"]
         assert t["text"] == rq.SPECTRA6["white"]
-        assert t["accent"] == rq.SPECTRA6["white"]
+        assert t["accent"] == rq.SPECTRA6["red"]
 
     def test_illuminated_theme_uses_rubricated_red_body(self):
         """Red body text is unique to ``illuminated`` across the rotation;
@@ -1150,17 +1151,18 @@ class TestBlueprintBorder:
             "source_id": "141",
         }
 
-    def test_blueprint_corner_crosshairs_paint_accent_white(self):
+    def test_blueprint_corner_crosshairs_paint_accent_red(self):
         """Four crosshair "+" marks centred on the frame corners at
         ``(16, 16)`` / ``(783, 16)`` / ``(16, 463)`` / ``(783, 463)``.
         The centre pixel is always on the mark; arm extents are ±8.
-        Cyanotype white-on-blue: marks paint in the accent colour
-        (white in production, same colour family as the body)."""
+        Crosshairs paint in the accent colour (red) so they pop
+        against the white body / grid ink, matching the matched
+        time phrase highlight."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
-        assert img.getpixel((16, 16)) == rq.SPECTRA6["white"], "TL crosshair centre missing"
-        assert img.getpixel((783, 16)) == rq.SPECTRA6["white"], "TR crosshair centre missing"
-        assert img.getpixel((16, 463)) == rq.SPECTRA6["white"], "BL crosshair centre missing"
-        assert img.getpixel((783, 463)) == rq.SPECTRA6["white"], "BR crosshair centre missing"
+        assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], "TL crosshair centre missing"
+        assert img.getpixel((783, 16)) == rq.SPECTRA6["red"], "TR crosshair centre missing"
+        assert img.getpixel((16, 463)) == rq.SPECTRA6["red"], "BL crosshair centre missing"
+        assert img.getpixel((783, 463)) == rq.SPECTRA6["red"], "BR crosshair centre missing"
 
     def test_blueprint_crosshair_arms_extend_both_directions(self):
         """Each crosshair has four 8px arms (left/right/up/down from
@@ -1168,10 +1170,10 @@ class TestBlueprintBorder:
         would pass the centre-pixel test but fail here."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
         cx, cy = 16, 16
-        assert img.getpixel((cx - 6, cy)) == rq.SPECTRA6["white"], "TL left arm missing"
-        assert img.getpixel((cx + 6, cy)) == rq.SPECTRA6["white"], "TL right arm missing"
-        assert img.getpixel((cx, cy - 6)) == rq.SPECTRA6["white"], "TL up arm missing"
-        assert img.getpixel((cx, cy + 6)) == rq.SPECTRA6["white"], "TL down arm missing"
+        assert img.getpixel((cx - 6, cy)) == rq.SPECTRA6["red"], "TL left arm missing"
+        assert img.getpixel((cx + 6, cy)) == rq.SPECTRA6["red"], "TL right arm missing"
+        assert img.getpixel((cx, cy - 6)) == rq.SPECTRA6["red"], "TL up arm missing"
+        assert img.getpixel((cx, cy + 6)) == rq.SPECTRA6["red"], "TL down arm missing"
 
     def test_blueprint_outer_frame_is_painted_in_body_white(self):
         """The outer rectangle outline is the structural anchor for the
@@ -1203,7 +1205,7 @@ class TestBlueprintBorder:
         it must show up regardless of render mode."""
         for mode in ("production", "debug", "card"):
             img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="blueprint")
-            assert img.getpixel((16, 16)) == rq.SPECTRA6["white"], f"blueprint mode={mode} missing TL crosshair"
+            assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], f"blueprint mode={mode} missing TL crosshair"
 
     def test_blueprint_border_uses_theme_colours_not_hardcoded_rgb(self):
         """``draw_blueprint_border`` must pull its colours from the passed-in
