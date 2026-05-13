@@ -261,10 +261,12 @@ THEMES = {
     },
     # Mid-century atomic age. Sputnik-green ground (the only theme to
     # claim Spectra 6's flat green as a *background* — every other
-    # theme uses green only as ink), softened by a 50/50 white-on-green
-    # checkerboard painted in ``draw_atomic_border``'s Layer 0 so the
-    # ground reads as a pale minty wash rather than the panel's vivid
-    # pure green. Chunky black body in the Atomic Age display face,
+    # theme uses green only as ink), softened by a sparse 1-in-4
+    # white-on-green dither painted in ``draw_atomic_border``'s Layer 0
+    # (one white pixel per 2×2 tile, so 75% of the ground stays pure
+    # Spectra 6 green and the page reads as a vivid Sputnik-green
+    # wash rather than the minty pastel a 50/50 checkerboard produced).
+    # Chunky black body in the Atomic Age display face,
     # atomic-energy red for the matched time phrase and the decorative
     # graphics. Pairs with a ``draw_atomic_border`` of a rounded-corner
     # red frame (Googie / streamlined-modern curves), a centred atom
@@ -2158,12 +2160,13 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
     Four layers from the 1950s-60s atomic / Sputnik / Googie design
     vocabulary:
 
-    * **Layer 0 — 50/50 white-on-green checkerboard ground.** Every
-      pixel matching ``page_bg`` is replaced with white on one half of
-      a single-pixel checkerboard, leaving the other half as the
-      Spectra-6 flat green. At panel viewing distance the eye averages
-      the alternation into a pale minty wash — softer than the solid
-      vivid green of the underlying ink, but still unmistakably green.
+    * **Layer 0 — sparse 1-in-4 white-on-green dither ground.** Every
+      pixel matching ``page_bg`` whose coordinates land on the top-left
+      cell of a 2×2 tile is replaced with white; the other three of
+      every four pixels stay as the Spectra-6 flat green. At panel
+      viewing distance the eye averages the 25/75 alternation into a
+      vivid Sputnik-green wash — softer than the solid pure ink but
+      noticeably greener than the 50/50 checkerboard would land.
       Painted at the very start of the painter, BEFORE the decoration
       layers below, so the rounded frame / atom / starbursts overpaint
       the dithered ground cleanly. The pattern lives natively on the
@@ -2202,14 +2205,15 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
     page_bg = colors["page_bg"]
     accent = colors["accent"]
 
-    # Layer 0: 50/50 white-on-green checkerboard. Only pixels matching
-    # the exact ``page_bg`` colour are affected — defence in depth if a
-    # future caller paints accents before this painter runs.
+    # Layer 0: sparse 1-in-4 white-on-green dither (one white pixel per
+    # 2×2 tile, 25% white / 75% green). Only pixels matching the exact
+    # ``page_bg`` colour are affected — defence in depth if a future
+    # caller paints accents before this painter runs.
     dither_light = SPECTRA6["white"]
     pixels = image.load()
     for y in range(height):
         for x in range(width):
-            if (x + y) & 1 and pixels[x, y] == page_bg:
+            if (x & 1) == 0 and (y & 1) == 0 and pixels[x, y] == page_bg:
                 pixels[x, y] = dither_light
 
     draw = ImageDraw.Draw(image)
