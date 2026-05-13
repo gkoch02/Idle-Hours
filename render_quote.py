@@ -48,6 +48,7 @@ THEME_ORDER: tuple[str, ...] = (
     "marker",
     "saloon",
     "roman",
+    "alchemy",
 )
 THEMES = {
     "default": {
@@ -338,6 +339,30 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Parchment grimoire: aged-yellow ground (the colour an alchemical
+    # manuscript takes on after four centuries of candlelight and
+    # iron-gall ink), black body for readability, red rubricated
+    # matched-phrase accent (the way medieval scribes flagged the
+    # operative phrase of a spell), blue Hermetic ornaments for the
+    # oversized quote marks and the top/bottom magic-circle sigils.
+    # The blue/red split is the same colour vocabulary the Mutus Liber
+    # and Splendor Solis used to distinguish the philosophical mercury
+    # (blue/lunar) from the sulphur principle (red/solar). Pairs with
+    # IM Fell English for the body (a Google Fonts digitisation of John
+    # Fell's 17th-century types — the same Oxford types that printed
+    # actual alchemical treatises) and MedievalSharp for the matched
+    # phrase + oversized quote marks (a calligraphic display face whose
+    # sharply-pointed strokes read as ritual-scribe handwriting).
+    "alchemy": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -466,6 +491,9 @@ RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
 CINZELDECORATIVE_REGULAR = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Regular.ttf")
 CINZELDECORATIVE_BOLD = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Bold.ttf")
 CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Black.ttf")
+IMFELLENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
+IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
+MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -864,6 +892,55 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             RYE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "alchemy": {
+        # Two faces, both OFL via Google Fonts.
+        #
+        # Body — IM Fell English (Igino Marini, 2007), a digital
+        # revival of the 17th-century Oxford types cut by Peter de
+        # Walpergen for John Fell, Bishop of Oxford. These were the
+        # types of the Oxford University Press during the era when
+        # actual alchemical treatises (Ashmole's ``Theatrum Chemicum
+        # Britannicum``, Newton's manuscript translations of Flamel)
+        # were being printed in England — the body silhouette is
+        # period-authentic for a grimoire rather than a generic
+        # serif.
+        #
+        # Matched phrase + ornament — MedievalSharp (Anomandari /
+        # skosch, 2011), a calligraphic display face whose sharply-
+        # pointed strokes read as a ritual scribe's hand. Ships only
+        # Regular, so — like Bangers (comic), Special Elite
+        # (dispatch), Atomic Age (atomic), Permanent Marker (marker),
+        # and Rye (saloon) — the matched-phrase role re-uses the
+        # same file and gains its visual weight purely through the
+        # red rubricated accent colour, exactly the way a real
+        # alchemical manuscript would have flagged the operative
+        # phrase of a spell with a red-ink emphasis on a single ink
+        # weight.
+        #
+        # Fallback chain ends with the EB Garamond / DejaVu / Liberation
+        # / Noto serif tier before degrading to the Playfair chain so a
+        # missing-IM-Fell install lands on a humanist Renaissance serif
+        # (closest in-rotation neighbour to John Fell's types) and a
+        # missing-MedievalSharp install lands on UnifrakturMaguntia —
+        # blackletter is the obvious next-nearest "ritual hand"
+        # silhouette before falling back to a generic bold serif.
+        "quote_regular": [
+            IMFELLENGLISH_REGULAR,
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_REGULAR_CANDIDATES,
+        ],
+        "quote_bold": [
+            MEDIEVALSHARP_REGULAR,
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            MEDIEVALSHARP_REGULAR,
+            UNIFRAKTUR_BOOK,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -2733,6 +2810,167 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
+    """Draw a pentagram (5-pointed star inscribed in a circle).
+
+    Vertices are placed at the canonical apothegmatic positions — top
+    vertex at -90° (12 o'clock), then four more at +72° intervals
+    walking clockwise. The star itself is drawn by connecting every
+    SECOND vertex (0→2→4→1→3→0), the single closed path that
+    produces the inscribed pentagram silhouette. The surrounding
+    circle is the protective "magic circle" boundary the medieval
+    Solomonic tradition drew around the figure.
+    """
+    # Outer protective circle.
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    # Five outer vertices.
+    points = [
+        (
+            cx + radius * math.cos(math.radians(-90 + i * 72)),
+            cy + radius * math.sin(math.radians(-90 + i * 72)),
+        )
+        for i in range(5)
+    ]
+    # Pentagram path: connect every second vertex. The 0→2→4→1→3→0
+    # walk is the only one that produces the iconic five-pointed
+    # inscribed star without crossing the same edge twice.
+    order = [0, 2, 4, 1, 3, 0]
+    for i in range(len(order) - 1):
+        draw.line(
+            [points[order[i]], points[order[i + 1]]],
+            fill=color,
+            width=line_width,
+        )
+
+
+def _draw_hexagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
+    """Draw a hexagram (Solomon's seal — two overlapping equilateral triangles).
+
+    The upward-pointing triangle (fire / sulphur) and the
+    downward-pointing triangle (water / mercury) overlap to form the
+    six-pointed star that the Western occult tradition uses as the
+    seal-of-Solomon, the unifying alchemical glyph for the marriage
+    of opposites. Each triangle is drawn as an outlined polygon so
+    the interior shows the page colour through both layers.
+    """
+    # Upward triangle: vertices at -90°, 30°, 150°.
+    up = [
+        (
+            cx + radius * math.cos(math.radians(-90 + i * 120)),
+            cy + radius * math.sin(math.radians(-90 + i * 120)),
+        )
+        for i in range(3)
+    ]
+    # Downward triangle: vertices at 90°, 210°, 330°.
+    down = [
+        (
+            cx + radius * math.cos(math.radians(90 + i * 120)),
+            cy + radius * math.sin(math.radians(90 + i * 120)),
+        )
+        for i in range(3)
+    ]
+    draw.polygon(up, outline=color, width=line_width)
+    draw.polygon(down, outline=color, width=line_width)
+
+
+def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
+    """Paint a magic-circle border: outer rule + corner pentagrams + top
+    hexagram + bottom alchemical-sun glyph.
+
+    Four layers, painted bottom-to-top:
+
+    1. **Outer red rule** — the thin rectangular "ritual boundary" that
+       contains the inscribed figures, echoing the protective circle
+       a Solomonic operator chalks before invocation.
+    2. **Corner pentagrams** — a five-pointed star inscribed in a
+       circle at each of the four canvas corners, drawn in red.
+       The pentagram is the central protective glyph of Western
+       ceremonial magic; placing one at each compass corner reads as
+       "this is a magic square / ritual space."
+    3. **Top-centre hexagram** — Solomon's seal (two overlapping
+       triangles forming a six-pointed star) in blue, the
+       philosophical-mercury / sapphire colour. This is the central
+       unifying glyph of alchemy: the marriage of opposites that the
+       Great Work seeks to produce.
+    4. **Bottom-centre alchemical sun (☉)** — the iconic alchemical
+       symbol for gold / sulphur / the solar principle, drawn as a
+       blue outlined circle with a small filled blue centre dot.
+
+    Together these read as a single ritual page: "this is the
+    operative phrase, inscribed within the magic circle, between the
+    seal-of-Solomon and the alchemical sun." Parallels the
+    ``draw_illuminated_border`` / ``draw_gothic_border`` structural
+    pattern (outer rule + corner ornaments + mid-edge motifs) but the
+    pentagrams + hexagram + sun glyph swap the manuscript /
+    cathedral-tracery vocabulary for an esoteric / Hermetic one.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    rule_color = colors["accent"]               # red ritual boundary
+    sigil_color = colors["accent"]              # red corner pentagrams
+    hermetic_color = colors["ornament_dark"]    # blue top/bottom glyphs
+
+    # ------------------------------------------------------------------
+    # Layer 1: Outer red rule — the ritual boundary.
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=rule_color,
+        width=1,
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 2: Corner pentagrams. Centred a small distance inward from
+    # each corner so the outer protective circle sits cleanly between
+    # the canvas edge and the body quote's content rectangle. Radius
+    # chosen so the inscribed star reads as a discrete sigil rather
+    # than a tiny dot at 800×480 viewing distance.
+    pent_radius = 14
+    pent_offset = outer_inset + 18
+    pent_centres = [
+        (pent_offset, pent_offset),
+        (width - 1 - pent_offset, pent_offset),
+        (pent_offset, height - 1 - pent_offset),
+        (width - 1 - pent_offset, height - 1 - pent_offset),
+    ]
+    for cx, cy in pent_centres:
+        _draw_pentagram(draw, cx, cy, pent_radius, sigil_color)
+
+    # ------------------------------------------------------------------
+    # Layer 3: Top-centre hexagram (Solomon's seal) in blue. Centred
+    # horizontally and vertically aligned with the corner pentagrams
+    # so the three top-row sigils sit on a single horizontal axis —
+    # the eye reads them as "three glyphs along the ritual border"
+    # rather than "scattered ornaments". The label band y=14-29 sits
+    # above this row; the hexagram's centre y is well inside the
+    # ritual boundary so it never clips into the debug strip.
+    _draw_hexagram(draw, width // 2, pent_offset, pent_radius, hermetic_color)
+
+    # ------------------------------------------------------------------
+    # Layer 4: Bottom-centre alchemical sun glyph (☉). Outlined blue
+    # circle with a small filled centre dot — the canonical alchemical
+    # symbol for the solar / gold / sulphur principle. Centred
+    # horizontally on the same axis as the hexagram so the page reads
+    # as a balanced ritual diagram (Mercury / Solomon's seal above,
+    # Sol / sun glyph below).
+    sun_cx = width // 2
+    sun_cy = height - 1 - pent_offset
+    sun_radius = 12
+    draw.ellipse(
+        (sun_cx - sun_radius, sun_cy - sun_radius, sun_cx + sun_radius, sun_cy + sun_radius),
+        outline=hermetic_color,
+        width=2,
+    )
+    draw.ellipse(
+        (sun_cx - 2, sun_cy - 2, sun_cx + 2, sun_cy + 2),
+        fill=hermetic_color,
+    )
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -2749,6 +2987,7 @@ _BORDER_PAINTERS = {
     "marker": draw_marker_border,
     "saloon": draw_saloon_border,
     "roman": draw_roman_border,
+    "alchemy": draw_alchemy_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -2796,6 +3035,14 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # x=width-31) plus breathing gap. The SPQR
                         # cartouche is centred horizontally so it never
                         # reaches the label's x range.
+    "alchemy": 50,      # past the TR corner pentagram. Centre at
+                        # (width-33, 32) with radius 14 → protective
+                        # circle extends to x=width-19; inset clears
+                        # that plus a 30px breathing gap so the
+                        # ``DEBUG MODE`` glyphs sit cleanly inside the
+                        # ritual boundary rectangle. The top-centre
+                        # hexagram is horizontally centred so it never
+                        # reaches the right-aligned label's x range.
 }
 
 

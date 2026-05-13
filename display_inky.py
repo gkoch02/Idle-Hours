@@ -86,6 +86,14 @@ THEME_SATURATION: dict[str, float] = {
     # compete with the body inscription. Override via ``--saturation``
     # after real-panel calibration if the rubrum reads too pale.
     "roman": 0.5,
+    # Yellow parchment ground + black body + red matched-phrase rubric
+    # + blue Hermetic ornaments. The yellow ground places this in the
+    # coloured-ground tier alongside ``comic`` (also yellow page_bg),
+    # so 0.7 keeps the red rubricated accent and the blue magic-circle
+    # sigils crisp against the parchment — at 0.5 the corner pentagrams
+    # would dither into a muted lavender against the yellow rather than
+    # reading as the sharp red ritual marks they should be.
+    "alchemy": 0.7,
 }
 
 
