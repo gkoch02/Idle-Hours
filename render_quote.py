@@ -2847,36 +2847,6 @@ def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, co
         )
 
 
-def _draw_hexagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
-    """Draw a hexagram (Solomon's seal — two overlapping equilateral triangles).
-
-    The upward-pointing triangle (fire / sulphur) and the
-    downward-pointing triangle (water / mercury) overlap to form the
-    six-pointed star that the Western occult tradition uses as the
-    seal-of-Solomon, the unifying alchemical glyph for the marriage
-    of opposites. Each triangle is drawn as an outlined polygon so
-    the interior shows the page colour through both layers.
-    """
-    # Upward triangle: vertices at -90°, 30°, 150°.
-    up = [
-        (
-            cx + radius * math.cos(math.radians(-90 + i * 120)),
-            cy + radius * math.sin(math.radians(-90 + i * 120)),
-        )
-        for i in range(3)
-    ]
-    # Downward triangle: vertices at 90°, 210°, 330°.
-    down = [
-        (
-            cx + radius * math.cos(math.radians(90 + i * 120)),
-            cy + radius * math.sin(math.radians(90 + i * 120)),
-        )
-        for i in range(3)
-    ]
-    draw.polygon(up, outline=color, width=line_width)
-    draw.polygon(down, outline=color, width=line_width)
-
-
 def _draw_sol(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
     """Sun symbol ☉: outlined circle with filled centre dot. The canonical
     alchemical glyph for Sol / gold / the solar principle.
@@ -3032,10 +3002,11 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     rectangular ritual boundary + four corner pentagrams + big
     inscribed transmutation circle (double ring + incantation
     tick-band + inscribed pentagram + inner pentagon + vertex
-    sub-circles) + top row of five planetary glyphs + bottom row of
-    five elemental glyphs.
+    sub-circles) + top row of four flanking planetary glyphs +
+    bottom-centre alchemical sun + bottom row of four flanking
+    elemental glyphs.
 
-    Seven layers, painted bottom-to-top so each upper layer sits
+    Six layers, painted bottom-to-top so each upper layer sits
     cleanly on the ones below:
 
     1. **Outer rectangular ritual rule** — thin red rectangle around
@@ -3063,29 +3034,23 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
        lines are deliberately hairline-thin (width 1) so the black
        serif text dominates and the magic circle reads as a backdrop
        through which the operative phrase is being declared.
-    4. **Top-centre Solomon's seal** — the central unifying glyph
-       of alchemy (two overlapping equilateral triangles — the
-       marriage of fire and water), enclosed in its own protective
-       halo, sitting on the cardinal axis above the magic circle.
-    5. **Top row of four flanking planetary glyphs** — the
+    4. **Top row of four flanking planetary glyphs** — the
        seven-planet vocabulary of pre-Newtonian alchemy reduced to
        its four most recognisable members:
          - ``☉ Sol``    (gold / solar principle) at far left
          - ``☽ Luna``   (silver / lunar principle) at left of centre
          - ``♂ Mars``   (iron / martial principle) at right of centre
          - ``♀ Venus``  (copper / feminine principle) at far right
-       Mercury, Jupiter, and Saturn are omitted — their canonical
-       glyphs (☿ ♃ ♄) are too topologically complex to render
-       legibly at 11px radius, and the four chosen glyphs already
-       cover both the masculine/feminine and solar/lunar polarities
-       the alchemical tradition cares about.
-    6. **Bottom-centre alchemical sun** — the operative-principle
-       counterpart to the top row's seal-of-Solomon: where the
-       hexagram is the philosophical UNION, the sun is the operative
-       PRODUCT (gold / sulphur / the perfected stone). Enclosed in
-       its own halo, sitting on the cardinal axis below the magic
-       circle.
-    7. **Bottom row of four flanking elemental triangles** — the
+       The top centre is deliberately left clear: the transmutation
+       circle's top arc with its tick-mark incantation band sits at
+       that cardinal position and reads as the principal seal on
+       its own — no glyph is overlaid there.
+    5. **Bottom-centre alchemical sun** — the operative-principle
+       glyph that the whole work converges on: gold / sulphur / the
+       perfected stone. Painted at radius 18 with its own outer
+       protective halo, sitting on the bottom cardinal axis as the
+       "this is the desired product" anchor of the page.
+    6. **Bottom row of four flanking elemental triangles** — the
        four classical elements in their canonical alchemical glyphs:
          - ``🜃 Earth`` (downward triangle with bar) at far left
          - ``🜄 Water`` (downward triangle) at left of centre
@@ -3155,8 +3120,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     bot_y = height - 1 - pent_offset
     flank_radius = 11               # planetary + elemental glyphs
     flank_spacing = 80              # px between adjacent glyph centres
-    central_radius = 22             # hexagram + sun central glyphs
-    halo_pad = 5                    # protective-circle padding around centrals
+    halo_pad = 5                    # protective-circle padding around the bottom sun
 
     # ------------------------------------------------------------------
     # Layer 3: Inscribed transmutation circle — the big Solomonic /
@@ -3269,17 +3233,10 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         )
 
     # ------------------------------------------------------------------
-    # Layer 4: Top-centre Solomon's seal with its protective halo.
-    halo = central_radius + halo_pad
-    draw.ellipse(
-        (centre_x - halo, top_y - halo, centre_x + halo, top_y + halo),
-        outline=hermetic_color,
-        width=1,
-    )
-    _draw_hexagram(draw, centre_x, top_y, central_radius, hermetic_color, line_width=stroke)
-
-    # ------------------------------------------------------------------
-    # Layer 5: Top-row flanking planetary glyphs.
+    # Layer 4: Top-row flanking planetary glyphs. The top centre is
+    # deliberately left clear — the inscribed transmutation circle's
+    # top arc (with its tick-mark incantation band) sits at that
+    # cardinal position and reads as the principal seal on its own.
     _draw_sol(
         draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
     )
@@ -3294,7 +3251,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     )
 
     # ------------------------------------------------------------------
-    # Layer 6: Bottom-centre alchemical sun with its protective halo.
+    # Layer 5: Bottom-centre alchemical sun with its protective halo.
     sun_radius = 18
     sun_halo = sun_radius + halo_pad
     draw.ellipse(
@@ -3305,7 +3262,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     _draw_sol(draw, centre_x, bot_y, sun_radius, hermetic_color, line_width=stroke)
 
     # ------------------------------------------------------------------
-    # Layer 7: Bottom-row flanking elemental triangles.
+    # Layer 6: Bottom-row flanking elemental triangles.
     _draw_alchemical_triangle(
         draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
         point_up=False, with_bar=True, line_width=stroke,
