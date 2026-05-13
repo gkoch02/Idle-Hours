@@ -2877,60 +2877,266 @@ def _draw_hexagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, col
     draw.polygon(down, outline=color, width=line_width)
 
 
+def _draw_sol(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
+    """Sun symbol ☉: outlined circle with filled centre dot. The canonical
+    alchemical glyph for Sol / gold / the solar principle.
+    """
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    dot = max(2, radius // 4)
+    draw.ellipse((cx - dot, cy - dot, cx + dot, cy + dot), fill=color)
+
+
+def _draw_luna(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, page_bg, line_width: int = 2) -> None:
+    """Moon symbol ☽: crescent opening to the right.
+
+    Drawn as a filled disc in ``color``, then occluded by a second
+    filled disc in ``page_bg`` offset rightward. The result is a
+    crescent that opens to the right — the canonical lunar / Luna /
+    silver / philosophical-mercury glyph. ``line_width`` is unused
+    but accepted so every glyph helper shares the same signature.
+    """
+    _ = line_width  # signature parity with the other glyph helpers
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        fill=color,
+    )
+    occlude_offset = radius // 2 + 2
+    draw.ellipse(
+        (
+            cx - radius + occlude_offset,
+            cy - radius,
+            cx + radius + occlude_offset,
+            cy + radius,
+        ),
+        fill=page_bg,
+    )
+
+
+def _draw_mars(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
+    """Mars symbol ♂: outlined circle with arrow at 45° upper-right.
+
+    The body circle sits centred at ``(cx, cy)``; the arrow shaft
+    extends outward from the circle at -45° (upper-right) for a
+    distance roughly equal to ``radius``, terminating in two short
+    barbs at ±135° from the shaft direction — the canonical
+    alchemical glyph for Mars / iron / the martial principle.
+    """
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    angle = math.radians(-45)
+    sx = cx + radius * math.cos(angle)
+    sy = cy + radius * math.sin(angle)
+    shaft_len = int(radius * 1.05)
+    ex = sx + shaft_len * math.cos(angle)
+    ey = sy + shaft_len * math.sin(angle)
+    draw.line((sx, sy, ex, ey), fill=color, width=line_width)
+    head_len = max(4, radius // 2)
+    for head_angle in (
+        math.radians(-45 + 135),
+        math.radians(-45 - 135),
+    ):
+        hx = ex + head_len * math.cos(head_angle)
+        hy = ey + head_len * math.sin(head_angle)
+        draw.line((ex, ey, hx, hy), fill=color, width=line_width)
+
+
+def _draw_venus(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
+    """Venus symbol ♀: outlined circle with descending cross.
+
+    The body circle sits centred at ``(cx, cy)``; below the circle, a
+    vertical stroke descends for ~``radius`` pixels with a horizontal
+    bar crossing it at its midpoint — the canonical alchemical glyph
+    for Venus / copper / the feminine principle.
+    """
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    stroke_top = cy + radius
+    stroke_bot = stroke_top + radius + 2
+    draw.line((cx, stroke_top, cx, stroke_bot), fill=color, width=line_width)
+    bar_y = (stroke_top + stroke_bot) // 2
+    bar_half = max(4, radius * 2 // 3)
+    draw.line((cx - bar_half, bar_y, cx + bar_half, bar_y), fill=color, width=line_width)
+
+
+def _draw_alchemical_triangle(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    radius: int,
+    color,
+    point_up: bool,
+    with_bar: bool,
+    line_width: int = 2,
+) -> None:
+    """Four classical-element triangle glyphs.
+
+    +-----------------+--------------+
+    | ``point_up``    | bare         | bar         |
+    +=================+==============+=============+
+    | True            | 🜂 Fire       | 🜁 Air        |
+    | False           | 🜄 Water      | 🜃 Earth      |
+    +-----------------+--------------+-------------+
+
+    The bar is the canonical alchemical convention for marking the
+    "lighter" of each pair (air is light-fire, earth is light-water).
+    Drawn as an outlined equilateral triangle inscribed in a circle
+    of ``radius`` for visual parity with the planetary glyphs.
+    """
+    half_base = radius * math.sin(math.radians(60))
+    apex_offset = radius
+    base_offset = radius * 0.5
+    if point_up:
+        apex = (cx, cy - apex_offset)
+        left = (cx - half_base, cy + base_offset)
+        right = (cx + half_base, cy + base_offset)
+    else:
+        apex = (cx, cy + apex_offset)
+        left = (cx - half_base, cy - base_offset)
+        right = (cx + half_base, cy - base_offset)
+    draw.polygon([apex, right, left], outline=color, width=line_width)
+
+    if with_bar:
+        # Bar at the geometric midpoint of the triangle, drawn slightly
+        # shorter than the local triangle-edge intersection so the
+        # endpoints sit inside the outline rather than poking through
+        # it. The bar height is independent of which way the triangle
+        # points — it sits horizontally across the figure.
+        bar_y = (apex[1] + (left[1] + right[1]) / 2) / 2
+        # At ``bar_y``, the triangle's width is proportional to how far
+        # we are from the apex. Distance-along-axis as a fraction:
+        if point_up:
+            t = (bar_y - apex[1]) / (left[1] - apex[1]) if left[1] != apex[1] else 0
+        else:
+            t = (apex[1] - bar_y) / (apex[1] - left[1]) if apex[1] != left[1] else 0
+        local_half = half_base * t
+        bar_half = max(3, local_half - 2)
+        draw.line(
+            (cx - bar_half, bar_y, cx + bar_half, bar_y),
+            fill=color,
+            width=line_width,
+        )
+
+
 def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
-    """Paint a magic-circle border: outer rule + corner pentagrams + top
-    hexagram + bottom alchemical-sun glyph.
+    """Paint a full transmutation-circle ritual diagram on the panel:
+    rectangular ritual boundary + four corner pentagrams + big
+    inscribed transmutation circle (double ring + incantation
+    tick-band + inscribed pentagram + inner pentagon + vertex
+    sub-circles) + top row of five planetary glyphs + bottom row of
+    five elemental glyphs.
 
-    Four layers, painted bottom-to-top:
+    Seven layers, painted bottom-to-top so each upper layer sits
+    cleanly on the ones below:
 
-    1. **Outer red rule** — the thin rectangular "ritual boundary" that
-       contains the inscribed figures, echoing the protective circle
-       a Solomonic operator chalks before invocation.
-    2. **Corner pentagrams** — a five-pointed star inscribed in a
-       circle at each of the four canvas corners, drawn in red.
-       The pentagram is the central protective glyph of Western
-       ceremonial magic; placing one at each compass corner reads as
-       "this is a magic square / ritual space."
-    3. **Top-centre hexagram** — Solomon's seal (two overlapping
-       triangles forming a six-pointed star) in blue, the
-       philosophical-mercury / sapphire colour. This is the central
-       unifying glyph of alchemy: the marriage of opposites that the
-       Great Work seeks to produce.
-    4. **Bottom-centre alchemical sun (☉)** — the iconic alchemical
-       symbol for gold / sulphur / the solar principle, drawn as a
-       blue outlined circle with a small filled blue centre dot.
+    1. **Outer rectangular ritual rule** — thin red rectangle around
+       the panel edge, echoing the page-binding rule a medieval
+       scribe drew before lettering. Painted at line width 2 so it
+       reads as a deliberate enclosure rather than a hairline.
+    2. **Four corner pentagrams** — the canonical protective glyph
+       of Western ceremonial magic, each enclosed in its own
+       protective circle. Sized at radius 22 so they read as
+       discrete inscribed sigils at viewing distance, walked with
+       the 0→2→4→1→3→0 vertex order that produces the
+       inscribed-star silhouette.
+    3. **Inscribed transmutation circle** — the central
+       Solomonic/Hermetic figure of the page, modelled on the
+       grimoire-tradition magic circle: concentric outer and inner
+       rings centred on the canvas, with the band between them
+       carrying short radial tick marks (mimicking the curved
+       incantation text a real circle would inscribe in that band),
+       a large pentagram inscribed in the inner ring, the natural
+       inner pentagon connecting the five inner intersection points
+       of that pentagram (the "operative chamber" the body quote
+       occupies), and five small filled sub-dots at the pentagram's
+       outer vertices marking the cardinal/elemental anchor points.
+       The body quote overlays the entire figure; the inscribed
+       lines are deliberately hairline-thin (width 1) so the black
+       serif text dominates and the magic circle reads as a backdrop
+       through which the operative phrase is being declared.
+    4. **Top-centre Solomon's seal** — the central unifying glyph
+       of alchemy (two overlapping equilateral triangles — the
+       marriage of fire and water), enclosed in its own protective
+       halo, sitting on the cardinal axis above the magic circle.
+    5. **Top row of four flanking planetary glyphs** — the
+       seven-planet vocabulary of pre-Newtonian alchemy reduced to
+       its four most recognisable members:
+         - ``☉ Sol``    (gold / solar principle) at far left
+         - ``☽ Luna``   (silver / lunar principle) at left of centre
+         - ``♂ Mars``   (iron / martial principle) at right of centre
+         - ``♀ Venus``  (copper / feminine principle) at far right
+       Mercury, Jupiter, and Saturn are omitted — their canonical
+       glyphs (☿ ♃ ♄) are too topologically complex to render
+       legibly at 11px radius, and the four chosen glyphs already
+       cover both the masculine/feminine and solar/lunar polarities
+       the alchemical tradition cares about.
+    6. **Bottom-centre alchemical sun** — the operative-principle
+       counterpart to the top row's seal-of-Solomon: where the
+       hexagram is the philosophical UNION, the sun is the operative
+       PRODUCT (gold / sulphur / the perfected stone). Enclosed in
+       its own halo, sitting on the cardinal axis below the magic
+       circle.
+    7. **Bottom row of four flanking elemental triangles** — the
+       four classical elements in their canonical alchemical glyphs:
+         - ``🜃 Earth`` (downward triangle with bar) at far left
+         - ``🜄 Water`` (downward triangle) at left of centre
+         - ``🜂 Fire``  (upward triangle) at right of centre
+         - ``🜁 Air``   (upward triangle with bar) at far right
+       Arranged left-to-right by alchemical heaviness; the
+       bar-marked "light" elements bracket the bar-less "heavy"
+       elements so the row reads as a deliberate sequence rather
+       than scattered ornaments.
 
-    Together these read as a single ritual page: "this is the
-    operative phrase, inscribed within the magic circle, between the
-    seal-of-Solomon and the alchemical sun." Parallels the
-    ``draw_illuminated_border`` / ``draw_gothic_border`` structural
-    pattern (outer rule + corner ornaments + mid-edge motifs) but the
-    pentagrams + hexagram + sun glyph swap the manuscript /
-    cathedral-tracery vocabulary for an esoteric / Hermetic one.
+    Together the seven layers paint a real Solomonic grimoire-page:
+    rectangular ritual binding rule outside, big inscribed
+    transmutation circle inside, every margin populated by
+    inscribed planetary / elemental / corner sigils, body quote
+    sitting in the operative chamber as the spoken phrase being
+    declared into the circle.
+
+    The two colour tracks are deliberate: the rectangular
+    boundary + corner protective sigils are RED (the rubricated /
+    sulphur / ritual-enclosure colour), while everything *inside*
+    the boundary — magic circle, inscribed pentagram, pentagon,
+    Solomon's seal, planetary glyphs, elemental triangles — is
+    BLUE (the philosophical-mercury / Hermetic / sapphire colour).
+    Real alchemical manuscripts used the same red / blue split to
+    distinguish the operative / outer side of the work from the
+    philosophical / inner side.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     rule_color = colors["accent"]               # red ritual boundary
     sigil_color = colors["accent"]              # red corner pentagrams
-    hermetic_color = colors["ornament_dark"]    # blue top/bottom glyphs
+    hermetic_color = colors["ornament_dark"]    # blue planetary / elemental glyphs
+    page_bg = colors["page_bg"]                 # yellow — used by Luna occlusion
+    stroke = 2
 
     # ------------------------------------------------------------------
-    # Layer 1: Outer red rule — the ritual boundary.
+    # Layer 1: Outer red ritual boundary.
     outer_inset = 14
     draw.rectangle(
         (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
         outline=rule_color,
-        width=1,
+        width=stroke,
     )
 
     # ------------------------------------------------------------------
-    # Layer 2: Corner pentagrams. Centred a small distance inward from
-    # each corner so the outer protective circle sits cleanly between
-    # the canvas edge and the body quote's content rectangle. Radius
-    # chosen so the inscribed star reads as a discrete sigil rather
-    # than a tiny dot at 800×480 viewing distance.
-    pent_radius = 14
-    pent_offset = outer_inset + 18
+    # Layer 2: Bigger corner pentagrams. Offset chosen so the
+    # protective circle (radius 22) sits with a few px of breathing
+    # room inside the outer rule (inset 14) — the pentagram is
+    # *contained* by the ritual boundary, not crossing it.
+    pent_radius = 22
+    pent_offset = outer_inset + 26     # = 40
     pent_centres = [
         (pent_offset, pent_offset),
         (width - 1 - pent_offset, pent_offset),
@@ -2938,37 +3144,184 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         (width - 1 - pent_offset, height - 1 - pent_offset),
     ]
     for cx, cy in pent_centres:
-        _draw_pentagram(draw, cx, cy, pent_radius, sigil_color)
+        _draw_pentagram(draw, cx, cy, pent_radius, sigil_color, line_width=stroke)
 
     # ------------------------------------------------------------------
-    # Layer 3: Top-centre hexagram (Solomon's seal) in blue. Centred
-    # horizontally and vertically aligned with the corner pentagrams
-    # so the three top-row sigils sit on a single horizontal axis —
-    # the eye reads them as "three glyphs along the ritual border"
-    # rather than "scattered ornaments". The label band y=14-29 sits
-    # above this row; the hexagram's centre y is well inside the
-    # ritual boundary so it never clips into the debug strip.
-    _draw_hexagram(draw, width // 2, pent_offset, pent_radius, hermetic_color)
+    # Geometry shared by the magic-circle backdrop and the top + bottom
+    # rows of flanking glyphs.
+    centre_x = width // 2
+    centre_y = height // 2
+    top_y = pent_offset
+    bot_y = height - 1 - pent_offset
+    flank_radius = 11               # planetary + elemental glyphs
+    flank_spacing = 80              # px between adjacent glyph centres
+    central_radius = 22             # hexagram + sun central glyphs
+    halo_pad = 5                    # protective-circle padding around centrals
 
     # ------------------------------------------------------------------
-    # Layer 4: Bottom-centre alchemical sun glyph (☉). Outlined blue
-    # circle with a small filled centre dot — the canonical alchemical
-    # symbol for the solar / gold / sulphur principle. Centred
-    # horizontally on the same axis as the hexagram so the page reads
-    # as a balanced ritual diagram (Mercury / Solomon's seal above,
-    # Sol / sun glyph below).
-    sun_cx = width // 2
-    sun_cy = height - 1 - pent_offset
-    sun_radius = 12
+    # Layer 3: Inscribed transmutation circle — the big Solomonic /
+    # Hermetic figure modelled on real grimoire-page magic circles
+    # (concentric ring carrying an incantation text band, an inscribed
+    # pentagram inside, the natural inner pentagon, and small anchor
+    # circles at the pentagram's outer vertices).
+    #
+    # All five sub-figures are painted at line width 1 in the
+    # Hermetic blue so the inscribed lines read as a *backdrop*
+    # through which the black serif body quote is declared. A
+    # heavier stroke would compete with the text for visual
+    # primacy; the body quote is the operative phrase and must
+    # remain dominant.
+    outer_ring_r = 222
+    inner_ring_r = 212
+
+    # 3a. Outer + inner concentric rings — the two parallel boundary
+    # circles between which a real Solomonic operator would
+    # letter the incantation text. Both at line width 1 so they
+    # read as fine drawn lines rather than ink slabs.
     draw.ellipse(
-        (sun_cx - sun_radius, sun_cy - sun_radius, sun_cx + sun_radius, sun_cy + sun_radius),
+        (centre_x - outer_ring_r, centre_y - outer_ring_r,
+         centre_x + outer_ring_r, centre_y + outer_ring_r),
+        outline=hermetic_color, width=1,
+    )
+    draw.ellipse(
+        (centre_x - inner_ring_r, centre_y - inner_ring_r,
+         centre_x + inner_ring_r, centre_y + inner_ring_r),
+        outline=hermetic_color, width=1,
+    )
+
+    # 3b. Incantation tick band — 72 short radial dashes between the
+    # two rings (one every 5° around the full 360° circle). At
+    # viewing distance the spacing reads as the rhythm of
+    # closely-set inscribed letters running around the band; the
+    # individual ticks are intentionally featureless because real
+    # text along that arc would render at sub-pixel size on the
+    # Spectra 6 panel and dither into noise.
+    tick_count = 72
+    for i in range(tick_count):
+        theta = math.radians(i * 360 / tick_count)
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        x0 = centre_x + (inner_ring_r + 1) * cos_t
+        y0 = centre_y + (inner_ring_r + 1) * sin_t
+        x1 = centre_x + (outer_ring_r - 1) * cos_t
+        y1 = centre_y + (outer_ring_r - 1) * sin_t
+        draw.line((x0, y0, x1, y1), fill=hermetic_color, width=1)
+
+    # 3c. Inscribed pentagram — five-pointed star inscribed in the
+    # inner ring, walked with the canonical 0→2→4→1→3→0 vertex
+    # order that produces the single closed inscribed-star path.
+    # Sized so its vertices sit just inside the inner ring with a
+    # few px of breathing room, so the star reads as *inscribed*
+    # rather than *touching* the ring.
+    inscribed_pent_r = 195
+    inscribed_pent_vertices = [
+        (
+            centre_x + inscribed_pent_r * math.cos(math.radians(-90 + i * 72)),
+            centre_y + inscribed_pent_r * math.sin(math.radians(-90 + i * 72)),
+        )
+        for i in range(5)
+    ]
+    pent_path_order = [0, 2, 4, 1, 3, 0]
+    for i in range(len(pent_path_order) - 1):
+        draw.line(
+            (inscribed_pent_vertices[pent_path_order[i]],
+             inscribed_pent_vertices[pent_path_order[i + 1]]),
+            fill=hermetic_color, width=1,
+        )
+
+    # 3d. Inner pentagon — connects the five inner intersection
+    # points of the inscribed pentagram. The inner pentagon's
+    # circumradius is the outer pentagram's radius divided by
+    # ``phi²`` (golden ratio squared, ≈ 2.618), which is the
+    # natural alchemical proportion the pentagram self-generates.
+    # Vertices sit at angular offsets of -54°, 18°, 90°, 162°,
+    # 234° (each rotated 36° from the corresponding outer
+    # pentagram vertex). The pentagon is the "operative chamber"
+    # — in a real transmutation circle, the operative phrase is
+    # inscribed inside this inner pentagon. Here, the body quote
+    # overlays it.
+    phi_squared = (1 + math.sqrt(5)) ** 2 / 4   # ≈ 2.618
+    inner_pent_r = inscribed_pent_r / phi_squared
+    inner_pentagon_vertices = [
+        (
+            centre_x + inner_pent_r * math.cos(math.radians(-54 + i * 72)),
+            centre_y + inner_pent_r * math.sin(math.radians(-54 + i * 72)),
+        )
+        for i in range(5)
+    ]
+    draw.polygon(inner_pentagon_vertices, outline=hermetic_color, width=1)
+
+    # 3e. Vertex sub-circles — small filled RED dots at each of the
+    # five outer pentagram vertices, marking the cardinal /
+    # elemental anchor points of the circle (where, in a real
+    # grimoire, the operator places the candles or sigil-stones
+    # representing the five elements: spirit at top, water +
+    # earth at the lower diagonals, fire + air at the upper
+    # diagonals). Painted in red to tie back to the rectangular
+    # boundary's colour vocabulary — these are the "external"
+    # / operative anchor points, not part of the inner Hermetic
+    # geometry.
+    sub_dot_r = 5
+    for vx, vy in inscribed_pent_vertices:
+        draw.ellipse(
+            (vx - sub_dot_r, vy - sub_dot_r, vx + sub_dot_r, vy + sub_dot_r),
+            fill=sigil_color,
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 4: Top-centre Solomon's seal with its protective halo.
+    halo = central_radius + halo_pad
+    draw.ellipse(
+        (centre_x - halo, top_y - halo, centre_x + halo, top_y + halo),
         outline=hermetic_color,
-        width=2,
+        width=1,
     )
+    _draw_hexagram(draw, centre_x, top_y, central_radius, hermetic_color, line_width=stroke)
+
+    # ------------------------------------------------------------------
+    # Layer 5: Top-row flanking planetary glyphs.
+    _draw_sol(
+        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
+    )
+    _draw_luna(
+        draw, centre_x - flank_spacing, top_y, flank_radius, hermetic_color, page_bg, line_width=stroke
+    )
+    _draw_mars(
+        draw, centre_x + flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
+    )
+    _draw_venus(
+        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 6: Bottom-centre alchemical sun with its protective halo.
+    sun_radius = 18
+    sun_halo = sun_radius + halo_pad
     draw.ellipse(
-        (sun_cx - 2, sun_cy - 2, sun_cx + 2, sun_cy + 2),
-        fill=hermetic_color,
+        (centre_x - sun_halo, bot_y - sun_halo, centre_x + sun_halo, bot_y + sun_halo),
+        outline=hermetic_color,
+        width=1,
     )
+    _draw_sol(draw, centre_x, bot_y, sun_radius, hermetic_color, line_width=stroke)
+
+    # ------------------------------------------------------------------
+    # Layer 7: Bottom-row flanking elemental triangles.
+    _draw_alchemical_triangle(
+        draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=True, line_width=stroke,
+    )  # 🜃 Earth
+    _draw_alchemical_triangle(
+        draw, centre_x - flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=False, line_width=stroke,
+    )  # 🜄 Water
+    _draw_alchemical_triangle(
+        draw, centre_x + flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=True, with_bar=False, line_width=stroke,
+    )  # 🜂 Fire
+    _draw_alchemical_triangle(
+        draw, centre_x + 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=True, with_bar=True, line_width=stroke,
+    )  # 🜁 Air
 
 
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
@@ -3035,14 +3388,16 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # x=width-31) plus breathing gap. The SPQR
                         # cartouche is centred horizontally so it never
                         # reaches the label's x range.
-    "alchemy": 50,      # past the TR corner pentagram. Centre at
-                        # (width-33, 32) with radius 14 → protective
-                        # circle extends to x=width-19; inset clears
-                        # that plus a 30px breathing gap so the
-                        # ``DEBUG MODE`` glyphs sit cleanly inside the
-                        # ritual boundary rectangle. The top-centre
-                        # hexagram is horizontally centred so it never
-                        # reaches the right-aligned label's x range.
+    "alchemy": 76,      # past the bigger TR corner pentagram. Centre
+                        # at (width-41, 40) with radius 22 → protective
+                        # circle extends LEFT to x=width-63; inset
+                        # clears that plus a 13px breathing gap so
+                        # the ``DEBUG MODE`` glyphs sit cleanly inside
+                        # the ritual boundary. The top-centre hexagram
+                        # halo and the four flanking planetary glyphs
+                        # (Sol / Luna / Mars / Venus, rightmost centred
+                        # at x=560 with radius 11) all sit well left
+                        # of the label's x range.
 }
 
 
