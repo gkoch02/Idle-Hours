@@ -248,13 +248,15 @@ THEMES = {
     },
     # Mid-century atomic age. Sputnik-green ground (the only theme to
     # claim Spectra 6's flat green as a *background* — every other
-    # theme uses green only as ink), chunky black body in the Atomic
-    # Age display face, atomic-energy red for the matched time
-    # phrase and the decorative graphics. Pairs with a
-    # ``draw_atomic_border`` of a rounded-corner red frame
-    # (Googie / streamlined-modern curves), a centred atom symbol at
-    # the top of the page (three rotated red ellipse "orbits" plus a
-    # central red nucleus), and small red starbursts at the
+    # theme uses green only as ink), softened by a 50/50 white-on-green
+    # checkerboard painted in ``draw_atomic_border``'s Layer 0 so the
+    # ground reads as a pale minty wash rather than the panel's vivid
+    # pure green. Chunky black body in the Atomic Age display face,
+    # atomic-energy red for the matched time phrase and the decorative
+    # graphics. Pairs with a ``draw_atomic_border`` of a rounded-corner
+    # red frame (Googie / streamlined-modern curves), a centred atom
+    # symbol at the top of the page (three rotated red ellipse "orbits"
+    # plus a central red nucleus), and small red starbursts at the
     # mid-edges (the radiating-rays motif of 1950s diner / motel
     # signage). Reads as a vintage atomic-age advertisement at a
     # glance — bright, optimistic, slightly garish.
@@ -265,8 +267,8 @@ THEMES = {
         "faint": SPECTRA6["black"],
         "accent": SPECTRA6["red"],
         # Both ornament keys collapse onto red so the oversized
-        # quote marks render as solid red against the green ground —
-        # otherwise the dither's green half would blend into the bg
+        # quote marks render as solid red against the dithered ground —
+        # otherwise the dither's lighter half would blend into the bg
         # and leave half-density ornaments. Same trick `gothic`
         # uses to keep its red blackletter quote marks dramatic.
         "ornament_dark": SPECTRA6["red"],
@@ -2110,11 +2112,27 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_atomic_border(image: Image.Image, colors: dict) -> None:
-    """Atomic-age decorative border: rounded frame + atom symbol + starbursts.
+    """Atomic-age decorative border: dithered ground + rounded frame + atom + starbursts.
 
-    Three motifs from the 1950s-60s atomic / Sputnik / Googie design
+    Four layers from the 1950s-60s atomic / Sputnik / Googie design
     vocabulary:
 
+    * **Layer 0 — 50/50 white-on-green checkerboard ground.** Every
+      pixel matching ``page_bg`` is replaced with white on one half of
+      a single-pixel checkerboard, leaving the other half as the
+      Spectra-6 flat green. At panel viewing distance the eye averages
+      the alternation into a pale minty wash — softer than the solid
+      vivid green of the underlying ink, but still unmistakably green.
+      Painted at the very start of the painter, BEFORE the decoration
+      layers below, so the rounded frame / atom / starbursts overpaint
+      the dithered ground cleanly. The pattern lives natively on the
+      Spectra-6 palette (every output pixel is still one of the six
+      pure panel colours), so ``snap_image_to_palette`` is a no-op
+      and subsequent text rendering uses these pixels as anti-aliasing
+      source — the palette snap step rounds mixed-edge pixels back to
+      the same colours they produced before the dither, so glyph
+      silhouettes stay sharp. Same trick the ``alchemy`` parchment
+      halftone uses.
     * **Rounded-corner outer frame** in red — the streamlined-modern
       curve language of Googie coffee-shop architecture and motel
       signage. ``draw.rounded_rectangle`` is Pillow ≥ 8.2.
@@ -2135,12 +2153,25 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
       keeps them outside the centred body text block and balances the
       composition top-to-bottom.
 
-    Every glyph is in the theme's ``accent`` colour (red), so a future
-    palette tweak in ``THEMES["atomic"]`` flows through automatically.
+    Every decoration glyph is in the theme's ``accent`` colour (red),
+    so a future palette tweak in ``THEMES["atomic"]`` flows through
+    automatically.
     """
-    draw = ImageDraw.Draw(image)
     width, height = image.size
+    page_bg = colors["page_bg"]
     accent = colors["accent"]
+
+    # Layer 0: 50/50 white-on-green checkerboard. Only pixels matching
+    # the exact ``page_bg`` colour are affected — defence in depth if a
+    # future caller paints accents before this painter runs.
+    dither_light = SPECTRA6["white"]
+    pixels = image.load()
+    for y in range(height):
+        for x in range(width):
+            if (x + y) & 1 and pixels[x, y] == page_bg:
+                pixels[x, y] = dither_light
+
+    draw = ImageDraw.Draw(image)
 
     # Rounded outer frame.
     frame_inset = 14
