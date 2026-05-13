@@ -1,4 +1,4 @@
-Copyright (c) 2007 Igino Marini (www.iginomarini.com), with Reserved Font Name "IM FELL"
+Copyright (c) 2011 The MedievalSharp Project Authors (https://github.com/skosch/MedievalSharp), with Reserved Font Name "MedievalSharp"
 
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.

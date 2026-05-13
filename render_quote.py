@@ -48,6 +48,7 @@ THEME_ORDER: tuple[str, ...] = (
     "marker",
     "saloon",
     "roman",
+    "alchemy",
     "grimoire",
 )
 THEMES = {
@@ -339,19 +340,48 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Alchemical grimoire / Faustian spellbook. Black leather-bound ground,
-    # white EB Garamond body (the scholar's Renaissance text) with a red
-    # TFoustScript matched phrase glowing through it like a magic-circle
-    # inscription scrawled by a phantom hand — the hollow-outline shaggy
-    # silhouette of TFoust reads as occult sigil-work against the dignified
-    # humanist body. Shares the black/white/red palette shape with ``gothic``
-    # but is visually unrelated: gothic uses UnifrakturMaguntia blackletter
-    # plus cathedral-tracery quatrefoils, grimoire uses TFoustScript
-    # hollow-display plus pentagrams. The ``draw_grimoire_border`` decoration
-    # paints a thin red outer rule (a *single* rule, distinct from gothic's
-    # doubled outer+inner pair) with four red five-pointed star outlines at
-    # the corners — the canonical alchemical sigil drawn deterministically
-    # by joining unit-circle vertices in skip-one order.
+    # Parchment grimoire: aged-yellow ground (the colour an alchemical
+    # manuscript takes on after four centuries of candlelight and
+    # iron-gall ink), black body for readability, red rubricated
+    # matched-phrase accent (the way medieval scribes flagged the
+    # operative phrase of a spell), blue Hermetic ornaments for the
+    # oversized quote marks and the top/bottom magic-circle sigils.
+    # The blue/red split is the same colour vocabulary the Mutus Liber
+    # and Splendor Solis used to distinguish the philosophical mercury
+    # (blue/lunar) from the sulphur principle (red/solar). Pairs with
+    # IM Fell English for the body (a Google Fonts digitisation of John
+    # Fell's 17th-century types — the same Oxford types that printed
+    # actual alchemical treatises) and MedievalSharp for the matched
+    # phrase + oversized quote marks (a calligraphic display face whose
+    # sharply-pointed strokes read as ritual-scribe handwriting).
+    "alchemy": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
+    },
+    # Alchemical grimoire / Faustian spellbook. Black leather-bound
+    # ground, white IM Fell English body (Igino Marini's digital revival
+    # of John Fell's 17th-century Oxford University Press types — the
+    # deliberate inking irregularities of the metal-type letterpress
+    # survive on every glyph so the page reads as a genuine antique
+    # tome), with a red TFoustScript matched phrase glowing through it
+    # like a magic-circle inscription scrawled by a phantom hand — the
+    # hollow-outline shaggy silhouette of TFoust reads as occult
+    # sigil-work against the dignified vintage-press body. Shares the
+    # black/white/red palette shape with ``gothic`` but is
+    # iconographically unrelated: gothic uses UnifrakturMaguntia
+    # blackletter plus cathedral-tracery quatrefoils, grimoire uses
+    # TFoustScript hollow-display plus *inscribed* pentagrams and the
+    # four classical planetary alchemical sigils on the mid-edges
+    # (Sun ☉ top, Moon ☽ bottom, Mars ♂ left, Venus ♀ right). Shares
+    # only the palette with ``alchemy`` above — alchemy is parchment-
+    # yellow daytime ritual diagram, grimoire is leather-bound
+    # midnight scrawl.
     "grimoire": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -507,10 +537,16 @@ TFOUST_REGULAR = str(BASE_DIR / "fonts/TFoust.ttf")
 # letterpress) makes it read as a genuine antique book page rather than
 # a clean modern serif. 352-glyph cmap including curly quotes / em-dash
 # / extended Latin, so unlike TFoust it's safe in the body and ornament
-# slots. Body face for ``grimoire`` — the unmistakable "alchemical tome"
-# silhouette that distinguishes grimoire from every other serif theme.
-IMFELL_ENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
-IMFELL_ENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
+# slots. Body face for both ``alchemy`` (parchment ground) and
+# ``grimoire`` (black ground) — the unmistakable "alchemical tome"
+# silhouette that distinguishes both occult themes from every other
+# serif theme.
+IMFELLENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
+IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
+# MedievalSharp — Anomandari / skosch (OFL). Calligraphic display face
+# whose sharply-pointed strokes read as a ritual scribe's hand.
+# Matched-phrase + ornament face for the ``alchemy`` theme.
+MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -912,34 +948,85 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "alchemy": {
+        # Two faces, both OFL via Google Fonts.
+        #
+        # Body — IM Fell English (Igino Marini, 2007), a digital
+        # revival of the 17th-century Oxford types cut by Peter de
+        # Walpergen for John Fell, Bishop of Oxford. These were the
+        # types of the Oxford University Press during the era when
+        # actual alchemical treatises (Ashmole's ``Theatrum Chemicum
+        # Britannicum``, Newton's manuscript translations of Flamel)
+        # were being printed in England — the body silhouette is
+        # period-authentic for a grimoire rather than a generic
+        # serif.
+        #
+        # Matched phrase + ornament — MedievalSharp (Anomandari /
+        # skosch, 2011), a calligraphic display face whose sharply-
+        # pointed strokes read as a ritual scribe's hand. Ships only
+        # Regular, so — like Bangers (comic), Special Elite
+        # (dispatch), Atomic Age (atomic), Permanent Marker (marker),
+        # and Rye (saloon) — the matched-phrase role re-uses the
+        # same file and gains its visual weight purely through the
+        # red rubricated accent colour, exactly the way a real
+        # alchemical manuscript would have flagged the operative
+        # phrase of a spell with a red-ink emphasis on a single ink
+        # weight.
+        #
+        # Fallback chain ends with the EB Garamond / DejaVu / Liberation
+        # / Noto serif tier before degrading to the Playfair chain so a
+        # missing-IM-Fell install lands on a humanist Renaissance serif
+        # (closest in-rotation neighbour to John Fell's types) and a
+        # missing-MedievalSharp install lands on UnifrakturMaguntia —
+        # blackletter is the obvious next-nearest "ritual hand"
+        # silhouette before falling back to a generic bold serif.
+        "quote_regular": [
+            IMFELLENGLISH_REGULAR,
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_REGULAR_CANDIDATES,
+        ],
+        "quote_bold": [
+            MEDIEVALSHARP_REGULAR,
+            UNIFRAKTUR_BOOK,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            MEDIEVALSHARP_REGULAR,
+            UNIFRAKTUR_BOOK,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     "grimoire": {
         # IM Fell English body — a digital revival of John Fell's
         # 17th-century Oxford University Press types (Igino Marini, OFL).
         # The deliberate inking irregularities of the metal-type
         # letterpress survive in every glyph as visible ink shoulders and
         # eroded terminals — the page reads as a genuine antique tome
-        # rather than as a clean modern serif. Picks a type *family* not
-        # already represented (Playfair is transitional, Bitter is slab,
-        # Old Standard is Didone, EB Garamond is humanist Renaissance,
-        # Cinzel Decorative is Roman lapidary inscriptional) so grimoire's
-        # silhouette is unmistakably its own. EB Garamond Regular sits
-        # behind it as the unicode-safe second rank in case the IM Fell
-        # file is missing on a host. TFoustScript carries the matched
-        # phrase: short ASCII time strings ("half past two") render in
-        # its signature hollow-outline shaggy silhouette, the "phantom
-        # scrawl" that defines the theme. EB Garamond Bold sits behind
-        # TFoust in the bold chain as a unicode-safe second rank — if
-        # the matched phrase ever contains a non-ASCII character (an
-        # em-dash inside ``shortly after dawn—at last``), PIL falls
-        # through to it because TFoust is missing the glyph at file
-        # level. The ornament slot is NEVER TFoust (it'd tofu the
-        # oversized curly quote marks); IM Fell English carries the
-        # oversized opening / closing quotation marks instead, so the
-        # ornament inherits the same vintage-press character as the
-        # body — visually unified rather than pairing the body with a
-        # contrasting heavier face.
+        # rather than as a clean modern serif. Shared with ``alchemy``
+        # above as the body face — both occult themes share the same
+        # period-authentic Oxford-press silhouette, the silhouette
+        # difference between the two coming from the ground (parchment
+        # yellow vs. leather-bound black) and the matched-phrase face
+        # (MedievalSharp ritual hand vs. TFoust phantom scrawl). EB
+        # Garamond Regular sits behind it as the unicode-safe second
+        # rank in case the IM Fell file is missing on a host. TFoustScript
+        # carries the matched phrase: short ASCII time strings
+        # ("half past two") render in its signature hollow-outline
+        # shaggy silhouette, the "phantom scrawl" that defines the
+        # theme. EB Garamond Bold sits behind TFoust in the bold chain
+        # as a unicode-safe second rank — if the matched phrase ever
+        # contains a non-ASCII character (an em-dash inside
+        # ``shortly after dawn—at last``), PIL falls through to it
+        # because TFoust is missing the glyph at file level. The
+        # ornament slot is NEVER TFoust (it'd tofu the oversized curly
+        # quote marks); IM Fell English carries the oversized opening
+        # / closing quotation marks instead, so the ornament inherits
+        # the same vintage-press character as the body — visually
+        # unified rather than pairing the body with a contrasting
+        # heavier face.
         "quote_regular": [
-            IMFELL_ENGLISH_REGULAR,
+            IMFELLENGLISH_REGULAR,
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
@@ -949,7 +1036,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
-            IMFELL_ENGLISH_REGULAR,
+            IMFELLENGLISH_REGULAR,
             EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -3029,6 +3116,530 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
+    """Draw a pentagram (5-pointed star inscribed in a circle).
+
+    Vertices are placed at the canonical apothegmatic positions — top
+    vertex at -90° (12 o'clock), then four more at +72° intervals
+    walking clockwise. The star itself is drawn by connecting every
+    SECOND vertex (0→2→4→1→3→0), the single closed path that
+    produces the inscribed pentagram silhouette. The surrounding
+    circle is the protective "magic circle" boundary the medieval
+    Solomonic tradition drew around the figure.
+    """
+    # Outer protective circle.
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    # Five outer vertices.
+    points = [
+        (
+            cx + radius * math.cos(math.radians(-90 + i * 72)),
+            cy + radius * math.sin(math.radians(-90 + i * 72)),
+        )
+        for i in range(5)
+    ]
+    # Pentagram path: connect every second vertex. The 0→2→4→1→3→0
+    # walk is the only one that produces the iconic five-pointed
+    # inscribed star without crossing the same edge twice.
+    order = [0, 2, 4, 1, 3, 0]
+    for i in range(len(order) - 1):
+        draw.line(
+            [points[order[i]], points[order[i + 1]]],
+            fill=color,
+            width=line_width,
+        )
+
+
+def _draw_sol(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
+    """Sun symbol ☉: outlined circle with filled centre dot. The canonical
+    alchemical glyph for Sol / gold / the solar principle.
+    """
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    dot = max(2, radius // 4)
+    draw.ellipse((cx - dot, cy - dot, cx + dot, cy + dot), fill=color)
+
+
+def _draw_luna(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, page_bg, line_width: int = 2) -> None:
+    """Moon symbol ☽: crescent opening to the right.
+
+    Drawn as a filled disc in ``color``, then occluded by a second
+    filled disc in ``page_bg`` offset rightward. The result is a
+    crescent that opens to the right — the canonical lunar / Luna /
+    silver / philosophical-mercury glyph. ``line_width`` is unused
+    but accepted so every glyph helper shares the same signature.
+    """
+    _ = line_width  # signature parity with the other glyph helpers
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        fill=color,
+    )
+    occlude_offset = radius // 2 + 2
+    draw.ellipse(
+        (
+            cx - radius + occlude_offset,
+            cy - radius,
+            cx + radius + occlude_offset,
+            cy + radius,
+        ),
+        fill=page_bg,
+    )
+
+
+def _draw_mars(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
+    """Mars symbol ♂: outlined circle with arrow at 45° upper-right.
+
+    The body circle sits centred at ``(cx, cy)``; the arrow shaft
+    extends outward from the circle at -45° (upper-right) for a
+    distance roughly equal to ``radius``, terminating in two short
+    barbs at ±135° from the shaft direction — the canonical
+    alchemical glyph for Mars / iron / the martial principle.
+    """
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    angle = math.radians(-45)
+    sx = cx + radius * math.cos(angle)
+    sy = cy + radius * math.sin(angle)
+    shaft_len = int(radius * 1.05)
+    ex = sx + shaft_len * math.cos(angle)
+    ey = sy + shaft_len * math.sin(angle)
+    draw.line((sx, sy, ex, ey), fill=color, width=line_width)
+    head_len = max(4, radius // 2)
+    for head_angle in (
+        math.radians(-45 + 135),
+        math.radians(-45 - 135),
+    ):
+        hx = ex + head_len * math.cos(head_angle)
+        hy = ey + head_len * math.sin(head_angle)
+        draw.line((ex, ey, hx, hy), fill=color, width=line_width)
+
+
+def _draw_venus(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
+    """Venus symbol ♀: outlined circle with descending cross.
+
+    The body circle sits centred at ``(cx, cy)``; below the circle, a
+    vertical stroke descends for ~``radius`` pixels with a horizontal
+    bar crossing it at its midpoint — the canonical alchemical glyph
+    for Venus / copper / the feminine principle.
+    """
+    draw.ellipse(
+        (cx - radius, cy - radius, cx + radius, cy + radius),
+        outline=color,
+        width=line_width,
+    )
+    stroke_top = cy + radius
+    stroke_bot = stroke_top + radius + 2
+    draw.line((cx, stroke_top, cx, stroke_bot), fill=color, width=line_width)
+    bar_y = (stroke_top + stroke_bot) // 2
+    bar_half = max(4, radius * 2 // 3)
+    draw.line((cx - bar_half, bar_y, cx + bar_half, bar_y), fill=color, width=line_width)
+
+
+def _draw_alchemical_triangle(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    radius: int,
+    color,
+    point_up: bool,
+    with_bar: bool,
+    line_width: int = 2,
+) -> None:
+    """Four classical-element triangle glyphs.
+
+    +-----------------+--------------+
+    | ``point_up``    | bare         | bar         |
+    +=================+==============+=============+
+    | True            | 🜂 Fire       | 🜁 Air        |
+    | False           | 🜄 Water      | 🜃 Earth      |
+    +-----------------+--------------+-------------+
+
+    The bar is the canonical alchemical convention for marking the
+    "lighter" of each pair (air is light-fire, earth is light-water).
+    Drawn as an outlined equilateral triangle inscribed in a circle
+    of ``radius`` for visual parity with the planetary glyphs.
+    """
+    half_base = radius * math.sin(math.radians(60))
+    apex_offset = radius
+    base_offset = radius * 0.5
+    if point_up:
+        apex = (cx, cy - apex_offset)
+        left = (cx - half_base, cy + base_offset)
+        right = (cx + half_base, cy + base_offset)
+    else:
+        apex = (cx, cy + apex_offset)
+        left = (cx - half_base, cy - base_offset)
+        right = (cx + half_base, cy - base_offset)
+    draw.polygon([apex, right, left], outline=color, width=line_width)
+
+    if with_bar:
+        # Bar at the geometric midpoint of the triangle, drawn slightly
+        # shorter than the local triangle-edge intersection so the
+        # endpoints sit inside the outline rather than poking through
+        # it. The bar height is independent of which way the triangle
+        # points — it sits horizontally across the figure.
+        bar_y = (apex[1] + (left[1] + right[1]) / 2) / 2
+        # At ``bar_y``, the triangle's width is proportional to how far
+        # we are from the apex. Distance-along-axis as a fraction:
+        if point_up:
+            t = (bar_y - apex[1]) / (left[1] - apex[1]) if left[1] != apex[1] else 0
+        else:
+            t = (apex[1] - bar_y) / (apex[1] - left[1]) if apex[1] != left[1] else 0
+        local_half = half_base * t
+        bar_half = max(3, local_half - 2)
+        draw.line(
+            (cx - bar_half, bar_y, cx + bar_half, bar_y),
+            fill=color,
+            width=line_width,
+        )
+
+
+def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
+    """Paint a full transmutation-circle ritual diagram on the panel:
+    rectangular ritual boundary + four corner pentagrams + big
+    inscribed transmutation circle (double ring + incantation
+    tick-band + inscribed pentagram + inner pentagon + vertex
+    sub-circles) + top row of four flanking planetary glyphs +
+    bottom-centre alchemical sun + bottom row of four flanking
+    elemental glyphs.
+
+    Six layers, painted bottom-to-top so each upper layer sits
+    cleanly on the ones below:
+
+    1. **Outer rectangular ritual rule** — thin red rectangle around
+       the panel edge, echoing the page-binding rule a medieval
+       scribe drew before lettering. Painted at line width 2 so it
+       reads as a deliberate enclosure rather than a hairline.
+    2. **Four corner pentagrams** — the canonical protective glyph
+       of Western ceremonial magic, each enclosed in its own
+       protective circle. Sized at radius 22 so they read as
+       discrete inscribed sigils at viewing distance, walked with
+       the 0→2→4→1→3→0 vertex order that produces the
+       inscribed-star silhouette.
+    3. **Inscribed transmutation circle** — the central
+       Solomonic/Hermetic figure of the page, modelled on the
+       grimoire-tradition magic circle: concentric outer and inner
+       rings centred on the canvas, with the band between them
+       carrying short radial tick marks (mimicking the curved
+       incantation text a real circle would inscribe in that band),
+       a large pentagram inscribed in the inner ring, the natural
+       inner pentagon connecting the five inner intersection points
+       of that pentagram (the "operative chamber" the body quote
+       occupies), and five small filled sub-dots at the pentagram's
+       outer vertices marking the cardinal/elemental anchor points.
+       The body quote overlays the entire figure; the inscribed
+       lines are deliberately hairline-thin (width 1) so the black
+       serif text dominates and the magic circle reads as a backdrop
+       through which the operative phrase is being declared.
+    4. **Top row of four flanking planetary glyphs** — the
+       seven-planet vocabulary of pre-Newtonian alchemy reduced to
+       its four most recognisable members:
+         - ``☉ Sol``    (gold / solar principle) at far left
+         - ``☽ Luna``   (silver / lunar principle) at left of centre
+         - ``♂ Mars``   (iron / martial principle) at right of centre
+         - ``♀ Venus``  (copper / feminine principle) at far right
+       The top centre is deliberately left clear: the transmutation
+       circle's top arc with its tick-mark incantation band sits at
+       that cardinal position and reads as the principal seal on
+       its own — no glyph is overlaid there.
+    5. **Bottom-centre alchemical sun** — the operative-principle
+       glyph that the whole work converges on: gold / sulphur / the
+       perfected stone. Painted at radius 18 with its own outer
+       protective halo, sitting on the bottom cardinal axis as the
+       "this is the desired product" anchor of the page.
+    6. **Bottom row of four flanking elemental triangles** — the
+       four classical elements in their canonical alchemical glyphs:
+         - ``🜃 Earth`` (downward triangle with bar) at far left
+         - ``🜄 Water`` (downward triangle) at left of centre
+         - ``🜂 Fire``  (upward triangle) at right of centre
+         - ``🜁 Air``   (upward triangle with bar) at far right
+       Arranged left-to-right by alchemical heaviness; the
+       bar-marked "light" elements bracket the bar-less "heavy"
+       elements so the row reads as a deliberate sequence rather
+       than scattered ornaments.
+
+    Together the seven layers paint a real Solomonic grimoire-page:
+    rectangular ritual binding rule outside, big inscribed
+    transmutation circle inside, every margin populated by
+    inscribed planetary / elemental / corner sigils, body quote
+    sitting in the operative chamber as the spoken phrase being
+    declared into the circle.
+
+    The two colour tracks are deliberate: the rectangular
+    boundary + corner protective sigils are RED (the rubricated /
+    sulphur / ritual-enclosure colour), while everything *inside*
+    the boundary — magic circle, inscribed pentagram, pentagon,
+    planetary glyphs, elemental triangles, alchemical sun — is
+    BLUE (the philosophical-mercury / Hermetic / sapphire colour).
+    Real alchemical manuscripts used the same red / blue split to
+    distinguish the operative / outer side of the work from the
+    philosophical / inner side.
+
+    Before any of the six decoration layers paint, a Layer-0
+    parchment halftone keeps only 2 of every 16 page_bg yellow
+    pixels and converts the other 14 to white via a 4×4 Bayer-dither
+    pattern, so the rendered ground reads as a pale ivory parchment
+    flecked with yellow rather than the Spectra-6 panel's vivid
+    pure yellow.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    rule_color = colors["accent"]               # red ritual boundary
+    sigil_color = colors["accent"]              # red corner pentagrams
+    hermetic_color = colors["ornament_dark"]    # blue planetary / elemental glyphs
+    page_bg = colors["page_bg"]                 # yellow — used by the Layer-0 halftone
+    stroke = 2
+
+    # ------------------------------------------------------------------
+    # Layer 0: Parchment halftone. Keep only 2 of every 16
+    # page_bg yellow pixels and convert the other 14 to white in
+    # a 4×4 Bayer-dither pattern — each 4×4 tile retains a sparse
+    # diagonal pair of yellow flecks against a white ground. At
+    # panel viewing distance the eye averages the resulting
+    # alternation into a pale ivory parchment with subtle yellow
+    # warmth, the same way newsprint halftones a flat tone using
+    # only black ink. The pattern is applied at the
+    # pixel level so it lives natively on the Spectra-6 palette
+    # (every output pixel is still one of the six pure panel colours);
+    # ``snap_image_to_palette`` is a no-op on these pixels.
+    #
+    # We dither here at the very start of the painter, BEFORE the
+    # six decoration layers below, so the corner pentagrams /
+    # transmutation circle / planetary / elemental sigils all
+    # overpaint the halftoned ground cleanly. Subsequent text
+    # rendering uses these halftoned pixels as anti-aliasing source
+    # colour; the Spectra-6 palette snap step rounds the resulting
+    # mixed-edge pixels back to the same black-on-yellow they
+    # produced before the dither, so glyph silhouettes stay sharp.
+    #
+    # Only pixels matching the exact ``page_bg`` colour are
+    # affected, so any deliberate-yellow ink elsewhere in the
+    # palette (which the alchemy theme doesn't use, but a future
+    # theme variant might) would pass through unchanged.
+    _BAYER_4 = (
+        (0, 8, 2, 10),
+        (12, 4, 14, 6),
+        (3, 11, 1, 9),
+        (15, 7, 13, 5),
+    )
+    halftone_white = SPECTRA6["white"]
+    halftone_threshold = 2    # 14 of 16 Bayer cells become white → 87.5% density
+    pixels = image.load()
+    for y in range(height):
+        row = _BAYER_4[y & 3]
+        for x in range(width):
+            if pixels[x, y] == page_bg and row[x & 3] >= halftone_threshold:
+                pixels[x, y] = halftone_white
+
+    # ------------------------------------------------------------------
+    # Layer 1: Outer red ritual boundary.
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=rule_color,
+        width=stroke,
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 2: Bigger corner pentagrams. Offset chosen so the
+    # protective circle (radius 22) sits with a few px of breathing
+    # room inside the outer rule (inset 14) — the pentagram is
+    # *contained* by the ritual boundary, not crossing it.
+    pent_radius = 22
+    pent_offset = outer_inset + 26     # = 40
+    pent_centres = [
+        (pent_offset, pent_offset),
+        (width - 1 - pent_offset, pent_offset),
+        (pent_offset, height - 1 - pent_offset),
+        (width - 1 - pent_offset, height - 1 - pent_offset),
+    ]
+    for cx, cy in pent_centres:
+        _draw_pentagram(draw, cx, cy, pent_radius, sigil_color, line_width=stroke)
+
+    # ------------------------------------------------------------------
+    # Geometry shared by the magic-circle backdrop and the top + bottom
+    # rows of flanking glyphs.
+    centre_x = width // 2
+    centre_y = height // 2
+    top_y = pent_offset
+    bot_y = height - 1 - pent_offset
+    flank_radius = 11               # planetary + elemental glyphs
+    flank_spacing = 80              # px between adjacent glyph centres
+    halo_pad = 5                    # protective-circle padding around the bottom sun
+
+    # ------------------------------------------------------------------
+    # Layer 3: Inscribed transmutation circle — the big Solomonic /
+    # Hermetic figure modelled on real grimoire-page magic circles
+    # (concentric ring carrying an incantation text band, an inscribed
+    # pentagram inside, the natural inner pentagon, and small anchor
+    # circles at the pentagram's outer vertices).
+    #
+    # All five sub-figures are painted at line width 1 in the
+    # Hermetic blue so the inscribed lines read as a *backdrop*
+    # through which the black serif body quote is declared. A
+    # heavier stroke would compete with the text for visual
+    # primacy; the body quote is the operative phrase and must
+    # remain dominant.
+    outer_ring_r = 222
+    inner_ring_r = 212
+
+    # 3a. Outer + inner concentric rings — the two parallel boundary
+    # circles between which a real Solomonic operator would
+    # letter the incantation text. Both at line width 1 so they
+    # read as fine drawn lines rather than ink slabs.
+    draw.ellipse(
+        (centre_x - outer_ring_r, centre_y - outer_ring_r,
+         centre_x + outer_ring_r, centre_y + outer_ring_r),
+        outline=hermetic_color, width=1,
+    )
+    draw.ellipse(
+        (centre_x - inner_ring_r, centre_y - inner_ring_r,
+         centre_x + inner_ring_r, centre_y + inner_ring_r),
+        outline=hermetic_color, width=1,
+    )
+
+    # 3b. Incantation tick band — 72 short radial dashes between the
+    # two rings (one every 5° around the full 360° circle). At
+    # viewing distance the spacing reads as the rhythm of
+    # closely-set inscribed letters running around the band; the
+    # individual ticks are intentionally featureless because real
+    # text along that arc would render at sub-pixel size on the
+    # Spectra 6 panel and dither into noise.
+    tick_count = 72
+    for i in range(tick_count):
+        theta = math.radians(i * 360 / tick_count)
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        x0 = centre_x + (inner_ring_r + 1) * cos_t
+        y0 = centre_y + (inner_ring_r + 1) * sin_t
+        x1 = centre_x + (outer_ring_r - 1) * cos_t
+        y1 = centre_y + (outer_ring_r - 1) * sin_t
+        draw.line((x0, y0, x1, y1), fill=hermetic_color, width=1)
+
+    # 3c. Inscribed pentagram — five-pointed star inscribed in the
+    # inner ring, walked with the canonical 0→2→4→1→3→0 vertex
+    # order that produces the single closed inscribed-star path.
+    # Sized so its vertices sit just inside the inner ring with a
+    # few px of breathing room, so the star reads as *inscribed*
+    # rather than *touching* the ring.
+    inscribed_pent_r = 195
+    inscribed_pent_vertices = [
+        (
+            centre_x + inscribed_pent_r * math.cos(math.radians(-90 + i * 72)),
+            centre_y + inscribed_pent_r * math.sin(math.radians(-90 + i * 72)),
+        )
+        for i in range(5)
+    ]
+    pent_path_order = [0, 2, 4, 1, 3, 0]
+    for i in range(len(pent_path_order) - 1):
+        draw.line(
+            (inscribed_pent_vertices[pent_path_order[i]],
+             inscribed_pent_vertices[pent_path_order[i + 1]]),
+            fill=hermetic_color, width=1,
+        )
+
+    # 3d. Inner pentagon — connects the five inner intersection
+    # points of the inscribed pentagram. The inner pentagon's
+    # circumradius is the outer pentagram's radius divided by
+    # ``phi²`` (golden ratio squared, ≈ 2.618), which is the
+    # natural alchemical proportion the pentagram self-generates.
+    # Vertices sit at angular offsets of -54°, 18°, 90°, 162°,
+    # 234° (each rotated 36° from the corresponding outer
+    # pentagram vertex). The pentagon is the "operative chamber"
+    # — in a real transmutation circle, the operative phrase is
+    # inscribed inside this inner pentagon. Here, the body quote
+    # overlays it.
+    phi_squared = (1 + math.sqrt(5)) ** 2 / 4   # ≈ 2.618
+    inner_pent_r = inscribed_pent_r / phi_squared
+    inner_pentagon_vertices = [
+        (
+            centre_x + inner_pent_r * math.cos(math.radians(-54 + i * 72)),
+            centre_y + inner_pent_r * math.sin(math.radians(-54 + i * 72)),
+        )
+        for i in range(5)
+    ]
+    draw.polygon(inner_pentagon_vertices, outline=hermetic_color, width=1)
+
+    # 3e. Vertex sub-circles — small filled RED dots at each of the
+    # five outer pentagram vertices, marking the cardinal /
+    # elemental anchor points of the circle (where, in a real
+    # grimoire, the operator places the candles or sigil-stones
+    # representing the five elements: spirit at top, water +
+    # earth at the lower diagonals, fire + air at the upper
+    # diagonals). Painted in red to tie back to the rectangular
+    # boundary's colour vocabulary — these are the "external"
+    # / operative anchor points, not part of the inner Hermetic
+    # geometry.
+    sub_dot_r = 5
+    for vx, vy in inscribed_pent_vertices:
+        draw.ellipse(
+            (vx - sub_dot_r, vy - sub_dot_r, vx + sub_dot_r, vy + sub_dot_r),
+            fill=sigil_color,
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 4: Top-row flanking planetary glyphs. The top centre is
+    # deliberately left clear — the inscribed transmutation circle's
+    # top arc (with its tick-mark incantation band) sits at that
+    # cardinal position and reads as the principal seal on its own.
+    _draw_sol(
+        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
+    )
+    # Luna's crescent is carved out by an occlusion disc — pass
+    # white (not page_bg yellow) so the occluder blends with the
+    # halftoned ground above instead of showing up as a vivid
+    # yellow blob against the pale parchment.
+    _draw_luna(
+        draw, centre_x - flank_spacing, top_y, flank_radius, hermetic_color,
+        SPECTRA6["white"], line_width=stroke,
+    )
+    _draw_mars(
+        draw, centre_x + flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
+    )
+    _draw_venus(
+        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 5: Bottom-centre alchemical sun with its protective halo.
+    sun_radius = 18
+    sun_halo = sun_radius + halo_pad
+    draw.ellipse(
+        (centre_x - sun_halo, bot_y - sun_halo, centre_x + sun_halo, bot_y + sun_halo),
+        outline=hermetic_color,
+        width=1,
+    )
+    _draw_sol(draw, centre_x, bot_y, sun_radius, hermetic_color, line_width=stroke)
+
+    # ------------------------------------------------------------------
+    # Layer 6: Bottom-row flanking elemental triangles.
+    _draw_alchemical_triangle(
+        draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=True, line_width=stroke,
+    )  # 🜃 Earth
+    _draw_alchemical_triangle(
+        draw, centre_x - flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=False, line_width=stroke,
+    )  # 🜄 Water
+    _draw_alchemical_triangle(
+        draw, centre_x + flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=True, with_bar=False, line_width=stroke,
+    )  # 🜂 Fire
+    _draw_alchemical_triangle(
+        draw, centre_x + 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
+        point_up=True, with_bar=True, line_width=stroke,
+    )  # 🜁 Air
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -3045,6 +3656,7 @@ _BORDER_PAINTERS = {
     "marker": draw_marker_border,
     "saloon": draw_saloon_border,
     "roman": draw_roman_border,
+    "alchemy": draw_alchemy_border,
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
@@ -3093,6 +3705,16 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # x=width-31) plus breathing gap. The SPQR
                         # cartouche is centred horizontally so it never
                         # reaches the label's x range.
+    "alchemy": 76,      # past the bigger TR corner pentagram. Centre
+                        # at (width-41, 40) with radius 22 → protective
+                        # circle extends LEFT to x=width-63; inset
+                        # clears that plus a 13px breathing gap so
+                        # the ``DEBUG MODE`` glyphs sit cleanly inside
+                        # the ritual boundary. The top-centre hexagram
+                        # halo and the four flanking planetary glyphs
+                        # (Sol / Luna / Mars / Venus, rightmost centred
+                        # at x=560 with radius 11) all sit well left
+                        # of the label's x range.
     "grimoire": 50,     # past the TR inscribed pentagram. Centre at
                         # (width-31, 30) with ring_radius=14 and 2px
                         # stroke (half-width 1) → leftmost pixel of
