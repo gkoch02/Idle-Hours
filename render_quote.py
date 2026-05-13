@@ -129,8 +129,12 @@ THEMES = {
         "subtle": SPECTRA6["white"],
         "faint": SPECTRA6["white"],
         "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto white so the oversized quote
+        # marks render as solid white against the blue ground — same trick
+        # ``gothic`` / ``illuminated`` use to drop the dither and let the
+        # marks read as a single solid ink.
         "ornament_dark": SPECTRA6["white"],
-        "ornament_light": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
     # Medieval illuminated manuscript. White vellum, red body text
