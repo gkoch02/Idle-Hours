@@ -112,20 +112,28 @@ THEMES = {
         "ornament_light": SPECTRA6["green"],
         "source": SPECTRA6["green"],
     },
-    # Drafting / engineering blueprint. White paper, blue ink for the body
-    # text and ornaments, red for the matched time phrase (the "dimension
-    # mark" pulled out of the drawing). Sits visually distinct from
-    # ``scholar`` (also white/blue/red) thanks to the geometric Archivo
-    # sans-serif chosen in THEME_FONTS — same palette, different family.
+    # Cyanotype blueprint. Blue paper, white ink for every mark — the
+    # body text, the outer frame, the corner registration crosshairs,
+    # and the graph-paper grid — matching the authentic white-on-blue
+    # look of a photochemical drafting sheet. The blue ground is softened
+    # by a 50/50 white/blue checkerboard painted in
+    # ``draw_blueprint_border``'s Layer 0 so the page reads as a paler
+    # cyanotype wash rather than the panel's flat saturated blue. No
+    # chromatic accent — the matched time phrase differentiates by bold
+    # weight (same pattern as ``newsprint``), staying true to the
+    # single-ink character of the cyanotype process. Sits visually
+    # distinct from ``scholar`` (white/blue/red) thanks to the
+    # inverted ground plus the geometric Archivo sans-serif in
+    # THEME_FONTS — different palette polarity, different family.
     "blueprint": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["blue"],
-        "subtle": SPECTRA6["blue"],
-        "faint": SPECTRA6["blue"],
-        "accent": SPECTRA6["red"],
-        "ornament_dark": SPECTRA6["blue"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["blue"],
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["white"],
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["white"],
     },
     # Medieval illuminated manuscript. White vellum, red body text
     # (rubrication, the traditional mark of a liturgical or emphasised
@@ -1669,23 +1677,49 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
-    """Paint a drafting-sheet border and graph-paper grid over the canvas.
+    """Paint a cyanotype drafting sheet: dithered ground + frame + grid + crosshairs.
 
-    A thin outer rectangle in the body-text blue plus four small red
-    crosshair "registration marks" centred on the frame corners — the
-    print-alignment tick used on engineering drawings and blueprints —
-    with a thin blue graph-paper grid inside the frame so the ground
-    reads as engineering paper rather than an empty sheet. When
-    ``clear_rect`` is provided, the grid skips that quote-sized window so
-    the text block gets a calmer field without losing the drafting-sheet
-    frame and corner marks.
+    Four layers:
+
+    * **Layer 0 — 50/50 white-on-blue checkerboard ground.** Every
+      pixel matching ``page_bg`` is replaced with white on one half of
+      a single-pixel checkerboard, leaving the other half as the
+      Spectra-6 saturated blue. At panel viewing distance the eye
+      averages the alternation into a paler cyanotype wash, softening
+      the panel's vivid blue into something closer to a real
+      photochemical print. Painted at the very start of the painter so
+      the frame / grid / crosshairs below overpaint the dithered ground
+      cleanly. Skipped when ``page_bg`` is absent from the palette so
+      direct-call test paths stay valid. Same trick the ``atomic`` theme
+      uses for its green ground.
+    * **Outer frame** in the body-text colour (white in production).
+    * **Graph-paper grid** at 20px spacing inside the frame so the
+      ground reads as engineering paper rather than an empty sheet.
+      When ``clear_rect`` is provided, the grid skips that quote-sized
+      window so the text block gets a calmer field without losing the
+      drafting-sheet frame and corner marks.
+    * **Corner registration crosshairs** in the accent colour — the
+      small print-alignment ticks used on engineering drawings.
     """
-    draw = ImageDraw.Draw(image)
     width, height = image.size
+    page_bg = colors.get("page_bg")
     frame_inset = 16
     frame_color = colors.get("subtle", colors["text"])
     border_color = colors["text"]
     mark_color = colors["accent"]
+
+    # Layer 0: 50/50 white-on-blue checkerboard. Only pixels matching
+    # the exact ``page_bg`` colour are affected — defence in depth if a
+    # future caller paints accents before this painter runs.
+    if page_bg is not None:
+        dither_light = SPECTRA6["white"]
+        pixels = image.load()
+        for y in range(height):
+            for x in range(width):
+                if (x + y) & 1 and pixels[x, y] == page_bg:
+                    pixels[x, y] = dither_light
+
+    draw = ImageDraw.Draw(image)
 
     grid_spacing = 20
     grid_left = frame_inset + 1

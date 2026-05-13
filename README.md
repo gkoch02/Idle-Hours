@@ -262,7 +262,7 @@ Eighteen themes ship built-in, all constrained to the Spectra 6 panel palette (w
 | `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">         | white       | blue  | red    | Bitter (slab)        | Academic textbook             |
 | `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">     | white/black | black | (none) | Old Standard TT      | Bold-weight, no chroma        |
 | `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black       | green | yellow | Space Mono           | Retro terminal                |
-| `blueprint`   | <img src="assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | white       | blue  | red    | Archivo (sans)       | Drafting blueprint            |
+| `blueprint`   | <img src="assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | blue/white  | white | white  | Archivo (sans)       | Cyanotype drafting sheet      |
 | `illuminated` | <img src="assets/previews/illuminated.png" width="240" alt="illuminated theme preview"> | white       | red   | blue   | EB Garamond + UnifrakturMaguntia | Rubricated manuscript |
 | `gothic`      | <img src="assets/previews/gothic.png" width="240" alt="gothic theme preview">           | black       | white | red    | EB Garamond + UnifrakturMaguntia | Cathedral chronicle   |
 | `bauhaus`     | <img src="assets/previews/bauhaus.png" width="240" alt="bauhaus theme preview">         | white       | black | blue   | Jost (geometric sans) | Bauhaus poster               |
