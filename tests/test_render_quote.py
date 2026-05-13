@@ -615,13 +615,17 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["green"]
         assert t["accent"] == rq.SPECTRA6["yellow"]
 
-    def test_blueprint_theme_uses_blue_on_white_with_red_accent(self):
-        """Same palette as ``scholar`` — the two stay differentiated purely
-        via THEME_FONTS (Archivo vs Bitter). Pin the palette so a refactor
-        doesn't accidentally merge them back into a single theme."""
+    def test_blueprint_theme_uses_white_on_blue_cyanotype_palette(self):
+        """Cyanotype blueprint: blue ground, white ink for every
+        structural mark (body, frame, grid, crosshairs), red accent
+        for the matched time phrase (the "annotated dimension" in red
+        pencil over an otherwise monochromatic print). Pin the
+        inverted palette so a regression that flipped it back to
+        white/blue/red would collapse the theme into a Scholar-adjacent
+        layout and lose the photochemical-drafting-sheet identity."""
         t = rq.THEMES["blueprint"]
-        assert t["page_bg"] == rq.SPECTRA6["white"]
-        assert t["text"] == rq.SPECTRA6["blue"]
+        assert t["page_bg"] == rq.SPECTRA6["blue"]
+        assert t["text"] == rq.SPECTRA6["white"]
         assert t["accent"] == rq.SPECTRA6["red"]
 
     def test_illuminated_theme_uses_rubricated_red_body(self):
@@ -1012,8 +1016,11 @@ class TestNewsprintBorder:
         """Sample (400, 11) — mid-thick-band — against themes whose
         page_bg is not black (so the page_bg check is meaningful). Dark
         and nightvision share page_bg=black and would pass even if
-        this theme painted black there, so they're excluded."""
-        for theme in ("default", "scholar", "blueprint", "risograph", "comic"):
+        this theme painted black there, so they're excluded. Blueprint
+        is excluded because its Layer 0 dither paints sparse white pixels
+        across the blue ground, same reason newsprint is excluded from
+        the blueprint / comic gating tests."""
+        for theme in ("default", "scholar", "risograph", "comic"):
             img = rq.render("03:00", self._row(), 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((400, 11)) == expected_bg, (
@@ -1122,13 +1129,13 @@ class TestNightvisionBorder:
 
 
 class TestBlueprintBorder:
-    """The blueprint theme paints a drafting-sheet border.
+    """The blueprint theme paints a cyanotype drafting sheet.
 
     Parallels ``TestBauhausBorder`` but locks the blueprint-specific
-    primitives: thin blue outer frame plus red crosshair registration
-    marks at each corner. A regression that dropped
-    ``draw_blueprint_border`` would pass every dict-level palette test
-    silently, so pin the painted pixels here.
+    primitives: 50/50 white-on-blue dithered ground, thin white outer
+    frame, and white crosshair registration marks at each corner. A
+    regression that dropped ``draw_blueprint_border`` would pass every
+    dict-level palette test silently, so pin the painted pixels here.
     """
 
     def _row(self):
@@ -1147,7 +1154,10 @@ class TestBlueprintBorder:
     def test_blueprint_corner_crosshairs_paint_accent_red(self):
         """Four crosshair "+" marks centred on the frame corners at
         ``(16, 16)`` / ``(783, 16)`` / ``(16, 463)`` / ``(783, 463)``.
-        The centre pixel is always on the mark; arm extents are ±8."""
+        The centre pixel is always on the mark; arm extents are ±8.
+        Crosshairs paint in the accent colour (red) so they pop
+        against the white body / grid ink, matching the matched
+        time phrase highlight."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
         assert img.getpixel((16, 16)) == rq.SPECTRA6["red"], "TL crosshair centre missing"
         assert img.getpixel((783, 16)) == rq.SPECTRA6["red"], "TR crosshair centre missing"
@@ -1165,15 +1175,16 @@ class TestBlueprintBorder:
         assert img.getpixel((cx, cy - 6)) == rq.SPECTRA6["red"], "TL up arm missing"
         assert img.getpixel((cx, cy + 6)) == rq.SPECTRA6["red"], "TL down arm missing"
 
-    def test_blueprint_outer_frame_is_painted_in_body_blue(self):
+    def test_blueprint_outer_frame_is_painted_in_body_white(self):
         """The outer rectangle outline is the structural anchor for the
         crosshairs. Sample a point on each side well clear of the
-        corners, to verify all four sides of the frame rendered."""
+        corners, to verify all four sides of the frame rendered. Frame
+        is the body-text colour (white, cyanotype ink)."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="blueprint")
-        assert img.getpixel((400, 16)) == rq.SPECTRA6["blue"], "top frame line missing"
-        assert img.getpixel((400, 463)) == rq.SPECTRA6["blue"], "bottom frame line missing"
-        assert img.getpixel((16, 240)) == rq.SPECTRA6["blue"], "left frame line missing"
-        assert img.getpixel((783, 240)) == rq.SPECTRA6["blue"], "right frame line missing"
+        assert img.getpixel((400, 16)) == rq.SPECTRA6["white"], "top frame line missing"
+        assert img.getpixel((400, 463)) == rq.SPECTRA6["white"], "bottom frame line missing"
+        assert img.getpixel((16, 240)) == rq.SPECTRA6["white"], "left frame line missing"
+        assert img.getpixel((783, 240)) == rq.SPECTRA6["white"], "right frame line missing"
 
     def test_blueprint_border_is_theme_gated(self):
         """Border is gated on theme == 'blueprint'; no other theme (including
@@ -1210,24 +1221,28 @@ class TestBlueprintBorder:
         assert image.getpixel((16, 16)) == rq.SPECTRA6["yellow"], "crosshair should use accent"
         assert image.getpixel((400, 16)) == rq.SPECTRA6["green"], "frame should use text colour"
 
-    def test_blueprint_interior_grid_paints_in_body_blue(self):
+    def test_blueprint_interior_grid_paints_in_body_text_colour(self):
         """The graph-paper grid inside the frame uses the body-text colour.
         Sample an intersection well clear of the frame and of the quote
         block so no glyph or outer rule is painted on top. At 20px spacing,
         with ``frame_inset=16``, the first interior horizontal rule is at
         y=36 and the first interior vertical rule is at x=36; (36, 56) is
-        a clean grid crossing."""
+        a clean grid crossing. Direct-call (no ``page_bg`` in palette →
+        Layer 0 dither is skipped) so the off-grid pixel stays the
+        white canvas the test prepared."""
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
-        rq.draw_blueprint_border(image, {"text": rq.SPECTRA6["blue"], "accent": rq.SPECTRA6["red"]})
-        assert image.getpixel((36, 56)) == rq.SPECTRA6["blue"], "grid intersection should use text colour"
+        rq.draw_blueprint_border(image, {"text": rq.SPECTRA6["green"], "accent": rq.SPECTRA6["red"]})
+        assert image.getpixel((36, 56)) == rq.SPECTRA6["green"], "grid intersection should use text colour"
         # Off-grid whitespace between rules stays page_bg (white canvas here).
         assert image.getpixel((45, 45)) == (255, 255, 255), "between-grid pixel should remain unpainted"
 
     def test_blueprint_grid_is_theme_gated(self):
-        """No other theme paints a blue pixel at the blueprint grid-intersection
-        coordinate (36, 56) — it should show that theme's page_bg."""
+        """No other theme paints a non-page_bg pixel at the blueprint
+        grid-intersection coordinate (36, 56). Newsprint is excluded because
+        its Layer 0 halftone intentionally paints sparse black flecks across
+        the white ground, same as alchemy."""
         row = self._row()
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+        for theme in ("default", "dark", "scholar", "nightvision",
                       "illuminated", "bauhaus", "risograph", "comic"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
@@ -1301,9 +1316,11 @@ class TestComicCornerStripes:
         sample point (650, 470) — well inside the bottom-right triangle
         and outside every other theme's corner decorations / outer rules.
         A regression that registered the painter against the wrong theme
-        key would surface here."""
+        key would surface here. Newsprint is excluded because its Layer 0
+        halftone intentionally paints sparse black flecks across the
+        white ground, same as alchemy."""
         row = self._row()
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+        for theme in ("default", "dark", "scholar", "nightvision",
                       "blueprint", "illuminated", "bauhaus", "risograph"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]

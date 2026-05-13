@@ -31,11 +31,15 @@ THEME_SATURATION: dict[str, float] = {
     "scholar": 0.5,
     "newsprint": 0.5,
     "nightvision": 0.7,
+    # Cyanotype blueprint: blue ground (the only theme to claim Spectra 6's
+    # blue as a *page background*), white ink for every mark. Same coloured-
+    # ground tier as ``atomic`` / ``comic`` so the white-on-blue marks stay
+    # crisp against the panel's anchored blue.
+    "blueprint": 0.7,
     # Light white-background themes inherit the default 0.5 starting point —
     # same empirical tier as ``default`` / ``scholar`` / ``newsprint``. These
     # defaults are sensible initial values and are easy to override at runtime
     # via ``--saturation`` if real-panel calibration suggests otherwise.
-    "blueprint": 0.5,
     "illuminated": 0.5,
     "bauhaus": 0.5,
     # Black ground with a chromatic accent — same tier as ``dark`` /

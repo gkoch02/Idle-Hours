@@ -85,7 +85,10 @@ THEMES = {
         "source": SPECTRA6["blue"],
     },
     # Pure typography: no colour accent at all. Matched phrase differentiates by
-    # bold weight against the same ink colour, like an old broadsheet. Quiet.
+    # bold weight against the same ink colour, like an old broadsheet. The
+    # white ground is softened by a 12.5% black Bayer halftone painted in
+    # ``draw_newsprint_border``'s Layer 0 so the page reads as cheap newsprint
+    # pulp rather than the panel's flat pure white. Quiet.
     "newsprint": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -109,20 +112,26 @@ THEMES = {
         "ornament_light": SPECTRA6["green"],
         "source": SPECTRA6["green"],
     },
-    # Drafting / engineering blueprint. White paper, blue ink for the body
-    # text and ornaments, red for the matched time phrase (the "dimension
-    # mark" pulled out of the drawing). Sits visually distinct from
-    # ``scholar`` (also white/blue/red) thanks to the geometric Archivo
-    # sans-serif chosen in THEME_FONTS — same palette, different family.
+    # Cyanotype blueprint. Blue paper, white ink for the body text,
+    # outer frame, and graph-paper grid, with the corner registration
+    # crosshairs and matched time phrase picked out in red — the
+    # "annotated dimension" in red pencil real drafters use to call out
+    # measurements on an otherwise monochromatic print. The blue ground
+    # is softened by a 50/50 white/blue checkerboard painted in
+    # ``draw_blueprint_border``'s Layer 0 so the page reads as a paler
+    # cyanotype wash rather than the panel's flat saturated blue. Sits
+    # visually distinct from ``scholar`` (white/blue/red) thanks to the
+    # inverted ground plus the geometric Archivo sans-serif in
+    # THEME_FONTS — different palette polarity, different family.
     "blueprint": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["blue"],
-        "subtle": SPECTRA6["blue"],
-        "faint": SPECTRA6["blue"],
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
         "accent": SPECTRA6["red"],
-        "ornament_dark": SPECTRA6["blue"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["white"],
     },
     # Medieval illuminated manuscript. White vellum, red body text
     # (rubrication, the traditional mark of a liturgical or emphasised
@@ -248,13 +257,15 @@ THEMES = {
     },
     # Mid-century atomic age. Sputnik-green ground (the only theme to
     # claim Spectra 6's flat green as a *background* — every other
-    # theme uses green only as ink), chunky black body in the Atomic
-    # Age display face, atomic-energy red for the matched time
-    # phrase and the decorative graphics. Pairs with a
-    # ``draw_atomic_border`` of a rounded-corner red frame
-    # (Googie / streamlined-modern curves), a centred atom symbol at
-    # the top of the page (three rotated red ellipse "orbits" plus a
-    # central red nucleus), and small red starbursts at the
+    # theme uses green only as ink), softened by a 50/50 white-on-green
+    # checkerboard painted in ``draw_atomic_border``'s Layer 0 so the
+    # ground reads as a pale minty wash rather than the panel's vivid
+    # pure green. Chunky black body in the Atomic Age display face,
+    # atomic-energy red for the matched time phrase and the decorative
+    # graphics. Pairs with a ``draw_atomic_border`` of a rounded-corner
+    # red frame (Googie / streamlined-modern curves), a centred atom
+    # symbol at the top of the page (three rotated red ellipse "orbits"
+    # plus a central red nucleus), and small red starbursts at the
     # mid-edges (the radiating-rays motif of 1950s diner / motel
     # signage). Reads as a vintage atomic-age advertisement at a
     # glance — bright, optimistic, slightly garish.
@@ -265,8 +276,8 @@ THEMES = {
         "faint": SPECTRA6["black"],
         "accent": SPECTRA6["red"],
         # Both ornament keys collapse onto red so the oversized
-        # quote marks render as solid red against the green ground —
-        # otherwise the dither's green half would blend into the bg
+        # quote marks render as solid red against the dithered ground —
+        # otherwise the dither's lighter half would blend into the bg
         # and leave half-density ornaments. Same trick `gothic`
         # uses to keep its red blackletter quote marks dramatic.
         "ornament_dark": SPECTRA6["red"],
@@ -1664,23 +1675,51 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
-    """Paint a drafting-sheet border and graph-paper grid over the canvas.
+    """Paint a cyanotype drafting sheet: dithered ground + frame + grid + crosshairs.
 
-    A thin outer rectangle in the body-text blue plus four small red
-    crosshair "registration marks" centred on the frame corners — the
-    print-alignment tick used on engineering drawings and blueprints —
-    with a thin blue graph-paper grid inside the frame so the ground
-    reads as engineering paper rather than an empty sheet. When
-    ``clear_rect`` is provided, the grid skips that quote-sized window so
-    the text block gets a calmer field without losing the drafting-sheet
-    frame and corner marks.
+    Four layers:
+
+    * **Layer 0 — 50/50 white-on-blue checkerboard ground.** Every
+      pixel matching ``page_bg`` is replaced with white on one half of
+      a single-pixel checkerboard, leaving the other half as the
+      Spectra-6 saturated blue. At panel viewing distance the eye
+      averages the alternation into a paler cyanotype wash, softening
+      the panel's vivid blue into something closer to a real
+      photochemical print. Painted at the very start of the painter so
+      the frame / grid / crosshairs below overpaint the dithered ground
+      cleanly. Skipped when ``page_bg`` is absent from the palette so
+      direct-call test paths stay valid. Same trick the ``atomic`` theme
+      uses for its green ground.
+    * **Outer frame** in the body-text colour (white in production).
+    * **Graph-paper grid** at 20px spacing inside the frame so the
+      ground reads as engineering paper rather than an empty sheet.
+      When ``clear_rect`` is provided, the grid skips that quote-sized
+      window so the text block gets a calmer field without losing the
+      drafting-sheet frame and corner marks.
+    * **Corner registration crosshairs** in the accent colour — the
+      small print-alignment ticks used on engineering drawings. Pulled
+      from ``accent`` so they pop against the white body/grid ink,
+      matching the matched-time-phrase highlight.
     """
-    draw = ImageDraw.Draw(image)
     width, height = image.size
+    page_bg = colors.get("page_bg")
     frame_inset = 16
     frame_color = colors.get("subtle", colors["text"])
     border_color = colors["text"]
     mark_color = colors["accent"]
+
+    # Layer 0: 50/50 white-on-blue checkerboard. Only pixels matching
+    # the exact ``page_bg`` colour are affected — defence in depth if a
+    # future caller paints accents before this painter runs.
+    if page_bg is not None:
+        dither_light = SPECTRA6["white"]
+        pixels = image.load()
+        for y in range(height):
+            for x in range(width):
+                if (x + y) & 1 and pixels[x, y] == page_bg:
+                    pixels[x, y] = dither_light
+
+    draw = ImageDraw.Draw(image)
 
     grid_spacing = 20
     grid_left = frame_inset + 1
@@ -2110,11 +2149,27 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_atomic_border(image: Image.Image, colors: dict) -> None:
-    """Atomic-age decorative border: rounded frame + atom symbol + starbursts.
+    """Atomic-age decorative border: dithered ground + rounded frame + atom + starbursts.
 
-    Three motifs from the 1950s-60s atomic / Sputnik / Googie design
+    Four layers from the 1950s-60s atomic / Sputnik / Googie design
     vocabulary:
 
+    * **Layer 0 — 50/50 white-on-green checkerboard ground.** Every
+      pixel matching ``page_bg`` is replaced with white on one half of
+      a single-pixel checkerboard, leaving the other half as the
+      Spectra-6 flat green. At panel viewing distance the eye averages
+      the alternation into a pale minty wash — softer than the solid
+      vivid green of the underlying ink, but still unmistakably green.
+      Painted at the very start of the painter, BEFORE the decoration
+      layers below, so the rounded frame / atom / starbursts overpaint
+      the dithered ground cleanly. The pattern lives natively on the
+      Spectra-6 palette (every output pixel is still one of the six
+      pure panel colours), so ``snap_image_to_palette`` is a no-op
+      and subsequent text rendering uses these pixels as anti-aliasing
+      source — the palette snap step rounds mixed-edge pixels back to
+      the same colours they produced before the dither, so glyph
+      silhouettes stay sharp. Same trick the ``alchemy`` parchment
+      halftone uses.
     * **Rounded-corner outer frame** in red — the streamlined-modern
       curve language of Googie coffee-shop architecture and motel
       signage. ``draw.rounded_rectangle`` is Pillow ≥ 8.2.
@@ -2135,12 +2190,25 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
       keeps them outside the centred body text block and balances the
       composition top-to-bottom.
 
-    Every glyph is in the theme's ``accent`` colour (red), so a future
-    palette tweak in ``THEMES["atomic"]`` flows through automatically.
+    Every decoration glyph is in the theme's ``accent`` colour (red),
+    so a future palette tweak in ``THEMES["atomic"]`` flows through
+    automatically.
     """
-    draw = ImageDraw.Draw(image)
     width, height = image.size
+    page_bg = colors["page_bg"]
     accent = colors["accent"]
+
+    # Layer 0: 50/50 white-on-green checkerboard. Only pixels matching
+    # the exact ``page_bg`` colour are affected — defence in depth if a
+    # future caller paints accents before this painter runs.
+    dither_light = SPECTRA6["white"]
+    pixels = image.load()
+    for y in range(height):
+        for x in range(width):
+            if (x + y) & 1 and pixels[x, y] == page_bg:
+                pixels[x, y] = dither_light
+
+    draw = ImageDraw.Draw(image)
 
     # Rounded outer frame.
     frame_inset = 14
@@ -2628,18 +2696,54 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
-    A classic thick-thin parallel rule: a heavier outer rectangle and a
-    hairline inner rectangle separated by a narrow band of white space.
-    This is the signature border of 19th-century newspaper typography —
-    the "Scotch rule" — and stays purely typographical: no corner
-    accents, no coloured ornament, nothing but weighted ink. That
-    restraint matches the newsprint theme's no-colour-accent palette
-    (every theme field is black or white), so the margin reads as
-    broadsheet rather than modernist poster.
+    Two motifs from 19th-century newspaper typography:
+
+    * **Layer 0 — sparse newsprint halftone.** A 4×4 Bayer dither
+      converts 2 of every 16 ``page_bg`` white pixels to black, leaving
+      the other 14 untouched. At panel viewing distance the eye
+      averages the 12.5%-black pattern into a faint grey wash —
+      reads as cheap newsprint pulp rather than the panel's flat pure
+      white. Same trick the ``alchemy`` parchment halftone uses, but
+      with the polarity flipped (mostly-white with black flecks rather
+      than mostly-yellow with white flecks). Painted at the very start
+      of the painter so the Scotch-rule frame below overpaints the
+      dithered ground cleanly. Lives natively on the Spectra-6 palette
+      (every output pixel still one of the six pure inks), so the
+      palette-snap step is a no-op and glyph edges stay crisp.
+    * **Scotch rule frame.** A classic thick-thin parallel rule: a
+      heavier outer rectangle and a hairline inner rectangle separated
+      by a narrow band of white space. The signature border of
+      19th-century newspaper typography — no corner accents, no
+      coloured ornament, nothing but weighted ink. That restraint
+      matches the theme's no-colour-accent palette (every theme field
+      is black or white), so the margin reads as broadsheet rather
+      than modernist poster.
     """
-    draw = ImageDraw.Draw(image)
     width, height = image.size
+    page_bg = colors.get("page_bg")
     ink = colors["text"]
+
+    # Layer 0: 12.5% black-on-white Bayer halftone. Only pixels matching
+    # the exact ``page_bg`` colour are affected — defence in depth if a
+    # future caller paints accents before this painter runs. Skipped
+    # when ``page_bg`` is absent from the palette so direct-call test
+    # paths that only provide ``text`` stay valid.
+    if page_bg is not None:
+        _BAYER_4 = (
+            (0, 8, 2, 10),
+            (12, 4, 14, 6),
+            (3, 11, 1, 9),
+            (15, 7, 13, 5),
+        )
+        halftone_threshold = 2  # cells with value < 2 (i.e. 0, 1) become black → 2/16
+        pixels = image.load()
+        for y in range(height):
+            row = _BAYER_4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < halftone_threshold:
+                    pixels[x, y] = ink
+
+    draw = ImageDraw.Draw(image)
 
     # Outer heavy rule.
     outer_inset = 10
@@ -3308,11 +3412,10 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     rectangular ritual boundary + four corner pentagrams + big
     inscribed transmutation circle (double ring + incantation
     tick-band + inscribed pentagram + inner pentagon + vertex
-    sub-circles) + top row of four flanking planetary glyphs +
-    bottom-centre alchemical sun + bottom row of four flanking
-    elemental glyphs.
+    sub-circles) + the four classical-element glyphs at the outer
+    corners of the inner figure.
 
-    Six layers, painted bottom-to-top so each upper layer sits
+    Four layers, painted bottom-to-top so each upper layer sits
     cleanly on the ones below:
 
     1. **Outer rectangular ritual rule** — thin red rectangle around
@@ -3340,51 +3443,39 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
        lines are deliberately hairline-thin (width 1) so the black
        serif text dominates and the magic circle reads as a backdrop
        through which the operative phrase is being declared.
-    4. **Top row of four flanking planetary glyphs** — the
-       seven-planet vocabulary of pre-Newtonian alchemy reduced to
-       its four most recognisable members:
-         - ``☉ Sol``    (gold / solar principle) at far left
-         - ``☽ Luna``   (silver / lunar principle) at left of centre
-         - ``♂ Mars``   (iron / martial principle) at right of centre
-         - ``♀ Venus``  (copper / feminine principle) at far right
-       The top centre is deliberately left clear: the transmutation
-       circle's top arc with its tick-mark incantation band sits at
-       that cardinal position and reads as the principal seal on
-       its own — no glyph is overlaid there.
-    5. **Bottom-centre alchemical sun** — the operative-principle
-       glyph that the whole work converges on: gold / sulphur / the
-       perfected stone. Painted at radius 18 with its own outer
-       protective halo, sitting on the bottom cardinal axis as the
-       "this is the desired product" anchor of the page.
-    6. **Bottom row of four flanking elemental triangles** — the
-       four classical elements in their canonical alchemical glyphs:
-         - ``🜃 Earth`` (downward triangle with bar) at far left
-         - ``🜄 Water`` (downward triangle) at left of centre
-         - ``🜂 Fire``  (upward triangle) at right of centre
-         - ``🜁 Air``   (upward triangle with bar) at far right
-       Arranged left-to-right by alchemical heaviness; the
-       bar-marked "light" elements bracket the bar-less "heavy"
-       elements so the row reads as a deliberate sequence rather
-       than scattered ornaments.
+    4. **Four classical-element glyphs at the outer corners** of the
+       inner figure, the canonical alchemical vocabulary of the four
+       elements:
+         - ``🜃 Earth`` (downward triangle with bar) at top-left
+         - ``🜄 Water`` (downward triangle) at top-right
+         - ``🜂 Fire``  (upward triangle) at bottom-left
+         - ``🜁 Air``   (upward triangle with bar) at bottom-right
+       The "heavy" downward-pointing elements anchor the top of the
+       figure; the "light" upward-pointing elements anchor the
+       bottom — every corner of the inner field carrying one
+       cardinal element. The centre positions on both rows (and the
+       bottom-centre) stay clear: the transmutation circle's top
+       and bottom arcs with their tick-mark incantation bands sit
+       at those cardinal positions and read as the principal seals
+       on their own.
 
-    Together the seven layers paint a real Solomonic grimoire-page:
+    Together the four layers paint a real Solomonic grimoire-page:
     rectangular ritual binding rule outside, big inscribed
-    transmutation circle inside, every margin populated by
-    inscribed planetary / elemental / corner sigils, body quote
-    sitting in the operative chamber as the spoken phrase being
-    declared into the circle.
+    transmutation circle inside, every outer corner anchored by
+    one of the four elements, body quote sitting in the operative
+    chamber as the spoken phrase being declared into the circle.
 
     The two colour tracks are deliberate: the rectangular
     boundary + corner protective sigils are RED (the rubricated /
     sulphur / ritual-enclosure colour), while everything *inside*
     the boundary — magic circle, inscribed pentagram, pentagon,
-    planetary glyphs, elemental triangles, alchemical sun — is
-    BLUE (the philosophical-mercury / Hermetic / sapphire colour).
-    Real alchemical manuscripts used the same red / blue split to
+    and the four elemental triangles — is BLUE (the
+    philosophical-mercury / Hermetic / sapphire colour). Real
+    alchemical manuscripts used the same red / blue split to
     distinguish the operative / outer side of the work from the
     philosophical / inner side.
 
-    Before any of the six decoration layers paint, a Layer-0
+    Before any of the four decoration layers paint, a Layer-0
     parchment halftone keeps only 2 of every 16 page_bg yellow
     pixels and converts the other 14 to white via a 4×4 Bayer-dither
     pattern, so the rendered ground reads as a pale ivory parchment
@@ -3395,7 +3486,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     width, height = image.size
     rule_color = colors["accent"]               # red ritual boundary
     sigil_color = colors["accent"]              # red corner pentagrams
-    hermetic_color = colors["ornament_dark"]    # blue planetary / elemental glyphs
+    hermetic_color = colors["ornament_dark"]    # blue elemental glyphs
     page_bg = colors["page_bg"]                 # yellow — used by the Layer-0 halftone
     stroke = 2
 
@@ -3413,8 +3504,8 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     # ``snap_image_to_palette`` is a no-op on these pixels.
     #
     # We dither here at the very start of the painter, BEFORE the
-    # six decoration layers below, so the corner pentagrams /
-    # transmutation circle / planetary / elemental sigils all
+    # four decoration layers below, so the corner pentagrams /
+    # transmutation circle / elemental sigils all
     # overpaint the halftoned ground cleanly. Subsequent text
     # rendering uses these halftoned pixels as anti-aliasing source
     # colour; the Spectra-6 palette snap step rounds the resulting
@@ -3472,9 +3563,8 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     centre_y = height // 2
     top_y = pent_offset
     bot_y = height - 1 - pent_offset
-    flank_radius = 11               # planetary + elemental glyphs
-    flank_spacing = 80              # px between adjacent glyph centres
-    halo_pad = 5                    # protective-circle padding around the bottom sun
+    flank_radius = 11               # elemental glyphs at the four outer corners
+    flank_spacing = 80              # px between centre and outer-corner glyph
 
     # ------------------------------------------------------------------
     # Layer 3: Inscribed transmutation circle — the big Solomonic /
@@ -3587,57 +3677,30 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         )
 
     # ------------------------------------------------------------------
-    # Layer 4: Top-row flanking planetary glyphs. The top centre is
-    # deliberately left clear — the inscribed transmutation circle's
-    # top arc (with its tick-mark incantation band) sits at that
-    # cardinal position and reads as the principal seal on its own.
-    _draw_sol(
-        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
-    )
-    # Luna's crescent is carved out by an occlusion disc — pass
-    # white (not page_bg yellow) so the occluder blends with the
-    # halftoned ground above instead of showing up as a vivid
-    # yellow blob against the pale parchment.
-    _draw_luna(
-        draw, centre_x - flank_spacing, top_y, flank_radius, hermetic_color,
-        SPECTRA6["white"], line_width=stroke,
-    )
-    _draw_mars(
-        draw, centre_x + flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
-    )
-    _draw_venus(
-        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
-    )
-
-    # ------------------------------------------------------------------
-    # Layer 5: Bottom-centre alchemical sun with its protective halo.
-    sun_radius = 18
-    sun_halo = sun_radius + halo_pad
-    draw.ellipse(
-        (centre_x - sun_halo, bot_y - sun_halo, centre_x + sun_halo, bot_y + sun_halo),
-        outline=hermetic_color,
-        width=1,
-    )
-    _draw_sol(draw, centre_x, bot_y, sun_radius, hermetic_color, line_width=stroke)
-
-    # ------------------------------------------------------------------
-    # Layer 6: Bottom-row flanking elemental triangles.
+    # Layer 4: Four classical-element glyphs at the outer corners of
+    # the inner figure. Top-left + top-right are the "heavy" downward
+    # elements; bottom-left + bottom-right are the "light" upward ones.
+    # The centre positions on both rows (and the bottom-centre)
+    # are deliberately left clear — the transmutation circle's top and
+    # bottom arcs (with their tick-mark incantation bands) sit at
+    # those cardinal positions and read as the principal seals on
+    # their own — no glyph is overlaid there.
+    _draw_alchemical_triangle(
+        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=True, line_width=stroke,
+    )  # 🜃 Earth (top-left)
+    _draw_alchemical_triangle(
+        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color,
+        point_up=False, with_bar=False, line_width=stroke,
+    )  # 🜄 Water (top-right)
     _draw_alchemical_triangle(
         draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=True, line_width=stroke,
-    )  # 🜃 Earth
-    _draw_alchemical_triangle(
-        draw, centre_x - flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=False, line_width=stroke,
-    )  # 🜄 Water
-    _draw_alchemical_triangle(
-        draw, centre_x + flank_spacing, bot_y, flank_radius, hermetic_color,
         point_up=True, with_bar=False, line_width=stroke,
-    )  # 🜂 Fire
+    )  # 🜂 Fire (bottom-left)
     _draw_alchemical_triangle(
         draw, centre_x + 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
         point_up=True, with_bar=True, line_width=stroke,
-    )  # 🜁 Air
+    )  # 🜁 Air (bottom-right)
 
 
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
@@ -3710,11 +3773,10 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # circle extends LEFT to x=width-63; inset
                         # clears that plus a 13px breathing gap so
                         # the ``DEBUG MODE`` glyphs sit cleanly inside
-                        # the ritual boundary. The top-centre hexagram
-                        # halo and the four flanking planetary glyphs
-                        # (Sol / Luna / Mars / Venus, rightmost centred
-                        # at x=560 with radius 11) all sit well left
-                        # of the label's x range.
+                        # the ritual boundary. The top-right elemental
+                        # triangle (🜄 Water at +2*flank_spacing,
+                        # centred at x=width//2+160=560 with radius 11)
+                        # sits well left of the label's x range.
     "grimoire": 50,     # past the TR inscribed pentagram. Centre at
                         # (width-31, 30) with ring_radius=14 and 2px
                         # stroke (half-width 1) → leftmost pixel of
