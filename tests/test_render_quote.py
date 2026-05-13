@@ -1346,6 +1346,124 @@ class TestComicCornerStripes:
             assert color in allowed, f"stripe colour {color} is off-palette"
 
 
+class TestGrimoireBorder:
+    """The grimoire theme paints an alchemical spellbook border.
+
+    Single thin red outer rule plus a five-pointed-star pentagram in each
+    corner — the canonical sigil of the alchemical / magic-circle
+    vocabulary. Shares the black/white/red palette with ``gothic`` but
+    flips the silhouette: gothic stacks a doubled rule with quatrefoil
+    corners, grimoire is single-rule with pentagram corners.
+    """
+
+    def _row(self):
+        return {
+            "display_quote": "It was three o'clock in the afternoon.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+
+    def test_grimoire_outer_rule_paints_red_on_all_four_sides(self):
+        """Single rectangle at outer_inset=14 — sample mid-side on each
+        edge well clear of the corner pentagrams."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        red = rq.SPECTRA6["red"]
+        assert img.getpixel((400, 14)) == red, "top outer rule missing"
+        assert img.getpixel((400, 465)) == red, "bottom outer rule missing"
+        assert img.getpixel((14, 240)) == red, "left outer rule missing"
+        assert img.getpixel((785, 240)) == red, "right outer rule missing"
+
+    def test_grimoire_corner_pentagrams_paint_red_top_vertex(self):
+        """Each pentagram's top vertex (i=0, angle=-π/2) sits at
+        ``(cx, cy - pent_radius)``. With centres at
+        (27, 27) / (772, 27) / (27, 452) / (772, 452) and pent_radius=11,
+        the top vertices land at the y-values below. A 2px stroke
+        guarantees the exact endpoint pixel is painted."""
+        img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
+        red = rq.SPECTRA6["red"]
+        assert img.getpixel((27, 16)) == red, "TL pentagram top vertex missing"
+        assert img.getpixel((772, 16)) == red, "TR pentagram top vertex missing"
+        assert img.getpixel((27, 441)) == red, "BL pentagram top vertex missing"
+        assert img.getpixel((772, 441)) == red, "BR pentagram top vertex missing"
+
+    def test_grimoire_painter_is_registered(self):
+        """A bad ``_BORDER_PAINTERS["grimoire"] = draw_atomic_border``
+        typo would silently render grimoire with atomic's atom symbol
+        rather than the pentagram. Pin the dispatch entry."""
+        assert rq._BORDER_PAINTERS.get("grimoire") is rq.draw_grimoire_border, (
+            "grimoire painter not registered in _BORDER_PAINTERS"
+        )
+
+    def test_grimoire_renders_differently_from_gothic_same_palette(self):
+        """``grimoire`` and ``gothic`` share the black/white/red palette
+        but must NOT produce identical frames — the silhouette difference
+        comes from the matched-phrase font (TFoust vs UnifrakturMaguntia)
+        and the corner decoration (pentagram vs quatrefoil). A regression
+        that pointed grimoire's painter at ``draw_gothic_border`` (or
+        copied gothic's THEME_FONTS chain) would surface here as an
+        identical-image hash. Compare a stripe of the TL corner area
+        (where the pentagram vs quatrefoil signatures differ) — a
+        nonzero pixel-difference count is enough."""
+        row = self._row()
+        gothic = rq.render("03:00", row, 800, 480, mode="production", theme="gothic")
+        grimoire = rq.render("03:00", row, 800, 480, mode="production", theme="grimoire")
+        diffs = sum(
+            1
+            for y in range(5, 45)
+            for x in range(5, 45)
+            if gothic.getpixel((x, y)) != grimoire.getpixel((x, y))
+        )
+        assert diffs > 20, (
+            f"grimoire and gothic produce near-identical TL corners ({diffs} px differ)"
+        )
+
+    def test_grimoire_border_appears_in_debug_and_card_modes_too(self):
+        """The decoration is part of the theme's identity and must paint
+        in every render mode. Sample the TL pentagram top vertex against
+        the panel's black ground in each mode."""
+        red = rq.SPECTRA6["red"]
+        for mode in ("production", "debug", "card"):
+            img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="grimoire")
+            assert img.getpixel((27, 16)) == red, (
+                f"grimoire mode={mode} missing TL pentagram"
+            )
+
+    def test_grimoire_border_uses_theme_colours_not_hardcoded_rgb(self):
+        """``draw_grimoire_border`` must source its colour from
+        ``colors['accent']``, not a baked-in red. Call the helper with a
+        non-default palette and assert the painted pixels reflect it."""
+        image = Image.new("RGB", (800, 480), color=(0, 0, 0))
+        custom = {"text": rq.SPECTRA6["white"], "accent": rq.SPECTRA6["green"]}
+        rq.draw_grimoire_border(image, custom)
+        assert image.getpixel((400, 14)) == rq.SPECTRA6["green"], "outer rule should use accent"
+        assert image.getpixel((27, 16)) == rq.SPECTRA6["green"], "TL pentagram should use accent"
+
+    def test_grimoire_debug_label_clears_top_right_pentagram(self):
+        """The ``DEBUG MODE`` banner must not overlap the TR pentagram.
+        Pin the inset to ensure the label is pushed inward past the
+        pentagram's leftmost extent — a regression that dropped
+        grimoire from ``_DEBUG_LABEL_RIGHT_INSET`` would silently let
+        the label clip the star.
+
+        The pentagram's leftmost vertex sits at x ≈ width-39 (vertex 4
+        at angle 198° from a centre at width-28). The label's right edge
+        is at ``width - inset``; we require ``inset >= 39 + breathing``.
+        """
+        inset = rq._DEBUG_LABEL_RIGHT_INSET.get("grimoire")
+        assert inset is not None, "grimoire missing from _DEBUG_LABEL_RIGHT_INSET"
+        # Pentagram leftmost vertex pixel: cx - round(pent_radius * cos(18°))
+        # = (800 - 28) - 10 = 762. Label must end at x ≤ 762 - 1 for clearance.
+        # With label right edge at width - inset = 800 - inset, that means
+        # inset >= 800 - 762 + 1 = 39 (we use 44 for a 5px breathing gap).
+        assert inset >= 39, f"grimoire inset {inset} too small to clear pentagram"
+
+
 class TestRenderCard:
     """The button-C source card uses mode='card' to render a centered metadata frame."""
 

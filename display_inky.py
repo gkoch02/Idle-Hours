@@ -86,6 +86,11 @@ THEME_SATURATION: dict[str, float] = {
     # compete with the body inscription. Override via ``--saturation``
     # after real-panel calibration if the rubrum reads too pale.
     "roman": 0.5,
+    # Black ground / white EB Garamond body / red TFoustScript matched
+    # phrase. Same chromatic-on-dark profile as ``gothic`` and
+    # ``nightvision`` — push the red accent and oversized red quote marks
+    # so they don't desaturate against the panel's anchored black ground.
+    "grimoire": 0.7,
 }
 
 

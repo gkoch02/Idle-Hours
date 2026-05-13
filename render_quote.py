@@ -48,6 +48,7 @@ THEME_ORDER: tuple[str, ...] = (
     "marker",
     "saloon",
     "roman",
+    "grimoire",
 )
 THEMES = {
     "default": {
@@ -338,6 +339,33 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Alchemical grimoire / Faustian spellbook. Black leather-bound ground,
+    # white EB Garamond body (the scholar's Renaissance text) with a red
+    # TFoustScript matched phrase glowing through it like a magic-circle
+    # inscription scrawled by a phantom hand — the hollow-outline shaggy
+    # silhouette of TFoust reads as occult sigil-work against the dignified
+    # humanist body. Shares the black/white/red palette shape with ``gothic``
+    # but is visually unrelated: gothic uses UnifrakturMaguntia blackletter
+    # plus cathedral-tracery quatrefoils, grimoire uses TFoustScript
+    # hollow-display plus pentagrams. The ``draw_grimoire_border`` decoration
+    # paints a thin red outer rule (a *single* rule, distinct from gothic's
+    # doubled outer+inner pair) with four red five-pointed star outlines at
+    # the corners — the canonical alchemical sigil drawn deterministically
+    # by joining unit-circle vertices in skip-one order.
+    "grimoire": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto red so the oversized quote marks
+        # render as solid red against the black ground — same trick
+        # ``gothic`` / ``atomic`` use to keep dramatic accent ornaments from
+        # half-dithering into the page colour.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["white"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -466,6 +494,13 @@ RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
 CINZELDECORATIVE_REGULAR = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Regular.ttf")
 CINZELDECORATIVE_BOLD = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Bold.ttf")
 CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Black.ttf")
+# TFoustScript — single-weight hollow-outline display face with shaggy/spiky
+# edges; ASCII-only (95 glyphs, no smart quotes / em-dash / extended Latin).
+# Lives in the matched-phrase slot of the ``grimoire`` theme — short ASCII
+# time phrases ("half past two") render cleanly; never used in the body or
+# ornament slots where missing curly-quote / em-dash glyphs would draw
+# ``.notdef`` boxes (PIL fallback is file-level, not glyph-level).
+TFOUST_REGULAR = str(BASE_DIR / "fonts/TFoust.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -864,6 +899,38 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             RYE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "grimoire": {
+        # EB Garamond body — the humanist Renaissance serif standing in for
+        # the scholar's manuscript text. Shared with ``illuminated`` /
+        # ``gothic`` (body font re-use is the established pattern when two
+        # themes need the same family in different decorative registers —
+        # the silhouette difference comes from the matched-phrase face and
+        # the decoration, not the body). TFoustScript carries the matched
+        # phrase: short ASCII time strings ("half past two") render in its
+        # signature hollow-outline shaggy silhouette, the "phantom scrawl"
+        # that defines the theme. EB Garamond Bold sits behind TFoust in
+        # the bold chain as a unicode-safe second rank — if the matched
+        # phrase ever contains a non-ASCII character (an em-dash inside
+        # ``shortly after dawn—at last``), PIL falls through to it because
+        # TFoust is missing the glyph at file level. The ornament slot is
+        # NEVER TFoust: the oversized curly quote marks need ``“`` / ``”``
+        # / ``–`` glyphs that TFoust doesn't ship, and PIL's font fallback
+        # is file-level, not glyph-level — a curly-quote tofu box would
+        # blow up the layout. EB Garamond Bold owns the ornament instead.
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            TFOUST_REGULAR,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -1642,6 +1709,61 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
             [(cx, cy - diamond), (cx + diamond, cy), (cx, cy + diamond), (cx - diamond, cy)],
             fill=accent,
         )
+
+
+def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
+    """Paint an alchemical-grimoire border: single red rule + four red pentagrams at the corners.
+
+    The decoration intentionally inverts the ``gothic`` composition while
+    sharing its palette: gothic stacks a doubled outer rule (red + white)
+    with a quatrefoil — the cathedral-tracery motif — at each corner;
+    grimoire uses a single thin red rule with a pentagram — the
+    five-pointed star of the alchemical / magic-circle vocabulary — at
+    each corner. Same black ground, same red accent, completely different
+    iconographic register. No mid-edge ornaments: gothic owns the
+    "corners + mid-edges" composition and grimoire stays disciplined to
+    keep the spellbook page reading as inscription rather than book
+    decoration.
+
+    Each pentagram is drawn deterministically by computing the five
+    vertices of a regular pentagon inscribed in a circle of radius
+    ``pent_radius`` centred at the corner anchor, then connecting them
+    in skip-one order (``0 → 2 → 4 → 1 → 3 → 0``) — the classic
+    single-stroke pentacle silhouette. The first vertex is placed at the
+    top (``angle = -π/2``) so the star reads upright at every corner.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    accent = colors["accent"]  # rubric red
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=accent,
+        width=1,
+    )
+
+    # Four red pentagrams at the inset corners. Centre offset inward from
+    # the frame corner by ``pent_radius + 2`` so the star sits just inside
+    # the frame rule rather than colliding with it.
+    pent_radius = 11
+    corner_offset = pent_radius + 2
+    centres = [
+        (outer_inset + corner_offset, outer_inset + corner_offset),
+        (width - 1 - outer_inset - corner_offset, outer_inset + corner_offset),
+        (outer_inset + corner_offset, height - 1 - outer_inset - corner_offset),
+        (width - 1 - outer_inset - corner_offset, height - 1 - outer_inset - corner_offset),
+    ]
+    skip_one = (0, 2, 4, 1, 3, 0)
+    for cx, cy in centres:
+        vertices = []
+        for i in range(5):
+            angle = -math.pi / 2 + i * (2 * math.pi / 5)
+            vx = cx + pent_radius * math.cos(angle)
+            vy = cy + pent_radius * math.sin(angle)
+            vertices.append((vx, vy))
+        path = [vertices[i] for i in skip_one]
+        draw.line(path, fill=accent, width=2)
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -2752,6 +2874,7 @@ _BORDER_PAINTERS = {
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
+    "grimoire": draw_grimoire_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -2796,6 +2919,15 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # x=width-31) plus breathing gap. The SPQR
                         # cartouche is centred horizontally so it never
                         # reaches the label's x range.
+    "grimoire": 44,     # past the TR pentagram. Centre at
+                        # (width-28, 27) with pent_radius=11; leftmost
+                        # vertex (i=4) at cos(198°)·11 ≈ -10.46 → outer
+                        # pixel ~x=width-39 (+1 for the 2px stroke half-
+                        # width) plus a 4px breathing gap → label's
+                        # right edge must end at x ≤ width-44. The
+                        # pentagram's top vertex sits at y=16, well
+                        # inside the label's y=14-29 band, so the
+                        # horizontal inset is what does the work.
 }
 
 
