@@ -260,7 +260,7 @@ Eighteen themes ship built-in, all constrained to the Spectra 6 panel palette (w
 | `default`     | <img src="assets/previews/default.png" width="240" alt="default theme preview">         | white       | black | red    | Playfair Display     | Classic broadsheet            |
 | `dark`        | <img src="assets/previews/dark.png" width="240" alt="dark theme preview">               | black       | white | yellow | Playfair Display     | Night mode                    |
 | `scholar`     | <img src="assets/previews/scholar.png" width="240" alt="scholar theme preview">         | white       | blue  | red    | Bitter (slab)        | Academic textbook             |
-| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">     | white       | black | (none) | Old Standard TT      | Bold-weight, no chroma        |
+| `newsprint`   | <img src="assets/previews/newsprint.png" width="240" alt="newsprint theme preview">     | white/black | black | (none) | Old Standard TT      | Bold-weight, no chroma        |
 | `nightvision` | <img src="assets/previews/nightvision.png" width="240" alt="nightvision theme preview"> | black       | green | yellow | Space Mono           | Retro terminal                |
 | `blueprint`   | <img src="assets/previews/blueprint.png" width="240" alt="blueprint theme preview">     | white       | blue  | red    | Archivo (sans)       | Drafting blueprint            |
 | `illuminated` | <img src="assets/previews/illuminated.png" width="240" alt="illuminated theme preview"> | white       | red   | blue   | EB Garamond + UnifrakturMaguntia | Rubricated manuscript |

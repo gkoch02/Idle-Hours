@@ -1225,9 +1225,11 @@ class TestBlueprintBorder:
 
     def test_blueprint_grid_is_theme_gated(self):
         """No other theme paints a blue pixel at the blueprint grid-intersection
-        coordinate (36, 56) — it should show that theme's page_bg."""
+        coordinate (36, 56) — it should show that theme's page_bg. Newsprint
+        is excluded because its Layer 0 halftone intentionally paints sparse
+        black flecks across the white ground, same as alchemy."""
         row = self._row()
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+        for theme in ("default", "dark", "scholar", "nightvision",
                       "illuminated", "bauhaus", "risograph", "comic"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
@@ -1301,9 +1303,11 @@ class TestComicCornerStripes:
         sample point (650, 470) — well inside the bottom-right triangle
         and outside every other theme's corner decorations / outer rules.
         A regression that registered the painter against the wrong theme
-        key would surface here."""
+        key would surface here. Newsprint is excluded because its Layer 0
+        halftone intentionally paints sparse black flecks across the
+        white ground, same as alchemy."""
         row = self._row()
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
+        for theme in ("default", "dark", "scholar", "nightvision",
                       "blueprint", "illuminated", "bauhaus", "risograph"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]

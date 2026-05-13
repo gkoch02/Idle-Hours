@@ -85,7 +85,10 @@ THEMES = {
         "source": SPECTRA6["blue"],
     },
     # Pure typography: no colour accent at all. Matched phrase differentiates by
-    # bold weight against the same ink colour, like an old broadsheet. Quiet.
+    # bold weight against the same ink colour, like an old broadsheet. The
+    # white ground is softened by a 12.5% black Bayer halftone painted in
+    # ``draw_newsprint_border``'s Layer 0 so the page reads as cheap newsprint
+    # pulp rather than the panel's flat pure white. Quiet.
     "newsprint": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -2659,18 +2662,54 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
-    A classic thick-thin parallel rule: a heavier outer rectangle and a
-    hairline inner rectangle separated by a narrow band of white space.
-    This is the signature border of 19th-century newspaper typography —
-    the "Scotch rule" — and stays purely typographical: no corner
-    accents, no coloured ornament, nothing but weighted ink. That
-    restraint matches the newsprint theme's no-colour-accent palette
-    (every theme field is black or white), so the margin reads as
-    broadsheet rather than modernist poster.
+    Two motifs from 19th-century newspaper typography:
+
+    * **Layer 0 — sparse newsprint halftone.** A 4×4 Bayer dither
+      converts 2 of every 16 ``page_bg`` white pixels to black, leaving
+      the other 14 untouched. At panel viewing distance the eye
+      averages the 12.5%-black pattern into a faint grey wash —
+      reads as cheap newsprint pulp rather than the panel's flat pure
+      white. Same trick the ``alchemy`` parchment halftone uses, but
+      with the polarity flipped (mostly-white with black flecks rather
+      than mostly-yellow with white flecks). Painted at the very start
+      of the painter so the Scotch-rule frame below overpaints the
+      dithered ground cleanly. Lives natively on the Spectra-6 palette
+      (every output pixel still one of the six pure inks), so the
+      palette-snap step is a no-op and glyph edges stay crisp.
+    * **Scotch rule frame.** A classic thick-thin parallel rule: a
+      heavier outer rectangle and a hairline inner rectangle separated
+      by a narrow band of white space. The signature border of
+      19th-century newspaper typography — no corner accents, no
+      coloured ornament, nothing but weighted ink. That restraint
+      matches the theme's no-colour-accent palette (every theme field
+      is black or white), so the margin reads as broadsheet rather
+      than modernist poster.
     """
-    draw = ImageDraw.Draw(image)
     width, height = image.size
+    page_bg = colors.get("page_bg")
     ink = colors["text"]
+
+    # Layer 0: 12.5% black-on-white Bayer halftone. Only pixels matching
+    # the exact ``page_bg`` colour are affected — defence in depth if a
+    # future caller paints accents before this painter runs. Skipped
+    # when ``page_bg`` is absent from the palette so direct-call test
+    # paths that only provide ``text`` stay valid.
+    if page_bg is not None:
+        _BAYER_4 = (
+            (0, 8, 2, 10),
+            (12, 4, 14, 6),
+            (3, 11, 1, 9),
+            (15, 7, 13, 5),
+        )
+        halftone_threshold = 2  # cells with value < 2 (i.e. 0, 1) become black → 2/16
+        pixels = image.load()
+        for y in range(height):
+            row = _BAYER_4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < halftone_threshold:
+                    pixels[x, y] = ink
+
+    draw = ImageDraw.Draw(image)
 
     # Outer heavy rule.
     outer_inset = 10
