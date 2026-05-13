@@ -94,6 +94,12 @@ THEME_SATURATION: dict[str, float] = {
     # would dither into a muted lavender against the yellow rather than
     # reading as the sharp red ritual marks they should be.
     "alchemy": 0.7,
+    # Black ground / white IM Fell English body / red TFoustScript
+    # matched phrase. Same chromatic-on-dark profile as ``gothic`` and
+    # ``nightvision`` — push the red accent and oversized red quote
+    # marks so they don't desaturate against the panel's anchored
+    # black ground.
+    "grimoire": 0.7,
 }
 
 

@@ -49,6 +49,7 @@ THEME_ORDER: tuple[str, ...] = (
     "saloon",
     "roman",
     "alchemy",
+    "grimoire",
 )
 THEMES = {
     "default": {
@@ -363,6 +364,38 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
+    # Alchemical grimoire / Faustian spellbook. Black leather-bound
+    # ground, white IM Fell English body (Igino Marini's digital revival
+    # of John Fell's 17th-century Oxford University Press types — the
+    # deliberate inking irregularities of the metal-type letterpress
+    # survive on every glyph so the page reads as a genuine antique
+    # tome), with a red TFoustScript matched phrase glowing through it
+    # like a magic-circle inscription scrawled by a phantom hand — the
+    # hollow-outline shaggy silhouette of TFoust reads as occult
+    # sigil-work against the dignified vintage-press body. Shares the
+    # black/white/red palette shape with ``gothic`` but is
+    # iconographically unrelated: gothic uses UnifrakturMaguntia
+    # blackletter plus cathedral-tracery quatrefoils, grimoire uses
+    # TFoustScript hollow-display plus *inscribed* pentagrams and the
+    # four classical planetary alchemical sigils on the mid-edges
+    # (Sun ☉ top, Moon ☽ bottom, Mars ♂ left, Venus ♀ right). Shares
+    # only the palette with ``alchemy`` above — alchemy is parchment-
+    # yellow daytime ritual diagram, grimoire is leather-bound
+    # midnight scrawl.
+    "grimoire": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        # Both ornament keys collapse onto red so the oversized quote marks
+        # render as solid red against the black ground — same trick
+        # ``gothic`` / ``atomic`` use to keep dramatic accent ornaments from
+        # half-dithering into the page colour.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["white"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -491,8 +524,28 @@ RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
 CINZELDECORATIVE_REGULAR = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Regular.ttf")
 CINZELDECORATIVE_BOLD = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Bold.ttf")
 CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Black.ttf")
+# TFoustScript — single-weight hollow-outline display face with shaggy/spiky
+# edges; ASCII-only (95 glyphs, no smart quotes / em-dash / extended Latin).
+# Lives in the matched-phrase slot of the ``grimoire`` theme — short ASCII
+# time phrases ("half past two") render cleanly; never used in the body or
+# ornament slots where missing curly-quote / em-dash glyphs would draw
+# ``.notdef`` boxes (PIL fallback is file-level, not glyph-level).
+TFOUST_REGULAR = str(BASE_DIR / "fonts/TFoust.ttf")
+# IM Fell English — Igino Marini's digital revival of John Fell's
+# 17th-century Oxford University Press types (OFL). Visible ink character
+# on every glyph (the deliberate inking irregularities of metal type
+# letterpress) makes it read as a genuine antique book page rather than
+# a clean modern serif. 352-glyph cmap including curly quotes / em-dash
+# / extended Latin, so unlike TFoust it's safe in the body and ornament
+# slots. Body face for both ``alchemy`` (parchment ground) and
+# ``grimoire`` (black ground) — the unmistakable "alchemical tome"
+# silhouette that distinguishes both occult themes from every other
+# serif theme.
 IMFELLENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
 IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
+# MedievalSharp — Anomandari / skosch (OFL). Calligraphic display face
+# whose sharply-pointed strokes read as a ritual scribe's hand.
+# Matched-phrase + ornament face for the ``alchemy`` theme.
 MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
@@ -944,6 +997,63 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "grimoire": {
+        # IM Fell English body — a digital revival of John Fell's
+        # 17th-century Oxford University Press types (Igino Marini, OFL).
+        # The deliberate inking irregularities of the metal-type
+        # letterpress survive in every glyph as visible ink shoulders and
+        # eroded terminals — the page reads as a genuine antique tome
+        # rather than as a clean modern serif. Shared with ``alchemy``
+        # above as the body face — both occult themes share the same
+        # period-authentic Oxford-press silhouette, the silhouette
+        # difference between the two coming from the ground (parchment
+        # yellow vs. leather-bound black) and the matched-phrase face
+        # (MedievalSharp ritual hand vs. TFoust phantom scrawl). EB
+        # Garamond Regular sits behind it as the unicode-safe second
+        # rank in case the IM Fell file is missing on a host. TFoustScript
+        # carries the matched phrase: short ASCII time strings
+        # ("half past two") render in its signature hollow-outline
+        # shaggy silhouette, the "phantom scrawl" that defines the
+        # theme. EB Garamond Bold sits behind TFoust in the bold chain
+        # as a unicode-safe second rank — if the matched phrase ever
+        # contains a non-ASCII character (an em-dash inside
+        # ``shortly after dawn—at last``), PIL falls through to it
+        # because TFoust is missing the glyph at file level. The
+        # ornament slot is NEVER TFoust (it'd tofu the oversized curly
+        # quote marks); IM Fell English carries the oversized opening
+        # / closing quotation marks instead, so the ornament inherits
+        # the same vintage-press character as the body — visually
+        # unified rather than pairing the body with a contrasting
+        # heavier face.
+        "quote_regular": [
+            IMFELLENGLISH_REGULAR,
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            TFOUST_REGULAR,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            IMFELLENGLISH_REGULAR,
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+        # Source-card seam: ``render_source_card`` runs the title and the
+        # matched phrase through ``normalize_dashes`` (which emits U+2014
+        # em-dashes) and wraps the matched phrase in U+201C / U+201D curly
+        # quotes — both glyphs TFoust does not ship, and PIL's fallback is
+        # file-level so the renderer otherwise prints ``.notdef`` tofu in
+        # the card. Routing the card's bold weight through EB Garamond Bold
+        # (the unicode-safe second rank in ``quote_bold``) keeps the card
+        # readable while leaving TFoust as the matched-phrase face in the
+        # main render, where the matched text is pure-ASCII time phrases.
+        "card_quote_bold": [
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+    },
 }
 
 
@@ -953,9 +1063,30 @@ def theme_font_candidates(theme: str, role: str) -> list:
     Unknown themes fall back to the ``default`` entry so a forgotten
     ``THEME_FONTS`` registration still renders (with the default face) rather
     than raising KeyError deep inside the layout engine.
+
+    ``card_<base>`` roles (e.g. ``card_quote_bold``, used by
+    ``render_source_card``) follow a layered fallback: theme's
+    ``card_<base>`` override → theme's ``<base>`` → default's
+    ``<base>``. This lets a theme whose ``quote_bold`` chain starts
+    with a deliberately-ASCII-only display face (TFoust on
+    ``grimoire``) override only the source-card seam, where the
+    rendered text passes through ``normalize_dashes`` (which produces
+    U+2014 em-dashes) and is wrapped in U+201C / U+201D curly quotes
+    — both glyphs the ASCII-only face cannot supply. PIL's font
+    fallback is file-level, not glyph-level, so without this seam
+    the source card would draw ``.notdef`` boxes for those characters.
     """
     fonts = THEME_FONTS.get(theme) or THEME_FONTS["default"]
-    return fonts.get(role) or THEME_FONTS["default"][role]
+    chain = fonts.get(role)
+    if chain is not None:
+        return chain
+    if role.startswith("card_"):
+        base = role[len("card_") :]
+        chain = fonts.get(base)
+        if chain is not None:
+            return chain
+        return THEME_FONTS["default"][base]
+    return THEME_FONTS["default"][role]
 
 LAYOUTS = {
     "hero": {
@@ -1719,6 +1850,181 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
             [(cx, cy - diamond), (cx + diamond, cy), (cx, cy + diamond), (cx - diamond, cy)],
             fill=accent,
         )
+
+
+def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
+    """Solar ☉ — outline circle with a filled centre dot. The
+    circumpunct is the alchemical sigil for gold / the Sun and the
+    most iconographically simple symbol in the four-planet set."""
+    r = 7
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=accent, width=2)
+    draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=accent)
+
+
+def _draw_grimoire_moon(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    accent: tuple[int, int, int],
+    page_bg: tuple[int, int, int],
+) -> None:
+    """Lunar ☽ — silver / mercurial. Filled red disk overdrawn by a
+    smaller page-bg disk offset rightward so the visible red collapses
+    to a left-opening crescent (horns pointing left, the alchemical
+    convention for the receptive/lunar principle)."""
+    r = 7
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accent)
+    # Smaller carving disk shifted +4 in x: the overlap region stays
+    # entirely within the outer disk so we never paint page_bg outside
+    # the symbol footprint.
+    inner_r = 6
+    offset = 4
+    draw.ellipse(
+        (cx - inner_r + offset, cy - inner_r, cx + inner_r + offset, cy + inner_r),
+        fill=page_bg,
+    )
+
+
+def _draw_grimoire_mars(
+    draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]
+) -> None:
+    """Martial ♂ — iron / aggressive. Outline circle offset slightly
+    down-left, with a long diagonal shaft + perpendicular V-barb
+    arrowhead pointing out toward the upper-right (NE). The classical
+    "active principle" sigil. Barbs are drawn as two short
+    perpendicular-to-shaft strokes meeting at the tip so the arrow
+    reads as an arrowhead rather than an indeterminate blob at the
+    small mid-edge symbol scale."""
+    r = 6
+    # Circle centre pushed down-left so the NE arrow has room without
+    # the circle bumping the mid-edge anchor.
+    bcx, bcy = cx - 3, cy + 3
+    draw.ellipse((bcx - r, bcy - r, bcx + r, bcy + r), outline=accent, width=2)
+    # Long diagonal shaft from upper-right of circle outward to NE.
+    shaft_start = (bcx + 4, bcy - 4)
+    tip = (bcx + 11, bcy - 11)
+    draw.line((*shaft_start, *tip), fill=accent, width=2)
+    # Two barbs at the tip, each perpendicular to the 45° shaft, forming
+    # the canonical arrowhead V. The first barb runs horizontal-left
+    # from the tip, the second runs vertical-down from the tip — taken
+    # together they "open" the arrowhead in the right direction.
+    barb = 5
+    draw.line((tip[0] - barb, tip[1], tip[0], tip[1]), fill=accent, width=2)
+    draw.line((tip[0], tip[1], tip[0], tip[1] + barb), fill=accent, width=2)
+
+
+def _draw_grimoire_venus(
+    draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]
+) -> None:
+    """Venusian ♀ — copper / receptive. Outline circle offset slightly
+    up, with a vertical shaft descending from the circle's bottom and
+    a horizontal crossbar — the alchemical "passive principle" sigil
+    and the visual complement to Mars in the four-planet set."""
+    r = 6
+    bcx, bcy = cx, cy - 4
+    draw.ellipse((bcx - r, bcy - r, bcx + r, bcy + r), outline=accent, width=2)
+    # Vertical shaft from circle bottom downward.
+    shaft_top = (bcx, bcy + r)
+    shaft_bottom = (bcx, bcy + r + 7)
+    draw.line((*shaft_top, *shaft_bottom), fill=accent, width=2)
+    # Horizontal crossbar across the shaft, ~2/3 of the way down.
+    crossbar_y = bcy + r + 4
+    draw.line((bcx - 4, crossbar_y, bcx + 4, crossbar_y), fill=accent, width=2)
+
+
+def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
+    """Paint an alchemical-grimoire border: outer rule + four magic-circle
+    inscribed pentagrams + four planetary sigils on the mid-edges.
+
+    Shares the black/white/red palette with ``gothic`` but flips the
+    silhouette: gothic stacks a doubled outer rule (red + white) with a
+    quatrefoil — the cathedral-tracery motif — at each corner; grimoire
+    uses a single thin red rule with an *inscribed* pentagram (star +
+    surrounding ring) at each corner, then breaks the four mid-edges
+    with the four classical planetary alchemical sigils — Sun ☉ at the
+    top centre, Moon ☽ at the bottom, Mars ♂ on the left, Venus ♀ on
+    the right — pulling the iconographic vocabulary of medieval / early-
+    modern occult diagrams directly onto the page. Same ground, same
+    accent ink, completely different register from gothic.
+
+    **Pentagrams.** Drawn deterministically by computing the five
+    vertices of a regular pentagon inscribed in a circle of radius
+    ``pent_radius`` centred at the corner anchor, then connecting them
+    in skip-one order (``0 → 2 → 4 → 1 → 3 → 0``) — the classic
+    single-stroke pentacle silhouette — and finally an outer outline
+    circle of radius ``ring_radius`` around the star, giving the
+    "pentagram inscribed in a circle" magic-circle composition. The
+    first vertex is placed at the top (``angle = -π/2``) so the star
+    reads upright at every corner; the ring sits ~3 px outside the
+    star's vertex tips so the two strokes don't visually merge.
+
+    **Mid-edge sigils.** Each of the four classical "wandering star"
+    symbols (Sun / Moon / Mars / Venus) is drawn deterministically
+    from PIL primitives so the renderer doesn't depend on glyph
+    coverage in any font (TFoust, the body font, and the bundled
+    fallbacks all vary in their unicode support for ``U+2609``
+    onward). Positioned on the outer frame rule at each mid-edge so
+    they punch through the line the way ``gothic``'s mid-edge diamonds
+    do — keeping the frame from reading as an unbroken rectangular
+    border. The Sun goes on top (the "highest" planet in geocentric
+    cosmology), Moon on bottom, Mars / Venus on the left / right —
+    pinning the active / receptive duality across the horizontal axis
+    of the page.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    accent = colors["accent"]  # rubric red
+    page_bg = colors.get("page_bg", SPECTRA6["black"])
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=accent,
+        width=1,
+    )
+
+    # Four inscribed pentagrams at the inset corners. ``corner_offset``
+    # pushes each centre far enough inward that the surrounding ring
+    # (radius ``ring_radius`` + 2 px stroke half-width) stays clear of
+    # the outer rule at ``outer_inset``.
+    pent_radius = 11
+    ring_radius = 14
+    corner_offset = ring_radius + 2
+    centres = [
+        (outer_inset + corner_offset, outer_inset + corner_offset),
+        (width - 1 - outer_inset - corner_offset, outer_inset + corner_offset),
+        (outer_inset + corner_offset, height - 1 - outer_inset - corner_offset),
+        (width - 1 - outer_inset - corner_offset, height - 1 - outer_inset - corner_offset),
+    ]
+    skip_one = (0, 2, 4, 1, 3, 0)
+    for cx, cy in centres:
+        vertices = []
+        for i in range(5):
+            angle = -math.pi / 2 + i * (2 * math.pi / 5)
+            vx = cx + pent_radius * math.cos(angle)
+            vy = cy + pent_radius * math.sin(angle)
+            vertices.append((vx, vy))
+        path = [vertices[i] for i in skip_one]
+        draw.line(path, fill=accent, width=2)
+        # Surrounding ring — the "magic circle" containing the pentacle.
+        draw.ellipse(
+            (cx - ring_radius, cy - ring_radius, cx + ring_radius, cy + ring_radius),
+            outline=accent,
+            width=2,
+        )
+
+    # Four planetary alchemical sigils centred on the mid-edges of the
+    # outer rule. Each helper draws a ~14 px-tall symbol; the moon
+    # carving uses ``page_bg`` to chisel a crescent out of a filled disk
+    # without painting outside its own footprint.
+    mid_top = (width // 2, outer_inset)
+    mid_bottom = (width // 2, height - 1 - outer_inset)
+    mid_left = (outer_inset, height // 2)
+    mid_right = (width - 1 - outer_inset, height // 2)
+    _draw_grimoire_sun(draw, *mid_top, accent)
+    _draw_grimoire_moon(draw, *mid_bottom, accent, page_bg)
+    _draw_grimoire_mars(draw, *mid_left, accent)
+    _draw_grimoire_venus(draw, *mid_right, accent)
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -3354,6 +3660,7 @@ _BORDER_PAINTERS = {
     "newsprint": draw_newsprint_border,
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
+    "grimoire": draw_grimoire_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -3408,7 +3715,65 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # (Sol / Luna / Mars / Venus, rightmost centred
                         # at x=560 with radius 11) all sit well left
                         # of the label's x range.
+    "grimoire": 50,     # past the TR inscribed pentagram. Centre at
+                        # (width-31, 30) with ring_radius=14 and 2px
+                        # stroke (half-width 1) → leftmost pixel of
+                        # the ring at x=width-46. Plus a 4px breathing
+                        # gap → label's right edge must end at x ≤
+                        # width-50. The ring's top vertex sits at y=15
+                        # (well inside the label's y=14-29 band), so
+                        # the horizontal inset is what does the work.
 }
+
+# Themes whose matched-phrase (``quote_bold``) face has a distinctive
+# silhouette that breaks if its inter-word gaps are inflated by
+# justification slack. The default per-theme contract is "every inter-
+# word space on a justified line is equally elastic — slack is divided
+# evenly across them"; themes in this set treat the matched-phrase
+# spaces as *rigid* (kept at the bold face's natural space width) so
+# only the body's inter-word gaps absorb slack. Without the seam,
+# TFoust's "quarter past two" on a justified line in ``grimoire`` reads
+# as three disconnected ink-stained syllables rather than a single
+# inscription — the hollow / shaggy character of the face survives
+# only at its natural inter-letter rhythm. Strict superset is fine:
+# the ``score_row`` / wrap / fit pipeline does not depend on this set.
+_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire"})
+
+
+def _justify_distribution(space_is_bold: list[bool], slack: int, rigid_match: bool) -> list[int]:
+    """Return the per-space slack contribution for a justified line.
+
+    ``space_is_bold`` is the list of inter-word spaces on the line, in
+    visual order, with each entry telling whether the space sits
+    inside the bold matched phrase. ``slack`` is the leftover pixel
+    width to redistribute. When ``rigid_match`` is True, bold-internal
+    spaces are kept at the bold face's natural width (contribution 0)
+    and the full slack is split evenly across only the body's
+    inter-word gaps; otherwise every space is equally elastic, which
+    is the renderer's default contract. The returned list has the
+    same length as ``space_is_bold`` so the call site can iterate
+    over it lock-step with the line's space occurrences.
+
+    Returns an empty list when there's no elastic space to absorb
+    slack (e.g. ``rigid_match`` is True and every space on the line
+    happens to sit inside the matched phrase) — the call site falls
+    through to the unjustified ragged-right layout, same path the
+    "slack > 25% of max_width" guard takes.
+    """
+    elastic_count = sum(1 for is_bold in space_is_bold if not (rigid_match and is_bold))
+    if elastic_count == 0:
+        return []
+    base = slack // elastic_count
+    remainder = slack - base * elastic_count
+    distribute: list[int] = []
+    elastic_seen = 0
+    for is_bold in space_is_bold:
+        if rigid_match and is_bold:
+            distribute.append(0)
+        else:
+            distribute.append(base + (1 if elastic_seen < remainder else 0))
+            elastic_seen += 1
+    return distribute
 
 
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
@@ -3475,10 +3840,16 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     matched_text = normalize_dashes(strip_underscore_emphasis(matched_text))
 
     label_font = load_font(META_FONT_CANDIDATES, size=18)
-    title_font = load_font(theme_font_candidates(theme, "quote_bold"), size=44)
+    # ``card_quote_bold`` falls through to ``quote_bold`` for every theme
+    # that doesn't override it; the seam exists so themes whose bold
+    # chain starts with an ASCII-only display face (TFoust on grimoire)
+    # can route the card's title and matched phrase — both of which
+    # may contain em-dashes or curly quotes — through a unicode-safe
+    # face without changing their main-render typography.
+    title_font = load_font(theme_font_candidates(theme, "card_quote_bold"), size=44)
     author_font = load_font(theme_font_candidates(theme, "quote_regular"), size=28)
     id_font = load_font(META_FONT_CANDIDATES, size=18)
-    phrase_font = load_font(theme_font_candidates(theme, "quote_bold"), size=28)
+    phrase_font = load_font(theme_font_candidates(theme, "card_quote_bold"), size=28)
 
     max_text_width = width - 2 * SIDE_MARGIN - 40
     title_lines = wrap_text(draw, title_text, title_font, max_text_width)[:3]
@@ -3725,17 +4096,21 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             bbox = draw.textbbox((0, 0), chunk, font=font)
             current_width += bbox[2] - bbox[0]
 
-        space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
+        # Themes in ``_THEMES_RIGID_MATCH_SPACING`` exclude the
+        # bold-internal inter-word gaps from slack distribution so the
+        # matched phrase keeps its face's natural rhythm on a justified
+        # line. Default for every other theme: all inter-word spaces
+        # are equally elastic.
+        space_is_bold = [is_bold for chunk, is_bold in drawable if chunk == " "]
+        rigid_match = theme in _THEMES_RIGID_MATCH_SPACING
         is_last = line_index == total_lines - 1
         slack = layout["max_width"] - current_width
 
-        distribute = []
+        distribute: list[int] = []
         # Only full-justify when the line is at least 75% full; looser lines look
         # worse justified than ragged-right due to excessive inter-word gaps.
-        if not is_last and space_slots > 0 and 0 < slack <= layout["max_width"] * 0.25:
-            base = slack // space_slots
-            remainder = slack - base * space_slots
-            distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
+        if not is_last and space_is_bold and 0 < slack <= layout["max_width"] * 0.25:
+            distribute = _justify_distribution(space_is_bold, slack, rigid_match)
 
         x = (width - layout["max_width"]) // 2
         space_idx = 0
