@@ -253,7 +253,7 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Sixteen themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
+Seventeen themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme also pairs its palette with its own typeface so the visual voice — not just the colour — shifts with the theme. Previews all show the same quote so the palette + typography differences are the only variable; the real renders adapt layout to the picked line's length.
 
 | `--theme`     | Preview | Page bg | Body text | Accent  | Typeface         | Feel                                          |
 |---------------|---------|---------|-----------|---------|------------------|-----------------------------------------------|
@@ -273,6 +273,7 @@ Sixteen themes ship built-in, all constrained to the Spectra 6 panel palette (wh
 | `marker`      | <img src="assets/previews/marker.png" width="240" alt="marker theme preview">           | white   | black     | blue    | Permanent Marker (hand-drawn)        | Fridge-doodle Sharpie hand — multi-colour dashed perimeter, four corner asterisks (red / blue / green / yellow), and yellow + green mid-edge marker dots; the only theme that lights up every Spectra 6 spot colour at once |
 | `saloon`      | <img src="assets/previews/saloon.png" width="240" alt="saloon theme preview">           | white (foxed) | black | red | Rye (wood-engraved slab)             | 19th-century Wild West wanted-poster — heavy block-printed body in Rye, layered background (sparse red foxing speckles across the page, ornamented top + bottom banner bands, double-rule frame, corner fleurons with red triangular wings, mid-edge red diamonds) |
 | `roman`       | <img src="assets/previews/roman.png" width="240" alt="roman theme preview">             | white (limestone) | black | red (rubrum) | Cinzel Decorative (Trajan-column inscriptional capitals) | Roman lapidary inscription — V-cut chiselled capitals on limestone, tabula ansata frame with trapezoidal handles, SPQR cartouche, red rubrum on the matched phrase, stone-grain speckles in the margin, mid-edge interpunct dots, laurel sprig at bottom |
+| `grimoire`    | <img src="assets/previews/grimoire.png" width="240" alt="grimoire theme preview">       | black   | white     | red     | EB Garamond + TFoustScript           | Alchemical Faustian spellbook — Renaissance EB Garamond body in white on a leather-bound black ground, matched time phrase scrawled in red TFoustScript's hollow-outline shaggy silhouette like a magic-circle inscription, single thin red outer rule with a five-pointed pentagram at each corner |
 
 Pass `--theme auto` to let the clock pick by wall-clock time. The defaults are `default` during the day (06:00–18:00) and `dark` at night (18:00–06:00) — the legacy binary contract. Broaden the rotation by setting `--auto-day-theme` and/or `--auto-night-theme` to any other registered theme, e.g.
 
@@ -289,13 +290,13 @@ Button B cycles forward through the list and wraps; the curator web UI at `/api/
 > Regenerate previews: the images under `assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
 >
 > ```bash
-> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman; do
+> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman grimoire; do
 >   python3 render_quote.py --time 14:15 --theme "$theme" --mode production \
 >     --output "assets/previews/$theme.png"
 > done
 > ```
 >
-> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Special Elite, Atomic Age, Permanent Marker, Rye, Cinzel Decorative) so the previews are reproducible without any system-font install. All bundled faces are OFL-licensed except Special Elite and Permanent Marker, which ship under Apache 2.0 (see `fonts/special-elite/LICENSE.txt` and `fonts/permanent-marker/LICENSE.txt`).
+> The PNGs are checked in so the README renders on GitHub without a build step. Every bundled typeface ships under `fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Special Elite, Atomic Age, Permanent Marker, Rye, Cinzel Decorative, TFoustScript) so the previews are reproducible without any system-font install. All bundled faces are OFL-licensed except Special Elite and Permanent Marker, which ship under Apache 2.0 (see `fonts/special-elite/LICENSE.txt` and `fonts/permanent-marker/LICENSE.txt`), and `fonts/TFoust.ttf` (TFoustScript, used by `grimoire`) whose font-metadata records `© 2025 myfont All rights reserved` with no explicit OFL/Apache grant — check redistribution terms with the upstream font source before shipping.
 
 ### Inky buttons (short and long press)
 
