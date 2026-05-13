@@ -501,6 +501,16 @@ CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorativ
 # ornament slots where missing curly-quote / em-dash glyphs would draw
 # ``.notdef`` boxes (PIL fallback is file-level, not glyph-level).
 TFOUST_REGULAR = str(BASE_DIR / "fonts/TFoust.ttf")
+# IM Fell English — Igino Marini's digital revival of John Fell's
+# 17th-century Oxford University Press types (OFL). Visible ink character
+# on every glyph (the deliberate inking irregularities of metal type
+# letterpress) makes it read as a genuine antique book page rather than
+# a clean modern serif. 352-glyph cmap including curly quotes / em-dash
+# / extended Latin, so unlike TFoust it's safe in the body and ornament
+# slots. Body face for ``grimoire`` — the unmistakable "alchemical tome"
+# silhouette that distinguishes grimoire from every other serif theme.
+IMFELL_ENGLISH_REGULAR = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Regular.ttf")
+IMFELL_ENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Italic.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -903,24 +913,33 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "grimoire": {
-        # EB Garamond body — the humanist Renaissance serif standing in for
-        # the scholar's manuscript text. Shared with ``illuminated`` /
-        # ``gothic`` (body font re-use is the established pattern when two
-        # themes need the same family in different decorative registers —
-        # the silhouette difference comes from the matched-phrase face and
-        # the decoration, not the body). TFoustScript carries the matched
-        # phrase: short ASCII time strings ("half past two") render in its
-        # signature hollow-outline shaggy silhouette, the "phantom scrawl"
-        # that defines the theme. EB Garamond Bold sits behind TFoust in
-        # the bold chain as a unicode-safe second rank — if the matched
-        # phrase ever contains a non-ASCII character (an em-dash inside
-        # ``shortly after dawn—at last``), PIL falls through to it because
-        # TFoust is missing the glyph at file level. The ornament slot is
-        # NEVER TFoust: the oversized curly quote marks need ``“`` / ``”``
-        # / ``–`` glyphs that TFoust doesn't ship, and PIL's font fallback
-        # is file-level, not glyph-level — a curly-quote tofu box would
-        # blow up the layout. EB Garamond Bold owns the ornament instead.
+        # IM Fell English body — a digital revival of John Fell's
+        # 17th-century Oxford University Press types (Igino Marini, OFL).
+        # The deliberate inking irregularities of the metal-type
+        # letterpress survive in every glyph as visible ink shoulders and
+        # eroded terminals — the page reads as a genuine antique tome
+        # rather than as a clean modern serif. Picks a type *family* not
+        # already represented (Playfair is transitional, Bitter is slab,
+        # Old Standard is Didone, EB Garamond is humanist Renaissance,
+        # Cinzel Decorative is Roman lapidary inscriptional) so grimoire's
+        # silhouette is unmistakably its own. EB Garamond Regular sits
+        # behind it as the unicode-safe second rank in case the IM Fell
+        # file is missing on a host. TFoustScript carries the matched
+        # phrase: short ASCII time strings ("half past two") render in
+        # its signature hollow-outline shaggy silhouette, the "phantom
+        # scrawl" that defines the theme. EB Garamond Bold sits behind
+        # TFoust in the bold chain as a unicode-safe second rank — if
+        # the matched phrase ever contains a non-ASCII character (an
+        # em-dash inside ``shortly after dawn—at last``), PIL falls
+        # through to it because TFoust is missing the glyph at file
+        # level. The ornament slot is NEVER TFoust (it'd tofu the
+        # oversized curly quote marks); IM Fell English carries the
+        # oversized opening / closing quotation marks instead, so the
+        # ornament inherits the same vintage-press character as the
+        # body — visually unified rather than pairing the body with a
+        # contrasting heavier face.
         "quote_regular": [
+            IMFELL_ENGLISH_REGULAR,
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
@@ -930,6 +949,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
+            IMFELL_ENGLISH_REGULAR,
             EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
