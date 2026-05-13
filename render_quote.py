@@ -3072,11 +3072,17 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     boundary + corner protective sigils are RED (the rubricated /
     sulphur / ritual-enclosure colour), while everything *inside*
     the boundary — magic circle, inscribed pentagram, pentagon,
-    Solomon's seal, planetary glyphs, elemental triangles — is
+    planetary glyphs, elemental triangles, alchemical sun — is
     BLUE (the philosophical-mercury / Hermetic / sapphire colour).
     Real alchemical manuscripts used the same red / blue split to
     distinguish the operative / outer side of the work from the
     philosophical / inner side.
+
+    Before any of the six decoration layers paint, a Layer-0
+    parchment halftone replaces half of the page_bg yellow pixels
+    with white via a 4×4 Bayer-dither pattern, so the rendered
+    ground reads as a softer aged-parchment cream rather than the
+    Spectra-6 panel's vivid pure yellow.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -3085,6 +3091,45 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     hermetic_color = colors["ornament_dark"]    # blue planetary / elemental glyphs
     page_bg = colors["page_bg"]                 # yellow — used by Luna occlusion
     stroke = 2
+
+    # ------------------------------------------------------------------
+    # Layer 0: Parchment halftone. Replace half of the solid-yellow
+    # page_bg pixels with white in a 4×4 Bayer-dither pattern. At
+    # panel viewing distance the eye averages the resulting
+    # alternation of pure-yellow + pure-white pixels into a softer
+    # aged-parchment cream — exactly the way newsprint halftones a
+    # solid tone with only black ink. The pattern is applied at the
+    # pixel level so it lives natively on the Spectra-6 palette
+    # (every output pixel is still one of the six pure panel colours);
+    # ``snap_image_to_palette`` is a no-op on these pixels.
+    #
+    # We dither here at the very start of the painter, BEFORE the
+    # six decoration layers below, so the corner pentagrams /
+    # transmutation circle / planetary / elemental sigils all
+    # overpaint the halftoned ground cleanly. Subsequent text
+    # rendering uses these halftoned pixels as anti-aliasing source
+    # colour; the Spectra-6 palette snap step rounds the resulting
+    # mixed-edge pixels back to the same black-on-yellow they
+    # produced before the dither, so glyph silhouettes stay sharp.
+    #
+    # Only pixels matching the exact ``page_bg`` colour are
+    # affected, so any deliberate-yellow ink elsewhere in the
+    # palette (which the alchemy theme doesn't use, but a future
+    # theme variant might) would pass through unchanged.
+    _BAYER_4 = (
+        (0, 8, 2, 10),
+        (12, 4, 14, 6),
+        (3, 11, 1, 9),
+        (15, 7, 13, 5),
+    )
+    halftone_white = SPECTRA6["white"]
+    halftone_threshold = 8    # 8 of 16 Bayer cells become white → 50% density
+    pixels = image.load()
+    for y in range(height):
+        row = _BAYER_4[y & 3]
+        for x in range(width):
+            if pixels[x, y] == page_bg and row[x & 3] >= halftone_threshold:
+                pixels[x, y] = halftone_white
 
     # ------------------------------------------------------------------
     # Layer 1: Outer red ritual boundary.
