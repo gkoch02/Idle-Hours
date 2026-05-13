@@ -3079,26 +3079,29 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     philosophical / inner side.
 
     Before any of the six decoration layers paint, a Layer-0
-    parchment halftone replaces half of the page_bg yellow pixels
-    with white via a 4×4 Bayer-dither pattern, so the rendered
-    ground reads as a softer aged-parchment cream rather than the
-    Spectra-6 panel's vivid pure yellow.
+    parchment halftone keeps only 2 of every 16 page_bg yellow
+    pixels and converts the other 14 to white via a 4×4 Bayer-dither
+    pattern, so the rendered ground reads as a pale ivory parchment
+    flecked with yellow rather than the Spectra-6 panel's vivid
+    pure yellow.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     rule_color = colors["accent"]               # red ritual boundary
     sigil_color = colors["accent"]              # red corner pentagrams
     hermetic_color = colors["ornament_dark"]    # blue planetary / elemental glyphs
-    page_bg = colors["page_bg"]                 # yellow — used by Luna occlusion
+    page_bg = colors["page_bg"]                 # yellow — used by the Layer-0 halftone
     stroke = 2
 
     # ------------------------------------------------------------------
-    # Layer 0: Parchment halftone. Replace half of the solid-yellow
-    # page_bg pixels with white in a 4×4 Bayer-dither pattern. At
+    # Layer 0: Parchment halftone. Keep only 2 of every 16
+    # page_bg yellow pixels and convert the other 14 to white in
+    # a 4×4 Bayer-dither pattern — each 4×4 tile retains a sparse
+    # diagonal pair of yellow flecks against a white ground. At
     # panel viewing distance the eye averages the resulting
-    # alternation of pure-yellow + pure-white pixels into a softer
-    # aged-parchment cream — exactly the way newsprint halftones a
-    # solid tone with only black ink. The pattern is applied at the
+    # alternation into a pale ivory parchment with subtle yellow
+    # warmth, the same way newsprint halftones a flat tone using
+    # only black ink. The pattern is applied at the
     # pixel level so it lives natively on the Spectra-6 palette
     # (every output pixel is still one of the six pure panel colours);
     # ``snap_image_to_palette`` is a no-op on these pixels.
@@ -3123,7 +3126,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         (15, 7, 13, 5),
     )
     halftone_white = SPECTRA6["white"]
-    halftone_threshold = 8    # 8 of 16 Bayer cells become white → 50% density
+    halftone_threshold = 2    # 14 of 16 Bayer cells become white → 87.5% density
     pixels = image.load()
     for y in range(height):
         row = _BAYER_4[y & 3]
@@ -3285,8 +3288,13 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     _draw_sol(
         draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
     )
+    # Luna's crescent is carved out by an occlusion disc — pass
+    # white (not page_bg yellow) so the occluder blends with the
+    # halftoned ground above instead of showing up as a vivid
+    # yellow blob against the pale parchment.
     _draw_luna(
-        draw, centre_x - flank_spacing, top_y, flank_radius, hermetic_color, page_bg, line_width=stroke
+        draw, centre_x - flank_spacing, top_y, flank_radius, hermetic_color,
+        SPECTRA6["white"], line_width=stroke,
     )
     _draw_mars(
         draw, centre_x + flank_spacing, top_y, flank_radius, hermetic_color, line_width=stroke
