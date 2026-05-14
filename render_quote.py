@@ -1543,6 +1543,20 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     ``draw_faux_gray_text`` so the two paths interleave cleanly when a
     theme uses both (e.g. dithered body text plus dithered ornament
     quote marks).
+
+    The mask is thresholded at ≥128 rather than treated as binary on every
+    nonzero coverage. Pillow renders TTF glyphs with an antialiased mask
+    whose edge pixels carry partial coverage (1..254); writing a fully
+    saturated dark/light to every nonzero pixel grows a 1px halo around
+    each glyph that, after ``snap_image_to_palette``, stays as a hot
+    fringe (especially the ``light`` half of the dither, which sits far
+    from the page bg in palette space and never rounds back to it). The
+    plain ``draw.text`` + palette-snap path that this helper replaces for
+    the nightvision body / attribution / debug strip silently snapped
+    those partial-coverage fringes back to the bg colour, so the prior
+    glyph silhouette was effectively binary at ~50% coverage; the ≥128
+    threshold reproduces that silhouette here so the dithered path
+    doesn't visibly thicken small text.
     """
     draw = ImageDraw.Draw(image)
     bbox = draw.textbbox(xy, text, font=font)
@@ -1565,7 +1579,7 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     for y in range(region_h):
         ay = y + y0
         for x in range(region_w):
-            if mx[x, y]:
+            if mx[x, y] >= 128:
                 ax = x + x0
                 px[ax, ay] = dark if ((ax + ox) + (ay + oy)) % 2 == 0 else light
 
