@@ -100,16 +100,29 @@ THEMES = {
         "source": SPECTRA6["black"],
     },
     # Retro terminal / Apollo-era mission monitor. Green body on black with a
-    # yellow accent for the matched phrase — reads well at night and contrasts
-    # strongly enough on the Spectra 6 panel to stay legible.
+    # yellow accent for the matched phrase. Spectra 6's pure green is a
+    # saturated mid-tone that reads as a dim, slightly muddy ink against the
+    # black ground at panel-viewing distance — legible but the eye works for
+    # it. The renderer compensates by stippling every green body-text glyph
+    # with white in a 50/50 Bayer pattern (see ``_draw_text_body`` and
+    # ``draw_text_dithered``), so the perceived ink lifts to a brighter mint
+    # without leaving the six-colour gamut. The ornament colours follow suit:
+    # the oversized quote marks dither green/white (via the existing
+    # ``draw_faux_gray_text`` path) so they read as the same lifted mint as
+    # the body, instead of the previous black/green half-density which
+    # produced a darker forest-green tone visually disconnected from the
+    # body. The corner brackets and CRT scanlines in
+    # ``draw_nightvision_border`` deliberately stay solid green — their
+    # decorative HUD silhouette would break under stippling, and they're
+    # supporting graphics rather than reading matter.
     "nightvision": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["green"],
         "subtle": SPECTRA6["green"],
         "faint": SPECTRA6["green"],
         "accent": SPECTRA6["yellow"],
-        "ornament_dark": SPECTRA6["black"],
-        "ornament_light": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["green"],
+        "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["green"],
     },
     # Cyanotype blueprint. Blue paper, white ink for the body text,
@@ -1515,6 +1528,77 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
         for x in range(image.width):
             if mx[x, y]:
                 px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
+
+
+def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_offset=(0, 0)):
+    """Paint ``text`` as a 50/50 ``dark``/``light`` Bayer stipple, like
+    ``draw_faux_gray_text`` but iterates only over the text's bounding box.
+
+    Used by the nightvision body-text path, which calls this once per word
+    chunk via ``wrap_styled_text`` (~25 chunks per line × multiple lines).
+    A full-image scan per chunk would multiply 800×480 = 384k pixel reads
+    by the chunk count and push render time into the tens of seconds; the
+    bbox-limited variant keeps cost proportional to the inked area.
+    Produces the same ``((x + ox) + (y + oy)) % 2`` stipple pattern as
+    ``draw_faux_gray_text`` so the two paths interleave cleanly when a
+    theme uses both (e.g. dithered body text plus dithered ornament
+    quote marks).
+
+    The mask is thresholded at ≥128 rather than treated as binary on every
+    nonzero coverage. Pillow renders TTF glyphs with an antialiased mask
+    whose edge pixels carry partial coverage (1..254); writing a fully
+    saturated dark/light to every nonzero pixel grows a 1px halo around
+    each glyph that, after ``snap_image_to_palette``, stays as a hot
+    fringe (especially the ``light`` half of the dither, which sits far
+    from the page bg in palette space and never rounds back to it). The
+    plain ``draw.text`` + palette-snap path that this helper replaces for
+    the nightvision body / attribution / debug strip silently snapped
+    those partial-coverage fringes back to the bg colour, so the prior
+    glyph silhouette was effectively binary at ~50% coverage; the ≥128
+    threshold reproduces that silhouette here so the dithered path
+    doesn't visibly thicken small text.
+    """
+    draw = ImageDraw.Draw(image)
+    bbox = draw.textbbox(xy, text, font=font)
+    x0, y0, x1, y1 = bbox
+    # Pad by a pixel for glyph stems that sit on the bbox edge, then clamp.
+    x0 = max(0, x0 - 1)
+    y0 = max(0, y0 - 1)
+    x1 = min(image.width, x1 + 1)
+    y1 = min(image.height, y1 + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    region_w = x1 - x0
+    region_h = y1 - y0
+    mask = Image.new("L", (region_w, region_h), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.text((xy[0] - x0, xy[1] - y0), text, font=font, fill=255)
+    px = image.load()
+    mx = mask.load()
+    ox, oy = pattern_offset
+    for y in range(region_h):
+        ay = y + y0
+        for x in range(region_w):
+            if mx[x, y] >= 128:
+                ax = x + x0
+                px[ax, ay] = dark if ((ax + ox) + (ay + oy)) % 2 == 0 else light
+
+
+def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
+    """Draw body / attribution text, stippling green→white on nightvision.
+
+    The nightvision theme renders body and attribution glyphs as a 50/50
+    green/white Bayer stipple so the perceived ink lifts from Spectra-6
+    saturated green to a brighter mint, improving legibility at panel-
+    viewing distance. Only fills equal to the body green get dithered —
+    the matched-phrase yellow accent is drawn solid, as are debug/footer
+    labels in other themes that happen to pass through this seam. Every
+    other theme falls through to a normal solid ``draw.text`` call.
+    """
+    if theme == "nightvision" and fill == SPECTRA6["green"]:
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
+    else:
+        draw.text(xy, text, font=font, fill=fill)
 
 
 def _paint_theme_border(image: Image.Image, theme: str, colors: dict) -> None:
@@ -3944,7 +4028,7 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
         bbox = draw.textbbox((0, 0), text, font=font)
         w = bbox[2] - bbox[0]
         h = bbox[3] - bbox[1]
-        draw.text(((width - w) // 2, y), text, font=font, fill=fill)
+        _draw_text_body(image, draw, ((width - w) // 2, y), text, font=font, fill=fill, theme=theme)
         y += h
 
     _draw_centered(label_text, label_font, colors["accent"])
@@ -4001,7 +4085,7 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
     for line, h in zip(lines, line_heights):
         bbox = draw.textbbox((0, 0), line, font=font)
         w = bbox[2] - bbox[0]
-        draw.text(((width - w) // 2, y), line, font=font, fill=colors["text"])
+        _draw_text_body(image, draw, ((width - w) // 2, y), line, font=font, fill=colors["text"], theme=theme)
         y += h + line_gap
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
@@ -4200,7 +4284,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             font = quote_font_bold if is_bold else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
             chunk_y = y + (body_ascent - _font_ascent(font))
-            draw_text(draw, (x, chunk_y), chunk, font=font, fill=fill)
+            _draw_text_body(image, draw, (x, chunk_y), chunk, font=font, fill=fill, theme=theme)
             bbox = draw.textbbox((0, 0), chunk, font=font)
             x += bbox[2] - bbox[0]
             if distribute and chunk == " ":
@@ -4227,12 +4311,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     if author_lines:
         author_text_line = author_lines[0]
         author_x = (width - layout["max_width"]) // 2
-        draw_text(draw, (author_x, y), author_text_line, font=attribution_font, fill=colors["text"])
+        _draw_text_body(image, draw, (author_x, y), author_text_line, font=attribution_font, fill=colors["text"], theme=theme)
         y += author_size + layout["title_gap"]
 
     for line in title_lines:
         title_x = (width - layout["max_width"]) // 2
-        draw_text(draw, (title_x, y), line, font=attribution_title_font, fill=colors["source"])
+        _draw_text_body(image, draw, (title_x, y), line, font=attribution_title_font, fill=colors["source"], theme=theme)
         y += source_size + layout["title_gap"]
 
     if show_debug:
@@ -4280,7 +4364,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         for x in range(rule_left, rule_right, 5):
             draw.point((x, rule_y), fill=colors["faint"])
 
-        draw_text(draw, (strip_x, strip_y), debug_strip, font=debug_font, fill=colors["faint"])
+        _draw_text_body(image, draw, (strip_x, strip_y), debug_strip, font=debug_font, fill=colors["faint"], theme=theme)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
