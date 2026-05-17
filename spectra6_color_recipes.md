@@ -101,13 +101,12 @@ Recipes are grouped by *which pole of the octahedron* the third ink contributes 
 
 ### Deep tones (3-ink with black) — rich nighttime palette
 
-| Synthesised colour | Mix | In use | Source |
-|---|---|---|---|
-| Rich black | black + red + blue @ 60 / 20 / 20 | Every black-bg theme (`dark`, `nightvision`, `gothic`, `grimoire`, `chalkboard`, `chanbara`) via `_paint_page_bg` | Printer's trick: pure black ink alone reads slightly thin on Spectra 6 (the calibrated black is `#1F2226`, not true `#000000`); the chromatic underprint deepens it. Painted as the page background for every theme whose `THEMES[…]["page_bg"]` is `SPECTRA6["black"]`. Density-bias keeps black overwhelmingly dominant (10 cells / 16) so the page still reads as black at a glance — the red and blue dots are only perceptually integrated as a deeper ground at panel distance. |
-| Plum | red + blue + black @ 1/3 each | — | Deeper than the existing `alchemy` purple — for a midnight-ritual theme |
-| Print sepia | red + yellow + black @ 40 / 40 / 20 | — | **More authentic than the existing red+green brown** the `saloon` foxing uses. Real archival sepia is yellow-brown, not red-green brown — worth flagging as a forward path if a future "old-photograph" theme wants to upgrade from the 2-ink approximation. |
-| Maroon / burgundy | red + black @ 1/2 : 1/2 (2-ink) | — | 2-ink in practice — listed here because it's the "with black" sibling of the pastel set above; useful for a leather-bound / oxblood theme |
-| Navy | blue + black @ 1/2 : 1/2 (2-ink) | — | 2-ink in practice — deeper than the panel's already-dim native blue, for a midnight theme |
+| Synthesised colour | Mix | Source |
+|---|---|---|
+| Plum | red + blue + black @ 1/3 each | Deeper than the existing `alchemy` purple — for a midnight-ritual theme |
+| Print sepia | red + yellow + black @ 40 / 40 / 20 | **More authentic than the existing red+green brown** the `saloon` foxing uses. Real archival sepia is yellow-brown, not red-green brown — worth flagging as a forward path if a future "old-photograph" theme wants to upgrade from the 2-ink approximation. |
+| Maroon / burgundy | red + black @ 1/2 : 1/2 (2-ink) | 2-ink in practice — listed here because it's the "with black" sibling of the pastel set above; useful for a leather-bound / oxblood theme |
+| Navy | blue + black @ 1/2 : 1/2 (2-ink) | 2-ink in practice — deeper than the panel's already-dim native blue, for a midnight theme |
 
 (The maroon and navy rows are 2-ink and reachable via `draw_text_dithered` today; documented here so the K-darkened palette feels complete, not because they need a new primitive.)
 
@@ -128,8 +127,7 @@ Recipes are grouped by *which pole of the octahedron* the third ink contributes 
 |---|---|---|
 | Warm grey / taupe | red + yellow + white + black @ ~25 each | More interesting than pure black+white gray — picks up a subtle warm cast from the R+Y pair |
 | Cool slate | blue + green + white + black @ ~25 each | Cool counterpart to taupe — picks up a subtle cyan cast |
-
-(Rich black — `black + red + blue @ 60 / 20 / 20`, the printer's chromatic-underprint trick — used to live here as a notable exception; it's actually a 3-ink mix and is now the in-use page background for every black-ground theme. See **Deep tones (3-ink with black)** above for the live entry.)
+| Rich black | black + red + blue @ 60 / 20 / 20 | Printer's trick: pure black ink alone reads slightly thin on Spectra 6 (the calibrated black is `#1F2226`, not true `#000000`); adding chromatic underprint deepens it. Useful for the body fill of a high-contrast dark theme that wants to feel *blacker than the panel's native black*. |
 
 **Don't go past 4 inks.** The octahedron literature treats 5- and 6-vertex barycentric mixes as edge cases — `OctahedronDecomposer` (in `epd-dither`) explicitly limits itself to ≤4 vertices per pixel, and `epdoptimize`'s palette-distance model picks similarly small support sets. Past 4, per-cell density drops below 4 / 16 and the mix degenerates into either visible texture or muddy mid-grey.
 
