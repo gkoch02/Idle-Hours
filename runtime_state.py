@@ -45,6 +45,14 @@ class RuntimeState:
         # the displayed quote changes. Not persisted — a restart picks a fresh
         # random theme on the first render.
         self.current_random_theme: str | None = None
+        # quote_id the current random pick was paired with. Gates
+        # ``_maybe_pick_random_theme`` so a render-failure retry on the same
+        # quote_id is idempotent: without this, every retry tick would
+        # consume another bag entry (since the main loop leaves
+        # ``last_quote_id`` stale on failure) and the visible pass would
+        # silently lose themes. Not persisted, same rationale as
+        # ``current_random_theme``.
+        self.last_random_quote_id: tuple | None = None
         # Shuffled bag of themes not yet drawn in the current pass. Drained
         # one entry per quote change; refilled (reshuffled) when empty so
         # every theme is shown once before any repeat. Not persisted — a
