@@ -136,6 +136,14 @@ THEME_SATURATION: dict[str, float] = {
     # the dramatic blood-sun reads vivid rather than half-dithering into
     # a muted brick-red against the panel's anchored black.
     "chanbara": 0.7,
+    # Diagnostic / status panel — white ground, black body, red accent.
+    # Same chromatic-on-light profile as ``default`` / ``deco`` /
+    # ``saloon`` / ``roman`` so the gentler 0.5 tier is the natural
+    # starting point. The synthesised-stipple swatches are the whole
+    # point of the diags frame: their perceived hues depend on adjacent-
+    # pixel averaging at panel distance, so over-saturation would shift
+    # the calibration target.
+    "diags": 0.5,
 }
 
 

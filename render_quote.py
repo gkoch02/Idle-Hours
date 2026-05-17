@@ -68,6 +68,7 @@ THEME_ORDER: tuple[str, ...] = (
     "chalkboard",
     "placard",
     "chanbara",
+    "diags",
 )
 THEMES = {
     "default": {
@@ -560,6 +561,23 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
+    },
+    # Diagnostic / status panel. Not a literary frame — render() dispatches
+    # the diags theme to a special status layout (clock + bucket / layout /
+    # quality / source fields + a swatch grid showing the Spectra 6 palette
+    # and the 2-ink synthesised tones documented in CLAUDE.md). The palette
+    # itself is white/black/red so the fall-through paths (render_static_message
+    # for goodnight, render_source_card for the button-C overlay) still render
+    # readably without needing their own diags-specific code.
+    "diags": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
     },
 }
 SIDE_MARGIN = 20
@@ -1414,6 +1432,33 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # System sans for the diagnostic panel. The render path for diags is
+    # the status-grid layout, not the literary frame — a clean grotesque
+    # sans reads better at small label sizes than the Playfair serif
+    # default. Picks a different *family* (sans) from default/dark
+    # (transitional serif) so the fall-through paths (goodnight,
+    # source card) also look visibly different rather than aliasing
+    # default.
+    "diags": {
+        "quote_regular": [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -5051,9 +5096,309 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# Synthesised two-ink stipple recipes documented in CLAUDE.md. Each entry is
+# (display name, dark ink, light ink, light density, short label). The order
+# here drives the bottom swatch row of the diagnostic frame; the four
+# in-use recipes (tangerine / candlelit / mint / coral) are grouped first so
+# they read as the active palette before the reference / unused recipes
+# fanning out to the right.
+_DIAGS_SYNTH_SWATCHES: list[tuple[str, tuple[int, int, int], tuple[int, int, int], float, str]] = [
+    ("tangerine", SPECTRA6["red"], SPECTRA6["yellow"], 0.375, "R+Y 5:3"),
+    ("candlelit", SPECTRA6["red"], SPECTRA6["white"], 0.25, "R+W 3:1"),
+    ("mint",      SPECTRA6["green"], SPECTRA6["white"], 0.5, "G+W 1:1"),
+    ("coral",     SPECTRA6["red"], SPECTRA6["white"], 0.5, "R+W 1:1"),
+    ("amber",     SPECTRA6["red"], SPECTRA6["yellow"], 0.5, "R+Y 1:1"),
+    ("violet",    SPECTRA6["red"], SPECTRA6["blue"], 0.5, "R+B 1:1"),
+    ("sky",       SPECTRA6["blue"], SPECTRA6["white"], 0.5, "B+W 1:1"),
+    ("cyan",      SPECTRA6["green"], SPECTRA6["blue"], 0.5, "G+B 1:1"),
+    ("sepia",     SPECTRA6["red"], SPECTRA6["green"], 0.5, "R+G 1:1"),
+    ("olive",     SPECTRA6["yellow"], SPECTRA6["green"], 0.5, "Y+G 1:1"),
+]
+
+_DIAGS_SPECTRA6_SWATCHES: list[tuple[str, tuple[int, int, int], str]] = [
+    ("white",  SPECTRA6["white"],  "#FFFFFF"),
+    ("black",  SPECTRA6["black"],  "#000000"),
+    ("red",    SPECTRA6["red"],    "#FF0000"),
+    ("yellow", SPECTRA6["yellow"], "#FFFF00"),
+    ("blue",   SPECTRA6["blue"],   "#0000FF"),
+    ("green",  SPECTRA6["green"],  "#00FF00"),
+]
+
+
+def _diags_system_info() -> dict[str, str]:
+    """Return host / IP / uptime strings for the diagnostic frame.
+
+    Each lookup is wrapped so a misconfigured environment (no network,
+    non-Linux host, restricted /proc access) still produces a renderable
+    frame — the missing field falls back to ``"—"`` rather than aborting
+    the render and wedging the panel.
+
+    IP discovery uses the standard "UDP connect to a public address"
+    trick: it never actually sends a packet, but it pins the kernel's
+    chosen source address for that route, which is the appliance's
+    primary outbound IP. Falls back to ``socket.gethostbyname`` and
+    finally ``"—"`` when both fail (offline appliance with no DNS).
+    """
+    import socket
+
+    info: dict[str, str] = {"host": "—", "ip": "—", "uptime": "—"}
+    try:
+        host = socket.gethostname()
+        if host:
+            info["host"] = host
+    except Exception:
+        pass
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 53))
+            info["ip"] = sock.getsockname()[0]
+        finally:
+            sock.close()
+    except Exception:
+        try:
+            ip = socket.gethostbyname(socket.gethostname())
+            if ip and ip != "127.0.0.1":
+                info["ip"] = ip
+        except Exception:
+            pass
+    try:
+        with open("/proc/uptime", "r") as fh:
+            seconds = int(float(fh.read().split()[0]))
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes = rem // 60
+        if days:
+            info["uptime"] = f"{days}d {hours}h {minutes}m"
+        elif hours:
+            info["uptime"] = f"{hours}h {minutes}m"
+        else:
+            info["uptime"] = f"{minutes}m"
+    except Exception:
+        pass
+    return info
+
+
+def _fill_swatch_stipple(
+    image: Image.Image,
+    rect: tuple[int, int, int, int],
+    dark: tuple[int, int, int],
+    light: tuple[int, int, int],
+    light_density: float,
+) -> None:
+    """Paint a rectangular region with the same on-palette Bayer stipple
+    that ``draw_text_dithered`` applies to glyph masks. The three density
+    branches mirror that function so the swatch displays the recipe the
+    theme code would actually paint.
+    """
+    x0, y0, x1, y1 = rect
+    if x1 <= x0 or y1 <= y0:
+        return
+    px = image.load()
+    if light_density <= 0.25:
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                px[x, y] = light if (x % 2 == 0 and y % 2 == 0) else dark
+    elif light_density >= 0.5:
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                px[x, y] = dark if (x + y) % 2 == 0 else light
+    else:
+        threshold = round(light_density * 16)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                px[x, y] = light if BAYER_4x4[y % 4][x % 4] < threshold else dark
+
+
+def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Render the diagnostic frame for the ``diags`` theme.
+
+    Replaces the literary layout with a status panel: large clock, picker
+    metrics (bucket / layout / quality / source / matched phrase), the
+    Spectra 6 native palette, the synthesised two-ink stipple recipes
+    documented in CLAUDE.md, and a one-line quote preview at the bottom.
+    Useful for on-panel calibration ("does ``mint`` actually read green at
+    panel distance?") and for confirming the picker chose what you'd
+    expect.
+    """
+    colors = THEMES["diags"]
+    image = Image.new("RGB", (width, height), color=colors["page_bg"])
+    draw = ImageDraw.Draw(image)
+
+    INSET = 12
+    PAD_X = 22
+
+    # Outer frame
+    draw.rectangle((INSET, INSET, width - INSET - 1, height - INSET - 1), outline=colors["text"], width=1)
+
+    # Header bar
+    header_font = load_font(META_FONT_BOLD_CANDIDATES, size=14)
+    header = "LITCLOCK · DIAGS"
+    draw.text((PAD_X, INSET + 8), header, font=header_font, fill=colors["accent"])
+    rule_y = INSET + 32
+    draw.line((PAD_X, rule_y, width - PAD_X, rule_y), fill=colors["text"])
+
+    # ----- Top section: big clock + status grid -----
+    clock_font = load_font(theme_font_candidates("diags", "quote_bold"), size=88)
+    clock_bbox = draw.textbbox((0, 0), time_str, font=clock_font)
+    clock_w = clock_bbox[2] - clock_bbox[0]
+    clock_x = PAD_X
+    clock_y = rule_y + 10
+    draw.text((clock_x - clock_bbox[0], clock_y - clock_bbox[1]), time_str, font=clock_font, fill=colors["text"])
+
+    # Status table — right of the clock
+    field_key_font = load_font(META_FONT_BOLD_CANDIDATES, size=12)
+    field_val_font = load_font(META_FONT_CANDIDATES, size=12)
+    fields_x = clock_x + clock_w + 36
+    key_col_w = 92
+    f_y = clock_y + 6
+    LINE_H = 17
+
+    layout_name = choose_layout(quote_row.get("display_quote") or "")
+    bucket = quote_row.get("bucket") or "—"
+    resolved = quote_row.get("resolved_bucket") or bucket
+    quality = quote_row.get("quality_score")
+    source_id = quote_row.get("source_id")
+    line_number = quote_row.get("line_number")
+    matched = (quote_row.get("matched_text") or "—").replace("\n", " ").strip()
+    fallback = quote_row.get("used_fallback")
+
+    if resolved and bucket and resolved != bucket and fallback:
+        bucket_display = f"{bucket} → {resolved}"
+    else:
+        bucket_display = resolved or bucket
+
+    if source_id and line_number is not None:
+        id_display = f"{source_id}:{line_number}"
+    elif source_id:
+        id_display = str(source_id)
+    else:
+        id_display = "—"
+
+    fields = [
+        ("BUCKET", bucket_display),
+        ("LAYOUT", layout_name),
+        ("QUALITY", "—" if quality is None else str(quality)),
+        ("FALLBACK", "yes" if fallback else "no"),
+        ("ID", id_display),
+        ("MATCHED", matched if len(matched) <= 36 else matched[:34] + "…"),
+    ]
+    for key, val in fields:
+        draw.text((fields_x, f_y), key, font=field_key_font, fill=colors["accent"])
+        draw.text((fields_x + key_col_w, f_y), val, font=field_val_font, fill=colors["text"])
+        f_y += LINE_H
+
+    # ----- System info strip (host / ip / uptime) -----
+    # Sits in the open band between the status table (ends ~y=162) and the
+    # Spectra 6 swatches (start y=192) so the picker-output column on the
+    # right and the appliance-identity row at the bottom of the top block
+    # read as visually paired diagnostics.
+    sys_info = _diags_system_info()
+    sys_label_font = load_font(META_FONT_BOLD_CANDIDATES, size=11)
+    sys_val_font = load_font(META_FONT_CANDIDATES, size=11)
+    sys_y = 170
+    sys_entries = [
+        ("HOST", sys_info["host"]),
+        ("IP", sys_info["ip"]),
+        ("UPTIME", sys_info["uptime"]),
+    ]
+    # Distribute the three entries evenly across the inner width so the
+    # row looks balanced regardless of how long each value happens to be.
+    avail_strip_w = width - 2 * PAD_X
+    slot_w = avail_strip_w // len(sys_entries)
+    for i, (key, val) in enumerate(sys_entries):
+        slot_x = PAD_X + i * slot_w
+        draw.text((slot_x, sys_y), key, font=sys_label_font, fill=colors["accent"])
+        key_bb = draw.textbbox((0, 0), key, font=sys_label_font)
+        key_w = key_bb[2] - key_bb[0]
+        draw.text((slot_x + key_w + 8, sys_y), val, font=sys_val_font, fill=colors["text"])
+
+    # ----- Middle section: Spectra 6 swatches -----
+    section_font = load_font(META_FONT_BOLD_CANDIDATES, size=12)
+    label_bold = load_font(META_FONT_BOLD_CANDIDATES, size=10)
+    label_reg = load_font(META_FONT_CANDIDATES, size=10)
+
+    s1_y = 192
+    draw.text((PAD_X, s1_y), "SPECTRA 6 NATIVE PALETTE", font=section_font, fill=colors["accent"])
+
+    sw_top = s1_y + 18
+    sw_h = 56
+    sw_gap = 6
+    sw_count = len(_DIAGS_SPECTRA6_SWATCHES)
+    avail_w = width - 2 * PAD_X
+    sw_w = (avail_w - (sw_count - 1) * sw_gap) // sw_count
+    for i, (name, rgb, hex_code) in enumerate(_DIAGS_SPECTRA6_SWATCHES):
+        x0 = PAD_X + i * (sw_w + sw_gap)
+        x1 = x0 + sw_w
+        y1 = sw_top + sw_h
+        draw.rectangle((x0, sw_top, x1, y1), fill=rgb, outline=colors["text"], width=1)
+        # Pick a label colour that contrasts the swatch fill — black on light
+        # cells (white / yellow / green), white on the two darker ones.
+        is_dark_fill = rgb in (SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["red"])
+        label_fill = SPECTRA6["white"] if is_dark_fill else SPECTRA6["black"]
+        draw.text((x0 + 5, sw_top + 4), name.upper(), font=label_bold, fill=label_fill)
+        draw.text((x0 + 5, sw_top + 18), hex_code, font=label_reg, fill=label_fill)
+
+    # ----- Bottom section: synthesised stipple swatches -----
+    s2_y = sw_top + sw_h + 18
+    draw.text((PAD_X, s2_y), "SYNTHESISED (2-INK STIPPLE)", font=section_font, fill=colors["accent"])
+
+    sw2_top = s2_y + 18
+    sw2_color_h = 38
+    sw2_label_h = 28
+    sw2_h = sw2_color_h + sw2_label_h
+    sw2_gap = 5
+    sw2_count = len(_DIAGS_SYNTH_SWATCHES)
+    sw2_w = (avail_w - (sw2_count - 1) * sw2_gap) // sw2_count
+    for i, (name, dark, light, density, recipe) in enumerate(_DIAGS_SYNTH_SWATCHES):
+        x0 = PAD_X + i * (sw2_w + sw2_gap)
+        x1 = x0 + sw2_w
+        color_y1 = sw2_top + sw2_color_h
+        y1 = sw2_top + sw2_h
+        # Paint the full coloured stipple area first; the inset of 1 leaves
+        # the outline cleanly visible after the rectangle stroke below.
+        _fill_swatch_stipple(image, (x0 + 1, sw2_top + 1, x1, color_y1), dark, light, density)
+        draw.rectangle((x0, sw2_top, x1, color_y1), outline=colors["text"], width=1)
+        # Labels go below the coloured cell so the stipple texture stays
+        # fully visible — the whole point of the synth swatches is to
+        # show how the recipe reads on-panel at this size.
+        draw.text((x0, color_y1 + 3), name, font=label_bold, fill=colors["text"])
+        draw.text((x0, color_y1 + 15), recipe, font=label_reg, fill=colors["subtle"])
+
+    # ----- Footer: short quote preview + attribution -----
+    quote_y = sw2_top + sw2_h + 8
+    quote_font = load_font(theme_font_candidates("diags", "quote_regular"), size=13)
+    preview = (quote_row.get("display_quote") or "").strip()
+    preview = normalize_dashes(strip_underscore_emphasis(preview))
+    if len(preview) > 130:
+        preview = preview[:128].rstrip() + "…"
+    if preview:
+        preview = "“" + preview + "”"
+        lines = wrap_text(draw, preview, quote_font, width - 2 * PAD_X)[:1]
+        for line in lines:
+            draw.text((PAD_X, quote_y), line, font=quote_font, fill=colors["text"])
+            quote_y += 16
+
+    author_text = (quote_row.get("author") or "").strip()
+    title_text = (quote_row.get("title") or "").strip()
+    attrib_parts = [p for p in (author_text, title_text) if p]
+    if attrib_parts:
+        attrib_font = load_font(META_FONT_BOLD_CANDIDATES, size=12)
+        attrib = "— " + " · ".join(attrib_parts)
+        bbox = draw.textbbox((0, 0), attrib, font=attrib_font)
+        if bbox[2] - bbox[0] > width - 2 * PAD_X:
+            # Truncate the longer of the two parts so the line fits.
+            attrib = attrib[: max(1, len(attrib) - (bbox[2] - bbox[0] - (width - 2 * PAD_X)) // 6)] + "…"
+        draw.text((PAD_X, quote_y), attrib, font=attrib_font, fill=colors["accent"])
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
+    if theme == "diags":
+        return render_diags_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
