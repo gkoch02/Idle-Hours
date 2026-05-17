@@ -5192,6 +5192,17 @@ def _fill_swatch_stipple(
     theme code would actually paint.
     """
     x0, y0, x1, y1 = rect
+    # Clip to image bounds — ``PixelAccess`` (``px[x, y]``) raises
+    # ``IndexError`` on out-of-range coordinates, unlike PIL's draw primitives
+    # which silently clip. Callers may legitimately pass a rect that's partly
+    # or fully outside the image (e.g. the diags layout when rendered into a
+    # 320×192 web-preview thumbnail, where the synth-swatch band sits below
+    # the canvas) and the swatch should just disappear rather than crash.
+    w, h = image.size
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(w, x1)
+    y1 = min(h, y1)
     if x1 <= x0 or y1 <= y0:
         return
     px = image.load()
