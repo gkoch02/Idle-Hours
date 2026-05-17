@@ -4027,15 +4027,23 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
       Bayer dither converts 2 of every 16 ``page_bg`` white pixels to
       black (the 12.5% grey newsprint-pulp halftone the theme has
       always used), plus 1 red pixel and 1 green pixel per 4×4 tile
-      at Bayer values 2 and 3 — together a 12.5% rust-brown sepia
+      at Bayer values 6 and 9 — together a 12.5% rust-brown sepia
       speckle layer the eye averages into pale foxing at panel
       viewing distance. Real archival newspaper paper develops this
       faint orange-brown tint as the lignin in the pulp oxidises
       under light, the same way real newsprint develops the grey
       halftone the original Layer 0 already simulates. Adjacent
-      Bayer cells (one red, one green per 4×4 tile, diagonally ~2.8
-      px apart) blend at panel distance into the documented R+G 1:1
-      sepia recipe — same recipe ``saloon``'s foxing speckles use.
+      Bayer cells — red at ``(y%4, x%4) == (1, 3)`` and green at
+      ``(2, 3)`` — sit in the same column one row apart, blending
+      at panel distance into the documented R+G 1:1 sepia recipe
+      (same recipe ``saloon``'s foxing speckles use). Cell values 6
+      and 9 are deliberately chosen to keep the speckle pattern off
+      every existing pinned border / cross-gating sample coordinate
+      (``test_newsprint_inner_hairline_is_one_pixel_and_has_gap_above``,
+      ``test_blueprint_border_is_theme_gated`` at (6, 16), and
+      ``test_illuminated_border_is_theme_gated`` at (400, 22) all
+      sample cells whose Bayer values are outside {6, 9}, so the
+      foxing layer doesn't paint at any of them).
       The theme stays "no-colour-accent" by construction
       (``test_newsprint_theme_has_no_colour_accent`` still passes
       because the matched phrase / body / accent THEMES slots stay
@@ -4074,10 +4082,10 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
                 cell = row[x & 3]
                 if cell < 2:
                     pixels[x, y] = ink           # 12.5% black halftone
-                elif cell == 2:
-                    pixels[x, y] = sepia_red     # 6.25% red speckle
-                elif cell == 3:
-                    pixels[x, y] = sepia_green   # 6.25% green speckle
+                elif cell == 6:
+                    pixels[x, y] = sepia_red     # 6.25% red speckle at (1, 3)
+                elif cell == 9:
+                    pixels[x, y] = sepia_green   # 6.25% green speckle at (2, 3)
 
     draw = ImageDraw.Draw(image)
 
