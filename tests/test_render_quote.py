@@ -2131,6 +2131,41 @@ class TestDrawTextDithered:
             f"at {mismatches} pixel(s)"
         )
 
+    def test_alchemy_call_site_uses_purple_recipe(self):
+        """``_draw_text_body`` must call ``draw_text_dithered`` for the
+        alchemy red-accent path with ``light=blue`` so the eye averages
+        red+blue at panel distance into purple — the documented
+        two-ink violet recipe. A regression to solid red would lose
+        the alchemist's pigment register the theme is built around.
+        """
+        captured: dict = {}
+
+        def fake_dither(*args, **kwargs):
+            captured["density"] = kwargs.get("light_density")
+            captured["light"] = kwargs.get("light")
+            captured["dark"] = kwargs.get("dark")
+
+        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+            image = Image.new("RGB", (200, 60), (255, 255, 255))
+            draw = ImageDraw.Draw(image)
+            from PIL import ImageFont
+            font = ImageFont.load_default()
+            rq._draw_text_body(image, draw, (10, 10), "test", font, rq.SPECTRA6["red"], "alchemy")
+
+        assert captured.get("dark") == rq.SPECTRA6["red"], (
+            "alchemy purple dither must keep red as the dark ink"
+        )
+        assert captured.get("light") == rq.SPECTRA6["blue"], (
+            "alchemy purple dither must stipple toward blue (purple = red + blue)"
+        )
+        # Default density (0.5) → 50/50 checkerboard; ``light_density``
+        # may be the keyword default (None / unset) or 0.5 — either
+        # produces the documented purple recipe.
+        density = captured.get("density")
+        assert density in (None, 0.5), (
+            f"alchemy purple dither must use 50/50 density (default); got {density}"
+        )
+
     def test_gothic_call_site_uses_candlelit_density(self):
         """``_draw_text_body`` must call ``draw_text_dithered`` for the
         gothic red-accent path with ``light_density=0.25`` toward white.

@@ -524,7 +524,7 @@ Spectra 6 only has six inks (white / black / red / yellow / blue / green). Any o
 | Pink / coral | red + white at 1/2 : 1/2 | `dark=red, light=white` | `placard` (thumbtack corner-accent post-pass — weathered hand-painted red) |
 | Candlelit red | red + white at 3/4 : 1/4 | `dark=red, light=white, light_density=0.25` | `grimoire` (matched phrase only); `gothic` (matched phrase only — shares the candlelit-rubric signature with grimoire, the complementary-polarity blackletter sister) |
 | Mint | green + white at 1/2 : 1/2 | `dark=green, light=white` | `nightvision` (body / attribution / ornament) |
-| Purple / violet | red + blue at 1/2 : 1/2 | `dark=red, light=blue` | — |
+| Purple / violet | red + blue at 1/2 : 1/2 | `dark=red, light=blue` | `alchemy` (matched phrase only — Tyrian purple / mauveine, the canonical alchemist's pigment; reads as deep violet against the yellow parchment ground while the magic-circle border stays solid red ritual ink) |
 | Sky blue | blue + white at 1/2 : 1/2 | `dark=blue, light=white` | `glacier` (corner frost-crystal diagonal-shard tip post-pass — sunlight catching the ice surface; the post-pass flips green pixels to white inside each cluster bbox so the eye averages green+white into the sky-blue highlight) |
 | Cyan | green + blue at 1/2 : 1/2 | `dark=green, light=blue` | — |
 | Brown / sepia | red + green at 1/2 : 1/2 (mute further with black) | `dark=red, light=green` | `saloon` (foxing speckles — picked inline via `(px+py)&1` parity over the pre-computed `_SALOON_FOXING` table so the eye averages adjacent red/green dots into rust-brown, the actual material colour of aged-paper foxing rather than fire-engine ink) |

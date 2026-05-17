@@ -2000,6 +2000,18 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       polarity blackletter sisters, and sharing the candlelit-
       rubric signature ties them visually while their grounds keep
       them distinct.
+    * ``alchemy`` — only the red matched-phrase accent gets
+      dithered, 50/50 blue-on-red checkerboard via the documented
+      two-ink purple/violet recipe (``dark=red, light=blue``), so
+      the phrase reads as deep purple against the yellow parchment
+      ground. Purple is the canonical alchemist's pigment (Tyrian
+      from murex, later "mauveine" — the synthesised dye that
+      birthed industrial chemistry); the body and border still
+      paint solid (the magic-circle rule, corner pentagrams, and
+      element-glyph triangles are intentional ritual ink, not
+      candidates for the chromatic-mix register the time phrase
+      occupies). Body / attribution / source-id text in black
+      passes through solid.
     """
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
@@ -2008,6 +2020,9 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     elif theme == "gothic" and fill == SPECTRA6["red"]:
         # Same candlelit-rubric recipe as ``grimoire``; see docstring.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+    elif theme == "alchemy" and fill == SPECTRA6["red"]:
+        # 50/50 red+blue checkerboard → perceived purple; see docstring.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
     elif theme == "deco" and fill == SPECTRA6["red"]:
         # 3/8 yellow on 5/8 red via the shared 4×4 Bayer matrix; matches
         # ``draw_deco_border``'s post-pass threshold so the matched
