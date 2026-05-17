@@ -402,8 +402,13 @@ THEMES = {
     # tome), with a red TFoustScript matched phrase glowing through it
     # like a magic-circle inscription scrawled by a phantom hand — the
     # hollow-outline shaggy silhouette of TFoust reads as occult
-    # sigil-work against the dignified vintage-press body. Shares the
-    # black/white/red palette shape with ``gothic`` but is
+    # sigil-work against the dignified vintage-press body. The
+    # matched-phrase red is stippled with a sparse 1-in-4 white-on-red
+    # dither (25% white / 75% red — see ``_draw_text_body``), so the
+    # phrase shimmers like a candle-lit rubric against the black ground
+    # without diluting into pink at panel distance; the sparse density
+    # echoes the white-on-green ground in ``draw_atomic_border``. Shares
+    # the black/white/red palette shape with ``gothic`` but is
     # iconographically unrelated: gothic uses UnifrakturMaguntia
     # blackletter plus cathedral-tracery quatrefoils, grimoire uses
     # TFoustScript hollow-display plus *inscribed* pentagrams and the
@@ -1530,8 +1535,8 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
                 px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
 
 
-def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_offset=(0, 0)):
-    """Paint ``text`` as a 50/50 ``dark``/``light`` Bayer stipple, like
+def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_offset=(0, 0), light_density: float = 0.5):
+    """Paint ``text`` as a ``dark``/``light`` Bayer stipple, like
     ``draw_faux_gray_text`` but iterates only over the text's bounding box.
 
     Used by the nightvision body-text path, which calls this once per word
@@ -1543,6 +1548,17 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     ``draw_faux_gray_text`` so the two paths interleave cleanly when a
     theme uses both (e.g. dithered body text plus dithered ornament
     quote marks).
+
+    ``light_density`` chooses between two on-palette stipple densities:
+
+    * ``0.5`` (default) — 50/50 checkerboard. Half the inked pixels paint
+      ``light`` and half paint ``dark``.
+    * ``0.25`` — sparse 1-in-4 (one ``light`` pixel per 2×2 tile, 75%
+      ``dark``). Matches the ``draw_atomic_border`` Layer 0 ground
+      pattern. Used by ``grimoire`` to lift its red matched-phrase
+      glyphs with a sparse white stipple — enough white to read as a
+      candlelit-rubric shimmer against the black ground without
+      diluting the red into pink at panel distance.
 
     The mask is thresholded at ≥128 rather than treated as binary on every
     nonzero coverage. Pillow renders TTF glyphs with an antialiased mask
@@ -1576,27 +1592,49 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     px = image.load()
     mx = mask.load()
     ox, oy = pattern_offset
-    for y in range(region_h):
-        ay = y + y0
-        for x in range(region_w):
-            if mx[x, y] >= 128:
-                ax = x + x0
-                px[ax, ay] = dark if ((ax + ox) + (ay + oy)) % 2 == 0 else light
+    if light_density <= 0.25:
+        # Sparse 1-in-4: light only where both axes are even in the
+        # offset frame, so one light pixel per 2×2 tile (25% light).
+        for y in range(region_h):
+            ay = y + y0
+            for x in range(region_w):
+                if mx[x, y] >= 128:
+                    ax = x + x0
+                    px[ax, ay] = light if ((ax + ox) % 2 == 0 and (ay + oy) % 2 == 0) else dark
+    else:
+        for y in range(region_h):
+            ay = y + y0
+            for x in range(region_w):
+                if mx[x, y] >= 128:
+                    ax = x + x0
+                    px[ax, ay] = dark if ((ax + ox) + (ay + oy)) % 2 == 0 else light
 
 
 def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
-    """Draw body / attribution text, stippling green→white on nightvision.
+    """Draw body / attribution text, stippling per-theme accents on a
+    short allowlist of themes; every other theme falls through to a
+    solid ``draw.text`` call.
 
-    The nightvision theme renders body and attribution glyphs as a 50/50
-    green/white Bayer stipple so the perceived ink lifts from Spectra-6
-    saturated green to a brighter mint, improving legibility at panel-
-    viewing distance. Only fills equal to the body green get dithered —
-    the matched-phrase yellow accent is drawn solid, as are debug/footer
-    labels in other themes that happen to pass through this seam. Every
-    other theme falls through to a normal solid ``draw.text`` call.
+    * ``nightvision`` — body / attribution glyphs render as a 50/50
+      green/white Bayer stipple so the perceived ink lifts from
+      Spectra-6 saturated green to a brighter mint, improving
+      legibility at panel-viewing distance. Only fills equal to the
+      body green get dithered — the matched-phrase yellow accent is
+      drawn solid, as are debug/footer labels in other themes that
+      happen to pass through this seam.
+    * ``grimoire`` — only the red matched-phrase accent gets dithered,
+      sparse 1-in-4 white-on-red (75% red / 25% white), so the
+      phrase glows like a candlelit rubric against the black
+      leather-bound ground without diluting into pink. Body /
+      attribution / source-id text in white passes through solid,
+      and other themes that share the red accent colour (default,
+      dark, scholar, etc.) keep their solid red — the stipple is a
+      grimoire signature, not a generic red-on-black treatment.
     """
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
+    elif theme == "grimoire" and fill == SPECTRA6["red"]:
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
     else:
         draw.text(xy, text, font=font, fill=fill)
 
