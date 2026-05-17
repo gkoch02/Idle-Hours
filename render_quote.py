@@ -1991,11 +1991,38 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       ``draw_deco_border``'s final pass dithers its painted red
       pixels using the same Bayer threshold so the matched phrase
       and border decoration share one orange tone.
+    * ``gothic`` — only the red matched-phrase blackletter gets
+      dithered, sparse 1-in-4 white-on-red (75% red / 25% white),
+      so the phrase glows like a candlelit rubric against the black
+      ground without diluting into pink. Mirrors the recipe
+      ``grimoire`` already uses on *its* blackletter matched
+      phrase: the two themes are deliberately complementary-
+      polarity blackletter sisters, and sharing the candlelit-
+      rubric signature ties them visually while their grounds keep
+      them distinct.
+    * ``alchemy`` — only the red matched-phrase accent gets
+      dithered, 50/50 blue-on-red checkerboard via the documented
+      two-ink purple/violet recipe (``dark=red, light=blue``), so
+      the phrase reads as deep purple against the yellow parchment
+      ground. Purple is the canonical alchemist's pigment (Tyrian
+      from murex, later "mauveine" — the synthesised dye that
+      birthed industrial chemistry); the body and border still
+      paint solid (the magic-circle rule, corner pentagrams, and
+      element-glyph triangles are intentional ritual ink, not
+      candidates for the chromatic-mix register the time phrase
+      occupies). Body / attribution / source-id text in black
+      passes through solid.
     """
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+    elif theme == "gothic" and fill == SPECTRA6["red"]:
+        # Same candlelit-rubric recipe as ``grimoire``; see docstring.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+    elif theme == "alchemy" and fill == SPECTRA6["red"]:
+        # 50/50 red+blue checkerboard → perceived purple; see docstring.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
     elif theme == "deco" and fill == SPECTRA6["red"]:
         # 3/8 yellow on 5/8 red via the shared 4×4 Bayer matrix; matches
         # ``draw_deco_border``'s post-pass threshold so the matched
@@ -2810,6 +2837,31 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
         draw.line([(mx - star_r, my), (mx + star_r, my)], fill=body_color, width=1)
         draw.line([(mx, my - star_r), (mx, my + star_r)], fill=body_color, width=1)
 
+    # Aurora-on-ice post-pass: flip ~50% of the diagonal shard's green
+    # pixels to white on a 1×1 checkerboard inside each corner cluster's
+    # bbox. The eye averages the resulting green+white pattern into a
+    # sky-blue highlight at panel distance (50/50 green+white is the
+    # documented two-ink mint recipe; here it lifts the deepest shard
+    # tip toward the "sunlight catching the ice surface" register the
+    # theme's brief calls for — the two short body-blue shards stay
+    # solid so the cluster keeps a clear depth/highlight gradient).
+    # Bbox-scoped because the shards fan ≤ long_arm+2 px from each
+    # anchor; walking the full 800×480 canvas would be wasteful.
+    pixels = image.load()
+    for ax, ay, dx, dy in corner_anchors:
+        x0 = min(ax + dx * (long_arm + 2), ax - base_half - 1)
+        x1 = max(ax + dx * (long_arm + 2), ax + base_half + 1)
+        y0 = min(ay + dy * (long_arm + 2), ay - base_half - 1)
+        y1 = max(ay + dy * (long_arm + 2), ay + base_half + 1)
+        x0 = max(0, x0)
+        y0 = max(0, y0)
+        x1 = min(width - 1, x1)
+        y1 = min(height - 1, y1)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = SPECTRA6["white"]
+
 
 def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
     """Paint a classroom-chalkboard surround: doubled white wooden frame
@@ -2943,6 +2995,26 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
             (cx - tack_radius, cy - tack_radius, cx + tack_radius, cy + tack_radius),
             fill=accent_color,
         )
+
+    # Weathered-paint post-pass: flip ~50% of each tack's red pixels
+    # to white on a 1×1 checkerboard inside each tack's bbox. The eye
+    # averages red+white at panel distance into coral pink — the
+    # documented two-ink recipe — so the tacks read as faded
+    # hand-painted shop-sign red rather than fire-engine vermilion.
+    # Sign-painter red weathers to coral over time and the tacks (at
+    # the exposed corners of a sandwich-board sign) would be the first
+    # element to fade. Bbox-scoped per-tack so the cost stays trivial
+    # (~80 pixels per render).
+    pixels = image.load()
+    for cx, cy in tack_centres:
+        x0 = max(0, cx - tack_radius)
+        y0 = max(0, cy - tack_radius)
+        x1 = min(width - 1, cx + tack_radius)
+        y1 = min(height - 1, cy + tack_radius)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = SPECTRA6["white"]
 
 
 def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
@@ -3466,15 +3538,28 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
     # the texture fills the canvas at the same visual density. Single-
     # pixel and 3×3-pixel spots intermix for a non-uniform "aged paper"
     # texture rather than a regular stipple grid.
+    #
+    # Sepia post-mix: flip ~50% of speckles to green on a (px+py)
+    # parity gate so the eye averages adjacent red+green dots into
+    # rust-brown at panel distance. Foxing on aged paper is literally
+    # rust-brown rather than fire-engine red, and the 50/50 red+green
+    # checkerboard is the documented two-ink sepia recipe in CLAUDE.md.
+    # The decision keys off the (px, py) source coordinates rather than
+    # the rescaled (x, y) so the foxing texture stays byte-identical
+    # across canvas sizes (the golden suite and the contact sheet rely
+    # on this — same fixed-seed invariant that ``_SALOON_FOXING`` already
+    # honours).
     sx = width / DEFAULT_WIDTH
     sy = height / DEFAULT_HEIGHT
+    foxing_alt = SPECTRA6["green"]
     for px, py, radius in _SALOON_FOXING:
         x = int(px * sx)
         y = int(py * sy)
+        speckle_fill = foxing_alt if (px + py) & 1 == 0 else accent
         if radius == 0:
-            draw.point((x, y), fill=accent)
+            draw.point((x, y), fill=speckle_fill)
         else:
-            draw.rectangle((x - 1, y - 1, x + 1, y + 1), fill=accent)
+            draw.rectangle((x - 1, y - 1, x + 1, y + 1), fill=speckle_fill)
 
     # ------------------------------------------------------------------
     # Layer 2: Top + bottom decorative banner bands.

@@ -2130,3 +2130,192 @@ class TestDrawTextDithered:
             f"draw_deco_border post-pass deviated from Bayer threshold 6 "
             f"at {mismatches} pixel(s)"
         )
+
+    def test_alchemy_call_site_uses_purple_recipe(self):
+        """``_draw_text_body`` must call ``draw_text_dithered`` for the
+        alchemy red-accent path with ``light=blue`` so the eye averages
+        red+blue at panel distance into purple — the documented
+        two-ink violet recipe. A regression to solid red would lose
+        the alchemist's pigment register the theme is built around.
+        """
+        captured: dict = {}
+
+        def fake_dither(*args, **kwargs):
+            captured["density"] = kwargs.get("light_density")
+            captured["light"] = kwargs.get("light")
+            captured["dark"] = kwargs.get("dark")
+
+        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+            image = Image.new("RGB", (200, 60), (255, 255, 255))
+            draw = ImageDraw.Draw(image)
+            from PIL import ImageFont
+            font = ImageFont.load_default()
+            rq._draw_text_body(image, draw, (10, 10), "test", font, rq.SPECTRA6["red"], "alchemy")
+
+        assert captured.get("dark") == rq.SPECTRA6["red"], (
+            "alchemy purple dither must keep red as the dark ink"
+        )
+        assert captured.get("light") == rq.SPECTRA6["blue"], (
+            "alchemy purple dither must stipple toward blue (purple = red + blue)"
+        )
+        # Default density (0.5) → 50/50 checkerboard; ``light_density``
+        # may be the keyword default (None / unset) or 0.5 — either
+        # produces the documented purple recipe.
+        density = captured.get("density")
+        assert density in (None, 0.5), (
+            f"alchemy purple dither must use 50/50 density (default); got {density}"
+        )
+
+    def test_gothic_call_site_uses_candlelit_density(self):
+        """``_draw_text_body`` must call ``draw_text_dithered`` for the
+        gothic red-accent path with ``light_density=0.25`` toward white.
+        A regression to solid red would lose the candlelit-rubric
+        signature that ties gothic to its sister blackletter theme
+        (grimoire), and a flip to ``light=yellow`` or any other density
+        would shift the matched phrase off the agreed candlelit tone.
+        """
+        captured: dict = {}
+
+        def fake_dither(*args, **kwargs):
+            captured["density"] = kwargs.get("light_density")
+            captured["light"] = kwargs.get("light")
+
+        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+            image = Image.new("RGB", (200, 60), (255, 255, 255))
+            draw = ImageDraw.Draw(image)
+            from PIL import ImageFont
+            font = ImageFont.load_default()
+            rq._draw_text_body(image, draw, (10, 10), "test", font, rq.SPECTRA6["red"], "gothic")
+
+        assert captured.get("density") == 0.25, (
+            f"gothic red-accent dither expected light_density=0.25, "
+            f"got {captured.get('density')}"
+        )
+        assert captured.get("light") == rq.SPECTRA6["white"], (
+            "gothic red-accent dither must stipple toward white for the "
+            "candlelit-rubric register"
+        )
+
+    def test_saloon_foxing_speckles_split_red_and_green(self):
+        """``draw_saloon_border`` paints foxing speckles in a mix of
+        red and green so the eye averages adjacent dots into sepia.
+        Both inks must be present in non-trivial counts; an all-red or
+        all-green result would mean the (px+py)-parity gate broke. The
+        decision keys off the source ``_SALOON_FOXING`` coordinates,
+        not the rescaled canvas position, so the ratio stays stable
+        across canvas sizes.
+        """
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        rq.draw_saloon_border(
+            image,
+            {
+                "text": rq.SPECTRA6["black"],
+                "accent": rq.SPECTRA6["red"],
+                "page_bg": rq.SPECTRA6["white"],
+            },
+        )
+        # Count speckles inside the body region (outside both banner
+        # bands and outside the frame area) so other red ornaments
+        # (mid-edge diamonds, fleuron wings) can't bias the count.
+        # Body region is roughly y in (80, 400), x in (40, 760).
+        pixels = image.load()
+        red_count = 0
+        green_count = 0
+        for y in range(80, 400):
+            for x in range(40, 760):
+                p = pixels[x, y]
+                if p == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif p == rq.SPECTRA6["green"]:
+                    green_count += 1
+        # Both colours present; neither dominates by more than 3:1 (a
+        # broken parity gate would land at 100:0 or 0:100).
+        assert red_count > 30 and green_count > 30, (
+            f"saloon foxing must mix red + green speckles, got "
+            f"red={red_count} green={green_count}"
+        )
+        ratio = red_count / max(green_count, 1)
+        assert 0.33 < ratio < 3.0, (
+            f"saloon foxing red:green ratio outside sepia band: {ratio:.2f} "
+            f"(red={red_count} green={green_count})"
+        )
+
+    def test_glacier_diagonal_shards_split_green_and_white(self):
+        """``draw_glacier_border``'s diagonal shards (the longest in
+        each corner cluster) are painted green and then post-passed to
+        ~50% white, so the eye averages green+white into sky-blue at
+        panel distance. White and green must both be present inside
+        the corner cluster bbox; an all-green result would mean the
+        post-pass never fired.
+        """
+        # Render on a sentinel background that's neither white nor green
+        # so post-pass-flipped pixels are distinguishable from the bg.
+        image = Image.new("RGB", (800, 480), (1, 2, 3))
+        rq.draw_glacier_border(
+            image,
+            {"text": rq.SPECTRA6["blue"], "accent": rq.SPECTRA6["green"]},
+        )
+        # Sample a 40×40 box at the top-left corner (the cluster
+        # fans out from the inner-frame corner at ~(16, 16) and the
+        # longest shard reaches ~(30, 30)).
+        pixels = image.load()
+        green_count = 0
+        white_count = 0
+        for y in range(0, 40):
+            for x in range(0, 40):
+                p = pixels[x, y]
+                if p == rq.SPECTRA6["green"]:
+                    green_count += 1
+                elif p == rq.SPECTRA6["white"]:
+                    white_count += 1
+        assert green_count > 0 and white_count > 0, (
+            f"glacier TL shard must mix green + white (sky-blue post-pass); "
+            f"got green={green_count} white={white_count}"
+        )
+        # The white pixels in this bbox come exclusively from the
+        # post-pass flipping accent (green) pixels; assert their layout
+        # honours the (x+y)&1 checkerboard, no drift allowed.
+        for y in range(0, 40):
+            for x in range(0, 40):
+                if pixels[x, y] == rq.SPECTRA6["white"]:
+                    assert (x + y) & 1 == 0, (
+                        f"glacier post-pass flipped a non-checkerboard pixel "
+                        f"at ({x}, {y})"
+                    )
+
+    def test_placard_tacks_split_red_and_white(self):
+        """``draw_placard_border``'s four tacks are painted red and
+        then post-passed to ~50% white, so the eye averages red+white
+        into coral pink. Both inks must be present inside each tack's
+        bbox and the post-pass must honour the (x+y)&1 checkerboard.
+        """
+        # Sentinel background so post-pass whites are distinguishable.
+        image = Image.new("RGB", (800, 480), (1, 2, 3))
+        rq.draw_placard_border(
+            image,
+            {"text": rq.SPECTRA6["black"], "accent": rq.SPECTRA6["red"]},
+        )
+        pixels = image.load()
+        # Tack centre is at (38, 38) with radius 4 → bbox (34..42).
+        red_count = 0
+        white_count = 0
+        for y in range(34, 43):
+            for x in range(34, 43):
+                p = pixels[x, y]
+                if p == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif p == rq.SPECTRA6["white"]:
+                    white_count += 1
+        assert red_count > 0 and white_count > 0, (
+            f"placard TL tack must mix red + white (coral post-pass); "
+            f"got red={red_count} white={white_count}"
+        )
+        # Whites inside the tack bbox come exclusively from the
+        # post-pass; assert checkerboard parity, no drift.
+        for y in range(34, 43):
+            for x in range(34, 43):
+                if pixels[x, y] == rq.SPECTRA6["white"]:
+                    assert (x + y) & 1 == 0, (
+                        f"placard post-pass flipped a non-checkerboard pixel "
+                        f"at ({x}, {y})"
+                    )
