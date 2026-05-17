@@ -143,6 +143,18 @@ class TestMinutesPastToMatchType:
         assert c.hour == 12
         assert c.minute == 40
 
+    def test_compound_minute_split_by_line_break(self):
+        # Gutenberg sources line-wrap hyphenated words: "forty-\nseven minutes
+        # past ten" — the regex must still capture the full compound, otherwise
+        # it falls back to "seven minutes past ten" (10:07) and the row lands
+        # in the wrong bucket (h10_five_past instead of h10_quarter_to).
+        c = _first_candidate("At forty-\nseven minutes past ten Murchison fired.", "minutes_past_to")
+        assert c is not None
+        assert c.hour == 10
+        assert c.minute == 47
+        # matched_text whitespace is normalized to a single space by the miner.
+        assert "forty" in c.matched_text and "seven" in c.matched_text
+
 
 class TestJustAfterBeforeMatchType:
     def test_shortly_after_three(self):

@@ -120,6 +120,21 @@ class TestInferTimeFromQuote:
         assert result["hour"] == 6
         assert result["minute"] == 20
 
+    def test_compound_minute_with_dash_then_space(self):
+        # "forty- seven" arises when Gutenberg line-wraps "forty-\nseven" and
+        # clean_display_quotes.py collapses the newline to a single space. The
+        # repair regex must treat this as one compound minute_word so the
+        # substring-collision (captured "seven minutes past ten") gets fixed
+        # back to the full "forty-seven minutes past ten" (= 10:47).
+        result = infer_time_from_quote(
+            "At forty- seven minutes past ten Murchison fired the spark."
+        )
+        assert result is not None
+        assert result["hour"] == 10
+        assert result["minute"] == 47
+        assert result["normalized_time"] == "10:47"
+        assert result["fuzzy_bucket"] == "h10_quarter_to"
+
 
 class TestMain:
     def test_fixes_substring_collision(self, tmp_path):
