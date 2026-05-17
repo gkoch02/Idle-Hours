@@ -2016,14 +2016,19 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       body green get dithered — the matched-phrase yellow accent is
       drawn solid, as are debug/footer labels in other themes that
       happen to pass through this seam.
-    * ``grimoire`` — only the red matched-phrase accent gets dithered,
-      sparse 1-in-4 white-on-red (75% red / 25% white), so the
-      phrase glows like a candlelit rubric against the black
-      leather-bound ground without diluting into pink. Body /
-      attribution / source-id text in white passes through solid,
-      and other themes that share the red accent colour (default,
-      dark, scholar, etc.) keep their solid red — the stipple is a
-      grimoire signature, not a generic red-on-black treatment.
+    * ``grimoire`` — the red accent fill is rerouted to solid white at
+      paint time so the matched phrase reads cleanly at panel
+      viewing distance. The earlier candlelit-rubric (sparse 1-in-4
+      white-on-red) sat the phrase at a half-density pink that read
+      muddy on the black ground at typical viewing distance. The
+      TFoust hollow-display matched-phrase font + the bold weight
+      provide the visual differentiation against the IM Fell English
+      white body. The grimoire border still uses solid red for its
+      pentagrams, outer rule, and Mars sigil (Mars is then bbox-
+      post-passed to maroon — see ``draw_grimoire_border``), so the
+      operative red ink stays present on the page; only the *text*
+      register switches to monochrome-bold. Other themes that share
+      the red accent colour keep their own per-theme behaviour.
     * ``deco`` — only the red matched-phrase accent gets dithered,
       red-biased yellow-on-red (3/8 yellow, 5/8 red) on a shared
       4×4 Bayer matrix, so the phrase reads as warm tangerine at
@@ -2061,7 +2066,10 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+        # Solid white — see docstring for the half-red-was-hard-to-read
+        # rationale. The matched phrase stays visually distinct via the
+        # TFoust hollow-display face + bold weight.
+        draw.text(xy, text, font=font, fill=SPECTRA6["white"])
     elif theme == "gothic" and fill == SPECTRA6["red"]:
         # Same candlelit-rubric recipe as ``grimoire``; see docstring.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
@@ -2388,20 +2396,39 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_gothic_border(image: Image.Image, colors: dict) -> None:
-    """Paint a Gothic-tracery border: double rule + corner quatrefoils + mid-edge diamonds.
+    """Paint a Gothic-tracery border: double rule + maroon quatrefoils + cream mid-edge diamonds.
 
     The outer red rule and inner white rule echo the doubled rubrication
     line of medieval manuscripts but flip the colour split that
     ``illuminated`` uses (single ink colour for both rules) — the
     polychrome Scotch-rule is the giveaway that this is the cathedral
-    chronicle, not the scriptorium page. Four corner quatrefoils — four
-    small red lobes around a tiny white centre dot — are the iconic
-    four-lobed Gothic motif found in cathedral tracery, rose windows,
-    and printed-book ornaments; the centre dot keeps the four lobes
-    legible on the panel rather than reading as an indistinct red blob.
-    Four small red diamonds at the mid-edges nod to the chapter
-    dividers used in early printed German books, and break up the long
-    rules without competing visually with the corner ornaments.
+    chronicle, not the scriptorium page.
+
+    Four corner quatrefoils — the iconic four-lobed Gothic motif found
+    in cathedral tracery, rose windows, and printed-book ornaments —
+    each consist of four lobes around a small white centre dot. Each
+    lobe is painted in red as a sentinel ink, then a per-lobe bbox
+    post-pass flips half of the painted pixels to black per
+    ``(x+y)&1`` parity — the documented R+K 1:1 maroon recipe (same
+    one ``dispatch``'s rubber stamp uses). The eye averages adjacent
+    red+black dots into maroon / iron-aged tracery at panel viewing
+    distance — the actual material colour of real Gothic ironwork
+    rather than the freshly-painted fire-engine red of an
+    illustrative reproduction. The white centre dots stay solid for
+    silhouette legibility.
+
+    Four mid-edge diamond ornaments nod to the chapter dividers used
+    in early printed German books, painted in cream (yellow + white)
+    via the documented Y+W 1:1 recipe: each diamond is painted as a
+    yellow polygon then a bbox post-pass flips half of its pixels to
+    white per parity. On the black ground the eye averages adjacent
+    yellow+white dots into a warm parchment-cream — reads as candle
+    flicker on a cathedral wall rather than the saturated yellow chalk
+    of a daylight render. Pre-existing red mid-edge ornaments would
+    have read as identical-tone repetition of the corner quatrefoils;
+    the cream shift gives the mid-edges their own chromatic register
+    and ties the gothic theme back to the candlelit-rubric signature
+    its matched phrase already uses.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -2424,25 +2451,47 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
     # Corner quatrefoils: four small lobes arranged in a + around the
     # corner anchor, then a smaller white centre dot to give the
     # four-lobed clover silhouette legibility on a 4-bit panel.
+    # Lobes paint in red as a sentinel; the per-lobe post-pass below
+    # flips half to black for the documented R+K maroon recipe.
     lobe_radius = 5
     lobe_offset = 4
+    sentinel_red = SPECTRA6["red"]
+    sentinel_yellow = SPECTRA6["yellow"]
+    maroon_dark = SPECTRA6["black"]
+    cream_light = SPECTRA6["white"]
     centres = [
         (outer_inset, outer_inset),
         (width - 1 - outer_inset, outer_inset),
         (outer_inset, height - 1 - outer_inset),
         (width - 1 - outer_inset, height - 1 - outer_inset),
     ]
+    lobe_bboxes: list[tuple[int, int, int, int]] = []
     for cx, cy in centres:
         for dx, dy in ((0, -lobe_offset), (lobe_offset, 0), (0, lobe_offset), (-lobe_offset, 0)):
             lx, ly = cx + dx, cy + dy
             draw.ellipse(
                 (lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius),
-                fill=accent,
+                fill=sentinel_red,
             )
+            lobe_bboxes.append((lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius))
         draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=body)
 
-    # Mid-edge red diamonds — small ornaments centred on each side of
-    # the outer rule.
+    pixels = image.load()
+    # Maroon post-pass on each lobe bbox — flip half of the red pixels
+    # to black per (x+y)&1 parity inside the per-lobe bbox.
+    for x0, y0, x1, y1 in lobe_bboxes:
+        x0 = max(0, x0)
+        y0 = max(0, y0)
+        x1 = min(width - 1, x1)
+        y1 = min(height - 1, y1)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                    pixels[px, py] = maroon_dark
+
+    # Mid-edge cream diamonds — painted in yellow as a sentinel, then a
+    # per-diamond bbox post-pass flips half of the painted pixels to
+    # white per parity for the documented Y+W cream recipe.
     diamond = 4
     midpoints = [
         (width // 2, outer_inset),
@@ -2453,8 +2502,17 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
     for cx, cy in midpoints:
         draw.polygon(
             [(cx, cy - diamond), (cx + diamond, cy), (cx, cy + diamond), (cx - diamond, cy)],
-            fill=accent,
+            fill=sentinel_yellow,
         )
+    for cx, cy in midpoints:
+        x0 = max(0, cx - diamond)
+        y0 = max(0, cy - diamond)
+        x1 = min(width - 1, cx + diamond)
+        y1 = min(height - 1, cy + diamond)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_yellow:
+                    pixels[px, py] = cream_light
 
 
 def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
@@ -2622,14 +2680,69 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
     # outer rule. Each helper draws a ~14 px-tall symbol; the moon
     # carving uses ``page_bg`` to chisel a crescent out of a filled disk
     # without painting outside its own footprint.
+    #
+    # Each planet now reads in its CANONICAL celestial colour rather
+    # than the shared red ``accent``: Sun ☉ → tangerine (the warm
+    # solar gold the alchemists called *aurum*), Moon ☽ → sky (the
+    # cool argent / silver-blue of lunar work), Mars ♂ → maroon
+    # (oxblood / iron — the planet's metallic correspondence), Venus
+    # ♀ → violet (copper-bloom / verdigris-leaning mauve — the
+    # canonical "Venusian" ink in alchemical engravings). The Sun
+    # helper paints in red, then a bbox post-pass flips ~3/8 to
+    # yellow at Bayer threshold 6 (the documented R+Y 5/8:3/8
+    # tangerine recipe). The Moon helper paints in blue as a sentinel,
+    # then a bbox post-pass flips half of those blue pixels to white
+    # per ``(x+y)&1`` parity (the documented B+W 1:1 sky recipe).
+    # Mars paints in red and flips half to black for maroon (R+K 1:1).
+    # Venus paints in red and flips half to blue for violet (R+B 1:1).
+    # The four bboxes (±14 from each mid-edge anchor) don't overlap
+    # any other layer, so the post-passes are safe to bbox-scope.
     mid_top = (width // 2, outer_inset)
     mid_bottom = (width // 2, height - 1 - outer_inset)
     mid_left = (outer_inset, height // 2)
     mid_right = (width - 1 - outer_inset, height // 2)
+    moon_disc_blue = SPECTRA6["blue"]
     _draw_grimoire_sun(draw, *mid_top, accent)
-    _draw_grimoire_moon(draw, *mid_bottom, accent, page_bg)
+    _draw_grimoire_moon(draw, *mid_bottom, moon_disc_blue, page_bg)
     _draw_grimoire_mars(draw, *mid_left, accent)
     _draw_grimoire_venus(draw, *mid_right, accent)
+
+    # Per-planet bbox post-pass for the celestial-colour recipes.
+    # Sigils are at most ~14 px on each side from their mid-edge
+    # anchor (mars/venus offsets shift the bbox slightly off-anchor
+    # — see their helpers for the exact arrow / cross geometry; the
+    # padding here generously covers them).
+    pixels = image.load()
+    sigil_radius = 16
+    planet_passes = (
+        # (centre, sentinel_ink, light_ink, density)
+        (mid_top, SPECTRA6["red"], SPECTRA6["yellow"], 0.375),   # ☉ Sun → tangerine
+        (mid_bottom, moon_disc_blue, SPECTRA6["white"], 0.5),    # ☽ Moon → sky
+        (mid_left, SPECTRA6["red"], SPECTRA6["black"], 0.5),     # ♂ Mars → maroon
+        (mid_right, SPECTRA6["red"], SPECTRA6["blue"], 0.5),     # ♀ Venus → violet
+    )
+    for (cx, cy), dark_ink, light_ink, density in planet_passes:
+        bx0 = max(0, cx - sigil_radius)
+        by0 = max(0, cy - sigil_radius)
+        bx1 = min(width - 1, cx + sigil_radius)
+        by1 = min(height - 1, cy + sigil_radius)
+        threshold = round(density * 16)
+        if density <= 0.25:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if (px & 1) == 0 and (py & 1) == 0 and pixels[px, py] == dark_ink:
+                        pixels[px, py] = light_ink
+        elif density >= 0.5:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if (px + py) & 1 == 0 and pixels[px, py] == dark_ink:
+                        pixels[px, py] = light_ink
+        else:
+            for py in range(by0, by1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(bx0, bx1 + 1):
+                    if row[px & 3] < threshold and pixels[px, py] == dark_ink:
+                        pixels[px, py] = light_ink
 
 
 def draw_deco_border(image: Image.Image, colors: dict) -> None:
@@ -3166,37 +3279,42 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
-    """Paint a samurai-cinema title-card surround: large off-canvas red
-    rising-sun disc anchored in the bottom-right corner plus a small red
-    artist's-chop seal in the top-left corner.
+    """Paint a samurai-cinema title-card surround: large off-canvas
+    rising-sun disc with a red-to-maroon radial edge gradient, plus a
+    small maroon artist's-chop seal in the top-left corner.
 
-    Two motifs, both in ``colors["accent"]`` (red):
+    Two motifs, both anchored in ``colors["accent"]`` (red) and lifted
+    onto the documented R+K 1:1 maroon recipe at the edges:
 
     * **Rising-sun disc** — a filled red circle with its centre at
       ``(width + 30, height + 30)`` and radius ``220``. PIL's
       ``ellipse`` clips the off-canvas portion automatically; the
       visible portion is a sweeping arc through the bottom-right
-      quadrant of the page (for the standard 800×480 panel the disc
-      touches the right edge at y ≈ 292 and the bottom edge at
-      x ≈ 612). The white quote text rendered on top reads cleanly
-      against the red ground — white-on-red is high contrast and
-      ``snap_image_to_palette`` keeps both colours on the Spectra 6
-      palette without intermediate dithering. Reads as the iconic
-      blood-sun / rising-sun motif of kurosawa-era chanbara title
-      cards. Deliberately pinned to the **bottom-right** corner so
-      the top-right stays clear of the ``DEBUG MODE`` banner band
-      (y=14–29) — same exemption ``dispatch`` / ``atomic`` /
-      ``placard`` / ``chalkboard`` use to stay absent from
-      ``_DEBUG_LABEL_RIGHT_INSET``.
+      quadrant of the page. After painting the full red disc, a
+      bbox-scoped radial post-pass walks the BR quadrant and flips
+      ~half of the red pixels that lie in the outer 40 px shell of
+      the disc (squared-distance in ``[(r-40)², r²]``) to black per
+      ``(x+y)&1`` parity — the eye averages the red+black mix at
+      panel viewing distance into maroon, so the disc fades from
+      the bright vermilion of a noonday sun (centre) into the
+      deeper oxblood of dusk (rim), the way the real rising-sun
+      flag motif of kurosawa-era chanbara title cards bleeds into
+      the horizon ink. White quote text rendered on top still reads
+      cleanly against both red and maroon — both halves of the R+K
+      mix sit on the Spectra-6 palette and contrast strongly with
+      white. Deliberately pinned to the **bottom-right** corner so
+      the top-right stays clear of the ``DEBUG MODE`` banner band.
     * **Artist's chop seal** — a small filled red rectangle (28×36 px)
-      anchored at insets ``(24, 24)`` to ``(52, 60)`` in the
-      top-left corner, with a single thin white horizontal stroke
-      drawn through its centre (the "一 / ichi" stroke). Vaguely
-      suggests a Japanese hanko ink seal without committing to
-      specific kanji — a counterbalancing diagonal accent that
-      grounds the page visually opposite the dominant sun disc.
-      The top-left stays clear of the right-aligned debug label by
-      construction.
+      anchored at insets ``(24, 24)`` in the top-left corner. Painted
+      in red as a sentinel, then a bbox-scoped post-pass flips half
+      of the red pixels to black per ``(x+y)&1`` parity — the
+      documented R+K 1:1 maroon recipe. Reads as the deep aged ink
+      of a real hanko / artist's-chop seal pressed into rice paper
+      decades ago rather than the bright fire-engine vermilion of a
+      freshly mixed cinnabar. The single thin white horizontal
+      "ichi" stroke through the chop's centre is painted *after* the
+      maroon post-pass so its white pixels stay solid (and bright)
+      regardless of where they land on the (x+y)&1 grid.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -3215,8 +3333,32 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         fill=accent_color,
     )
 
+    # Radial maroon post-pass on the outer 40 px shell of the disc.
+    # Squared-distance comparison avoids sqrt() per pixel — for 91 200
+    # BR-quadrant pixels (380×240) this stays well under 100 ms in
+    # pure Python. Restricted to the BR quadrant since the disc only
+    # paints there (off-canvas portion clips silently). Half of each
+    # red pixel inside the shell flips to black per (x+y)&1 parity —
+    # the documented R+K 1:1 maroon recipe.
+    sentinel_red = SPECTRA6["red"]
+    maroon_dark = SPECTRA6["black"]
+    pixels = image.load()
+    inner_r_sq = (sun_radius - 40) * (sun_radius - 40)
+    outer_r_sq = sun_radius * sun_radius
+    quad_x0 = width // 2
+    quad_y0 = height // 2
+    for py in range(quad_y0, height):
+        dy = py - sun_cy
+        dy_sq = dy * dy
+        for px in range(quad_x0, width):
+            dx = px - sun_cx
+            d_sq = dx * dx + dy_sq
+            if inner_r_sq <= d_sq <= outer_r_sq:
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                    pixels[px, py] = maroon_dark
+
     # Artist's chop seal in the top-left corner — small filled red
-    # rectangle with one white horizontal stroke through its centre.
+    # rectangle painted as a sentinel for the maroon post-pass below.
     chop_left = 24
     chop_top = 24
     chop_w = 28
@@ -3227,9 +3369,19 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         (chop_left, chop_top, chop_right, chop_bottom),
         fill=accent_color,
     )
+
+    # Maroon post-pass on the chop seal's bbox — same R+K recipe as
+    # the disc rim, so the two ornaments share a tonal register.
+    for py in range(chop_top, chop_bottom + 1):
+        for px in range(chop_left, chop_right + 1):
+            if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = maroon_dark
+
     # Single thin white horizontal "ichi" stroke through the chop's
-    # centre. Insets 5 px from the chop's left/right edges so the
-    # stroke reads as a distinct mark rather than a full bisection.
+    # centre, painted AFTER the maroon post-pass so its white pixels
+    # land solid regardless of the (x+y)&1 parity. Insets 5 px from
+    # the chop's left/right edges so the stroke reads as a distinct
+    # mark rather than a full bisection.
     stroke_y = chop_top + chop_h // 2
     draw.line(
         [(chop_left + 5, stroke_y), (chop_right - 5, stroke_y)],
@@ -4932,7 +5084,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     centre_y = height // 2
     top_y = pent_offset
     bot_y = height - 1 - pent_offset
-    flank_radius = 11               # elemental glyphs at the four outer corners
+    flank_radius = 22               # elemental glyphs at the four outer corners (doubled from 11 so the bar / no-bar contrast of the four element triangles reads clearly at panel viewing distance — at radius 11 the heavier 4 px triangle stroke obscured which glyph was which)
     flank_spacing = 80              # px between centre and outer-corner glyph
 
     # ------------------------------------------------------------------
@@ -5054,22 +5206,85 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     # bottom arcs (with their tick-mark incantation bands) sit at
     # those cardinal positions and read as the principal seals on
     # their own — no glyph is overlaid there.
-    _draw_alchemical_triangle(
-        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=True, line_width=stroke,
-    )  # 🜃 Earth (top-left)
-    _draw_alchemical_triangle(
-        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=False, line_width=stroke,
-    )  # 🜄 Water (top-right)
-    _draw_alchemical_triangle(
-        draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=True, with_bar=False, line_width=stroke,
-    )  # 🜂 Fire (bottom-left)
-    _draw_alchemical_triangle(
-        draw, centre_x + 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=True, with_bar=True, line_width=stroke,
-    )  # 🜁 Air (bottom-right)
+    #
+    # Each element now paints in its CANONICAL alchemical colour rather
+    # than the shared blue ``hermetic_color``: earth → olive (Y+G 1:1),
+    # water → sky (B+W 1:1), fire → tangerine (R+Y 5/8:3/8), air →
+    # violet (R+B 1:1). The 2-ink Bayer mixes lift each glyph onto a
+    # tone the alchemical tradition actually assigned to that element
+    # — green earth, sky-blue water, warm-orange fire, mauve / Tyrian
+    # air. Glyphs paint with a heavier stroke (``triangle_stroke``)
+    # than the outer ritual rectangle so the element sigils read as
+    # heavy / hard inscribed marks rather than hairline diagrams.
+    #
+    # Each triangle is painted in a UNIQUE per-element sentinel ink
+    # (off-palette, dark RGB), then a per-element bbox post-pass
+    # translates exactly the sentinel pixels into a 2-ink Bayer mix of
+    # the recipe's dark and light inks. The sentinel approach avoids
+    # collisions with on-palette pixels already in the bbox — Earth's
+    # bbox in particular sits over the parchment-halftone yellow
+    # flecks of Layer 0, and a yellow-sentinel approach incorrectly
+    # flipped those flecks too, producing a visible green rectangle
+    # bleed around the triangle.
+    #
+    # Air uses 2-ink violet rather than 3-ink lavender because
+    # ``draw_text_dithered`` (and the polygon outlines /
+    # line strokes underlying ``_draw_alchemical_triangle``) only
+    # support 2-ink mixes today; ``_fill_swatch_stipple_3way`` is
+    # rectangle-only. Violet still reads as the canonical
+    # ethereal / spiritual ink for air without needing the new
+    # primitive.
+    triangle_stroke = 4
+    earth_sentinel = (1, 1, 1)
+    water_sentinel = (2, 2, 2)
+    fire_sentinel = (3, 3, 3)
+    air_sentinel = (4, 4, 4)
+    elements = (
+        # (cx, cy, point_up, with_bar, sentinel, dark_ink, light_ink, density, label)
+        (centre_x - 2 * flank_spacing, top_y, False, True,
+         earth_sentinel, SPECTRA6["yellow"], SPECTRA6["green"], 0.5, "🜃 Earth/olive"),
+        (centre_x + 2 * flank_spacing, top_y, False, False,
+         water_sentinel, SPECTRA6["blue"], SPECTRA6["white"], 0.5, "🜄 Water/sky"),
+        (centre_x - 2 * flank_spacing, bot_y, True, False,
+         fire_sentinel, SPECTRA6["red"], SPECTRA6["yellow"], 0.375, "🜂 Fire/tangerine"),
+        (centre_x + 2 * flank_spacing, bot_y, True, True,
+         air_sentinel, SPECTRA6["red"], SPECTRA6["blue"], 0.5, "🜁 Air/violet"),
+    )
+    for cx, cy, point_up, with_bar, sentinel, dark_ink, light_ink, density, _ in elements:
+        _draw_alchemical_triangle(
+            draw, cx, cy, flank_radius, sentinel,
+            point_up=point_up, with_bar=with_bar, line_width=triangle_stroke,
+        )
+        # Per-element bbox post-pass. The triangle's longest extent is
+        # flank_radius along the apex axis plus a margin of the
+        # triangle stroke on each side; pad by 4 px so antialiased
+        # pixels at the polygon corners stay in scope.
+        bx0 = max(0, cx - flank_radius - 4)
+        by0 = max(0, cy - flank_radius - 4)
+        bx1 = min(width - 1, cx + flank_radius + 4)
+        by1 = min(height - 1, cy + flank_radius + 4)
+        threshold = round(density * 16)
+        if density <= 0.25:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if pixels[px, py] == sentinel:
+                        pixels[px, py] = light_ink if (px & 1) == 0 and (py & 1) == 0 else dark_ink
+        elif density >= 0.5:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if pixels[px, py] == sentinel:
+                        pixels[px, py] = light_ink if (px + py) & 1 == 0 else dark_ink
+        else:
+            for py in range(by0, by1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(bx0, bx1 + 1):
+                    if pixels[px, py] == sentinel:
+                        pixels[px, py] = light_ink if row[px & 3] < threshold else dark_ink
+    # ``hermetic_color`` still drives the pentagram / pentagon / tick-
+    # band geometry above; the four element triangles now use their
+    # own per-element ink so the canonical alchemical colour mapping
+    # reads at panel distance.
+    del hermetic_color
 
 
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
@@ -5179,9 +5394,13 @@ _DEBUG_LABEL_RIGHT_INSET = {
 # TFoust's "quarter past two" on a justified line in ``grimoire`` reads
 # as three disconnected ink-stained syllables rather than a single
 # inscription — the hollow / shaggy character of the face survives
-# only at its natural inter-letter rhythm. Strict superset is fine:
-# the ``score_row`` / wrap / fit pipeline does not depend on this set.
-_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire"})
+# only at its natural inter-letter rhythm. Gothic shares the rigid
+# treatment because its UnifrakturMaguntia matched-phrase blackletter
+# has the same problem at scale — elastic spaces between blackletter
+# words read as breaks between Latin clauses rather than a single
+# inscribed phrase. Strict superset is fine: the ``score_row`` / wrap
+# / fit pipeline does not depend on this set.
+_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire", "gothic"})
 
 
 def _justify_distribution(space_is_bold: list[bool], slack: int, rigid_match: bool) -> list[int]:
