@@ -3791,13 +3791,53 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
     # foxing speckles between the page edge and the frame remain
     # visible (otherwise the frame would mask them and the texture
     # would only read inside the body region).
+    #
+    # The outer 3px rule is painted in red as a sentinel ink, then the
+    # post-pass below walks the rule's 4 edge strips and flips half of
+    # the painted pixels to green per (x+y)&1 parity — the documented
+    # R+G 1:1 two-ink sepia recipe (same recipe Layer 1's foxing uses).
+    # The eye averages adjacent red+green dots into rust-brown at
+    # panel viewing distance, so the rule reads as the rusted iron of
+    # a 19th-century wood-engraved cornerpiece frame rather than the
+    # fire-engine printer ink of a freshly cast Linotype slug. The
+    # red-pixel guard makes the post-pass robust to PIL's
+    # anti-aliasing rounding at the edge boundaries.
     outer_inset = 12
     inner_inset = 18
+    outer_rule_width = 3
     draw.rectangle(
         (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
-        outline=ink,
-        width=3,
+        outline=SPECTRA6["red"],
+        width=outer_rule_width,
     )
+    pixels = image.load()
+    outer_x0, outer_y0 = outer_inset, outer_inset
+    outer_x1, outer_y1 = width - 1 - outer_inset, height - 1 - outer_inset
+    sepia_light = SPECTRA6["green"]
+    sentinel_red = SPECTRA6["red"]
+    # Top edge strip — 3 rows.
+    for y in range(outer_y0, outer_y0 + outer_rule_width):
+        for x in range(outer_x0, outer_x1 + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+    # Bottom edge strip — 3 rows.
+    for y in range(outer_y1 - outer_rule_width + 1, outer_y1 + 1):
+        for x in range(outer_x0, outer_x1 + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+    # Left edge strip — 3 columns, skipping rows already covered by
+    # the top/bottom strips above to avoid redundant work (the corner
+    # 3×3 cells get flipped once, not twice).
+    for x in range(outer_x0, outer_x0 + outer_rule_width):
+        for y in range(outer_y0 + outer_rule_width, outer_y1 - outer_rule_width + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+    # Right edge strip — 3 columns, same exclusion as the left strip.
+    for x in range(outer_x1 - outer_rule_width + 1, outer_x1 + 1):
+        for y in range(outer_y0 + outer_rule_width, outer_y1 - outer_rule_width + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+
     draw.rectangle(
         (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
         outline=ink,
