@@ -531,7 +531,7 @@ Spectra 6 only has six inks (white / black / red / yellow / blue / green). Any o
 | Cyan | green + blue at 1/2 : 1/2 | `dark=green, light=blue` | — |
 | Brown / sepia | red + green at 1/2 : 1/2 (mute further with black) | `dark=red, light=green` | `saloon` (foxing speckles via `(px+py)&1` parity over `_SALOON_FOXING` reads as rust-brown aged-paper foxing; outer 3 px wanted-poster frame painted in red then its 4 edge strips post-passed to flip half to green per parity so the rule reads as rusted iron); `placard` (outer sign-painter's frame — perimeter post-pass flips half of the red 1 px rule's pixels to green so the rule reads as weathered sandwich-board wood); `dispatch` (alternating tractor-feed perforations — every other pair painted as red sentinel circles then bbox-post-passed for "carbon-paper bleed" oxidation); `newsprint` (Layer 0 foxing speckles — 1 red + 1 green pixel per 4×4 Bayer tile at cell values 2 and 3, blends at panel distance into pale lignin-oxidation rust-brown alongside the existing 12.5% black halftone) |
 | Dark green | green + black at 1/2 : 1/2 | `dark=green, light=black` | — |
-| Olive | yellow + green at 1/2 : 1/2 | `dark=yellow, light=green` | — |
+| Olive | yellow + green at 1/2 : 1/2 | `dark=yellow, light=green` | `roman` (laurel-sprig leaves — each leaf painted as a yellow ellipse, then bbox-post-pass flips half to green per `(x+y)&1` for the canonical olive-green Mediterranean laurel a real corona triumphalis was plaited from) |
 | Lime | yellow + green at 5/8 : 3/8 | `dark=yellow, light=green, light_density=0.375` | — |
 | Light orange | red + yellow + white at 2/5 : 2/5 : 1/5 | (3-ink — not supported by `draw_text_dithered` today) | — |
 

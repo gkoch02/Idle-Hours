@@ -4517,17 +4517,26 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     # ------------------------------------------------------------------
     # Layer 6: Laurel sprig at the bottom centre, painted INSIDE the
     # tablet between the body text and the inner channel rule (mirror
-    # band of the SPQR cartouche above). Two short curved black stems
-    # mirrored around the bottom-centre, each carrying three small
-    # filled "leaf" ovals angled outward. The corona triumphalis was
-    # the Imperial victory crown; a single sprig is the smallest motif
-    # that still reads as "Roman" without crowding the bottom debug
-    # telemetry strip.
+    # band of the SPQR cartouche above). Two short black stems mirrored
+    # around the bottom-centre, each carrying three small filled olive
+    # "leaf" ovals angled outward. The corona triumphalis was the
+    # Imperial victory crown; a single sprig is the smallest motif that
+    # still reads as "Roman" without crowding the bottom debug strip.
+    #
+    # Each leaf is painted in solid yellow and then a per-leaf bbox
+    # post-pass flips half of the yellow pixels to green per (x+y)&1
+    # parity — the documented Y+G 1:1 olive recipe. The eye averages
+    # adjacent yellow+green dots into olive at panel viewing distance,
+    # the canonical botanical colour of Mediterranean laurel and olive
+    # leaves (which is what a Roman corona triumphalis was actually
+    # plaited from). The black stems and the red centre berry stay
+    # solid for ink-contrast against the limestone face.
     laurel_band_y = rect_bot - channel_inset - 8
     laurel_cx = width // 2
     stem_len = 36
     leaf_count = 3
     leaf_a, leaf_b = 5, 2  # leaf ellipse semi-axes (long, short)
+    leaf_centres: list[tuple[int, int]] = []
     for sign in (-1, 1):
         # Stem: a short straight rule along the bottom band, slanted
         # very slightly upward toward the centre so the two stems
@@ -4547,8 +4556,24 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
             leaf_cy = int(stem_y0 + (stem_y1 - stem_y0) * t) - 3
             draw.ellipse(
                 (leaf_cx - leaf_a, leaf_cy - leaf_b, leaf_cx + leaf_a, leaf_cy + leaf_b),
-                fill=ink,
+                fill=SPECTRA6["yellow"],
             )
+            leaf_centres.append((leaf_cx, leaf_cy))
+    # Olive post-pass on each leaf bbox. Only flips yellow pixels (the
+    # leaf fills) — the surrounding white page_bg and red berry pass
+    # through unchanged.
+    pixels = image.load()
+    olive_light = SPECTRA6["green"]
+    sentinel_yellow = SPECTRA6["yellow"]
+    for leaf_cx, leaf_cy in leaf_centres:
+        x0 = max(0, leaf_cx - leaf_a)
+        y0 = max(0, leaf_cy - leaf_b)
+        x1 = min(width - 1, leaf_cx + leaf_a)
+        y1 = min(height - 1, leaf_cy + leaf_b)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_yellow:
+                    pixels[px, py] = olive_light
     # Centre laurel "berry" — a small filled red dot at the join.
     draw.ellipse(
         (laurel_cx - 2, laurel_band_y - 4, laurel_cx + 2, laurel_band_y),
