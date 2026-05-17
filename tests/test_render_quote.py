@@ -1948,6 +1948,69 @@ class TestPickQuoteUsesBakedDatabase:
         assert captured.get("database_path") == pq.DEFAULT_DATABASE_PATH
 
 
+class TestFillSwatchStippleClipping:
+    """``_fill_swatch_stipple`` writes through ``PixelAccess`` (``px[x, y]``),
+    which raises ``IndexError`` on out-of-range coordinates — unlike PIL's
+    draw primitives which silently clip. The diags layout's hardcoded swatch
+    Y offsets sit well below a small preview canvas (the web UI's theme grid
+    requests 320×192, where the synth-swatch band starts at y=302), so the
+    function must clip its own rect to the image bounds rather than crash
+    the preview endpoint.
+    """
+
+    _DARK = (10, 20, 30)
+    _LIGHT = (200, 210, 220)
+    _BG = (1, 2, 3)
+
+    @pytest.mark.parametrize("density", [0.2, 0.4, 0.6])
+    def test_rect_entirely_below_image_is_skipped(self, density):
+        image = Image.new("RGB", (320, 192), self._BG)
+        rq._fill_swatch_stipple(image, (10, 300, 60, 340), self._DARK, self._LIGHT, density)
+        # Nothing painted: every pixel still the sentinel background.
+        assert image.getextrema() == ((1, 1), (2, 2), (3, 3))
+
+    @pytest.mark.parametrize("density", [0.2, 0.4, 0.6])
+    def test_rect_partially_below_image_is_clipped(self, density):
+        image = Image.new("RGB", (320, 192), self._BG)
+        # Rect straddles the bottom edge: only y=180..191 should paint.
+        rq._fill_swatch_stipple(image, (10, 180, 60, 240), self._DARK, self._LIGHT, density)
+        px = image.load()
+        # Below the image: PixelAccess would raise if not clipped — already
+        # asserted by reaching this line. Inside the clipped region the
+        # canvas changed from the sentinel.
+        painted = sum(
+            1
+            for y in range(180, 192)
+            for x in range(10, 60)
+            if px[x, y] != self._BG
+        )
+        assert painted > 0
+        # Pixels outside the clipped rect (e.g. just above y=180) untouched.
+        assert px[10, 179] == self._BG
+
+    def test_rect_entirely_right_of_image_is_skipped(self):
+        image = Image.new("RGB", (320, 192), self._BG)
+        rq._fill_swatch_stipple(image, (400, 10, 450, 60), self._DARK, self._LIGHT, 0.5)
+        assert image.getextrema() == ((1, 1), (2, 2), (3, 3))
+
+    def test_diags_frame_renders_at_thumbnail_size(self):
+        """End-to-end regression for the reported failure: requesting
+        ``/api/preview?theme=diags&width=320&height=192`` previously hit
+        an ``IndexError`` inside ``_fill_swatch_stipple`` because the
+        synth-swatch band sits at y=302 — entirely below a 192px canvas.
+        """
+        row = {
+            "display_quote": "A test quote.",
+            "matched_text": "midnight",
+            "bucket": "h12_exact",
+            "quality_score": 80,
+            "source_id": "1",
+            "line_number": 1,
+        }
+        img = rq.render_diags_frame("12:00", row, 320, 192)
+        assert img.size == (320, 192)
+
+
 class TestDrawTextDithered:
     """The deco theme's red-biased orange added a third density branch
     (4×4 Bayer at arbitrary thresholds) to ``draw_text_dithered``.
