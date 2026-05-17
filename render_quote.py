@@ -53,6 +53,7 @@ THEME_ORDER: tuple[str, ...] = (
     "deco",
     "glacier",
     "chalkboard",
+    "placard",
 )
 THEMES = {
     "default": {
@@ -485,6 +486,26 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # Hand-painted shop sign / sandwich-board placard: white paper-sign
+    # ground, black hand-printed small-caps body in Patrick Hand SC
+    # (Patrick Wagesreiter, OFL — friendly hand-lettered face whose small
+    # caps for lowercase do almost all the visual work), red highlight
+    # matched-phrase accent (the sign-painter's spot colour). Shares the
+    # white/black/red palette shape with ``default`` / ``dispatch`` /
+    # ``saloon`` / ``roman`` / ``deco`` — the differentiation is the
+    # hand-printed small-caps font and the ``draw_placard_border``
+    # decoration (doubled sign-painter's frame + red thumbtack corner
+    # accents). Reads as a market A-frame or shop-window menu at a glance.
+    "placard": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -668,6 +689,21 @@ ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
 # lands on at least a slanted silhouette rather than dropping a
 # handwriting theme onto an upright serif.
 PLAYWRITE_GB_J_GUIDES_REGULAR = str(BASE_DIR / "fonts/playwrite-gb-j-guides/PlaywriteGBJGuides-Regular.ttf")
+# Patrick Hand SC — Patrick Wagesreiter (OFL). Friendly hand-printed
+# (NOT cursive — printed letterforms drawn by hand) small-caps face.
+# The "SC" variant renders lowercase as small capitals, giving the
+# text the distinctive silhouette of hand-lettered shop signage and
+# menu boards — the sandwich-board / kraft-paper-label register
+# that no other theme in the rotation occupies. Single-weight
+# (Regular only); the matched-phrase role in ``placard`` reuses
+# Regular and gains differentiation from the red accent alone —
+# same trick comic / dispatch / atomic / marker / saloon / deco /
+# glacier / chalkboard already use. Fallback chain ends at heavy
+# sans (DejaVu / Liberation / Noto Sans Bold) before degrading to
+# the Playfair serif chain, so a missing install lands on a
+# chunky display silhouette rather than dropping the placard theme
+# onto an elegant transitional serif.
+PATRICK_HAND_SC_REGULAR = str(BASE_DIR / "fonts/patrick-hand-sc/PatrickHandSC-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1201,6 +1237,32 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "placard": {
+        # Patrick Hand SC (Patrick Wagesreiter, OFL) — friendly
+        # hand-printed face whose small caps for lowercase do all the
+        # visual work. Single-weight; matched phrase reuses Regular and
+        # gains differentiation from the red accent alone. Same heavy-sans
+        # fallback chain comic / marker / atomic use.
+        "quote_regular": [
+            PATRICK_HAND_SC_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            PATRICK_HAND_SC_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PATRICK_HAND_SC_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -2657,6 +2719,66 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
         # anti-alias and dither the dot into surrounding palette greys
         # at snap_image_to_palette time.
         draw.rectangle((cx, cy, cx, cy), fill=frame_color)
+
+
+def draw_placard_border(image: Image.Image, colors: dict) -> None:
+    """Paint a hand-painted shop-sign / sandwich-board surround: doubled
+    black sign-painter's frame plus four red thumbtack corner accents.
+
+    Two motifs, both evoking the hand-lettered A-frame menu / shop-
+    window placard register that Patrick Hand SC's small-caps silhouette
+    suggests:
+
+    * **Doubled sign-painter's frame** — outer rectangle at inset 14
+      and inner rectangle at inset 18, both 1 px stroke in
+      ``colors["text"]`` (black). The narrow ~3 px gap between the
+      two rules reads as a sign-painter's deliberate doubled brush
+      stroke, the way real hand-painted shop signs frame their text.
+    * **Red thumbtack corner accents** — four small filled circles
+      in ``colors["accent"]`` (red) just inside the inner frame at
+      each corner, suggesting the pins or tacks holding the sign up
+      on a corkboard. Positioned at ``y ≈ 38`` (top corners) and
+      ``y ≈ height-38`` (bottom corners), well below the default
+      ``DEBUG MODE`` label band (y=14-29). So ``placard`` is
+      intentionally absent from ``_DEBUG_LABEL_RIGHT_INSET`` — same
+      exemption as ``dispatch`` (TR rubber-stamp imprint sits at
+      y=40-70, also below the label band).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_color = colors["text"]
+    accent_color = colors["accent"]
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=frame_color,
+        width=1,
+    )
+    inner_inset = 18
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Red thumbtack accents — four filled circles at the inner corners,
+    # offset down/in from the corner enough that the TR tack sits
+    # entirely below the y=14-29 debug-label band (centre y=38, radius
+    # 4 → bbox y=34-42, fully below the label).
+    tack_radius = 4
+    tack_inset = 38
+    tack_centres = [
+        (tack_inset, tack_inset),
+        (width - 1 - tack_inset, tack_inset),
+        (tack_inset, height - 1 - tack_inset),
+        (width - 1 - tack_inset, height - 1 - tack_inset),
+    ]
+    for cx, cy in tack_centres:
+        draw.ellipse(
+            (cx - tack_radius, cy - tack_radius, cx + tack_radius, cy + tack_radius),
+            fill=accent_color,
+        )
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -4322,6 +4444,7 @@ _BORDER_PAINTERS = {
     "deco": draw_deco_border,
     "glacier": draw_glacier_border,
     "chalkboard": draw_chalkboard_border,
+    "placard": draw_placard_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need

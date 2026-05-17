@@ -122,6 +122,13 @@ THEME_SATURATION: dict[str, float] = {
     # ``nightvision`` / ``grimoire`` — push the yellow accent so it doesn't
     # desaturate to a muddy ochre against the panel's anchored black.
     "chalkboard": 0.7,
+    # White sign-paper ground / black hand-printed body / red highlight
+    # accent. Same chromatic-on-light profile as ``default`` / ``deco`` /
+    # ``dispatch`` / ``saloon`` / ``roman`` — the gentler 0.5 tier keeps
+    # the red thumbtack corner accents crisp without over-saturating the
+    # body's black ink. Override via ``--saturation`` if real-panel
+    # calibration suggests otherwise.
+    "placard": 0.5,
 }
 
 

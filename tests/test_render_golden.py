@@ -368,6 +368,21 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "chalkboard",
     },
+    # Placard pins the doubled sign-painter's frame, the four red
+    # thumbtack accents, and the Patrick Hand SC small-caps font load.
+    # A regression that dropped to the fallback DejaVu Bold would flip
+    # thousands of glyph pixels (small caps silhouette → mixed-case sans).
+    {
+        "name": "standard_placard_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "placard",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

@@ -177,6 +177,7 @@ def parse_args() -> argparse.Namespace:
         "deco",
         "glacier",
         "chalkboard",
+        "placard",
     ]
     parser.add_argument(
         "--theme",
