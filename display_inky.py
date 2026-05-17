@@ -104,6 +104,19 @@ THEME_SATURATION: dict[str, float] = {
     # marks so they don't desaturate against the panel's anchored
     # black ground.
     "grimoire": 0.7,
+    # White ground / black body / red accent paired with Righteous. Same
+    # chromatic-on-light profile as ``default`` / ``dispatch`` / ``saloon`` /
+    # ``roman`` — the gentler 0.5 tier keeps the red rising-sun fan and
+    # the stepped corner ornaments crisp without over-saturating the
+    # body's black ink. Override via ``--saturation`` if real-panel
+    # calibration suggests otherwise.
+    "deco": 0.5,
+    # White ground / blue Iceland body / green matched-phrase accent. Two
+    # chromatic ink colours on a light ground — same tier as the other
+    # white-ground themes. The green accent reads cleanly on white at 0.5;
+    # pushing higher would risk muddying the body's blue against the
+    # frost-crystal accent ornaments.
+    "glacier": 0.5,
 }
 
 

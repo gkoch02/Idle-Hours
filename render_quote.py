@@ -50,6 +50,8 @@ THEME_ORDER: tuple[str, ...] = (
     "roman",
     "alchemy",
     "grimoire",
+    "deco",
+    "glacier",
 )
 THEMES = {
     "default": {
@@ -431,6 +433,39 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
+    # Art-deco poster: white ground / black body / red matched-phrase accent,
+    # paired with the Righteous geometric display sans. Same palette shape as
+    # ``default`` / ``dispatch`` / ``saloon`` / ``roman`` — the differentiation
+    # is the 1930s geometric typography and the stepped-corner border drawn
+    # by ``draw_deco_border`` (concentric L-shapes echoing the canonical
+    # skyscraper-steps ornament, plus a centred top-edge rising-sun motif).
+    "deco": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Icy / aurora: white ground / blue Iceland body / green matched-phrase
+    # accent. The first theme to pair a blue body with a green accent — sits
+    # visually apart from ``scholar`` (blue body / red accent) and ``blueprint``
+    # (blue *ground* / white body / red accent). Iceland is a geometric techno
+    # display face; the matching border (``draw_glacier_border``) drops angular
+    # "frost crystal" shards into the four corners plus small four-armed star
+    # ticks at the mid-edges, echoing the font's architectural symmetry.
+    "glacier": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["blue"],
+        "subtle": SPECTRA6["blue"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["blue"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -582,6 +617,24 @@ IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Itali
 # whose sharply-pointed strokes read as a ritual scribe's hand.
 # Matched-phrase + ornament face for the ``alchemy`` theme.
 MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regular.ttf")
+# Righteous — Astigmatic / Brian J. Bonislawsky (OFL). 1930s geometric
+# art-deco display sans with friendly rounded terminals on a strict
+# geometric skeleton. Single-weight (Regular only), so the matched-phrase
+# slot in ``deco`` re-uses the same file and earns differentiation from
+# the accent colour alone — same trick the comic / dispatch / atomic /
+# marker / saloon themes use. Falls back through DejaVu / Liberation /
+# Noto Sans Bold before degrading to the Playfair serif chain, so a
+# missing install lands on a heavy display silhouette rather than an
+# elegant serif.
+RIGHTEOUS_REGULAR = str(BASE_DIR / "fonts/righteous/Righteous-Regular.ttf")
+# Iceland — Cyreal (OFL). Geometric techno / retro-futurism display
+# face with chunky verticals and angled cuts, very Atari-arcade /
+# sci-fi-splash register. Same single-weight discipline as Righteous:
+# the matched-phrase slot in ``glacier`` re-uses the file and gains
+# differentiation from the green accent. Falls back through heavy sans
+# before the Playfair serif chain so a missing install stays in the
+# display-face lane.
+ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1087,6 +1140,61 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "card_quote_bold": [
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+    },
+    "deco": {
+        # Righteous (Astigmatic, OFL) — 1930s geometric art-deco display
+        # sans. Ships only Regular, so the matched-phrase role re-uses the
+        # file and gains differentiation from the red accent alone — same
+        # bichrome-ribbon trick the comic / dispatch / atomic / marker /
+        # saloon themes use. Fallback chain ends at a heavy sans (DejaVu /
+        # Liberation / Noto Sans Bold) before degrading to the Playfair
+        # serif chain, so a missing-Righteous install lands on a heavy
+        # display silhouette rather than dropping the deco theme onto an
+        # elegant transitional serif.
+        "quote_regular": [
+            RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "glacier": {
+        # Iceland (Cyreal, OFL) — geometric techno / retro-futurism display
+        # face. Same single-weight discipline as Righteous / Bangers / Atomic
+        # Age: matched phrase reuses Regular and gains differentiation from
+        # the green accent. Same heavy-sans fallback chain.
+        "quote_regular": [
+            ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
         ],
     },
 }
@@ -2192,6 +2300,225 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
     _draw_grimoire_moon(draw, *mid_bottom, accent, page_bg)
     _draw_grimoire_mars(draw, *mid_left, accent)
     _draw_grimoire_venus(draw, *mid_right, accent)
+
+
+def draw_deco_border(image: Image.Image, colors: dict) -> None:
+    """Paint an art-deco poster frame: doubled hairline rule + stepped
+    skyscraper-step corner ornaments + a top-centre rising-sun fan.
+
+    Three motifs, all canonical 1930s deco vocabulary:
+
+    * **Doubled hairline frame** — outer rectangle at inset 14 and inner
+      rectangle at inset 22, both 1 px stroke in ``colors["text"]``.
+      The thin parallel rules are the silhouette of countless cinema
+      programs and travel posters of the era.
+    * **Stepped corner ornaments** — three concentric L-shapes per
+      corner in ``colors["accent"]``, drawn from the inside of the
+      doubled frame outward. The L's vertex sits at the inner-frame
+      corner; arms 8 / 16 / 24 px long, 1 px stroke. The canonical
+      skyscraper-steps motif found on every theatre marquee and
+      jazz-age magazine cover.
+    * **Centred rising-sun fan** — at the top horizontal mid-edge,
+      a small filled accent dot with five short radial lines fanning
+      *upward* through the inner frame band (capped by the outer
+      hairline). Pure art-deco rising-sun. Sized to stay well clear
+      of the quote block (top of the fan at y ≤ 13) and centred
+      horizontally so it never reaches the right-aligned ``DEBUG
+      MODE`` banner.
+
+    The top-right stepped-corner ornament reaches x ≤ width-14 (24 px
+    arm starting at the inner-frame corner at width-1-22), leaving
+    ≥6 px of clearance from the default debug-label edge (``SIDE_MARGIN
+    = 20``). The rising-sun is centred, far from the right-aligned
+    label. So ``deco`` is intentionally **absent** from
+    ``_DEBUG_LABEL_RIGHT_INSET`` — same exemption as ``atomic`` and
+    ``dispatch``.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_color = colors["text"]
+    accent_color = colors["accent"]
+
+    outer_inset = 14
+    inner_inset = 22
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=frame_color,
+        width=1,
+    )
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Stepped skyscraper-corner ornaments. For each corner, draw three
+    # concentric L-shapes inside the inner frame. The L's vertex lives
+    # at the inner-frame corner; arms extend along the two adjacent
+    # sides. ``step_length`` doubles per step so the silhouette reads
+    # as the canonical 1930s stepped pyramid.
+    corner_origins = [
+        # (corner_x, corner_y, dx, dy) — corner anchor (inner-frame corner)
+        # plus the unit-vector pair pointing inward along the two sides.
+        (inner_inset + 1, inner_inset + 1, +1, +1),                       # top-left
+        (width - 2 - inner_inset, inner_inset + 1, -1, +1),                # top-right
+        (inner_inset + 1, height - 2 - inner_inset, +1, -1),               # bottom-left
+        (width - 2 - inner_inset, height - 2 - inner_inset, -1, -1),       # bottom-right
+    ]
+    for step in (1, 2, 3):
+        step_length = 6 + step * 6  # 12 / 18 / 24
+        step_offset = step * 2       # 2 / 4 / 6 px gap between concentric L's
+        for cx, cy, dx, dy in corner_origins:
+            ax = cx + dx * step_offset
+            ay = cy + dy * step_offset
+            # Horizontal arm along the top/bottom edge of the L.
+            draw.line(
+                [(ax, ay), (ax + dx * step_length, ay)],
+                fill=accent_color,
+                width=1,
+            )
+            # Vertical arm along the left/right edge of the L.
+            draw.line(
+                [(ax, ay), (ax, ay + dy * step_length)],
+                fill=accent_color,
+                width=1,
+            )
+
+    # Top-centre rising-sun fan. Small filled dot anchored on the inner
+    # frame's top edge with five short radial rays fanning upward
+    # through the band between the two frame rules. Stays inside that
+    # 8-px band (inner_inset = 22, outer_inset = 14, so the band is
+    # y ∈ [14, 22] inclusive); rays cap at y = outer_inset + 1 so they
+    # never touch the outer hairline.
+    fan_cx = width // 2
+    fan_cy = inner_inset
+    fan_dot_r = 2
+    draw.ellipse(
+        (fan_cx - fan_dot_r, fan_cy - fan_dot_r, fan_cx + fan_dot_r, fan_cy + fan_dot_r),
+        fill=accent_color,
+    )
+    ray_top_y = outer_inset + 1
+    ray_height = fan_cy - ray_top_y
+    # Five rays spread across a 90° arc centred straight up (-π/2),
+    # symmetric about the vertical axis: angles -π/2 ± k·(π/8).
+    for k in (-2, -1, 0, 1, 2):
+        angle = -math.pi / 2 + k * (math.pi / 8)
+        end_x = fan_cx + math.cos(angle) * ray_height / max(abs(math.sin(angle)), 0.001) \
+                if k != 0 else fan_cx
+        end_y = ray_top_y
+        # Clamp end_x to stay within the fan's natural footprint so
+        # the side rays don't streak off to the canvas edge for low
+        # |sin(angle)| values. The footprint half-width is ~ray_height.
+        max_dx = ray_height
+        if end_x < fan_cx - max_dx:
+            end_x = fan_cx - max_dx
+        elif end_x > fan_cx + max_dx:
+            end_x = fan_cx + max_dx
+        draw.line(
+            [(fan_cx, fan_cy), (end_x, end_y)],
+            fill=accent_color,
+            width=1,
+        )
+
+
+def draw_glacier_border(image: Image.Image, colors: dict) -> None:
+    """Paint an icy / aurora border: thin outer rule + four corner
+    frost-crystal clusters + four mid-edge snowflake-tick stars.
+
+    Three motifs, all evoking the geometric / glacial register that
+    Iceland's chunky verticals suggest:
+
+    * **Outer frame** — single rectangle at inset 14, 1 px stroke,
+      drawn in ``colors["text"]`` (blue). Clean and engineered.
+    * **Frost-crystal clusters** — each corner gets three angular
+      filled triangles fanning out *from* the corner along the two
+      adjacent sides, like ice splinters frozen across the page
+      edge. Two shards in ``colors["text"]`` (blue) and the longest
+      one tipped in ``colors["accent"]`` (green) — the aurora light
+      catching on the ice. Sizes ~8–14 px so the cluster stays
+      well outside the quote block (``SIDE_MARGIN`` + layout
+      ``max_width`` always leaves ≥30 px of free corner).
+    * **Mid-edge snowflake ticks** — at the midpoint of each edge,
+      a small four-armed star (radius ~6 px) drawn in
+      ``colors["text"]`` — a filled diamond plus a thin orthogonal
+      cross. Reinforces the architectural symmetry without crowding
+      the quote.
+
+    The top-right frost-crystal cluster spans roughly x ≥ width-30,
+    y ≤ 30 — overlaps the default ``DEBUG MODE`` label band. So
+    ``glacier`` carries an inset entry in ``_DEBUG_LABEL_RIGHT_INSET``
+    (34 px) mirroring ``blueprint``'s rationale.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    body_color = colors["text"]
+    accent_color = colors["accent"]
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=body_color,
+        width=1,
+    )
+
+    # Frost-crystal clusters at the four corners. Each cluster paints
+    # three triangular shards fanning out *along* the two adjacent edges
+    # from the corner. Shard 1 is short, on the horizontal axis; shard
+    # 2 is short, on the vertical axis; shard 3 is the longest, on the
+    # 45° diagonal — tipped in the accent colour for aurora-on-ice
+    # contrast.
+    corner_anchors = [
+        # (anchor_x, anchor_y, dx, dy) — inner-frame corner plus the
+        # unit-vector pair pointing into the page.
+        (outer_inset + 2, outer_inset + 2, +1, +1),                       # top-left
+        (width - 3 - outer_inset, outer_inset + 2, -1, +1),                # top-right
+        (outer_inset + 2, height - 3 - outer_inset, +1, -1),               # bottom-left
+        (width - 3 - outer_inset, height - 3 - outer_inset, -1, -1),       # bottom-right
+    ]
+    short_arm = 9
+    long_arm = 14
+    base_half = 3  # half-width of each shard's base near the corner
+    for ax, ay, dx, dy in corner_anchors:
+        # Horizontal shard — tip along the top/bottom edge.
+        tip_h = (ax + dx * short_arm, ay)
+        base_h_a = (ax, ay - base_half * dy)
+        base_h_b = (ax, ay + base_half * dy)
+        draw.polygon([tip_h, base_h_a, base_h_b], fill=body_color)
+        # Vertical shard — tip along the left/right edge.
+        tip_v = (ax, ay + dy * short_arm)
+        base_v_a = (ax - base_half * dx, ay)
+        base_v_b = (ax + base_half * dx, ay)
+        draw.polygon([tip_v, base_v_a, base_v_b], fill=body_color)
+        # Diagonal shard — the longest, tipped in accent for aurora.
+        tip_d = (ax + dx * long_arm, ay + dy * long_arm)
+        base_d_a = (ax + dx * base_half, ay - dy * base_half)
+        base_d_b = (ax - dx * base_half, ay + dy * base_half)
+        draw.polygon([tip_d, base_d_a, base_d_b], fill=accent_color)
+
+    # Mid-edge snowflake ticks. Four-armed star: a filled diamond plus
+    # a hairline cross through it. Painted in body colour so the
+    # ornament reads as an architectural rivet rather than a feature
+    # accent.
+    star_r = 6
+    midpoints = [
+        (width // 2, outer_inset),            # top
+        (width // 2, height - 1 - outer_inset),  # bottom
+        (outer_inset, height // 2),           # left
+        (width - 1 - outer_inset, height // 2),  # right
+    ]
+    diamond_r = 3
+    for mx, my in midpoints:
+        draw.polygon(
+            [
+                (mx, my - diamond_r),
+                (mx + diamond_r, my),
+                (mx, my + diamond_r),
+                (mx - diamond_r, my),
+            ],
+            fill=body_color,
+        )
+        draw.line([(mx - star_r, my), (mx + star_r, my)], fill=body_color, width=1)
+        draw.line([(mx, my - star_r), (mx, my + star_r)], fill=body_color, width=1)
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -3854,6 +4181,8 @@ _BORDER_PAINTERS = {
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
     "grimoire": draw_grimoire_border,
+    "deco": draw_deco_border,
+    "glacier": draw_glacier_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -3915,6 +4244,14 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # width-50. The ring's top vertex sits at y=15
                         # (well inside the label's y=14-29 band), so
                         # the horizontal inset is what does the work.
+    "glacier": 34,      # past the TR frost-crystal cluster. The diagonal
+                        # shard (long_arm=14) reaches roughly to
+                        # x=width-3-outer_inset+1-14 = width-30 with the
+                        # accent-tipped point, plus a 4px breathing gap.
+                        # ``deco`` is intentionally absent — its stepped
+                        # corner reaches x ≤ width-14 (well outside the
+                        # default debug-label edge at SIDE_MARGIN) and
+                        # its rising-sun fan is centred horizontally.
 }
 
 # Themes whose matched-phrase (``quote_bold``) face has a distinctive
