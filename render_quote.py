@@ -4988,7 +4988,6 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
     """
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
-    _paint_page_bg(image, theme, colors)
     _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
@@ -5070,7 +5069,6 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
     """
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
-    _paint_page_bg(image, theme, colors)
     _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
@@ -5288,96 +5286,6 @@ def _fill_swatch_stipple_3way(
                 px[x, y] = ink_b
             else:
                 px[x, y] = ink_c
-
-
-# Rich-black page background recipe from ``spectra6_color_recipes.md``:
-# ``black + red + blue @ 60 / 20 / 20``. The panel's calibrated black is
-# ``#1F2226`` rather than true ``#000000`` — a slight grey cast that reads
-# noticeably thinner than solid black on the panel at viewing distance.
-# The printer's-trick chromatic underprint deepens it: ~62% black ink_a
-# (cells 0..9 / 16), ~19% red ink_b (cells 10..12 / 16) and ~19% blue
-# ink_c (cells 13..15 / 16) of the shared ``BAYER_4x4`` matrix sum to a
-# perceived deeper black at panel distance, while every pixel stays on
-# the native Spectra-6 palette (no snap-to-palette quantisation needed).
-# Used as the page background for every theme whose ``THEMES[…]
-# ["page_bg"]`` is ``SPECTRA6["black"]`` (``dark`` / ``nightvision`` /
-# ``gothic`` / ``grimoire`` / ``chalkboard`` / ``chanbara``). Detected by
-# value rather than enumerated by name so a future black-ground theme
-# automatically inherits the recipe — extending ``THEMES`` is the only
-# change needed.
-RICH_BLACK_INK_A: tuple[int, int, int] = SPECTRA6["black"]
-RICH_BLACK_INK_B: tuple[int, int, int] = SPECTRA6["red"]
-RICH_BLACK_INK_C: tuple[int, int, int] = SPECTRA6["blue"]
-RICH_BLACK_DENSITY_A: float = 0.60
-RICH_BLACK_DENSITY_B: float = 0.20
-
-
-def rich_black_pixel(x: int, y: int) -> tuple[int, int, int]:
-    """Return the rich-black stipple ink at a given image coordinate.
-
-    Helper for tests and border painters that need the canonical
-    page-bg colour the rich-black pass paints at ``(x, y)`` — i.e.
-    what colour should still be showing through after the painter ran
-    if nothing painted over it. Recipe is the 60 / 20 / 20 mix
-    documented above; the threshold arithmetic mirrors
-    ``_fill_swatch_stipple_3way``.
-    """
-    cell = BAYER_4x4[y % 4][x % 4]
-    threshold_a = round(RICH_BLACK_DENSITY_A * 16)
-    threshold_b = round((RICH_BLACK_DENSITY_A + RICH_BLACK_DENSITY_B) * 16)
-    if cell < threshold_a:
-        return RICH_BLACK_INK_A
-    if cell < threshold_b:
-        return RICH_BLACK_INK_B
-    return RICH_BLACK_INK_C
-
-
-def expected_page_bg_at(theme: str, x: int, y: int) -> tuple[int, int, int]:
-    """Return the page-bg colour expected at ``(x, y)`` before borders / text.
-
-    For black-bg themes returns the rich-black stipple value at the
-    coordinate; for every other theme returns the flat ``page_bg``
-    colour. Used by tests asserting that a border painter didn't paint
-    outside its footprint — the assertion's intent is "this pixel still
-    shows the page background," which the rich-black stipple turns from
-    a single colour into a coordinate-dependent ink.
-    """
-    page_bg = THEMES[theme]["page_bg"]
-    if page_bg != SPECTRA6["black"]:
-        return page_bg
-    return rich_black_pixel(x, y)
-
-
-def _paint_page_bg(image: Image.Image, theme: str, colors: dict) -> None:
-    """Overpaint the canvas with the rich-black stipple if applicable.
-
-    The render entry points create the canvas via
-    ``Image.new(..., colors["page_bg"])`` which produces a flat fill.
-    For black-bg themes the recipe in ``spectra6_color_recipes.md``
-    synthesises a richer, deeper black via a 3-ink stipple of
-    black + red + blue at 60 / 20 / 20 (see ``RICH_BLACK_*`` above) —
-    adding chromatic underprint compensates for Spectra 6's slightly-
-    grey calibrated black (``#1F2226``). For every other theme the
-    flat ``Image.new`` fill is already correct, so this is a no-op.
-
-    Called BEFORE ``_paint_theme_border`` so the border decoration
-    overpaints the stipple cleanly; this matches the existing layer
-    ordering used by ``draw_atomic_border`` / ``draw_blueprint_border``
-    / ``draw_newsprint_border`` etc., which similarly paint their
-    ground-modifying dither pass first and decoration on top.
-    """
-    if colors.get("page_bg") != SPECTRA6["black"]:
-        return
-    width, height = image.size
-    _fill_swatch_stipple_3way(
-        image,
-        (0, 0, width, height),
-        RICH_BLACK_INK_A,
-        RICH_BLACK_INK_B,
-        RICH_BLACK_INK_C,
-        RICH_BLACK_DENSITY_A,
-        RICH_BLACK_DENSITY_B,
-    )
 
 
 # Synthesised three-ink stipple recipes documented in
@@ -5610,7 +5518,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_diags_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
-    _paint_page_bg(image, theme, colors)
     _paint_theme_border(image, theme, colors)
     draw = ImageDraw.Draw(image)
 
