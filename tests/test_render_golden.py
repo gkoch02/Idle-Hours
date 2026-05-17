@@ -383,6 +383,23 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "placard",
     },
+    # Chanbara pins both the large off-canvas rising-sun disc in the BR
+    # corner (a regression that mis-positioned the centre or shrank the
+    # radius would flip the entire bottom-right quadrant) and the small
+    # red artist's-chop seal in the TL. Also locks the Shojumaru
+    # brush-painted font load — the dramatic display silhouette is the
+    # whole point.
+    {
+        "name": "standard_chanbara_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "chanbara",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

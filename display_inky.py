@@ -129,6 +129,13 @@ THEME_SATURATION: dict[str, float] = {
     # body's black ink. Override via ``--saturation`` if real-panel
     # calibration suggests otherwise.
     "placard": 0.5,
+    # Black ink-sky ground with a load-bearing red rising-sun disc that
+    # dominates the bottom-right quadrant of the page. Same chromatic-
+    # on-dark profile as ``dark`` / ``gothic`` / ``grimoire`` /
+    # ``nightvision`` / ``chalkboard`` — push the red disc and accent so
+    # the dramatic blood-sun reads vivid rather than half-dithering into
+    # a muted brick-red against the panel's anchored black.
+    "chanbara": 0.7,
 }
 
 

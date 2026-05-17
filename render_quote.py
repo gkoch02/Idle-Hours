@@ -54,6 +54,7 @@ THEME_ORDER: tuple[str, ...] = (
     "glacier",
     "chalkboard",
     "placard",
+    "chanbara",
 )
 THEMES = {
     "default": {
@@ -506,6 +507,30 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Samurai cinema title card: black ink-sky ground, white Shojumaru
+    # brush-painted body (Astigmatic, OFL — same designer as Righteous and
+    # Atomic Age), red matched-phrase accent (the chanbara genre's spot
+    # colour — blood, vermilion, the rising sun). Shares the black/white/
+    # red palette shape with ``gothic`` and ``grimoire``; the
+    # differentiation is the dramatic brush-painted display face and the
+    # ``draw_chanbara_border`` decoration (large off-canvas red rising-sun
+    # disc in the bottom-right corner plus a small red artist's chop seal
+    # in the top-left). Reads as a kurosawa-era film title card at a
+    # glance.
+    "chanbara": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        # Red ornaments on black — same trick ``grimoire`` uses so the
+        # oversized opening / closing quote marks render as solid red
+        # against the ink ground rather than half-dithering into the
+        # page colour.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["white"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -704,6 +729,18 @@ PLAYWRITE_GB_J_GUIDES_REGULAR = str(BASE_DIR / "fonts/playwrite-gb-j-guides/Play
 # chunky display silhouette rather than dropping the placard theme
 # onto an elegant transitional serif.
 PATRICK_HAND_SC_REGULAR = str(BASE_DIR / "fonts/patrick-hand-sc/PatrickHandSC-Regular.ttf")
+# Shojumaru — Astigmatic / Brian J. Bonislawsky (OFL). Dramatic
+# brush-painted display face evoking samurai cinema posters,
+# Japanese woodblock prints, and chanbara movie title cards.
+# Single-weight (Regular only); the matched-phrase role in
+# ``chanbara`` reuses Regular and gains differentiation from the
+# red sun-disc accent alone — same trick comic / dispatch / atomic /
+# marker / saloon / deco / glacier / chalkboard / placard already
+# use. Fallback chain ends at heavy DejaVu / Liberation / Noto Sans
+# Bold before degrading to the Playfair serif chain, so a missing
+# install lands on a heavy display silhouette rather than dropping
+# a brush-painted theme onto an elegant transitional serif.
+SHOJUMARU_REGULAR = str(BASE_DIR / "fonts/shojumaru/Shojumaru-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1263,6 +1300,34 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             PATRICK_HAND_SC_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "chanbara": {
+        # Shojumaru (Astigmatic, OFL) — dramatic brush-painted display
+        # face. Single-weight; matched phrase reuses Regular and gains
+        # differentiation from the red sun-disc accent alone. Heavy-sans
+        # fallback chain before degrading to the Playfair serif chain so
+        # a missing install lands on a heavy display silhouette rather
+        # than dropping a brush-painted theme onto an elegant transitional
+        # serif.
+        "quote_regular": [
+            SHOJUMARU_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SHOJUMARU_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SHOJUMARU_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -2779,6 +2844,79 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
             (cx - tack_radius, cy - tack_radius, cx + tack_radius, cy + tack_radius),
             fill=accent_color,
         )
+
+
+def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
+    """Paint a samurai-cinema title-card surround: large off-canvas red
+    rising-sun disc anchored in the bottom-right corner plus a small red
+    artist's-chop seal in the top-left corner.
+
+    Two motifs, both in ``colors["accent"]`` (red):
+
+    * **Rising-sun disc** — a filled red circle with its centre at
+      ``(width + 30, height + 30)`` and radius ``220``. PIL's
+      ``ellipse`` clips the off-canvas portion automatically; the
+      visible portion is a sweeping arc through the bottom-right
+      quadrant of the page (for the standard 800×480 panel the disc
+      touches the right edge at y ≈ 292 and the bottom edge at
+      x ≈ 612). The white quote text rendered on top reads cleanly
+      against the red ground — white-on-red is high contrast and
+      ``snap_image_to_palette`` keeps both colours on the Spectra 6
+      palette without intermediate dithering. Reads as the iconic
+      blood-sun / rising-sun motif of kurosawa-era chanbara title
+      cards. Deliberately pinned to the **bottom-right** corner so
+      the top-right stays clear of the ``DEBUG MODE`` banner band
+      (y=14–29) — same exemption ``dispatch`` / ``atomic`` /
+      ``placard`` / ``chalkboard`` use to stay absent from
+      ``_DEBUG_LABEL_RIGHT_INSET``.
+    * **Artist's chop seal** — a small filled red rectangle (28×36 px)
+      anchored at insets ``(24, 24)`` to ``(52, 60)`` in the
+      top-left corner, with a single thin white horizontal stroke
+      drawn through its centre (the "一 / ichi" stroke). Vaguely
+      suggests a Japanese hanko ink seal without committing to
+      specific kanji — a counterbalancing diagonal accent that
+      grounds the page visually opposite the dominant sun disc.
+      The top-left stays clear of the right-aligned debug label by
+      construction.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    accent_color = colors["accent"]
+    light_color = colors.get("ornament_light", SPECTRA6["white"])
+
+    # Large rising-sun disc anchored off-canvas in the bottom-right.
+    # PIL clips the parts that fall outside the canvas, so we only see
+    # the upper-left arc of the disc sweeping through the BR quadrant.
+    sun_cx = width + 30
+    sun_cy = height + 30
+    sun_radius = 220
+    draw.ellipse(
+        (sun_cx - sun_radius, sun_cy - sun_radius,
+         sun_cx + sun_radius, sun_cy + sun_radius),
+        fill=accent_color,
+    )
+
+    # Artist's chop seal in the top-left corner — small filled red
+    # rectangle with one white horizontal stroke through its centre.
+    chop_left = 24
+    chop_top = 24
+    chop_w = 28
+    chop_h = 36
+    chop_right = chop_left + chop_w
+    chop_bottom = chop_top + chop_h
+    draw.rectangle(
+        (chop_left, chop_top, chop_right, chop_bottom),
+        fill=accent_color,
+    )
+    # Single thin white horizontal "ichi" stroke through the chop's
+    # centre. Insets 5 px from the chop's left/right edges so the
+    # stroke reads as a distinct mark rather than a full bisection.
+    stroke_y = chop_top + chop_h // 2
+    draw.line(
+        [(chop_left + 5, stroke_y), (chop_right - 5, stroke_y)],
+        fill=light_color,
+        width=2,
+    )
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -4445,6 +4583,7 @@ _BORDER_PAINTERS = {
     "glacier": draw_glacier_border,
     "chalkboard": draw_chalkboard_border,
     "placard": draw_placard_border,
+    "chanbara": draw_chanbara_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
