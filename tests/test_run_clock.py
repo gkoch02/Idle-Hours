@@ -3275,8 +3275,8 @@ class TestRandomThemeMode:
         synchronously) instead of ``last_quote_id`` (advanced only on
         successful render).
         """
-        from theme_names import theme_cycle
-        themes = list(theme_cycle())
+        from runtime_theme import random_theme_pool
+        themes = list(random_theme_pool())
         state = run_clock.RuntimeState("random")
         quote_id = ("111", 10, "q", "m")
 
@@ -3321,9 +3321,15 @@ class TestRandomThemeMode:
         assert state.current_random_theme == "default"
 
     def test_random_mode_full_pass_shows_every_theme_once(self):
-        """A full pass through one bag draws every registered theme exactly once."""
-        from theme_names import theme_cycle
-        themes = list(theme_cycle())
+        """A full pass through one bag draws every random-eligible theme exactly once.
+
+        ``diags`` is intentionally excluded from the random rotation via
+        :data:`runtime_theme.RANDOM_EXCLUDED_THEMES` (it renders a status
+        panel, not a quote), so the expected set is ``random_theme_pool``,
+        not the full ``theme_cycle``.
+        """
+        from runtime_theme import random_theme_pool
+        themes = list(random_theme_pool())
         state = run_clock.RuntimeState("random")
         seen: list[str] = []
         for i in range(len(themes)):
@@ -3335,9 +3341,9 @@ class TestRandomThemeMode:
         assert sorted(seen) == sorted(themes)
 
     def test_random_mode_bag_refills_after_pass(self):
-        """When the bag empties it's refilled from the full cycle."""
-        from theme_names import theme_cycle
-        themes = list(theme_cycle())
+        """When the bag empties it's refilled from the random-eligible cycle."""
+        from runtime_theme import random_theme_pool
+        themes = list(random_theme_pool())
         state = run_clock.RuntimeState("random")
         for i in range(len(themes)):
             new_quote_id = ("src", i, "q", "m")
@@ -3357,8 +3363,8 @@ class TestRandomThemeMode:
         construct a cycle where ``random.shuffle`` would put it at the
         pop position. The swap must move it.
         """
-        from theme_names import theme_cycle
-        themes = list(theme_cycle())
+        from runtime_theme import random_theme_pool
+        themes = list(random_theme_pool())
         just_played = themes[0]
         state = run_clock.RuntimeState("random")
         state.current_random_theme = just_played
@@ -3374,6 +3380,23 @@ class TestRandomThemeMode:
              patch("runtime_theme.random.randint", return_value=0):
             pick = run_clock._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
         assert pick != just_played, "back-to-back repeat at reshuffle boundary"
+
+    def test_random_mode_never_picks_excluded_themes(self):
+        """``diags`` renders a status panel rather than a quote — a random
+        pick that landed on it would replace the operator's expected literary
+        frame with a swatch screen. Exhaustively drive 50 fresh bags and
+        assert every draw avoids the exclusion list.
+        """
+        from runtime_theme import RANDOM_EXCLUDED_THEMES, random_theme_pool
+        assert "diags" in RANDOM_EXCLUDED_THEMES
+        assert "diags" not in random_theme_pool()
+        state = run_clock.RuntimeState("random")
+        for i in range(50 * len(random_theme_pool())):
+            pick = run_clock._maybe_pick_random_theme(state, ("src", i, "q", "m"))
+            assert pick not in RANDOM_EXCLUDED_THEMES, (
+                f"random rotation picked excluded theme {pick!r}"
+            )
+            state.last_quote_id = ("src", i, "q", "m")
 
     def test_random_mode_midnight_reset_clears_manual_theme(self, tmp_path):
         """``_maybe_reset_manual_theme_at_midnight`` clears ``manual_theme`` for

@@ -253,7 +253,7 @@ python3 run_clock.py --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Twenty-three themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme pairs its palette with a dedicated typeface. Previews use a fixed quote so palette + typography are the only variables; production renders adapt layout to the picked line.
+Twenty-four themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme pairs its palette with a dedicated typeface. Previews use a fixed quote so palette + typography are the only variables; production renders adapt layout to the picked line.
 
 | `--theme`     | Preview | Page bg | Body  | Accent | Typeface             | Feel                          |
 |---------------|---------|---------|-------|--------|----------------------|-------------------------------|
@@ -280,6 +280,9 @@ Twenty-three themes ship built-in, all constrained to the Spectra 6 panel palett
 | `chalkboard`  | <img src="assets/previews/chalkboard.png" width="240" alt="chalkboard theme preview">   | black       | white | yellow | Playwrite GB J Guides | Primary-school cursive guides |
 | `placard`     | <img src="assets/previews/placard.png" width="240" alt="placard theme preview">         | white       | black | red    | Patrick Hand SC      | Hand-lettered sandwich board  |
 | `chanbara`    | <img src="assets/previews/chanbara.png" width="240" alt="chanbara theme preview">       | black       | white | red    | Shojumaru (brush)    | Samurai-cinema poster         |
+| `diags`       | <img src="assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
+
+`diags` replaces the literary frame with a status panel — big clock + picker metrics (bucket / layout / quality / source / matched phrase), a `HOST` / `IP` / `UPTIME` strip, the Spectra 6 native palette, and the synthesised 2-ink stipple recipes documented in [`CLAUDE.md`](CLAUDE.md). Useful for on-panel colour calibration ("does `mint` actually read as green at viewing distance?") and for confirming the picker chose what you'd expect. It is **excluded from `--theme random`** (a random pick replacing the literary frame with a swatch screen would be surprising); manual selection via button B / web dropdown still works.
 
 Pass `--theme auto` to let the clock pick by wall-clock time. The defaults are `default` during the day (06:00–18:00) and `dark` at night (18:00–06:00) — the legacy binary contract. Broaden the rotation by setting `--auto-day-theme` and/or `--auto-night-theme` to any other registered theme, e.g.
 
@@ -296,7 +299,7 @@ Button B cycles forward through the list and wraps; the curator web UI at `/api/
 > Regenerate previews: the images under `assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
 >
 > ```bash
-> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier chalkboard placard chanbara; do
+> for theme in default dark scholar newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier chalkboard placard chanbara diags; do
 >   python3 render_quote.py --time 14:15 --theme "$theme" --mode production \
 >     --output "assets/previews/$theme.png"
 > done
@@ -432,7 +435,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
 - Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
-- Theme thumbnail grid: side-by-side previews of all twenty-three registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
+- Theme thumbnail grid: side-by-side previews of all twenty-four registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
 #### Tab: Curate
 
@@ -669,7 +672,7 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - `production` mode hides debug metadata for cleaner display output; `debug` mode draws a top-right `DEBUG MODE` banner and a centered bottom strip with bucket/layout/quality/id.
 - Quiet hours are on by default (22:00–06:00) and show `assets/goodnight.png`; override with `--quiet-start` / `--quiet-end` / `--quiet-image`, or disable with `--quiet-off`. Button D toggles a manual quiet override at any time.
 - Button B cycles through the full theme list and persists the choice to `--state-path`; the web UI dropdown jumps directly to any named theme. Button A's long press reverses the most recent skip.
-- Twenty-three themes ship built-in (full table with previews in the [Themes](#themes) section above): `default`, `dark`, `scholar`, `newsprint`, `nightvision`, `blueprint`, `illuminated`, `gothic`, `bauhaus`, `risograph`, `comic`, `dispatch`, `atomic`, `marker`, `saloon`, `roman`, `alchemy`, `grimoire`, `deco`, `glacier`, `chalkboard`, `placard`, `chanbara`. Every theme colour stays on the Spectra 6 palette.
+- Twenty-four themes ship built-in (full table with previews in the [Themes](#themes) section above): `default`, `dark`, `scholar`, `newsprint`, `nightvision`, `blueprint`, `illuminated`, `gothic`, `bauhaus`, `risograph`, `comic`, `dispatch`, `atomic`, `marker`, `saloon`, `roman`, `alchemy`, `grimoire`, `deco`, `glacier`, `chalkboard`, `placard`, `chanbara`, `diags` (calibration / status panel — excluded from `--theme random`). Every theme colour stays on the Spectra 6 palette.
 - `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); broaden the rotation past the binary default with `--auto-day-theme` / `--auto-night-theme`. `--theme random` rerolls the theme each time the picked quote changes (not persisted across restarts). A manual button-B / web override wins over either mode until the next midnight rollover.
 - Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
 - Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.

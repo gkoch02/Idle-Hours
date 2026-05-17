@@ -55,8 +55,30 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
     }
 
 
+# Themes that are deliberately excluded from the ``--theme random`` rotation.
+# The ``diags`` theme renders a status panel instead of a quote and is intended
+# for operator-driven calibration (button B / web dropdown only) — a random
+# pick that lands on it would replace the quote unexpectedly with a swatch /
+# host-info screen, which is not what an operator running ``--theme random``
+# is asking for. Manual selection still works for every entry in this set.
+RANDOM_EXCLUDED_THEMES: frozenset[str] = frozenset({"diags"})
+
+
+def random_theme_pool() -> tuple[str, ...]:
+    """Return the cycle of themes eligible for ``--theme random`` picks.
+
+    Identical to :func:`theme_names.theme_cycle` minus
+    :data:`RANDOM_EXCLUDED_THEMES`. Single source of truth so both
+    :func:`pick_random_theme` (the ``--once`` / startup fallback) and
+    :func:`pick_next_random_theme` (the main-loop bag refill) agree on
+    which entries can show up.
+    """
+    from theme_names import theme_cycle
+    return tuple(name for name in theme_cycle() if name not in RANDOM_EXCLUDED_THEMES)
+
+
 def pick_random_theme() -> str:
-    """Uniformly pick a theme from the registered cycle.
+    """Uniformly pick a theme from the random-eligible cycle.
 
     Used by the ``--once`` path and as the fallback inside
     ``resolve_effective_theme`` when no bag state is available. The main
@@ -64,8 +86,7 @@ def pick_random_theme() -> str:
     shown once before any repeat (true-shuffle behaviour — like a music
     player's shuffled-playlist mode).
     """
-    from theme_names import theme_cycle
-    return random.choice(list(theme_cycle()))
+    return random.choice(list(random_theme_pool()))
 
 
 def pick_next_random_theme(
@@ -82,12 +103,14 @@ def pick_next_random_theme(
 
     The bag is popped from the end (``list.pop`` is O(1)), so ``bag[-1]``
     is the "next" theme — that's the slot the swap targets.
-    """
-    from theme_names import theme_cycle
 
+    The refill draws from :func:`random_theme_pool` (= ``theme_cycle()``
+    minus :data:`RANDOM_EXCLUDED_THEMES`) rather than the full cycle, so
+    diagnostic-only themes never sneak in via a random pick.
+    """
     bag = list(bag)  # never mutate the caller's list
     if not bag:
-        bag = list(theme_cycle())
+        bag = list(random_theme_pool())
         random.shuffle(bag)
         if just_played is not None and len(bag) > 1 and bag[-1] == just_played:
             swap_idx = random.randint(0, len(bag) - 2)
