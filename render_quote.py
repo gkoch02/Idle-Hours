@@ -5096,24 +5096,44 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-# Synthesised two-ink stipple recipes documented in CLAUDE.md. Each entry is
-# (display name, dark ink, light ink, light density, short label). The order
-# here drives the bottom swatch row of the diagnostic frame; the four
-# in-use recipes (tangerine / candlelit / mint / coral) are grouped first so
-# they read as the active palette before the reference / unused recipes
-# fanning out to the right.
+# Synthesised two-ink stipple recipes documented in spectra6_color_recipes.md
+# (and summarised in CLAUDE.md). Each entry is (display name, dark ink, light
+# ink, light density, short label). The order here drives the two-row swatch
+# band at the bottom of the diagnostic frame; the four in-use recipes
+# (tangerine / candlelit / mint / coral) lead so they read as the active
+# palette before the reference / unused recipes. ``sage`` follows the doc's
+# "for ratios above 50%, swap dark/light and pass the complementary density"
+# rule (75% white + 25% green → sparse-1-in-4 green on white). ``lime`` uses
+# the same 0.375 biased-Bayer recipe as ``tangerine`` but with the green/yellow
+# pair. The full set covers every two-ink recipe reachable through
+# ``draw_text_dithered`` today — three-ink mixes (lavender, salmon, …) need a
+# ``_three_way_bayer`` primitive that doesn't exist yet.
 _DIAGS_SYNTH_SWATCHES: list[tuple[str, tuple[int, int, int], tuple[int, int, int], float, str]] = [
-    ("tangerine", SPECTRA6["red"], SPECTRA6["yellow"], 0.375, "R+Y 5:3"),
-    ("candlelit", SPECTRA6["red"], SPECTRA6["white"], 0.25, "R+W 3:1"),
-    ("mint",      SPECTRA6["green"], SPECTRA6["white"], 0.5, "G+W 1:1"),
-    ("coral",     SPECTRA6["red"], SPECTRA6["white"], 0.5, "R+W 1:1"),
-    ("amber",     SPECTRA6["red"], SPECTRA6["yellow"], 0.5, "R+Y 1:1"),
-    ("violet",    SPECTRA6["red"], SPECTRA6["blue"], 0.5, "R+B 1:1"),
-    ("sky",       SPECTRA6["blue"], SPECTRA6["white"], 0.5, "B+W 1:1"),
-    ("cyan",      SPECTRA6["green"], SPECTRA6["blue"], 0.5, "G+B 1:1"),
-    ("sepia",     SPECTRA6["red"], SPECTRA6["green"], 0.5, "R+G 1:1"),
-    ("olive",     SPECTRA6["yellow"], SPECTRA6["green"], 0.5, "Y+G 1:1"),
+    # Row 1 — reds / oranges / violets / sepia / cream
+    ("tangerine", SPECTRA6["red"],    SPECTRA6["yellow"], 0.375, "R+Y 5:3"),
+    ("candlelit", SPECTRA6["red"],    SPECTRA6["white"],  0.25,  "R+W 3:1"),
+    ("coral",     SPECTRA6["red"],    SPECTRA6["white"],  0.5,   "R+W 1:1"),
+    ("amber",     SPECTRA6["red"],    SPECTRA6["yellow"], 0.5,   "R+Y 1:1"),
+    ("violet",    SPECTRA6["red"],    SPECTRA6["blue"],   0.5,   "R+B 1:1"),
+    ("maroon",    SPECTRA6["red"],    SPECTRA6["black"],  0.5,   "R+K 1:1"),
+    ("sepia",     SPECTRA6["red"],    SPECTRA6["green"],  0.5,   "R+G 1:1"),
+    ("cream",     SPECTRA6["yellow"], SPECTRA6["white"],  0.5,   "Y+W 1:1"),
+    # Row 2 — greens / blues / neutrals
+    ("mint",      SPECTRA6["green"],  SPECTRA6["white"],  0.5,   "G+W 1:1"),
+    ("sage",      SPECTRA6["white"],  SPECTRA6["green"],  0.25,  "W+G 3:1"),
+    ("olive",     SPECTRA6["yellow"], SPECTRA6["green"],  0.5,   "Y+G 1:1"),
+    ("lime",      SPECTRA6["yellow"], SPECTRA6["green"],  0.375, "Y+G 5:3"),
+    ("forest",    SPECTRA6["green"],  SPECTRA6["black"],  0.5,   "G+K 1:1"),
+    ("cyan",      SPECTRA6["green"],  SPECTRA6["blue"],   0.5,   "G+B 1:1"),
+    ("sky",       SPECTRA6["blue"],   SPECTRA6["white"],  0.5,   "B+W 1:1"),
+    ("navy",      SPECTRA6["blue"],   SPECTRA6["black"],  0.5,   "B+K 1:1"),
+    ("gray",      SPECTRA6["black"],  SPECTRA6["white"],  0.5,   "K+W 1:1"),
 ]
+
+# Number of swatches in the first row of the diags synth band. The list above
+# splits 8 / 9, keeping the in-use recipes left-justified on row 1 and the
+# larger remainder on row 2 so per-swatch widths stay readable (~79 px).
+_DIAGS_SYNTH_ROW1_COUNT = 8
 
 _DIAGS_SPECTRA6_SWATCHES: list[tuple[str, tuple[int, int, int], str]] = [
     ("white",  SPECTRA6["white"],  "#FFFFFF"),
@@ -5351,33 +5371,42 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
         draw.text((x0 + 5, sw_top + 18), hex_code, font=label_reg, fill=label_fill)
 
     # ----- Bottom section: synthesised stipple swatches -----
-    s2_y = sw_top + sw_h + 18
+    # Two-row band so all 17 documented two-ink recipes fit at a readable
+    # ~79 px swatch width; a single row would compress to ~40 px and clip
+    # the 10 pt "tangerine" / "candlelit" labels.
+    s2_y = sw_top + sw_h + 14
     draw.text((PAD_X, s2_y), "SYNTHESISED (2-INK STIPPLE)", font=section_font, fill=colors["accent"])
 
-    sw2_top = s2_y + 18
-    sw2_color_h = 38
-    sw2_label_h = 28
-    sw2_h = sw2_color_h + sw2_label_h
+    sw2_top = s2_y + 16
+    sw2_color_h = 28
+    sw2_label_h = 22
+    sw2_row_h = sw2_color_h + sw2_label_h
+    sw2_row_gap = 4
     sw2_gap = 5
-    sw2_count = len(_DIAGS_SYNTH_SWATCHES)
-    sw2_w = (avail_w - (sw2_count - 1) * sw2_gap) // sw2_count
+    sw2_row1_count = _DIAGS_SYNTH_ROW1_COUNT
+    sw2_row2_count = len(_DIAGS_SYNTH_SWATCHES) - sw2_row1_count
     for i, (name, dark, light, density, recipe) in enumerate(_DIAGS_SYNTH_SWATCHES):
-        x0 = PAD_X + i * (sw2_w + sw2_gap)
-        x1 = x0 + sw2_w
-        color_y1 = sw2_top + sw2_color_h
-        y1 = sw2_top + sw2_h
+        if i < sw2_row1_count:
+            row_idx, col_idx, row_count = 0, i, sw2_row1_count
+        else:
+            row_idx, col_idx, row_count = 1, i - sw2_row1_count, sw2_row2_count
+        row_w = (avail_w - (row_count - 1) * sw2_gap) // row_count
+        row_top = sw2_top + row_idx * (sw2_row_h + sw2_row_gap)
+        x0 = PAD_X + col_idx * (row_w + sw2_gap)
+        x1 = x0 + row_w
+        color_y1 = row_top + sw2_color_h
         # Paint the full coloured stipple area first; the inset of 1 leaves
         # the outline cleanly visible after the rectangle stroke below.
-        _fill_swatch_stipple(image, (x0 + 1, sw2_top + 1, x1, color_y1), dark, light, density)
-        draw.rectangle((x0, sw2_top, x1, color_y1), outline=colors["text"], width=1)
+        _fill_swatch_stipple(image, (x0 + 1, row_top + 1, x1, color_y1), dark, light, density)
+        draw.rectangle((x0, row_top, x1, color_y1), outline=colors["text"], width=1)
         # Labels go below the coloured cell so the stipple texture stays
         # fully visible — the whole point of the synth swatches is to
         # show how the recipe reads on-panel at this size.
-        draw.text((x0, color_y1 + 3), name, font=label_bold, fill=colors["text"])
-        draw.text((x0, color_y1 + 15), recipe, font=label_reg, fill=colors["subtle"])
+        draw.text((x0, color_y1 + 2), name, font=label_bold, fill=colors["text"])
+        draw.text((x0, color_y1 + 12), recipe, font=label_reg, fill=colors["subtle"])
 
     # ----- Footer: short quote preview + attribution -----
-    quote_y = sw2_top + sw2_h + 8
+    quote_y = sw2_top + 2 * sw2_row_h + sw2_row_gap + 6
     quote_font = load_font(theme_font_candidates("diags", "quote_regular"), size=13)
     preview = (quote_row.get("display_quote") or "").strip()
     preview = normalize_dashes(strip_underscore_emphasis(preview))

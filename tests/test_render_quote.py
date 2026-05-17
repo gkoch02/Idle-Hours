@@ -2011,6 +2011,83 @@ class TestFillSwatchStippleClipping:
         assert img.size == (320, 192)
 
 
+class TestDiagsSynthSwatches:
+    """The diags theme's synth swatch band is the on-panel visual reference
+    for the two-ink recipes documented in ``spectra6_color_recipes.md``.
+    The doc and the swatch list must stay in sync — if someone adds a new
+    reachable two-ink recipe to the doc, the operator should see it on the
+    panel; if someone drops a recipe from the swatch list, this test fails
+    loudly so the omission is intentional rather than accidental.
+    """
+
+    # Every two-ink recipe the doc lists as reachable via
+    # ``draw_text_dithered`` today. Mirrors the catalogue in
+    # ``spectra6_color_recipes.md`` (two-ink table + the maroon/navy rows
+    # the "Deep tones" section flags as 2-ink in practice).
+    _EXPECTED_RECIPES: frozenset[str] = frozenset(
+        {
+            "tangerine",
+            "amber",
+            "coral",
+            "candlelit",
+            "mint",
+            "sage",
+            "cyan",
+            "sky",
+            "violet",
+            "sepia",
+            "forest",
+            "olive",
+            "lime",
+            "cream",
+            "gray",
+            "maroon",
+            "navy",
+        }
+    )
+
+    def test_swatch_list_has_every_documented_recipe(self):
+        names = {entry[0] for entry in rq._DIAGS_SYNTH_SWATCHES}
+        assert names == self._EXPECTED_RECIPES, (
+            "diags synth swatch list drifted from spectra6_color_recipes.md — "
+            f"missing: {self._EXPECTED_RECIPES - names}; extra: {names - self._EXPECTED_RECIPES}"
+        )
+
+    def test_swatch_count_matches_row_split(self):
+        # Two-row layout: row 1 holds _DIAGS_SYNTH_ROW1_COUNT entries, row 2
+        # holds the remainder. Guard against a future edit that grows the
+        # list without rebalancing the row counts (which would silently
+        # shrink row-1 swatches and overflow row-2 onto a third row).
+        assert len(rq._DIAGS_SYNTH_SWATCHES) == 17
+        assert rq._DIAGS_SYNTH_ROW1_COUNT == 8
+        row2 = len(rq._DIAGS_SYNTH_SWATCHES) - rq._DIAGS_SYNTH_ROW1_COUNT
+        assert row2 == 9
+
+    def test_both_rows_paint_non_background_pixels(self):
+        # Full-canvas render: both swatch rows must actually paint, so a
+        # broken row-splitting loop (e.g. wrong index arithmetic) trips a
+        # visible regression rather than silently leaving row 2 blank.
+        row = {
+            "display_quote": "A test quote.",
+            "matched_text": "midnight",
+            "bucket": "h12_exact",
+            "quality_score": 80,
+            "source_id": "1",
+            "line_number": 1,
+        }
+        img = rq.render_diags_frame("12:00", row, 800, 480)
+        assert img.size == (800, 480)
+        page_bg = rq.THEMES["diags"]["page_bg"]
+        # Sample a pixel near the middle of each row's coloured band. The
+        # synth section sits below the SPECTRA 6 native palette; row 1 is
+        # ~y=320 and row 2 is ~y=370 in the current layout. Use a small
+        # tolerance band around those midpoints.
+        for y_sample in (320, 374):
+            sampled = {img.getpixel((x, y_sample)) for x in range(50, 750, 50)}
+            non_bg = {px for px in sampled if px != page_bg}
+            assert non_bg, f"row at y={y_sample} painted no non-background pixels"
+
+
 class TestDrawTextDithered:
     """The deco theme's red-biased orange added a third density branch
     (4×4 Bayer at arbitrary thresholds) to ``draw_text_dithered``.
