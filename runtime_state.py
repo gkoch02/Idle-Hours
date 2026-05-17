@@ -45,6 +45,12 @@ class RuntimeState:
         # the displayed quote changes. Not persisted — a restart picks a fresh
         # random theme on the first render.
         self.current_random_theme: str | None = None
+        # Shuffled bag of themes not yet drawn in the current pass. Drained
+        # one entry per quote change; refilled (reshuffled) when empty so
+        # every theme is shown once before any repeat. Not persisted — a
+        # restart starts a fresh pass, same rationale as
+        # ``current_random_theme``.
+        self.random_theme_bag: list[str] = []
         self.manual_quiet = False             # toggled by button D
         self.last_bucket: str | None = None
         self.last_quote_id: tuple | None = None

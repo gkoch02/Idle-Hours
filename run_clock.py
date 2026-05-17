@@ -54,6 +54,7 @@ from runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-ex
     _auto_theme_kwargs,
     _maybe_reset_manual_theme_at_midnight,
     auto_theme_for,
+    pick_next_random_theme,
     pick_random_theme,
     resolve_effective_theme,
 )
@@ -635,6 +636,11 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
     update ``effective_theme`` and recompute ``theme_changed``), or ``None``
     when the mode is inactive, a manual override is in effect, or the quote
     hasn't changed and a theme is already stored.
+
+    Picks are drained from :attr:`RuntimeState.random_theme_bag` (a shuffled
+    pass through the full cycle) so every theme is shown once before any
+    repeat. When the bag empties it's refilled with a fresh shuffle, with the
+    head swapped if it would replay the just-played theme.
     """
     if state.theme_arg != "random" or state.manual_theme is not None:
         return None
@@ -644,9 +650,13 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
     )
     if not quote_changed:
         return None
-    new_theme = pick_random_theme()
+    with state.lock:
+        bag = list(state.random_theme_bag)
+        just_played = state.current_random_theme
+    new_theme, new_bag = pick_next_random_theme(bag, just_played=just_played)
     with state.lock:
         state.current_random_theme = new_theme
+        state.random_theme_bag = new_bag
     return new_theme
 
 
