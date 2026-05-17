@@ -436,12 +436,23 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
-    # Art-deco poster: white ground / black body / red matched-phrase accent,
-    # paired with the Righteous geometric display sans. Same palette shape as
-    # ``default`` / ``dispatch`` / ``saloon`` / ``roman`` — the differentiation
-    # is the 1930s geometric typography and the stepped-corner border drawn
-    # by ``draw_deco_border`` (concentric L-shapes echoing the canonical
-    # skyscraper-steps ornament, plus a centred top-edge rising-sun motif).
+    # Art-deco poster: white ground / black body / red-stippled-to-yellow
+    # accent that reads as orange at panel distance, paired with the
+    # Righteous geometric display sans. The Spectra-6 palette has no orange
+    # ink, but a 50/50 red/yellow Bayer stipple averages into a vivid
+    # tangerine that lifts the matched phrase and border decoration into
+    # period-correct deco territory (the canonical sunburst / chevron
+    # palette of the era leans warm — red and amber more than fire-engine
+    # red) without leaving the six-colour gamut. The dither is applied in
+    # two complementary places: ``_draw_text_body`` stipples body fills
+    # equal to ``accent``, and ``draw_deco_border``'s final pass flips
+    # half of its painted red pixels to yellow in the same phase. Same
+    # palette *intent* as ``default`` / ``dispatch`` / ``saloon`` /
+    # ``roman`` (white / black / red), but the perceived accent is
+    # visibly different from those themes' solid red. The decoration is
+    # the stepped-corner border drawn by ``draw_deco_border`` (concentric
+    # L-shapes echoing the canonical skyscraper-steps ornament, plus a
+    # centred top-edge rising-sun motif).
     "deco": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1929,11 +1940,22 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       and other themes that share the red accent colour (default,
       dark, scholar, etc.) keep their solid red — the stipple is a
       grimoire signature, not a generic red-on-black treatment.
+    * ``deco`` — only the red matched-phrase accent gets dithered,
+      50/50 yellow-on-red, so the phrase reads as orange at panel
+      distance. Spectra 6 has no orange ink; the dither synthesises
+      one inside the six-colour gamut, pulling deco's accent into
+      the warm-tangerine range the period actually used for sunburst
+      and chevron ornaments. Body / attribution / source-id text in
+      black passes through solid. ``draw_deco_border``'s final
+      pass dithers its painted red pixels in the same phase, so the
+      matched phrase and border decoration share one orange tone.
     """
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+    elif theme == "deco" and fill == SPECTRA6["red"]:
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"])
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -2524,6 +2546,19 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
     label. So ``deco`` is intentionally **absent** from
     ``_DEBUG_LABEL_RIGHT_INSET`` — same exemption as ``atomic`` and
     ``dispatch``.
+
+    **Final pass — red→orange Bayer dither.** Spectra 6 has no orange
+    ink, but a 50/50 yellow-on-red stipple averages into a warm
+    tangerine at panel distance that lands the L-shapes / rising-sun
+    in period-correct deco territory. After every shape is painted,
+    walk the image and flip half of the ``accent``-coloured pixels to
+    yellow on the ``(x+y) & 1`` checkerboard. The pass only fires
+    when ``accent`` is the Spectra-6 red — direct-call test paths
+    that pass a custom palette dict (e.g. a recoloured deco border
+    for visual experiments) keep their solid accent. Phase matches
+    ``draw_text_dithered``'s ``((x+ox)+(y+oy)) % 2 == 0`` rule so
+    the bordered decoration and the matched-phrase body text share
+    one orange tone instead of two slightly offset stipples.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -2610,6 +2645,19 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
             fill=accent_color,
             width=1,
         )
+
+    # Final pass: synthesise orange by flipping half of the painted
+    # red pixels to yellow on a 1×1 checkerboard. See the docstring
+    # for the rationale; phase matches ``draw_text_dithered`` so the
+    # bold matched-phrase body text and the border decoration land
+    # on the same orange tone.
+    if accent_color == SPECTRA6["red"]:
+        light = SPECTRA6["yellow"]
+        pixels = image.load()
+        for y in range(image.height):
+            for x in range(image.width):
+                if (x + y) & 1 and pixels[x, y] == accent_color:
+                    pixels[x, y] = light
 
 
 def draw_glacier_border(image: Image.Image, colors: dict) -> None:
