@@ -3420,7 +3420,18 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
         fill=accent,
     )
 
-    # Twin starbursts at the mid-edges.
+    # Twin starbursts at the mid-edges. Painted in red as a sentinel
+    # ink, then the per-starburst bbox post-pass below flips ~3/8 of
+    # the red pixels to yellow per the documented R+Y 5/8:3/8 Bayer
+    # threshold (same tangerine recipe ``deco``'s matched phrase and
+    # ``comic``'s extra warm band use). The eye averages adjacent
+    # red+yellow dots into tangerine at panel viewing distance — the
+    # canonical mid-century atomic-spark warmth of 1950s diner /
+    # motel signage, where atomic-age vermilion was almost always
+    # printed against orange / amber backgrounds rather than left as
+    # the harsh fire-engine red the atom orbits use today. The atom
+    # symbol itself stays solid red (rays vs. orbits is the visual
+    # contrast — solid orbits, warm-stippled rays).
     starburst_outer = 11
     starburst_inner = 4
     centres = ((34, height // 2), (width - 34, height // 2))
@@ -3433,12 +3444,28 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
             y1 = star_cy + starburst_inner * sin_a
             x2 = star_cx + starburst_outer * cos_a
             y2 = star_cy + starburst_outer * sin_a
-            draw.line((x1, y1, x2, y2), fill=accent, width=1)
+            draw.line((x1, y1, x2, y2), fill=SPECTRA6["red"], width=1)
         # Centre dot.
         draw.ellipse(
             (star_cx - 2, star_cy - 2, star_cx + 2, star_cy + 2),
-            fill=accent,
+            fill=SPECTRA6["red"],
         )
+
+    # Tangerine post-pass — bbox-scoped per starburst (~500 pixels per
+    # render). Only flips pixels that match the sentinel red, so the
+    # surrounding green page_bg and the dither's white flecks pass
+    # through unchanged.
+    sentinel_red = SPECTRA6["red"]
+    flip_yellow = SPECTRA6["yellow"]
+    for star_cx, star_cy in centres:
+        x0 = max(0, star_cx - starburst_outer)
+        y0 = max(0, star_cy - starburst_outer)
+        x1 = min(width - 1, star_cx + starburst_outer)
+        y1 = min(height - 1, star_cy + starburst_outer)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
+                    pixels[x, y] = flip_yellow
 
 
 # Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded at
