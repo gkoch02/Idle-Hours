@@ -62,7 +62,7 @@ Single combined catalogue: recipes the codebase pulls today plus the unused-but-
 
 | Synthesised colour | Recipe | `draw_text_dithered` call | In use | Source |
 |---|---|---|---|---|
-| Tangerine / warm orange | red + yellow at 5/8 : 3/8 | `dark=red, light=yellow, light_density=0.375` | `deco` (matched phrase + border post-pass); `comic` (the extra warm-toned 5th band painted manually pixel-by-pixel above the cool blue/green/red/black chevron — same Bayer threshold as deco so both themes' synthesised orange lands on identical pixel parity) | LitClock / Beyond-6-Colors literature |
+| Tangerine / warm orange | red + yellow at 5/8 : 3/8 | `dark=red, light=yellow, light_density=0.375` | `deco` (matched phrase + border post-pass) | LitClock / Beyond-6-Colors literature |
 | Pure orange / amber | red + yellow at 1/2 : 1/2 | `dark=red, light=yellow` (default density) | — | Frans-Willem README. *Caveat:* reads as washed-out amber on the panel (yellow's higher luminance dominates). The deco theme historically used this recipe before being switched to the tangerine variant above; documented here so future authors don't repeat the same fix. |
 | Pink / coral | red + white at 1/2 : 1/2 | `dark=red, light=white` | `placard` (thumbtack corner accents — weathered hand-painted red); `chalkboard` (eraser-smudge dots along the bottom inner edge — leftover pink eraser-stub residue) | LitClock |
 | Candlelit red | red + white at 3/4 : 1/4 | `dark=red, light=white, light_density=0.25` | `grimoire` (matched phrase); `gothic` (matched phrase — shares the candlelit-rubric signature with grimoire, the complementary-polarity blackletter sister) | LitClock |

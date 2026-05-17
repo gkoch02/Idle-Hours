@@ -4055,12 +4055,10 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
 
     Parallel diagonal bands cycling through the four non-yellow palette
     accents (blue / green / red / black) sweep down-and-right at 45°,
-    plus one additional warm-tangerine band painted as a Bayer stipple
-    of red+yellow above the cool palette — evoking the chromatic
-    chevron motif of mid-century racing graphics and 70s/80s graphic
-    design with a sunburst warmth that the original four-cool-ink
-    chevron lacked. The yellow page_bg shows through the gaps so the
-    chevron reads as banded stripes rather than a solid block.
+    evoking the chromatic chevron motif of mid-century racing graphics
+    and 70s/80s graphic design. The yellow page_bg shows through the
+    gaps so the chevron reads as banded stripes rather than a solid
+    block.
 
     Constrained to a 45° right-isoceles triangle pinned to the bottom-
     right canvas corner — legs of length ``height // 2`` running along
@@ -4085,20 +4083,6 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     The yellow gap colour does come from ``colors["page_bg"]`` so a
     future palette tweak that swaps the comic ground still flows
     through.
-
-    The extra tangerine band is painted manually pixel-by-pixel rather
-    than via ``qd.line()`` because the recipe is a Bayer-stippled
-    two-ink mix (R+Y 5/8:3/8 — the documented tangerine recipe, same
-    one ``deco`` uses for its matched phrase and border post-pass), and
-    PIL's line painter only takes a single solid fill. The band sits
-    at one period above the kept-indices band so the warm tangerine
-    leads into the cool chevron the way a sunburst leads into shadow.
-    Module-level ``_COMIC_STRIPE_PALETTE`` stays a 4-tuple of native
-    Spectra-6 inks — both because every entry of that constant is
-    pinned by ``test_comic_stripe_palette_stays_within_spectra6`` to
-    be panel-native (a sentinel mix would fail the snap-safety
-    invariant) and because the tangerine band's two inks (red, yellow)
-    are already reachable from the existing palette + page_bg.
     """
     width, height = image.size
     qx = width // 2
@@ -4148,42 +4132,6 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
                 fill=color,
                 width=stripe_thickness,
             )
-
-    # Tangerine band — one extra warm-toned stripe positioned one period
-    # above the kept-indices band so the chevron reads as warm-into-cool
-    # (sunburst leading into shadow) rather than four uniform cool inks.
-    # Painted manually pixel-by-pixel because the tangerine recipe is a
-    # Bayer-stippled red+yellow two-ink mix (5/8 red : 3/8 yellow on the
-    # shared 4×4 ordered Bayer matrix, threshold 6/16), which PIL's
-    # ``line()`` can't produce in a single call. The band is positioned
-    # at stripe_cs[min(kept_indices) - 1] when that index exists in the
-    # stripe range; on canvas sizes too small for an extra stripe slot
-    # the painter silently skips this layer rather than clipping into
-    # an adjacent band.
-    extra_idx = min(kept_indices) - 1 if kept_indices else -1
-    if 0 <= extra_idx < len(stripe_cs):
-        extra_c = stripe_cs[extra_idx]
-        half_thick = stripe_thickness // 2
-        red = SPECTRA6["red"]
-        yellow = SPECTRA6["yellow"]
-        quadrant_pixels = quadrant.load()
-        x_lo = max(0, extra_c - overshoot)
-        x_hi = min(qw, extra_c + qh + overshoot + 1)
-        for x in range(x_lo, x_hi):
-            # Centerline y for the slope -1 stripe at column x.
-            y_center = extra_c + qh - x
-            y_lo = max(0, y_center - half_thick)
-            y_hi = min(qh, y_center + half_thick + 1)
-            for y in range(y_lo, y_hi):
-                # Bayer threshold: cells with value < 6 (i.e. 0-5, 6 of
-                # 16) become yellow → 3/8 yellow / 5/8 red. The bias
-                # toward the dimmer red ink corrects for yellow's higher
-                # luminance — a 50/50 mix reads as washed-out amber
-                # (see spectra6_color_recipes.md).
-                if BAYER_4x4[y & 3][x & 3] < 6:
-                    quadrant_pixels[x, y] = yellow
-                else:
-                    quadrant_pixels[x, y] = red
 
     # 45° right-isoceles triangle mask pinned to the bottom-right of
     # the quadrant. Legs of length qh (the shorter dimension) so the
