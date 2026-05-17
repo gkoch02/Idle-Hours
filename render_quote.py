@@ -2909,12 +2909,15 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
-    """Paint a classroom-chalkboard surround: doubled white wooden frame
-    plus a sparse cluster of chalk-dust dots tucked into the bottom-left
-    corner of the slate (the chalk-tray side).
+    """Paint a classroom-chalkboard surround: doubled white wooden frame,
+    a sparse cluster of chalk-dust dots tucked into the bottom-left
+    corner of the slate (the chalk-tray side), a green-chalk teacher's
+    check-mark in the upper-right margin, and a row of coral eraser-
+    smudge spots along the bottom inner edge.
 
-    Two motifs, both evoking the iconic slate / wood / chalk-dust
-    combination of a Victorian-through-1990s schoolroom blackboard:
+    Four motifs, all evoking the iconic slate / wood / chalk-dust
+    combination of a Victorian-through-1990s schoolroom blackboard
+    and the multi-colour chalk box that sat on every teacher's desk:
 
     * **Doubled wooden frame** — outer rectangle at inset 8 with a 3 px
       stroke (the chunky wooden surround) plus an inner rectangle at
@@ -2926,24 +2929,32 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
     * **Chalk-dust scatter** — a sparse, deterministic stipple of
       tiny white dots (radius 1 px) inside the bottom-left corner
       of the inner frame. Pinned to the BL because that's where the
-      chalk tray actually sits on a classroom board, and because the
-      asymmetric placement (rather than four-corner symmetry) reads
-      as observed wear from a real teacher's hand rather than
-      decorative ornament. Stays inside a ~40 px square so it never
-      overlaps the quote block; the standard layout's ``max_width``
-      leaves at least ``SIDE_MARGIN`` (20 px) of clear margin at
-      every edge.
-
-    The graphic deliberately doesn't paint anything in the top-right
-    corner — the doubled frame stops at the outer rectangle, no corner
-    accent — so ``chalkboard`` is intentionally absent from
-    ``_DEBUG_LABEL_RIGHT_INSET`` (same reasoning as ``dispatch`` /
-    ``atomic``: TR feature sits outside the label's bounding box by
-    construction).
+      chalk tray actually sits on a classroom board.
+    * **Green-chalk check-mark** — a small ``✓`` painted in solid
+      panel-native green at the upper-right inner margin, evoking
+      the teacher's "marked correct" annotation that primary-school
+      cursive practice sheets accumulate. Sits at y≈45, well below
+      the ``DEBUG MODE`` banner band (y=14-29), so ``chalkboard``
+      stays absent from ``_DEBUG_LABEL_RIGHT_INSET``. The green is
+      solid Spectra-6 ink: only the panel's saturated green chalk
+      reads as such at viewing distance, and stippling would dilute
+      the recognition of the canonical correction mark.
+    * **Coral eraser-smudge dots** — five small filled red dots
+      along the bottom inner edge of the frame, each Bayer-post-
+      passed with white pixels at 50/50 parity inside its bbox so
+      the eye averages red+white at panel distance into coral
+      (the documented two-ink recipe in ``spectra6_color_recipes.md``).
+      Reads as the leftover pink eraser-stub marks that build up at
+      the bottom of a real chalkboard, the spot the teacher most
+      often drags an eraser across. Same post-pass pattern
+      ``draw_placard_border`` uses on its thumbtack accents.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_color = colors["text"]  # white chalk frame on the black slate
+    accent_color = colors["accent"]  # yellow chalk-stick (matched phrase)
+    chalk_green = SPECTRA6["green"]
+    smudge_red = SPECTRA6["red"]
 
     # Outer thick wooden surround.
     outer_inset = 8
@@ -2981,39 +2992,110 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
         # at snap_image_to_palette time.
         draw.rectangle((cx, cy, cx, cy), fill=frame_color)
 
+    # Green-chalk teacher's check-mark in the upper-right margin. Two
+    # short line segments forming a ✓: a 5px down-right diagonal joining
+    # a 11px up-right diagonal at the elbow. Sits at y≈45 (below the
+    # debug-banner band) and right-edge x ≈ width-30 (inside the inner
+    # frame). 2 px stroke so the mark reads as a deliberate chalk swipe
+    # rather than a hairline accident.
+    tick_elbow_x = width - 1 - inner_inset - 22
+    tick_elbow_y = 50
+    draw.line(
+        ((tick_elbow_x - 5, tick_elbow_y - 5), (tick_elbow_x, tick_elbow_y)),
+        fill=chalk_green,
+        width=2,
+    )
+    draw.line(
+        ((tick_elbow_x, tick_elbow_y), (tick_elbow_x + 11, tick_elbow_y - 12)),
+        fill=chalk_green,
+        width=2,
+    )
+
+    # Coral eraser-smudge dots along the bottom inner edge. Five small
+    # filled circles spaced 30 px apart, centred at y=height-inner-9 so
+    # they sit just inside the bottom of the inner frame. Each smudge is
+    # painted red first; the post-pass below stipples white over half of
+    # each smudge's pixels (1×1 checkerboard) so the eye averages red+
+    # white at panel distance into coral pink — the documented R+W 1:1
+    # two-ink recipe — reading as the faint pink eraser-stub residue
+    # that builds up at the bottom of a real classroom chalkboard.
+    smudge_radius = 3
+    smudge_centres = [
+        (180 + i * 110, height - 1 - inner_inset - 9) for i in range(5)
+    ]
+    for cx, cy in smudge_centres:
+        draw.ellipse(
+            (cx - smudge_radius, cy - smudge_radius, cx + smudge_radius, cy + smudge_radius),
+            fill=smudge_red,
+        )
+
+    # Coral post-pass — same recipe ``draw_placard_border`` uses on its
+    # thumbtack accents. Bbox-scoped per smudge so the cost stays
+    # trivial (~50 pixels per render).
+    pixels = image.load()
+    for cx, cy in smudge_centres:
+        x0 = max(0, cx - smudge_radius)
+        y0 = max(0, cy - smudge_radius)
+        x1 = min(width - 1, cx + smudge_radius)
+        y1 = min(height - 1, cy + smudge_radius)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if (x + y) & 1 == 0 and pixels[x, y] == smudge_red:
+                    pixels[x, y] = SPECTRA6["white"]
+    # Yellow accent kept in the local namespace so a future palette
+    # tweak in ``THEMES["chalkboard"]`` (e.g. swapping yellow chalk for
+    # a different colour) keeps the cross-reference live.
+    del accent_color
+
 
 def draw_placard_border(image: Image.Image, colors: dict) -> None:
     """Paint a hand-painted shop-sign / sandwich-board surround: doubled
-    black sign-painter's frame plus four red thumbtack corner accents.
+    sign-painter's frame (sepia outer + black inner) plus four red
+    thumbtack corner accents.
 
-    Two motifs, both evoking the hand-lettered A-frame menu / shop-
+    Three motifs, all evoking the hand-lettered A-frame menu / shop-
     window placard register that Patrick Hand SC's small-caps silhouette
     suggests:
 
-    * **Doubled sign-painter's frame** — outer rectangle at inset 14
-      and inner rectangle at inset 18, both 1 px stroke in
-      ``colors["text"]`` (black). The narrow ~3 px gap between the
+    * **Sepia outer frame** — outer rectangle at inset 14, painted as a
+      1 px red stroke and then post-passed on its perimeter to flip
+      half of the pixels to green per ``(x+y)&1`` parity. At panel
+      viewing distance the eye averages adjacent red+green dots into
+      rust-brown sepia — the documented R+G 1:1 two-ink recipe (see
+      ``spectra6_color_recipes.md``) — reading as the weathered wood
+      of a sun-faded A-frame sandwich board rather than the harsh
+      printer-ink black of a freshly typeset poster. Same recipe the
+      ``saloon`` foxing speckles use.
+    * **Inner black frame** — inner rectangle at inset 18, 1 px stroke
+      in ``colors["text"]`` (black). The narrow ~3 px gap between the
       two rules reads as a sign-painter's deliberate doubled brush
-      stroke, the way real hand-painted shop signs frame their text.
-    * **Red thumbtack corner accents** — four small filled circles
+      stroke; the colour shift between the outer (sepia) and inner
+      (black) rules reads as the "core inked, weathered at edges"
+      look of a hand-lettered shop frame.
+    * **Coral thumbtack corner accents** — four small filled circles
       in ``colors["accent"]`` (red) just inside the inner frame at
-      each corner, suggesting the pins or tacks holding the sign up
-      on a corkboard. Positioned at ``y ≈ 38`` (top corners) and
-      ``y ≈ height-38`` (bottom corners), well below the default
-      ``DEBUG MODE`` label band (y=14-29). So ``placard`` is
-      intentionally absent from ``_DEBUG_LABEL_RIGHT_INSET`` — same
-      exemption as ``dispatch`` (TR rubber-stamp imprint sits at
-      y=40-70, also below the label band).
+      each corner, suggesting the pins or tacks holding the sign up.
+      Each tack's red pixels are Bayer-post-passed with white at
+      50/50 parity inside its bbox so the eye averages red+white at
+      panel distance into coral pink (R+W 1:1 — weathered hand-painted
+      red, since the exposed corners of a sandwich-board sign would
+      be the first thing to fade in the rain).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_color = colors["text"]
     accent_color = colors["accent"]
 
+    # Outer frame painted in red as a sentinel ink so the post-pass
+    # below can identify exactly which pixels to flip without coordinate
+    # bookkeeping (paint-then-stipple is the same pattern the thumbtack
+    # accents below use; same pattern ``draw_chalkboard_border``'s coral
+    # eraser smudges use). The mid-flip-to-green Bayer post-pass turns
+    # the rule into sepia.
     outer_inset = 14
     draw.rectangle(
         (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
-        outline=frame_color,
+        outline=SPECTRA6["red"],
         width=1,
     )
     inner_inset = 18
@@ -3022,6 +3104,27 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
         outline=frame_color,
         width=1,
     )
+
+    # Sepia post-pass on the outer frame's four edges. Walk the
+    # perimeter (rather than the full bbox, which would also touch
+    # interior pixels that aren't part of the rule) and flip red→green
+    # on the 50/50 (x+y)&1 checkerboard so the eye averages rust-brown
+    # at panel distance.
+    pixels = image.load()
+    outer_x0, outer_y0 = outer_inset, outer_inset
+    outer_x1, outer_y1 = width - 1 - outer_inset, height - 1 - outer_inset
+    for x in range(outer_x0, outer_x1 + 1):
+        for y in (outer_y0, outer_y1):
+            if (x + y) & 1 == 0 and pixels[x, y] == SPECTRA6["red"]:
+                pixels[x, y] = SPECTRA6["green"]
+    for y in range(outer_y0 + 1, outer_y1):
+        for x in (outer_x0, outer_x1):
+            if (x + y) & 1 == 0 and pixels[x, y] == SPECTRA6["red"]:
+                pixels[x, y] = SPECTRA6["green"]
+    # ``frame_color`` (black) is still used for the inner rule above;
+    # kept bound for future palette extensions even though sepia post-
+    # pass paints over the outer rule's "frame_color" intent.
+    del frame_color
 
     # Red thumbtack accents — four filled circles at the inner corners,
     # offset down/in from the corner enough that the TR tack sits
