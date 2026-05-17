@@ -4021,52 +4021,63 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
-    Two motifs from 19th-century newspaper typography:
+    Three motifs from 19th-century newspaper typography:
 
-    * **Layer 0 — sparse newsprint halftone.** A 4×4 Bayer dither
-      converts 2 of every 16 ``page_bg`` white pixels to black, leaving
-      the other 14 untouched. At panel viewing distance the eye
-      averages the 12.5%-black pattern into a faint grey wash —
-      reads as cheap newsprint pulp rather than the panel's flat pure
-      white. Same trick the ``alchemy`` parchment halftone uses, but
-      with the polarity flipped (mostly-white with black flecks rather
-      than mostly-yellow with white flecks). Painted at the very start
-      of the painter so the Scotch-rule frame below overpaints the
-      dithered ground cleanly. Lives natively on the Spectra-6 palette
-      (every output pixel still one of the six pure inks), so the
-      palette-snap step is a no-op and glyph edges stay crisp.
+    * **Layer 0 — newsprint halftone + faint sepia foxing.** A 4×4
+      Bayer dither converts 2 of every 16 ``page_bg`` white pixels to
+      black (the 12.5% grey newsprint-pulp halftone the theme has
+      always used), plus 1 red pixel and 1 green pixel per 4×4 tile
+      at Bayer values 2 and 3 — together a 12.5% rust-brown sepia
+      speckle layer the eye averages into pale foxing at panel
+      viewing distance. Real archival newspaper paper develops this
+      faint orange-brown tint as the lignin in the pulp oxidises
+      under light, the same way real newsprint develops the grey
+      halftone the original Layer 0 already simulates. Adjacent
+      Bayer cells (one red, one green per 4×4 tile, diagonally ~2.8
+      px apart) blend at panel distance into the documented R+G 1:1
+      sepia recipe — same recipe ``saloon``'s foxing speckles use.
+      The theme stays "no-colour-accent" by construction
+      (``test_newsprint_theme_has_no_colour_accent`` still passes
+      because the matched phrase / body / accent THEMES slots stay
+      black-on-black); the rust-brown lives entirely on the
+      *paper*, not the typography. Painted at the very start of the
+      painter so the Scotch-rule frame below overpaints the
+      dithered ground cleanly. Lives natively on the Spectra-6
+      palette (every output pixel still one of the six pure inks),
+      so palette-snap is a no-op and glyph edges stay crisp.
     * **Scotch rule frame.** A classic thick-thin parallel rule: a
       heavier outer rectangle and a hairline inner rectangle separated
       by a narrow band of white space. The signature border of
       19th-century newspaper typography — no corner accents, no
-      coloured ornament, nothing but weighted ink. That restraint
-      matches the theme's no-colour-accent palette (every theme field
-      is black or white), so the margin reads as broadsheet rather
-      than modernist poster.
+      coloured ornament, nothing but weighted ink.
     """
     width, height = image.size
     page_bg = colors.get("page_bg")
     ink = colors["text"]
 
-    # Layer 0: 12.5% black-on-white Bayer halftone. Only pixels matching
-    # the exact ``page_bg`` colour are affected — defence in depth if a
-    # future caller paints accents before this painter runs. Skipped
-    # when ``page_bg`` is absent from the palette so direct-call test
-    # paths that only provide ``text`` stay valid.
+    # Layer 0: 12.5% black-on-white Bayer halftone + faint 12.5% sepia
+    # foxing speckles. Only pixels matching the exact ``page_bg`` colour
+    # are affected — defence in depth if a future caller paints accents
+    # before this painter runs. Skipped when ``page_bg`` is absent from
+    # the palette so direct-call test paths that only provide ``text``
+    # stay valid.
     if page_bg is not None:
-        _BAYER_4 = (
-            (0, 8, 2, 10),
-            (12, 4, 14, 6),
-            (3, 11, 1, 9),
-            (15, 7, 13, 5),
-        )
-        halftone_threshold = 2  # cells with value < 2 (i.e. 0, 1) become black → 2/16
+        _BAYER_4 = BAYER_4x4
+        sepia_red = SPECTRA6["red"]
+        sepia_green = SPECTRA6["green"]
         pixels = image.load()
         for y in range(height):
             row = _BAYER_4[y & 3]
             for x in range(width):
-                if pixels[x, y] == page_bg and row[x & 3] < halftone_threshold:
-                    pixels[x, y] = ink
+                if pixels[x, y] != page_bg:
+                    continue
+                cell = row[x & 3]
+                if cell < 2:
+                    pixels[x, y] = ink           # 12.5% black halftone
+                elif cell == 2:
+                    pixels[x, y] = sepia_red     # 6.25% red speckle
+                elif cell == 3:
+                    pixels[x, y] = sepia_green   # 6.25% green speckle
 
     draw = ImageDraw.Draw(image)
 
