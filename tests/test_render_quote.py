@@ -1075,27 +1075,39 @@ class TestNightvisionBorder:
         assert img.getpixel((787, 467)) == rq.SPECTRA6["green"], "BR bracket corner missing"
 
     def test_nightvision_bracket_arms_are_two_pixels_thick(self):
-        """Each arm is a 2px-thick filled rectangle, not a hairline."""
+        """Each arm is a 2px-thick filled rectangle, not a hairline.
+
+        Black-bg themes (nightvision included) paint a rich-black stipple
+        background (black + red + blue @ 60 / 20 / 20), so the "past the
+        arm" sample point's expected colour is the stipple ink at that
+        coordinate — not solid black.
+        """
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="nightvision")
         # TL horizontal arm at y=12-13, x range 12 to 38.
         assert img.getpixel((25, 12)) == rq.SPECTRA6["green"]
         assert img.getpixel((25, 13)) == rq.SPECTRA6["green"]
-        assert img.getpixel((25, 14)) == rq.SPECTRA6["black"], "arm leaked past 2px thickness"
+        assert img.getpixel((25, 14)) == rq.expected_page_bg_at("nightvision", 25, 14), "arm leaked past 2px thickness"
         # TL vertical arm at x=12-13, y range 12 to 38.
         assert img.getpixel((12, 25)) == rq.SPECTRA6["green"]
         assert img.getpixel((13, 25)) == rq.SPECTRA6["green"]
-        assert img.getpixel((14, 25)) == rq.SPECTRA6["black"], "vertical arm leaked past 2px thickness"
+        assert img.getpixel((14, 25)) == rq.expected_page_bg_at("nightvision", 14, 25), "vertical arm leaked past 2px thickness"
 
     def test_nightvision_has_no_continuous_outer_frame(self):
-        """The signature feature: mid-edge pixels must show the black
-        page_bg, not a connecting frame line. A regression that added
-        a full rectangle outline would collapse nightvision's HUD look
-        into another illuminated-style frame."""
+        """The signature feature: mid-edge pixels must show the page_bg
+        (rich-black stipple), not a connecting frame line. A regression
+        that added a full rectangle outline would collapse nightvision's
+        HUD look into another illuminated-style frame.
+
+        Each sample's expected colour is the rich-black stipple ink at
+        that coordinate — the recipe pulls black / red / blue from the
+        4×4 Bayer matrix, so mid-edge samples can legitimately be any
+        of the three.
+        """
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="nightvision")
-        assert img.getpixel((400, 12)) == rq.SPECTRA6["black"], "unexpected top frame line"
-        assert img.getpixel((400, 467)) == rq.SPECTRA6["black"], "unexpected bottom frame line"
-        assert img.getpixel((12, 240)) == rq.SPECTRA6["black"], "unexpected left frame line"
-        assert img.getpixel((787, 240)) == rq.SPECTRA6["black"], "unexpected right frame line"
+        for x, y, side in ((400, 12, "top"), (400, 467, "bottom"), (12, 240, "left"), (787, 240, "right")):
+            assert img.getpixel((x, y)) == rq.expected_page_bg_at("nightvision", x, y), (
+                f"unexpected {side} frame line at ({x}, {y})"
+            )
 
     def test_nightvision_border_is_theme_gated(self):
         """Sample the TL bracket corner (12, 12). Several other border
@@ -1669,10 +1681,21 @@ class TestGrimoireBorder:
             mid-edge sigils (centred at x=400 with y around 14 / 465 /
             240) by sampling only the dense quote-body region
             (y in [80, 380]) and picking the row with the most red
-            pixels — the matched-phrase line."""
+            pixels — the matched-phrase line.
+
+            Grimoire's page_bg is the rich-black stipple (black + red +
+            blue @ 60 / 20 / 20), so ~19% of every row is red purely
+            from the background pattern. Skip those positions so we
+            only count "extra" red ink contributed by the matched-
+            phrase glyphs."""
             best_row = (0, 0, 0)  # (count, left, right)
             for y in range(80, 380):
-                red_xs = [x for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN) if img.getpixel((x, y)) == red]
+                red_xs = [
+                    x
+                    for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN)
+                    if img.getpixel((x, y)) == red
+                    and rq.expected_page_bg_at("grimoire", x, y) != red
+                ]
                 if len(red_xs) > best_row[0]:
                     best_row = (len(red_xs), red_xs[0], red_xs[-1])
             return best_row[1], best_row[2]
@@ -2236,6 +2259,123 @@ class TestFillSwatchStipple3way:
         )
         # Untouched: every pixel still the sentinel background.
         assert image.getextrema() == ((1, 1), (2, 2), (3, 3))
+
+
+class TestRichBlackPageBg:
+    """Every black-bg theme paints a rich-black 3-ink stipple background
+    (``black + red + blue @ 60 / 20 / 20``) via ``_paint_page_bg``,
+    documented in ``spectra6_color_recipes.md``. The recipe is detected
+    by value (``page_bg == SPECTRA6["black"]``) rather than enumerated by
+    name, so future black-ground themes inherit the pass automatically.
+    """
+
+    _BLACK_BG_THEMES = ("dark", "nightvision", "gothic", "grimoire", "chalkboard", "chanbara")
+
+    def test_helper_paints_only_when_page_bg_is_black(self):
+        """A theme whose ``page_bg`` is white / yellow / blue / green
+        must not have its canvas overwritten — the rich-black recipe is
+        a black-only ground modifier."""
+        for theme in rq.THEMES:
+            if rq.THEMES[theme]["page_bg"] == rq.SPECTRA6["black"]:
+                continue
+            image = Image.new("RGB", (32, 32), color=rq.THEMES[theme]["page_bg"])
+            rq._paint_page_bg(image, theme, rq.THEMES[theme])
+            pixels = set(image.getdata())
+            assert pixels == {rq.THEMES[theme]["page_bg"]}, (
+                f"{theme}: _paint_page_bg overwrote a non-black-bg canvas"
+            )
+
+    def test_helper_paints_rich_black_for_every_black_bg_theme(self):
+        """All six black-bg themes must produce identical stipple output —
+        the recipe is value-detected, not name-keyed, so the pass is
+        determined by ``page_bg`` alone."""
+        canvases = []
+        for theme in self._BLACK_BG_THEMES:
+            image = Image.new("RGB", (32, 32), color=rq.SPECTRA6["black"])
+            rq._paint_page_bg(image, theme, rq.THEMES[theme])
+            canvases.append(image.tobytes())
+        # All six canvases byte-identical — same recipe, same Bayer phase.
+        assert len(set(canvases)) == 1, "black-bg themes diverged in their stipple output"
+
+    def test_rich_black_pixel_matches_expected_density_split(self):
+        """The 60 / 20 / 20 recipe on a 32×32 tile should land ~10 / 3 / 3
+        cells per 16 → ~625 black, ~187 red, ~187 blue out of 1024
+        pixels. The Bayer matrix is uniform on a 32×32 tile so the count
+        is exact (within ±0)."""
+        image = Image.new("RGB", (32, 32), color=rq.SPECTRA6["black"])
+        rq._paint_page_bg(image, "dark", rq.THEMES["dark"])
+        pixels = list(image.getdata())
+        black = pixels.count(rq.SPECTRA6["black"])
+        red = pixels.count(rq.SPECTRA6["red"])
+        blue = pixels.count(rq.SPECTRA6["blue"])
+        assert black == 640, f"expected 10/16 × 1024 = 640 black pixels, got {black}"
+        assert red == 192, f"expected 3/16 × 1024 = 192 red pixels, got {red}"
+        assert blue == 192, f"expected 3/16 × 1024 = 192 blue pixels, got {blue}"
+        assert black + red + blue == 32 * 32, "every pixel must be on the Spectra 6 palette"
+
+    def test_rich_black_pixel_helper_matches_painted_canvas(self):
+        """``rich_black_pixel(x, y)`` must return the same ink the
+        painter would write at that coordinate. Tests use this helper
+        to derive expected page-bg values without re-rendering."""
+        image = Image.new("RGB", (32, 32), color=rq.SPECTRA6["black"])
+        rq._paint_page_bg(image, "dark", rq.THEMES["dark"])
+        for y in range(8):
+            for x in range(8):
+                assert image.getpixel((x, y)) == rq.rich_black_pixel(x, y), (
+                    f"painter / helper disagreed at ({x}, {y})"
+                )
+
+    def test_expected_page_bg_at_falls_through_for_non_black_themes(self):
+        """For non-black-bg themes the helper must return the flat
+        ``page_bg`` colour at every coordinate (no stipple)."""
+        for theme in ("default", "scholar", "newsprint", "blueprint", "comic", "atomic"):
+            page_bg = rq.THEMES[theme]["page_bg"]
+            for x, y in ((0, 0), (1, 2), (3, 3), (50, 80)):
+                assert rq.expected_page_bg_at(theme, x, y) == page_bg, (
+                    f"{theme}: helper returned non-flat colour at ({x}, {y})"
+                )
+
+    def test_rich_black_renders_only_spectra6_inks(self):
+        """The whole point of synthesising rich black via stipple is to
+        stay native to the Spectra 6 palette — ``snap_image_to_palette``
+        must be a no-op on the page background."""
+        for theme in self._BLACK_BG_THEMES:
+            image = Image.new("RGB", (800, 480), color=rq.SPECTRA6["black"])
+            rq._paint_page_bg(image, theme, rq.THEMES[theme])
+            pixels = set(image.getdata())
+            palette = set(rq.SPECTRA6.values())
+            assert pixels.issubset(palette), (
+                f"{theme}: rich-black canvas painted off-palette pixels: {pixels - palette}"
+            )
+
+    def test_render_dark_theme_uses_rich_black_stipple(self):
+        """End-to-end pin: rendering the dark theme produces a canvas
+        whose corner shows the rich-black recipe rather than a flat
+        ``SPECTRA6["black"]`` fill. ``(3, 0)`` lands on Bayer cell 10
+        (the first red-density cell) — the canonical signature pixel
+        of the recipe."""
+        row = {
+            "display_quote": "It was three o'clock.",
+            "matched_text": "three o'clock",
+            "author": "Jane Austen",
+            "title": "Mansfield Park",
+            "bucket": "h3_exact",
+            "resolved_bucket": "h3_exact",
+            "used_fallback": False,
+            "quality_score": 80,
+            "source_id": "141",
+        }
+        img = rq.render("03:00", row, 800, 480, mode="production", theme="dark")
+        # (3, 0) → BAYER[0][3] = 10 (red density region, cells 10..12).
+        # If the stipple pass regressed back to solid black, this pixel
+        # would be (0, 0, 0) instead.
+        assert img.getpixel((3, 0)) == rq.SPECTRA6["red"], (
+            "dark theme dropped the rich-black stipple — (3, 0) should be red"
+        )
+        # (0, 3) → BAYER[3][0] = 15 (blue density region, cells 13..15).
+        assert img.getpixel((0, 3)) == rq.SPECTRA6["blue"], (
+            "dark theme dropped the rich-black stipple — (0, 3) should be blue"
+        )
 
 
 class TestDrawTextDithered:
