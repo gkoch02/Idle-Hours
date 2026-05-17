@@ -78,9 +78,11 @@ Single combined catalogue: recipes the codebase pulls today plus the unused-but-
 | Cream | yellow + white at 1/2 : 1/2 | `dark=yellow, light=white` | — | Warm off-white for parchment / vellum themes. Forward reference. |
 | Gray (50/50) | black + white at 1/2 : 1/2 | `dark=black, light=white` | — | Frans-Willem. The renderer typically uses solid black or solid white directly rather than gray stipple, but listed here for completeness — a forward reference for an "engineering monochrome" theme that wants a softer body fill. |
 
-## Three-ink recipes — forward references only
+## Three-ink recipes
 
-**Not yet supported by `draw_text_dithered`.** Every recipe below would need a new primitive — a `_three_way_bayer` helper that partitions the 4×4 Bayer tile into three regions by threshold (e.g. tile cell `< 6` → ink A, `6..10` → ink B, `>= 11` → ink C — a 6/5/5 cell split for an even mix, biased cell counts for asymmetric ratios). The existing infrastructure handles the two-ink case only.
+**`render_quote._fill_swatch_stipple_3way`** is the implemented primitive — partitions the 4×4 Bayer tile into three regions by threshold (cells `< round(density_a * 16)` → ink A, cells `< round((density_a + density_b) * 16)` → ink B, the remainder → ink C). The implicit third density is `1 − density_a − density_b`. It powers the diags theme's 3-ink swatch band (`_DIAGS_TRIPLE_SWATCHES`) so an operator can hold the panel and verify whether (e.g.) the 1/3-each lavender or the white-heavy lilac actually reads as the named pastel at panel distance.
+
+`draw_text_dithered` itself (the glyph-mask painter) still operates on two inks only. A theme that wants to paint *text* in a three-ink recipe — rather than a swatch fill or decorative graphic — needs to extend `draw_text_dithered` with a similar 3-way Bayer branch, or composite via two `draw_text_dithered` passes onto a `_fill_swatch_stipple_3way`-painted background. For decorative graphics and swatch fills the primitive below is the entry point today.
 
 Recipes are grouped by *which pole of the octahedron* the third ink contributes — pastels (white-lifted), deep tones (black-darkened), and chromatic mixes (no W/K, all three inks equatorial). The luminance-asymmetry rule from the two-ink section still applies: when one of the three inks is yellow or white, bias the cell-count partition away from it or the brighter ink will dominate.
 
@@ -115,7 +117,7 @@ Recipes are grouped by *which pole of the octahedron* the third ink contributes 
 | Burnt orange / terracotta | red + yellow + green @ 50 / 40 / 10 | The green dulls tangerine into terracotta. Future desert / canyon theme. |
 | Forest-teal | green + blue + yellow @ 40 / 40 / 20 | Cyan dragged toward olive — denser than seafoam, for a deep-forest theme. |
 
-Anyone adding the three-ink primitive should add a sweep test similar to the existing `TestDrawTextDithered::test_<ratio>_split` family pinning the per-region pixel counts within `±2%` tolerance on a fixed sample tile.
+`TestFillSwatchStipple3way::test_partition_ratios` (in `tests/test_render_quote.py`) sweeps the five density splits used by the diags swatch band and pins each region's pixel count within `±2%` tolerance on a fixed 32×32 sample tile — extend it when adding a new recipe whose density split isn't already covered.
 
 ## Four-ink recipes — narrower edge
 
