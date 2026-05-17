@@ -50,6 +50,11 @@ THEME_ORDER: tuple[str, ...] = (
     "roman",
     "alchemy",
     "grimoire",
+    "deco",
+    "glacier",
+    "chalkboard",
+    "placard",
+    "chanbara",
 )
 THEMES = {
     "default": {
@@ -431,6 +436,101 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
+    # Art-deco poster: white ground / black body / red matched-phrase accent,
+    # paired with the Righteous geometric display sans. Same palette shape as
+    # ``default`` / ``dispatch`` / ``saloon`` / ``roman`` — the differentiation
+    # is the 1930s geometric typography and the stepped-corner border drawn
+    # by ``draw_deco_border`` (concentric L-shapes echoing the canonical
+    # skyscraper-steps ornament, plus a centred top-edge rising-sun motif).
+    "deco": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Icy / aurora: white ground / blue Iceland body / green matched-phrase
+    # accent. The first theme to pair a blue body with a green accent — sits
+    # visually apart from ``scholar`` (blue body / red accent) and ``blueprint``
+    # (blue *ground* / white body / red accent). Iceland is a geometric techno
+    # display face; the matching border (``draw_glacier_border``) drops angular
+    # "frost crystal" shards into the four corners plus small four-armed star
+    # ticks at the mid-edges, echoing the font's architectural symmetry.
+    "glacier": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["blue"],
+        "subtle": SPECTRA6["blue"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["blue"],
+    },
+    # Classroom chalkboard: black page (slate), white chalk body in the
+    # Playwrite GB Joined Guides cursive handwriting face (TypeTogether,
+    # OFL — the British primary-school joined cursive with dotted-outline
+    # practice letters), yellow chalk-stick matched-phrase accent. Shares
+    # the black/white/yellow palette shape with ``dark`` (which is Playfair
+    # Display); the differentiation is the handwriting font and the
+    # ``draw_chalkboard_border`` wooden-frame decoration. Visually reads as
+    # a teacher demonstrating cursive on a slate board.
+    "chalkboard": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # Hand-painted shop sign / sandwich-board placard: white paper-sign
+    # ground, black hand-printed small-caps body in Patrick Hand SC
+    # (Patrick Wagesreiter, OFL — friendly hand-lettered face whose small
+    # caps for lowercase do almost all the visual work), red highlight
+    # matched-phrase accent (the sign-painter's spot colour). Shares the
+    # white/black/red palette shape with ``default`` / ``dispatch`` /
+    # ``saloon`` / ``roman`` / ``deco`` — the differentiation is the
+    # hand-printed small-caps font and the ``draw_placard_border``
+    # decoration (doubled sign-painter's frame + red thumbtack corner
+    # accents). Reads as a market A-frame or shop-window menu at a glance.
+    "placard": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Samurai cinema title card: black ink-sky ground, white Shojumaru
+    # brush-painted body (Astigmatic, OFL — same designer as Righteous and
+    # Atomic Age), red matched-phrase accent (the chanbara genre's spot
+    # colour — blood, vermilion, the rising sun). Shares the black/white/
+    # red palette shape with ``gothic`` and ``grimoire``; the
+    # differentiation is the dramatic brush-painted display face and the
+    # ``draw_chanbara_border`` decoration (large off-canvas red rising-sun
+    # disc in the bottom-right corner plus a small red artist's chop seal
+    # in the top-left). Reads as a kurosawa-era film title card at a
+    # glance.
+    "chanbara": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        # Red ornaments on black — same trick ``grimoire`` uses so the
+        # oversized opening / closing quote marks render as solid red
+        # against the ink ground rather than half-dithering into the
+        # page colour.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["white"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -582,6 +682,65 @@ IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Itali
 # whose sharply-pointed strokes read as a ritual scribe's hand.
 # Matched-phrase + ornament face for the ``alchemy`` theme.
 MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regular.ttf")
+# Righteous — Astigmatic / Brian J. Bonislawsky (OFL). 1930s geometric
+# art-deco display sans with friendly rounded terminals on a strict
+# geometric skeleton. Single-weight (Regular only), so the matched-phrase
+# slot in ``deco`` re-uses the same file and earns differentiation from
+# the accent colour alone — same trick the comic / dispatch / atomic /
+# marker / saloon themes use. Falls back through DejaVu / Liberation /
+# Noto Sans Bold before degrading to the Playfair serif chain, so a
+# missing install lands on a heavy display silhouette rather than an
+# elegant serif.
+RIGHTEOUS_REGULAR = str(BASE_DIR / "fonts/righteous/Righteous-Regular.ttf")
+# Iceland — Cyreal (OFL). Geometric techno / retro-futurism display
+# face with chunky verticals and angled cuts, very Atari-arcade /
+# sci-fi-splash register. Same single-weight discipline as Righteous:
+# the matched-phrase slot in ``glacier`` re-uses the file and gains
+# differentiation from the green accent. Falls back through heavy sans
+# before the Playfair serif chain so a missing install stays in the
+# display-face lane.
+ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
+# Playwrite GB J Guides — TypeTogether / Veronika Burian / José Scaglione
+# (OFL). The British primary-school joined-cursive handwriting model
+# *with* the dotted-outline guide letters that schoolchildren trace over
+# in their first cursive workbooks. Single-weight (Regular only); the
+# distinctive feature is the dotted/hollow letterforms themselves, which
+# don't have a meaningful "Bold" companion — a heavier guide-line would
+# defeat the practice-letter aesthetic. Matched phrase reuses Regular
+# and gains differentiation from the yellow chalk-stick accent alone.
+# Used by the ``chalkboard`` theme. Falls back through DejaVu Sans
+# Italic (the closest in-rotation script-adjacent face) before
+# degrading to the Playfair serif chain, so a missing-Playwrite install
+# lands on at least a slanted silhouette rather than dropping a
+# handwriting theme onto an upright serif.
+PLAYWRITE_GB_J_GUIDES_REGULAR = str(BASE_DIR / "fonts/playwrite-gb-j-guides/PlaywriteGBJGuides-Regular.ttf")
+# Patrick Hand SC — Patrick Wagesreiter (OFL). Friendly hand-printed
+# (NOT cursive — printed letterforms drawn by hand) small-caps face.
+# The "SC" variant renders lowercase as small capitals, giving the
+# text the distinctive silhouette of hand-lettered shop signage and
+# menu boards — the sandwich-board / kraft-paper-label register
+# that no other theme in the rotation occupies. Single-weight
+# (Regular only); the matched-phrase role in ``placard`` reuses
+# Regular and gains differentiation from the red accent alone —
+# same trick comic / dispatch / atomic / marker / saloon / deco /
+# glacier / chalkboard already use. Fallback chain ends at heavy
+# sans (DejaVu / Liberation / Noto Sans Bold) before degrading to
+# the Playfair serif chain, so a missing install lands on a
+# chunky display silhouette rather than dropping the placard theme
+# onto an elegant transitional serif.
+PATRICK_HAND_SC_REGULAR = str(BASE_DIR / "fonts/patrick-hand-sc/PatrickHandSC-Regular.ttf")
+# Shojumaru — Astigmatic / Brian J. Bonislawsky (OFL). Dramatic
+# brush-painted display face evoking samurai cinema posters,
+# Japanese woodblock prints, and chanbara movie title cards.
+# Single-weight (Regular only); the matched-phrase role in
+# ``chanbara`` reuses Regular and gains differentiation from the
+# red sun-disc accent alone — same trick comic / dispatch / atomic /
+# marker / saloon / deco / glacier / chalkboard / placard already
+# use. Fallback chain ends at heavy DejaVu / Liberation / Noto Sans
+# Bold before degrading to the Playfair serif chain, so a missing
+# install lands on a heavy display silhouette rather than dropping
+# a brush-painted theme onto an elegant transitional serif.
+SHOJUMARU_REGULAR = str(BASE_DIR / "fonts/shojumaru/Shojumaru-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1087,6 +1246,146 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "card_quote_bold": [
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+    },
+    "deco": {
+        # Righteous (Astigmatic, OFL) — 1930s geometric art-deco display
+        # sans. Ships only Regular, so the matched-phrase role re-uses the
+        # file and gains differentiation from the red accent alone — same
+        # bichrome-ribbon trick the comic / dispatch / atomic / marker /
+        # saloon themes use. Fallback chain ends at a heavy sans (DejaVu /
+        # Liberation / Noto Sans Bold) before degrading to the Playfair
+        # serif chain, so a missing-Righteous install lands on a heavy
+        # display silhouette rather than dropping the deco theme onto an
+        # elegant transitional serif.
+        "quote_regular": [
+            RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "placard": {
+        # Patrick Hand SC (Patrick Wagesreiter, OFL) — friendly
+        # hand-printed face whose small caps for lowercase do all the
+        # visual work. Single-weight; matched phrase reuses Regular and
+        # gains differentiation from the red accent alone. Same heavy-sans
+        # fallback chain comic / marker / atomic use.
+        "quote_regular": [
+            PATRICK_HAND_SC_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            PATRICK_HAND_SC_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PATRICK_HAND_SC_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "chanbara": {
+        # Shojumaru (Astigmatic, OFL) — dramatic brush-painted display
+        # face. Single-weight; matched phrase reuses Regular and gains
+        # differentiation from the red sun-disc accent alone. Heavy-sans
+        # fallback chain before degrading to the Playfair serif chain so
+        # a missing install lands on a heavy display silhouette rather
+        # than dropping a brush-painted theme onto an elegant transitional
+        # serif.
+        "quote_regular": [
+            SHOJUMARU_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SHOJUMARU_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SHOJUMARU_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "chalkboard": {
+        # Playwrite GB J Guides (TypeTogether, OFL) — UK primary-school
+        # joined cursive with dotted-outline practice letters. Single-weight
+        # (Regular only); a true "Bold guide letter" doesn't exist in the
+        # family. Matched-phrase role reuses Regular and gains differentiation
+        # from the yellow chalk-stick accent alone — same trick comic /
+        # dispatch / atomic / marker / saloon / deco / glacier already use.
+        # Fallback chain prefers italic faces (DejaVu Sans Italic, Liberation
+        # Sans Italic) before degrading to the Playfair chain so a missing
+        # install lands on at least a slanted silhouette rather than dropping
+        # a cursive theme onto an upright serif.
+        "quote_regular": [
+            PLAYWRITE_GB_J_GUIDES_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            PLAYWRITE_GB_J_GUIDES_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PLAYWRITE_GB_J_GUIDES_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "glacier": {
+        # Iceland (Cyreal, OFL) — geometric techno / retro-futurism display
+        # face. Same single-weight discipline as Righteous / Bangers / Atomic
+        # Age: matched phrase reuses Regular and gains differentiation from
+        # the green accent. Same heavy-sans fallback chain.
+        "quote_regular": [
+            ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
         ],
     },
 }
@@ -2192,6 +2491,432 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
     _draw_grimoire_moon(draw, *mid_bottom, accent, page_bg)
     _draw_grimoire_mars(draw, *mid_left, accent)
     _draw_grimoire_venus(draw, *mid_right, accent)
+
+
+def draw_deco_border(image: Image.Image, colors: dict) -> None:
+    """Paint an art-deco poster frame: doubled hairline rule + stepped
+    skyscraper-step corner ornaments + a top-centre rising-sun fan.
+
+    Three motifs, all canonical 1930s deco vocabulary:
+
+    * **Doubled hairline frame** — outer rectangle at inset 14 and inner
+      rectangle at inset 22, both 1 px stroke in ``colors["text"]``.
+      The thin parallel rules are the silhouette of countless cinema
+      programs and travel posters of the era.
+    * **Stepped corner ornaments** — three concentric L-shapes per
+      corner in ``colors["accent"]``, drawn from the inside of the
+      doubled frame outward. The L's vertex sits at the inner-frame
+      corner; arms 8 / 16 / 24 px long, 1 px stroke. The canonical
+      skyscraper-steps motif found on every theatre marquee and
+      jazz-age magazine cover.
+    * **Centred rising-sun fan** — at the top horizontal mid-edge,
+      a small filled accent dot with five short radial lines fanning
+      *upward* through the inner frame band (capped by the outer
+      hairline). Pure art-deco rising-sun. Sized to stay well clear
+      of the quote block (top of the fan at y ≤ 13) and centred
+      horizontally so it never reaches the right-aligned ``DEBUG
+      MODE`` banner.
+
+    The top-right stepped-corner ornament reaches x ≤ width-14 (24 px
+    arm starting at the inner-frame corner at width-1-22), leaving
+    ≥6 px of clearance from the default debug-label edge (``SIDE_MARGIN
+    = 20``). The rising-sun is centred, far from the right-aligned
+    label. So ``deco`` is intentionally **absent** from
+    ``_DEBUG_LABEL_RIGHT_INSET`` — same exemption as ``atomic`` and
+    ``dispatch``.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_color = colors["text"]
+    accent_color = colors["accent"]
+
+    outer_inset = 14
+    inner_inset = 22
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=frame_color,
+        width=1,
+    )
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Stepped skyscraper-corner ornaments. For each corner, draw three
+    # concentric L-shapes inside the inner frame. The L's vertex lives
+    # at the inner-frame corner; arms extend along the two adjacent
+    # sides. ``step_length`` doubles per step so the silhouette reads
+    # as the canonical 1930s stepped pyramid.
+    corner_origins = [
+        # (corner_x, corner_y, dx, dy) — corner anchor (inner-frame corner)
+        # plus the unit-vector pair pointing inward along the two sides.
+        (inner_inset + 1, inner_inset + 1, +1, +1),                       # top-left
+        (width - 2 - inner_inset, inner_inset + 1, -1, +1),                # top-right
+        (inner_inset + 1, height - 2 - inner_inset, +1, -1),               # bottom-left
+        (width - 2 - inner_inset, height - 2 - inner_inset, -1, -1),       # bottom-right
+    ]
+    for step in (1, 2, 3):
+        step_length = 6 + step * 6  # 12 / 18 / 24
+        step_offset = step * 2       # 2 / 4 / 6 px gap between concentric L's
+        for cx, cy, dx, dy in corner_origins:
+            ax = cx + dx * step_offset
+            ay = cy + dy * step_offset
+            # Horizontal arm along the top/bottom edge of the L.
+            draw.line(
+                [(ax, ay), (ax + dx * step_length, ay)],
+                fill=accent_color,
+                width=1,
+            )
+            # Vertical arm along the left/right edge of the L.
+            draw.line(
+                [(ax, ay), (ax, ay + dy * step_length)],
+                fill=accent_color,
+                width=1,
+            )
+
+    # Top-centre rising-sun fan. Small filled dot anchored on the inner
+    # frame's top edge with five short radial rays fanning upward
+    # through the band between the two frame rules. Stays inside that
+    # 8-px band (inner_inset = 22, outer_inset = 14, so the band is
+    # y ∈ [14, 22] inclusive); rays cap at y = outer_inset + 1 so they
+    # never touch the outer hairline.
+    fan_cx = width // 2
+    fan_cy = inner_inset
+    fan_dot_r = 2
+    draw.ellipse(
+        (fan_cx - fan_dot_r, fan_cy - fan_dot_r, fan_cx + fan_dot_r, fan_cy + fan_dot_r),
+        fill=accent_color,
+    )
+    ray_top_y = outer_inset + 1
+    ray_height = fan_cy - ray_top_y
+    # Five rays spread across a 90° arc centred straight up (-π/2),
+    # symmetric about the vertical axis: angles -π/2 ± k·(π/8).
+    for k in (-2, -1, 0, 1, 2):
+        angle = -math.pi / 2 + k * (math.pi / 8)
+        end_x = fan_cx + math.cos(angle) * ray_height / max(abs(math.sin(angle)), 0.001) \
+                if k != 0 else fan_cx
+        end_y = ray_top_y
+        # Clamp end_x to stay within the fan's natural footprint so
+        # the side rays don't streak off to the canvas edge for low
+        # |sin(angle)| values. The footprint half-width is ~ray_height.
+        max_dx = ray_height
+        if end_x < fan_cx - max_dx:
+            end_x = fan_cx - max_dx
+        elif end_x > fan_cx + max_dx:
+            end_x = fan_cx + max_dx
+        draw.line(
+            [(fan_cx, fan_cy), (end_x, end_y)],
+            fill=accent_color,
+            width=1,
+        )
+
+
+def draw_glacier_border(image: Image.Image, colors: dict) -> None:
+    """Paint an icy / aurora border: thin outer rule + four corner
+    frost-crystal clusters + four mid-edge snowflake-tick stars.
+
+    Three motifs, all evoking the geometric / glacial register that
+    Iceland's chunky verticals suggest:
+
+    * **Outer frame** — single rectangle at inset 14, 1 px stroke,
+      drawn in ``colors["text"]`` (blue). Clean and engineered.
+    * **Frost-crystal clusters** — each corner gets three angular
+      filled triangles fanning out *from* the corner along the two
+      adjacent sides, like ice splinters frozen across the page
+      edge. Two shards in ``colors["text"]`` (blue) and the longest
+      one tipped in ``colors["accent"]`` (green) — the aurora light
+      catching on the ice. Sizes ~8–14 px so the cluster stays
+      well outside the quote block (``SIDE_MARGIN`` + layout
+      ``max_width`` always leaves ≥30 px of free corner).
+    * **Mid-edge snowflake ticks** — at the midpoint of each edge,
+      a small four-armed star (radius ~6 px) drawn in
+      ``colors["text"]`` — a filled diamond plus a thin orthogonal
+      cross. Reinforces the architectural symmetry without crowding
+      the quote.
+
+    The top-right frost-crystal cluster spans roughly x ≥ width-30,
+    y ≤ 30 — overlaps the default ``DEBUG MODE`` label band. So
+    ``glacier`` carries an inset entry in ``_DEBUG_LABEL_RIGHT_INSET``
+    (34 px) mirroring ``blueprint``'s rationale.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    body_color = colors["text"]
+    accent_color = colors["accent"]
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=body_color,
+        width=1,
+    )
+
+    # Frost-crystal clusters at the four corners. Each cluster paints
+    # three triangular shards fanning out *along* the two adjacent edges
+    # from the corner. Shard 1 is short, on the horizontal axis; shard
+    # 2 is short, on the vertical axis; shard 3 is the longest, on the
+    # 45° diagonal — tipped in the accent colour for aurora-on-ice
+    # contrast.
+    corner_anchors = [
+        # (anchor_x, anchor_y, dx, dy) — inner-frame corner plus the
+        # unit-vector pair pointing into the page.
+        (outer_inset + 2, outer_inset + 2, +1, +1),                       # top-left
+        (width - 3 - outer_inset, outer_inset + 2, -1, +1),                # top-right
+        (outer_inset + 2, height - 3 - outer_inset, +1, -1),               # bottom-left
+        (width - 3 - outer_inset, height - 3 - outer_inset, -1, -1),       # bottom-right
+    ]
+    short_arm = 9
+    long_arm = 14
+    base_half = 3  # half-width of each shard's base near the corner
+    for ax, ay, dx, dy in corner_anchors:
+        # Horizontal shard — tip along the top/bottom edge.
+        tip_h = (ax + dx * short_arm, ay)
+        base_h_a = (ax, ay - base_half * dy)
+        base_h_b = (ax, ay + base_half * dy)
+        draw.polygon([tip_h, base_h_a, base_h_b], fill=body_color)
+        # Vertical shard — tip along the left/right edge.
+        tip_v = (ax, ay + dy * short_arm)
+        base_v_a = (ax - base_half * dx, ay)
+        base_v_b = (ax + base_half * dx, ay)
+        draw.polygon([tip_v, base_v_a, base_v_b], fill=body_color)
+        # Diagonal shard — the longest, tipped in accent for aurora.
+        tip_d = (ax + dx * long_arm, ay + dy * long_arm)
+        base_d_a = (ax + dx * base_half, ay - dy * base_half)
+        base_d_b = (ax - dx * base_half, ay + dy * base_half)
+        draw.polygon([tip_d, base_d_a, base_d_b], fill=accent_color)
+
+    # Mid-edge snowflake ticks. Four-armed star: a filled diamond plus
+    # a hairline cross through it. Painted in body colour so the
+    # ornament reads as an architectural rivet rather than a feature
+    # accent.
+    star_r = 6
+    midpoints = [
+        (width // 2, outer_inset),            # top
+        (width // 2, height - 1 - outer_inset),  # bottom
+        (outer_inset, height // 2),           # left
+        (width - 1 - outer_inset, height // 2),  # right
+    ]
+    diamond_r = 3
+    for mx, my in midpoints:
+        draw.polygon(
+            [
+                (mx, my - diamond_r),
+                (mx + diamond_r, my),
+                (mx, my + diamond_r),
+                (mx - diamond_r, my),
+            ],
+            fill=body_color,
+        )
+        draw.line([(mx - star_r, my), (mx + star_r, my)], fill=body_color, width=1)
+        draw.line([(mx, my - star_r), (mx, my + star_r)], fill=body_color, width=1)
+
+
+def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
+    """Paint a classroom-chalkboard surround: doubled white wooden frame
+    plus a sparse cluster of chalk-dust dots tucked into the bottom-left
+    corner of the slate (the chalk-tray side).
+
+    Two motifs, both evoking the iconic slate / wood / chalk-dust
+    combination of a Victorian-through-1990s schoolroom blackboard:
+
+    * **Doubled wooden frame** — outer rectangle at inset 8 with a 3 px
+      stroke (the chunky wooden surround) plus an inner rectangle at
+      inset 18 with a 1 px stroke (the inside edge of the wood). The
+      ~7 px band between the two rules stays unfilled so the panel's
+      black ground reads through as dark wood grain rather than a
+      single flat white strip — the visual silhouette of a real
+      chalkboard frame.
+    * **Chalk-dust scatter** — a sparse, deterministic stipple of
+      tiny white dots (radius 1 px) inside the bottom-left corner
+      of the inner frame. Pinned to the BL because that's where the
+      chalk tray actually sits on a classroom board, and because the
+      asymmetric placement (rather than four-corner symmetry) reads
+      as observed wear from a real teacher's hand rather than
+      decorative ornament. Stays inside a ~40 px square so it never
+      overlaps the quote block; the standard layout's ``max_width``
+      leaves at least ``SIDE_MARGIN`` (20 px) of clear margin at
+      every edge.
+
+    The graphic deliberately doesn't paint anything in the top-right
+    corner — the doubled frame stops at the outer rectangle, no corner
+    accent — so ``chalkboard`` is intentionally absent from
+    ``_DEBUG_LABEL_RIGHT_INSET`` (same reasoning as ``dispatch`` /
+    ``atomic``: TR feature sits outside the label's bounding box by
+    construction).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_color = colors["text"]  # white chalk frame on the black slate
+
+    # Outer thick wooden surround.
+    outer_inset = 8
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=frame_color,
+        width=3,
+    )
+    # Inner thin frame — the inside lip of the wood.
+    inner_inset = 18
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Chalk-dust stipple inside the BL corner of the inner frame. Coords
+    # are hand-tuned (not RNG'd) so the scatter is deterministic across
+    # renders — the corpus rotates through 144 buckets and a non-stable
+    # corner would make A/B comparisons noisier. Footprint stays within
+    # a 40×30 px box pinned to the inner-frame BL corner.
+    bl_x = inner_inset + 4
+    bl_y = height - 1 - inner_inset - 4
+    chalk_offsets = (
+        (0, 0),  (5, -2), (11, 0), (18, -3), (23, 1),
+        (3, -8), (9, -7), (16, -9), (22, -7), (28, -10),
+        (1, -14), (7, -16), (15, -15), (20, -19), (26, -17),
+        (5, -22), (12, -23), (19, -24), (24, -26),
+    )
+    for dx, dy in chalk_offsets:
+        cx = bl_x + dx
+        cy = bl_y + dy
+        # 1 px dot — drawn as a single-pixel rectangle so PIL doesn't
+        # anti-alias and dither the dot into surrounding palette greys
+        # at snap_image_to_palette time.
+        draw.rectangle((cx, cy, cx, cy), fill=frame_color)
+
+
+def draw_placard_border(image: Image.Image, colors: dict) -> None:
+    """Paint a hand-painted shop-sign / sandwich-board surround: doubled
+    black sign-painter's frame plus four red thumbtack corner accents.
+
+    Two motifs, both evoking the hand-lettered A-frame menu / shop-
+    window placard register that Patrick Hand SC's small-caps silhouette
+    suggests:
+
+    * **Doubled sign-painter's frame** — outer rectangle at inset 14
+      and inner rectangle at inset 18, both 1 px stroke in
+      ``colors["text"]`` (black). The narrow ~3 px gap between the
+      two rules reads as a sign-painter's deliberate doubled brush
+      stroke, the way real hand-painted shop signs frame their text.
+    * **Red thumbtack corner accents** — four small filled circles
+      in ``colors["accent"]`` (red) just inside the inner frame at
+      each corner, suggesting the pins or tacks holding the sign up
+      on a corkboard. Positioned at ``y ≈ 38`` (top corners) and
+      ``y ≈ height-38`` (bottom corners), well below the default
+      ``DEBUG MODE`` label band (y=14-29). So ``placard`` is
+      intentionally absent from ``_DEBUG_LABEL_RIGHT_INSET`` — same
+      exemption as ``dispatch`` (TR rubber-stamp imprint sits at
+      y=40-70, also below the label band).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_color = colors["text"]
+    accent_color = colors["accent"]
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=frame_color,
+        width=1,
+    )
+    inner_inset = 18
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Red thumbtack accents — four filled circles at the inner corners,
+    # offset down/in from the corner enough that the TR tack sits
+    # entirely below the y=14-29 debug-label band (centre y=38, radius
+    # 4 → bbox y=34-42, fully below the label).
+    tack_radius = 4
+    tack_inset = 38
+    tack_centres = [
+        (tack_inset, tack_inset),
+        (width - 1 - tack_inset, tack_inset),
+        (tack_inset, height - 1 - tack_inset),
+        (width - 1 - tack_inset, height - 1 - tack_inset),
+    ]
+    for cx, cy in tack_centres:
+        draw.ellipse(
+            (cx - tack_radius, cy - tack_radius, cx + tack_radius, cy + tack_radius),
+            fill=accent_color,
+        )
+
+
+def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
+    """Paint a samurai-cinema title-card surround: large off-canvas red
+    rising-sun disc anchored in the bottom-right corner plus a small red
+    artist's-chop seal in the top-left corner.
+
+    Two motifs, both in ``colors["accent"]`` (red):
+
+    * **Rising-sun disc** — a filled red circle with its centre at
+      ``(width + 30, height + 30)`` and radius ``220``. PIL's
+      ``ellipse`` clips the off-canvas portion automatically; the
+      visible portion is a sweeping arc through the bottom-right
+      quadrant of the page (for the standard 800×480 panel the disc
+      touches the right edge at y ≈ 292 and the bottom edge at
+      x ≈ 612). The white quote text rendered on top reads cleanly
+      against the red ground — white-on-red is high contrast and
+      ``snap_image_to_palette`` keeps both colours on the Spectra 6
+      palette without intermediate dithering. Reads as the iconic
+      blood-sun / rising-sun motif of kurosawa-era chanbara title
+      cards. Deliberately pinned to the **bottom-right** corner so
+      the top-right stays clear of the ``DEBUG MODE`` banner band
+      (y=14–29) — same exemption ``dispatch`` / ``atomic`` /
+      ``placard`` / ``chalkboard`` use to stay absent from
+      ``_DEBUG_LABEL_RIGHT_INSET``.
+    * **Artist's chop seal** — a small filled red rectangle (28×36 px)
+      anchored at insets ``(24, 24)`` to ``(52, 60)`` in the
+      top-left corner, with a single thin white horizontal stroke
+      drawn through its centre (the "一 / ichi" stroke). Vaguely
+      suggests a Japanese hanko ink seal without committing to
+      specific kanji — a counterbalancing diagonal accent that
+      grounds the page visually opposite the dominant sun disc.
+      The top-left stays clear of the right-aligned debug label by
+      construction.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    accent_color = colors["accent"]
+    light_color = colors.get("ornament_light", SPECTRA6["white"])
+
+    # Large rising-sun disc anchored off-canvas in the bottom-right.
+    # PIL clips the parts that fall outside the canvas, so we only see
+    # the upper-left arc of the disc sweeping through the BR quadrant.
+    sun_cx = width + 30
+    sun_cy = height + 30
+    sun_radius = 220
+    draw.ellipse(
+        (sun_cx - sun_radius, sun_cy - sun_radius,
+         sun_cx + sun_radius, sun_cy + sun_radius),
+        fill=accent_color,
+    )
+
+    # Artist's chop seal in the top-left corner — small filled red
+    # rectangle with one white horizontal stroke through its centre.
+    chop_left = 24
+    chop_top = 24
+    chop_w = 28
+    chop_h = 36
+    chop_right = chop_left + chop_w
+    chop_bottom = chop_top + chop_h
+    draw.rectangle(
+        (chop_left, chop_top, chop_right, chop_bottom),
+        fill=accent_color,
+    )
+    # Single thin white horizontal "ichi" stroke through the chop's
+    # centre. Insets 5 px from the chop's left/right edges so the
+    # stroke reads as a distinct mark rather than a full bisection.
+    stroke_y = chop_top + chop_h // 2
+    draw.line(
+        [(chop_left + 5, stroke_y), (chop_right - 5, stroke_y)],
+        fill=light_color,
+        width=2,
+    )
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -3854,6 +4579,11 @@ _BORDER_PAINTERS = {
     "nightvision": draw_nightvision_border,
     "risograph": draw_risograph_border,
     "grimoire": draw_grimoire_border,
+    "deco": draw_deco_border,
+    "glacier": draw_glacier_border,
+    "chalkboard": draw_chalkboard_border,
+    "placard": draw_placard_border,
+    "chanbara": draw_chanbara_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -3915,6 +4645,14 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # width-50. The ring's top vertex sits at y=15
                         # (well inside the label's y=14-29 band), so
                         # the horizontal inset is what does the work.
+    "glacier": 34,      # past the TR frost-crystal cluster. The diagonal
+                        # shard (long_arm=14) reaches roughly to
+                        # x=width-3-outer_inset+1-14 = width-30 with the
+                        # accent-tipped point, plus a 4px breathing gap.
+                        # ``deco`` is intentionally absent — its stepped
+                        # corner reaches x ≤ width-14 (well outside the
+                        # default debug-label edge at SIDE_MARGIN) and
+                        # its rising-sun fan is centred horizontally.
 }
 
 # Themes whose matched-phrase (``quote_bold``) face has a distinctive

@@ -322,6 +322,84 @@ SCENARIOS: list[dict] = [
     # Pin one light-theme + one dark-theme + one operator-theme golden so a
     # regression in the headline font, fit-loop, or theme-border interaction
     # for the goodnight code path lands here loudly.
+    # Deco's art-deco border paints a doubled hairline frame, four
+    # concentric stepped-corner L-shapes, and a centred top-edge rising-sun
+    # fan in red. A regression that dropped ``draw_deco_border`` (or any
+    # of those three motifs) would flip thousands of margin pixels.
+    {
+        "name": "standard_deco_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "deco",
+    },
+    # Glacier paints a thin blue outer rule, four corner frost-crystal
+    # clusters (two blue shards + one green-tipped diagonal shard each),
+    # and four mid-edge snowflake-tick stars. Pins both the painted pixels
+    # and Iceland's font load.
+    {
+        "name": "standard_glacier_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "glacier",
+    },
+    # Chalkboard pins the doubled white wooden frame and the BL chalk-dust
+    # scatter. Also locks the Playwrite GB J Guides handwriting font load —
+    # the cursive silhouette is the entire point, so a regression that
+    # dropped to the fallback DejaVu Oblique would flip thousands of glyph
+    # pixels here.
+    {
+        "name": "standard_chalkboard_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "chalkboard",
+    },
+    # Placard pins the doubled sign-painter's frame, the four red
+    # thumbtack accents, and the Patrick Hand SC small-caps font load.
+    # A regression that dropped to the fallback DejaVu Bold would flip
+    # thousands of glyph pixels (small caps silhouette → mixed-case sans).
+    {
+        "name": "standard_placard_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "placard",
+    },
+    # Chanbara pins both the large off-canvas rising-sun disc in the BR
+    # corner (a regression that mis-positioned the centre or shrank the
+    # radius would flip the entire bottom-right quadrant) and the small
+    # red artist's-chop seal in the TL. Also locks the Shojumaru
+    # brush-painted font load — the dramatic display silhouette is the
+    # whole point.
+    {
+        "name": "standard_chanbara_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "chanbara",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

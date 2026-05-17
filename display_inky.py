@@ -104,6 +104,38 @@ THEME_SATURATION: dict[str, float] = {
     # marks so they don't desaturate against the panel's anchored
     # black ground.
     "grimoire": 0.7,
+    # White ground / black body / red accent paired with Righteous. Same
+    # chromatic-on-light profile as ``default`` / ``dispatch`` / ``saloon`` /
+    # ``roman`` — the gentler 0.5 tier keeps the red rising-sun fan and
+    # the stepped corner ornaments crisp without over-saturating the
+    # body's black ink. Override via ``--saturation`` if real-panel
+    # calibration suggests otherwise.
+    "deco": 0.5,
+    # White ground / blue Iceland body / green matched-phrase accent. Two
+    # chromatic ink colours on a light ground — same tier as the other
+    # white-ground themes. The green accent reads cleanly on white at 0.5;
+    # pushing higher would risk muddying the body's blue against the
+    # frost-crystal accent ornaments.
+    "glacier": 0.5,
+    # Black slate ground / white chalk body / yellow chalk-stick matched
+    # phrase. Same chromatic-on-dark profile as ``dark`` / ``gothic`` /
+    # ``nightvision`` / ``grimoire`` — push the yellow accent so it doesn't
+    # desaturate to a muddy ochre against the panel's anchored black.
+    "chalkboard": 0.7,
+    # White sign-paper ground / black hand-printed body / red highlight
+    # accent. Same chromatic-on-light profile as ``default`` / ``deco`` /
+    # ``dispatch`` / ``saloon`` / ``roman`` — the gentler 0.5 tier keeps
+    # the red thumbtack corner accents crisp without over-saturating the
+    # body's black ink. Override via ``--saturation`` if real-panel
+    # calibration suggests otherwise.
+    "placard": 0.5,
+    # Black ink-sky ground with a load-bearing red rising-sun disc that
+    # dominates the bottom-right quadrant of the page. Same chromatic-
+    # on-dark profile as ``dark`` / ``gothic`` / ``grimoire`` /
+    # ``nightvision`` / ``chalkboard`` — push the red disc and accent so
+    # the dramatic blood-sun reads vivid rather than half-dithering into
+    # a muted brick-red against the panel's anchored black.
+    "chanbara": 0.7,
 }
 
 
