@@ -2064,9 +2064,9 @@ class TestDiagsSynthSwatches:
         assert row2 == 9
 
     def test_both_rows_paint_non_background_pixels(self):
-        # Full-canvas render: both swatch rows must actually paint, so a
-        # broken row-splitting loop (e.g. wrong index arithmetic) trips a
-        # visible regression rather than silently leaving row 2 blank.
+        # Full-canvas render: both two-ink swatch rows must actually paint,
+        # so a broken row-splitting loop (e.g. wrong index arithmetic) trips
+        # a visible regression rather than silently leaving row 2 blank.
         row = {
             "display_quote": "A test quote.",
             "matched_text": "midnight",
@@ -2078,14 +2078,164 @@ class TestDiagsSynthSwatches:
         img = rq.render_diags_frame("12:00", row, 800, 480)
         assert img.size == (800, 480)
         page_bg = rq.THEMES["diags"]["page_bg"]
-        # Sample a pixel near the middle of each row's coloured band. The
-        # synth section sits below the SPECTRA 6 native palette; row 1 is
-        # ~y=320 and row 2 is ~y=370 in the current layout. Use a small
-        # tolerance band around those midpoints.
-        for y_sample in (320, 374):
+        # Sample a pixel near the middle of each row's coloured band. With
+        # the four-row layout (2-ink × 2 + 3-ink × 2) the 2-ink rows sit
+        # roughly at y=280 (row 1) and y=327 (row 2).
+        for y_sample in (280, 327):
             sampled = {img.getpixel((x, y_sample)) for x in range(50, 750, 50)}
             non_bg = {px for px in sampled if px != page_bg}
-            assert non_bg, f"row at y={y_sample} painted no non-background pixels"
+            assert non_bg, f"2-ink row at y={y_sample} painted no non-background pixels"
+
+
+class TestDiagsTripleSwatches:
+    """The diags theme's 3-ink stipple band must cover every three-ink
+    recipe ``spectra6_color_recipes.md`` lists as documented (pastels,
+    deep tones, chromatic mixes — minus the maroon/navy/rich-black 2-ink
+    rows that live in the deep-tones section but are 2-ink in practice).
+    """
+
+    _EXPECTED_TRIPLES: frozenset[str] = frozenset(
+        {
+            # Pastels (3rd ink = white)
+            "light orange",
+            "salmon",
+            "peach",
+            "lavender",
+            "lilac",
+            "seafoam",
+            "khaki",
+            "beige",
+            # Deep tones (3rd ink = black)
+            "plum",
+            "print sepia",
+            # Chromatic (no white or black)
+            "burnt orange",
+            "forest-teal",
+        }
+    )
+
+    def test_triple_list_matches_documented_recipes(self):
+        names = {entry[0] for entry in rq._DIAGS_TRIPLE_SWATCHES}
+        assert names == self._EXPECTED_TRIPLES, (
+            "diags triple swatch list drifted from spectra6_color_recipes.md — "
+            f"missing: {self._EXPECTED_TRIPLES - names}; extra: {names - self._EXPECTED_TRIPLES}"
+        )
+
+    def test_triple_count_matches_row_split(self):
+        # Two rows of six. Guard against a future edit that grows the list
+        # without rebalancing.
+        assert len(rq._DIAGS_TRIPLE_SWATCHES) == 12
+        assert rq._DIAGS_TRIPLE_ROW1_COUNT == 6
+        row2 = len(rq._DIAGS_TRIPLE_SWATCHES) - rq._DIAGS_TRIPLE_ROW1_COUNT
+        assert row2 == 6
+
+    def test_densities_are_valid(self):
+        # Each entry's (density_a + density_b) must sit in [0, 1) so that
+        # ink_c gets a non-empty cell partition. The implicit third density
+        # is 1 - density_a - density_b.
+        for entry in rq._DIAGS_TRIPLE_SWATCHES:
+            name, _ink_a, _ink_b, _ink_c, density_a, density_b, _recipe = entry
+            total = density_a + density_b
+            assert 0 <= density_a <= 1, f"{name}: density_a={density_a} out of range"
+            assert 0 <= density_b <= 1, f"{name}: density_b={density_b} out of range"
+            assert total < 1, f"{name}: density_a+density_b={total} leaves no room for ink_c"
+
+    def test_three_ink_rows_paint_non_background_pixels(self):
+        # Full-canvas render: both 3-ink rows must actually paint so a
+        # broken loop or off-by-one row index trips a visible regression.
+        row = {
+            "display_quote": "A test quote.",
+            "matched_text": "midnight",
+            "bucket": "h12_exact",
+            "quality_score": 80,
+            "source_id": "1",
+            "line_number": 1,
+        }
+        img = rq.render_diags_frame("12:00", row, 800, 480)
+        page_bg = rq.THEMES["diags"]["page_bg"]
+        # 3-ink rows sit roughly at y=391 (row 1) and y=438 (row 2).
+        for y_sample in (391, 438):
+            sampled = {img.getpixel((x, y_sample)) for x in range(50, 750, 50)}
+            non_bg = {px for px in sampled if px != page_bg}
+            assert non_bg, f"3-ink row at y={y_sample} painted no non-background pixels"
+
+
+class TestFillSwatchStipple3way:
+    """``_fill_swatch_stipple_3way`` is the new ``_three_way_bayer``
+    primitive ``spectra6_color_recipes.md`` references as the
+    prerequisite for the documented three-ink recipes. The ratio sweep
+    below pins the per-region pixel counts within ±2% tolerance on a
+    fixed 32×32 sample tile, matching the discipline the doc asks for
+    when introducing the primitive.
+    """
+
+    _INK_A: tuple[int, int, int] = (255, 0, 0)
+    _INK_B: tuple[int, int, int] = (0, 255, 0)
+    _INK_C: tuple[int, int, int] = (0, 0, 255)
+    _BG: tuple[int, int, int] = (1, 2, 3)
+
+    @classmethod
+    def _counts(cls, image):
+        pixels = list(image.getdata())
+        return {
+            "a": pixels.count(cls._INK_A),
+            "b": pixels.count(cls._INK_B),
+            "c": pixels.count(cls._INK_C),
+        }
+
+    @pytest.mark.parametrize(
+        "density_a, density_b, expected_ratios",
+        [
+            # Even mix: 5/6/5 cell split (round(0.333*16)=5,
+            # round(0.667*16)=11, so middle region is cells 5..10 = 6 cells)
+            (1 / 3, 1 / 3, (5 / 16, 6 / 16, 5 / 16)),
+            # 40/40/20 — pastels and print sepia
+            (0.40, 0.40, (6 / 16, 7 / 16, 3 / 16)),
+            # 50/40/10 — burnt orange
+            (0.50, 0.40, (8 / 16, 6 / 16, 2 / 16)),
+            # 25/25/50 — lilac, beige
+            (0.25, 0.25, (4 / 16, 4 / 16, 8 / 16)),
+            # 30/50/20 — peach
+            (0.30, 0.50, (5 / 16, 8 / 16, 3 / 16)),
+        ],
+    )
+    def test_partition_ratios(self, density_a, density_b, expected_ratios):
+        # 32×32 tile is a clean multiple of the 4×4 Bayer matrix, so the
+        # pixel counts settle exactly on the partition boundaries — no
+        # remainder noise to absorb in the tolerance.
+        image = Image.new("RGB", (32, 32), self._BG)
+        rq._fill_swatch_stipple_3way(
+            image,
+            (0, 0, 32, 32),
+            self._INK_A,
+            self._INK_B,
+            self._INK_C,
+            density_a,
+            density_b,
+        )
+        counts = self._counts(image)
+        total = sum(counts.values())
+        assert total == 32 * 32, "primitive failed to cover the rect"
+        ratios = (counts["a"] / total, counts["b"] / total, counts["c"] / total)
+        for got, want in zip(ratios, expected_ratios):
+            assert abs(got - want) <= 0.02, f"ratio {got:.3f} drifted from {want:.3f}"
+
+    def test_clips_rect_to_image_bounds(self):
+        # Same clipping defence as the 2-ink primitive — out-of-bounds
+        # rect must not raise on the diags thumbnail (320×192) where the
+        # 3-ink band lives below the visible canvas.
+        image = Image.new("RGB", (320, 192), self._BG)
+        rq._fill_swatch_stipple_3way(
+            image,
+            (10, 300, 60, 340),
+            self._INK_A,
+            self._INK_B,
+            self._INK_C,
+            0.4,
+            0.3,
+        )
+        # Untouched: every pixel still the sentinel background.
+        assert image.getextrema() == ((1, 1), (2, 2), (3, 3))
 
 
 class TestDrawTextDithered:

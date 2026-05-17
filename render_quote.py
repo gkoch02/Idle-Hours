@@ -5241,16 +5241,94 @@ def _fill_swatch_stipple(
                 px[x, y] = light if BAYER_4x4[y % 4][x % 4] < threshold else dark
 
 
+def _fill_swatch_stipple_3way(
+    image: Image.Image,
+    rect: tuple[int, int, int, int],
+    ink_a: tuple[int, int, int],
+    ink_b: tuple[int, int, int],
+    ink_c: tuple[int, int, int],
+    density_a: float,
+    density_b: float,
+) -> None:
+    """Paint a rectangular region with a 3-ink Bayer stipple.
+
+    Partitions the 4×4 Bayer tile by two thresholds: cells where the tile
+    value is below ``round(density_a * 16)`` get ``ink_a``, cells below
+    ``round((density_a + density_b) * 16)`` get ``ink_b``, the remainder
+    get ``ink_c``. The third density is implicit (``1 − density_a −
+    density_b``). This is the ``_three_way_bayer`` primitive
+    ``spectra6_color_recipes.md`` references as the prerequisite for the
+    documented three-ink recipes (lavender, salmon, plum, …); see that
+    doc's "Three-ink recipes" section for the recipes and their
+    weight splits.
+
+    Clipping semantics match ``_fill_swatch_stipple`` (silently truncate to
+    image bounds so thumbnail-size diags renders don't crash on rects that
+    sit fully below the canvas).
+    """
+    x0, y0, x1, y1 = rect
+    w, h = image.size
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(w, x1)
+    y1 = min(h, y1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    threshold_a = round(density_a * 16)
+    threshold_b = round((density_a + density_b) * 16)
+    px = image.load()
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            cell = BAYER_4x4[y % 4][x % 4]
+            if cell < threshold_a:
+                px[x, y] = ink_a
+            elif cell < threshold_b:
+                px[x, y] = ink_b
+            else:
+                px[x, y] = ink_c
+
+
+# Synthesised three-ink stipple recipes documented in
+# ``spectra6_color_recipes.md`` ("Three-ink recipes" section). Each entry is
+# (display name, ink_a, ink_b, ink_c, density_a, density_b, short label).
+# The implicit third density is ``1 - density_a - density_b``. Rendered by
+# the diags frame in two rows of 6 below the two-ink band so an operator
+# can see whether (e.g.) the 1/3-each lavender or the white-heavy lilac
+# actually reads as the named pastel at panel distance.
+_DIAGS_TRIPLE_SWATCHES: list[
+    tuple[str, tuple[int, int, int], tuple[int, int, int], tuple[int, int, int], float, float, str]
+] = [
+    # Pastels (3rd ink = white)
+    ("light orange", SPECTRA6["red"],    SPECTRA6["yellow"], SPECTRA6["white"], 0.40,    0.40,    "R+Y+W 40/40/20"),
+    ("salmon",       SPECTRA6["red"],    SPECTRA6["yellow"], SPECTRA6["white"], 1 / 3,   1 / 3,   "R+Y+W 1:1:1"),
+    ("peach",        SPECTRA6["red"],    SPECTRA6["yellow"], SPECTRA6["white"], 0.30,    0.50,    "R+Y+W 30/50/20"),
+    ("lavender",     SPECTRA6["red"],    SPECTRA6["blue"],   SPECTRA6["white"], 1 / 3,   1 / 3,   "R+B+W 1:1:1"),
+    ("lilac",        SPECTRA6["red"],    SPECTRA6["blue"],   SPECTRA6["white"], 0.25,    0.25,    "R+B+W 25/25/50"),
+    ("seafoam",      SPECTRA6["green"],  SPECTRA6["blue"],   SPECTRA6["white"], 0.40,    0.30,    "G+B+W 40/30/30"),
+    # Pastels continued + deep tones (3rd ink = white or black) + chromatic (no W/K)
+    ("khaki",        SPECTRA6["yellow"], SPECTRA6["green"],  SPECTRA6["white"], 0.40,    0.30,    "Y+G+W 40/30/30"),
+    ("beige",        SPECTRA6["red"],    SPECTRA6["yellow"], SPECTRA6["white"], 0.25,    0.25,    "R+Y+W 25/25/50"),
+    ("plum",         SPECTRA6["red"],    SPECTRA6["blue"],   SPECTRA6["black"], 1 / 3,   1 / 3,   "R+B+K 1:1:1"),
+    ("print sepia",  SPECTRA6["red"],    SPECTRA6["yellow"], SPECTRA6["black"], 0.40,    0.40,    "R+Y+K 40/40/20"),
+    ("burnt orange", SPECTRA6["red"],    SPECTRA6["yellow"], SPECTRA6["green"], 0.50,    0.40,    "R+Y+G 50/40/10"),
+    ("forest-teal",  SPECTRA6["green"],  SPECTRA6["blue"],   SPECTRA6["yellow"], 0.40,   0.40,    "G+B+Y 40/40/20"),
+]
+
+_DIAGS_TRIPLE_ROW1_COUNT = 6
+
+
 def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Render the diagnostic frame for the ``diags`` theme.
 
     Replaces the literary layout with a status panel: large clock, picker
     metrics (bucket / layout / quality / source / matched phrase), the
-    Spectra 6 native palette, the synthesised two-ink stipple recipes
-    documented in CLAUDE.md, and a one-line quote preview at the bottom.
-    Useful for on-panel calibration ("does ``mint`` actually read green at
-    panel distance?") and for confirming the picker chose what you'd
-    expect.
+    Spectra 6 native palette, and the synthesised two- and three-ink
+    stipple recipes documented in ``spectra6_color_recipes.md``. Useful
+    for on-panel calibration ("does ``mint`` actually read green at panel
+    distance? does ``lavender`` actually read as a pastel violet?") and
+    for confirming the picker chose what you'd expect — the BUCKET /
+    LAYOUT / QUALITY / ID / MATCHED fields in the status table at top
+    carry that confirmation now that the literary footer is gone.
     """
     colors = THEMES["diags"]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
@@ -5349,11 +5427,11 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
     label_bold = load_font(META_FONT_BOLD_CANDIDATES, size=10)
     label_reg = load_font(META_FONT_CANDIDATES, size=10)
 
-    s1_y = 192
+    s1_y = 186
     draw.text((PAD_X, s1_y), "SPECTRA 6 NATIVE PALETTE", font=section_font, fill=colors["accent"])
 
-    sw_top = s1_y + 18
-    sw_h = 56
+    sw_top = s1_y + 14
+    sw_h = 36
     sw_gap = 6
     sw_count = len(_DIAGS_SPECTRA6_SWATCHES)
     avail_w = width - 2 * PAD_X
@@ -5370,66 +5448,65 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
         draw.text((x0 + 5, sw_top + 4), name.upper(), font=label_bold, fill=label_fill)
         draw.text((x0 + 5, sw_top + 18), hex_code, font=label_reg, fill=label_fill)
 
-    # ----- Bottom section: synthesised stipple swatches -----
-    # Two-row band so all 17 documented two-ink recipes fit at a readable
-    # ~79 px swatch width; a single row would compress to ~40 px and clip
-    # the 10 pt "tangerine" / "candlelit" labels.
-    s2_y = sw_top + sw_h + 14
-    draw.text((PAD_X, s2_y), "SYNTHESISED (2-INK STIPPLE)", font=section_font, fill=colors["accent"])
-
-    sw2_top = s2_y + 16
-    sw2_color_h = 28
+    # ----- Synth bands -----
+    # Two-ink: 17 recipes in 2 rows (8 + 9). Three-ink: 12 recipes in 2 rows
+    # (6 + 6). All four rows share the same per-swatch geometry; only the
+    # column count and the painter (2-ink vs 3-ink Bayer partition) change.
+    # Labels are bold-name + faded-recipe, two 9 pt lines. The four rows
+    # plus their two section headers are the lower half of the frame —
+    # the literary footer (quote preview + attribution) was dropped to make
+    # room. The status table at top already carries the diagnostic info
+    # (BUCKET / LAYOUT / QUALITY / ID / MATCHED) that footer surfaced.
+    label_bold_9 = load_font(META_FONT_BOLD_CANDIDATES, size=9)
+    label_reg_9 = load_font(META_FONT_CANDIDATES, size=9)
+    sw2_color_h = 22
     sw2_label_h = 22
     sw2_row_h = sw2_color_h + sw2_label_h
-    sw2_row_gap = 4
+    sw2_row_gap = 3
     sw2_gap = 5
-    sw2_row1_count = _DIAGS_SYNTH_ROW1_COUNT
-    sw2_row2_count = len(_DIAGS_SYNTH_SWATCHES) - sw2_row1_count
-    for i, (name, dark, light, density, recipe) in enumerate(_DIAGS_SYNTH_SWATCHES):
-        if i < sw2_row1_count:
-            row_idx, col_idx, row_count = 0, i, sw2_row1_count
-        else:
-            row_idx, col_idx, row_count = 1, i - sw2_row1_count, sw2_row2_count
-        row_w = (avail_w - (row_count - 1) * sw2_gap) // row_count
-        row_top = sw2_top + row_idx * (sw2_row_h + sw2_row_gap)
-        x0 = PAD_X + col_idx * (row_w + sw2_gap)
-        x1 = x0 + row_w
-        color_y1 = row_top + sw2_color_h
-        # Paint the full coloured stipple area first; the inset of 1 leaves
-        # the outline cleanly visible after the rectangle stroke below.
-        _fill_swatch_stipple(image, (x0 + 1, row_top + 1, x1, color_y1), dark, light, density)
-        draw.rectangle((x0, row_top, x1, color_y1), outline=colors["text"], width=1)
-        # Labels go below the coloured cell so the stipple texture stays
-        # fully visible — the whole point of the synth swatches is to
-        # show how the recipe reads on-panel at this size.
-        draw.text((x0, color_y1 + 2), name, font=label_bold, fill=colors["text"])
-        draw.text((x0, color_y1 + 12), recipe, font=label_reg, fill=colors["subtle"])
 
-    # ----- Footer: short quote preview + attribution -----
-    quote_y = sw2_top + 2 * sw2_row_h + sw2_row_gap + 6
-    quote_font = load_font(theme_font_candidates("diags", "quote_regular"), size=13)
-    preview = (quote_row.get("display_quote") or "").strip()
-    preview = normalize_dashes(strip_underscore_emphasis(preview))
-    if len(preview) > 130:
-        preview = preview[:128].rstrip() + "…"
-    if preview:
-        preview = "“" + preview + "”"
-        lines = wrap_text(draw, preview, quote_font, width - 2 * PAD_X)[:1]
-        for line in lines:
-            draw.text((PAD_X, quote_y), line, font=quote_font, fill=colors["text"])
-            quote_y += 16
+    def _paint_synth_row(row_top: int, entries: list, painter) -> None:
+        n = len(entries)
+        row_w = (avail_w - (n - 1) * sw2_gap) // n
+        for col_idx, entry in enumerate(entries):
+            x0 = PAD_X + col_idx * (row_w + sw2_gap)
+            x1 = x0 + row_w
+            color_y1 = row_top + sw2_color_h
+            # Paint the full coloured stipple area first; the inset of 1 leaves
+            # the outline cleanly visible after the rectangle stroke below.
+            painter(entry, (x0 + 1, row_top + 1, x1, color_y1))
+            draw.rectangle((x0, row_top, x1, color_y1), outline=colors["text"], width=1)
+            name = entry[0]
+            recipe = entry[-1]
+            draw.text((x0, color_y1 + 2), name, font=label_bold_9, fill=colors["text"])
+            draw.text((x0, color_y1 + 12), recipe, font=label_reg_9, fill=colors["subtle"])
 
-    author_text = (quote_row.get("author") or "").strip()
-    title_text = (quote_row.get("title") or "").strip()
-    attrib_parts = [p for p in (author_text, title_text) if p]
-    if attrib_parts:
-        attrib_font = load_font(META_FONT_BOLD_CANDIDATES, size=12)
-        attrib = "— " + " · ".join(attrib_parts)
-        bbox = draw.textbbox((0, 0), attrib, font=attrib_font)
-        if bbox[2] - bbox[0] > width - 2 * PAD_X:
-            # Truncate the longer of the two parts so the line fits.
-            attrib = attrib[: max(1, len(attrib) - (bbox[2] - bbox[0] - (width - 2 * PAD_X)) // 6)] + "…"
-        draw.text((PAD_X, quote_y), attrib, font=attrib_font, fill=colors["accent"])
+    def _two_ink_painter(entry, rect):
+        _name, dark, light, density, _recipe = entry
+        _fill_swatch_stipple(image, rect, dark, light, density)
+
+    def _three_ink_painter(entry, rect):
+        _name, ink_a, ink_b, ink_c, density_a, density_b, _recipe = entry
+        _fill_swatch_stipple_3way(image, rect, ink_a, ink_b, ink_c, density_a, density_b)
+
+    # ----- Two-ink synth band -----
+    s2_y = sw_top + sw_h + 8
+    draw.text((PAD_X, s2_y), "SYNTHESISED (2-INK STIPPLE)", font=section_font, fill=colors["accent"])
+    sw2_top = s2_y + 14
+    sw2_row1 = _DIAGS_SYNTH_SWATCHES[:_DIAGS_SYNTH_ROW1_COUNT]
+    sw2_row2 = _DIAGS_SYNTH_SWATCHES[_DIAGS_SYNTH_ROW1_COUNT:]
+    _paint_synth_row(sw2_top, sw2_row1, _two_ink_painter)
+    _paint_synth_row(sw2_top + sw2_row_h + sw2_row_gap, sw2_row2, _two_ink_painter)
+
+    # ----- Three-ink synth band -----
+    sw2_band_end = sw2_top + 2 * sw2_row_h + sw2_row_gap
+    s3_y = sw2_band_end + 6
+    draw.text((PAD_X, s3_y), "SYNTHESISED (3-INK STIPPLE)", font=section_font, fill=colors["accent"])
+    sw3_top = s3_y + 14
+    sw3_row1 = _DIAGS_TRIPLE_SWATCHES[:_DIAGS_TRIPLE_ROW1_COUNT]
+    sw3_row2 = _DIAGS_TRIPLE_SWATCHES[_DIAGS_TRIPLE_ROW1_COUNT:]
+    _paint_synth_row(sw3_top, sw3_row1, _three_ink_painter)
+    _paint_synth_row(sw3_top + sw2_row_h + sw2_row_gap, sw3_row2, _three_ink_painter)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
