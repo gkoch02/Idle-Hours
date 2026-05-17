@@ -80,18 +80,54 @@ Single combined catalogue: recipes the codebase pulls today plus the unused-but-
 
 ## Three-ink recipes — forward references only
 
-**Not yet supported by `draw_text_dithered`.** All three recipes below would need a new primitive — a `_three_way_bayer` helper that partitions the 4×4 Bayer tile into three regions by threshold (e.g. tile cell `< 6` → ink A, `6..10` → ink B, `>= 11` → ink C). The existing infrastructure handles the two-ink case only.
+**Not yet supported by `draw_text_dithered`.** Every recipe below would need a new primitive — a `_three_way_bayer` helper that partitions the 4×4 Bayer tile into three regions by threshold (e.g. tile cell `< 6` → ink A, `6..10` → ink B, `>= 11` → ink C — a 6/5/5 cell split for an even mix, biased cell counts for asymmetric ratios). The existing infrastructure handles the two-ink case only.
 
-Recipes that consistently appear in upstream literature and would be the first candidates if a future theme needs them:
+Recipes are grouped by *which pole of the octahedron* the third ink contributes — pastels (white-lifted), deep tones (black-darkened), and chromatic mixes (no W/K, all three inks equatorial). The luminance-asymmetry rule from the two-ink section still applies: when one of the three inks is yellow or white, bias the cell-count partition away from it or the brighter ink will dominate.
+
+### Pastels (3-ink with white) — soft daytime palette
 
 | Synthesised colour | Mix | Source |
 |---|---|---|
 | Light orange | red + yellow + white @ 40 / 40 / 20 | [Frans-Willem README example](https://github.com/Frans-Willem/epd-dither) |
 | Salmon | red + yellow + white @ 1/3 each | Octahedron interpolation between coral and tangerine |
+| Peach / apricot | red + yellow + white @ 30 / 50 / 20 | Yellow-leaning sibling of salmon — warmer, less coral |
 | Lavender | red + blue + white @ 1/3 each | Octahedron interpolation between purple and sky-blue |
+| Lilac / pale violet | red + blue + white @ 25 / 25 / 50 | Paler than lavender — heavier white lift |
+| Seafoam / aqua | green + blue + white @ 40 / 30 / 30 | The cyan equivalent of sky-blue. Future ocean / spa theme. |
+| Khaki / pale olive | yellow + green + white @ 40 / 30 / 30 | Softer green than mint. Future herbarium / botanical theme. |
 | Beige / tan | red + yellow + white @ 25 / 25 / 50 | Lighter parchment than cream |
 
-Anyone adding a three-ink primitive should add a sweep test similar to the existing `TestDrawTextDithered::test_<ratio>_split` family pinning the per-region pixel counts within `±2%` tolerance on a fixed sample tile.
+### Deep tones (3-ink with black) — rich nighttime palette
+
+| Synthesised colour | Mix | Source |
+|---|---|---|
+| Plum | red + blue + black @ 1/3 each | Deeper than the existing `alchemy` purple — for a midnight-ritual theme |
+| Print sepia | red + yellow + black @ 40 / 40 / 20 | **More authentic than the existing red+green brown** the `saloon` foxing uses. Real archival sepia is yellow-brown, not red-green brown — worth flagging as a forward path if a future "old-photograph" theme wants to upgrade from the 2-ink approximation. |
+| Maroon / burgundy | red + black @ 1/2 : 1/2 (2-ink) | 2-ink in practice — listed here because it's the "with black" sibling of the pastel set above; useful for a leather-bound / oxblood theme |
+| Navy | blue + black @ 1/2 : 1/2 (2-ink) | 2-ink in practice — deeper than the panel's already-dim native blue, for a midnight theme |
+
+(The maroon and navy rows are 2-ink and reachable via `draw_text_dithered` today; documented here so the K-darkened palette feels complete, not because they need a new primitive.)
+
+### Chromatic mixes (3-ink, no white or black)
+
+| Synthesised colour | Mix | Source |
+|---|---|---|
+| Burnt orange / terracotta | red + yellow + green @ 50 / 40 / 10 | The green dulls tangerine into terracotta. Future desert / canyon theme. |
+| Forest-teal | green + blue + yellow @ 40 / 40 / 20 | Cyan dragged toward olive — denser than seafoam, for a deep-forest theme. |
+
+Anyone adding the three-ink primitive should add a sweep test similar to the existing `TestDrawTextDithered::test_<ratio>_split` family pinning the per-region pixel counts within `±2%` tolerance on a fixed sample tile.
+
+## Four-ink recipes — narrower edge
+
+**Also not yet supported.** A `_four_way_bayer` helper (4/4/4/4 cell partition) is the natural extension of the three-ink primitive, but at four inks per 16-cell tile the per-ink density is low enough that the eye starts reading the result as *texture* rather than as a uniform colour mix at close viewing distance (under ~1 m). At LitClock's intended viewing distance (1–3 m) the mix still reads cleanly. Use sparingly — the only recipes worth the implementation cost are the ones a 3-ink mix can't approximate:
+
+| Synthesised colour | Mix | Source |
+|---|---|---|
+| Warm grey / taupe | red + yellow + white + black @ ~25 each | More interesting than pure black+white gray — picks up a subtle warm cast from the R+Y pair |
+| Cool slate | blue + green + white + black @ ~25 each | Cool counterpart to taupe — picks up a subtle cyan cast |
+| Rich black | black + red + blue @ 60 / 20 / 20 | Printer's trick: pure black ink alone reads slightly thin on Spectra 6 (the calibrated black is `#1F2226`, not true `#000000`); adding chromatic underprint deepens it. Useful for the body fill of a high-contrast dark theme that wants to feel *blacker than the panel's native black*. |
+
+**Don't go past 4 inks.** The octahedron literature treats 5- and 6-vertex barycentric mixes as edge cases — `OctahedronDecomposer` (in `epd-dither`) explicitly limits itself to ≤4 vertices per pixel, and `epdoptimize`'s palette-distance model picks similarly small support sets. Past 4, per-cell density drops below 4 / 16 and the mix degenerates into either visible texture or muddy mid-grey.
 
 ## Designing a new themed accent
 
