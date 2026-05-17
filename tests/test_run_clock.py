@@ -3240,13 +3240,15 @@ class TestRandomThemeMode:
         state = run_clock.RuntimeState("random")
         state.last_quote_id = ("111", 10, "old quote", "old match")
         state.current_random_theme = "default"
+        # Pre-stuff the bag so the pop is deterministic without patching.
+        state.random_theme_bag = ["scholar"]
 
         new_quote_id = ("222", 20, "new quote", "new match")
-        with patch("run_clock.pick_random_theme", return_value="scholar"):
-            result = run_clock._maybe_pick_random_theme(state, new_quote_id)
+        result = run_clock._maybe_pick_random_theme(state, new_quote_id)
 
         assert result == "scholar"
         assert state.current_random_theme == "scholar"
+        assert state.random_theme_bag == []
 
     def test_random_mode_stable_on_same_quote(self):
         """``_maybe_pick_random_theme`` returns None and leaves
@@ -3254,6 +3256,7 @@ class TestRandomThemeMode:
         state = run_clock.RuntimeState("random")
         same_quote_id = ("111", 10, "same quote", "same match")
         state.last_quote_id = same_quote_id
+        state.last_random_quote_id = same_quote_id
         state.current_random_theme = "comic"
 
         result = run_clock._maybe_pick_random_theme(state, same_quote_id)
@@ -3261,15 +3264,45 @@ class TestRandomThemeMode:
         assert result is None
         assert state.current_random_theme == "comic"
 
+    def test_random_mode_idempotent_on_render_retry(self):
+        """Render-failure retry must NOT consume another bag entry.
+
+        Reproduces the bug flagged in PR #113: if a render fails, the main
+        loop leaves ``last_quote_id`` stale and the next tick peeks the same
+        ``quote_id``. Without per-pick idempotence the picker would drain
+        another bag entry on every retry, silently losing themes from the
+        visible pass. The fix gates on ``last_random_quote_id`` (advanced
+        synchronously) instead of ``last_quote_id`` (advanced only on
+        successful render).
+        """
+        from theme_names import theme_cycle
+        themes = list(theme_cycle())
+        state = run_clock.RuntimeState("random")
+        quote_id = ("111", 10, "q", "m")
+
+        pick1 = run_clock._maybe_pick_random_theme(state, quote_id)
+        assert pick1 is not None
+        bag_after_first = list(state.random_theme_bag)
+        assert len(bag_after_first) == len(themes) - 1
+
+        # Simulate render failure: last_quote_id stays None (commit_render_result
+        # was never called), current_random_theme stays at pick1. Retry with
+        # the same quote_id ten times — bag must not move.
+        for _ in range(10):
+            retry_pick = run_clock._maybe_pick_random_theme(state, quote_id)
+            assert retry_pick is None
+            assert state.random_theme_bag == bag_after_first
+            assert state.current_random_theme == pick1
+
     def test_random_mode_picks_on_first_render_when_no_theme_set(self):
         """``_maybe_pick_random_theme`` picks on first render even when
         ``quote_id`` matches ``last_quote_id`` (both None / startup)."""
         state = run_clock.RuntimeState("random")
         state.last_quote_id = None
         state.current_random_theme = None  # not yet set
+        state.random_theme_bag = ["nightvision"]
 
-        with patch("run_clock.pick_random_theme", return_value="nightvision"):
-            result = run_clock._maybe_pick_random_theme(state, None)
+        result = run_clock._maybe_pick_random_theme(state, None)
 
         assert result == "nightvision"
         assert state.current_random_theme == "nightvision"
@@ -3286,6 +3319,61 @@ class TestRandomThemeMode:
 
         assert result is None
         assert state.current_random_theme == "default"
+
+    def test_random_mode_full_pass_shows_every_theme_once(self):
+        """A full pass through one bag draws every registered theme exactly once."""
+        from theme_names import theme_cycle
+        themes = list(theme_cycle())
+        state = run_clock.RuntimeState("random")
+        seen: list[str] = []
+        for i in range(len(themes)):
+            new_quote_id = ("src", i, "q", "m")
+            pick = run_clock._maybe_pick_random_theme(state, new_quote_id)
+            assert pick is not None
+            seen.append(pick)
+            state.last_quote_id = new_quote_id
+        assert sorted(seen) == sorted(themes)
+
+    def test_random_mode_bag_refills_after_pass(self):
+        """When the bag empties it's refilled from the full cycle."""
+        from theme_names import theme_cycle
+        themes = list(theme_cycle())
+        state = run_clock.RuntimeState("random")
+        for i in range(len(themes)):
+            new_quote_id = ("src", i, "q", "m")
+            run_clock._maybe_pick_random_theme(state, new_quote_id)
+            state.last_quote_id = new_quote_id
+        # Bag drained.
+        assert state.random_theme_bag == []
+        # Next pick refills and pops; bag should have len(themes)-1 entries.
+        pick = run_clock._maybe_pick_random_theme(state, ("src", 999, "q", "m"))
+        assert pick in set(themes)
+        assert len(state.random_theme_bag) == len(themes) - 1
+
+    def test_random_mode_no_back_to_back_repeat_across_bag_boundary(self):
+        """The reshuffle boundary must not replay the just-played theme.
+
+        We force the worst case: the just-played theme is set, and we
+        construct a cycle where ``random.shuffle`` would put it at the
+        pop position. The swap must move it.
+        """
+        from theme_names import theme_cycle
+        themes = list(theme_cycle())
+        just_played = themes[0]
+        state = run_clock.RuntimeState("random")
+        state.current_random_theme = just_played
+        state.random_theme_bag = []
+        # Force shuffle to a known order where bag[-1] == just_played.
+        forced = [t for t in themes if t != just_played] + [just_played]
+
+        def _force_order(b):
+            b[:] = forced  # random.shuffle mutates in place
+
+        # randint patched to a deterministic in-range swap index.
+        with patch("runtime_theme.random.shuffle", side_effect=_force_order), \
+             patch("runtime_theme.random.randint", return_value=0):
+            pick = run_clock._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
+        assert pick != just_played, "back-to-back repeat at reshuffle boundary"
 
     def test_random_mode_midnight_reset_clears_manual_theme(self, tmp_path):
         """``_maybe_reset_manual_theme_at_midnight`` clears ``manual_theme`` for
@@ -3321,8 +3409,8 @@ class TestRandomThemeMode:
             state_path=str(tmp_path / "state.json"),
             auto_day_theme="default", auto_night_theme="dark",
         )
-        with patch("run_clock.pick_random_theme", return_value="scholar"), \
-             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+        state.random_theme_bag = ["scholar"]
+        with patch("run_clock.peek_quote_id", return_value=new_quote_id), \
              patch("run_clock._render_unlocked"), \
              patch("run_clock._append_history_after_render"):
             run_clock.action_skip(args, state, label="button A")
@@ -3345,8 +3433,8 @@ class TestRandomThemeMode:
             state_path=str(tmp_path / "state.json"),
             auto_day_theme="default", auto_night_theme="dark",
         )
-        with patch("run_clock.pick_random_theme", return_value="nightvision"), \
-             patch("run_clock.peek_quote_id", return_value=new_quote_id), \
+        state.random_theme_bag = ["nightvision"]
+        with patch("run_clock.peek_quote_id", return_value=new_quote_id), \
              patch("run_clock._render_unlocked"), \
              patch("run_clock._append_history_after_render"), \
              patch("run_clock.pick_quote_module") as mock_pq:

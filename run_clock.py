@@ -54,6 +54,7 @@ from runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-ex
     _auto_theme_kwargs,
     _maybe_reset_manual_theme_at_midnight,
     auto_theme_for,
+    pick_next_random_theme,
     pick_random_theme,
     resolve_effective_theme,
 )
@@ -635,18 +636,39 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
     update ``effective_theme`` and recompute ``theme_changed``), or ``None``
     when the mode is inactive, a manual override is in effect, or the quote
     hasn't changed and a theme is already stored.
+
+    Picks are drained from :attr:`RuntimeState.random_theme_bag` (a shuffled
+    pass through the full cycle) so every theme is shown once before any
+    repeat. When the bag empties it's refilled with a fresh shuffle, with the
+    head swapped if it would replay the just-played theme.
+
+    The gate uses :attr:`RuntimeState.last_random_quote_id` (advanced
+    synchronously by this function), not ``last_quote_id`` (advanced only by
+    ``commit_render_result`` on render success). The split matters when a
+    render fails: the main loop / action handler leaves ``last_quote_id``
+    stale and retries the same ``quote_id`` on the next tick — gating on
+    ``last_random_quote_id`` keeps that retry idempotent so the bag isn't
+    drained for a theme the panel never actually showed. The theme picked on
+    the failed tick is held on ``current_random_theme`` and used by the
+    eventual successful render, so the bag draw maps 1:1 to a displayed
+    theme even across N failed retries.
     """
     if state.theme_arg != "random" or state.manual_theme is not None:
         return None
     quote_changed = (
-        (quote_id is not None and quote_id != state.last_quote_id)
+        (quote_id is not None and quote_id != state.last_random_quote_id)
         or state.current_random_theme is None
     )
     if not quote_changed:
         return None
-    new_theme = pick_random_theme()
+    with state.lock:
+        bag = list(state.random_theme_bag)
+        just_played = state.current_random_theme
+    new_theme, new_bag = pick_next_random_theme(bag, just_played=just_played)
     with state.lock:
         state.current_random_theme = new_theme
+        state.random_theme_bag = new_bag
+        state.last_random_quote_id = quote_id
     return new_theme
 
 

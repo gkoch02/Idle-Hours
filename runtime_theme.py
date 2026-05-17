@@ -56,9 +56,45 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
 
 
 def pick_random_theme() -> str:
-    """Pick a random theme from the registered cycle."""
+    """Uniformly pick a theme from the registered cycle.
+
+    Used by the ``--once`` path and as the fallback inside
+    ``resolve_effective_theme`` when no bag state is available. The main
+    loop uses :func:`pick_next_random_theme` instead so every theme is
+    shown once before any repeat (true-shuffle behaviour — like a music
+    player's shuffled-playlist mode).
+    """
     from theme_names import theme_cycle
     return random.choice(list(theme_cycle()))
+
+
+def pick_next_random_theme(
+    bag: list[str], *, just_played: str | None = None,
+) -> tuple[str, list[str]]:
+    """Draw the next theme from a shuffled bag of unseen themes.
+
+    Returns ``(theme, updated_bag)`` — the caller stores ``updated_bag``
+    on :class:`RuntimeState`. When ``bag`` is empty the bag is refilled
+    with a fresh shuffle of the full cycle; if the freshly-shuffled next
+    pick would replay ``just_played``, it's swapped with another random
+    position so back-to-back repeats don't sneak across the reshuffle
+    boundary.
+
+    The bag is popped from the end (``list.pop`` is O(1)), so ``bag[-1]``
+    is the "next" theme — that's the slot the swap targets.
+    """
+    from theme_names import theme_cycle
+
+    bag = list(bag)  # never mutate the caller's list
+    if not bag:
+        bag = list(theme_cycle())
+        random.shuffle(bag)
+        if just_played is not None and len(bag) > 1 and bag[-1] == just_played:
+            swap_idx = random.randint(0, len(bag) - 2)
+            bag[-1], bag[swap_idx] = bag[swap_idx], bag[-1]
+
+    theme = bag.pop()
+    return theme, bag
 
 
 def resolve_effective_theme(
