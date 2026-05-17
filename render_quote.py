@@ -28,6 +28,19 @@ SPECTRA6 = {
     "green": (0, 255, 0),
 }
 SPECTRA6_PALETTE = list(SPECTRA6.values())
+# Canonical 4×4 ordered Bayer matrix (values 0..15). Shared by
+# ``draw_text_dithered`` and ``draw_deco_border`` so the body text and
+# border ornament land on the same biased-checkerboard pattern when
+# synthesising orange (red+yellow) at densities other than the
+# 1×1 checkerboard the existing 0.5 / 0.25 branches use. A pixel is
+# painted ``light`` when ``BAYER_4x4[y % 4][x % 4] < threshold``;
+# threshold = round(density * 16).
+BAYER_4x4: tuple[tuple[int, ...], ...] = (
+    (0, 8, 2, 10),
+    (12, 4, 14, 6),
+    (3, 11, 1, 9),
+    (15, 7, 13, 5),
+)
 # Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
 # the cycle is stable regardless of dict-literal ordering in Python; every name
 # here must also appear as a key in ``THEMES`` below (enforced in tests).
@@ -439,15 +452,21 @@ THEMES = {
     # Art-deco poster: white ground / black body / red-stippled-to-yellow
     # accent that reads as orange at panel distance, paired with the
     # Righteous geometric display sans. The Spectra-6 palette has no orange
-    # ink, but a 50/50 red/yellow Bayer stipple averages into a vivid
+    # ink, but a red-biased Bayer stipple (5/8 red : 3/8 yellow on the
+    # shared ``BAYER_4x4`` matrix, threshold 6/16) averages into a warm
     # tangerine that lifts the matched phrase and border decoration into
     # period-correct deco territory (the canonical sunburst / chevron
     # palette of the era leans warm — red and amber more than fire-engine
-    # red) without leaving the six-colour gamut. The dither is applied in
-    # two complementary places: ``_draw_text_body`` stipples body fills
-    # equal to ``accent``, and ``draw_deco_border``'s final pass flips
-    # half of its painted red pixels to yellow in the same phase. Same
-    # palette *intent* as ``default`` / ``dispatch`` / ``saloon`` /
+    # red) without leaving the six-colour gamut. The earlier 50/50
+    # checkerboard read as washed-out amber because yellow has much
+    # higher perceived luminance than red; biasing to ~2:1 red:yellow
+    # drags the perceived hue back onto orange — the same recipe the
+    # Spectra 6 extended-palette literature uses for synthesised orange.
+    # The dither is applied in two complementary places:
+    # ``_draw_text_body`` stipples body fills equal to ``accent``, and
+    # ``draw_deco_border``'s final pass flips painted red pixels to
+    # yellow using the same Bayer threshold so both share one tone.
+    # Same palette *intent* as ``default`` / ``dispatch`` / ``saloon`` /
     # ``roman`` (white / black / red), but the perceived accent is
     # visibly different from those themes' solid red. The decoration is
     # the stepped-corner border drawn by ``draw_deco_border`` (concentric
@@ -1859,7 +1878,7 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     theme uses both (e.g. dithered body text plus dithered ornament
     quote marks).
 
-    ``light_density`` chooses between two on-palette stipple densities:
+    ``light_density`` chooses between three on-palette stipple densities:
 
     * ``0.5`` (default) — 50/50 checkerboard. Half the inked pixels paint
       ``light`` and half paint ``dark``.
@@ -1869,6 +1888,15 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
       glyphs with a sparse white stipple — enough white to read as a
       candlelit-rubric shimmer against the black ground without
       diluting the red into pink at panel distance.
+    * Any other value in ``(0.25, 0.5)`` — 4×4 ordered Bayer matrix with
+      ``threshold = round(light_density * 16)``. A pixel paints ``light``
+      when ``BAYER_4x4[y % 4][x % 4] < threshold``, else ``dark``. Used
+      by ``deco`` at ``0.375`` (3/8 yellow on 5/8 red) to synthesise a
+      red-biased tangerine — yellow has much higher perceived luminance
+      than red, so the previous 0.5 checkerboard read as washed-out
+      amber. Keep the new branch isolated: the existing 0.25 and 0.5
+      values still hit their original byte-identical patterns so
+      nightvision / grimoire / other callers are unaffected.
 
     The mask is thresholded at ≥128 rather than treated as binary on every
     nonzero coverage. Pillow renders TTF glyphs with an antialiased mask
@@ -1911,13 +1939,24 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
                 if mx[x, y] >= 128:
                     ax = x + x0
                     px[ax, ay] = light if ((ax + ox) % 2 == 0 and (ay + oy) % 2 == 0) else dark
-    else:
+    elif light_density >= 0.5:
         for y in range(region_h):
             ay = y + y0
             for x in range(region_w):
                 if mx[x, y] >= 128:
                     ax = x + x0
                     px[ax, ay] = dark if ((ax + ox) + (ay + oy)) % 2 == 0 else light
+    else:
+        # 4×4 ordered Bayer for arbitrary intermediate densities. The
+        # deco theme uses 0.375 here for a red-biased orange; see the
+        # docstring and ``BAYER_4x4``'s comment.
+        threshold = round(light_density * 16)
+        for y in range(region_h):
+            ay = y + y0
+            for x in range(region_w):
+                if mx[x, y] >= 128:
+                    ax = x + x0
+                    px[ax, ay] = light if BAYER_4x4[(ay + oy) % 4][(ax + ox) % 4] < threshold else dark
 
 
 def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
@@ -1941,21 +1980,27 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       dark, scholar, etc.) keep their solid red — the stipple is a
       grimoire signature, not a generic red-on-black treatment.
     * ``deco`` — only the red matched-phrase accent gets dithered,
-      50/50 yellow-on-red, so the phrase reads as orange at panel
-      distance. Spectra 6 has no orange ink; the dither synthesises
-      one inside the six-colour gamut, pulling deco's accent into
-      the warm-tangerine range the period actually used for sunburst
-      and chevron ornaments. Body / attribution / source-id text in
-      black passes through solid. ``draw_deco_border``'s final
-      pass dithers its painted red pixels in the same phase, so the
-      matched phrase and border decoration share one orange tone.
+      red-biased yellow-on-red (3/8 yellow, 5/8 red) on a shared
+      4×4 Bayer matrix, so the phrase reads as warm tangerine at
+      panel distance. Spectra 6 has no orange ink; the previous 50/50
+      checkerboard landed on amber-peach because yellow has much
+      higher perceived luminance than red — the red-biased ratio
+      drags the perceived hue back onto the warm-orange range the
+      period actually used for sunburst and chevron ornaments. Body
+      / attribution / source-id text in black passes through solid.
+      ``draw_deco_border``'s final pass dithers its painted red
+      pixels using the same Bayer threshold so the matched phrase
+      and border decoration share one orange tone.
     """
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
     elif theme == "deco" and fill == SPECTRA6["red"]:
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"])
+        # 3/8 yellow on 5/8 red via the shared 4×4 Bayer matrix; matches
+        # ``draw_deco_border``'s post-pass threshold so the matched
+        # phrase and the border ornaments land on the same tangerine.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -2548,17 +2593,20 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
     ``dispatch``.
 
     **Final pass — red→orange Bayer dither.** Spectra 6 has no orange
-    ink, but a 50/50 yellow-on-red stipple averages into a warm
-    tangerine at panel distance that lands the L-shapes / rising-sun
-    in period-correct deco territory. After every shape is painted,
-    walk the image and flip half of the ``accent``-coloured pixels to
-    yellow on the ``(x+y) & 1`` checkerboard. The pass only fires
-    when ``accent`` is the Spectra-6 red — direct-call test paths
-    that pass a custom palette dict (e.g. a recoloured deco border
-    for visual experiments) keep their solid accent. Phase matches
-    ``draw_text_dithered``'s ``((x+ox)+(y+oy)) % 2 == 0`` rule so
-    the bordered decoration and the matched-phrase body text share
-    one orange tone instead of two slightly offset stipples.
+    ink, so the L-shapes / rising-sun are dithered into a warm
+    tangerine. After every shape is painted, walk the image and
+    flip ~3/8 of the ``accent``-coloured pixels to yellow on the
+    shared 4×4 Bayer matrix (``BAYER_4x4`` cells < threshold 6 → light).
+    The red-biased ratio (5/8 red : 3/8 yellow) corrects the
+    previous 50/50 checkerboard, which read as washed-out amber
+    because yellow has much higher perceived luminance than red.
+    The pass only fires when ``accent`` is the Spectra-6 red —
+    direct-call test paths that pass a custom palette dict (e.g.
+    a recoloured deco border for visual experiments) keep their
+    solid accent. Phase and threshold match the
+    ``light_density=0.375`` branch of ``draw_text_dithered`` so the
+    bordered decoration and the matched-phrase body text share one
+    orange tone instead of two slightly offset stipples.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -2646,17 +2694,20 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
             width=1,
         )
 
-    # Final pass: synthesise orange by flipping half of the painted
-    # red pixels to yellow on a 1×1 checkerboard. See the docstring
-    # for the rationale; phase matches ``draw_text_dithered`` so the
-    # bold matched-phrase body text and the border decoration land
-    # on the same orange tone.
+    # Final pass: synthesise orange by flipping ~3/8 of the painted
+    # red pixels to yellow on the shared 4×4 Bayer matrix. See the
+    # docstring for the rationale; threshold (6) and phase match
+    # ``draw_text_dithered``'s ``light_density=0.375`` branch so the
+    # matched-phrase body text and the border decoration land on the
+    # same red-biased tangerine.
     if accent_color == SPECTRA6["red"]:
         light = SPECTRA6["yellow"]
+        threshold = 6  # round(0.375 * 16) — keep in sync with _draw_text_body
         pixels = image.load()
         for y in range(image.height):
+            row = BAYER_4x4[y % 4]
             for x in range(image.width):
-                if (x + y) & 1 and pixels[x, y] == accent_color:
+                if row[x % 4] < threshold and pixels[x, y] == accent_color:
                     pixels[x, y] = light
 
 

@@ -1946,3 +1946,187 @@ class TestPickQuoteUsesBakedDatabase:
         monkeypatch.setattr(render_quote.pick_quote_module, "select_quote", fake_select_quote)
         render_quote.pick_quote("10:00")
         assert captured.get("database_path") == pq.DEFAULT_DATABASE_PATH
+
+
+class TestDrawTextDithered:
+    """The deco theme's red-biased orange added a third density branch
+    (4×4 Bayer at arbitrary thresholds) to ``draw_text_dithered``.
+    The existing 0.25 sparse-1-in-4 and 0.5 checkerboard branches must
+    stay byte-identical (nightvision body text + grimoire matched-phrase
+    rely on the exact patterns), and the new branch must produce a
+    red-biased ratio (~3/8 light : 5/8 dark) on a 4×4 tile.
+    """
+
+    # Sentinel background that doesn't match any SPECTRA6 colour so
+    # ``light`` (which may legitimately be white) stays distinguishable
+    # from unchanged canvas pixels.
+    _BG: tuple[int, int, int] = (1, 2, 3)
+
+    @classmethod
+    def _render(cls, density, dark, light, *, text="MMMMMMMMMMMMMMMM"):
+        """Render ``text`` via ``draw_text_dithered`` on a sentinel-bg
+        canvas and return ``(image, light_count, dark_count)``. Uses the
+        bundled Playfair font at a size large enough to produce a few
+        thousand inked pixels — plenty for ratio assertions even after
+        the ≥128 antialias threshold trims edge pixels.
+        """
+        font_path = Path("fonts/PlayfairDisplay-Regular.ttf")
+        if not font_path.exists():
+            pytest.skip(f"bundled font missing: {font_path}")
+        from PIL import ImageFont
+        font = ImageFont.truetype(str(font_path), size=64)
+        image = Image.new("RGB", (640, 96), cls._BG)
+        rq.draw_text_dithered(
+            image,
+            (10, 8),
+            text,
+            font,
+            dark=dark,
+            light=light,
+            light_density=density,
+        )
+        px = image.load()
+        light_count = 0
+        dark_count = 0
+        for y in range(image.height):
+            for x in range(image.width):
+                p = px[x, y]
+                if p == light:
+                    light_count += 1
+                elif p == dark:
+                    dark_count += 1
+        return image, light_count, dark_count
+
+    def test_bayer_4x4_constant_shape(self):
+        """The shared Bayer matrix must be 4×4 with all unique values
+        in 0..15. A typo would silently break both call sites (text
+        body + border post-pass) since they share the constant."""
+        assert len(rq.BAYER_4x4) == 4
+        assert all(len(row) == 4 for row in rq.BAYER_4x4)
+        flat = [v for row in rq.BAYER_4x4 for v in row]
+        assert sorted(flat) == list(range(16)), (
+            f"BAYER_4x4 must permute 0..15, got {sorted(flat)}"
+        )
+
+    def test_density_0_375_red_biased_bayer(self):
+        """0.375 (the deco recipe) must hit the new Bayer branch and
+        land on roughly 3/8 light : 5/8 dark. Bayer threshold = 6/16
+        gives exactly 0.375 of the *cells* light, but antialias-edge
+        thresholding shifts the practical ratio slightly. Tolerate a
+        generous band so the test isn't flaky across Pillow versions
+        but still catches a branch that flipped to 50/50 or worse.
+        """
+        dark = rq.SPECTRA6["red"]
+        light = rq.SPECTRA6["yellow"]
+        _, light_count, dark_count = self._render(0.375, dark, light)
+        total = light_count + dark_count
+        assert total > 1000, f"too few inked pixels to test ratio: {total}"
+        light_ratio = light_count / total
+        # Red-biased target ≈ 0.375. A 0.5 checkerboard would land
+        # at ~0.5, so a wide tolerance still distinguishes the two.
+        assert 0.30 <= light_ratio <= 0.45, (
+            f"density=0.375 produced light_ratio={light_ratio:.3f}, "
+            f"expected ~0.375 — Bayer branch may have regressed"
+        )
+
+    def test_density_0_5_preserves_checkerboard_branch(self):
+        """0.5 must still hit the original 1×1 checkerboard. Sample
+        every inked pixel and assert it matches ``(x+y) % 2`` parity —
+        a single pixel out of phase means nightvision / etc would
+        ghost on the panel."""
+        dark = rq.SPECTRA6["green"]
+        light = rq.SPECTRA6["white"]
+        image, light_count, dark_count = self._render(0.5, dark, light)
+        total = light_count + dark_count
+        assert total > 1000, f"too few inked pixels: {total}"
+        px = image.load()
+        bad = 0
+        for y in range(image.height):
+            for x in range(image.width):
+                p = px[x, y]
+                if p == dark and (x + y) % 2 != 0:
+                    bad += 1
+                elif p == light and (x + y) % 2 == 0:
+                    bad += 1
+        assert bad == 0, f"1×1 checkerboard parity broken at {bad} pixel(s)"
+
+    def test_density_0_25_preserves_sparse_branch(self):
+        """0.25 must still hit the original sparse 1-in-4 branch
+        (light only where both axes are even). Grimoire's
+        candlelit-rubric matched phrase relies on the exact pattern."""
+        dark = rq.SPECTRA6["red"]
+        light = rq.SPECTRA6["white"]
+        image, light_count, dark_count = self._render(0.25, dark, light)
+        total = light_count + dark_count
+        assert total > 1000, f"too few inked pixels: {total}"
+        px = image.load()
+        bad = 0
+        for y in range(image.height):
+            for x in range(image.width):
+                p = px[x, y]
+                if p == light and not (x % 2 == 0 and y % 2 == 0):
+                    bad += 1
+        assert bad == 0, f"sparse 1-in-4 pattern broken at {bad} pixel(s)"
+
+    def test_deco_call_site_uses_red_biased_density(self):
+        """``_draw_text_body`` must call ``draw_text_dithered`` for the
+        deco red-accent path with ``light_density=0.375`` — a regression
+        to the default 0.5 would silently revert the deco orange to the
+        washed-out amber this change is meant to fix.
+        """
+        captured: dict = {}
+
+        def fake_dither(*args, **kwargs):
+            captured["density"] = kwargs.get("light_density")
+            captured["light"] = kwargs.get("light")
+
+        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+            image = Image.new("RGB", (200, 60), (255, 255, 255))
+            draw = ImageDraw.Draw(image)
+            from PIL import ImageFont
+            font = ImageFont.load_default()
+            rq._draw_text_body(image, draw, (10, 10), "test", font, rq.SPECTRA6["red"], "deco")
+
+        assert captured.get("density") == 0.375, (
+            f"deco red-accent dither expected light_density=0.375, "
+            f"got {captured.get('density')}"
+        )
+        assert captured.get("light") == rq.SPECTRA6["yellow"], (
+            "deco red-accent dither must stipple toward yellow"
+        )
+
+    def test_deco_border_post_pass_uses_same_threshold(self):
+        """``draw_deco_border``'s post-pass must flip red pixels using
+        the same Bayer matrix and threshold (6) as the body text. A
+        drift here would visibly split the matched phrase from the
+        border ornaments — both should land on one tangerine tone.
+        """
+        # Render a deco border on a canvas pre-filled with the red accent.
+        # Every pixel that's still red after the post-pass should
+        # correspond to BAYER_4x4[y%4][x%4] >= 6; every pixel flipped
+        # to yellow should correspond to BAYER_4x4[y%4][x%4] < 6. Use
+        # the full 800×480 panel size so the border helper's inset
+        # rectangles don't go negative.
+        accent = rq.SPECTRA6["red"]
+        yellow = rq.SPECTRA6["yellow"]
+        image = Image.new("RGB", (800, 480), accent)
+        rq.draw_deco_border(
+            image,
+            {"text": rq.SPECTRA6["black"], "accent": accent},
+        )
+        px = image.load()
+        mismatches = 0
+        for y in range(image.height):
+            for x in range(image.width):
+                p = px[x, y]
+                cell = rq.BAYER_4x4[y % 4][x % 4]
+                if p == accent and cell < 6:
+                    mismatches += 1
+                elif p == yellow and cell >= 6:
+                    mismatches += 1
+                # other colors (frame_color black for outer/inner rules)
+                # come from drawn primitives, not the post-pass — skip
+        assert mismatches == 0, (
+            f"draw_deco_border post-pass deviated from Bayer threshold 6 "
+            f"at {mismatches} pixel(s)"
+        )

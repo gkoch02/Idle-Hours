@@ -501,6 +501,49 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 - **Outputs.** `--output` defaults to `output/current.png` (the same stable filename `run_clock.py` passes explicitly), so repeated ad-hoc CLI invocations overwrite one file instead of leaking up to 1440 `render-HHMM.png` siblings across a day. Pass an explicit path when you want a persistent per-time artifact. The PNG is encoded to a `BytesIO` and written via `atomic_io.atomic_write_bytes` so a power cut mid-save can't leave a truncated frame for the next tick (and for `display_inky.py`) to read. The underlying PIL `Image` is explicitly `close()`d after encoding to release the file handle — important over months of continuous operation.
 - **Hot-path caches.** `fit_quote` calls `load_font` up to 18 times per render with the same candidate chain at different sizes; without memoisation that's 36 path-existence scans + 36 `ImageFont.truetype` opens per render. `_FONT_CACHE` keys on `(normalised_candidates, size)` so repeats are O(1), and the variation tuple form `(path, "Bold")` keys distinctly from the plain string so a per-theme variable-font Bold/Regular split stays isolated. **The bitmap fallback is deliberately NOT cached** — a transient miss (NFS hiccup, brief filesystem unavailability) would otherwise pin the subprocess to degraded rendering for its lifetime, and `contact_sheet.py` renders 144 frames in one process. Time-phrase regex compilation moved to module load (`_TIME_PHRASE_PATTERNS`, sorted longest-first), and `_direct_match_pattern` shares one compiled pattern between `resolve_display_match` and `tokenize_quote` instead of recompiling per call. `wrap_styled_text` memoises space widths per font-id within a single call (a 140-char quote has ~25 spaces × 18 fit iterations × 2 fonts → ~450 redundant `textbbox` calls per render before the memo). The `_FONT_CACHE` lifetime is the renderer subprocess (single-threaded), so no FD-leak risk; `tests/test_render_quote.py` clears it autouse around every test so cache state from a prior test can't mask path-existence assertions in the current one.
 
+### Synthesising colours outside the Spectra 6 palette
+
+Spectra 6 only has six inks (white / black / red / yellow / blue / green). Any other colour a theme wants — orange, mint, purple, sky blue, brown — must be **synthesised in software** by interleaving two natives on a stipple pattern. The PNG stays fully on-palette so `snap_image_to_palette` and the panel's own internal dithering pass don't re-quantise it into something else, and the eye averages adjacent pixels into the perceived mixed colour at panel-viewing distance (1–3 m for the LitClock appliance).
+
+**Principle.** Decompose the target colour into a weighted mix of the nearest base inks, then paint each pixel as exactly one base ink chosen so the local density matches the weights. Reference framework: [Frans-Willem/epd-dither](https://github.com/Frans-Willem/epd-dither) treats RGB as an octahedron with the six inks at the vertices and any interior point as a barycentric mix. Confirmation in the Spectra 6 community ("Beyond 6 Colors" / `epdoptimize` / Pimoroni forum): the same approach extends the visible palette to ~12–13 usable colours total. **Caveat:** the panel's measured-ink RGB drifts per unit (calibrated values from `Utzel-Butzel/epdoptimize`: panel red ≈ `#62201E`, yellow ≈ `#C1BB1E`, blue ≈ `#233F8E`, green ≈ `#35563A`, black ≈ `#1F2226`, white ≈ `#B9C7C9`), so the recipes below are **textbook starting points**, not pixel-perfect specs — bias toward the more-saturated ink if a result reads washed-out at panel distance.
+
+**Patterns.** `draw_text_dithered` already supports all three branches and `BAYER_4x4` is the shared 4×4 ordered matrix for the third. For ratios above 50%, swap `dark`/`light` and pass the complementary density (e.g. "5/8 yellow + 3/8 red" = `dark=yellow, light=red, light_density=0.375`).
+
+| Pattern | "Light" density | Trigger | Visual signature |
+|---|---|---|---|
+| Sparse 1-in-4 (`x%2 == 0 and y%2 == 0`) | 25% | `light_density <= 0.25` | Subtle wash of "light" over dominant "dark" |
+| 4×4 ordered Bayer (`BAYER_4x4[y%4][x%4] < round(d*16)`) | any `d ∈ (0.25, 0.5)` | `0.25 < light_density < 0.5` | Biased mix dispersed across a 4×4 tile |
+| 1×1 checkerboard (`(x+y) & 1`) | 50% | `light_density >= 0.5` | Equal-weight midpoint of two inks |
+
+**Two-ink recipes** (named tones the literature consistently cites; **In use** column flags which themes already pull each recipe today).
+
+| Synthesised colour | Recipe | Pattern call | In use |
+|---|---|---|---|
+| Tangerine / warm orange | red + yellow at 5/8 : 3/8 | `dark=red, light=yellow, light_density=0.375` | `deco` (body matched phrase + border post-pass) |
+| Pure orange / amber | red + yellow at 1/2 : 1/2 | `dark=red, light=yellow` (default density) | — (was deco's previous recipe; reads as washed-out amber because yellow's higher luminance dominates) |
+| Pink / coral | red + white at 1/2 : 1/2 | `dark=red, light=white` | — |
+| Candlelit red | red + white at 3/4 : 1/4 | `dark=red, light=white, light_density=0.25` | `grimoire` (matched phrase only) |
+| Mint | green + white at 1/2 : 1/2 | `dark=green, light=white` | `nightvision` (body / attribution / ornament) |
+| Purple / violet | red + blue at 1/2 : 1/2 | `dark=red, light=blue` | — |
+| Sky blue | blue + white at 1/2 : 1/2 | `dark=blue, light=white` | — |
+| Cyan | green + blue at 1/2 : 1/2 | `dark=green, light=blue` | — |
+| Brown | red + green at 1/2 : 1/2 (mute further with black) | `dark=red, light=green` | — |
+| Dark green | green + black at 1/2 : 1/2 | `dark=green, light=black` | — |
+| Olive | yellow + green at 1/2 : 1/2 | `dark=yellow, light=green` | — |
+| Lime | yellow + green at 5/8 : 3/8 | `dark=yellow, light=green, light_density=0.375` | — |
+| Light orange | red + yellow + white at 2/5 : 2/5 : 1/5 | (3-ink — not supported by `draw_text_dithered` today) | — |
+
+Three-ink mixes (e.g. light orange) need a Bayer partition into three regions rather than two; `draw_text_dithered` only handles the two-ink case. Add a `_three_way_bayer` helper if a future theme actually needs one — the existing infrastructure doesn't.
+
+**Designing a new themed accent.**
+
+1. **Pick the target.** Sketch it as a sum of two nearby Spectra 6 inks. The table above covers most named tones; if the target isn't listed, pick the two natives that bracket it on the colour wheel.
+2. **Estimate the dominance ratio.** If the two inks have asymmetric luminance (yellow >> red, white >> any chroma, black << any chroma), bias toward the *less* luminous ink so the perceived hue lands on the target rather than on the brighter ink. The deco fix is the canonical example: 50/50 red+yellow looked amber, 5/8 red + 3/8 yellow reads as tangerine.
+3. **Choose the pattern** from the patterns table. Start at 50/50 if you don't have a strong prior; move to a 4×4 Bayer biased ratio if 50/50 reads washed-out at panel distance.
+4. **Wire it in.** Body text accents: extend `_draw_text_body`'s per-theme switch with another `elif theme == "<name>" and fill == SPECTRA6[<dominant>]: draw_text_dithered(...)`. Decorative graphics: paint the shape in the dominant ink, then do a `BAYER_4x4[y%4][x%4] < threshold and pixels[x, y] == dominant` post-pass to flip the minority pixels to the lighter ink (`draw_deco_border`'s final pass is the reference).
+5. **Saturation tier.** Also bump `display_inky.THEME_SATURATION["<theme>"]` to `0.7` if the accent needs to stay punchy against a non-white ground; `0.5` is the gentler tier for solid-red-on-white themes (the `deco` recipe deliberately stays at `0.5` because the red-biased Bayer already corrects the perceived hue without a saturation bump).
+6. **Test.** Add a `TestDrawTextDithered`-style ratio assertion if the recipe is novel; add the theme to the renderer golden suite (`tests/test_render_golden.py`) if you want a visual regression fence.
+
 ### Runtime Loop (`run_clock.py`)
 
 **Config file (`--config PATH`).** `parse_args()` supports a TOML config whose keys mirror the argparse `dest` names one-for-one (snake_case: `display_script`, `quiet_start`, `web_bind`, …). Loaded via `runtime_config.load_config` before the real parse, the file's values are fed into `parser.set_defaults(**config_dict)`; argparse's own rule that "the default is used only when the flag is absent from argv" delivers the three-layer precedence — **CLI flag > config value > argparse default** — without any custom merge layer. `load_config` takes a `choices_map` extracted from `parser._actions` so `choices=`-gated keys (`mode`, `theme`) validate at load time instead of silently propagating a typoed value into the render subprocess; `_valid_hhmm` is injected the same way. One asymmetry: `store_true` flags (`buttons_off`, `quiet_off`) can only be *enabled* by the CLI, since argparse has no paired `--no-*` variant, so a config that sets them `true` can't be overridden from the shell. Three transient flags are deliberately refused in the file (`--config` itself, `--once`, `--skip-preflight`); listing them warns and drops. Malformed TOML, unreadable contents, a non-table root, unknown keys, type mismatches, and choice-miss values all warn to stderr and continue with argparse defaults, mirroring `apply_content_overrides.load_overrides`'s fail-open pattern. The one hard error is pointing `--config` at a non-existent path: that raises `SystemExit(1)` at startup because a typoed unit-file path is a configuration bug the operator wants to hear about, not a silent-defaults signal. The shipped `litclock.service.example` passes `--config %S/litclock/config.toml` exclusively; see `assets/config.toml.example` for every supported key.
