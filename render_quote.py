@@ -52,6 +52,7 @@ THEME_ORDER: tuple[str, ...] = (
     "grimoire",
     "deco",
     "glacier",
+    "chalkboard",
 )
 THEMES = {
     "default": {
@@ -466,6 +467,24 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["blue"],
     },
+    # Classroom chalkboard: black page (slate), white chalk body in the
+    # Playwrite GB Joined Guides cursive handwriting face (TypeTogether,
+    # OFL — the British primary-school joined cursive with dotted-outline
+    # practice letters), yellow chalk-stick matched-phrase accent. Shares
+    # the black/white/yellow palette shape with ``dark`` (which is Playfair
+    # Display); the differentiation is the handwriting font and the
+    # ``draw_chalkboard_border`` wooden-frame decoration. Visually reads as
+    # a teacher demonstrating cursive on a slate board.
+    "chalkboard": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
 }
 SIDE_MARGIN = 20
 
@@ -635,6 +654,20 @@ RIGHTEOUS_REGULAR = str(BASE_DIR / "fonts/righteous/Righteous-Regular.ttf")
 # before the Playfair serif chain so a missing install stays in the
 # display-face lane.
 ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
+# Playwrite GB J Guides — TypeTogether / Veronika Burian / José Scaglione
+# (OFL). The British primary-school joined-cursive handwriting model
+# *with* the dotted-outline guide letters that schoolchildren trace over
+# in their first cursive workbooks. Single-weight (Regular only); the
+# distinctive feature is the dotted/hollow letterforms themselves, which
+# don't have a meaningful "Bold" companion — a heavier guide-line would
+# defeat the practice-letter aesthetic. Matched phrase reuses Regular
+# and gains differentiation from the yellow chalk-stick accent alone.
+# Used by the ``chalkboard`` theme. Falls back through DejaVu Sans
+# Italic (the closest in-rotation script-adjacent face) before
+# degrading to the Playfair serif chain, so a missing-Playwrite install
+# lands on at least a slanted silhouette rather than dropping a
+# handwriting theme onto an upright serif.
+PLAYWRITE_GB_J_GUIDES_REGULAR = str(BASE_DIR / "fonts/playwrite-gb-j-guides/PlaywriteGBJGuides-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1168,6 +1201,37 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             RIGHTEOUS_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "chalkboard": {
+        # Playwrite GB J Guides (TypeTogether, OFL) — UK primary-school
+        # joined cursive with dotted-outline practice letters. Single-weight
+        # (Regular only); a true "Bold guide letter" doesn't exist in the
+        # family. Matched-phrase role reuses Regular and gains differentiation
+        # from the yellow chalk-stick accent alone — same trick comic /
+        # dispatch / atomic / marker / saloon / deco / glacier already use.
+        # Fallback chain prefers italic faces (DejaVu Sans Italic, Liberation
+        # Sans Italic) before degrading to the Playfair chain so a missing
+        # install lands on at least a slanted silhouette rather than dropping
+        # a cursive theme onto an upright serif.
+        "quote_regular": [
+            PLAYWRITE_GB_J_GUIDES_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Italic.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            PLAYWRITE_GB_J_GUIDES_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PLAYWRITE_GB_J_GUIDES_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -2519,6 +2583,80 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
         )
         draw.line([(mx - star_r, my), (mx + star_r, my)], fill=body_color, width=1)
         draw.line([(mx, my - star_r), (mx, my + star_r)], fill=body_color, width=1)
+
+
+def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
+    """Paint a classroom-chalkboard surround: doubled white wooden frame
+    plus a sparse cluster of chalk-dust dots tucked into the bottom-left
+    corner of the slate (the chalk-tray side).
+
+    Two motifs, both evoking the iconic slate / wood / chalk-dust
+    combination of a Victorian-through-1990s schoolroom blackboard:
+
+    * **Doubled wooden frame** — outer rectangle at inset 8 with a 3 px
+      stroke (the chunky wooden surround) plus an inner rectangle at
+      inset 18 with a 1 px stroke (the inside edge of the wood). The
+      ~7 px band between the two rules stays unfilled so the panel's
+      black ground reads through as dark wood grain rather than a
+      single flat white strip — the visual silhouette of a real
+      chalkboard frame.
+    * **Chalk-dust scatter** — a sparse, deterministic stipple of
+      tiny white dots (radius 1 px) inside the bottom-left corner
+      of the inner frame. Pinned to the BL because that's where the
+      chalk tray actually sits on a classroom board, and because the
+      asymmetric placement (rather than four-corner symmetry) reads
+      as observed wear from a real teacher's hand rather than
+      decorative ornament. Stays inside a ~40 px square so it never
+      overlaps the quote block; the standard layout's ``max_width``
+      leaves at least ``SIDE_MARGIN`` (20 px) of clear margin at
+      every edge.
+
+    The graphic deliberately doesn't paint anything in the top-right
+    corner — the doubled frame stops at the outer rectangle, no corner
+    accent — so ``chalkboard`` is intentionally absent from
+    ``_DEBUG_LABEL_RIGHT_INSET`` (same reasoning as ``dispatch`` /
+    ``atomic``: TR feature sits outside the label's bounding box by
+    construction).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    frame_color = colors["text"]  # white chalk frame on the black slate
+
+    # Outer thick wooden surround.
+    outer_inset = 8
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=frame_color,
+        width=3,
+    )
+    # Inner thin frame — the inside lip of the wood.
+    inner_inset = 18
+    draw.rectangle(
+        (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+        outline=frame_color,
+        width=1,
+    )
+
+    # Chalk-dust stipple inside the BL corner of the inner frame. Coords
+    # are hand-tuned (not RNG'd) so the scatter is deterministic across
+    # renders — the corpus rotates through 144 buckets and a non-stable
+    # corner would make A/B comparisons noisier. Footprint stays within
+    # a 40×30 px box pinned to the inner-frame BL corner.
+    bl_x = inner_inset + 4
+    bl_y = height - 1 - inner_inset - 4
+    chalk_offsets = (
+        (0, 0),  (5, -2), (11, 0), (18, -3), (23, 1),
+        (3, -8), (9, -7), (16, -9), (22, -7), (28, -10),
+        (1, -14), (7, -16), (15, -15), (20, -19), (26, -17),
+        (5, -22), (12, -23), (19, -24), (24, -26),
+    )
+    for dx, dy in chalk_offsets:
+        cx = bl_x + dx
+        cy = bl_y + dy
+        # 1 px dot — drawn as a single-pixel rectangle so PIL doesn't
+        # anti-alias and dither the dot into surrounding palette greys
+        # at snap_image_to_palette time.
+        draw.rectangle((cx, cy, cx, cy), fill=frame_color)
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -4183,6 +4321,7 @@ _BORDER_PAINTERS = {
     "grimoire": draw_grimoire_border,
     "deco": draw_deco_border,
     "glacier": draw_glacier_border,
+    "chalkboard": draw_chalkboard_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need

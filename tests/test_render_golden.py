@@ -352,6 +352,22 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "glacier",
     },
+    # Chalkboard pins the doubled white wooden frame and the BL chalk-dust
+    # scatter. Also locks the Playwrite GB J Guides handwriting font load —
+    # the cursive silhouette is the entire point, so a regression that
+    # dropped to the fallback DejaVu Oblique would flip thousands of glyph
+    # pixels here.
+    {
+        "name": "standard_chalkboard_production",
+        "time": "08:55",
+        "row": _row(
+            "Do you think I should be standing here at five minutes to nine "
+            "looking for it if I had it in my pocket all the while?",
+            "five minutes to nine",
+        ),
+        "mode": "production",
+        "theme": "chalkboard",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

@@ -117,6 +117,11 @@ THEME_SATURATION: dict[str, float] = {
     # pushing higher would risk muddying the body's blue against the
     # frost-crystal accent ornaments.
     "glacier": 0.5,
+    # Black slate ground / white chalk body / yellow chalk-stick matched
+    # phrase. Same chromatic-on-dark profile as ``dark`` / ``gothic`` /
+    # ``nightvision`` / ``grimoire`` — push the yellow accent so it doesn't
+    # desaturate to a muddy ochre against the panel's anchored black.
+    "chalkboard": 0.7,
 }
 
 
