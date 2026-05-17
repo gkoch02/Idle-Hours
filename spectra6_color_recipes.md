@@ -127,7 +127,6 @@ Recipes are grouped by *which pole of the octahedron* the third ink contributes 
 |---|---|---|
 | Warm grey / taupe | red + yellow + white + black @ ~25 each | More interesting than pure black+white gray — picks up a subtle warm cast from the R+Y pair |
 | Cool slate | blue + green + white + black @ ~25 each | Cool counterpart to taupe — picks up a subtle cyan cast |
-| Rich black | black + red + blue @ 60 / 20 / 20 | Printer's trick: pure black ink alone reads slightly thin on Spectra 6 (the calibrated black is `#1F2226`, not true `#000000`); adding chromatic underprint deepens it. Useful for the body fill of a high-contrast dark theme that wants to feel *blacker than the panel's native black*. |
 
 **Don't go past 4 inks.** The octahedron literature treats 5- and 6-vertex barycentric mixes as edge cases — `OctahedronDecomposer` (in `epd-dither`) explicitly limits itself to ≤4 vertices per pixel, and `epdoptimize`'s palette-distance model picks similarly small support sets. Past 4, per-cell density drops below 4 / 16 and the mix degenerates into either visible texture or muddy mid-grey.
 
