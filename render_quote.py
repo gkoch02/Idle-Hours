@@ -3239,31 +3239,66 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
-    """Paint a vintage-office dispatch border: thin frame + tractor-feed perforations + red rubber-stamp imprint.
+    """Paint a vintage-office dispatch border: cream-washed ground +
+    thin frame + alternating black/sepia tractor-feed perforations +
+    maroon rubber-stamp imprint.
 
-    Three motifs from the typewriter / dot-matrix / dossier era:
+    Five motifs from the typewriter / dot-matrix / dossier era, painted
+    bottom to top so the upper layers sit visibly on the lower:
 
-    * **Outer thin black frame** at a small inset frames the page like
-      a typed memo's letterhead rule.
-    * **Tractor-feed perforations** — a column of small black filled
-      circles spaced ~40px apart on each side margin, between the
-      frame and the page edge — echoes the sprocket holes punched
-      down the side of continuous-feed dot-matrix printer paper. No
-      other theme uses this motif, and it's instantly recognisable as
-      mid-century office-document texture.
-    * **Red rubber-stamp imprint** in the upper right (inside the
-      frame, well below the debug-mode label band): two concentric
-      ellipse outlines plus four short diagonal hatch lines, evoking
-      a smudged ink rubber stamp without committing to any specific
-      lettering. Sits at y≈40–70 so the oversized opening quote mark
-      (drawn from the left at quote_top − open_h//3, ≥ 42 in every
-      layout) and the matched-phrase text block (centred horizontally,
-      block_top ≥ 72) both stay clear.
+    * **Layer 0 — sparse cream ground wash.** A 4×4 Bayer dither
+      converts ~12.5% of the white ``page_bg`` pixels to yellow,
+      leaving the other 87.5% as pure white. At panel viewing
+      distance the eye averages the 1-in-8 yellow alternation into a
+      faint cream/vellum tone — reads as aged manila dispatch paper
+      rather than the panel's flat pure white. Same Bayer pattern
+      ``draw_newsprint_border``'s Layer 0 uses but with the
+      ``page_bg→ink`` flip swapped for ``page_bg→yellow``. Lives
+      natively on the Spectra-6 palette (every output pixel is still
+      one of the six pure inks) so palette-snap is a no-op and glyph
+      edges stay crisp.
+    * **Outer thin black frame** at a small inset frames the page
+      like a typed memo's letterhead rule.
+    * **Alternating black/sepia tractor-feed perforations** — a
+      column of small filled circles spaced ~40px apart on each side
+      margin, echoing continuous-feed dot-matrix sprocket holes.
+      Every other perforation flips from solid black to a sepia
+      (R+G 1:1) Bayer stipple via the same sentinel-paint-then-
+      bbox-post-pass pattern ``placard``'s thumbtacks use, reading
+      as the rust-brown "carbon-paper bleed" real continuous-feed
+      forms accumulate where the carbon backing oxidises against
+      the sprocket holes.
+    * **Maroon rubber-stamp imprint** in the upper right (inside
+      the frame, well below the debug-mode label band): two
+      concentric ellipse outlines plus four short diagonal hatch
+      lines, evoking a smudged ink rubber stamp without committing
+      to any specific lettering. Painted in red as a sentinel; a
+      bbox-scoped post-pass Bayer-flips half of the stamp's red
+      pixels to black per ``(x+y)&1`` parity — the documented R+K
+      1:1 maroon recipe — so the stamp reads as the oxblood /
+      aged-ink of a real archival stamp rather than fire-engine
+      red. Sits at y≈40–70 so the oversized opening quote mark
+      and the matched-phrase text block both stay clear.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     ink = colors["text"]
-    accent = colors["accent"]
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+    sepia_light = SPECTRA6["green"]
+    sentinel_red = SPECTRA6["red"]
+    maroon_dark = SPECTRA6["black"]
+
+    # Layer 0: sparse 1-in-8 yellow-on-white Bayer cream wash. Only
+    # pixels matching ``page_bg`` are affected — defence in depth if
+    # a future caller paints accents before this painter runs.
+    pixels = image.load()
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
 
     # Outer thin frame.
     frame_inset = 14
@@ -3273,51 +3308,87 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
-    # Tractor-feed perforations on the left and right margins.
+    # Tractor-feed perforations on the left and right margins. Every
+    # other perforation pair flips from solid black to a red sentinel,
+    # then the per-perforation post-pass below flips half of those red
+    # pixels to green per (x+y)&1 parity — sepia.
     hole_radius = 2
     hole_spacing = 40
     hole_top = 22
     hole_bottom = height - 22
     left_x = 7
     right_x = width - 1 - 7
+    sepia_centres: list[tuple[int, int]] = []
     y = hole_top
+    pair_idx = 0
     while y <= hole_bottom:
+        if pair_idx & 1:
+            fill = sentinel_red
+            sepia_centres.append((left_x, y))
+            sepia_centres.append((right_x, y))
+        else:
+            fill = ink
         draw.ellipse(
             (left_x - hole_radius, y - hole_radius, left_x + hole_radius, y + hole_radius),
-            fill=ink,
+            fill=fill,
         )
         draw.ellipse(
             (right_x - hole_radius, y - hole_radius, right_x + hole_radius, y + hole_radius),
-            fill=ink,
+            fill=fill,
         )
         y += hole_spacing
+        pair_idx += 1
 
-    # Red rubber-stamp imprint: two concentric ellipse outlines plus
-    # short diagonal hatch lines. Positioned below the DEBUG MODE
-    # banner band (y=14–29 at SIDE_MARGIN x-position) so debug mode
-    # doesn't need a label inset adjustment.
+    # Sepia post-pass on the alternating perforations only.
+    for cx, cy in sepia_centres:
+        x0 = max(0, cx - hole_radius)
+        y0 = max(0, cy - hole_radius)
+        x1 = min(width - 1, cx + hole_radius)
+        y1 = min(height - 1, cy + hole_radius)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                    pixels[px, py] = sepia_light
+
+    # Maroon rubber-stamp imprint: two concentric ellipse outlines plus
+    # short diagonal hatch lines, painted in red as a sentinel.
     stamp_cx = width - 55
     stamp_cy = 55
     outer_hw, outer_hh = 25, 15
     inner_hw, inner_hh = 19, 10
     draw.ellipse(
         (stamp_cx - outer_hw, stamp_cy - outer_hh, stamp_cx + outer_hw, stamp_cy + outer_hh),
-        outline=accent,
+        outline=sentinel_red,
         width=1,
     )
     draw.ellipse(
         (stamp_cx - inner_hw, stamp_cy - inner_hh, stamp_cx + inner_hw, stamp_cy + inner_hh),
-        outline=accent,
+        outline=sentinel_red,
         width=1,
     )
-    # Four diagonal hatch lines suggest smudged rubber-stamp ink
-    # without spelling any specific word.
     for dx in (-9, -3, 3, 9):
         draw.line(
             (stamp_cx + dx - 3, stamp_cy + 3, stamp_cx + dx + 3, stamp_cy - 3),
-            fill=accent,
+            fill=sentinel_red,
             width=1,
         )
+
+    # Maroon post-pass on the stamp's bbox. Bbox-scoped so the rest of
+    # the painted accent red on the page (none today, but defence in
+    # depth for future additions) stays untouched.
+    stamp_x0 = max(0, stamp_cx - outer_hw - 1)
+    stamp_y0 = max(0, stamp_cy - outer_hh - 1)
+    stamp_x1 = min(width - 1, stamp_cx + outer_hw + 1)
+    stamp_y1 = min(height - 1, stamp_cy + outer_hh + 1)
+    for py in range(stamp_y0, stamp_y1 + 1):
+        for px in range(stamp_x0, stamp_x1 + 1):
+            if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = maroon_dark
+    # ``accent`` is the dispatch theme's red slot; kept bound for future
+    # palette extensions even though the sentinel-paint-then-bbox-
+    # post-pass approach above doesn't read from it directly.
+    accent = colors["accent"]
+    del accent
 
 
 def draw_atomic_border(image: Image.Image, colors: dict) -> None:
