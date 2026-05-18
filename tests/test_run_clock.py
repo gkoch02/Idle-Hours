@@ -1639,17 +1639,21 @@ class TestButtonHandlers:
 
     def test_toggle_theme_handler_advances_cycle_from_dark(self, tmp_path):
         """Button B cycles through render_quote.THEME_ORDER; stepping from
-        ``dark`` lands on the next entry (``scholar``), not a binary bounce
-        back to ``default``."""
+        ``dark`` lands on the next entry, not a binary bounce back to
+        ``default``. The expected next theme is read from THEME_ORDER
+        directly so re-ordering the rotation doesn't require touching
+        this test."""
+        import render_quote as rq
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "dark"
+        expected_next = rq.THEME_ORDER[rq.THEME_ORDER.index("dark") + 1]
         with patch("run_clock.render_now"), \
              patch("run_clock.current_time_str", return_value="10:00"), \
              patch("run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
-        assert state.manual_theme == "scholar"
+        assert state.manual_theme == expected_next
 
     def test_toggle_theme_handler_wraps_cycle_at_end(self, tmp_path):
         """Stepping from the last entry wraps back to the first so the user

@@ -159,7 +159,9 @@ def parse_args() -> argparse.Namespace:
     _theme_choices = [
         "default",
         "dark",
+        "swiss",
         "scholar",
+        "herbarium",
         "newsprint",
         "nightvision",
         "blueprint",
@@ -177,10 +179,12 @@ def parse_args() -> argparse.Namespace:
         "grimoire",
         "deco",
         "glacier",
+        "mucha",
         "chalkboard",
         "placard",
         "chanbara",
         "lcars",
+        "fillmore",
         "diags",
     ]
     parser.add_argument(
