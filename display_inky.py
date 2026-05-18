@@ -151,6 +151,40 @@ THEME_SATURATION: dict[str, float] = {
     # pixel averaging at panel distance, so over-saturation would shift
     # the calibration target.
     "diags": 0.5,
+    # Swiss International / modernist — white ground, black Inter body,
+    # red accent. Same chromatic-on-light profile as ``default`` /
+    # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
+    # 0.5 tier is the natural starting point. The single 6 px red
+    # square is the only chromatic ink on the page besides the matched
+    # phrase; over-saturation would turn that quiet accent into a
+    # competing focal point against the deliberately minimal grid.
+    "swiss": 0.5,
+    # Herbarium / pressed-plant specimen sheet — white ground (with
+    # cream Layer-0 wash), black IM Fell body, olive-stippled matched
+    # phrase. Same chromatic-on-light profile as ``default`` /
+    # ``placard`` — the matched phrase synthesises olive via a Y+G
+    # stipple, and the pressed-leaf graphic uses the same recipe, so
+    # the 0.5 tier preserves the dried-leaf colour the period
+    # specimens actually develop. Pushing higher would saturate the
+    # olive into a brighter chartreuse that breaks the aged-specimen
+    # register.
+    "herbarium": 0.5,
+    # Mucha / Art Nouveau — cream-washed white ground, body painted
+    # via maroon stipple, matched phrase via cyan stipple. Both body
+    # and accent are synthesised colours that depend on adjacent-
+    # pixel averaging, so the 0.5 tier preserves the period palette
+    # of Belle-Époque posters. Pushing higher risks shifting the
+    # body's maroon into a more saturated red and the matched
+    # phrase's cyan into a brighter sky-blue, breaking the warm-cool
+    # contrast the theme depends on.
+    "mucha": 0.5,
+    # Fillmore / 1960s psychedelic poster — yellow ground with all
+    # six Spectra-6 inks visible simultaneously. Same chromatic-on-
+    # coloured-ground profile as ``comic`` (also yellow page_bg) —
+    # the 0.7 tier keeps the green blob, blue blob, red body, and
+    # blue matched phrase confidently saturated against the warm
+    # yellow ground rather than half-fading into the page.
+    "fillmore": 0.7,
 }
 
 

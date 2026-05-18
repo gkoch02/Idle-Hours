@@ -574,6 +574,10 @@ class TestThemes:
             "bauhaus",
             "risograph",
             "comic",
+            "swiss",
+            "herbarium",
+            "mucha",
+            "fillmore",
         ):
             assert name in rq.THEMES, name
             assert name in rq.THEME_ORDER, name
@@ -649,6 +653,66 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["black"]
         assert t["accent"] == rq.SPECTRA6["blue"]
         assert t["ornament_dark"] == rq.SPECTRA6["red"]
+
+    def test_swiss_theme_uses_austere_monochrome_palette(self):
+        """Swiss International is the rotation's modernist exception:
+        white ground, black body, single red accent on the matched
+        phrase and the small header square. No second chromatic ink
+        anywhere — a regression that introduced a blue / yellow /
+        green accent would collapse the theme into a generic poster
+        composition and lose the "austerity by subtraction" identity."""
+        t = rq.THEMES["swiss"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["black"]
+        assert t["accent"] == rq.SPECTRA6["red"]
+        assert t["ornament_dark"] == rq.SPECTRA6["black"]
+
+    def test_herbarium_theme_routes_matched_phrase_to_forest_green(self):
+        """Herbarium uses the green sentinel ink in the ``accent`` slot
+        so ``_draw_text_body`` can route the matched phrase through a
+        G+K → forest-green stipple. Pinning the sentinel slot here
+        catches a regression that drops the matched phrase back to
+        solid black (eliminating the green colour story that
+        defines the theme on the green axis)."""
+        t = rq.THEMES["herbarium"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["black"]
+        assert t["accent"] == rq.SPECTRA6["green"]
+
+    def test_mucha_theme_uses_red_sentinel_for_synthesised_body(self):
+        """Mucha is the only theme whose body fill is a synthesised
+        colour (maroon — R+K 1:1) rather than a native ink. The
+        ``text`` slot carries the red sentinel that ``_draw_text_body``
+        routes through its R+K stipple branch; a regression that
+        changed ``text`` to solid black or solid red would collapse
+        the body into a flat single ink and lose the Art Nouveau
+        oxblood register."""
+        t = rq.THEMES["mucha"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["red"]
+        assert t["accent"] == rq.SPECTRA6["green"]
+
+    def test_fillmore_theme_uses_six_inks_simultaneously(self):
+        """Fillmore is the rotation's visual maximalist: yellow ground,
+        red body, blue matched phrase, plus green/blue/yellow/red/
+        black/white visible via the corner blob graphics. A regression
+        that changed the page_bg away from yellow or collapsed
+        text/accent to a single hue would lose the 1960s psychedelic
+        identity."""
+        t = rq.THEMES["fillmore"]
+        assert t["page_bg"] == rq.SPECTRA6["yellow"]
+        assert t["text"] == rq.SPECTRA6["red"]
+        assert t["accent"] == rq.SPECTRA6["blue"]
+
+    def test_new_theme_border_painters_registered(self):
+        """Each new theme that names a border in its design notes
+        must appear in _BORDER_PAINTERS — without registration the
+        border-painter never fires and the theme degrades into
+        "just type on the ground colour". Pin the four new entries
+        explicitly so a future refactor that drops the dict key
+        fails this test loudly."""
+        for name in ("swiss", "herbarium", "mucha", "fillmore"):
+            assert name in rq._BORDER_PAINTERS, name
 
     def test_risograph_theme_uses_no_black_ink(self):
         """The defining constraint of the risograph aesthetic is

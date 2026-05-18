@@ -47,7 +47,9 @@ BAYER_4x4: tuple[tuple[int, ...], ...] = (
 THEME_ORDER: tuple[str, ...] = (
     "default",
     "dark",
+    "swiss",
     "scholar",
+    "herbarium",
     "newsprint",
     "nightvision",
     "blueprint",
@@ -65,10 +67,12 @@ THEME_ORDER: tuple[str, ...] = (
     "grimoire",
     "deco",
     "glacier",
+    "mucha",
     "chalkboard",
     "placard",
     "chanbara",
     "lcars",
+    "fillmore",
     "diags",
 )
 THEMES = {
@@ -591,6 +595,125 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
+    # Swiss International / mid-century-modernist functional. The Müller-
+    # Brockmann / Vignelli typographic tradition: clean grid, single ink
+    # weight does the heavy lifting, single hairline rule, no decoration.
+    # Deliberately the *least* ornamented frame in the rotation — every
+    # other theme has a border painter; ``swiss`` registers one too, but
+    # all it paints is a single horizontal rule near the top edge plus a
+    # small red square marking the "header column". Austerity by
+    # subtraction is the visual identity. Body in Inter (Helvetica-class
+    # grotesque sans), matched phrase in Inter Bold + red accent.
+    "swiss": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # 19th-century pressed-plant specimen sheet. Cream-washed paper
+    # (Y+W Layer 0, same recipe ``illuminated`` / ``dispatch`` use),
+    # black body in IM Fell English, matched phrase rerouted to
+    # forest green (G+K 1/2:1/2 — the documented dark-green recipe
+    # from ``spectra6_color_recipes.md``'s two-ink table) in
+    # ``_draw_text_body``. The forest-green matched phrase reads as
+    # the dark-pressed plant material a real herbarium specimen
+    # develops over time, with strong contrast against the cream
+    # wash — an olive (Y+G) accent would have averaged into the
+    # yellow ground and read as washed-out on the screen even
+    # though it would average correctly at the panel's viewing
+    # distance. Border adds a Y+G olive pressed-leaf silhouette in
+    # the bottom-right corner and a "Tempus fugit" cartouche in the
+    # bottom-left, so the page carries three different green-family
+    # tones: black body, forest-green matched phrase, olive leaf,
+    # cream ground. The single theme in the rotation whose defining
+    # colour story is the green axis — every other green-touching
+    # theme (``nightvision`` / ``glacier`` / ``roman``) uses green
+    # as accent against a different body colour.
+    "herbarium": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        # ``accent`` is the green sentinel ink that ``_draw_text_body``
+        # routes through its G+K stipple → forest-green branch — same
+        # indirection pattern ``deco`` uses for red→tangerine and
+        # ``glacier`` uses for green→cyan. The corner pressed-leaf
+        # graphic uses a separate Y+G olive recipe so body matched
+        # phrase and decoration land on related but visually distinct
+        # green tones (forest-green for text, olive for the leaf).
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Art Nouveau / Belle-Époque poster (Mucha / Vienna Secession).
+    # Cream Layer-0 wash on white, body painted in maroon (R+K 1/2:1/2,
+    # the documented recipe ``dispatch`` / ``gothic`` / ``chanbara`` /
+    # ``grimoire`` / ``blueprint`` / ``scholar`` already use) via the
+    # ``_draw_text_body`` per-theme branch — the first theme to use a
+    # synthesised colour as its primary body fill rather than just an
+    # accent. Matched phrase in cyan (G+B 1/2:1/2, the ``glacier``
+    # recipe), which gives a cool-teal accent against the warm body.
+    # Decoration is the rotation's first all-curve / organic border:
+    # Bézier-approximated S-shaped vines at the top-left and
+    # bottom-right with olive-stippled trefoil leaf clusters and a
+    # tangerine berry at each stem tip.
+    "mucha": {
+        # The body fill is the maroon sentinel — ``_draw_text_body``
+        # routes solid-red glyphs through an R+K stipple just like
+        # ``blueprint`` / ``scholar``'s matched phrase. Painting the
+        # body in red rather than maroon directly keeps the theme on
+        # the Spectra-6 palette (the test ``test_theme_colors_stay_
+        # within_spectra6_palette`` checks every THEMES value is a
+        # native ink). The actual perceived maroon is produced by the
+        # ``_draw_text_body`` post-pass.
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["red"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["red"],
+        # Accent sits on the green sentinel; ``_draw_text_body`` routes
+        # green fills through G+B → cyan in this theme so the matched
+        # phrase reads as the cool teal accent of a Mucha poster.
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["red"],
+    },
+    # 1960s psychedelic Fillmore concert poster (Wes Wilson / Victor
+    # Moscoso / Stanley Mouse). The visual maximalist of the rotation:
+    # sun-faded-yellow Layer-0-washed ground + maroon-stippled body
+    # + saturated blue matched phrase, with green and blue corner
+    # "blob panels". The body's ``text`` slot is the red sentinel;
+    # ``_draw_text_body`` routes it through a 50/50 R+K stipple →
+    # oxblood maroon, the same recipe ``mucha`` uses for its body
+    # — subdues the otherwise-loud red-on-yellow clash without
+    # losing the psychedelic identity (real Fillmore posters' red
+    # ink ended up darker once printed onto yellow stock anyway).
+    # The ``draw_fillmore_border`` painter further softens the
+    # ground with a sparse 1-in-8 white-on-yellow Bayer Layer-0
+    # wash so the saturated Spectra-6 yellow reads as slightly
+    # sun-faded rather than fire-bright at panel distance. All
+    # six Spectra-6 natives still appear on the page (yellow +
+    # white ground, blue matched phrase, green / blue / red /
+    # yellow blob inks, black in the body's R+K stipple +
+    # Bungee Shade's drop-shadows). Body in Bungee Shade, a
+    # chunky 3D-blocked display face that lands "psychedelic-
+    # adjacent" without sacrificing the readability LitClock
+    # requires.
+    "fillmore": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["red"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["red"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -834,6 +957,50 @@ SHOJUMARU_REGULAR = str(BASE_DIR / "fonts/shojumaru/Shojumaru-Regular.ttf")
 # install lands on a heavy sans silhouette rather than dropping the
 # LCARS theme onto an elegant transitional serif.
 ANTONIO_VARIABLE = str(BASE_DIR / "fonts/antonio/Antonio-Variable.ttf")
+# Inter — Rasmus Andersson (OFL). The de-facto open-source Helvetica
+# replacement: a clean grotesque sans designed for UI rendering at
+# small sizes, sits visually distinct from Archivo (blueprint —
+# geometric-grotesque) and Jost (bauhaus — geometric-constructed) so
+# the three sans-based themes stay differentiable on the panel. Used
+# by the ``swiss`` theme. Variable font with named instances Regular
+# and Bold (default instance is Regular, but every candidate pins the
+# instance explicitly so the matched-phrase bold is unambiguous).
+# Falls back through DejaVu / Liberation / Noto Sans before degrading
+# to the Playfair serif chain so a missing-Inter install lands on a
+# grotesque-sans silhouette rather than a serif — preserving the
+# theme's "type does all the work" identity even when the preferred
+# face is absent.
+INTER_VARIABLE = str(BASE_DIR / "fonts/inter/Inter-Variable.ttf")
+# Cormorant Garamond — Christian Thalmann (OFL). High-contrast humanist
+# revival of the Claude Garamont types — sharper, more dramatic curves
+# than EB Garamond, in the editorial / poster typographic register that
+# the Mucha theme wants. Variable font with named instances Light /
+# Regular / Medium / SemiBold / Bold (default instance is Regular).
+# Used by the ``mucha`` theme.
+CORMORANT_VARIABLE = str(BASE_DIR / "fonts/cormorant-garamond/CormorantGaramond-Variable.ttf")
+# Berkshire Swash — Astigmatic / Brian J. Bonislawsky (OFL). Flourished
+# Art Nouveau / Belle Époque display script with elongated terminals —
+# evokes the period's poster-lettering tradition without trying to
+# faithfully reproduce a real Mucha hand. Single-weight (Regular only);
+# used in the ornament slot of the ``mucha`` theme for the oversized
+# curly quotation marks. Lives alongside Cormorant Garamond in the
+# Mucha font chain the same way UnifrakturMaguntia lives alongside
+# EB Garamond in ``illuminated``.
+BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-Regular.ttf")
+# Bungee Shade — David Jonathan Ross (OFL). 3D-blocked display face
+# with strong outline + drop-shadow shading, evoking the chunky shaded
+# lettering on 1960s rock concert posters — Wes Wilson, Victor Moscoso,
+# the Avalon Ballroom / Fillmore poster tradition. Single-weight
+# (Regular only), so the matched-phrase role in ``fillmore`` re-uses
+# the same file and gains differentiation through the blue accent
+# colour alone — same trick comic / dispatch / atomic / marker /
+# saloon / deco / glacier / chalkboard / placard / chanbara already
+# use. Falls back through Bangers / Atomic Age (the closest in-rotation
+# display-face siblings) and heavy DejaVu / Liberation / Noto Sans
+# Bold before degrading to the Playfair serif chain, so a missing
+# install lands on a chunky display silhouette rather than dropping
+# the fillmore theme onto an elegant transitional serif.
+BUNGEE_SHADE_REGULAR = str(BASE_DIR / "fonts/bungee-shade/BungeeShade-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -845,6 +1012,39 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": QUOTE_FONT_SEMIBOLD_CANDIDATES,
         "quote_bold": QUOTE_FONT_BOLD_CANDIDATES,
         "ornament": ORNAMENT_FONT_CANDIDATES,
+    },
+    "swiss": {
+        # Inter is the only pure grotesque-sans face in the rotation
+        # (Archivo in blueprint is also grotesque but lives behind an
+        # engineering border; Jost in bauhaus is geometric-constructed;
+        # Rubik in risograph is rounded-geometric). Variable font with
+        # named instances; default instance is Regular (400) but every
+        # candidate pins the instance explicitly so the matched-phrase
+        # bold is unambiguous. Falls back through the same sans chain
+        # as blueprint / bauhaus / risograph before degrading to the
+        # Playfair serif chain so a missing-Inter install still lands
+        # on a grotesque-sans silhouette rather than a serif.
+        "quote_regular": [
+            (INTER_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (INTER_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (INTER_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
     },
     "scholar": {
         # Bitter is a slab serif — the chunky, even-contrast silhouette sits
@@ -865,6 +1065,35 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             (BITTER_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "herbarium": {
+        # Reuses the bundled IM Fell English chain that ``alchemy`` and
+        # ``grimoire`` already pull from — the 17th-century Oxford-press
+        # silhouette reads as scientific-historical against the cream-
+        # washed page without dragging in the manuscript / occult
+        # register those two themes occupy. The matched-phrase slot
+        # picks IM Fell *Italic* rather than a heavier weight: italic
+        # is the canonical convention for Latin scientific names on a
+        # real herbarium specimen sheet, and the olive-stippled colour
+        # accent (routed via ``_draw_text_body``) carries the visual
+        # differentiation that a true bold would otherwise provide. A
+        # plain Regular fallback covers a missing-italic install so the
+        # matched phrase never drops to the bitmap fallback.
+        "quote_regular": [
+            IMFELLENGLISH_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            IMFELLENGLISH_ITALIC,
+            IMFELLENGLISH_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            IMFELLENGLISH_REGULAR,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -1477,6 +1706,74 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "mucha": {
+        # Cormorant Garamond is a humanist serif from the dramatic /
+        # high-contrast branch of the family tree — sharper curves and
+        # more pronounced contrast than EB Garamond (illuminated /
+        # gothic) or IM Fell English (alchemy / grimoire / herbarium),
+        # placing it firmly in the editorial-display register the Art
+        # Nouveau poster tradition wanted. Variable font; the default
+        # instance is Regular but we pin Regular / Bold explicitly the
+        # same way Bitter / Jost / Rubik / Inter / Antonio do.
+        # Berkshire Swash (Astigmatic, OFL) carries the ornament slot
+        # so the oversized curly quotation marks land on a flourished
+        # Belle-Époque script face — the same "humanist body + period
+        # display ornament" pairing pattern ``illuminated`` uses with
+        # EB Garamond + UnifrakturMaguntia. A missing Berkshire Swash
+        # install falls through to Cormorant Bold so the ornament
+        # never drops to bitmap.
+        "quote_regular": [
+            (CORMORANT_VARIABLE, "Regular"),
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            BERKSHIRE_SWASH_REGULAR,
+            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "fillmore": {
+        # Bungee Shade is a single-weight 3D-blocked display face —
+        # the matched-phrase role re-uses Regular and gains
+        # differentiation through the blue accent colour alone (same
+        # trick comic / dispatch / atomic / marker / saloon / deco /
+        # glacier / chalkboard / placard / chanbara use). Falls back
+        # through Bangers (the closest in-rotation display-face
+        # sibling) and Atomic Age before heavy DejaVu / Liberation /
+        # Noto Sans Bold, so a missing-Bungee install still lands on
+        # a chunky display silhouette rather than the Playfair serif.
+        "quote_regular": [
+            BUNGEE_SHADE_REGULAR,
+            BANGERS_REGULAR,
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            BUNGEE_SHADE_REGULAR,
+            BANGERS_REGULAR,
+            ATOMICAGE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            BUNGEE_SHADE_REGULAR,
+            BANGERS_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -2228,6 +2525,53 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # 6/16 mirrors the tangerine recipe's red-biased ratio
         # (dark=yellow, light=green, density=0.375).
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["green"], light_density=0.375)
+    elif theme == "herbarium" and fill == SPECTRA6["green"]:
+        # Matched phrase shifts to forest green (G+K 1/2:1/2 — the
+        # documented dark-green recipe from
+        # ``spectra6_color_recipes.md``'s two-ink table, previously
+        # flagged as "not in use" / a forward reference for a pine
+        # or herbarium theme; the herbarium implementation claims
+        # it). The forest-green tone reads as the dark-pressed plant
+        # material a real herbarium specimen develops over time, and
+        # contrasts strongly with the cream-washed ground (which is
+        # mostly white + 12.5% yellow Bayer dither). Italic IM Fell
+        # English in forest-green is the canonical specimen-sheet
+        # rendering of a Latin scientific name. The Y+G olive recipe
+        # the pressed-leaf border graphic uses sits adjacent on the
+        # green axis but reads as a different tone, so body matched
+        # phrase and decoration stay visually distinct.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme in ("mucha", "fillmore") and fill == SPECTRA6["red"]:
+        # Body text shifts to maroon (R+K 1/2:1/2 — the documented
+        # two-ink recipe ``blueprint`` / ``scholar``'s matched phrase
+        # use). Both themes hold the red sentinel in the ``text``
+        # THEMES slot so EVERY body-text path hits this seam:
+        #
+        # * ``mucha`` — the first theme in the rotation to use a
+        #   synthesised colour as its primary body fill rather than
+        #   just an accent. Reads as the deep wine / oxblood the
+        #   period's poster lettering actually used. The matched
+        #   phrase below is keyed off green and lands on cyan via
+        #   its own branch.
+        # * ``fillmore`` — subdues the otherwise-loud red-on-yellow
+        #   body without losing the psychedelic-poster identity. A
+        #   pure-red body on the saturated-yellow ground reads as
+        #   visually fatiguing at panel distance; R+K maroon
+        #   (oxblood) sits deeper on the page, the way real Fillmore
+        #   posters' red ink looked once printed onto yellow stock —
+        #   ink interaction shifts the perceived hue darker. The
+        #   matched-phrase blue stays solid, the corner-blob
+        #   primaries stay solid, so all six Spectra-6 inks still
+        #   appear on the page (the design intent of fillmore's
+        #   "visual maximalist" identity is preserved — only the
+        #   body-text intensity is tempered).
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme == "mucha" and fill == SPECTRA6["green"]:
+        # Matched phrase shifts to cyan (G+B 1/2:1/2 — the documented
+        # recipe ``glacier``'s matched phrase already uses). Gives a
+        # cool teal accent that reads cleanly against the warm maroon
+        # body, completing the period palette of Belle-Époque posters.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -6110,6 +6454,544 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     del hermetic_color
 
 
+def draw_swiss_border(image: Image.Image, colors: dict) -> None:
+    """Paint the Swiss International theme's deliberately minimal frame.
+
+    The visual identity is what's *missing* — every other theme in
+    the rotation decorates aggressively, ``swiss`` refuses to. Just
+    two strokes near the top edge of the page, the Müller-Brockmann /
+    Vignelli typographic grid:
+
+    * A single 1 px black hairline rule running across the page at
+      ``y = 60``, dividing a small header zone from the body block —
+      the canonical asymmetric-grid gesture of Swiss poster design.
+    * A small 6×6 px filled red square in the header zone at
+      ``(width - 40, 28)``, the only chromatic accent on the page
+      besides the matched phrase. References Vignelli's NYC Subway
+      signage and the Müller-Brockmann concert poster series, where
+      a single small geometric mark anchors the grid without
+      cluttering it.
+
+    No corner ornaments, no frame, no second rule, no Layer-0 wash.
+    The composition's signature is austerity — a deliberate
+    counterpoint to the borderful majority. Paints in
+    ``colors["text"]`` for the rule and ``colors["accent"]`` for the
+    red square so direct-call test paths with non-standard palettes
+    still produce a visually coherent frame.
+    """
+    draw = ImageDraw.Draw(image)
+    width, _ = image.size
+    ink = colors["text"]
+    accent = colors["accent"]
+    rule_y = 60
+    draw.line((SIDE_MARGIN, rule_y, width - SIDE_MARGIN, rule_y), fill=ink, width=1)
+    # The red square sits between the (y=14..29) debug-mode banner band
+    # and the y=60 grid rule, so it never collides with the banner glyphs.
+    # Painting it just above the rule visually anchors the asymmetric
+    # grid — the square reads as a tag attached to the rule rather than
+    # a free-floating accent.
+    square_x = width - 40
+    square_y = 42
+    square_size = 6
+    draw.rectangle(
+        (square_x, square_y, square_x + square_size, square_y + square_size),
+        fill=accent,
+    )
+
+
+def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
+    """Paint a 19th-century pressed-plant specimen-sheet frame.
+
+    Three motifs from the natural-history specimen tradition:
+
+    * **Layer 0 — sparse 1-in-8 yellow-on-white cream ground wash.**
+      Same Y+W recipe (Bayer threshold 2) ``illuminated`` and
+      ``dispatch`` use for their aged-vellum / typewriter-paper tone.
+      Only pixels matching the exact ``page_bg`` colour are flipped,
+      so direct-call test paths that pass a non-standard palette stay
+      valid.
+    * **Engraver's-frame hairline rule** at inset 14 px — a single
+      thin black rectangle the way real herbarium mounting sheets
+      were ruled. No double rule (that would compete with the
+      specimen graphic for visual weight); the corner pinholes below
+      do the "mounted" gesture instead.
+    * **Pressed-leaf silhouette in the bottom-right corner.** A
+      stylised oval leaf (~80×40 px) painted in yellow as a sentinel
+      ink and then bbox-post-passed to flip half of those yellow
+      pixels to green per ``(x+y) & 1`` parity. The eye averages the
+      Y+G alternation at panel distance into the documented olive
+      recipe — the dried-leaf colour real pressed-and-aged
+      herbarium specimens take on. The leaf has a darker midrib
+      line and three pairs of side veins to read as plant material
+      rather than a generic ellipse. Painted *before* the text
+      layer in ``render`` (the border helper runs first), so body
+      text is drawn on top.
+    * **Specimen cartouche in the bottom-left** — a small ~120×30 px
+      rectangle outlined in 1 px black with the Latin tag
+      ``"Tempus fugit"`` rendered in tiny IM Fell English italic
+      inside. The diagonally-balanced counterweight to the leaf —
+      real herbarium sheets always pair the specimen with a label,
+      and the asymmetry is what reads as scientific recording rather
+      than decoration. Falls back through the META_FONT chain when
+      IM Fell isn't installed so the label still renders.
+    * **Four small "pinhole" dots** at the inner corners of the
+      hairline rule (where the specimen would be physically pinned
+      to the sheet). Reinforces the "mounted" gesture.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    ink = colors["text"]
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+    olive_sentinel = cream_light
+    olive_other = SPECTRA6["green"]
+
+    pixels = image.load()
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
+
+    outer_inset = 14
+    draw.rectangle(
+        (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+        outline=ink,
+        width=1,
+    )
+
+    # Pressed-leaf silhouette (bottom-right). The leaf is a horizontal
+    # ellipse painted in the olive sentinel ink (yellow), then
+    # post-passed to flip half the pixels to green per parity → olive
+    # at panel distance.
+    leaf_w = 84
+    leaf_h = 42
+    leaf_inset = 38
+    leaf_cx = width - 1 - leaf_inset - leaf_w // 2
+    leaf_cy = height - 1 - leaf_inset - leaf_h // 2
+    leaf_left = leaf_cx - leaf_w // 2
+    leaf_right = leaf_cx + leaf_w // 2
+    leaf_top = leaf_cy - leaf_h // 2
+    leaf_bot = leaf_cy + leaf_h // 2
+    draw.ellipse((leaf_left, leaf_top, leaf_right, leaf_bot), fill=olive_sentinel)
+    # Stem extending up-right from the leaf, ~16 px, same olive sentinel.
+    stem_x0 = leaf_right - 4
+    stem_y0 = leaf_cy
+    stem_x1 = stem_x0 + 18
+    stem_y1 = stem_y0 - 14
+    draw.line((stem_x0, stem_y0, stem_x1, stem_y1), fill=olive_sentinel, width=2)
+    # Midrib (darker reference vein). Paint solid green so the post-pass
+    # leaves it as solid green-on-olive — reads as the leaf's central rib.
+    draw.line((leaf_left + 6, leaf_cy, leaf_right - 6, leaf_cy), fill=olive_other, width=1)
+    # Three pairs of side veins fanning outward from the midrib.
+    for offset in (-12, 0, 12):
+        vx = leaf_cx + offset
+        draw.line((vx, leaf_cy, vx - 8, leaf_top + 6), fill=olive_other, width=1)
+        draw.line((vx, leaf_cy, vx + 8, leaf_bot - 6), fill=olive_other, width=1)
+    # Bbox post-pass: flip half of the painted yellow sentinel pixels
+    # to green per ``(x+y) & 1`` parity → olive.
+    bx0 = max(0, leaf_left - 1)
+    by0 = max(0, leaf_top - 16)  # cover the stem too
+    bx1 = min(width - 1, max(leaf_right, stem_x1) + 1)
+    by1 = min(height - 1, leaf_bot + 1)
+    for py in range(by0, by1 + 1):
+        for px in range(bx0, bx1 + 1):
+            if pixels[px, py] == olive_sentinel and (px + py) & 1:
+                pixels[px, py] = olive_other
+
+    # Specimen cartouche (bottom-left). Outline rectangle + small Latin tag.
+    label_w = 140
+    label_h = 32
+    label_inset = 32
+    label_x0 = label_inset
+    label_y0 = height - 1 - label_inset - label_h
+    label_x1 = label_x0 + label_w
+    label_y1 = label_y0 + label_h
+    draw.rectangle((label_x0, label_y0, label_x1, label_y1), outline=ink, width=1)
+    # IM Fell italic at ~14 px so the label reads as a scribbled tag rather
+    # than a competing heading. Falls back to the META font chain so the
+    # label always renders.
+    label_text = "Tempus fugit"
+    label_font_candidates = [
+        IMFELLENGLISH_ITALIC,
+        IMFELLENGLISH_REGULAR,
+        "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+        *META_FONT_CANDIDATES,
+    ]
+    label_font = load_font(label_font_candidates, size=14)
+    bbox = draw.textbbox((0, 0), label_text, font=label_font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    tx = label_x0 + (label_w - text_w) // 2
+    ty = label_y0 + (label_h - text_h) // 2 - bbox[1]
+    draw.text((tx, ty), label_text, font=label_font, fill=ink)
+
+    # Four pinhole dots at the inner corners of the engraver's rule.
+    pinhole_offset = 3
+    pinhole_radius = 1
+    for cx, cy in (
+        (outer_inset + pinhole_offset, outer_inset + pinhole_offset),
+        (width - 1 - outer_inset - pinhole_offset, outer_inset + pinhole_offset),
+        (outer_inset + pinhole_offset, height - 1 - outer_inset - pinhole_offset),
+        (width - 1 - outer_inset - pinhole_offset, height - 1 - outer_inset - pinhole_offset),
+    ):
+        draw.ellipse(
+            (cx - pinhole_radius, cy - pinhole_radius, cx + pinhole_radius, cy + pinhole_radius),
+            fill=ink,
+        )
+
+
+def _draw_mucha_vine(
+    draw: ImageDraw.ImageDraw,
+    pixels,
+    width: int,
+    height: int,
+    cx: int,
+    cy: int,
+    direction: int,
+    stem_ink,
+    leaf_ink,
+    leaf_other,
+    berry_sentinel,
+) -> tuple[int, int, int, int]:
+    """Paint a single S-shaped vine ornament with three trefoil leaves
+    and a berry at the stem tip.
+
+    ``direction`` is ``+1`` for a vine that fans down-and-right from
+    ``(cx, cy)`` (top-left corner) and ``-1`` for the mirror that
+    fans up-and-left (bottom-right corner). Returns the bbox of the
+    ornament for the caller's post-pass loops.
+    """
+    # S-shaped stem approximated as a polyline through five control
+    # points spaced ~22 px apart. PIL doesn't ship curve primitives;
+    # the same n-point polyline trick ``atomic``'s atom orbits use is
+    # the established pattern.
+    stem_pts: list[tuple[int, int]] = []
+    for i in range(7):
+        t = i / 6.0
+        # Two-lobe S-curve: x oscillates by ~18 px around the centre
+        # while y advances linearly down (or up) along ``direction``.
+        x_off = round(18 * math.sin(t * math.pi * 1.6) * direction)
+        y_off = round(direction * t * 110)
+        stem_pts.append((cx + x_off, cy + y_off))
+    draw.line(stem_pts, fill=stem_ink, width=2)
+
+    # Three trefoil leaves sprouting along the stem at t = 1/4, 1/2, 3/4.
+    leaf_centres: list[tuple[int, int]] = []
+    for t_frac in (0.25, 0.5, 0.75):
+        idx = round(t_frac * (len(stem_pts) - 1))
+        sx, sy = stem_pts[idx]
+        # Leaves alternate left / right of the stem.
+        side = direction if t_frac == 0.5 else -direction
+        leaf_centres.append((sx + side * 16, sy + (8 if t_frac < 0.5 else -6) * direction))
+
+    leaf_radii = (9, 5)  # outer / inner diameters
+    for lcx, lcy in leaf_centres:
+        # Each "trefoil" is three overlapping ellipses fanning from the
+        # stem attachment point. Pinned to the leaf_ink sentinel so the
+        # post-pass below converts the trefoil to olive.
+        for angle_deg in (-30, 0, 30):
+            angle = math.radians(angle_deg)
+            ex = lcx + round(leaf_radii[0] * math.cos(angle) * direction)
+            ey = lcy + round(leaf_radii[0] * math.sin(angle))
+            draw.ellipse(
+                (ex - leaf_radii[1], ey - leaf_radii[1], ex + leaf_radii[1], ey + leaf_radii[1]),
+                fill=leaf_ink,
+            )
+
+    # Berry at the stem tip — a filled circle painted in the
+    # berry_sentinel (off-palette). The caller does the R+Y → tangerine
+    # post-pass.
+    tip_x, tip_y = stem_pts[-1]
+    berry_radius = 5
+    draw.ellipse(
+        (tip_x - berry_radius, tip_y - berry_radius, tip_x + berry_radius, tip_y + berry_radius),
+        fill=berry_sentinel,
+    )
+
+    # Bbox of the ornament for the post-pass loop. Padded by the leaf
+    # radius so the trefoil halos are inside.
+    xs = [p[0] for p in stem_pts] + [lc[0] for lc in leaf_centres] + [tip_x]
+    ys = [p[1] for p in stem_pts] + [lc[1] for lc in leaf_centres] + [tip_y]
+    bx0 = max(0, min(xs) - leaf_radii[0] - 2)
+    by0 = max(0, min(ys) - leaf_radii[0] - 2)
+    bx1 = min(width - 1, max(xs) + leaf_radii[0] + 2 + berry_radius)
+    by1 = min(height - 1, max(ys) + leaf_radii[0] + 2 + berry_radius)
+    return (bx0, by0, bx1, by1)
+
+
+def draw_mucha_border(image: Image.Image, colors: dict) -> None:
+    """Paint an Art Nouveau / Mucha frame: cream Layer-0 wash + thin
+    teal rule + organic vine ornaments at two diagonal corners.
+
+    Three motifs from the Belle Époque poster tradition:
+
+    * **Layer 0 — cream ground wash.** The same Y+W Bayer recipe
+      ``illuminated`` and ``dispatch`` use. Warms the panel's flat
+      white to the aged-ivory ground real Mucha posters were printed
+      on.
+    * **Thin teal hairline rule** at inset 18 — painted in green as
+      a sentinel ink and then perimeter-post-passed to flip half of
+      those green pixels to blue per ``(x+y) & 1`` parity. The eye
+      averages G+B at panel distance into cyan (the documented
+      recipe ``glacier`` uses), tying the border decoration to the
+      matched-phrase cyan accent the ``_draw_text_body`` seam
+      produces.
+    * **Organic vine ornaments at the top-left and bottom-right
+      corners** — the rotation's first all-curve / organic border.
+      Each vine is an S-shaped polyline-approximated stem painted in
+      red as a maroon-sentinel ink, with three trefoil leaf clusters
+      painted in yellow as an olive-sentinel ink, and a berry painted
+      in red as a tangerine-sentinel ink at the stem tip. Three
+      separate bbox post-passes convert the sentinel ink fields to
+      maroon (R+K 1:1, same as the body), olive (Y+G 1:1, same as
+      ``roman``'s laurel), and tangerine (R+Y 5/8:3/8 via the shared
+      ``BAYER_4x4`` matrix, same as ``deco``'s sunburst and
+      ``atomic``'s starburst rays). The top-right and bottom-left
+      corners are deliberately *unornamented* — Mucha posters
+      compose asymmetrically around an off-centre figure rather
+      than around a balanced frame, and reproducing that asymmetry
+      is the visual signature.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+    # Sentinels — each painted ink colour is on-palette before the
+    # post-pass runs (so ``snap_image_to_palette`` is a no-op for any
+    # untouched pixel), but the painter immediately post-passes its
+    # own painted pixels to flip them to the second ink in the recipe.
+    stem_sentinel = SPECTRA6["red"]
+    stem_other = SPECTRA6["black"]
+    leaf_sentinel = SPECTRA6["yellow"]
+    leaf_other = SPECTRA6["green"]
+    berry_sentinel = SPECTRA6["red"]
+    berry_other = SPECTRA6["yellow"]
+    rule_sentinel = SPECTRA6["green"]
+    rule_other = SPECTRA6["blue"]
+
+    pixels = image.load()
+    # Layer 0 — sparse 1-in-8 yellow-on-white cream wash.
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
+
+    rule_inset = 18
+    # Outer rule — painted in green sentinel, post-passed to cyan.
+    draw.rectangle(
+        (rule_inset, rule_inset, width - 1 - rule_inset, height - 1 - rule_inset),
+        outline=rule_sentinel,
+        width=1,
+    )
+    # Perimeter post-pass: flip half of the painted green sentinel pixels
+    # to blue per ``(x+y) & 1`` parity → cyan.
+    for x in range(rule_inset, width - rule_inset):
+        for y in (rule_inset, height - 1 - rule_inset):
+            if pixels[x, y] == rule_sentinel and (x + y) & 1:
+                pixels[x, y] = rule_other
+    for y in range(rule_inset, height - rule_inset):
+        for x in (rule_inset, width - 1 - rule_inset):
+            if pixels[x, y] == rule_sentinel and (x + y) & 1:
+                pixels[x, y] = rule_other
+
+    # Top-left vine.
+    tl_bbox = _draw_mucha_vine(
+        draw, pixels, width, height,
+        cx=rule_inset + 22, cy=rule_inset + 22, direction=+1,
+        stem_ink=stem_sentinel, leaf_ink=leaf_sentinel,
+        leaf_other=leaf_other, berry_sentinel=berry_sentinel,
+    )
+    # Bottom-right vine.
+    br_bbox = _draw_mucha_vine(
+        draw, pixels, width, height,
+        cx=width - 1 - rule_inset - 22, cy=height - 1 - rule_inset - 22, direction=-1,
+        stem_ink=stem_sentinel, leaf_ink=leaf_sentinel,
+        leaf_other=leaf_other, berry_sentinel=berry_sentinel,
+    )
+
+    # Stem post-pass: R+K 1:1 maroon (same recipe as the body) —
+    # restrict to the stem sentinel ink so the leaves stay yellow
+    # for their own post-pass below.
+    for bbox in (tl_bbox, br_bbox):
+        bx0, by0, bx1, by1 = bbox
+        for py in range(by0, by1 + 1):
+            for px in range(bx0, bx1 + 1):
+                if pixels[px, py] == stem_sentinel and (px + py) & 1:
+                    pixels[px, py] = stem_other
+    # Leaf post-pass: Y+G 1:1 olive.
+    for bbox in (tl_bbox, br_bbox):
+        bx0, by0, bx1, by1 = bbox
+        for py in range(by0, by1 + 1):
+            for px in range(bx0, bx1 + 1):
+                if pixels[px, py] == leaf_sentinel and (px + py) & 1:
+                    pixels[px, py] = leaf_other
+    # Berry post-pass: R+Y 5/8:3/8 via BAYER_4x4 → tangerine. The
+    # berry pixels overlap with the stem-sentinel set, so we restrict
+    # to a small ~6 px radius around each stem tip — recompute the
+    # stem-tip coordinates from the direction sign.
+    for bbox, direction in ((tl_bbox, +1), (br_bbox, -1)):
+        bx0, by0, bx1, by1 = bbox
+        # The stem-tip pre-post-pass painted a 5-radius filled circle
+        # in berry_sentinel (= stem_sentinel = red). After the stem
+        # post-pass above, half of those red pixels were flipped to
+        # black; we re-paint a small radius around the tip with the
+        # tangerine recipe so the berry reads as warm orange, not maroon.
+        # The tip is the last polyline control point — but its exact
+        # coordinates aren't returned; reconstruct from the bbox shape.
+        if direction == +1:
+            tip_x = bx1 - 7
+            tip_y = by1 - 7
+        else:
+            tip_x = bx0 + 7
+            tip_y = by0 + 7
+        radius = 6
+        for py in range(max(0, tip_y - radius), min(height - 1, tip_y + radius) + 1):
+            row = BAYER_4x4[py & 3]
+            for px in range(max(0, tip_x - radius), min(width - 1, tip_x + radius) + 1):
+                dx = px - tip_x
+                dy = py - tip_y
+                if dx * dx + dy * dy > radius * radius:
+                    continue
+                # Inside the berry: repaint either red (5/8) or yellow (3/8)
+                # via threshold 6/16 of the shared Bayer matrix.
+                pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
+
+
+def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tuple[int, int]]:
+    """Return a free-form 18-point polygon approximating a melted-amoeba
+    blob silhouette centred on ``(cx, cy)``.
+
+    Deterministic — the same ``seed`` always produces the same shape.
+    ``scale`` scales the radius distribution; the blob's nominal
+    radius is ~80×``scale`` so a ``scale=1.0`` blob sits ~80 px from
+    its centre.
+    """
+    import random as _random
+    rng = _random.Random(seed)
+    n = 18
+    base_r = 80 * scale
+    points: list[tuple[int, int]] = []
+    for i in range(n):
+        angle = (i / n) * 2 * math.pi
+        # Radial wobble per vertex — keeps the silhouette organic
+        # rather than circular. Range ~0.55..1.25 of base_r.
+        wobble = 0.55 + rng.random() * 0.7
+        r = base_r * wobble
+        x = cx + round(r * math.cos(angle))
+        y = cy + round(r * math.sin(angle))
+        points.append((x, y))
+    return points
+
+
+def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
+    """Paint a 1960s Fillmore poster frame: Layer-0 white wash that
+    tempers the saturated-yellow ground, plus corner blob panels in
+    diagonal balance, sized to clear the body text area.
+
+    Three motifs from the Wes Wilson / Victor Moscoso poster tradition:
+
+    * **Layer 0 — sparse 1-in-8 white-on-yellow Bayer wash.**
+      Flips ~2/16 of the yellow ``page_bg`` pixels to white per
+      ``BAYER_4x4[y%4][x%4] < 2``, so the eye averages the
+      alternation at panel distance into a slightly-paler
+      yellow. Same density as the cream Layer-0 wash
+      ``illuminated`` / ``dispatch`` / ``herbarium`` / ``mucha``
+      use on their *white* grounds (which lifts white toward
+      warm vellum); here the same primitive runs on the
+      *yellow* ground to do the inverse — pulling the saturated
+      Spectra-6 yellow back a notch toward a softer
+      sun-faded tone — without crossing the threshold into
+      cream / off-white territory and losing the Fillmore-
+      poster identity. Real Fillmore prints used yellow
+      stock that was already partly sun-faded by the time
+      the audience saw the poster on a venue door, so the
+      perceived hue is period-faithful. Only pixels matching
+      the exact ``page_bg`` colour are flipped, so the blobs /
+      star / inner circle painted below stay solid by
+      construction (they overpaint pixels that were once
+      page_bg and are skipped by the Layer 0 guard).
+    * **Green blob panel in the top-left corner** — a free-form
+      18-point polygon (seeded so the silhouette is deterministic)
+      filled in solid green, with a small red 5-point star painted
+      at the blob's centre. Sized so the blob fits inside the
+      ~72 px top margin reserved by ``render`` for headers and
+      ornaments, never intruding into the body text block which
+      starts at ``block_top = max(72, ...)``.
+    * **Blue blob panel in the bottom-right corner** — the mirror
+      shape filled in solid blue, with a small yellow filled circle
+      inside. Same size as the TL blob for visual balance,
+      positioned in the bottom margin clear of the body.
+
+    No outer frame — the composition is grounded by the corner
+    blobs rather than by a containing rectangle, the way real
+    Fillmore posters compose. The combination of pale-yellow
+    ``page_bg`` (Layer-0 wash) + maroon-stippled body + blue
+    matched phrase + green blob + yellow inner circle + red star
+    = all six Spectra-6 native inks visible on one page, the
+    visual maximalist of the rotation. Body text breathes
+    diagonally between the two corner blobs.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    green_ink = SPECTRA6["green"]
+    blue_ink = SPECTRA6["blue"]
+    red_ink = SPECTRA6["red"]
+    yellow_ink = SPECTRA6["yellow"]
+    page_bg = colors.get("page_bg")
+
+    # Layer 0: sparse 1-in-8 white-on-yellow Bayer wash. Only pixels
+    # matching the exact ``page_bg`` colour are flipped, so any future
+    # caller that pre-paints accents before this painter runs stays
+    # valid. Skipped when ``page_bg`` is absent from the palette dict
+    # so direct-call test paths providing only ``text`` stay valid.
+    if page_bg is not None:
+        pixels = image.load()
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = SPECTRA6["white"]
+
+    # Green blob (TL). Centre tucked into the corner margin. With
+    # scale=0.4 the base radius is 32 px, so the blob silhouette
+    # extends ~y=2..70 and ~x=2..70 — fully inside the y<72 top
+    # margin the body text leaves free.
+    tl_cx = 38
+    tl_cy = 38
+    tl_blob = _build_fillmore_blob(tl_cx, tl_cy, scale=0.4, seed=1)
+    draw.polygon(tl_blob, fill=green_ink)
+    # Small red 5-point star inside the green blob — keeps the
+    # graphic punchy at the reduced scale without crowding the
+    # silhouette.
+    star_r_outer = 12
+    star_r_inner = 5
+    star_pts: list[tuple[int, int]] = []
+    for i in range(10):
+        angle = -math.pi / 2 + i * math.pi / 5
+        r = star_r_outer if i % 2 == 0 else star_r_inner
+        star_pts.append((
+            tl_cx + round(r * math.cos(angle)),
+            tl_cy + round(r * math.sin(angle)),
+        ))
+    draw.polygon(star_pts, fill=red_ink)
+
+    # Blue blob (BR). Mirror position; same scale for visual balance.
+    br_cx = width - 38
+    br_cy = height - 38
+    br_blob = _build_fillmore_blob(br_cx, br_cy, scale=0.4, seed=2)
+    draw.polygon(br_blob, fill=blue_ink)
+    # Small yellow filled circle inside the blue blob.
+    inner_r = 12
+    draw.ellipse(
+        (br_cx - inner_r, br_cy - inner_r, br_cx + inner_r, br_cy + inner_r),
+        fill=yellow_ink,
+    )
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -6137,6 +7019,10 @@ _BORDER_PAINTERS = {
     "placard": draw_placard_border,
     "chanbara": draw_chanbara_border,
     "lcars": draw_lcars_border,
+    "swiss": draw_swiss_border,
+    "herbarium": draw_herbarium_border,
+    "mucha": draw_mucha_border,
+    "fillmore": draw_fillmore_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -6206,6 +7092,23 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # corner reaches x ≤ width-14 (well outside the
                         # default debug-label edge at SIDE_MARGIN) and
                         # its rising-sun fan is centred horizontally.
+    "herbarium": 24,    # past the TR pinhole dot (centre at width-18,
+                        # y=17, radius 1 → leftmost pixel at x=width-19)
+                        # plus a 4 px breathing gap, so the dot reads
+                        # as a distinct corner pin rather than as part
+                        # of the debug label. The bottom-right
+                        # pressed-leaf graphic sits at y ≈ height-79
+                        # (well below the y=14-29 banner band), and
+                        # the bottom-left specimen cartouche is in
+                        # the opposite corner, so neither needs an
+                        # inset adjustment. ``swiss`` and ``mucha``
+                        # are intentionally absent — swiss's red
+                        # header square sits at y=42 (below the
+                        # banner), and mucha deliberately leaves the
+                        # TR corner unornamented for asymmetric
+                        # composition. ``fillmore``'s TR concentric
+                        # rings sit at y=110 (centre), well below
+                        # the banner band.
 }
 
 # Themes whose matched-phrase (``quote_bold``) face has a distinctive
