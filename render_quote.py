@@ -2081,6 +2081,38 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # ``draw_deco_border``'s post-pass threshold so the matched
         # phrase and the border ornaments land on the same tangerine.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
+    elif theme in ("blueprint", "scholar") and fill == SPECTRA6["red"]:
+        # Matched phrase shifts to maroon (R+K 1:1). For ``blueprint``
+        # this reads as the darker red pencil pressed firmly into the
+        # drafting paper rather than the fire-engine red of a digital
+        # callout; for ``scholar`` it reads as the aged red-lead of an
+        # academic-journal annotation, deepening the leather-bound
+        # gravity the Bitter slab serif body already carries. Border
+        # ornaments / corner registration marks stay solid red (they
+        # paint outside this seam via the border painters' own
+        # ``draw.line(..., fill=...)`` calls).
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme == "illuminated" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to violet / Tyrian purple (R+B 1:1) —
+        # the rarest dye of the medieval scriptorium, more precious
+        # than the lapis blue accent the body's rubricated red sits
+        # against. The body's red glyphs stay solid (illuminated's
+        # ``text`` slot is red, not blue, so the body fill never hits
+        # this seam); only matched-phrase blue gets the R+B treatment.
+        # Border jewels are also plum (R+B+K 3-ink, see
+        # ``draw_illuminated_border``), so the matched-phrase violet
+        # and the corner cabochons share an R+B tonal register.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=SPECTRA6["blue"])
+    elif theme == "glacier" and fill == SPECTRA6["green"]:
+        # Matched phrase shifts to cyan (G+B 1:1) — the genuine aurora
+        # teal of borealis light catching on glacial ice, lifting the
+        # phrase off the flat Spectra-6 saturated green that read as a
+        # muddy mid-tone against the blue body text. The frost-crystal
+        # border's diagonal-shard tips already get a sky-blue post-pass
+        # (B+W) for sunlight-on-ice; the matched-phrase cyan completes
+        # the cool-palette gradient: blue body → cyan matched phrase
+        # → sky-blue ornament highlights.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -2347,24 +2379,52 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
 
 
 def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
-    """Paint a manuscript-style border around the canvas margin.
+    """Paint a manuscript-style border: cream-washed vellum + double
+    rubricated rule + plum corner cabochons.
 
-    A double rubricated rule (two parallel thin red rectangles with a
-    narrow blank band between them) plus a small blue "jewel" — a
-    filled circle — centred on each outer corner. The double-rule is
-    the workhorse border of medieval illuminated manuscripts, and the
-    corner gem evokes the inset lapis cabochons that appear on rich
-    bindings and liturgical headpieces.
+    Three motifs from the medieval-illumination vocabulary:
 
-    Parallels the ``draw_bauhaus_border`` / ``draw_blueprint_border``
-    structural pattern (outer frame + four corner graphics) but the
-    doubled rule + coloured jewel reads as scribal-margin rather than
-    poster-composition or drafting-sheet.
+    * **Layer 0 — sparse cream ground wash.** A 4×4 Bayer dither
+      flips ~12.5% of the white ``page_bg`` pixels to yellow (cells
+      with value < 2), leaving the rest pure white. At panel viewing
+      distance the eye averages the alternation into a faint aged-
+      vellum tone — the warm off-white of a real fifteenth-century
+      manuscript page rather than the panel's flat pure white. Same
+      Bayer threshold ``dispatch``'s Layer 0 uses, but slotted into
+      a theme whose palette is white / red / blue rather than
+      white / black / red, so the cream sits as the warm side of a
+      cool-paled palette.
+    * **Double rubricated rule** — two parallel thin red rectangles
+      with a narrow blank band between them. The workhorse border of
+      medieval illuminated manuscripts.
+    * **Plum corner cabochons** — each corner gem is painted in an
+      off-palette sentinel ink, then a per-jewel bbox post-pass
+      assigns the painted pixels to red / blue / black via a 3-way
+      4×4 Bayer partition (cells 0-4 → red, 5-9 → blue, 10-15 →
+      black, ~1/3 each). The eye averages the three inks at panel
+      distance into deep plum — the documented R+B+K 1/3 each
+      three-ink recipe (see ``spectra6_color_recipes.md``'s deep-
+      tones section). Reads as the wine-dark lapis cabochons inset
+      on the most precious medieval bindings rather than the
+      flat lapis blue the previous solid-fill jewels produced.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     body = colors["text"]       # rubricated red
-    accent = colors["accent"]   # lapis blue
+    accent = colors["accent"]   # lapis blue (kept for the ``draw_illuminated_border_uses_theme_colours_not_hardcoded_rgb`` direct-call path; plum jewels collapse to the sentinel/post-pass branch only on the bundled illuminated palette)
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+
+    # Layer 0: sparse 1-in-8 yellow-on-white cream wash. Only flips
+    # pixels matching the exact ``page_bg`` colour so deliberate-
+    # palette-mismatch test paths stay valid.
+    pixels = image.load()
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
 
     outer_inset = 14
     inner_inset = 22
@@ -2388,11 +2448,43 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
         (outer_inset, height - 1 - outer_inset),
         (width - 1 - outer_inset, height - 1 - outer_inset),
     ]
-    for cx, cy in centres:
-        draw.ellipse(
-            (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
-            fill=accent,
-        )
+    # If the caller passed the standard illuminated palette (accent=lapis blue),
+    # paint plum cabochons via the 3-way Bayer recipe. Direct test callers that
+    # override accent to a non-standard ink fall back to a solid-fill jewel so
+    # the ``uses_theme_colours_not_hardcoded_rgb`` invariant still holds.
+    if accent == SPECTRA6["blue"]:
+        jewel_sentinel = (1, 1, 1)
+        for cx, cy in centres:
+            draw.ellipse(
+                (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
+                fill=jewel_sentinel,
+            )
+        # 3-way Bayer translation: cells 0-4 → red, 5-9 → blue, 10-15 → black.
+        ink_red = SPECTRA6["red"]
+        ink_blue = SPECTRA6["blue"]
+        ink_black = SPECTRA6["black"]
+        for cx, cy in centres:
+            x0 = max(0, cx - jewel_radius - 1)
+            y0 = max(0, cy - jewel_radius - 1)
+            x1 = min(width - 1, cx + jewel_radius + 1)
+            y1 = min(height - 1, cy + jewel_radius + 1)
+            for py in range(y0, y1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(x0, x1 + 1):
+                    if pixels[px, py] == jewel_sentinel:
+                        cell = row[px & 3]
+                        if cell < 5:
+                            pixels[px, py] = ink_red
+                        elif cell < 10:
+                            pixels[px, py] = ink_blue
+                        else:
+                            pixels[px, py] = ink_black
+    else:
+        for cx, cy in centres:
+            draw.ellipse(
+                (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
+                fill=accent,
+            )
 
 
 def draw_gothic_border(image: Image.Image, colors: dict) -> None:

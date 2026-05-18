@@ -922,13 +922,42 @@ class TestIlluminatedBorder:
         # White gap between the two — the defining "doubled" effect.
         assert img.getpixel((400, 18)) == rq.SPECTRA6["white"], "rules merged into single band"
 
-    def test_illuminated_corner_jewels_paint_accent_blue(self):
-        """Filled blue circles of radius 5 centred on each outer-rule corner."""
+    def test_illuminated_corner_jewels_paint_plum_three_way_bayer(self):
+        """Plum cabochons at the four outer-rule corners — radius 5
+        filled circles painted in a sentinel ink and then bbox-post-
+        passed through a 3-way 4×4 Bayer partition (cells 0-4 → red,
+        cells 5-9 → blue, cells 10-15 → black; ~1/3 each, the
+        documented R+B+K plum recipe). Pin the centre pixel of each
+        jewel against the deterministic Bayer assignment so a
+        regression that dropped the post-pass would surface; the
+        centre's exact ink depends on the `BAYER_4x4[y%4][x%4]` value
+        at that coordinate.
+
+        Centre pixels:
+          (14, 14)   → BAYER[2][2]=1  → red
+          (785, 14)  → BAYER[2][1]=11 → black
+          (14, 465)  → BAYER[1][2]=14 → black
+          (785, 465) → BAYER[1][1]=4  → red
+
+        At least one corner-region sample lands on a cell in the blue
+        partition (cells 5-9) — verify the post-pass painted blue
+        somewhere too so all three plum inks are present."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
-        assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], "TL jewel centre missing"
-        assert img.getpixel((785, 14)) == rq.SPECTRA6["blue"], "TR jewel centre missing"
-        assert img.getpixel((14, 465)) == rq.SPECTRA6["blue"], "BL jewel centre missing"
-        assert img.getpixel((785, 465)) == rq.SPECTRA6["blue"], "BR jewel centre missing"
+        assert img.getpixel((14, 14)) == rq.SPECTRA6["red"], "TL jewel centre missing"
+        assert img.getpixel((785, 14)) == rq.SPECTRA6["black"], "TR jewel centre missing"
+        assert img.getpixel((14, 465)) == rq.SPECTRA6["black"], "BL jewel centre missing"
+        assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "BR jewel centre missing"
+        # Probe the TL jewel's bbox for at least one painted blue pixel
+        # to confirm the 3-way partition's blue arm fires.
+        found_blue = False
+        for py in range(9, 20):
+            for px in range(9, 20):
+                if img.getpixel((px, py)) == rq.SPECTRA6["blue"]:
+                    found_blue = True
+                    break
+            if found_blue:
+                break
+        assert found_blue, "TL jewel bbox produced no blue pixels — 3-way Bayer regressed"
 
     def test_illuminated_border_paints_all_four_sides(self):
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
@@ -952,7 +981,14 @@ class TestIlluminatedBorder:
     def test_illuminated_border_appears_in_debug_and_card_modes_too(self):
         for mode in ("production", "debug", "card"):
             img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="illuminated")
-            assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], f"illuminated mode={mode} missing TL jewel"
+            # (14, 14) lands on the TL jewel's centre — with the 3-way
+            # plum post-pass the centre is the red arm of the partition
+            # at this coordinate (BAYER[2][2]=1 < 5). Different from
+            # both the body's rubricated red text (which doesn't reach
+            # this corner) and the canvas page_bg, so a regression that
+            # dropped the border in any render mode would still fail
+            # here.
+            assert img.getpixel((14, 14)) == rq.SPECTRA6["red"], f"illuminated mode={mode} missing TL jewel"
 
     def test_illuminated_border_uses_theme_colours_not_hardcoded_rgb(self):
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
@@ -1238,12 +1274,16 @@ class TestBlueprintBorder:
 
     def test_blueprint_grid_is_theme_gated(self):
         """No other theme paints a non-page_bg pixel at the blueprint
-        grid-intersection coordinate (36, 56). Newsprint is excluded because
-        its Layer 0 halftone intentionally paints sparse black flecks across
-        the white ground, same as alchemy."""
+        grid-intersection coordinate (36, 56). Newsprint, alchemy, and
+        illuminated are all excluded because their Layer 0 grounds
+        intentionally paint sparse Bayer flecks across `page_bg`
+        (black halftone for newsprint, parchment yellow flecks for
+        alchemy, cream yellow flecks for illuminated). Dispatch is
+        excluded for the same reason — its Layer 0 1-in-8 cream wash
+        also flips white-ground pixels to yellow at this coordinate."""
         row = self._row()
         for theme in ("default", "dark", "scholar", "nightvision",
-                      "illuminated", "bauhaus", "risograph", "comic"):
+                      "bauhaus", "risograph", "comic"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((36, 56)) == expected_bg, (
@@ -1315,13 +1355,14 @@ class TestComicCornerStripes:
         """No other theme paints a non-page_bg pixel at the comic stripe
         sample point (650, 470) — well inside the bottom-right triangle
         and outside every other theme's corner decorations / outer rules.
-        A regression that registered the painter against the wrong theme
-        key would surface here. Newsprint is excluded because its Layer 0
-        halftone intentionally paints sparse black flecks across the
-        white ground, same as alchemy."""
+        Newsprint, alchemy, and illuminated are all excluded because
+        their Layer 0 grounds intentionally paint sparse Bayer flecks
+        across `page_bg` (black halftone / parchment-yellow flecks /
+        cream-yellow flecks). Dispatch is excluded for the same reason
+        — its Layer 0 cream wash also affects this coordinate."""
         row = self._row()
         for theme in ("default", "dark", "scholar", "nightvision",
-                      "blueprint", "illuminated", "bauhaus", "risograph"):
+                      "blueprint", "bauhaus", "risograph"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((650, 470)) == expected_bg, (
