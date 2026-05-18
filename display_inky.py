@@ -136,6 +136,13 @@ THEME_SATURATION: dict[str, float] = {
     # the dramatic blood-sun reads vivid rather than half-dithering into
     # a muted brick-red against the panel's anchored black.
     "chanbara": 0.7,
+    # Black computer-console ground with synthesised tangerine elbow + yellow /
+    # coral / red pill buttons on the sidebar. Same chromatic-on-dark profile
+    # as ``dark`` / ``gothic`` / ``grimoire`` / ``nightvision`` / ``chalkboard``
+    # / ``chanbara`` — push the R+Y biased tangerine and the standalone yellow
+    # so the LCARS console reads as the bright Okudagram orange rather than a
+    # muddied amber against the panel's anchored black.
+    "lcars": 0.7,
     # Diagnostic / status panel — white ground, black body, red accent.
     # Same chromatic-on-light profile as ``default`` / ``deco`` /
     # ``saloon`` / ``roman`` so the gentler 0.5 tier is the natural

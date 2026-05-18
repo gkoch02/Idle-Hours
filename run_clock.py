@@ -180,6 +180,7 @@ def parse_args() -> argparse.Namespace:
         "chalkboard",
         "placard",
         "chanbara",
+        "lcars",
         "diags",
     ]
     parser.add_argument(
