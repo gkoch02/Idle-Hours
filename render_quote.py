@@ -68,6 +68,7 @@ THEME_ORDER: tuple[str, ...] = (
     "chalkboard",
     "placard",
     "chanbara",
+    "lcars",
     "diags",
 )
 THEMES = {
@@ -562,6 +563,34 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
+    # LCARS — the Star Trek: TNG/DS9/Voyager Library Computer Access /
+    # Retrieval System interface designed by Michael Okuda. Black canvas
+    # with a thick tangerine "elbow" sidebar wrapping the top-left and
+    # bottom-left corners, stacked yellow / coral / red pill-shaped
+    # buttons along the sidebar, tiny white "stardate" callouts beside
+    # each pill, and the condensed Antonio sans for the literary body
+    # text. Spectra 6 has no orange ink so the elbow's tangerine is
+    # synthesised via the documented `deco` recipe (red sentinel +
+    # bbox post-pass flipping ~3/8 of the painted red to yellow on the
+    # shared 4×4 Bayer matrix at threshold 6). One pill uses the
+    # `placard`/`chalkboard` coral recipe (red sentinel + bbox post-pass
+    # to white per `(x+y)&1`); the others are solid yellow and solid red.
+    # The matched-phrase yellow accent on black is iconic LCARS button
+    # colour and renders solid (no `_draw_text_body` reroute needed).
+    "lcars": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        # ``ornament_dark`` is the sentinel ink the elbow paints in
+        # before the Bayer post-pass converts ~3/8 of those red pixels
+        # to yellow → tangerine. ``ornament_light`` is the second ink
+        # in that recipe and the colour of the topmost solid pill.
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -789,6 +818,22 @@ PATRICK_HAND_SC_REGULAR = str(BASE_DIR / "fonts/patrick-hand-sc/PatrickHandSC-Re
 # install lands on a heavy display silhouette rather than dropping
 # a brush-painted theme onto an elegant transitional serif.
 SHOJUMARU_REGULAR = str(BASE_DIR / "fonts/shojumaru/Shojumaru-Regular.ttf")
+# Antonio — Vernon Adams / googlefonts (OFL). The de-facto free LCARS
+# substitute used by Star Trek fan projects: a tall, narrow,
+# condensed sans whose silhouette echoes Helvetica Compressed / Swiss 911
+# (the original LCARS typeface family). Variable font with a Weight axis
+# (100..700) whose default instance is Regular (400) — both Regular and
+# Bold variation instances are exposed by name, so the Regular / Bold
+# slots in ``THEME_FONTS["lcars"]`` pin them explicitly the same way the
+# Bitter / Jost / Rubik variable fonts do. The condensed proportions
+# are what makes this read as console / instrumentation UI rather than
+# editorial typography — every other sans in the rotation (Archivo,
+# Jost, Rubik, Bangers, Antonio's relative Atomic Age) is normal-width
+# or wider. Fallback chain ends at heavy DejaVu / Liberation / Noto
+# Sans Bold before degrading to the Playfair serif chain so a missing
+# install lands on a heavy sans silhouette rather than dropping the
+# LCARS theme onto an elegant transitional serif.
+ANTONIO_VARIABLE = str(BASE_DIR / "fonts/antonio/Antonio-Variable.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1432,6 +1477,43 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "lcars": {
+        # Antonio (Vernon Adams, OFL) — the de-facto free LCARS substitute:
+        # a tall narrow condensed sans whose silhouette mirrors Helvetica
+        # Compressed / Swiss 911 (the original Star Trek interface
+        # typeface family). Variable font; the default axis instance is
+        # Regular, but we pin Regular / Bold by name the same way Bitter /
+        # Jost / Rubik do so a future axis-default change in the upstream
+        # file can't silently shift the rendered weight. Falls back through
+        # heavy DejaVu / Liberation / Noto Sans Bold before degrading to
+        # the Playfair serif chain.
+        "quote_regular": [
+            (ANTONIO_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (ANTONIO_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        # Stardate callouts beside each pill button and the LCARS wordmark
+        # in the top elbow bar both want the same upright condensed sans
+        # so the console silhouette stays consistent. ``ornament`` is also
+        # what render() pulls for the oversized opening / closing quote
+        # glyphs, and the condensed Antonio sits comfortably in that role
+        # against the white body — same family family the rest of the
+        # frame uses.
+        "ornament": [
+            (ANTONIO_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -3591,6 +3673,502 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+def _lcars_paint_lavender_block(pixels, left: int, top: int, right: int, bot: int,
+                                sentinel) -> None:
+    """3-way Bayer post-pass: cells 0-4 → red, 5-9 → blue, 10-15 → white.
+    Sentinel must be off-palette (we use ``(1, 1, 1)``). Bbox-scoped so
+    adjacent blocks painted in different sentinels stay untouched."""
+    ink_red = SPECTRA6["red"]
+    ink_blue = SPECTRA6["blue"]
+    ink_white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        row = BAYER_4x4[py % 4]
+        for px in range(left, right + 1):
+            if pixels[px, py] == sentinel:
+                cell = row[px % 4]
+                if cell < 5:
+                    pixels[px, py] = ink_red
+                elif cell < 10:
+                    pixels[px, py] = ink_blue
+                else:
+                    pixels[px, py] = ink_white
+
+
+def _lcars_paint_peach_block(pixels, left: int, top: int, right: int, bot: int,
+                             sentinel) -> None:
+    """3-way Bayer post-pass for peach (R+Y+W @ 30/50/20). The
+    yellow-leaning sibling of salmon — warmer, less coral. Documented
+    in spectra6_color_recipes.md under "Pastels" — this is the first
+    theme to actually paint it. Partition: cells 0-4 → red (~31%),
+    5-12 → yellow (~50%), 13-15 → white (~19%)."""
+    ink_red = SPECTRA6["red"]
+    ink_yellow = SPECTRA6["yellow"]
+    ink_white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        row = BAYER_4x4[py % 4]
+        for px in range(left, right + 1):
+            if pixels[px, py] == sentinel:
+                cell = row[px % 4]
+                if cell < 5:
+                    pixels[px, py] = ink_red
+                elif cell < 13:
+                    pixels[px, py] = ink_yellow
+                else:
+                    pixels[px, py] = ink_white
+
+
+def _lcars_paint_lilac_block(pixels, left: int, top: int, right: int, bot: int,
+                             sentinel) -> None:
+    """3-way Bayer post-pass for lilac (R+B+W @ 25/25/50 — paler than
+    lavender, heavier white lift). Partition: cells 0-3 → red,
+    4-7 → blue, 8-15 → white."""
+    ink_red = SPECTRA6["red"]
+    ink_blue = SPECTRA6["blue"]
+    ink_white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        row = BAYER_4x4[py % 4]
+        for px in range(left, right + 1):
+            if pixels[px, py] == sentinel:
+                cell = row[px % 4]
+                if cell < 4:
+                    pixels[px, py] = ink_red
+                elif cell < 8:
+                    pixels[px, py] = ink_blue
+                else:
+                    pixels[px, py] = ink_white
+
+
+def _lcars_post_pass_tangerine(pixels, left: int, top: int, right: int, bot: int,
+                               sentinel_red) -> None:
+    """Bbox-scoped R+Y biased Bayer: ~3/8 yellow on red. Same threshold
+    + phase as ``draw_deco_border``'s final pass and ``_draw_text_body``'s
+    ``deco`` branch so a future combined render lands on identical
+    tangerine. Only touches ``sentinel_red`` pixels."""
+    yellow = SPECTRA6["yellow"]
+    threshold = 6  # round(0.375 * 16)
+    for y in range(top, bot + 1):
+        row = BAYER_4x4[y % 4]
+        for x in range(left, right + 1):
+            if row[x % 4] < threshold and pixels[x, y] == sentinel_red:
+                pixels[x, y] = yellow
+
+
+def _lcars_post_pass_coral(pixels, left: int, top: int, right: int, bot: int,
+                           sentinel_red) -> None:
+    """Bbox-scoped R+W 50/50 checkerboard. Only touches ``sentinel_red``
+    pixels — adjacent solid-red graphics elsewhere on the page stay
+    full-saturation."""
+    white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        for px in range(left, right + 1):
+            if (px + py) & 1 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = white
+
+
+def draw_lcars_border(image: Image.Image, colors: dict) -> None:
+    """Paint a Michael Okuda LCARS interface frame: stacked coloured
+    rail blocks down the left edge, joined to thin horizontal bars at
+    top and bottom by quarter-circle elbows, with a large "LCARS"
+    wordmark anchored in the top bar.
+
+    Six motifs, the canonical Library Computer Access / Retrieval System
+    vocabulary from Star Trek: TNG / DS9 / Voyager, painted bottom-up so
+    decoration sits cleanly on the layer beneath it:
+
+    * **Top + bottom horizontal bars** wrapping in from the left,
+      ``bar_thickness = 18`` and joined to the rail by quarter-circle
+      elbows of radius equal to the rail width (``rail_width = 36``).
+      Both bars sit *below* / *above* the y = 14..29 ``DEBUG MODE``
+      banner band (top bar at y = 36..53), so ``lcars`` is intentionally
+      absent from ``_DEBUG_LABEL_RIGHT_INSET`` — same exemption pattern
+      as ``dispatch`` / ``atomic`` / ``chalkboard`` / ``chanbara``.
+      Painted in ``ornament_dark`` (red) as a sentinel ink for the
+      tangerine post-pass below.
+    * **Tangerine post-pass.** Spectra 6 has no orange ink. After the
+      bars and elbows are painted in red, walk only their bounding
+      rectangles and flip ~3/8 of the red pixels to yellow on the
+      shared 4×4 Bayer matrix (``BAYER_4x4`` cells < threshold 6).
+      Same recipe ``draw_deco_border``'s final pass uses; the
+      red-biased 5/8 : 3/8 ratio corrects the perceived hue away from
+      the washed-out amber a flat 50/50 R+Y checkerboard reads as on
+      the panel. Bbox-scoped so the body-text region to the right of
+      the rail is never touched.
+    * **Six stacked rail blocks** flush with the canvas left edge,
+      forming the LCARS "panel sidebar". Each block is a horizontally
+      half-rounded rectangle (left edge flush at x = 0, right edge
+      rounded) so the rail reads as a stack of buttons. Top-down the
+      block colours cycle through **lavender → tangerine → coral →
+      yellow → red → lavender** — the canonical Okudagram palette of
+      lavender / orange / peach / yellow / red used on every TNG/DS9
+      console. Heights vary slightly so the rhythm doesn't read as
+      mechanical, the way real LCARS panels in the show varied block
+      heights to suggest functional grouping.
+    * **Lavender** synthesised via the 3-ink R+B+W recipe: paint each
+      lavender block in a sentinel colour (``(1, 1, 1)``), then a
+      per-block 3-way Bayer post-pass partitions the painted pixels
+      across the four-by-four matrix into ~1/3 red / 1/3 blue / 1/3
+      white. Same recipe ``draw_risograph_border``'s shifted-accent
+      registration crosses use. Documented in
+      ``spectra6_color_recipes.md`` under "Pastels".
+    * **Coral** synthesised via the 2-ink R+W 50/50 recipe: paint in
+      sentinel red, then a per-block bbox post-pass flips half the
+      red pixels to white on the ``(x + y) & 1`` checkerboard. Same
+      recipe ``draw_placard_border`` thumbtacks and
+      ``draw_chalkboard_border`` eraser smudges use.
+    * **Block labels** in black, centred inside each block in a
+      condensed sans (the meta-bold chain at ~10 pt). The show used
+      meaningless 4–7-character alphanumeric codes ("LCARS 40274",
+      "47-Beta", etc.) as instrument labels; we follow the same
+      deterministic-string convention so any future golden fixture
+      reproduces. Black-on-coloured-block is the canonical Okudagram
+      labelling contrast.
+    * **"LCARS" wordmark** painted right-aligned inside the top bar
+      using the ornament font role (Antonio Bold) at ~18 pt. The
+      reference Okudagram wallpapers typically anchor a large
+      tangerine-on-black wordmark in this corner ("LCARS ACCESS 441",
+      "DATA NODE 188"); we keep the silhouette but compress the text
+      to the bare "LCARS" identifier so it sits inside the bar's
+      18 px band without bleeding into the body region.
+
+    The chrome is a continuous L-shape that **wraps the canvas
+    corner with an annular quarter-circle elbow** — the outer
+    perimeter is a quarter-circle of radius ``R_out`` sweeping from
+    ``(0, R_out)`` around the canvas top-left corner to ``(R_out, 0)``;
+    the inner perimeter is a concentric quarter-circle of radius
+    ``R_in = R_out - T`` (where ``T = bar_thickness = rail_width`` is
+    the uniform annular thickness) sweeping into the page interior.
+    Both arcs share a common centre at ``(R_out, R_out)``. The chrome
+    annulus has uniform thickness T everywhere. (Earlier revisions
+    placed the chrome BELOW the canvas top with sharp corners on the
+    canvas edge; the user's "corners are backwards" feedback flagged
+    both that AND the unrounded outer corner.)
+
+    DEBUG MODE banner: in ``--mode debug`` the renderer paints a small
+    yellow "DEBUG MODE" label at y = 14..29 in the top-right. Because
+    the top bar now spans y = 0..bar_thickness-1, the banner sits ON
+    TOP of the chrome — yellow text on tangerine has reduced contrast
+    but stays legible (banner is a dev-only indicator, not deployed
+    in ``--mode production``).
+
+    Body-text overlap: the layout pipeline's largest ``max_width`` is
+    680 (the ``dense`` layout), centred in the 800-px canvas → body
+    text starts at x = 60. The rail blocks are confined to the rail
+    column (x = 0..rail_width-1 = 0..43), leaving ≥ 16 px of clear
+    margin to the densest body — the rail and body never visibly
+    intersect. Same "decoration in margins" pattern ``dispatch``
+    and ``nightvision`` establish.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+
+    # The elbow + bars are painted in ``ornament_dark`` (red) as a
+    # sentinel; coral / tangerine post-passes convert subregions to
+    # the corresponding pastel. ``label_ink_on_block`` is the classic
+    # Okudagram contrast colour (black) for text painted directly on
+    # any of the coloured blocks.
+    sentinel_red = colors["ornament_dark"]
+    label_ink_on_block = SPECTRA6["black"]
+
+    # --- Geometry ---
+    # All constants scale proportionally to the canvas — the painter is
+    # called from the preview API (``/api/preview``) at arbitrary sizes
+    # down to ``PREVIEW_MIN_*`` = 80×60, not just the native 800×480.
+    # Without scaling, the fixed native-size constants leave inverted
+    # PIL bbox coordinates (e.g. ``rail_top > rail_bot``) and the
+    # endpoint returns 500. Below a viable scale threshold the chrome
+    # geometry collapses to sub-pixel features, so bail out and let
+    # the body text + black ground stand in for the LCARS silhouette.
+    scale = min(width / 800.0, height / 480.0)
+    if scale < 0.5:
+        return
+    # ``T`` is BOTH the bar thickness AND the rail width — the annular
+    # elbow geometry needs them equal so the chrome's annular thickness
+    # (R_out − R_in) matches the bar's height matches the rail's width.
+    # ``R_out`` is the outer-elbow radius (controls how rounded the
+    # canvas-corner curve is); ``R_in`` is the derived inner-elbow
+    # radius (= R_out − T) for the page-interior curve.
+    T = max(8, int(round(44 * scale)))
+    bar_thickness = T
+    rail_width = T
+    R_out = max(16, int(round(72 * scale)))   # outer elbow radius
+    R_in = R_out - T                           # derived
+    # Rail blocks are plain rectangles confined to the rail column —
+    # no protrusion past ``rail_width``, no rounded corners. The colour
+    # blocks read as flush sidebar segments rather than as detached
+    # "pill buttons" floating off the rail.
+    block_right = rail_width - 1
+
+    top_bar_y1 = 0
+    top_bar_y2 = bar_thickness - 1
+    bottom_bar_y2 = height - 1
+    bottom_bar_y1 = bottom_bar_y2 - bar_thickness + 1
+
+    page_bg = colors.get("page_bg", SPECTRA6["black"])
+    lavender_sentinel = (1, 1, 1)
+
+    # ===========================================================
+    # Layer 1: paint top/bottom bars + rail straight runs
+    # ===========================================================
+    # The straight runs START at ``R_out`` (away from the canvas
+    # corner) — the region x ∈ [0, R_out), y ∈ [0, R_out) is the
+    # elbow's annular footprint and gets painted separately in Layer
+    # 2. Top bar is split into TWO segments separated by a ~6 px
+    # black divider, reproducing the multi-colour Okudagram top-band
+    # silhouette.
+    segment_gap = max(2, int(round(6 * scale)))
+    top_bar_left = R_out
+    top_bar_right = width - 1
+    top_bar_inner_w = top_bar_right - top_bar_left + 1
+    seg1_w = int(top_bar_inner_w * 0.55)
+    seg1_left = top_bar_left
+    seg1_right = seg1_left + seg1_w - 1
+    seg2_left = seg1_right + 1 + segment_gap
+    seg2_right = top_bar_right
+    # First (tangerine) segment of the top bar.
+    draw.rectangle(
+        (seg1_left, top_bar_y1, seg1_right, top_bar_y2),
+        fill=sentinel_red,
+    )
+    # Second (lavender) segment of the top bar.
+    draw.rectangle(
+        (seg2_left, top_bar_y1, seg2_right, top_bar_y2),
+        fill=lavender_sentinel,
+    )
+    # Bottom bar — single tangerine ribbon. Starts at R_out (clear of
+    # the bottom-left elbow); the simpler silhouette leans on the
+    # STARDATE callout for visual weight rather than segmenting the bar.
+    draw.rectangle(
+        (R_out, bottom_bar_y1, width - 1, bottom_bar_y2),
+        fill=sentinel_red,
+    )
+    # NOTE: there's NO uniform "rail" strip painted here. The straight
+    # rail section between the two elbows is composed ENTIRELY of the
+    # stacked colour blocks painted in Layer 4 — the gaps between
+    # blocks remain page_bg (black) and act as visual separators
+    # between the colour-coded panel segments, matching the reference
+    # wallpaper. (Earlier revisions painted a tangerine rail strip
+    # under the blocks, which made any tangerine / peach blocks
+    # visually disappear into the rail background.)
+
+    # ===========================================================
+    # Layer 2: annular-quadrant elbows (BOTH outer + inner rounded)
+    # ===========================================================
+    # Each elbow is bounded by TWO concentric quarter-circles:
+    #   * outer arc, radius R_out, sweeping around the canvas corner
+    #     from (0, R_out) → (R_out, 0) so the chrome's outer
+    #     perimeter is ROUNDED (not a sharp right angle on the canvas
+    #     edge)
+    #   * inner arc, radius R_in = R_out − T, sweeping into the page
+    #     interior from (T, R_out) → (R_out, T) so the chrome's inner
+    #     perimeter is also rounded
+    # Both arcs share centre point (R_out, R_out) (top elbow). The
+    # annular region between them is the elbow chrome.
+    #
+    # Implementation: paint the full outer-disc quadrant in sentinel,
+    # then carve the inner-disc quadrant in page_bg. PIL's pieslice
+    # angles for the top-left quadrant relative to centre (R_out, R_out)
+    # run 180° → 270° (9 o'clock clockwise to 12 o'clock).
+    # Top elbow:
+    draw.pieslice(
+        (0, 0, 2 * R_out - 1, 2 * R_out - 1),
+        start=180, end=270,
+        fill=sentinel_red,
+    )
+    if R_in > 0:
+        draw.pieslice(
+            (T, T, 2 * R_out - T - 1, 2 * R_out - T - 1),
+            start=180, end=270,
+            fill=page_bg,
+        )
+    # Bottom elbow — mirror about y = height / 2. The annulus centre
+    # sits at (R_out, height - R_out). The bottom-left quadrant of
+    # that centre (angles 90° → 180°, 6 o'clock clockwise to 9
+    # o'clock) covers x ∈ [0, R_out], y ∈ [height − R_out, height].
+    bottom_disc_y1 = height - 2 * R_out
+    bottom_disc_y2 = height - 1
+    draw.pieslice(
+        (0, bottom_disc_y1, 2 * R_out - 1, bottom_disc_y2),
+        start=90, end=180,
+        fill=sentinel_red,
+    )
+    if R_in > 0:
+        draw.pieslice(
+            (T, bottom_disc_y1 + T, 2 * R_out - T - 1, bottom_disc_y2 - T),
+            start=90, end=180,
+            fill=page_bg,
+        )
+
+    # ===========================================================
+    # Layer 2: rail blocks between the two elbows
+    # ===========================================================
+    # SEVEN horizontally half-rounded rectangles in a pastel-dominant
+    # palette (lavender / tangerine / coral / peach / lilac) so the
+    # rail reads as the muted Okudagram colour-coding rather than as
+    # saturated UI buttons. All five accent tones live OFF the native
+    # Spectra 6 palette and require sentinel paint + bbox post-pass —
+    # which is why this painter delegates to dedicated helpers
+    # (``_lcars_paint_*``) rather than inlining each recipe.
+    # Rail blocks slot between the two annular elbows. The rail's
+    # straight section runs y ∈ [R_out, height − R_out − 1]; leave a
+    # 3-px gutter on each end so the first/last block doesn't visually
+    # merge into the elbow's bottom/top arc.
+    rail_gutter = max(1, int(round(3 * scale)))
+    rail_top = R_out + rail_gutter
+    rail_bot = height - R_out - rail_gutter - 1
+    rail_height = rail_bot - rail_top + 1
+    block_gap = max(1, int(round(3 * scale)))
+    # Seven blocks with intentionally non-uniform heights — LCARS panels
+    # in the show varied block heights to suggest functional grouping.
+    # Each entry in ``block_specs`` is (kind, label, proportion); the
+    # proportions sum to 1.0.
+    # Block labels are short alphanumeric codes (3-5 chars) — the show's
+    # signature meaningless instrument numerics. Kept short because the
+    # block's visible label area is only ~rail_width (= 44 px) wide;
+    # a longer code would clip its leading characters at the left rail
+    # edge.
+    # Palette is deliberately high-contrast and AVOIDS tangerine /
+    # peach (those share R+Y pixels with the elbow chrome and so
+    # visually blend with it — the v6/v7 renders had two invisible
+    # tangerine blocks). Mix of:
+    #   * pastel 3-ink stipples (lavender, lilac) — cool accents
+    #   * pastel 2-ink stipple (coral) — soft warm
+    #   * native Spectra 6 inks (yellow, red, blue) — bright punch
+    # The native-ink blocks (yellow / red / blue) provide unmissable
+    # colour-coded "alert button" positions — canonical LCARS reads
+    # red as critical, yellow as advisory, blue as informational.
+    block_specs = [
+        ("lavender", "40-27", 0.14),
+        ("yellow",   "65-54", 0.16),
+        ("coral",    "97-56", 0.13),
+        ("lilac",    "76-54", 0.16),
+        ("red",      "22-43", 0.13),
+        ("coral",    "57-65", 0.15),
+        ("blue",     "18-82", 0.13),
+    ]
+    assert abs(sum(p for _, _, p in block_specs) - 1.0) < 1e-6
+    available_v = rail_height - block_gap * (len(block_specs) - 1)
+    pixels = image.load()
+    blocks: list[tuple[int, int, int, int, str]] = []
+    cursor_y = rail_top
+    for kind, label, prop in block_specs:
+        bh = int(round(available_v * prop))
+        top = cursor_y
+        bot = cursor_y + bh - 1
+        left = 0
+        right = block_right
+        # Solid native-ink blocks paint their fill colour directly; the
+        # stippled blocks (coral / lavender / lilac) paint in a sentinel
+        # and then a per-block bbox post-pass converts the sentinel to
+        # the synthesised tone.
+        if kind == "coral":
+            draw.rectangle((left, top, right, bot), fill=sentinel_red)
+            _lcars_post_pass_coral(pixels, left, top, right, bot, sentinel_red)
+        elif kind == "lavender":
+            draw.rectangle((left, top, right, bot), fill=lavender_sentinel)
+            _lcars_paint_lavender_block(pixels, left, top, right, bot, lavender_sentinel)
+        elif kind == "lilac":
+            draw.rectangle((left, top, right, bot), fill=lavender_sentinel)
+            _lcars_paint_lilac_block(pixels, left, top, right, bot, lavender_sentinel)
+        elif kind == "yellow":
+            draw.rectangle((left, top, right, bot), fill=SPECTRA6["yellow"])
+        elif kind == "red":
+            # Solid red on the page_bg-flanked rail is unambiguous —
+            # there's no tangerine background nearby to share the red
+            # pixels with (the tangerine chrome is at the elbow
+            # quadrants, separated from this block by a 3-px page_bg
+            # gap and the rounded elbow geometry).
+            draw.rectangle((left, top, right, bot), fill=SPECTRA6["red"])
+        elif kind == "blue":
+            draw.rectangle((left, top, right, bot), fill=SPECTRA6["blue"])
+        blocks.append((left, top, right, bot, label))
+        cursor_y += bh + block_gap
+
+    # ===========================================================
+    # Layer 3: convert the chrome sentinels to tangerine + lavender
+    # ===========================================================
+    # The chrome's sentinel-red pixels (top bar left segment, bottom
+    # bar, rail straight section, both annular elbow quadrants — but
+    # NOT the rail blocks, which paint AFTER this pass over their own
+    # bboxes) convert to tangerine in two sweeps over the chrome's y
+    # extent. The lavender segment of the top bar uses a different
+    # sentinel so it's untouched by the tangerine pass; its 3-way
+    # Bayer post-pass runs on its bbox separately.
+    # Top region: covers the top bar + the entire top elbow annulus.
+    _lcars_post_pass_tangerine(pixels, 0, top_bar_y1, width - 1, R_out - 1, sentinel_red)
+    # Bottom region: covers the bottom bar + the entire bottom elbow.
+    _lcars_post_pass_tangerine(pixels, 0, height - R_out, width - 1, bottom_bar_y2, sentinel_red)
+    # No rail-middle pass — the rail's vertical section is composed of
+    # the colour blocks themselves with page_bg gaps between them.
+    # Lavender segment of the top bar.
+    _lcars_paint_lavender_block(pixels, seg2_left, top_bar_y1, seg2_right, top_bar_y2, lavender_sentinel)
+
+    # ===========================================================
+    # Layer 4: black labels centred inside each block
+    # ===========================================================
+    block_label_font = load_font(META_FONT_BOLD_CANDIDATES, max(6, int(round(10 * scale))))
+    label_pad_right = 4   # small inset from the right edge so the label
+                          # doesn't kiss the rail boundary
+    for left, top, right, bot, label in blocks:
+        baseline_bbox = draw.textbbox((0, 0), label, font=block_label_font)
+        label_w = baseline_bbox[2] - baseline_bbox[0]
+        label_h = baseline_bbox[3] - baseline_bbox[1]
+        # Right-align inside the block (the right edge is now flush
+        # with the rail boundary, so just pad in by ``label_pad_right``).
+        label_x = right - label_pad_right - label_w - baseline_bbox[0]
+        label_y = top + (bot - top - label_h) // 2 - baseline_bbox[1]
+        draw.text(
+            (label_x, label_y),
+            label,
+            font=block_label_font,
+            fill=label_ink_on_block,
+        )
+
+    # ===========================================================
+    # Layer 5: large "LCARS" wordmark in the top bar
+    # ===========================================================
+    # Right-aligned inside the top bar's lavender segment for a
+    # tangerine-to-lavender → black-on-lavender colour transition.
+    # Sized to fill ~80% of the bar's height (≈ 18 pt against a 22 px
+    # bar). Antonio Bold (the theme's display face) anchors the
+    # wordmark to the body typography.
+    wordmark_font = load_font(theme_font_candidates("lcars", "ornament"), max(10, int(round(26 * scale))))
+    wordmark_text = "LCARS"
+    wordmark_bbox = draw.textbbox((0, 0), wordmark_text, font=wordmark_font)
+    wordmark_w = wordmark_bbox[2] - wordmark_bbox[0]
+    wordmark_h = wordmark_bbox[3] - wordmark_bbox[1]
+    wordmark_x = width - 16 - wordmark_w
+    wordmark_y = top_bar_y1 + (bar_thickness - wordmark_h) // 2 - wordmark_bbox[1]
+    draw.text(
+        (wordmark_x, wordmark_y),
+        wordmark_text,
+        font=wordmark_font,
+        fill=label_ink_on_block,
+    )
+
+    # ===========================================================
+    # Layer 6: bottom-right "STARDATE" callout
+    # ===========================================================
+    # The reference wallpaper anchors a large secondary heading
+    # ("DATA NODE 188") at the bottom right of its bottom bar. We
+    # mirror the silhouette with a STARDATE label, painted in black
+    # over the tangerine bottom bar so the colour transition matches
+    # the top bar's black-on-orange. Use a smaller font (~12 pt) so the
+    # full string fits inside the bar's 22 px band without crowding.
+    stardate_font = load_font(theme_font_candidates("lcars", "ornament"), max(7, int(round(14 * scale))))
+    stardate_text = "STARDATE 47988.1"
+    sd_bbox = draw.textbbox((0, 0), stardate_text, font=stardate_font)
+    sd_w = sd_bbox[2] - sd_bbox[0]
+    sd_h = sd_bbox[3] - sd_bbox[1]
+    sd_x = width - 16 - sd_w
+    sd_y = bottom_bar_y1 + (bar_thickness - sd_h) // 2 - sd_bbox[1]
+    draw.text(
+        (sd_x, sd_y),
+        stardate_text,
+        font=stardate_font,
+        fill=label_ink_on_block,
+    )
+
+
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
     """Paint a vintage-office dispatch border: cream-washed ground +
     thin frame + alternating black/sepia tractor-feed perforations +
@@ -5558,6 +6136,7 @@ _BORDER_PAINTERS = {
     "chalkboard": draw_chalkboard_border,
     "placard": draw_placard_border,
     "chanbara": draw_chanbara_border,
+    "lcars": draw_lcars_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
