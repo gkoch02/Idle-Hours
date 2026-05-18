@@ -3673,6 +3673,98 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+def _lcars_paint_lavender_block(pixels, left: int, top: int, right: int, bot: int,
+                                sentinel) -> None:
+    """3-way Bayer post-pass: cells 0-4 → red, 5-9 → blue, 10-15 → white.
+    Sentinel must be off-palette (we use ``(1, 1, 1)``). Bbox-scoped so
+    adjacent blocks painted in different sentinels stay untouched."""
+    ink_red = SPECTRA6["red"]
+    ink_blue = SPECTRA6["blue"]
+    ink_white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        row = BAYER_4x4[py % 4]
+        for px in range(left, right + 1):
+            if pixels[px, py] == sentinel:
+                cell = row[px % 4]
+                if cell < 5:
+                    pixels[px, py] = ink_red
+                elif cell < 10:
+                    pixels[px, py] = ink_blue
+                else:
+                    pixels[px, py] = ink_white
+
+
+def _lcars_paint_peach_block(pixels, left: int, top: int, right: int, bot: int,
+                             sentinel) -> None:
+    """3-way Bayer post-pass for peach (R+Y+W @ 30/50/20). The
+    yellow-leaning sibling of salmon — warmer, less coral. Documented
+    in spectra6_color_recipes.md under "Pastels" — this is the first
+    theme to actually paint it. Partition: cells 0-4 → red (~31%),
+    5-12 → yellow (~50%), 13-15 → white (~19%)."""
+    ink_red = SPECTRA6["red"]
+    ink_yellow = SPECTRA6["yellow"]
+    ink_white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        row = BAYER_4x4[py % 4]
+        for px in range(left, right + 1):
+            if pixels[px, py] == sentinel:
+                cell = row[px % 4]
+                if cell < 5:
+                    pixels[px, py] = ink_red
+                elif cell < 13:
+                    pixels[px, py] = ink_yellow
+                else:
+                    pixels[px, py] = ink_white
+
+
+def _lcars_paint_lilac_block(pixels, left: int, top: int, right: int, bot: int,
+                             sentinel) -> None:
+    """3-way Bayer post-pass for lilac (R+B+W @ 25/25/50 — paler than
+    lavender, heavier white lift). Partition: cells 0-3 → red,
+    4-7 → blue, 8-15 → white."""
+    ink_red = SPECTRA6["red"]
+    ink_blue = SPECTRA6["blue"]
+    ink_white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        row = BAYER_4x4[py % 4]
+        for px in range(left, right + 1):
+            if pixels[px, py] == sentinel:
+                cell = row[px % 4]
+                if cell < 4:
+                    pixels[px, py] = ink_red
+                elif cell < 8:
+                    pixels[px, py] = ink_blue
+                else:
+                    pixels[px, py] = ink_white
+
+
+def _lcars_post_pass_tangerine(pixels, left: int, top: int, right: int, bot: int,
+                               sentinel_red) -> None:
+    """Bbox-scoped R+Y biased Bayer: ~3/8 yellow on red. Same threshold
+    + phase as ``draw_deco_border``'s final pass and ``_draw_text_body``'s
+    ``deco`` branch so a future combined render lands on identical
+    tangerine. Only touches ``sentinel_red`` pixels."""
+    yellow = SPECTRA6["yellow"]
+    threshold = 6  # round(0.375 * 16)
+    for y in range(top, bot + 1):
+        row = BAYER_4x4[y % 4]
+        for x in range(left, right + 1):
+            if row[x % 4] < threshold and pixels[x, y] == sentinel_red:
+                pixels[x, y] = yellow
+
+
+def _lcars_post_pass_coral(pixels, left: int, top: int, right: int, bot: int,
+                           sentinel_red) -> None:
+    """Bbox-scoped R+W 50/50 checkerboard. Only touches ``sentinel_red``
+    pixels — adjacent solid-red graphics elsewhere on the page stay
+    full-saturation."""
+    white = SPECTRA6["white"]
+    for py in range(top, bot + 1):
+        for px in range(left, right + 1):
+            if (px + py) & 1 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = white
+
+
 def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     """Paint a Michael Okuda LCARS interface frame: stacked coloured
     rail blocks down the left edge, joined to thin horizontal bars at
@@ -3740,9 +3832,10 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
 
     Body-text overlap: the layout pipeline's largest ``max_width`` is
     680 (the ``dense`` layout), centred in the 800-px canvas → body
-    text starts at x = 60. The rail blocks extend to x ≈ 53 (rail
-    width 36 + 18 px right-cap radius), leaving 7 px of clearance —
-    tight but consistent across all three layouts, matching the
+    text starts at x = 60. The rail blocks extend to x ≈ 60 (rail
+    width 40 + 20 px right-cap radius), sitting flush with the dense
+    body's left edge; hero/standard layouts leave 10–20 px of clear
+    margin so the rail and body never visibly intersect. Same
     "decoration in margins" pattern ``dispatch`` and ``nightvision``
     establish.
     """
@@ -3750,47 +3843,70 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     width, height = image.size
 
     # The elbow + bars are painted in ``ornament_dark`` (red) as a
-    # sentinel, then converted to tangerine by the Bayer post-pass below;
-    # the solid yellow rail block uses ``ornament_light`` (yellow).
+    # sentinel; coral / tangerine post-passes convert subregions to
+    # the corresponding pastel. ``label_ink_on_block`` is the classic
+    # Okudagram contrast colour (black) for text painted directly on
+    # any of the coloured blocks.
     sentinel_red = colors["ornament_dark"]
-    yellow_ink = colors["ornament_light"]
     label_ink_on_block = SPECTRA6["black"]
 
     # --- Geometry ---
-    bar_thickness = 18
-    top_bar_y = 36              # below the y=14..29 DEBUG MODE banner band
-    bottom_bar_y2 = height - 1  # bottom horizontal bar's bottom edge
+    bar_thickness = 28                 # bumped from 18: closer to the reference's chunky chrome; sized to comfortably hold the 26 pt LCARS wordmark
+    top_bar_y = 36                     # below the y=14..29 DEBUG MODE banner band
+    bottom_bar_y2 = height - 1
     bottom_bar_y1 = bottom_bar_y2 - bar_thickness + 1
-    rail_width = 36
+    rail_width = 40                    # bumped from 36: more LCARS rail weight
     elbow_radius = rail_width
-    # Top elbow centre: x = rail_width, y = top of horizontal bar + elbow radius.
+    cap_radius = 20                    # right-cap radius for the rail blocks
+    block_right = rail_width + cap_radius - 1
     top_elbow_cy = top_bar_y + elbow_radius
     bottom_elbow_cy = bottom_bar_y1 - elbow_radius + bar_thickness - 1
 
     page_bg = colors.get("page_bg", SPECTRA6["black"])
 
-    # --- Layer 1: paint top/bottom bars and elbows in sentinel red ---
-    # Top horizontal bar starts at x = elbow_radius (flush with the
-    # outer edge of the top elbow's outer arc) and runs to the right
-    # canvas edge.
+    # ===========================================================
+    # Layer 1: paint top/bottom bars and elbows in sentinel red
+    # ===========================================================
+    # The top bar is split into TWO segments separated by a thin black
+    # divider (~6 px gap), reproducing the multi-colour Okudagram top-
+    # band silhouette from the reference wallpaper. The left segment
+    # (~62% of the bar's width) reads as tangerine after the post-pass;
+    # the right segment (~36%) is converted to lavender via a 3-way
+    # post-pass. The 2 px black gap between them is the canonical LCARS
+    # segment separator.
+    top_bar_left = elbow_radius
+    top_bar_right = width - 1
+    top_bar_inner_w = top_bar_right - top_bar_left + 1
+    segment_gap = 6
+    seg1_w = int(top_bar_inner_w * 0.60)
+    seg1_left = top_bar_left
+    seg1_right = seg1_left + seg1_w - 1
+    seg2_left = seg1_right + 1 + segment_gap
+    seg2_right = top_bar_right
+    # First (tangerine) segment of the top bar.
     draw.rectangle(
-        (elbow_radius, top_bar_y,
-         width - 1, top_bar_y + bar_thickness - 1),
+        (seg1_left, top_bar_y, seg1_right, top_bar_y + bar_thickness - 1),
         fill=sentinel_red,
     )
+    # Second (lavender) segment of the top bar — painted in the lavender
+    # sentinel so the 3-way post-pass below converts it without touching
+    # the tangerine pixels.
+    lavender_sentinel = (1, 1, 1)
     draw.rectangle(
-        (elbow_radius, bottom_bar_y1,
-         width - 1, bottom_bar_y2),
+        (seg2_left, top_bar_y, seg2_right, top_bar_y + bar_thickness - 1),
+        fill=lavender_sentinel,
+    )
+    # Bottom bar — single tangerine ribbon (the reference's bottom edge
+    # is simpler than its top, leaning on the wordmark + DATA NODE
+    # callouts in the corners for visual weight rather than segmenting
+    # the bar itself).
+    draw.rectangle(
+        (elbow_radius, bottom_bar_y1, width - 1, bottom_bar_y2),
         fill=sentinel_red,
     )
-    # Top elbow — filled quarter-disc, then carve the interior with a
-    # smaller pie-slice in the page background to leave an annular
-    # quadrant of thickness (elbow_radius − inner_radius). Matching
-    # ``bar_thickness`` for the annulus thickness makes the elbow read
-    # as the same-weight ribbon as the horizontal bar.
+    # Top elbow — quarter-disc minus inner pie-slice carve.
     draw.pieslice(
-        (0, top_bar_y - elbow_radius,
-         2 * elbow_radius, top_bar_y + elbow_radius),
+        (0, top_bar_y - elbow_radius, 2 * elbow_radius, top_bar_y + elbow_radius),
         start=90, end=180,
         fill=sentinel_red,
     )
@@ -3804,8 +3920,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
         )
     # Bottom elbow — mirror about y = height / 2.
     draw.pieslice(
-        (0, bottom_elbow_cy - elbow_radius,
-         2 * elbow_radius, bottom_elbow_cy + elbow_radius),
+        (0, bottom_elbow_cy - elbow_radius, 2 * elbow_radius, bottom_elbow_cy + elbow_radius),
         start=180, end=270,
         fill=sentinel_red,
     )
@@ -3817,157 +3932,104 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
             fill=page_bg,
         )
 
-    # --- Layer 2: tangerine post-pass over the bars + elbows bbox ---
-    # Bbox-scoped to x ∈ [0, width-1] (bars span the full width) and
-    # y ∈ [top_bar_y, bottom_bar_y2]. Crucially, only ``sentinel_red``
-    # pixels are touched — the rail blocks below paint AFTER this pass
-    # using DIFFERENT sentinels (yellow ink for the yellow block,
-    # ``lavender_sentinel`` for the lavender blocks, etc.) so they stay
-    # untouched by the tangerine flip. Threshold + phase match
-    # ``draw_deco_border``'s post-pass so any future combined render
-    # lands on the same tangerine.
-    threshold = 6  # round(0.375 * 16) — sync with _draw_text_body's deco branch
-    yellow = SPECTRA6["yellow"]
-    pixels = image.load()
-    for y in range(top_bar_y, bottom_bar_y2 + 1):
-        row = BAYER_4x4[y % 4]
-        for x in range(0, width):
-            if row[x % 4] < threshold and pixels[x, y] == sentinel_red:
-                pixels[x, y] = yellow
-
-    # --- Layer 3: stacked rail blocks ---
-    # Six horizontally half-rounded rectangles (left edge at x = 0 with
-    # square corners; right edge at x = rail_width + cap_radius with
-    # rounded corners) stacked down the canvas. Each block sits flush
-    # against the previous with a 3 px gap. Colours rotate through
-    # lavender / tangerine / coral / yellow / red / lavender — the
-    # Okudagram standard palette.
-    cap_radius = 18
-    block_right = rail_width + cap_radius - 1
+    # ===========================================================
+    # Layer 2: rail blocks between the two elbows
+    # ===========================================================
+    # SEVEN horizontally half-rounded rectangles in a pastel-dominant
+    # palette (lavender / tangerine / coral / peach / lilac) so the
+    # rail reads as the muted Okudagram colour-coding rather than as
+    # saturated UI buttons. All five accent tones live OFF the native
+    # Spectra 6 palette and require sentinel paint + bbox post-pass —
+    # which is why this painter delegates to dedicated helpers
+    # (``_lcars_paint_*``) rather than inlining each recipe.
     rail_top = top_elbow_cy + 3
     rail_bot = bottom_elbow_cy - 3
     rail_height = rail_bot - rail_top + 1
     block_gap = 3
-    # Six blocks → five gaps → block height ≈ (rail_height - 5*gap) / 6.
-    # Heights are intentionally non-uniform (LCARS panels in the show
-    # varied block heights to suggest functional grouping); each entry
-    # in ``block_proportions`` is the block's share of the available
-    # vertical space. Must sum to 1.0 (within float tolerance).
-    block_proportions = (0.14, 0.20, 0.16, 0.18, 0.16, 0.16)
-    assert abs(sum(block_proportions) - 1.0) < 1e-6
-    available_v = rail_height - block_gap * (len(block_proportions) - 1)
-    # Top-down: lavender → tangerine → coral → yellow → red → lavender
+    # Seven blocks with intentionally non-uniform heights — LCARS panels
+    # in the show varied block heights to suggest functional grouping.
+    # Each entry in ``block_specs`` is (kind, label, proportion); the
+    # proportions sum to 1.0.
+    # Block labels are short alphanumeric codes (3-4 chars) — the show's
+    # signature meaningless instrument numerics. Kept short because the
+    # block's visible label area is only ~50 px wide (rail_width 40 +
+    # ~half the cap_radius before the curvature begins); a longer code
+    # would clip its leading characters under the cap.
     block_specs = [
-        ("lavender",  "LCARS"),
-        ("tangerine", "47-B"),
-        ("coral",     "8675"),
-        ("yellow",    "1701"),
-        ("red",       "M5-A"),
-        ("lavender",  "NCC"),
+        ("lavender",  "40-27", 0.14),
+        ("tangerine", "65-54", 0.16),
+        ("coral",     "97-56", 0.13),
+        ("peach",     "76-54", 0.16),
+        ("tangerine", "22-43", 0.13),
+        ("lilac",     "57-65", 0.15),
+        ("lavender",  "18-82", 0.13),
     ]
-    lavender_sentinel = (1, 1, 1)
+    assert abs(sum(p for _, _, p in block_specs) - 1.0) < 1e-6
+    # PIL's ``rounded_rectangle`` needs height ≥ 2 × radius; with
+    # rail_height ≈ 340 and cap_radius = 20 the floor at 0.13 → ~44 px
+    # comfortably clears the 40-px minimum.
+    available_v = rail_height - block_gap * (len(block_specs) - 1)
+    pixels = image.load()
     blocks: list[tuple[int, int, int, int, str]] = []
     cursor_y = rail_top
-    for (kind, label), prop in zip(block_specs, block_proportions):
+    for kind, label, prop in block_specs:
         bh = int(round(available_v * prop))
         top = cursor_y
         bot = cursor_y + bh - 1
         left = 0
         right = block_right
-        # Half-rounded rectangle: corners=(top-left, top-right,
-        # bottom-right, bottom-left). We want only the right side
-        # rounded so the rail reads as a stack of buttons whose left
-        # edges are flush with the canvas edge.
+        if kind in ("tangerine", "coral"):
+            paint_sentinel = sentinel_red
+        else:
+            paint_sentinel = lavender_sentinel
+        draw.rounded_rectangle(
+            (left, top, right, bot),
+            radius=cap_radius,
+            corners=(False, True, True, False),
+            fill=paint_sentinel,
+        )
         if kind == "tangerine":
-            # Paint in sentinel red, then a bbox post-pass converts
-            # ~3/8 to yellow on the shared Bayer threshold — same
-            # recipe the top/bottom bars used. Bbox-scoped so the
-            # solid red block below isn't touched.
-            draw.rounded_rectangle(
-                (left, top, right, bot),
-                radius=cap_radius,
-                corners=(False, True, True, False),
-                fill=sentinel_red,
-            )
-            for py in range(top, bot + 1):
-                row = BAYER_4x4[py % 4]
-                for px in range(left, right + 1):
-                    if row[px % 4] < threshold and pixels[px, py] == sentinel_red:
-                        pixels[px, py] = yellow
+            _lcars_post_pass_tangerine(pixels, left, top, right, bot, sentinel_red)
         elif kind == "coral":
-            # Paint in sentinel red, then a bbox post-pass flips half
-            # the red pixels to white on the (x+y)&1 checkerboard —
-            # the documented R+W coral recipe.
-            draw.rounded_rectangle(
-                (left, top, right, bot),
-                radius=cap_radius,
-                corners=(False, True, True, False),
-                fill=sentinel_red,
-            )
-            for py in range(top, bot + 1):
-                for px in range(left, right + 1):
-                    if (px + py) & 1 and pixels[px, py] == sentinel_red:
-                        pixels[px, py] = SPECTRA6["white"]
+            _lcars_post_pass_coral(pixels, left, top, right, bot, sentinel_red)
         elif kind == "lavender":
-            # Paint in an off-palette sentinel (1, 1, 1), then a
-            # per-block 3-way Bayer post-pass partitions the painted
-            # pixels into ~1/3 red / 1/3 blue / 1/3 white. Same recipe
-            # ``draw_risograph_border``'s shifted registration crosses
-            # use — picked because (a) lavender is the most distinctive
-            # accent in the Okudagram palette that doesn't sit on the
-            # native Spectra 6 gamut, and (b) the recipe is already
-            # proven on a small bbox-scoped graphic.
-            draw.rounded_rectangle(
-                (left, top, right, bot),
-                radius=cap_radius,
-                corners=(False, True, True, False),
-                fill=lavender_sentinel,
-            )
-            ink_red = SPECTRA6["red"]
-            ink_blue = SPECTRA6["blue"]
-            ink_white = SPECTRA6["white"]
-            for py in range(top, bot + 1):
-                row = BAYER_4x4[py % 4]
-                for px in range(left, right + 1):
-                    if pixels[px, py] == lavender_sentinel:
-                        cell = row[px % 4]
-                        if cell < 5:
-                            pixels[px, py] = ink_red
-                        elif cell < 10:
-                            pixels[px, py] = ink_blue
-                        else:
-                            pixels[px, py] = ink_white
-        elif kind == "yellow":
-            draw.rounded_rectangle(
-                (left, top, right, bot),
-                radius=cap_radius,
-                corners=(False, True, True, False),
-                fill=yellow_ink,
-            )
-        elif kind == "red":
-            draw.rounded_rectangle(
-                (left, top, right, bot),
-                radius=cap_radius,
-                corners=(False, True, True, False),
-                fill=sentinel_red,
-            )
+            _lcars_paint_lavender_block(pixels, left, top, right, bot, lavender_sentinel)
+        elif kind == "peach":
+            _lcars_paint_peach_block(pixels, left, top, right, bot, lavender_sentinel)
+        elif kind == "lilac":
+            _lcars_paint_lilac_block(pixels, left, top, right, bot, lavender_sentinel)
         blocks.append((left, top, right, bot, label))
         cursor_y += bh + block_gap
 
-    # --- Layer 4: black labels centred inside each block ---
-    # Antonio-bold-flavoured small label (we use the meta-bold chain so
-    # the seam stays small-screen-system-font friendly when Antonio
-    # isn't installed). Right-aligned inside the block's straight-edge
-    # section so the label hugs the right cap without crossing into the
-    # curvature where stippled blocks (coral, lavender) have non-uniform
-    # density that would muddy the readable contrast.
+    # ===========================================================
+    # Layer 3: convert the tangerine + lavender top-bar segments
+    # ===========================================================
+    # The top bar's two segments paint different sentinels (red for
+    # tangerine, ``lavender_sentinel`` for lavender). Run both
+    # post-passes over the top-bar y range — each is sentinel-gated, so
+    # tangerine pixels stay tangerine and lavender pixels stay lavender
+    # without explicit per-segment bookkeeping. The bottom bar (also
+    # painted in sentinel red) gets touched by the same tangerine pass
+    # since it's in the y range.
+    _lcars_post_pass_tangerine(pixels, 0, top_bar_y, width - 1, top_bar_y + bar_thickness - 1, sentinel_red)
+    _lcars_post_pass_tangerine(pixels, 0, bottom_bar_y1, width - 1, bottom_bar_y2, sentinel_red)
+    _lcars_paint_lavender_block(pixels, seg2_left, top_bar_y, seg2_right, top_bar_y + bar_thickness - 1, lavender_sentinel)
+    # Convert the elbows too (they painted sentinel red).
+    _lcars_post_pass_tangerine(pixels, 0, top_bar_y - elbow_radius, 2 * elbow_radius, top_elbow_cy, sentinel_red)
+    _lcars_post_pass_tangerine(pixels, 0, bottom_elbow_cy, 2 * elbow_radius, bottom_bar_y2, sentinel_red)
+
+    # ===========================================================
+    # Layer 4: black labels centred inside each block
+    # ===========================================================
     block_label_font = load_font(META_FONT_BOLD_CANDIDATES, 10)
     for left, top, right, bot, label in blocks:
         baseline_bbox = draw.textbbox((0, 0), label, font=block_label_font)
         label_w = baseline_bbox[2] - baseline_bbox[0]
         label_h = baseline_bbox[3] - baseline_bbox[1]
-        # Hug the right cap: position the label so its right edge sits
-        # cap_radius//2 px in from the block's right boundary.
+        # Right-align inside the straight section so the label hugs the
+        # right cap without crossing into the curved cap region where
+        # stippled-block density is non-uniform. Block widths now
+        # accommodate ~10-char labels at 10pt.
         label_x = right - cap_radius // 2 - label_w - baseline_bbox[0]
         label_y = top + (bot - top - label_h) // 2 - baseline_bbox[1]
         draw.text(
@@ -3977,26 +4039,48 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
             fill=label_ink_on_block,
         )
 
-    # --- Layer 5: large "LCARS" wordmark on the top bar ---
-    # Right-aligned inside the top horizontal bar's tangerine band. The
-    # bar runs y = top_bar_y .. top_bar_y + bar_thickness - 1 (= 36..53);
-    # picking ornament font at size ≈ bar_thickness keeps the wordmark
-    # filling the bar's height without bleeding into the body region.
-    # Antonio Bold is the theme's display face (per ``THEME_FONTS``),
-    # so the wordmark visually anchors to the body typography rather
-    # than reading as a system-sans afterthought. Painted in black for
-    # the classic Okudagram black-on-orange labelling contrast.
-    wordmark_font = load_font(theme_font_candidates("lcars", "ornament"), 18)
+    # ===========================================================
+    # Layer 5: large "LCARS" wordmark in the top bar
+    # ===========================================================
+    # Right-aligned inside the top bar's lavender segment for a
+    # tangerine-to-lavender → black-on-lavender colour transition.
+    # Sized to fill ~80% of the bar's height (≈ 18 pt against a 22 px
+    # bar). Antonio Bold (the theme's display face) anchors the
+    # wordmark to the body typography.
+    wordmark_font = load_font(theme_font_candidates("lcars", "ornament"), 26)
     wordmark_text = "LCARS"
     wordmark_bbox = draw.textbbox((0, 0), wordmark_text, font=wordmark_font)
     wordmark_w = wordmark_bbox[2] - wordmark_bbox[0]
     wordmark_h = wordmark_bbox[3] - wordmark_bbox[1]
-    wordmark_x = width - 14 - wordmark_w
+    wordmark_x = width - 16 - wordmark_w
     wordmark_y = top_bar_y + (bar_thickness - wordmark_h) // 2 - wordmark_bbox[1]
     draw.text(
         (wordmark_x, wordmark_y),
         wordmark_text,
         font=wordmark_font,
+        fill=label_ink_on_block,
+    )
+
+    # ===========================================================
+    # Layer 6: bottom-right "STARDATE" callout
+    # ===========================================================
+    # The reference wallpaper anchors a large secondary heading
+    # ("DATA NODE 188") at the bottom right of its bottom bar. We
+    # mirror the silhouette with a STARDATE label, painted in black
+    # over the tangerine bottom bar so the colour transition matches
+    # the top bar's black-on-orange. Use a smaller font (~12 pt) so the
+    # full string fits inside the bar's 22 px band without crowding.
+    stardate_font = load_font(theme_font_candidates("lcars", "ornament"), 14)
+    stardate_text = "STARDATE 47988.1"
+    sd_bbox = draw.textbbox((0, 0), stardate_text, font=stardate_font)
+    sd_w = sd_bbox[2] - sd_bbox[0]
+    sd_h = sd_bbox[3] - sd_bbox[1]
+    sd_x = width - 16 - sd_w
+    sd_y = bottom_bar_y1 + (bar_thickness - sd_h) // 2 - sd_bbox[1]
+    draw.text(
+        (sd_x, sd_y),
+        stardate_text,
+        font=stardate_font,
         fill=label_ink_on_block,
     )
 
