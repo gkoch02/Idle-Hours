@@ -830,13 +830,16 @@ class TestBauhausBorder:
         """Four corner shapes, each sitting at the canvas corner with a
         small edge margin. The centre of each shape is a reliable sample
         point: it lands inside the shape regardless of whether it's a
-        circle, square, or right-triangle."""
+        circle, square, or right-triangle. After Stage 3 the BL
+        triangle paints in YELLOW (was blue) so all three Bauhaus
+        primaries (red + blue + yellow) appear simultaneously on the
+        page alongside the black outer frame."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="bauhaus")
         # Corner shapes are 22px at a 6px canvas-edge margin; centre near
         # (17, 17) / (783, 17) / (17, 463) / (783, 463).
         assert img.getpixel((15, 15)) == rq.SPECTRA6["red"], "top-left should be red circle"
         assert img.getpixel((785, 15)) == rq.SPECTRA6["blue"], "top-right should be blue square"
-        assert img.getpixel((15, 465)) == rq.SPECTRA6["blue"], "bottom-left should be blue triangle"
+        assert img.getpixel((15, 465)) == rq.SPECTRA6["yellow"], "bottom-left should be yellow triangle"
         assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "bottom-right should be red circle"
 
     def test_bauhaus_outer_frame_is_painted_on_all_four_sides(self):

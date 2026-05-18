@@ -2113,6 +2113,39 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # the cool-palette gradient: blue body → cyan matched phrase
         # → sky-blue ornament highlights.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
+    elif theme == "risograph" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to violet/purple (R+B 1:1) — the AUTHENTIC
+        # riso double-pass overprint. Real risograph prints with red on
+        # one plate and blue on another physically create purple wherever
+        # the two ink passes overlap; the digital LitClock render
+        # synthesises the same effect via a 50/50 R+B stipple. Preserves
+        # the theme's defining "no-black-ink" invariant by construction
+        # (purple is red + blue, both already in the palette). Body red
+        # text stays solid; only the matched-phrase blue accent gets the
+        # overprint treatment.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=fill)
+    elif theme == "bauhaus" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to navy (B+K 1:1) for tighter contrast
+        # against the newly-yellow BL triangle corner accent. The TR
+        # blue square in the border stays solid blue (it paints via
+        # ``draw.rectangle`` outside this seam), so the poster keeps
+        # all three primaries visible: solid red circles, solid blue
+        # square, solid yellow triangle, and the navy matched phrase
+        # sits as a deeper variant of the blue accent within the
+        # body block.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme == "nightvision" and fill == SPECTRA6["yellow"]:
+        # Matched phrase shifts to lime (Y+G 5/8:3/8) — yellow-biased
+        # green that reads as the bright neon "tactical readout" glow
+        # of a real HUD warning, lifting the phrase off the flat
+        # Spectra-6 yellow that read as a solid alert flag. The
+        # luminance asymmetry rule applies here as it does to deco's
+        # tangerine: a 50/50 Y+G mix reads as washed-out olive
+        # because yellow dominates green, so we bias toward yellow
+        # to land on the brighter lime end of the gradient. Threshold
+        # 6/16 mirrors the tangerine recipe's red-biased ratio
+        # (dark=yellow, light=green, density=0.375).
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["green"], light_density=0.375)
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -2135,11 +2168,24 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     """Paint a Bauhaus-inspired geometric frame around the canvas margin.
 
     A thin outer rectangle plus four corner accents — circle, square,
-    triangle, circle — in the theme's three primaries (black body,
-    blue accent, red ornament). Referencing the classic Bauhaus
-    vocabulary of basic geometric forms in primary hues. Drawn after
-    the page_bg fill and before any text, so text always sits on top
-    of the border if the two were ever to overlap.
+    triangle, circle — in all FOUR Bauhaus primary inks: red (TL +
+    BR circles), blue (TR square), and yellow (BL triangle), with
+    the outer frame in black. The actual Bauhaus colour vocabulary
+    is red + blue + yellow as the three primaries plus black for
+    structure; the previous version pinned a blue triangle in the
+    BL corner where yellow more authentically completes the
+    poster-palette set. Referencing the classic Bauhaus vocabulary
+    of basic geometric forms in primary hues.
+
+    The yellow ink is hardcoded at this call site (same exception
+    ``draw_comic_corner_stripes`` and ``draw_marker_border`` make)
+    because the bauhaus ``THEMES`` dict only carries three accent
+    slots (text=black, accent=blue, ornament_dark=red) — extending
+    the THEMES schema just to unlock the fourth primary would
+    re-pin every cross-theme invariant test for a single border
+    glyph. The yellow gap colour does NOT come from ``colors`` —
+    the bauhaus theme has no yellow slot — so this is the one
+    border that paints in an ink the theme dict can't reach.
 
     The corner shapes sit tangent to the canvas edges and overlap the
     outer rectangle's corners, giving the "layered geometry" look of a
@@ -2153,6 +2199,7 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     frame_color = colors["text"]
     accent_color = colors["accent"]
     ornament_color = colors["ornament_dark"]
+    yellow_primary = SPECTRA6["yellow"]
 
     # Outer rectangle outline — Pillow's rectangle ``width`` kw takes care
     # of the thickness in a single draw call.
@@ -2176,16 +2223,19 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
          width - corner_margin, corner_margin + corner_size),
         fill=accent_color,
     )
-    # Bottom-left: blue filled triangle. Right-angle at the bottom-left
+    # Bottom-left: YELLOW filled triangle. Right-angle at the bottom-left
     # corner, hypotenuse sweeping up to the top-right of the bounding box,
-    # so the shape visually points inward toward the quote block.
+    # so the shape visually points inward toward the quote block. Yellow
+    # completes the canonical Bauhaus red / blue / yellow primary trio
+    # alongside the black outer frame — pre-Stage-3 this slot was a
+    # second blue shape, redundant with the TR square's accent ink.
     bl_left = corner_margin
     bl_top = height - corner_margin - corner_size
     bl_right = corner_margin + corner_size
     bl_bottom = height - corner_margin
     draw.polygon(
         [(bl_left, bl_bottom), (bl_right, bl_bottom), (bl_right, bl_top)],
-        fill=accent_color,
+        fill=yellow_primary,
     )
     # Bottom-right: red filled circle, mirroring the top-left and completing
     # the diagonal colour balance.
@@ -2203,6 +2253,17 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
     theme's text color, a slightly shifted duplicate in the accent color, plus
     crop / register marks and a few chunky side blocks that feel like a print
     test sheet. The center stays mostly clear so the quote remains legible.
+
+    The shifted-accent registration crosses at the four corners are painted
+    in an off-palette sentinel and then bbox-post-passed through a 3-way
+    Bayer partition into LAVENDER (red + blue + white at ~1/3 each — the
+    documented R+B+W 3-ink pastel). The lavender reads as the lighter
+    half of the overprint register: the canonical red crosses stay solid
+    (base ink), while the misregistered "overprint" passes show the
+    paler tone that real risograph print test sheets develop where two
+    plates wash together. Preserves the theme's no-black-ink invariant
+    by construction (lavender pulls only red, blue, white — never
+    black).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -2242,9 +2303,35 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
         (outer, height - outer),
         (width - outer, height - outer),
     ]
+    lavender_sentinel = (1, 1, 1)
     for cx, cy in marks:
         cross(cx, cy, base)
-        cross(cx + dx, cy + dy, accent)
+        cross(cx + dx, cy + dy, lavender_sentinel)
+
+    # 3-way Bayer post-pass on the sentinel crosses: cells 0-4 → red,
+    # cells 5-9 → blue, cells 10-15 → white (~1/3 each, the documented
+    # lavender R+B+W recipe). Bbox-scoped per cross.
+    pixels = image.load()
+    ink_red = SPECTRA6["red"]
+    ink_blue = SPECTRA6["blue"]
+    ink_white = SPECTRA6["white"]
+    for cx, cy in marks:
+        sx, sy = cx + dx, cy + dy
+        x0 = max(0, sx - 12)
+        y0 = max(0, sy - 12)
+        x1 = min(width - 1, sx + 12)
+        y1 = min(height - 1, sy + 12)
+        for py in range(y0, y1 + 1):
+            row = BAYER_4x4[py & 3]
+            for px in range(x0, x1 + 1):
+                if pixels[px, py] == lavender_sentinel:
+                    cell = row[px & 3]
+                    if cell < 5:
+                        pixels[px, py] = ink_red
+                    elif cell < 10:
+                        pixels[px, py] = ink_blue
+                    else:
+                        pixels[px, py] = ink_white
 
 
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
@@ -2986,6 +3073,28 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
             for x in range(image.width):
                 if row[x % 4] < threshold and pixels[x, y] == accent_color:
                     pixels[x, y] = light
+
+        # Cream-gradient post-pass on the rising-sun fan rays only.
+        # After the tangerine pass converts ~3/8 of every red pixel to
+        # yellow, the rays' remaining ~5/8 red pixels in the inner band
+        # (y ∈ [fan_cy-5, fan_cy], near where the rays converge at the
+        # accent dot) get flipped to white on the same (x+y)&1
+        # parity. Inner-band rays then read as ~3/8 yellow + 5/16
+        # white + 5/16 red — a warm cream that fades back into the
+        # 5/8 red + 3/8 yellow tangerine at the tips. Reads as a
+        # true sunburst with a bright central glow rather than a
+        # uniform tangerine fan. Bbox-scoped to the rays' natural
+        # footprint (x ∈ [fan_cx ± max_dx]) so the stepped-corner
+        # L-shapes elsewhere on the page stay full tangerine.
+        cream_band_top = max(0, fan_cy - 5)
+        cream_band_bot = min(image.height - 1, fan_cy)
+        cream_x_lo = max(0, fan_cx - ray_height)
+        cream_x_hi = min(image.width - 1, fan_cx + ray_height)
+        cream_light = SPECTRA6["white"]
+        for y in range(cream_band_top, cream_band_bot + 1):
+            for x in range(cream_x_lo, cream_x_hi + 1):
+                if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = cream_light
 
 
 def draw_glacier_border(image: Image.Image, colors: dict) -> None:
@@ -3916,20 +4025,46 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
             fill=ink,
         )
 
-    # Mid-edge filled marker dots. Yellow on the left, green on the
-    # right — the two ink colours that the corner-asterisk rotation
-    # leaves on the bottom row, lifted to mid-edge so they don't read
-    # as biased toward the bottom of the page.
+    # Mid-edge filled marker dots — upgraded from solid panel-ink fills
+    # to two of the documented synthesized-colour recipes, completing
+    # the marker theme's "every ink the panel can produce, plus the
+    # synthesized mixes" identity:
+    #
+    # * Left mid-edge: MINT (G+W 1:1) — a highlighter wash, the kind
+    #   of pale-green Stabilo / Sharpie highlighter that sits next to
+    #   the regular marker in a kid's pencil case
+    # * Right mid-edge: VIOLET (R+B 1:1) — the colour real markers
+    #   produce when a blue pass crosses a red one, the canonical
+    #   "second marker dragged over the first" effect
+    #
+    # Each dot is painted in a sentinel and then bbox-post-passed
+    # through a 50/50 checkerboard to its companion ink — the same
+    # paint-then-stipple pattern ``placard``'s thumbtacks /
+    # ``chalkboard``'s eraser smudges / ``atomic``'s starbursts use.
+    # The corner asterisks and perimeter dashes keep their solid-ink
+    # cycle so the five native panel colours still appear at full
+    # saturation; the synthesised mixes sit alongside as a deliberate
+    # "look how many inks this panel can reach" flourish.
     dot_radius = 7
     mid_dots = (
-        (inset + 2, height // 2, SPECTRA6["yellow"]),
-        (width - 1 - inset - 2, height // 2, SPECTRA6["green"]),
+        # (cx, cy, sentinel_dark, light_ink, label)
+        (inset + 2, height // 2, SPECTRA6["green"], SPECTRA6["white"], "mint highlighter"),
+        (width - 1 - inset - 2, height // 2, SPECTRA6["red"], SPECTRA6["blue"], "violet overlap"),
     )
-    for cx, cy, ink in mid_dots:
+    pixels = image.load()
+    for cx, cy, dark_ink, light_ink, _ in mid_dots:
         draw.ellipse(
             (cx - dot_radius, cy - dot_radius, cx + dot_radius, cy + dot_radius),
-            fill=ink,
+            fill=dark_ink,
         )
+        bx0 = max(0, cx - dot_radius)
+        by0 = max(0, cy - dot_radius)
+        bx1 = min(width - 1, cx + dot_radius)
+        by1 = min(height - 1, cy + dot_radius)
+        for py in range(by0, by1 + 1):
+            for px in range(bx0, bx1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == dark_ink:
+                    pixels[px, py] = light_ink
 
 
 # Deterministic foxing-speckle layout for ``draw_saloon_border``.
@@ -4377,6 +4512,24 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     # Faint scanlines contained inside the page, leaving the bracket gaps intact.
     for y in range(margin + 18, bottom_y - 6, 14):
         draw.line((margin + 30, y, right_x - 30, y), fill=subtle, width=1)
+
+    # Sage post-pass on the scanlines only: flip ~25% of the green
+    # scanline pixels to white per ``BAYER_4x4`` threshold 4 (cells
+    # 0-3, 4/16 of pixels). Eye averages 75% green + 25% white at
+    # panel viewing distance into pale sage — the documented W+G
+    # 3:1 (inverted mint) recipe — so the scanlines read as ambient
+    # ground glow rather than the crisp bright-green CRT lines they
+    # were before, without crowding the body text in the central
+    # region. Limited to the scanline x range so the bracket arms
+    # at the corners (x < margin + 30) keep their solid green.
+    if subtle == SPECTRA6["green"]:
+        pixels = image.load()
+        sage_light = SPECTRA6["white"]
+        for scan_y in range(margin + 18, bottom_y - 6, 14):
+            row = BAYER_4x4[scan_y & 3]
+            for sx in range(margin + 30, right_x - 30):
+                if row[sx & 3] < 4 and pixels[sx, scan_y] == subtle:
+                    pixels[sx, scan_y] = sage_light
 
     # Mid-edge targeting ticks that float inside the canvas rather than joining the frame.
     tick = 12
