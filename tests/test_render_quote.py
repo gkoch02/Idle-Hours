@@ -830,13 +830,16 @@ class TestBauhausBorder:
         """Four corner shapes, each sitting at the canvas corner with a
         small edge margin. The centre of each shape is a reliable sample
         point: it lands inside the shape regardless of whether it's a
-        circle, square, or right-triangle."""
+        circle, square, or right-triangle. After Stage 3 the BL
+        triangle paints in YELLOW (was blue) so all three Bauhaus
+        primaries (red + blue + yellow) appear simultaneously on the
+        page alongside the black outer frame."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="bauhaus")
         # Corner shapes are 22px at a 6px canvas-edge margin; centre near
         # (17, 17) / (783, 17) / (17, 463) / (783, 463).
         assert img.getpixel((15, 15)) == rq.SPECTRA6["red"], "top-left should be red circle"
         assert img.getpixel((785, 15)) == rq.SPECTRA6["blue"], "top-right should be blue square"
-        assert img.getpixel((15, 465)) == rq.SPECTRA6["blue"], "bottom-left should be blue triangle"
+        assert img.getpixel((15, 465)) == rq.SPECTRA6["yellow"], "bottom-left should be yellow triangle"
         assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "bottom-right should be red circle"
 
     def test_bauhaus_outer_frame_is_painted_on_all_four_sides(self):
@@ -922,13 +925,42 @@ class TestIlluminatedBorder:
         # White gap between the two — the defining "doubled" effect.
         assert img.getpixel((400, 18)) == rq.SPECTRA6["white"], "rules merged into single band"
 
-    def test_illuminated_corner_jewels_paint_accent_blue(self):
-        """Filled blue circles of radius 5 centred on each outer-rule corner."""
+    def test_illuminated_corner_jewels_paint_plum_three_way_bayer(self):
+        """Plum cabochons at the four outer-rule corners — radius 5
+        filled circles painted in a sentinel ink and then bbox-post-
+        passed through a 3-way 4×4 Bayer partition (cells 0-4 → red,
+        cells 5-9 → blue, cells 10-15 → black; ~1/3 each, the
+        documented R+B+K plum recipe). Pin the centre pixel of each
+        jewel against the deterministic Bayer assignment so a
+        regression that dropped the post-pass would surface; the
+        centre's exact ink depends on the `BAYER_4x4[y%4][x%4]` value
+        at that coordinate.
+
+        Centre pixels:
+          (14, 14)   → BAYER[2][2]=1  → red
+          (785, 14)  → BAYER[2][1]=11 → black
+          (14, 465)  → BAYER[1][2]=14 → black
+          (785, 465) → BAYER[1][1]=4  → red
+
+        At least one corner-region sample lands on a cell in the blue
+        partition (cells 5-9) — verify the post-pass painted blue
+        somewhere too so all three plum inks are present."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
-        assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], "TL jewel centre missing"
-        assert img.getpixel((785, 14)) == rq.SPECTRA6["blue"], "TR jewel centre missing"
-        assert img.getpixel((14, 465)) == rq.SPECTRA6["blue"], "BL jewel centre missing"
-        assert img.getpixel((785, 465)) == rq.SPECTRA6["blue"], "BR jewel centre missing"
+        assert img.getpixel((14, 14)) == rq.SPECTRA6["red"], "TL jewel centre missing"
+        assert img.getpixel((785, 14)) == rq.SPECTRA6["black"], "TR jewel centre missing"
+        assert img.getpixel((14, 465)) == rq.SPECTRA6["black"], "BL jewel centre missing"
+        assert img.getpixel((785, 465)) == rq.SPECTRA6["red"], "BR jewel centre missing"
+        # Probe the TL jewel's bbox for at least one painted blue pixel
+        # to confirm the 3-way partition's blue arm fires.
+        found_blue = False
+        for py in range(9, 20):
+            for px in range(9, 20):
+                if img.getpixel((px, py)) == rq.SPECTRA6["blue"]:
+                    found_blue = True
+                    break
+            if found_blue:
+                break
+        assert found_blue, "TL jewel bbox produced no blue pixels — 3-way Bayer regressed"
 
     def test_illuminated_border_paints_all_four_sides(self):
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="illuminated")
@@ -952,7 +984,14 @@ class TestIlluminatedBorder:
     def test_illuminated_border_appears_in_debug_and_card_modes_too(self):
         for mode in ("production", "debug", "card"):
             img = rq.render("03:00", self._row(), 800, 480, mode=mode, theme="illuminated")
-            assert img.getpixel((14, 14)) == rq.SPECTRA6["blue"], f"illuminated mode={mode} missing TL jewel"
+            # (14, 14) lands on the TL jewel's centre — with the 3-way
+            # plum post-pass the centre is the red arm of the partition
+            # at this coordinate (BAYER[2][2]=1 < 5). Different from
+            # both the body's rubricated red text (which doesn't reach
+            # this corner) and the canvas page_bg, so a regression that
+            # dropped the border in any render mode would still fail
+            # here.
+            assert img.getpixel((14, 14)) == rq.SPECTRA6["red"], f"illuminated mode={mode} missing TL jewel"
 
     def test_illuminated_border_uses_theme_colours_not_hardcoded_rgb(self):
         image = Image.new("RGB", (800, 480), color=(255, 255, 255))
@@ -1238,12 +1277,16 @@ class TestBlueprintBorder:
 
     def test_blueprint_grid_is_theme_gated(self):
         """No other theme paints a non-page_bg pixel at the blueprint
-        grid-intersection coordinate (36, 56). Newsprint is excluded because
-        its Layer 0 halftone intentionally paints sparse black flecks across
-        the white ground, same as alchemy."""
+        grid-intersection coordinate (36, 56). Newsprint, alchemy, and
+        illuminated are all excluded because their Layer 0 grounds
+        intentionally paint sparse Bayer flecks across `page_bg`
+        (black halftone for newsprint, parchment yellow flecks for
+        alchemy, cream yellow flecks for illuminated). Dispatch is
+        excluded for the same reason — its Layer 0 1-in-8 cream wash
+        also flips white-ground pixels to yellow at this coordinate."""
         row = self._row()
         for theme in ("default", "dark", "scholar", "nightvision",
-                      "illuminated", "bauhaus", "risograph", "comic"):
+                      "bauhaus", "risograph", "comic"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((36, 56)) == expected_bg, (
@@ -1315,13 +1358,14 @@ class TestComicCornerStripes:
         """No other theme paints a non-page_bg pixel at the comic stripe
         sample point (650, 470) — well inside the bottom-right triangle
         and outside every other theme's corner decorations / outer rules.
-        A regression that registered the painter against the wrong theme
-        key would surface here. Newsprint is excluded because its Layer 0
-        halftone intentionally paints sparse black flecks across the
-        white ground, same as alchemy."""
+        Newsprint, alchemy, and illuminated are all excluded because
+        their Layer 0 grounds intentionally paint sparse Bayer flecks
+        across `page_bg` (black halftone / parchment-yellow flecks /
+        cream-yellow flecks). Dispatch is excluded for the same reason
+        — its Layer 0 cream wash also affects this coordinate."""
         row = self._row()
         for theme in ("default", "dark", "scholar", "nightvision",
-                      "blueprint", "illuminated", "bauhaus", "risograph"):
+                      "blueprint", "bauhaus", "risograph"):
             img = rq.render("03:00", row, 800, 480, mode="production", theme=theme)
             expected_bg = rq.THEMES[theme]["page_bg"]
             assert img.getpixel((650, 470)) == expected_bg, (
@@ -1435,27 +1479,40 @@ class TestGrimoireBorder:
 
     def test_grimoire_sun_sigil_paints_at_top_midpoint(self):
         """☉ — outline circle + filled centre dot at (400, 14). The
-        centre pixel is on the filled dot so it must be red regardless
-        of the outline radius."""
+        Sun's R+Y 5/8:3/8 tangerine post-pass flips Bayer-cell pixels
+        below threshold 6 to yellow; `BAYER_4x4[14%4][400%4] = 3 < 6`,
+        so the centre pixel lands in the flipped half — yellow rather
+        than the pre-Stage-2 solid red. The sigil's centre dot is still
+        painted (just in the recipe's lighter ink at this parity), so
+        a regression that dropped the sigil entirely would still fail
+        here."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((400, 14)) == rq.SPECTRA6["red"], "Sun centre dot missing"
+        assert img.getpixel((400, 14)) == rq.SPECTRA6["yellow"], "Sun centre dot missing"
 
     def test_grimoire_moon_sigil_paints_at_bottom_midpoint(self):
         """☽ — crescent carved from a filled disk by overdrawing with
-        a page-bg disk shifted +4 px in x. The crescent's leftmost
-        sliver (the visible red ring on the carved-out side) sits at
-        x in [bcx - r, bcx - r + 1]; sample (394, 465) — well inside
-        the visible crescent for r=7 / bcx=400."""
+        a page-bg disk shifted +4 px in x. The Moon now paints its
+        outer disk in BLUE as a sentinel for the B+W 1:1 sky recipe:
+        the post-pass flips half of the blue pixels to white per
+        `(x+y)&1` parity. Sample (394, 465) — well inside the visible
+        crescent for r=7 / bcx=400 — has `(394+465)&1 = 1`, the
+        unflipped half, so it stays solid blue (the disc colour) and
+        a regression that dropped the sigil entirely would still
+        fail here."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((394, 465)) == rq.SPECTRA6["red"], "Moon crescent missing"
+        assert img.getpixel((394, 465)) == rq.SPECTRA6["blue"], "Moon crescent missing"
 
     def test_grimoire_mars_sigil_paints_at_left_midpoint(self):
         """♂ — circle offset down-left + diagonal NE shaft + perpendicular
-        V-barb. Sample the arrow tip at (22, 232) — outside the circle
-        body but on the arrowhead, so a regression that dropped the
-        arrow would surface here."""
+        V-barb. Mars's R+K 1:1 maroon post-pass flips half of the red
+        pixels to black per `(x+y)&1` parity. Sample the arrow tip at
+        (22, 232): `(22+232)&1 = 0`, the flipped half, so it lands as
+        black rather than the pre-Stage-2 solid red. A regression that
+        dropped the arrow would still fail (the bbox post-pass only
+        flips pixels that were originally painted red — an unpainted
+        page_bg pixel would stay as page_bg)."""
         img = rq.render("03:00", self._row(), 800, 480, mode="production", theme="grimoire")
-        assert img.getpixel((22, 232)) == rq.SPECTRA6["red"], "Mars arrow tip missing"
+        assert img.getpixel((22, 232)) == rq.SPECTRA6["black"], "Mars arrow tip missing"
 
     def test_grimoire_venus_sigil_paints_at_right_midpoint(self):
         """♀ — circle offset up + descending shaft + horizontal crossbar.
@@ -1632,15 +1689,21 @@ class TestGrimoireBorder:
 
     def test_grimoire_render_packs_matched_phrase_tighter_than_loose_baseline(self, monkeypatch):
         """End-to-end pin of the bold-internal-spacing contract.
-        Render the same row twice through grimoire's pipeline — once
-        with the real ``_THEMES_RIGID_MATCH_SPACING`` (containing
-        grimoire), once with that set monkey-patched empty so the
-        loose-justification path runs. Every other variable is
-        identical: same fonts, same layout, same line breaks. The
-        rigid render must pack the bold accent-coloured pixels into a
-        narrower row of x-positions than the loose render — i.e. the
-        rightmost red pixel on the matched-phrase line moves *left*
-        once bold-internal spaces stop absorbing slack."""
+        The test was originally driven through ``grimoire`` because the
+        old candlelit-rubric matched phrase was the most red-dominant
+        of the rigid-spacing themes; now that grimoire's matched
+        phrase paints solid white (per the readability fix in
+        ``_draw_text_body``), the matched-phrase line is no longer
+        chromatically distinguishable from the body in grimoire, so we
+        drive the test through its sister blackletter theme ``gothic``
+        instead. ``gothic`` is also a member of
+        ``_THEMES_RIGID_MATCH_SPACING`` and still paints its matched
+        phrase as a candlelit-rubric red dither, so the red-pixel
+        sweep below still identifies the matched-phrase line. The
+        invariant under test (rigid bold-internal spacing packs the
+        bold accent run tighter than loose justification) is
+        theme-agnostic; this test happens to live in TestGrimoireBorder
+        for adjacency reasons rather than because it's grimoire-only."""
         row = {
             "display_quote": (
                 "At a quarter past two the breeze dropped entirely, "
@@ -1655,21 +1718,20 @@ class TestGrimoireBorder:
             "quality_score": 80,
             "used_fallback": False,
         }
-        rigid = rq.render("02:15", row, 800, 480, mode="production", theme="grimoire")
+        rigid = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
 
         monkeypatch.setattr(rq, "_THEMES_RIGID_MATCH_SPACING", frozenset())
-        loose = rq.render("02:15", row, 800, 480, mode="production", theme="grimoire")
+        loose = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
 
         red = rq.SPECTRA6["red"]
 
         def matched_phrase_span(img) -> tuple[int, int]:
             """Return (leftmost, rightmost) x-coordinate of the red
             band that holds the matched phrase. We skip the canvas
-            border (outer red rectangle at y in {14, 465}) and the
-            mid-edge sigils (centred at x=400 with y around 14 / 465 /
-            240) by sampling only the dense quote-body region
-            (y in [80, 380]) and picking the row with the most red
-            pixels — the matched-phrase line."""
+            border (gothic's outer red rectangle at y=14 and quatrefoil
+            lobes at the corners) by sampling only the dense quote-body
+            region (y in [80, 380]) and picking the row with the most
+            red pixels — the matched-phrase line."""
             best_row = (0, 0, 0)  # (count, left, right)
             for y in range(80, 380):
                 red_xs = [x for x in range(rq.SIDE_MARGIN, 800 - rq.SIDE_MARGIN) if img.getpixel((x, y)) == red]

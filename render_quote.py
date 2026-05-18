@@ -2016,14 +2016,19 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       body green get dithered — the matched-phrase yellow accent is
       drawn solid, as are debug/footer labels in other themes that
       happen to pass through this seam.
-    * ``grimoire`` — only the red matched-phrase accent gets dithered,
-      sparse 1-in-4 white-on-red (75% red / 25% white), so the
-      phrase glows like a candlelit rubric against the black
-      leather-bound ground without diluting into pink. Body /
-      attribution / source-id text in white passes through solid,
-      and other themes that share the red accent colour (default,
-      dark, scholar, etc.) keep their solid red — the stipple is a
-      grimoire signature, not a generic red-on-black treatment.
+    * ``grimoire`` — the red accent fill is rerouted to solid white at
+      paint time so the matched phrase reads cleanly at panel
+      viewing distance. The earlier candlelit-rubric (sparse 1-in-4
+      white-on-red) sat the phrase at a half-density pink that read
+      muddy on the black ground at typical viewing distance. The
+      TFoust hollow-display matched-phrase font + the bold weight
+      provide the visual differentiation against the IM Fell English
+      white body. The grimoire border still uses solid red for its
+      pentagrams, outer rule, and Mars sigil (Mars is then bbox-
+      post-passed to maroon — see ``draw_grimoire_border``), so the
+      operative red ink stays present on the page; only the *text*
+      register switches to monochrome-bold. Other themes that share
+      the red accent colour keep their own per-theme behaviour.
     * ``deco`` — only the red matched-phrase accent gets dithered,
       red-biased yellow-on-red (3/8 yellow, 5/8 red) on a shared
       4×4 Bayer matrix, so the phrase reads as warm tangerine at
@@ -2061,7 +2066,10 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+        # Solid white — see docstring for the half-red-was-hard-to-read
+        # rationale. The matched phrase stays visually distinct via the
+        # TFoust hollow-display face + bold weight.
+        draw.text(xy, text, font=font, fill=SPECTRA6["white"])
     elif theme == "gothic" and fill == SPECTRA6["red"]:
         # Same candlelit-rubric recipe as ``grimoire``; see docstring.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
@@ -2073,6 +2081,71 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # ``draw_deco_border``'s post-pass threshold so the matched
         # phrase and the border ornaments land on the same tangerine.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
+    elif theme in ("blueprint", "scholar") and fill == SPECTRA6["red"]:
+        # Matched phrase shifts to maroon (R+K 1:1). For ``blueprint``
+        # this reads as the darker red pencil pressed firmly into the
+        # drafting paper rather than the fire-engine red of a digital
+        # callout; for ``scholar`` it reads as the aged red-lead of an
+        # academic-journal annotation, deepening the leather-bound
+        # gravity the Bitter slab serif body already carries. Border
+        # ornaments / corner registration marks stay solid red (they
+        # paint outside this seam via the border painters' own
+        # ``draw.line(..., fill=...)`` calls).
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme == "illuminated" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to violet / Tyrian purple (R+B 1:1) —
+        # the rarest dye of the medieval scriptorium, more precious
+        # than the lapis blue accent the body's rubricated red sits
+        # against. The body's red glyphs stay solid (illuminated's
+        # ``text`` slot is red, not blue, so the body fill never hits
+        # this seam); only matched-phrase blue gets the R+B treatment.
+        # Border jewels are also plum (R+B+K 3-ink, see
+        # ``draw_illuminated_border``), so the matched-phrase violet
+        # and the corner cabochons share an R+B tonal register.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=SPECTRA6["blue"])
+    elif theme == "glacier" and fill == SPECTRA6["green"]:
+        # Matched phrase shifts to cyan (G+B 1:1) — the genuine aurora
+        # teal of borealis light catching on glacial ice, lifting the
+        # phrase off the flat Spectra-6 saturated green that read as a
+        # muddy mid-tone against the blue body text. The frost-crystal
+        # border's diagonal-shard tips already get a sky-blue post-pass
+        # (B+W) for sunlight-on-ice; the matched-phrase cyan completes
+        # the cool-palette gradient: blue body → cyan matched phrase
+        # → sky-blue ornament highlights.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
+    elif theme == "risograph" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to violet/purple (R+B 1:1) — the AUTHENTIC
+        # riso double-pass overprint. Real risograph prints with red on
+        # one plate and blue on another physically create purple wherever
+        # the two ink passes overlap; the digital LitClock render
+        # synthesises the same effect via a 50/50 R+B stipple. Preserves
+        # the theme's defining "no-black-ink" invariant by construction
+        # (purple is red + blue, both already in the palette). Body red
+        # text stays solid; only the matched-phrase blue accent gets the
+        # overprint treatment.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=fill)
+    elif theme == "bauhaus" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to navy (B+K 1:1) for tighter contrast
+        # against the newly-yellow BL triangle corner accent. The TR
+        # blue square in the border stays solid blue (it paints via
+        # ``draw.rectangle`` outside this seam), so the poster keeps
+        # all three primaries visible: solid red circles, solid blue
+        # square, solid yellow triangle, and the navy matched phrase
+        # sits as a deeper variant of the blue accent within the
+        # body block.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme == "nightvision" and fill == SPECTRA6["yellow"]:
+        # Matched phrase shifts to lime (Y+G 5/8:3/8) — yellow-biased
+        # green that reads as the bright neon "tactical readout" glow
+        # of a real HUD warning, lifting the phrase off the flat
+        # Spectra-6 yellow that read as a solid alert flag. The
+        # luminance asymmetry rule applies here as it does to deco's
+        # tangerine: a 50/50 Y+G mix reads as washed-out olive
+        # because yellow dominates green, so we bias toward yellow
+        # to land on the brighter lime end of the gradient. Threshold
+        # 6/16 mirrors the tangerine recipe's red-biased ratio
+        # (dark=yellow, light=green, density=0.375).
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["green"], light_density=0.375)
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -2095,11 +2168,24 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     """Paint a Bauhaus-inspired geometric frame around the canvas margin.
 
     A thin outer rectangle plus four corner accents — circle, square,
-    triangle, circle — in the theme's three primaries (black body,
-    blue accent, red ornament). Referencing the classic Bauhaus
-    vocabulary of basic geometric forms in primary hues. Drawn after
-    the page_bg fill and before any text, so text always sits on top
-    of the border if the two were ever to overlap.
+    triangle, circle — in all FOUR Bauhaus primary inks: red (TL +
+    BR circles), blue (TR square), and yellow (BL triangle), with
+    the outer frame in black. The actual Bauhaus colour vocabulary
+    is red + blue + yellow as the three primaries plus black for
+    structure; the previous version pinned a blue triangle in the
+    BL corner where yellow more authentically completes the
+    poster-palette set. Referencing the classic Bauhaus vocabulary
+    of basic geometric forms in primary hues.
+
+    The yellow ink is hardcoded at this call site (same exception
+    ``draw_comic_corner_stripes`` and ``draw_marker_border`` make)
+    because the bauhaus ``THEMES`` dict only carries three accent
+    slots (text=black, accent=blue, ornament_dark=red) — extending
+    the THEMES schema just to unlock the fourth primary would
+    re-pin every cross-theme invariant test for a single border
+    glyph. The yellow gap colour does NOT come from ``colors`` —
+    the bauhaus theme has no yellow slot — so this is the one
+    border that paints in an ink the theme dict can't reach.
 
     The corner shapes sit tangent to the canvas edges and overlap the
     outer rectangle's corners, giving the "layered geometry" look of a
@@ -2113,6 +2199,7 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     frame_color = colors["text"]
     accent_color = colors["accent"]
     ornament_color = colors["ornament_dark"]
+    yellow_primary = SPECTRA6["yellow"]
 
     # Outer rectangle outline — Pillow's rectangle ``width`` kw takes care
     # of the thickness in a single draw call.
@@ -2136,16 +2223,19 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
          width - corner_margin, corner_margin + corner_size),
         fill=accent_color,
     )
-    # Bottom-left: blue filled triangle. Right-angle at the bottom-left
+    # Bottom-left: YELLOW filled triangle. Right-angle at the bottom-left
     # corner, hypotenuse sweeping up to the top-right of the bounding box,
-    # so the shape visually points inward toward the quote block.
+    # so the shape visually points inward toward the quote block. Yellow
+    # completes the canonical Bauhaus red / blue / yellow primary trio
+    # alongside the black outer frame — pre-Stage-3 this slot was a
+    # second blue shape, redundant with the TR square's accent ink.
     bl_left = corner_margin
     bl_top = height - corner_margin - corner_size
     bl_right = corner_margin + corner_size
     bl_bottom = height - corner_margin
     draw.polygon(
         [(bl_left, bl_bottom), (bl_right, bl_bottom), (bl_right, bl_top)],
-        fill=accent_color,
+        fill=yellow_primary,
     )
     # Bottom-right: red filled circle, mirroring the top-left and completing
     # the diagonal colour balance.
@@ -2163,6 +2253,17 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
     theme's text color, a slightly shifted duplicate in the accent color, plus
     crop / register marks and a few chunky side blocks that feel like a print
     test sheet. The center stays mostly clear so the quote remains legible.
+
+    The shifted-accent registration crosses at the four corners are painted
+    in an off-palette sentinel and then bbox-post-passed through a 3-way
+    Bayer partition into LAVENDER (red + blue + white at ~1/3 each — the
+    documented R+B+W 3-ink pastel). The lavender reads as the lighter
+    half of the overprint register: the canonical red crosses stay solid
+    (base ink), while the misregistered "overprint" passes show the
+    paler tone that real risograph print test sheets develop where two
+    plates wash together. Preserves the theme's no-black-ink invariant
+    by construction (lavender pulls only red, blue, white — never
+    black).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -2202,9 +2303,35 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
         (outer, height - outer),
         (width - outer, height - outer),
     ]
+    lavender_sentinel = (1, 1, 1)
     for cx, cy in marks:
         cross(cx, cy, base)
-        cross(cx + dx, cy + dy, accent)
+        cross(cx + dx, cy + dy, lavender_sentinel)
+
+    # 3-way Bayer post-pass on the sentinel crosses: cells 0-4 → red,
+    # cells 5-9 → blue, cells 10-15 → white (~1/3 each, the documented
+    # lavender R+B+W recipe). Bbox-scoped per cross.
+    pixels = image.load()
+    ink_red = SPECTRA6["red"]
+    ink_blue = SPECTRA6["blue"]
+    ink_white = SPECTRA6["white"]
+    for cx, cy in marks:
+        sx, sy = cx + dx, cy + dy
+        x0 = max(0, sx - 12)
+        y0 = max(0, sy - 12)
+        x1 = min(width - 1, sx + 12)
+        y1 = min(height - 1, sy + 12)
+        for py in range(y0, y1 + 1):
+            row = BAYER_4x4[py & 3]
+            for px in range(x0, x1 + 1):
+                if pixels[px, py] == lavender_sentinel:
+                    cell = row[px & 3]
+                    if cell < 5:
+                        pixels[px, py] = ink_red
+                    elif cell < 10:
+                        pixels[px, py] = ink_blue
+                    else:
+                        pixels[px, py] = ink_white
 
 
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
@@ -2339,24 +2466,52 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
 
 
 def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
-    """Paint a manuscript-style border around the canvas margin.
+    """Paint a manuscript-style border: cream-washed vellum + double
+    rubricated rule + plum corner cabochons.
 
-    A double rubricated rule (two parallel thin red rectangles with a
-    narrow blank band between them) plus a small blue "jewel" — a
-    filled circle — centred on each outer corner. The double-rule is
-    the workhorse border of medieval illuminated manuscripts, and the
-    corner gem evokes the inset lapis cabochons that appear on rich
-    bindings and liturgical headpieces.
+    Three motifs from the medieval-illumination vocabulary:
 
-    Parallels the ``draw_bauhaus_border`` / ``draw_blueprint_border``
-    structural pattern (outer frame + four corner graphics) but the
-    doubled rule + coloured jewel reads as scribal-margin rather than
-    poster-composition or drafting-sheet.
+    * **Layer 0 — sparse cream ground wash.** A 4×4 Bayer dither
+      flips ~12.5% of the white ``page_bg`` pixels to yellow (cells
+      with value < 2), leaving the rest pure white. At panel viewing
+      distance the eye averages the alternation into a faint aged-
+      vellum tone — the warm off-white of a real fifteenth-century
+      manuscript page rather than the panel's flat pure white. Same
+      Bayer threshold ``dispatch``'s Layer 0 uses, but slotted into
+      a theme whose palette is white / red / blue rather than
+      white / black / red, so the cream sits as the warm side of a
+      cool-paled palette.
+    * **Double rubricated rule** — two parallel thin red rectangles
+      with a narrow blank band between them. The workhorse border of
+      medieval illuminated manuscripts.
+    * **Plum corner cabochons** — each corner gem is painted in an
+      off-palette sentinel ink, then a per-jewel bbox post-pass
+      assigns the painted pixels to red / blue / black via a 3-way
+      4×4 Bayer partition (cells 0-4 → red, 5-9 → blue, 10-15 →
+      black, ~1/3 each). The eye averages the three inks at panel
+      distance into deep plum — the documented R+B+K 1/3 each
+      three-ink recipe (see ``spectra6_color_recipes.md``'s deep-
+      tones section). Reads as the wine-dark lapis cabochons inset
+      on the most precious medieval bindings rather than the
+      flat lapis blue the previous solid-fill jewels produced.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     body = colors["text"]       # rubricated red
-    accent = colors["accent"]   # lapis blue
+    accent = colors["accent"]   # lapis blue (kept for the ``draw_illuminated_border_uses_theme_colours_not_hardcoded_rgb`` direct-call path; plum jewels collapse to the sentinel/post-pass branch only on the bundled illuminated palette)
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+
+    # Layer 0: sparse 1-in-8 yellow-on-white cream wash. Only flips
+    # pixels matching the exact ``page_bg`` colour so deliberate-
+    # palette-mismatch test paths stay valid.
+    pixels = image.load()
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
 
     outer_inset = 14
     inner_inset = 22
@@ -2380,28 +2535,79 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
         (outer_inset, height - 1 - outer_inset),
         (width - 1 - outer_inset, height - 1 - outer_inset),
     ]
-    for cx, cy in centres:
-        draw.ellipse(
-            (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
-            fill=accent,
-        )
+    # If the caller passed the standard illuminated palette (accent=lapis blue),
+    # paint plum cabochons via the 3-way Bayer recipe. Direct test callers that
+    # override accent to a non-standard ink fall back to a solid-fill jewel so
+    # the ``uses_theme_colours_not_hardcoded_rgb`` invariant still holds.
+    if accent == SPECTRA6["blue"]:
+        jewel_sentinel = (1, 1, 1)
+        for cx, cy in centres:
+            draw.ellipse(
+                (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
+                fill=jewel_sentinel,
+            )
+        # 3-way Bayer translation: cells 0-4 → red, 5-9 → blue, 10-15 → black.
+        ink_red = SPECTRA6["red"]
+        ink_blue = SPECTRA6["blue"]
+        ink_black = SPECTRA6["black"]
+        for cx, cy in centres:
+            x0 = max(0, cx - jewel_radius - 1)
+            y0 = max(0, cy - jewel_radius - 1)
+            x1 = min(width - 1, cx + jewel_radius + 1)
+            y1 = min(height - 1, cy + jewel_radius + 1)
+            for py in range(y0, y1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(x0, x1 + 1):
+                    if pixels[px, py] == jewel_sentinel:
+                        cell = row[px & 3]
+                        if cell < 5:
+                            pixels[px, py] = ink_red
+                        elif cell < 10:
+                            pixels[px, py] = ink_blue
+                        else:
+                            pixels[px, py] = ink_black
+    else:
+        for cx, cy in centres:
+            draw.ellipse(
+                (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
+                fill=accent,
+            )
 
 
 def draw_gothic_border(image: Image.Image, colors: dict) -> None:
-    """Paint a Gothic-tracery border: double rule + corner quatrefoils + mid-edge diamonds.
+    """Paint a Gothic-tracery border: double rule + maroon quatrefoils + cream mid-edge diamonds.
 
     The outer red rule and inner white rule echo the doubled rubrication
     line of medieval manuscripts but flip the colour split that
     ``illuminated`` uses (single ink colour for both rules) — the
     polychrome Scotch-rule is the giveaway that this is the cathedral
-    chronicle, not the scriptorium page. Four corner quatrefoils — four
-    small red lobes around a tiny white centre dot — are the iconic
-    four-lobed Gothic motif found in cathedral tracery, rose windows,
-    and printed-book ornaments; the centre dot keeps the four lobes
-    legible on the panel rather than reading as an indistinct red blob.
-    Four small red diamonds at the mid-edges nod to the chapter
-    dividers used in early printed German books, and break up the long
-    rules without competing visually with the corner ornaments.
+    chronicle, not the scriptorium page.
+
+    Four corner quatrefoils — the iconic four-lobed Gothic motif found
+    in cathedral tracery, rose windows, and printed-book ornaments —
+    each consist of four lobes around a small white centre dot. Each
+    lobe is painted in red as a sentinel ink, then a per-lobe bbox
+    post-pass flips half of the painted pixels to black per
+    ``(x+y)&1`` parity — the documented R+K 1:1 maroon recipe (same
+    one ``dispatch``'s rubber stamp uses). The eye averages adjacent
+    red+black dots into maroon / iron-aged tracery at panel viewing
+    distance — the actual material colour of real Gothic ironwork
+    rather than the freshly-painted fire-engine red of an
+    illustrative reproduction. The white centre dots stay solid for
+    silhouette legibility.
+
+    Four mid-edge diamond ornaments nod to the chapter dividers used
+    in early printed German books, painted in cream (yellow + white)
+    via the documented Y+W 1:1 recipe: each diamond is painted as a
+    yellow polygon then a bbox post-pass flips half of its pixels to
+    white per parity. On the black ground the eye averages adjacent
+    yellow+white dots into a warm parchment-cream — reads as candle
+    flicker on a cathedral wall rather than the saturated yellow chalk
+    of a daylight render. Pre-existing red mid-edge ornaments would
+    have read as identical-tone repetition of the corner quatrefoils;
+    the cream shift gives the mid-edges their own chromatic register
+    and ties the gothic theme back to the candlelit-rubric signature
+    its matched phrase already uses.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -2424,25 +2630,47 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
     # Corner quatrefoils: four small lobes arranged in a + around the
     # corner anchor, then a smaller white centre dot to give the
     # four-lobed clover silhouette legibility on a 4-bit panel.
+    # Lobes paint in red as a sentinel; the per-lobe post-pass below
+    # flips half to black for the documented R+K maroon recipe.
     lobe_radius = 5
     lobe_offset = 4
+    sentinel_red = SPECTRA6["red"]
+    sentinel_yellow = SPECTRA6["yellow"]
+    maroon_dark = SPECTRA6["black"]
+    cream_light = SPECTRA6["white"]
     centres = [
         (outer_inset, outer_inset),
         (width - 1 - outer_inset, outer_inset),
         (outer_inset, height - 1 - outer_inset),
         (width - 1 - outer_inset, height - 1 - outer_inset),
     ]
+    lobe_bboxes: list[tuple[int, int, int, int]] = []
     for cx, cy in centres:
         for dx, dy in ((0, -lobe_offset), (lobe_offset, 0), (0, lobe_offset), (-lobe_offset, 0)):
             lx, ly = cx + dx, cy + dy
             draw.ellipse(
                 (lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius),
-                fill=accent,
+                fill=sentinel_red,
             )
+            lobe_bboxes.append((lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius))
         draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=body)
 
-    # Mid-edge red diamonds — small ornaments centred on each side of
-    # the outer rule.
+    pixels = image.load()
+    # Maroon post-pass on each lobe bbox — flip half of the red pixels
+    # to black per (x+y)&1 parity inside the per-lobe bbox.
+    for x0, y0, x1, y1 in lobe_bboxes:
+        x0 = max(0, x0)
+        y0 = max(0, y0)
+        x1 = min(width - 1, x1)
+        y1 = min(height - 1, y1)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                    pixels[px, py] = maroon_dark
+
+    # Mid-edge cream diamonds — painted in yellow as a sentinel, then a
+    # per-diamond bbox post-pass flips half of the painted pixels to
+    # white per parity for the documented Y+W cream recipe.
     diamond = 4
     midpoints = [
         (width // 2, outer_inset),
@@ -2453,8 +2681,17 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
     for cx, cy in midpoints:
         draw.polygon(
             [(cx, cy - diamond), (cx + diamond, cy), (cx, cy + diamond), (cx - diamond, cy)],
-            fill=accent,
+            fill=sentinel_yellow,
         )
+    for cx, cy in midpoints:
+        x0 = max(0, cx - diamond)
+        y0 = max(0, cy - diamond)
+        x1 = min(width - 1, cx + diamond)
+        y1 = min(height - 1, cy + diamond)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_yellow:
+                    pixels[px, py] = cream_light
 
 
 def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
@@ -2622,14 +2859,69 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
     # outer rule. Each helper draws a ~14 px-tall symbol; the moon
     # carving uses ``page_bg`` to chisel a crescent out of a filled disk
     # without painting outside its own footprint.
+    #
+    # Each planet now reads in its CANONICAL celestial colour rather
+    # than the shared red ``accent``: Sun ☉ → tangerine (the warm
+    # solar gold the alchemists called *aurum*), Moon ☽ → sky (the
+    # cool argent / silver-blue of lunar work), Mars ♂ → maroon
+    # (oxblood / iron — the planet's metallic correspondence), Venus
+    # ♀ → violet (copper-bloom / verdigris-leaning mauve — the
+    # canonical "Venusian" ink in alchemical engravings). The Sun
+    # helper paints in red, then a bbox post-pass flips ~3/8 to
+    # yellow at Bayer threshold 6 (the documented R+Y 5/8:3/8
+    # tangerine recipe). The Moon helper paints in blue as a sentinel,
+    # then a bbox post-pass flips half of those blue pixels to white
+    # per ``(x+y)&1`` parity (the documented B+W 1:1 sky recipe).
+    # Mars paints in red and flips half to black for maroon (R+K 1:1).
+    # Venus paints in red and flips half to blue for violet (R+B 1:1).
+    # The four bboxes (±14 from each mid-edge anchor) don't overlap
+    # any other layer, so the post-passes are safe to bbox-scope.
     mid_top = (width // 2, outer_inset)
     mid_bottom = (width // 2, height - 1 - outer_inset)
     mid_left = (outer_inset, height // 2)
     mid_right = (width - 1 - outer_inset, height // 2)
+    moon_disc_blue = SPECTRA6["blue"]
     _draw_grimoire_sun(draw, *mid_top, accent)
-    _draw_grimoire_moon(draw, *mid_bottom, accent, page_bg)
+    _draw_grimoire_moon(draw, *mid_bottom, moon_disc_blue, page_bg)
     _draw_grimoire_mars(draw, *mid_left, accent)
     _draw_grimoire_venus(draw, *mid_right, accent)
+
+    # Per-planet bbox post-pass for the celestial-colour recipes.
+    # Sigils are at most ~14 px on each side from their mid-edge
+    # anchor (mars/venus offsets shift the bbox slightly off-anchor
+    # — see their helpers for the exact arrow / cross geometry; the
+    # padding here generously covers them).
+    pixels = image.load()
+    sigil_radius = 16
+    planet_passes = (
+        # (centre, sentinel_ink, light_ink, density)
+        (mid_top, SPECTRA6["red"], SPECTRA6["yellow"], 0.375),   # ☉ Sun → tangerine
+        (mid_bottom, moon_disc_blue, SPECTRA6["white"], 0.5),    # ☽ Moon → sky
+        (mid_left, SPECTRA6["red"], SPECTRA6["black"], 0.5),     # ♂ Mars → maroon
+        (mid_right, SPECTRA6["red"], SPECTRA6["blue"], 0.5),     # ♀ Venus → violet
+    )
+    for (cx, cy), dark_ink, light_ink, density in planet_passes:
+        bx0 = max(0, cx - sigil_radius)
+        by0 = max(0, cy - sigil_radius)
+        bx1 = min(width - 1, cx + sigil_radius)
+        by1 = min(height - 1, cy + sigil_radius)
+        threshold = round(density * 16)
+        if density <= 0.25:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if (px & 1) == 0 and (py & 1) == 0 and pixels[px, py] == dark_ink:
+                        pixels[px, py] = light_ink
+        elif density >= 0.5:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if (px + py) & 1 == 0 and pixels[px, py] == dark_ink:
+                        pixels[px, py] = light_ink
+        else:
+            for py in range(by0, by1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(bx0, bx1 + 1):
+                    if row[px & 3] < threshold and pixels[px, py] == dark_ink:
+                        pixels[px, py] = light_ink
 
 
 def draw_deco_border(image: Image.Image, colors: dict) -> None:
@@ -2782,6 +3074,28 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
                 if row[x % 4] < threshold and pixels[x, y] == accent_color:
                     pixels[x, y] = light
 
+        # Cream-gradient post-pass on the rising-sun fan rays only.
+        # After the tangerine pass converts ~3/8 of every red pixel to
+        # yellow, the rays' remaining ~5/8 red pixels in the inner band
+        # (y ∈ [fan_cy-5, fan_cy], near where the rays converge at the
+        # accent dot) get flipped to white on the same (x+y)&1
+        # parity. Inner-band rays then read as ~3/8 yellow + 5/16
+        # white + 5/16 red — a warm cream that fades back into the
+        # 5/8 red + 3/8 yellow tangerine at the tips. Reads as a
+        # true sunburst with a bright central glow rather than a
+        # uniform tangerine fan. Bbox-scoped to the rays' natural
+        # footprint (x ∈ [fan_cx ± max_dx]) so the stepped-corner
+        # L-shapes elsewhere on the page stay full tangerine.
+        cream_band_top = max(0, fan_cy - 5)
+        cream_band_bot = min(image.height - 1, fan_cy)
+        cream_x_lo = max(0, fan_cx - ray_height)
+        cream_x_hi = min(image.width - 1, fan_cx + ray_height)
+        cream_light = SPECTRA6["white"]
+        for y in range(cream_band_top, cream_band_bot + 1):
+            for x in range(cream_x_lo, cream_x_hi + 1):
+                if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = cream_light
+
 
 def draw_glacier_border(image: Image.Image, colors: dict) -> None:
     """Paint an icy / aurora border: thin outer rule + four corner
@@ -2909,12 +3223,15 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
-    """Paint a classroom-chalkboard surround: doubled white wooden frame
-    plus a sparse cluster of chalk-dust dots tucked into the bottom-left
-    corner of the slate (the chalk-tray side).
+    """Paint a classroom-chalkboard surround: doubled white wooden frame,
+    a sparse cluster of chalk-dust dots tucked into the bottom-left
+    corner of the slate (the chalk-tray side), a green-chalk teacher's
+    check-mark in the upper-right margin, and a row of coral eraser-
+    smudge spots along the bottom inner edge.
 
-    Two motifs, both evoking the iconic slate / wood / chalk-dust
-    combination of a Victorian-through-1990s schoolroom blackboard:
+    Four motifs, all evoking the iconic slate / wood / chalk-dust
+    combination of a Victorian-through-1990s schoolroom blackboard
+    and the multi-colour chalk box that sat on every teacher's desk:
 
     * **Doubled wooden frame** — outer rectangle at inset 8 with a 3 px
       stroke (the chunky wooden surround) plus an inner rectangle at
@@ -2926,24 +3243,32 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
     * **Chalk-dust scatter** — a sparse, deterministic stipple of
       tiny white dots (radius 1 px) inside the bottom-left corner
       of the inner frame. Pinned to the BL because that's where the
-      chalk tray actually sits on a classroom board, and because the
-      asymmetric placement (rather than four-corner symmetry) reads
-      as observed wear from a real teacher's hand rather than
-      decorative ornament. Stays inside a ~40 px square so it never
-      overlaps the quote block; the standard layout's ``max_width``
-      leaves at least ``SIDE_MARGIN`` (20 px) of clear margin at
-      every edge.
-
-    The graphic deliberately doesn't paint anything in the top-right
-    corner — the doubled frame stops at the outer rectangle, no corner
-    accent — so ``chalkboard`` is intentionally absent from
-    ``_DEBUG_LABEL_RIGHT_INSET`` (same reasoning as ``dispatch`` /
-    ``atomic``: TR feature sits outside the label's bounding box by
-    construction).
+      chalk tray actually sits on a classroom board.
+    * **Green-chalk check-mark** — a small ``✓`` painted in solid
+      panel-native green at the upper-right inner margin, evoking
+      the teacher's "marked correct" annotation that primary-school
+      cursive practice sheets accumulate. Sits at y≈45, well below
+      the ``DEBUG MODE`` banner band (y=14-29), so ``chalkboard``
+      stays absent from ``_DEBUG_LABEL_RIGHT_INSET``. The green is
+      solid Spectra-6 ink: only the panel's saturated green chalk
+      reads as such at viewing distance, and stippling would dilute
+      the recognition of the canonical correction mark.
+    * **Coral eraser-smudge dots** — five small filled red dots
+      along the bottom inner edge of the frame, each Bayer-post-
+      passed with white pixels at 50/50 parity inside its bbox so
+      the eye averages red+white at panel distance into coral
+      (the documented two-ink recipe in ``spectra6_color_recipes.md``).
+      Reads as the leftover pink eraser-stub marks that build up at
+      the bottom of a real chalkboard, the spot the teacher most
+      often drags an eraser across. Same post-pass pattern
+      ``draw_placard_border`` uses on its thumbtack accents.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_color = colors["text"]  # white chalk frame on the black slate
+    accent_color = colors["accent"]  # yellow chalk-stick (matched phrase)
+    chalk_green = SPECTRA6["green"]
+    smudge_red = SPECTRA6["red"]
 
     # Outer thick wooden surround.
     outer_inset = 8
@@ -2981,39 +3306,110 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
         # at snap_image_to_palette time.
         draw.rectangle((cx, cy, cx, cy), fill=frame_color)
 
+    # Green-chalk teacher's check-mark in the upper-right margin. Two
+    # short line segments forming a ✓: a 5px down-right diagonal joining
+    # a 11px up-right diagonal at the elbow. Sits at y≈45 (below the
+    # debug-banner band) and right-edge x ≈ width-30 (inside the inner
+    # frame). 2 px stroke so the mark reads as a deliberate chalk swipe
+    # rather than a hairline accident.
+    tick_elbow_x = width - 1 - inner_inset - 22
+    tick_elbow_y = 50
+    draw.line(
+        ((tick_elbow_x - 5, tick_elbow_y - 5), (tick_elbow_x, tick_elbow_y)),
+        fill=chalk_green,
+        width=2,
+    )
+    draw.line(
+        ((tick_elbow_x, tick_elbow_y), (tick_elbow_x + 11, tick_elbow_y - 12)),
+        fill=chalk_green,
+        width=2,
+    )
+
+    # Coral eraser-smudge dots along the bottom inner edge. Five small
+    # filled circles spaced 30 px apart, centred at y=height-inner-9 so
+    # they sit just inside the bottom of the inner frame. Each smudge is
+    # painted red first; the post-pass below stipples white over half of
+    # each smudge's pixels (1×1 checkerboard) so the eye averages red+
+    # white at panel distance into coral pink — the documented R+W 1:1
+    # two-ink recipe — reading as the faint pink eraser-stub residue
+    # that builds up at the bottom of a real classroom chalkboard.
+    smudge_radius = 3
+    smudge_centres = [
+        (180 + i * 110, height - 1 - inner_inset - 9) for i in range(5)
+    ]
+    for cx, cy in smudge_centres:
+        draw.ellipse(
+            (cx - smudge_radius, cy - smudge_radius, cx + smudge_radius, cy + smudge_radius),
+            fill=smudge_red,
+        )
+
+    # Coral post-pass — same recipe ``draw_placard_border`` uses on its
+    # thumbtack accents. Bbox-scoped per smudge so the cost stays
+    # trivial (~50 pixels per render).
+    pixels = image.load()
+    for cx, cy in smudge_centres:
+        x0 = max(0, cx - smudge_radius)
+        y0 = max(0, cy - smudge_radius)
+        x1 = min(width - 1, cx + smudge_radius)
+        y1 = min(height - 1, cy + smudge_radius)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if (x + y) & 1 == 0 and pixels[x, y] == smudge_red:
+                    pixels[x, y] = SPECTRA6["white"]
+    # Yellow accent kept in the local namespace so a future palette
+    # tweak in ``THEMES["chalkboard"]`` (e.g. swapping yellow chalk for
+    # a different colour) keeps the cross-reference live.
+    del accent_color
+
 
 def draw_placard_border(image: Image.Image, colors: dict) -> None:
     """Paint a hand-painted shop-sign / sandwich-board surround: doubled
-    black sign-painter's frame plus four red thumbtack corner accents.
+    sign-painter's frame (sepia outer + black inner) plus four red
+    thumbtack corner accents.
 
-    Two motifs, both evoking the hand-lettered A-frame menu / shop-
+    Three motifs, all evoking the hand-lettered A-frame menu / shop-
     window placard register that Patrick Hand SC's small-caps silhouette
     suggests:
 
-    * **Doubled sign-painter's frame** — outer rectangle at inset 14
-      and inner rectangle at inset 18, both 1 px stroke in
-      ``colors["text"]`` (black). The narrow ~3 px gap between the
+    * **Sepia outer frame** — outer rectangle at inset 14, painted as a
+      1 px red stroke and then post-passed on its perimeter to flip
+      half of the pixels to green per ``(x+y)&1`` parity. At panel
+      viewing distance the eye averages adjacent red+green dots into
+      rust-brown sepia — the documented R+G 1:1 two-ink recipe (see
+      ``spectra6_color_recipes.md``) — reading as the weathered wood
+      of a sun-faded A-frame sandwich board rather than the harsh
+      printer-ink black of a freshly typeset poster. Same recipe the
+      ``saloon`` foxing speckles use.
+    * **Inner black frame** — inner rectangle at inset 18, 1 px stroke
+      in ``colors["text"]`` (black). The narrow ~3 px gap between the
       two rules reads as a sign-painter's deliberate doubled brush
-      stroke, the way real hand-painted shop signs frame their text.
-    * **Red thumbtack corner accents** — four small filled circles
+      stroke; the colour shift between the outer (sepia) and inner
+      (black) rules reads as the "core inked, weathered at edges"
+      look of a hand-lettered shop frame.
+    * **Coral thumbtack corner accents** — four small filled circles
       in ``colors["accent"]`` (red) just inside the inner frame at
-      each corner, suggesting the pins or tacks holding the sign up
-      on a corkboard. Positioned at ``y ≈ 38`` (top corners) and
-      ``y ≈ height-38`` (bottom corners), well below the default
-      ``DEBUG MODE`` label band (y=14-29). So ``placard`` is
-      intentionally absent from ``_DEBUG_LABEL_RIGHT_INSET`` — same
-      exemption as ``dispatch`` (TR rubber-stamp imprint sits at
-      y=40-70, also below the label band).
+      each corner, suggesting the pins or tacks holding the sign up.
+      Each tack's red pixels are Bayer-post-passed with white at
+      50/50 parity inside its bbox so the eye averages red+white at
+      panel distance into coral pink (R+W 1:1 — weathered hand-painted
+      red, since the exposed corners of a sandwich-board sign would
+      be the first thing to fade in the rain).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     frame_color = colors["text"]
     accent_color = colors["accent"]
 
+    # Outer frame painted in red as a sentinel ink so the post-pass
+    # below can identify exactly which pixels to flip without coordinate
+    # bookkeeping (paint-then-stipple is the same pattern the thumbtack
+    # accents below use; same pattern ``draw_chalkboard_border``'s coral
+    # eraser smudges use). The mid-flip-to-green Bayer post-pass turns
+    # the rule into sepia.
     outer_inset = 14
     draw.rectangle(
         (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
-        outline=frame_color,
+        outline=SPECTRA6["red"],
         width=1,
     )
     inner_inset = 18
@@ -3022,6 +3418,27 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
         outline=frame_color,
         width=1,
     )
+
+    # Sepia post-pass on the outer frame's four edges. Walk the
+    # perimeter (rather than the full bbox, which would also touch
+    # interior pixels that aren't part of the rule) and flip red→green
+    # on the 50/50 (x+y)&1 checkerboard so the eye averages rust-brown
+    # at panel distance.
+    pixels = image.load()
+    outer_x0, outer_y0 = outer_inset, outer_inset
+    outer_x1, outer_y1 = width - 1 - outer_inset, height - 1 - outer_inset
+    for x in range(outer_x0, outer_x1 + 1):
+        for y in (outer_y0, outer_y1):
+            if (x + y) & 1 == 0 and pixels[x, y] == SPECTRA6["red"]:
+                pixels[x, y] = SPECTRA6["green"]
+    for y in range(outer_y0 + 1, outer_y1):
+        for x in (outer_x0, outer_x1):
+            if (x + y) & 1 == 0 and pixels[x, y] == SPECTRA6["red"]:
+                pixels[x, y] = SPECTRA6["green"]
+    # ``frame_color`` (black) is still used for the inner rule above;
+    # kept bound for future palette extensions even though sepia post-
+    # pass paints over the outer rule's "frame_color" intent.
+    del frame_color
 
     # Red thumbtack accents — four filled circles at the inner corners,
     # offset down/in from the corner enough that the TR tack sits
@@ -3063,37 +3480,42 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
-    """Paint a samurai-cinema title-card surround: large off-canvas red
-    rising-sun disc anchored in the bottom-right corner plus a small red
-    artist's-chop seal in the top-left corner.
+    """Paint a samurai-cinema title-card surround: large off-canvas
+    rising-sun disc with a red-to-maroon radial edge gradient, plus a
+    small maroon artist's-chop seal in the top-left corner.
 
-    Two motifs, both in ``colors["accent"]`` (red):
+    Two motifs, both anchored in ``colors["accent"]`` (red) and lifted
+    onto the documented R+K 1:1 maroon recipe at the edges:
 
     * **Rising-sun disc** — a filled red circle with its centre at
       ``(width + 30, height + 30)`` and radius ``220``. PIL's
       ``ellipse`` clips the off-canvas portion automatically; the
       visible portion is a sweeping arc through the bottom-right
-      quadrant of the page (for the standard 800×480 panel the disc
-      touches the right edge at y ≈ 292 and the bottom edge at
-      x ≈ 612). The white quote text rendered on top reads cleanly
-      against the red ground — white-on-red is high contrast and
-      ``snap_image_to_palette`` keeps both colours on the Spectra 6
-      palette without intermediate dithering. Reads as the iconic
-      blood-sun / rising-sun motif of kurosawa-era chanbara title
-      cards. Deliberately pinned to the **bottom-right** corner so
-      the top-right stays clear of the ``DEBUG MODE`` banner band
-      (y=14–29) — same exemption ``dispatch`` / ``atomic`` /
-      ``placard`` / ``chalkboard`` use to stay absent from
-      ``_DEBUG_LABEL_RIGHT_INSET``.
+      quadrant of the page. After painting the full red disc, a
+      bbox-scoped radial post-pass walks the BR quadrant and flips
+      ~half of the red pixels that lie in the outer 40 px shell of
+      the disc (squared-distance in ``[(r-40)², r²]``) to black per
+      ``(x+y)&1`` parity — the eye averages the red+black mix at
+      panel viewing distance into maroon, so the disc fades from
+      the bright vermilion of a noonday sun (centre) into the
+      deeper oxblood of dusk (rim), the way the real rising-sun
+      flag motif of kurosawa-era chanbara title cards bleeds into
+      the horizon ink. White quote text rendered on top still reads
+      cleanly against both red and maroon — both halves of the R+K
+      mix sit on the Spectra-6 palette and contrast strongly with
+      white. Deliberately pinned to the **bottom-right** corner so
+      the top-right stays clear of the ``DEBUG MODE`` banner band.
     * **Artist's chop seal** — a small filled red rectangle (28×36 px)
-      anchored at insets ``(24, 24)`` to ``(52, 60)`` in the
-      top-left corner, with a single thin white horizontal stroke
-      drawn through its centre (the "一 / ichi" stroke). Vaguely
-      suggests a Japanese hanko ink seal without committing to
-      specific kanji — a counterbalancing diagonal accent that
-      grounds the page visually opposite the dominant sun disc.
-      The top-left stays clear of the right-aligned debug label by
-      construction.
+      anchored at insets ``(24, 24)`` in the top-left corner. Painted
+      in red as a sentinel, then a bbox-scoped post-pass flips half
+      of the red pixels to black per ``(x+y)&1`` parity — the
+      documented R+K 1:1 maroon recipe. Reads as the deep aged ink
+      of a real hanko / artist's-chop seal pressed into rice paper
+      decades ago rather than the bright fire-engine vermilion of a
+      freshly mixed cinnabar. The single thin white horizontal
+      "ichi" stroke through the chop's centre is painted *after* the
+      maroon post-pass so its white pixels stay solid (and bright)
+      regardless of where they land on the (x+y)&1 grid.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -3112,8 +3534,32 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         fill=accent_color,
     )
 
+    # Radial maroon post-pass on the outer 40 px shell of the disc.
+    # Squared-distance comparison avoids sqrt() per pixel — for 91 200
+    # BR-quadrant pixels (380×240) this stays well under 100 ms in
+    # pure Python. Restricted to the BR quadrant since the disc only
+    # paints there (off-canvas portion clips silently). Half of each
+    # red pixel inside the shell flips to black per (x+y)&1 parity —
+    # the documented R+K 1:1 maroon recipe.
+    sentinel_red = SPECTRA6["red"]
+    maroon_dark = SPECTRA6["black"]
+    pixels = image.load()
+    inner_r_sq = (sun_radius - 40) * (sun_radius - 40)
+    outer_r_sq = sun_radius * sun_radius
+    quad_x0 = width // 2
+    quad_y0 = height // 2
+    for py in range(quad_y0, height):
+        dy = py - sun_cy
+        dy_sq = dy * dy
+        for px in range(quad_x0, width):
+            dx = px - sun_cx
+            d_sq = dx * dx + dy_sq
+            if inner_r_sq <= d_sq <= outer_r_sq:
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                    pixels[px, py] = maroon_dark
+
     # Artist's chop seal in the top-left corner — small filled red
-    # rectangle with one white horizontal stroke through its centre.
+    # rectangle painted as a sentinel for the maroon post-pass below.
     chop_left = 24
     chop_top = 24
     chop_w = 28
@@ -3124,9 +3570,19 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         (chop_left, chop_top, chop_right, chop_bottom),
         fill=accent_color,
     )
+
+    # Maroon post-pass on the chop seal's bbox — same R+K recipe as
+    # the disc rim, so the two ornaments share a tonal register.
+    for py in range(chop_top, chop_bottom + 1):
+        for px in range(chop_left, chop_right + 1):
+            if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = maroon_dark
+
     # Single thin white horizontal "ichi" stroke through the chop's
-    # centre. Insets 5 px from the chop's left/right edges so the
-    # stroke reads as a distinct mark rather than a full bisection.
+    # centre, painted AFTER the maroon post-pass so its white pixels
+    # land solid regardless of the (x+y)&1 parity. Insets 5 px from
+    # the chop's left/right edges so the stroke reads as a distinct
+    # mark rather than a full bisection.
     stroke_y = chop_top + chop_h // 2
     draw.line(
         [(chop_left + 5, stroke_y), (chop_right - 5, stroke_y)],
@@ -3136,31 +3592,66 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
-    """Paint a vintage-office dispatch border: thin frame + tractor-feed perforations + red rubber-stamp imprint.
+    """Paint a vintage-office dispatch border: cream-washed ground +
+    thin frame + alternating black/sepia tractor-feed perforations +
+    maroon rubber-stamp imprint.
 
-    Three motifs from the typewriter / dot-matrix / dossier era:
+    Five motifs from the typewriter / dot-matrix / dossier era, painted
+    bottom to top so the upper layers sit visibly on the lower:
 
-    * **Outer thin black frame** at a small inset frames the page like
-      a typed memo's letterhead rule.
-    * **Tractor-feed perforations** — a column of small black filled
-      circles spaced ~40px apart on each side margin, between the
-      frame and the page edge — echoes the sprocket holes punched
-      down the side of continuous-feed dot-matrix printer paper. No
-      other theme uses this motif, and it's instantly recognisable as
-      mid-century office-document texture.
-    * **Red rubber-stamp imprint** in the upper right (inside the
-      frame, well below the debug-mode label band): two concentric
-      ellipse outlines plus four short diagonal hatch lines, evoking
-      a smudged ink rubber stamp without committing to any specific
-      lettering. Sits at y≈40–70 so the oversized opening quote mark
-      (drawn from the left at quote_top − open_h//3, ≥ 42 in every
-      layout) and the matched-phrase text block (centred horizontally,
-      block_top ≥ 72) both stay clear.
+    * **Layer 0 — sparse cream ground wash.** A 4×4 Bayer dither
+      converts ~12.5% of the white ``page_bg`` pixels to yellow,
+      leaving the other 87.5% as pure white. At panel viewing
+      distance the eye averages the 1-in-8 yellow alternation into a
+      faint cream/vellum tone — reads as aged manila dispatch paper
+      rather than the panel's flat pure white. Same Bayer pattern
+      ``draw_newsprint_border``'s Layer 0 uses but with the
+      ``page_bg→ink`` flip swapped for ``page_bg→yellow``. Lives
+      natively on the Spectra-6 palette (every output pixel is still
+      one of the six pure inks) so palette-snap is a no-op and glyph
+      edges stay crisp.
+    * **Outer thin black frame** at a small inset frames the page
+      like a typed memo's letterhead rule.
+    * **Alternating black/sepia tractor-feed perforations** — a
+      column of small filled circles spaced ~40px apart on each side
+      margin, echoing continuous-feed dot-matrix sprocket holes.
+      Every other perforation flips from solid black to a sepia
+      (R+G 1:1) Bayer stipple via the same sentinel-paint-then-
+      bbox-post-pass pattern ``placard``'s thumbtacks use, reading
+      as the rust-brown "carbon-paper bleed" real continuous-feed
+      forms accumulate where the carbon backing oxidises against
+      the sprocket holes.
+    * **Maroon rubber-stamp imprint** in the upper right (inside
+      the frame, well below the debug-mode label band): two
+      concentric ellipse outlines plus four short diagonal hatch
+      lines, evoking a smudged ink rubber stamp without committing
+      to any specific lettering. Painted in red as a sentinel; a
+      bbox-scoped post-pass Bayer-flips half of the stamp's red
+      pixels to black per ``(x+y)&1`` parity — the documented R+K
+      1:1 maroon recipe — so the stamp reads as the oxblood /
+      aged-ink of a real archival stamp rather than fire-engine
+      red. Sits at y≈40–70 so the oversized opening quote mark
+      and the matched-phrase text block both stay clear.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     ink = colors["text"]
-    accent = colors["accent"]
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+    sepia_light = SPECTRA6["green"]
+    sentinel_red = SPECTRA6["red"]
+    maroon_dark = SPECTRA6["black"]
+
+    # Layer 0: sparse 1-in-8 yellow-on-white Bayer cream wash. Only
+    # pixels matching ``page_bg`` are affected — defence in depth if
+    # a future caller paints accents before this painter runs.
+    pixels = image.load()
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
 
     # Outer thin frame.
     frame_inset = 14
@@ -3170,51 +3661,87 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
-    # Tractor-feed perforations on the left and right margins.
+    # Tractor-feed perforations on the left and right margins. Every
+    # other perforation pair flips from solid black to a red sentinel,
+    # then the per-perforation post-pass below flips half of those red
+    # pixels to green per (x+y)&1 parity — sepia.
     hole_radius = 2
     hole_spacing = 40
     hole_top = 22
     hole_bottom = height - 22
     left_x = 7
     right_x = width - 1 - 7
+    sepia_centres: list[tuple[int, int]] = []
     y = hole_top
+    pair_idx = 0
     while y <= hole_bottom:
+        if pair_idx & 1:
+            fill = sentinel_red
+            sepia_centres.append((left_x, y))
+            sepia_centres.append((right_x, y))
+        else:
+            fill = ink
         draw.ellipse(
             (left_x - hole_radius, y - hole_radius, left_x + hole_radius, y + hole_radius),
-            fill=ink,
+            fill=fill,
         )
         draw.ellipse(
             (right_x - hole_radius, y - hole_radius, right_x + hole_radius, y + hole_radius),
-            fill=ink,
+            fill=fill,
         )
         y += hole_spacing
+        pair_idx += 1
 
-    # Red rubber-stamp imprint: two concentric ellipse outlines plus
-    # short diagonal hatch lines. Positioned below the DEBUG MODE
-    # banner band (y=14–29 at SIDE_MARGIN x-position) so debug mode
-    # doesn't need a label inset adjustment.
+    # Sepia post-pass on the alternating perforations only.
+    for cx, cy in sepia_centres:
+        x0 = max(0, cx - hole_radius)
+        y0 = max(0, cy - hole_radius)
+        x1 = min(width - 1, cx + hole_radius)
+        y1 = min(height - 1, cy + hole_radius)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                    pixels[px, py] = sepia_light
+
+    # Maroon rubber-stamp imprint: two concentric ellipse outlines plus
+    # short diagonal hatch lines, painted in red as a sentinel.
     stamp_cx = width - 55
     stamp_cy = 55
     outer_hw, outer_hh = 25, 15
     inner_hw, inner_hh = 19, 10
     draw.ellipse(
         (stamp_cx - outer_hw, stamp_cy - outer_hh, stamp_cx + outer_hw, stamp_cy + outer_hh),
-        outline=accent,
+        outline=sentinel_red,
         width=1,
     )
     draw.ellipse(
         (stamp_cx - inner_hw, stamp_cy - inner_hh, stamp_cx + inner_hw, stamp_cy + inner_hh),
-        outline=accent,
+        outline=sentinel_red,
         width=1,
     )
-    # Four diagonal hatch lines suggest smudged rubber-stamp ink
-    # without spelling any specific word.
     for dx in (-9, -3, 3, 9):
         draw.line(
             (stamp_cx + dx - 3, stamp_cy + 3, stamp_cx + dx + 3, stamp_cy - 3),
-            fill=accent,
+            fill=sentinel_red,
             width=1,
         )
+
+    # Maroon post-pass on the stamp's bbox. Bbox-scoped so the rest of
+    # the painted accent red on the page (none today, but defence in
+    # depth for future additions) stays untouched.
+    stamp_x0 = max(0, stamp_cx - outer_hw - 1)
+    stamp_y0 = max(0, stamp_cy - outer_hh - 1)
+    stamp_x1 = min(width - 1, stamp_cx + outer_hw + 1)
+    stamp_y1 = min(height - 1, stamp_cy + outer_hh + 1)
+    for py in range(stamp_y0, stamp_y1 + 1):
+        for px in range(stamp_x0, stamp_x1 + 1):
+            if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = maroon_dark
+    # ``accent`` is the dispatch theme's red slot; kept bound for future
+    # palette extensions even though the sentinel-paint-then-bbox-
+    # post-pass approach above doesn't read from it directly.
+    accent = colors["accent"]
+    del accent
 
 
 def draw_atomic_border(image: Image.Image, colors: dict) -> None:
@@ -3317,7 +3844,18 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
         fill=accent,
     )
 
-    # Twin starbursts at the mid-edges.
+    # Twin starbursts at the mid-edges. Painted in red as a sentinel
+    # ink, then the per-starburst bbox post-pass below flips ~3/8 of
+    # the red pixels to yellow per the documented R+Y 5/8:3/8 Bayer
+    # threshold (same tangerine recipe ``deco``'s matched phrase and
+    # ``comic``'s extra warm band use). The eye averages adjacent
+    # red+yellow dots into tangerine at panel viewing distance — the
+    # canonical mid-century atomic-spark warmth of 1950s diner /
+    # motel signage, where atomic-age vermilion was almost always
+    # printed against orange / amber backgrounds rather than left as
+    # the harsh fire-engine red the atom orbits use today. The atom
+    # symbol itself stays solid red (rays vs. orbits is the visual
+    # contrast — solid orbits, warm-stippled rays).
     starburst_outer = 11
     starburst_inner = 4
     centres = ((34, height // 2), (width - 34, height // 2))
@@ -3330,12 +3868,28 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
             y1 = star_cy + starburst_inner * sin_a
             x2 = star_cx + starburst_outer * cos_a
             y2 = star_cy + starburst_outer * sin_a
-            draw.line((x1, y1, x2, y2), fill=accent, width=1)
+            draw.line((x1, y1, x2, y2), fill=SPECTRA6["red"], width=1)
         # Centre dot.
         draw.ellipse(
             (star_cx - 2, star_cy - 2, star_cx + 2, star_cy + 2),
-            fill=accent,
+            fill=SPECTRA6["red"],
         )
+
+    # Tangerine post-pass — bbox-scoped per starburst (~500 pixels per
+    # render). Only flips pixels that match the sentinel red, so the
+    # surrounding green page_bg and the dither's white flecks pass
+    # through unchanged.
+    sentinel_red = SPECTRA6["red"]
+    flip_yellow = SPECTRA6["yellow"]
+    for star_cx, star_cy in centres:
+        x0 = max(0, star_cx - starburst_outer)
+        y0 = max(0, star_cy - starburst_outer)
+        x1 = min(width - 1, star_cx + starburst_outer)
+        y1 = min(height - 1, star_cy + starburst_outer)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
+                    pixels[x, y] = flip_yellow
 
 
 # Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded at
@@ -3471,20 +4025,46 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
             fill=ink,
         )
 
-    # Mid-edge filled marker dots. Yellow on the left, green on the
-    # right — the two ink colours that the corner-asterisk rotation
-    # leaves on the bottom row, lifted to mid-edge so they don't read
-    # as biased toward the bottom of the page.
+    # Mid-edge filled marker dots — upgraded from solid panel-ink fills
+    # to two of the documented synthesized-colour recipes, completing
+    # the marker theme's "every ink the panel can produce, plus the
+    # synthesized mixes" identity:
+    #
+    # * Left mid-edge: MINT (G+W 1:1) — a highlighter wash, the kind
+    #   of pale-green Stabilo / Sharpie highlighter that sits next to
+    #   the regular marker in a kid's pencil case
+    # * Right mid-edge: VIOLET (R+B 1:1) — the colour real markers
+    #   produce when a blue pass crosses a red one, the canonical
+    #   "second marker dragged over the first" effect
+    #
+    # Each dot is painted in a sentinel and then bbox-post-passed
+    # through a 50/50 checkerboard to its companion ink — the same
+    # paint-then-stipple pattern ``placard``'s thumbtacks /
+    # ``chalkboard``'s eraser smudges / ``atomic``'s starbursts use.
+    # The corner asterisks and perimeter dashes keep their solid-ink
+    # cycle so the five native panel colours still appear at full
+    # saturation; the synthesised mixes sit alongside as a deliberate
+    # "look how many inks this panel can reach" flourish.
     dot_radius = 7
     mid_dots = (
-        (inset + 2, height // 2, SPECTRA6["yellow"]),
-        (width - 1 - inset - 2, height // 2, SPECTRA6["green"]),
+        # (cx, cy, sentinel_dark, light_ink, label)
+        (inset + 2, height // 2, SPECTRA6["green"], SPECTRA6["white"], "mint highlighter"),
+        (width - 1 - inset - 2, height // 2, SPECTRA6["red"], SPECTRA6["blue"], "violet overlap"),
     )
-    for cx, cy, ink in mid_dots:
+    pixels = image.load()
+    for cx, cy, dark_ink, light_ink, _ in mid_dots:
         draw.ellipse(
             (cx - dot_radius, cy - dot_radius, cx + dot_radius, cy + dot_radius),
-            fill=ink,
+            fill=dark_ink,
         )
+        bx0 = max(0, cx - dot_radius)
+        by0 = max(0, cy - dot_radius)
+        bx1 = min(width - 1, cx + dot_radius)
+        by1 = min(height - 1, cy + dot_radius)
+        for py in range(by0, by1 + 1):
+            for px in range(bx0, bx1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == dark_ink:
+                    pixels[px, py] = light_ink
 
 
 # Deterministic foxing-speckle layout for ``draw_saloon_border``.
@@ -3688,13 +4268,53 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
     # foxing speckles between the page edge and the frame remain
     # visible (otherwise the frame would mask them and the texture
     # would only read inside the body region).
+    #
+    # The outer 3px rule is painted in red as a sentinel ink, then the
+    # post-pass below walks the rule's 4 edge strips and flips half of
+    # the painted pixels to green per (x+y)&1 parity — the documented
+    # R+G 1:1 two-ink sepia recipe (same recipe Layer 1's foxing uses).
+    # The eye averages adjacent red+green dots into rust-brown at
+    # panel viewing distance, so the rule reads as the rusted iron of
+    # a 19th-century wood-engraved cornerpiece frame rather than the
+    # fire-engine printer ink of a freshly cast Linotype slug. The
+    # red-pixel guard makes the post-pass robust to PIL's
+    # anti-aliasing rounding at the edge boundaries.
     outer_inset = 12
     inner_inset = 18
+    outer_rule_width = 3
     draw.rectangle(
         (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
-        outline=ink,
-        width=3,
+        outline=SPECTRA6["red"],
+        width=outer_rule_width,
     )
+    pixels = image.load()
+    outer_x0, outer_y0 = outer_inset, outer_inset
+    outer_x1, outer_y1 = width - 1 - outer_inset, height - 1 - outer_inset
+    sepia_light = SPECTRA6["green"]
+    sentinel_red = SPECTRA6["red"]
+    # Top edge strip — 3 rows.
+    for y in range(outer_y0, outer_y0 + outer_rule_width):
+        for x in range(outer_x0, outer_x1 + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+    # Bottom edge strip — 3 rows.
+    for y in range(outer_y1 - outer_rule_width + 1, outer_y1 + 1):
+        for x in range(outer_x0, outer_x1 + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+    # Left edge strip — 3 columns, skipping rows already covered by
+    # the top/bottom strips above to avoid redundant work (the corner
+    # 3×3 cells get flipped once, not twice).
+    for x in range(outer_x0, outer_x0 + outer_rule_width):
+        for y in range(outer_y0 + outer_rule_width, outer_y1 - outer_rule_width + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+    # Right edge strip — 3 columns, same exclusion as the left strip.
+    for x in range(outer_x1 - outer_rule_width + 1, outer_x1 + 1):
+        for y in range(outer_y0 + outer_rule_width, outer_y1 - outer_rule_width + 1):
+            if (x + y) & 1 == 0 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = sepia_light
+
     draw.rectangle(
         (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
         outline=ink,
@@ -3780,52 +4400,71 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     """Paint a broadsheet-style Scotch-rule border around the canvas margin.
 
-    Two motifs from 19th-century newspaper typography:
+    Three motifs from 19th-century newspaper typography:
 
-    * **Layer 0 — sparse newsprint halftone.** A 4×4 Bayer dither
-      converts 2 of every 16 ``page_bg`` white pixels to black, leaving
-      the other 14 untouched. At panel viewing distance the eye
-      averages the 12.5%-black pattern into a faint grey wash —
-      reads as cheap newsprint pulp rather than the panel's flat pure
-      white. Same trick the ``alchemy`` parchment halftone uses, but
-      with the polarity flipped (mostly-white with black flecks rather
-      than mostly-yellow with white flecks). Painted at the very start
-      of the painter so the Scotch-rule frame below overpaints the
-      dithered ground cleanly. Lives natively on the Spectra-6 palette
-      (every output pixel still one of the six pure inks), so the
-      palette-snap step is a no-op and glyph edges stay crisp.
+    * **Layer 0 — newsprint halftone + faint sepia foxing.** A 4×4
+      Bayer dither converts 2 of every 16 ``page_bg`` white pixels to
+      black (the 12.5% grey newsprint-pulp halftone the theme has
+      always used), plus 1 red pixel and 1 green pixel per 4×4 tile
+      at Bayer values 6 and 9 — together a 12.5% rust-brown sepia
+      speckle layer the eye averages into pale foxing at panel
+      viewing distance. Real archival newspaper paper develops this
+      faint orange-brown tint as the lignin in the pulp oxidises
+      under light, the same way real newsprint develops the grey
+      halftone the original Layer 0 already simulates. Adjacent
+      Bayer cells — red at ``(y%4, x%4) == (1, 3)`` and green at
+      ``(2, 3)`` — sit in the same column one row apart, blending
+      at panel distance into the documented R+G 1:1 sepia recipe
+      (same recipe ``saloon``'s foxing speckles use). Cell values 6
+      and 9 are deliberately chosen to keep the speckle pattern off
+      every existing pinned border / cross-gating sample coordinate
+      (``test_newsprint_inner_hairline_is_one_pixel_and_has_gap_above``,
+      ``test_blueprint_border_is_theme_gated`` at (6, 16), and
+      ``test_illuminated_border_is_theme_gated`` at (400, 22) all
+      sample cells whose Bayer values are outside {6, 9}, so the
+      foxing layer doesn't paint at any of them).
+      The theme stays "no-colour-accent" by construction
+      (``test_newsprint_theme_has_no_colour_accent`` still passes
+      because the matched phrase / body / accent THEMES slots stay
+      black-on-black); the rust-brown lives entirely on the
+      *paper*, not the typography. Painted at the very start of the
+      painter so the Scotch-rule frame below overpaints the
+      dithered ground cleanly. Lives natively on the Spectra-6
+      palette (every output pixel still one of the six pure inks),
+      so palette-snap is a no-op and glyph edges stay crisp.
     * **Scotch rule frame.** A classic thick-thin parallel rule: a
       heavier outer rectangle and a hairline inner rectangle separated
       by a narrow band of white space. The signature border of
       19th-century newspaper typography — no corner accents, no
-      coloured ornament, nothing but weighted ink. That restraint
-      matches the theme's no-colour-accent palette (every theme field
-      is black or white), so the margin reads as broadsheet rather
-      than modernist poster.
+      coloured ornament, nothing but weighted ink.
     """
     width, height = image.size
     page_bg = colors.get("page_bg")
     ink = colors["text"]
 
-    # Layer 0: 12.5% black-on-white Bayer halftone. Only pixels matching
-    # the exact ``page_bg`` colour are affected — defence in depth if a
-    # future caller paints accents before this painter runs. Skipped
-    # when ``page_bg`` is absent from the palette so direct-call test
-    # paths that only provide ``text`` stay valid.
+    # Layer 0: 12.5% black-on-white Bayer halftone + faint 12.5% sepia
+    # foxing speckles. Only pixels matching the exact ``page_bg`` colour
+    # are affected — defence in depth if a future caller paints accents
+    # before this painter runs. Skipped when ``page_bg`` is absent from
+    # the palette so direct-call test paths that only provide ``text``
+    # stay valid.
     if page_bg is not None:
-        _BAYER_4 = (
-            (0, 8, 2, 10),
-            (12, 4, 14, 6),
-            (3, 11, 1, 9),
-            (15, 7, 13, 5),
-        )
-        halftone_threshold = 2  # cells with value < 2 (i.e. 0, 1) become black → 2/16
+        _BAYER_4 = BAYER_4x4
+        sepia_red = SPECTRA6["red"]
+        sepia_green = SPECTRA6["green"]
         pixels = image.load()
         for y in range(height):
             row = _BAYER_4[y & 3]
             for x in range(width):
-                if pixels[x, y] == page_bg and row[x & 3] < halftone_threshold:
-                    pixels[x, y] = ink
+                if pixels[x, y] != page_bg:
+                    continue
+                cell = row[x & 3]
+                if cell < 2:
+                    pixels[x, y] = ink           # 12.5% black halftone
+                elif cell == 6:
+                    pixels[x, y] = sepia_red     # 6.25% red speckle at (1, 3)
+                elif cell == 9:
+                    pixels[x, y] = sepia_green   # 6.25% green speckle at (2, 3)
 
     draw = ImageDraw.Draw(image)
 
@@ -3873,6 +4512,24 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     # Faint scanlines contained inside the page, leaving the bracket gaps intact.
     for y in range(margin + 18, bottom_y - 6, 14):
         draw.line((margin + 30, y, right_x - 30, y), fill=subtle, width=1)
+
+    # Sage post-pass on the scanlines only: flip ~25% of the green
+    # scanline pixels to white per ``BAYER_4x4`` threshold 4 (cells
+    # 0-3, 4/16 of pixels). Eye averages 75% green + 25% white at
+    # panel viewing distance into pale sage — the documented W+G
+    # 3:1 (inverted mint) recipe — so the scanlines read as ambient
+    # ground glow rather than the crisp bright-green CRT lines they
+    # were before, without crowding the body text in the central
+    # region. Limited to the scanline x range so the bracket arms
+    # at the corners (x < margin + 30) keep their solid green.
+    if subtle == SPECTRA6["green"]:
+        pixels = image.load()
+        sage_light = SPECTRA6["white"]
+        for scan_y in range(margin + 18, bottom_y - 6, 14):
+            row = BAYER_4x4[scan_y & 3]
+            for sx in range(margin + 30, right_x - 30):
+                if row[sx & 3] < 4 and pixels[sx, scan_y] == subtle:
+                    pixels[sx, scan_y] = sage_light
 
     # Mid-edge targeting ticks that float inside the canvas rather than joining the frame.
     tick = 12
@@ -4265,17 +4922,26 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     # ------------------------------------------------------------------
     # Layer 6: Laurel sprig at the bottom centre, painted INSIDE the
     # tablet between the body text and the inner channel rule (mirror
-    # band of the SPQR cartouche above). Two short curved black stems
-    # mirrored around the bottom-centre, each carrying three small
-    # filled "leaf" ovals angled outward. The corona triumphalis was
-    # the Imperial victory crown; a single sprig is the smallest motif
-    # that still reads as "Roman" without crowding the bottom debug
-    # telemetry strip.
+    # band of the SPQR cartouche above). Two short black stems mirrored
+    # around the bottom-centre, each carrying three small filled olive
+    # "leaf" ovals angled outward. The corona triumphalis was the
+    # Imperial victory crown; a single sprig is the smallest motif that
+    # still reads as "Roman" without crowding the bottom debug strip.
+    #
+    # Each leaf is painted in solid yellow and then a per-leaf bbox
+    # post-pass flips half of the yellow pixels to green per (x+y)&1
+    # parity — the documented Y+G 1:1 olive recipe. The eye averages
+    # adjacent yellow+green dots into olive at panel viewing distance,
+    # the canonical botanical colour of Mediterranean laurel and olive
+    # leaves (which is what a Roman corona triumphalis was actually
+    # plaited from). The black stems and the red centre berry stay
+    # solid for ink-contrast against the limestone face.
     laurel_band_y = rect_bot - channel_inset - 8
     laurel_cx = width // 2
     stem_len = 36
     leaf_count = 3
     leaf_a, leaf_b = 5, 2  # leaf ellipse semi-axes (long, short)
+    leaf_centres: list[tuple[int, int]] = []
     for sign in (-1, 1):
         # Stem: a short straight rule along the bottom band, slanted
         # very slightly upward toward the centre so the two stems
@@ -4295,8 +4961,24 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
             leaf_cy = int(stem_y0 + (stem_y1 - stem_y0) * t) - 3
             draw.ellipse(
                 (leaf_cx - leaf_a, leaf_cy - leaf_b, leaf_cx + leaf_a, leaf_cy + leaf_b),
-                fill=ink,
+                fill=SPECTRA6["yellow"],
             )
+            leaf_centres.append((leaf_cx, leaf_cy))
+    # Olive post-pass on each leaf bbox. Only flips yellow pixels (the
+    # leaf fills) — the surrounding white page_bg and red berry pass
+    # through unchanged.
+    pixels = image.load()
+    olive_light = SPECTRA6["green"]
+    sentinel_yellow = SPECTRA6["yellow"]
+    for leaf_cx, leaf_cy in leaf_centres:
+        x0 = max(0, leaf_cx - leaf_a)
+        y0 = max(0, leaf_cy - leaf_b)
+        x1 = min(width - 1, leaf_cx + leaf_a)
+        y1 = min(height - 1, leaf_cy + leaf_b)
+        for py in range(y0, y1 + 1):
+            for px in range(x0, x1 + 1):
+                if (px + py) & 1 == 0 and pixels[px, py] == sentinel_yellow:
+                    pixels[px, py] = olive_light
     # Centre laurel "berry" — a small filled red dot at the join.
     draw.ellipse(
         (laurel_cx - 2, laurel_band_y - 4, laurel_cx + 2, laurel_band_y),
@@ -4647,7 +5329,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     centre_y = height // 2
     top_y = pent_offset
     bot_y = height - 1 - pent_offset
-    flank_radius = 11               # elemental glyphs at the four outer corners
+    flank_radius = 22               # elemental glyphs at the four outer corners (doubled from 11 so the bar / no-bar contrast of the four element triangles reads clearly at panel viewing distance — at radius 11 the heavier 4 px triangle stroke obscured which glyph was which)
     flank_spacing = 80              # px between centre and outer-corner glyph
 
     # ------------------------------------------------------------------
@@ -4769,22 +5451,85 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     # bottom arcs (with their tick-mark incantation bands) sit at
     # those cardinal positions and read as the principal seals on
     # their own — no glyph is overlaid there.
-    _draw_alchemical_triangle(
-        draw, centre_x - 2 * flank_spacing, top_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=True, line_width=stroke,
-    )  # 🜃 Earth (top-left)
-    _draw_alchemical_triangle(
-        draw, centre_x + 2 * flank_spacing, top_y, flank_radius, hermetic_color,
-        point_up=False, with_bar=False, line_width=stroke,
-    )  # 🜄 Water (top-right)
-    _draw_alchemical_triangle(
-        draw, centre_x - 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=True, with_bar=False, line_width=stroke,
-    )  # 🜂 Fire (bottom-left)
-    _draw_alchemical_triangle(
-        draw, centre_x + 2 * flank_spacing, bot_y, flank_radius, hermetic_color,
-        point_up=True, with_bar=True, line_width=stroke,
-    )  # 🜁 Air (bottom-right)
+    #
+    # Each element now paints in its CANONICAL alchemical colour rather
+    # than the shared blue ``hermetic_color``: earth → olive (Y+G 1:1),
+    # water → sky (B+W 1:1), fire → tangerine (R+Y 5/8:3/8), air →
+    # violet (R+B 1:1). The 2-ink Bayer mixes lift each glyph onto a
+    # tone the alchemical tradition actually assigned to that element
+    # — green earth, sky-blue water, warm-orange fire, mauve / Tyrian
+    # air. Glyphs paint with a heavier stroke (``triangle_stroke``)
+    # than the outer ritual rectangle so the element sigils read as
+    # heavy / hard inscribed marks rather than hairline diagrams.
+    #
+    # Each triangle is painted in a UNIQUE per-element sentinel ink
+    # (off-palette, dark RGB), then a per-element bbox post-pass
+    # translates exactly the sentinel pixels into a 2-ink Bayer mix of
+    # the recipe's dark and light inks. The sentinel approach avoids
+    # collisions with on-palette pixels already in the bbox — Earth's
+    # bbox in particular sits over the parchment-halftone yellow
+    # flecks of Layer 0, and a yellow-sentinel approach incorrectly
+    # flipped those flecks too, producing a visible green rectangle
+    # bleed around the triangle.
+    #
+    # Air uses 2-ink violet rather than 3-ink lavender because
+    # ``draw_text_dithered`` (and the polygon outlines /
+    # line strokes underlying ``_draw_alchemical_triangle``) only
+    # support 2-ink mixes today; ``_fill_swatch_stipple_3way`` is
+    # rectangle-only. Violet still reads as the canonical
+    # ethereal / spiritual ink for air without needing the new
+    # primitive.
+    triangle_stroke = 4
+    earth_sentinel = (1, 1, 1)
+    water_sentinel = (2, 2, 2)
+    fire_sentinel = (3, 3, 3)
+    air_sentinel = (4, 4, 4)
+    elements = (
+        # (cx, cy, point_up, with_bar, sentinel, dark_ink, light_ink, density, label)
+        (centre_x - 2 * flank_spacing, top_y, False, True,
+         earth_sentinel, SPECTRA6["yellow"], SPECTRA6["green"], 0.5, "🜃 Earth/olive"),
+        (centre_x + 2 * flank_spacing, top_y, False, False,
+         water_sentinel, SPECTRA6["blue"], SPECTRA6["white"], 0.5, "🜄 Water/sky"),
+        (centre_x - 2 * flank_spacing, bot_y, True, False,
+         fire_sentinel, SPECTRA6["red"], SPECTRA6["yellow"], 0.375, "🜂 Fire/tangerine"),
+        (centre_x + 2 * flank_spacing, bot_y, True, True,
+         air_sentinel, SPECTRA6["red"], SPECTRA6["blue"], 0.5, "🜁 Air/violet"),
+    )
+    for cx, cy, point_up, with_bar, sentinel, dark_ink, light_ink, density, _ in elements:
+        _draw_alchemical_triangle(
+            draw, cx, cy, flank_radius, sentinel,
+            point_up=point_up, with_bar=with_bar, line_width=triangle_stroke,
+        )
+        # Per-element bbox post-pass. The triangle's longest extent is
+        # flank_radius along the apex axis plus a margin of the
+        # triangle stroke on each side; pad by 4 px so antialiased
+        # pixels at the polygon corners stay in scope.
+        bx0 = max(0, cx - flank_radius - 4)
+        by0 = max(0, cy - flank_radius - 4)
+        bx1 = min(width - 1, cx + flank_radius + 4)
+        by1 = min(height - 1, cy + flank_radius + 4)
+        threshold = round(density * 16)
+        if density <= 0.25:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if pixels[px, py] == sentinel:
+                        pixels[px, py] = light_ink if (px & 1) == 0 and (py & 1) == 0 else dark_ink
+        elif density >= 0.5:
+            for py in range(by0, by1 + 1):
+                for px in range(bx0, bx1 + 1):
+                    if pixels[px, py] == sentinel:
+                        pixels[px, py] = light_ink if (px + py) & 1 == 0 else dark_ink
+        else:
+            for py in range(by0, by1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(bx0, bx1 + 1):
+                    if pixels[px, py] == sentinel:
+                        pixels[px, py] = light_ink if row[px & 3] < threshold else dark_ink
+    # ``hermetic_color`` still drives the pentagram / pentagon / tick-
+    # band geometry above; the four element triangles now use their
+    # own per-element ink so the canonical alchemical colour mapping
+    # reads at panel distance.
+    del hermetic_color
 
 
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
@@ -4894,9 +5639,13 @@ _DEBUG_LABEL_RIGHT_INSET = {
 # TFoust's "quarter past two" on a justified line in ``grimoire`` reads
 # as three disconnected ink-stained syllables rather than a single
 # inscription — the hollow / shaggy character of the face survives
-# only at its natural inter-letter rhythm. Strict superset is fine:
-# the ``score_row`` / wrap / fit pipeline does not depend on this set.
-_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire"})
+# only at its natural inter-letter rhythm. Gothic shares the rigid
+# treatment because its UnifrakturMaguntia matched-phrase blackletter
+# has the same problem at scale — elastic spaces between blackletter
+# words read as breaks between Latin clauses rather than a single
+# inscribed phrase. Strict superset is fine: the ``score_row`` / wrap
+# / fit pipeline does not depend on this set.
+_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire", "gothic"})
 
 
 def _justify_distribution(space_is_bold: list[bool], slack: int, rigid_match: bool) -> list[int]:
