@@ -3831,16 +3831,17 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
       18 px band without bleeding into the body region.
 
     The chrome is a continuous L-shape that **wraps the canvas
-    corner** — the outer perimeter follows ``x = 0`` (canvas left edge)
-    and ``y = 0`` / ``y = height-1`` (canvas top/bottom edges) at a
-    hard right angle. The INNER corners (where the top/bottom bar
-    meets the rail) are rounded by a quarter-circle fillet of radius
-    ``inner_corner_r``. This is the canonical Okudagram silhouette:
-    the outer edge hugs the screen bezel, the inner edge curves
-    gently into the page interior. (An earlier revision placed the
-    chrome BELOW the canvas top, leaving an empty black strip above
-    the top bar — that's "the corner looks backwards" feedback the
-    user flagged; the chrome now anchors at y = 0.)
+    corner with an annular quarter-circle elbow** — the outer
+    perimeter is a quarter-circle of radius ``R_out`` sweeping from
+    ``(0, R_out)`` around the canvas top-left corner to ``(R_out, 0)``;
+    the inner perimeter is a concentric quarter-circle of radius
+    ``R_in = R_out - T`` (where ``T = bar_thickness = rail_width`` is
+    the uniform annular thickness) sweeping into the page interior.
+    Both arcs share a common centre at ``(R_out, R_out)``. The chrome
+    annulus has uniform thickness T everywhere. (Earlier revisions
+    placed the chrome BELOW the canvas top with sharp corners on the
+    canvas edge; the user's "corners are backwards" feedback flagged
+    both that AND the unrounded outer corner.)
 
     DEBUG MODE banner: in ``--mode debug`` the renderer paints a small
     yellow "DEBUG MODE" label at y = 14..29 in the top-right. Because
@@ -3870,9 +3871,17 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     label_ink_on_block = SPECTRA6["black"]
 
     # --- Geometry ---
-    bar_thickness = 36              # chunky bars, comfortably accommodates the 26 pt LCARS wordmark
-    rail_width = 44                 # rail thickness; matches the bar weight visually
-    inner_corner_r = 36             # rounded inner-corner fillet radius
+    # ``T`` is BOTH the bar thickness AND the rail width — the annular
+    # elbow geometry needs them equal so the chrome's annular thickness
+    # (R_out − R_in) matches the bar's height matches the rail's width.
+    # ``R_out`` is the outer-elbow radius (controls how rounded the
+    # canvas-corner curve is); ``R_in`` is the derived inner-elbow
+    # radius (= R_out − T) for the page-interior curve.
+    T = 44
+    bar_thickness = T
+    rail_width = T
+    R_out = 72                      # outer elbow radius — chunky LCARS curve sweeping the canvas corner
+    R_in = R_out - T                # = 28, derived
     cap_radius = 18                 # right-cap radius for the rail blocks (PIL's rounded_rectangle with corners= kwarg needs height ≥ 2·radius + 3 px to draw the inner straight segment without erroring; sized so even the 0.13-proportion block clears the floor at ~41 px)
     block_right = rail_width + cap_radius - 1
 
@@ -3885,23 +3894,24 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     lavender_sentinel = (1, 1, 1)
 
     # ===========================================================
-    # Layer 1: paint top/bottom bars + the left rail full-length
+    # Layer 1: paint top/bottom bars + rail straight runs
     # ===========================================================
-    # The top bar is split into TWO segments separated by a thin black
-    # divider (~6 px gap), reproducing the multi-colour Okudagram top-
-    # band silhouette from the reference wallpaper. The left segment
-    # spans the canvas top-left corner (anchored at x = 0, y = 0) so
-    # the chrome wraps the corner; the right segment (~36% of the
-    # remaining width) is converted to lavender via the 3-way post-pass.
+    # The straight runs START at ``R_out`` (away from the canvas
+    # corner) — the region x ∈ [0, R_out), y ∈ [0, R_out) is the
+    # elbow's annular footprint and gets painted separately in Layer
+    # 2. Top bar is split into TWO segments separated by a ~6 px
+    # black divider, reproducing the multi-colour Okudagram top-band
+    # silhouette.
     segment_gap = 6
-    top_bar_total = width
-    seg1_w = int(top_bar_total * 0.60)
-    seg1_left = 0
+    top_bar_left = R_out
+    top_bar_right = width - 1
+    top_bar_inner_w = top_bar_right - top_bar_left + 1
+    seg1_w = int(top_bar_inner_w * 0.55)
+    seg1_left = top_bar_left
     seg1_right = seg1_left + seg1_w - 1
     seg2_left = seg1_right + 1 + segment_gap
-    seg2_right = width - 1
-    # First (tangerine) segment of the top bar — anchored at x = 0, y = 0
-    # so the chrome occupies the canvas top-left corner.
+    seg2_right = top_bar_right
+    # First (tangerine) segment of the top bar.
     draw.rectangle(
         (seg1_left, top_bar_y1, seg1_right, top_bar_y2),
         fill=sentinel_red,
@@ -3911,65 +3921,68 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
         (seg2_left, top_bar_y1, seg2_right, top_bar_y2),
         fill=lavender_sentinel,
     )
-    # Bottom bar — single tangerine ribbon (the reference's bottom edge
-    # is simpler than its top, leaning on the STARDATE callout for
-    # visual weight rather than segmenting the bar itself).
+    # Bottom bar — single tangerine ribbon. Starts at R_out (clear of
+    # the bottom-left elbow); the simpler silhouette leans on the
+    # STARDATE callout for visual weight rather than segmenting the bar.
     draw.rectangle(
-        (0, bottom_bar_y1, width - 1, bottom_bar_y2),
+        (R_out, bottom_bar_y1, width - 1, bottom_bar_y2),
         fill=sentinel_red,
     )
-    # Left rail — full-height vertical strip. Overlaps the top + bottom
-    # bars in their corner squares; the overlap is just chrome, so
-    # there's nothing to reconcile.
+    # Left rail — vertical strip between the two elbows (y = R_out to
+    # height - R_out - 1). The annular elbow quadrants in Layer 2
+    # connect the rail to the bars.
     draw.rectangle(
-        (0, 0, rail_width - 1, height - 1),
+        (0, R_out, rail_width - 1, height - R_out - 1),
         fill=sentinel_red,
     )
 
     # ===========================================================
-    # Layer 2: rounded inner-corner fillets
+    # Layer 2: annular-quadrant elbows (BOTH outer + inner rounded)
     # ===========================================================
-    # The L-shape currently has a SHARP inner-concave corner at
-    # (rail_width, bar_thickness) (top) and (rail_width, height -
-    # bar_thickness) (bottom). To round these to the canonical LCARS
-    # smooth fillet:
-    #   1. Add a chrome square at the inner corner of size r × r.
-    #   2. Carve the page-interior quarter-disc out of that square
-    #      with ``page_bg``.
-    # The remaining L-shaped fillet is what gives the inner edge its
-    # rounded look — outer perimeter still hugs the canvas corner at a
-    # right angle, but the inner edge curves smoothly into the page.
-    # Top fillet: chrome square anchored at (rail_width, bar_thickness),
-    # carve the top-LEFT quadrant of a disc centred at
-    # (rail_width + r, bar_thickness + r). The pieslice angles 180..270
-    # cover the upper-left quadrant of that bounding circle.
-    r = inner_corner_r
-    draw.rectangle(
-        (rail_width, bar_thickness, rail_width + r - 1, bar_thickness + r - 1),
-        fill=sentinel_red,
-    )
+    # Each elbow is bounded by TWO concentric quarter-circles:
+    #   * outer arc, radius R_out, sweeping around the canvas corner
+    #     from (0, R_out) → (R_out, 0) so the chrome's outer
+    #     perimeter is ROUNDED (not a sharp right angle on the canvas
+    #     edge)
+    #   * inner arc, radius R_in = R_out − T, sweeping into the page
+    #     interior from (T, R_out) → (R_out, T) so the chrome's inner
+    #     perimeter is also rounded
+    # Both arcs share centre point (R_out, R_out) (top elbow). The
+    # annular region between them is the elbow chrome.
+    #
+    # Implementation: paint the full outer-disc quadrant in sentinel,
+    # then carve the inner-disc quadrant in page_bg. PIL's pieslice
+    # angles for the top-left quadrant relative to centre (R_out, R_out)
+    # run 180° → 270° (9 o'clock clockwise to 12 o'clock).
+    # Top elbow:
     draw.pieslice(
-        (rail_width, bar_thickness,
-         rail_width + 2 * r - 1, bar_thickness + 2 * r - 1),
+        (0, 0, 2 * R_out - 1, 2 * R_out - 1),
         start=180, end=270,
-        fill=page_bg,
-    )
-    # Bottom fillet — mirror about y = height / 2. Inner corner at
-    # (rail_width, height - bar_thickness - 1); fillet chrome square
-    # extends upward from there; the carve is the bottom-left quadrant
-    # (angles 90..180) of a disc centred at (rail_width + r,
-    # height - bar_thickness - r).
-    draw.rectangle(
-        (rail_width, height - bar_thickness - r,
-         rail_width + r - 1, height - bar_thickness - 1),
         fill=sentinel_red,
     )
+    if R_in > 0:
+        draw.pieslice(
+            (T, T, 2 * R_out - T - 1, 2 * R_out - T - 1),
+            start=180, end=270,
+            fill=page_bg,
+        )
+    # Bottom elbow — mirror about y = height / 2. The annulus centre
+    # sits at (R_out, height - R_out). The bottom-left quadrant of
+    # that centre (angles 90° → 180°, 6 o'clock clockwise to 9
+    # o'clock) covers x ∈ [0, R_out], y ∈ [height − R_out, height].
+    bottom_disc_y1 = height - 2 * R_out
+    bottom_disc_y2 = height - 1
     draw.pieslice(
-        (rail_width, height - bar_thickness - 2 * r,
-         rail_width + 2 * r - 1, height - bar_thickness - 1),
+        (0, bottom_disc_y1, 2 * R_out - 1, bottom_disc_y2),
         start=90, end=180,
-        fill=page_bg,
+        fill=sentinel_red,
     )
+    if R_in > 0:
+        draw.pieslice(
+            (T, bottom_disc_y1 + T, 2 * R_out - T - 1, bottom_disc_y2 - T),
+            start=90, end=180,
+            fill=page_bg,
+        )
 
     # ===========================================================
     # Layer 2: rail blocks between the two elbows
@@ -3981,13 +3994,12 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # Spectra 6 palette and require sentinel paint + bbox post-pass —
     # which is why this painter delegates to dedicated helpers
     # (``_lcars_paint_*``) rather than inlining each recipe.
-    # Rail blocks slot in between the top + bottom inner-corner fillets,
-    # not the elbow centres (the chrome anchors to the canvas corner
-    # now, no elbow centre exists). Leave a 3-px gutter on each end so
-    # the first/last block doesn't visually merge into the rounded
-    # fillet's bottom/top edge.
-    rail_top = bar_thickness + r + 3
-    rail_bot = height - bar_thickness - r - 3 - 1
+    # Rail blocks slot between the two annular elbows. The rail's
+    # straight section runs y ∈ [R_out, height − R_out − 1]; leave a
+    # 3-px gutter on each end so the first/last block doesn't visually
+    # merge into the elbow's bottom/top arc.
+    rail_top = R_out + 3
+    rail_bot = height - R_out - 3 - 1
     rail_height = rail_bot - rail_top + 1
     block_gap = 3
     # Seven blocks with intentionally non-uniform heights — LCARS panels
@@ -4049,17 +4061,20 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # Layer 3: convert the chrome sentinels to tangerine + lavender
     # ===========================================================
     # The chrome's sentinel-red pixels (top bar left segment, bottom
-    # bar, rail, both inner-corner fillets) convert to tangerine in a
-    # single full-width sweep over the chrome's y extent. The lavender
-    # segment uses a different sentinel so it's untouched by the
-    # tangerine pass; its 3-way Bayer post-pass runs on the lavender
-    # segment's bbox separately.
-    _lcars_post_pass_tangerine(pixels, 0, top_bar_y1, width - 1, top_bar_y2 + r, sentinel_red)
-    _lcars_post_pass_tangerine(pixels, 0, bottom_bar_y1 - r, width - 1, bottom_bar_y2, sentinel_red)
-    # Rail middle — the section between the two corner fillets where
-    # only the sentinel-red rail strip needs converting (the rail
-    # blocks below will overpaint their portions).
-    _lcars_post_pass_tangerine(pixels, 0, top_bar_y2 + r + 1, rail_width - 1, bottom_bar_y1 - r - 1, sentinel_red)
+    # bar, rail straight section, both annular elbow quadrants — but
+    # NOT the rail blocks, which paint AFTER this pass over their own
+    # bboxes) convert to tangerine in two sweeps over the chrome's y
+    # extent. The lavender segment of the top bar uses a different
+    # sentinel so it's untouched by the tangerine pass; its 3-way
+    # Bayer post-pass runs on its bbox separately.
+    # Top region: covers the top bar + the entire top elbow annulus.
+    _lcars_post_pass_tangerine(pixels, 0, top_bar_y1, width - 1, R_out - 1, sentinel_red)
+    # Bottom region: covers the bottom bar + the entire bottom elbow.
+    _lcars_post_pass_tangerine(pixels, 0, height - R_out, width - 1, bottom_bar_y2, sentinel_red)
+    # Rail middle — only the sentinel-red rail strip between the elbows.
+    # Rail blocks overpaint their portions after Layer 2 placed them.
+    _lcars_post_pass_tangerine(pixels, 0, R_out, rail_width - 1, height - R_out - 1, sentinel_red)
+    # Lavender segment of the top bar.
     _lcars_paint_lavender_block(pixels, seg2_left, top_bar_y1, seg2_right, top_bar_y2, lavender_sentinel)
 
     # ===========================================================
