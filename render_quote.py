@@ -3870,17 +3870,28 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     label_ink_on_block = SPECTRA6["black"]
 
     # --- Geometry ---
+    # All constants scale proportionally to the canvas — the painter is
+    # called from the preview API (``/api/preview``) at arbitrary sizes
+    # down to ``PREVIEW_MIN_*`` = 80×60, not just the native 800×480.
+    # Without scaling, the fixed native-size constants leave inverted
+    # PIL bbox coordinates (e.g. ``rail_top > rail_bot``) and the
+    # endpoint returns 500. Below a viable scale threshold the chrome
+    # geometry collapses to sub-pixel features, so bail out and let
+    # the body text + black ground stand in for the LCARS silhouette.
+    scale = min(width / 800.0, height / 480.0)
+    if scale < 0.5:
+        return
     # ``T`` is BOTH the bar thickness AND the rail width — the annular
     # elbow geometry needs them equal so the chrome's annular thickness
     # (R_out − R_in) matches the bar's height matches the rail's width.
     # ``R_out`` is the outer-elbow radius (controls how rounded the
     # canvas-corner curve is); ``R_in`` is the derived inner-elbow
     # radius (= R_out − T) for the page-interior curve.
-    T = 44
+    T = max(8, int(round(44 * scale)))
     bar_thickness = T
     rail_width = T
-    R_out = 72                      # outer elbow radius — chunky LCARS curve sweeping the canvas corner
-    R_in = R_out - T                # = 28, derived
+    R_out = max(16, int(round(72 * scale)))   # outer elbow radius
+    R_in = R_out - T                           # derived
     # Rail blocks are plain rectangles confined to the rail column —
     # no protrusion past ``rail_width``, no rounded corners. The colour
     # blocks read as flush sidebar segments rather than as detached
@@ -3904,7 +3915,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # 2. Top bar is split into TWO segments separated by a ~6 px
     # black divider, reproducing the multi-colour Okudagram top-band
     # silhouette.
-    segment_gap = 6
+    segment_gap = max(2, int(round(6 * scale)))
     top_bar_left = R_out
     top_bar_right = width - 1
     top_bar_inner_w = top_bar_right - top_bar_left + 1
@@ -4001,10 +4012,11 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # straight section runs y ∈ [R_out, height − R_out − 1]; leave a
     # 3-px gutter on each end so the first/last block doesn't visually
     # merge into the elbow's bottom/top arc.
-    rail_top = R_out + 3
-    rail_bot = height - R_out - 3 - 1
+    rail_gutter = max(1, int(round(3 * scale)))
+    rail_top = R_out + rail_gutter
+    rail_bot = height - R_out - rail_gutter - 1
     rail_height = rail_bot - rail_top + 1
-    block_gap = 3
+    block_gap = max(1, int(round(3 * scale)))
     # Seven blocks with intentionally non-uniform heights — LCARS panels
     # in the show varied block heights to suggest functional grouping.
     # Each entry in ``block_specs`` is (kind, label, proportion); the
@@ -4093,7 +4105,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # ===========================================================
     # Layer 4: black labels centred inside each block
     # ===========================================================
-    block_label_font = load_font(META_FONT_BOLD_CANDIDATES, 10)
+    block_label_font = load_font(META_FONT_BOLD_CANDIDATES, max(6, int(round(10 * scale))))
     label_pad_right = 4   # small inset from the right edge so the label
                           # doesn't kiss the rail boundary
     for left, top, right, bot, label in blocks:
@@ -4119,7 +4131,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # Sized to fill ~80% of the bar's height (≈ 18 pt against a 22 px
     # bar). Antonio Bold (the theme's display face) anchors the
     # wordmark to the body typography.
-    wordmark_font = load_font(theme_font_candidates("lcars", "ornament"), 26)
+    wordmark_font = load_font(theme_font_candidates("lcars", "ornament"), max(10, int(round(26 * scale))))
     wordmark_text = "LCARS"
     wordmark_bbox = draw.textbbox((0, 0), wordmark_text, font=wordmark_font)
     wordmark_w = wordmark_bbox[2] - wordmark_bbox[0]
@@ -4142,7 +4154,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # over the tangerine bottom bar so the colour transition matches
     # the top bar's black-on-orange. Use a smaller font (~12 pt) so the
     # full string fits inside the bar's 22 px band without crowding.
-    stardate_font = load_font(theme_font_candidates("lcars", "ornament"), 14)
+    stardate_font = load_font(theme_font_candidates("lcars", "ornament"), max(7, int(round(14 * scale))))
     stardate_text = "STARDATE 47988.1"
     sd_bbox = draw.textbbox((0, 0), stardate_text, font=stardate_font)
     sd_w = sd_bbox[2] - sd_bbox[0]
