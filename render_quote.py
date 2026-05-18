@@ -685,20 +685,25 @@ THEMES = {
     },
     # 1960s psychedelic Fillmore concert poster (Wes Wilson / Victor
     # Moscoso / Stanley Mouse). The visual maximalist of the rotation:
-    # yellow ground + maroon-stippled body + saturated blue matched
-    # phrase, with green and blue corner "blob panels". The body's
-    # ``text`` slot is the red sentinel; ``_draw_text_body`` routes
-    # it through a 50/50 R+K stipple → oxblood maroon, the same
-    # recipe ``mucha`` uses for its body — subdues the otherwise-
-    # loud red-on-yellow clash without losing the psychedelic
-    # identity (real Fillmore posters' red ink ended up darker once
-    # printed onto yellow stock anyway). All six Spectra-6 natives
-    # still appear on the page (yellow ground, blue matched phrase,
-    # green / blue / red / yellow blob inks, black + white in body
-    # text via the R+K stipple + Bungee Shade's drop-shadows). Body
-    # in Bungee Shade, a chunky 3D-blocked display face that lands
-    # "psychedelic-adjacent" without sacrificing the readability
-    # LitClock requires.
+    # sun-faded-yellow Layer-0-washed ground + maroon-stippled body
+    # + saturated blue matched phrase, with green and blue corner
+    # "blob panels". The body's ``text`` slot is the red sentinel;
+    # ``_draw_text_body`` routes it through a 50/50 R+K stipple →
+    # oxblood maroon, the same recipe ``mucha`` uses for its body
+    # — subdues the otherwise-loud red-on-yellow clash without
+    # losing the psychedelic identity (real Fillmore posters' red
+    # ink ended up darker once printed onto yellow stock anyway).
+    # The ``draw_fillmore_border`` painter further softens the
+    # ground with a sparse 1-in-8 white-on-yellow Bayer Layer-0
+    # wash so the saturated Spectra-6 yellow reads as slightly
+    # sun-faded rather than fire-bright at panel distance. All
+    # six Spectra-6 natives still appear on the page (yellow +
+    # white ground, blue matched phrase, green / blue / red /
+    # yellow blob inks, black in the body's R+K stipple +
+    # Bungee Shade's drop-shadows). Body in Bungee Shade, a
+    # chunky 3D-blocked display face that lands "psychedelic-
+    # adjacent" without sacrificing the readability LitClock
+    # requires.
     "fillmore": {
         "page_bg": SPECTRA6["yellow"],
         "text": SPECTRA6["red"],
@@ -6883,11 +6888,32 @@ def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tupl
 
 
 def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
-    """Paint a 1960s Fillmore poster frame: corner blob panels in
+    """Paint a 1960s Fillmore poster frame: Layer-0 white wash that
+    tempers the saturated-yellow ground, plus corner blob panels in
     diagonal balance, sized to clear the body text area.
 
-    Two motifs from the Wes Wilson / Victor Moscoso poster tradition:
+    Three motifs from the Wes Wilson / Victor Moscoso poster tradition:
 
+    * **Layer 0 — sparse 1-in-8 white-on-yellow Bayer wash.**
+      Flips ~2/16 of the yellow ``page_bg`` pixels to white per
+      ``BAYER_4x4[y%4][x%4] < 2``, so the eye averages the
+      alternation at panel distance into a slightly-paler
+      yellow. Same density as the cream Layer-0 wash
+      ``illuminated`` / ``dispatch`` / ``herbarium`` / ``mucha``
+      use on their *white* grounds (which lifts white toward
+      warm vellum); here the same primitive runs on the
+      *yellow* ground to do the inverse — pulling the saturated
+      Spectra-6 yellow back a notch toward a softer
+      sun-faded tone — without crossing the threshold into
+      cream / off-white territory and losing the Fillmore-
+      poster identity. Real Fillmore prints used yellow
+      stock that was already partly sun-faded by the time
+      the audience saw the poster on a venue door, so the
+      perceived hue is period-faithful. Only pixels matching
+      the exact ``page_bg`` colour are flipped, so the blobs /
+      star / inner circle painted below stay solid by
+      construction (they overpaint pixels that were once
+      page_bg and are skipped by the Layer 0 guard).
     * **Green blob panel in the top-left corner** — a free-form
       18-point polygon (seeded so the silhouette is deterministic)
       filled in solid green, with a small red 5-point star painted
@@ -6902,14 +6928,12 @@ def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
 
     No outer frame — the composition is grounded by the corner
     blobs rather than by a containing rectangle, the way real
-    Fillmore posters compose. The combination of yellow
-    ``page_bg`` + red body + blue matched phrase + green blob +
-    yellow inner circle + red star = all six Spectra-6 native inks
-    visible on one page (white reads through the body-text gaps
-    against the yellow ground; black sits in the matched-phrase
-    BUNGEE SHADE shadow strokes), the visual maximalist of the
-    rotation. Body text breathes diagonally between the two
-    corner blobs.
+    Fillmore posters compose. The combination of pale-yellow
+    ``page_bg`` (Layer-0 wash) + maroon-stippled body + blue
+    matched phrase + green blob + yellow inner circle + red star
+    = all six Spectra-6 native inks visible on one page, the
+    visual maximalist of the rotation. Body text breathes
+    diagonally between the two corner blobs.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -6917,6 +6941,20 @@ def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
     blue_ink = SPECTRA6["blue"]
     red_ink = SPECTRA6["red"]
     yellow_ink = SPECTRA6["yellow"]
+    page_bg = colors.get("page_bg")
+
+    # Layer 0: sparse 1-in-8 white-on-yellow Bayer wash. Only pixels
+    # matching the exact ``page_bg`` colour are flipped, so any future
+    # caller that pre-paints accents before this painter runs stays
+    # valid. Skipped when ``page_bg`` is absent from the palette dict
+    # so direct-call test paths providing only ``text`` stay valid.
+    if page_bg is not None:
+        pixels = image.load()
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = SPECTRA6["white"]
 
     # Green blob (TL). Centre tucked into the corner margin. With
     # scale=0.4 the base radius is 32 px, so the blob silhouette
