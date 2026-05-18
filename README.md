@@ -440,7 +440,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
 - Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
-- Theme thumbnail grid: side-by-side previews of all twenty-five registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
+- Theme thumbnail grid: side-by-side previews of all twenty-nine registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
 #### Tab: Curate
 
