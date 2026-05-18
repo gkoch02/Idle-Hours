@@ -685,15 +685,20 @@ THEMES = {
     },
     # 1960s psychedelic Fillmore concert poster (Wes Wilson / Victor
     # Moscoso / Stanley Mouse). The visual maximalist of the rotation:
-    # yellow ground + saturated red body + saturated blue matched
-    # phrase, with green and blue corner "blob panels" plus red
-    # concentric vibration rings in the upper-right. Deliberately uses
-    # every Spectra-6 native ink simultaneously — no synthesised
-    # colours, the palette IS the statement. Total visual contrast to
-    # ``swiss``'s austerity, which is the point of placing the two at
-    # opposite ends of the rotation. Body in Bungee Shade, a chunky
-    # 3D-blocked display face that lands "psychedelic-adjacent"
-    # without sacrificing the readability LitClock requires.
+    # yellow ground + maroon-stippled body + saturated blue matched
+    # phrase, with green and blue corner "blob panels". The body's
+    # ``text`` slot is the red sentinel; ``_draw_text_body`` routes
+    # it through a 50/50 R+K stipple → oxblood maroon, the same
+    # recipe ``mucha`` uses for its body — subdues the otherwise-
+    # loud red-on-yellow clash without losing the psychedelic
+    # identity (real Fillmore posters' red ink ended up darker once
+    # printed onto yellow stock anyway). All six Spectra-6 natives
+    # still appear on the page (yellow ground, blue matched phrase,
+    # green / blue / red / yellow blob inks, black + white in body
+    # text via the R+K stipple + Bungee Shade's drop-shadows). Body
+    # in Bungee Shade, a chunky 3D-blocked display face that lands
+    # "psychedelic-adjacent" without sacrificing the readability
+    # LitClock requires.
     "fillmore": {
         "page_bg": SPECTRA6["yellow"],
         "text": SPECTRA6["red"],
@@ -2531,18 +2536,30 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # green axis but reads as a different tone, so body matched
         # phrase and decoration stay visually distinct.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
-    elif theme == "mucha" and fill == SPECTRA6["red"]:
+    elif theme in ("mucha", "fillmore") and fill == SPECTRA6["red"]:
         # Body text shifts to maroon (R+K 1/2:1/2 — the documented
         # two-ink recipe ``blueprint`` / ``scholar``'s matched phrase
-        # use). ``mucha``'s ``text`` THEMES slot is the red sentinel
-        # ink, and EVERY body-text path hits this seam — so this is
-        # the first theme in the rotation to use a synthesised colour
-        # as its primary body fill rather than just an accent. Reads
-        # as the deep wine / oxblood the period's poster lettering
-        # actually used. The matched phrase below is keyed off green
-        # (the ``accent`` slot) and lands on cyan via its own branch,
-        # so body and matched phrase end up on different two-ink
-        # syntheses that share the same warm-cool family contrast.
+        # use). Both themes hold the red sentinel in the ``text``
+        # THEMES slot so EVERY body-text path hits this seam:
+        #
+        # * ``mucha`` — the first theme in the rotation to use a
+        #   synthesised colour as its primary body fill rather than
+        #   just an accent. Reads as the deep wine / oxblood the
+        #   period's poster lettering actually used. The matched
+        #   phrase below is keyed off green and lands on cyan via
+        #   its own branch.
+        # * ``fillmore`` — subdues the otherwise-loud red-on-yellow
+        #   body without losing the psychedelic-poster identity. A
+        #   pure-red body on the saturated-yellow ground reads as
+        #   visually fatiguing at panel distance; R+K maroon
+        #   (oxblood) sits deeper on the page, the way real Fillmore
+        #   posters' red ink looked once printed onto yellow stock —
+        #   ink interaction shifts the perceived hue darker. The
+        #   matched-phrase blue stays solid, the corner-blob
+        #   primaries stay solid, so all six Spectra-6 inks still
+        #   appear on the page (the design intent of fillmore's
+        #   "visual maximalist" identity is preserved — only the
+        #   body-text intensity is tempered).
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
     elif theme == "mucha" and fill == SPECTRA6["green"]:
         # Matched phrase shifts to cyan (G+B 1/2:1/2 — the documented
