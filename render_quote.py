@@ -3930,13 +3930,14 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
         (R_out, bottom_bar_y1, width - 1, bottom_bar_y2),
         fill=sentinel_red,
     )
-    # Left rail — vertical strip between the two elbows (y = R_out to
-    # height - R_out - 1). The annular elbow quadrants in Layer 2
-    # connect the rail to the bars.
-    draw.rectangle(
-        (0, R_out, rail_width - 1, height - R_out - 1),
-        fill=sentinel_red,
-    )
+    # NOTE: there's NO uniform "rail" strip painted here. The straight
+    # rail section between the two elbows is composed ENTIRELY of the
+    # stacked colour blocks painted in Layer 4 — the gaps between
+    # blocks remain page_bg (black) and act as visual separators
+    # between the colour-coded panel segments, matching the reference
+    # wallpaper. (Earlier revisions painted a tangerine rail strip
+    # under the blocks, which made any tangerine / peach blocks
+    # visually disappear into the rail background.)
 
     # ===========================================================
     # Layer 2: annular-quadrant elbows (BOTH outer + inner rounded)
@@ -4013,14 +4014,24 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # block's visible label area is only ~rail_width (= 44 px) wide;
     # a longer code would clip its leading characters at the left rail
     # edge.
+    # Palette is deliberately high-contrast and AVOIDS tangerine /
+    # peach (those share R+Y pixels with the elbow chrome and so
+    # visually blend with it — the v6/v7 renders had two invisible
+    # tangerine blocks). Mix of:
+    #   * pastel 3-ink stipples (lavender, lilac) — cool accents
+    #   * pastel 2-ink stipple (coral) — soft warm
+    #   * native Spectra 6 inks (yellow, red, blue) — bright punch
+    # The native-ink blocks (yellow / red / blue) provide unmissable
+    # colour-coded "alert button" positions — canonical LCARS reads
+    # red as critical, yellow as advisory, blue as informational.
     block_specs = [
-        ("lavender",  "40-27", 0.14),
-        ("tangerine", "65-54", 0.16),
-        ("coral",     "97-56", 0.13),
-        ("peach",     "76-54", 0.16),
-        ("tangerine", "22-43", 0.13),
-        ("lilac",     "57-65", 0.15),
-        ("lavender",  "18-82", 0.13),
+        ("lavender", "40-27", 0.14),
+        ("yellow",   "65-54", 0.16),
+        ("coral",    "97-56", 0.13),
+        ("lilac",    "76-54", 0.16),
+        ("red",      "22-43", 0.13),
+        ("coral",    "57-65", 0.15),
+        ("blue",     "18-82", 0.13),
     ]
     assert abs(sum(p for _, _, p in block_specs) - 1.0) < 1e-6
     available_v = rail_height - block_gap * (len(block_specs) - 1)
@@ -4033,24 +4044,30 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
         bot = cursor_y + bh - 1
         left = 0
         right = block_right
-        if kind in ("tangerine", "coral"):
-            paint_sentinel = sentinel_red
-        else:
-            paint_sentinel = lavender_sentinel
-        draw.rectangle(
-            (left, top, right, bot),
-            fill=paint_sentinel,
-        )
-        if kind == "tangerine":
-            _lcars_post_pass_tangerine(pixels, left, top, right, bot, sentinel_red)
-        elif kind == "coral":
+        # Solid native-ink blocks paint their fill colour directly; the
+        # stippled blocks (coral / lavender / lilac) paint in a sentinel
+        # and then a per-block bbox post-pass converts the sentinel to
+        # the synthesised tone.
+        if kind == "coral":
+            draw.rectangle((left, top, right, bot), fill=sentinel_red)
             _lcars_post_pass_coral(pixels, left, top, right, bot, sentinel_red)
         elif kind == "lavender":
+            draw.rectangle((left, top, right, bot), fill=lavender_sentinel)
             _lcars_paint_lavender_block(pixels, left, top, right, bot, lavender_sentinel)
-        elif kind == "peach":
-            _lcars_paint_peach_block(pixels, left, top, right, bot, lavender_sentinel)
         elif kind == "lilac":
+            draw.rectangle((left, top, right, bot), fill=lavender_sentinel)
             _lcars_paint_lilac_block(pixels, left, top, right, bot, lavender_sentinel)
+        elif kind == "yellow":
+            draw.rectangle((left, top, right, bot), fill=SPECTRA6["yellow"])
+        elif kind == "red":
+            # Solid red on the page_bg-flanked rail is unambiguous —
+            # there's no tangerine background nearby to share the red
+            # pixels with (the tangerine chrome is at the elbow
+            # quadrants, separated from this block by a 3-px page_bg
+            # gap and the rounded elbow geometry).
+            draw.rectangle((left, top, right, bot), fill=SPECTRA6["red"])
+        elif kind == "blue":
+            draw.rectangle((left, top, right, bot), fill=SPECTRA6["blue"])
         blocks.append((left, top, right, bot, label))
         cursor_y += bh + block_gap
 
@@ -4068,9 +4085,8 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     _lcars_post_pass_tangerine(pixels, 0, top_bar_y1, width - 1, R_out - 1, sentinel_red)
     # Bottom region: covers the bottom bar + the entire bottom elbow.
     _lcars_post_pass_tangerine(pixels, 0, height - R_out, width - 1, bottom_bar_y2, sentinel_red)
-    # Rail middle — only the sentinel-red rail strip between the elbows.
-    # Rail blocks overpaint their portions after Layer 2 placed them.
-    _lcars_post_pass_tangerine(pixels, 0, R_out, rail_width - 1, height - R_out - 1, sentinel_red)
+    # No rail-middle pass — the rail's vertical section is composed of
+    # the colour blocks themselves with page_bg gaps between them.
     # Lavender segment of the top bar.
     _lcars_paint_lavender_block(pixels, seg2_left, top_bar_y1, seg2_right, top_bar_y2, lavender_sentinel)
 
