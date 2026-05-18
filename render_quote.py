@@ -3852,12 +3852,11 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
 
     Body-text overlap: the layout pipeline's largest ``max_width`` is
     680 (the ``dense`` layout), centred in the 800-px canvas → body
-    text starts at x = 60. The rail blocks extend to x ≈ 60 (rail
-    width 40 + 20 px right-cap radius), sitting flush with the dense
-    body's left edge; hero/standard layouts leave 10–20 px of clear
-    margin so the rail and body never visibly intersect. Same
-    "decoration in margins" pattern ``dispatch`` and ``nightvision``
-    establish.
+    text starts at x = 60. The rail blocks are confined to the rail
+    column (x = 0..rail_width-1 = 0..43), leaving ≥ 16 px of clear
+    margin to the densest body — the rail and body never visibly
+    intersect. Same "decoration in margins" pattern ``dispatch``
+    and ``nightvision`` establish.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -3882,8 +3881,11 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     rail_width = T
     R_out = 72                      # outer elbow radius — chunky LCARS curve sweeping the canvas corner
     R_in = R_out - T                # = 28, derived
-    cap_radius = 18                 # right-cap radius for the rail blocks (PIL's rounded_rectangle with corners= kwarg needs height ≥ 2·radius + 3 px to draw the inner straight segment without erroring; sized so even the 0.13-proportion block clears the floor at ~41 px)
-    block_right = rail_width + cap_radius - 1
+    # Rail blocks are plain rectangles confined to the rail column —
+    # no protrusion past ``rail_width``, no rounded corners. The colour
+    # blocks read as flush sidebar segments rather than as detached
+    # "pill buttons" floating off the rail.
+    block_right = rail_width - 1
 
     top_bar_y1 = 0
     top_bar_y2 = bar_thickness - 1
@@ -4006,11 +4008,11 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # in the show varied block heights to suggest functional grouping.
     # Each entry in ``block_specs`` is (kind, label, proportion); the
     # proportions sum to 1.0.
-    # Block labels are short alphanumeric codes (3-4 chars) — the show's
+    # Block labels are short alphanumeric codes (3-5 chars) — the show's
     # signature meaningless instrument numerics. Kept short because the
-    # block's visible label area is only ~50 px wide (rail_width 40 +
-    # ~half the cap_radius before the curvature begins); a longer code
-    # would clip its leading characters under the cap.
+    # block's visible label area is only ~rail_width (= 44 px) wide;
+    # a longer code would clip its leading characters at the left rail
+    # edge.
     block_specs = [
         ("lavender",  "40-27", 0.14),
         ("tangerine", "65-54", 0.16),
@@ -4021,9 +4023,6 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
         ("lavender",  "18-82", 0.13),
     ]
     assert abs(sum(p for _, _, p in block_specs) - 1.0) < 1e-6
-    # PIL's ``rounded_rectangle`` needs height ≥ 2 × radius; with
-    # rail_height ≈ 340 and cap_radius = 20 the floor at 0.13 → ~44 px
-    # comfortably clears the 40-px minimum.
     available_v = rail_height - block_gap * (len(block_specs) - 1)
     pixels = image.load()
     blocks: list[tuple[int, int, int, int, str]] = []
@@ -4038,10 +4037,8 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
             paint_sentinel = sentinel_red
         else:
             paint_sentinel = lavender_sentinel
-        draw.rounded_rectangle(
+        draw.rectangle(
             (left, top, right, bot),
-            radius=cap_radius,
-            corners=(False, True, True, False),
             fill=paint_sentinel,
         )
         if kind == "tangerine":
@@ -4081,15 +4078,15 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # Layer 4: black labels centred inside each block
     # ===========================================================
     block_label_font = load_font(META_FONT_BOLD_CANDIDATES, 10)
+    label_pad_right = 4   # small inset from the right edge so the label
+                          # doesn't kiss the rail boundary
     for left, top, right, bot, label in blocks:
         baseline_bbox = draw.textbbox((0, 0), label, font=block_label_font)
         label_w = baseline_bbox[2] - baseline_bbox[0]
         label_h = baseline_bbox[3] - baseline_bbox[1]
-        # Right-align inside the straight section so the label hugs the
-        # right cap without crossing into the curved cap region where
-        # stippled-block density is non-uniform. Block widths now
-        # accommodate ~10-char labels at 10pt.
-        label_x = right - cap_radius // 2 - label_w - baseline_bbox[0]
+        # Right-align inside the block (the right edge is now flush
+        # with the rail boundary, so just pad in by ``label_pad_right``).
+        label_x = right - label_pad_right - label_w - baseline_bbox[0]
         label_y = top + (bot - top - label_h) // 2 - baseline_bbox[1]
         draw.text(
             (label_x, label_y),
