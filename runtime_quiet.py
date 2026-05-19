@@ -80,7 +80,7 @@ def _display_quiet_image(
     ``telemetry_path``, when provided, is used to record a ``mode="display_timeout"``
     entry if the display subprocess exceeds ``DISPLAY_TIMEOUT_SECONDS`` — matches the
     contract the render/display paths in ``run_clock.render_now`` follow so operators
-    can see quiet-image wedges in ``litclock_health.py`` summaries.
+    can see quiet-image wedges in ``idle_hours_health.py`` summaries.
     """
     quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
     output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
@@ -158,7 +158,7 @@ def enter_quiet(
     quiet_bucket = bucket_for_time(time_str)
     trigger = "manual" if manual_only else f"{args.quiet_start}–{args.quiet_end}"
     _log(f"quiet hours start ({trigger})")
-    # Structured rising-edge marker so litclock_health can tell
+    # Structured rising-edge marker so idle_hours_health can tell
     # "silent window because quiet" apart from "silent window because wedged";
     # the falling-edge marker is emitted by the main loop after exit_quiet.
     run_clock.append_telemetry(

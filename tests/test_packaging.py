@@ -40,7 +40,7 @@ EXCLUDED_TOP_LEVEL = frozenset({
 })
 
 # Hardware-dep namespaces that must NEVER appear in ``sys.modules`` after
-# importing any LitClock production module on a non-Pi host.
+# importing any Idle Hours production module on a non-Pi host.
 FORBIDDEN_HARDWARE_NAMESPACES = ("gpiozero", "inky", "RPi")
 
 

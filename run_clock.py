@@ -366,7 +366,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_TELEMETRY_RETAIN_DAYS,
         help=(
             "Drop date-rotated telemetry siblings older than this many days once "
-            "per local-date rollover (default: 90). litclock_health.py still globs "
+            "per local-date rollover (default: 90). idle_hours_health.py still globs "
             "the directory every run, so unbounded retention eventually slows the "
             "summariser. 0 disables pruning entirely."
         ),
@@ -428,7 +428,7 @@ def parse_args() -> argparse.Namespace:
         default="",
         help=(
             "Shared token required on POSTs when --web-bind exposes the UI beyond "
-            "127.0.0.1. Sent by clients as 'X-LitClock-Token: <token>'. GETs remain "
+            "127.0.0.1. Sent by clients as 'X-Idle-Hours-Token: <token>'. GETs remain "
             "open (telemetry / coverage / current.png are not sensitive)."
         ),
     )
@@ -1159,7 +1159,7 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
     """Emit a loop-liveness telemetry marker, throttled to HEARTBEAT_INTERVAL_SECONDS.
 
     Without this, there is no positive "the loop is ticking" signal during
-    quiet hours or between bucket changes — ``litclock_health.py`` can only
+    quiet hours or between bucket changes — ``idle_hours_health.py`` can only
     tell that renders happened, not that the loop is alive and idle. The
     throttle is wall-clock (``time.monotonic``) so a 1s test loop doesn't
     flood telemetry even though a 60s appliance loop emits once per tick.
@@ -1168,7 +1168,7 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
     when ``$NOTIFY_SOCKET`` is set. The heartbeat and the watchdog ping
     share a trigger so an appliance supervised by systemd's ``WatchdogSec``
     restarts for exactly the same class of wedge that shows up as silence in
-    ``litclock_health.py``. Off-socket (dev hosts, unit tests) the watchdog
+    ``idle_hours_health.py``. Off-socket (dev hosts, unit tests) the watchdog
     call is a no-op. The ping is OUTSIDE the telemetry-path gate so an
     operator who disabled telemetry still gets supervised. It is INSIDE the
     throttle gate so the watchdog cadence tracks the heartbeat cadence
@@ -1178,7 +1178,7 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
     but the *worst-case* interval between two pings is bounded by how long a
     single tick can take before returning to this function: up to
     ``RENDER_TIMEOUT_SECONDS (45) + DISPLAY_TIMEOUT_SECONDS (60) +
-    interval_seconds (60) = 165s``. ``litclock.service.example`` ships
+    interval_seconds (60) = 165s``. ``idle-hours.service.example`` ships
     ``WatchdogSec=180s`` which leaves ~15s margin on that pathological case —
     enough for real-world wobble but not much more. Raise ``WatchdogSec`` or
     lower the render/display timeouts if your appliance sees tighter margins.
@@ -1333,7 +1333,7 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     match how ``render_now`` / ``_display_quiet_image`` look them up.
 
     Also catches the "the wheel doesn't ship static assets" class of failure
-    that ``pip install litclock`` produces today: when ``BASE_DIR`` doesn't
+    that ``pip install idle-hours`` produces today: when ``BASE_DIR`` doesn't
     contain ``assets/quote_database.jsonl`` (the baked runtime corpus the
     picker reads by default) we surface a clear error pointing at the two
     supported install paths (``pip install -e .`` from a checkout, or the
@@ -1556,7 +1556,7 @@ def main() -> int:
                 _log("quiet hours end, resuming normal render cycle")
                 exit_quiet(state)
                 # Falling-edge marker paired with the enter_quiet emission so
-                # litclock_health can count balanced quiet windows (and an
+                # idle_hours_health can count balanced quiet windows (and an
                 # operator can spot "we stopped rendering because we entered
                 # quiet" vs "we stopped rendering because we wedged").
                 append_telemetry(telemetry_path, {"mode": "quiet_exit"})
@@ -1614,7 +1614,7 @@ def main() -> int:
                     # the same hardware fault), drop the stderr+traceback
                     # emission so journald doesn't fill with identical
                     # tracebacks. The structured telemetry entry is still
-                    # written every time so ``litclock_health.py`` sees the
+                    # written every time so ``idle_hours_health.py`` sees the
                     # full failure count. The latch clears on the next success
                     # via ``commit_render_result``, so a genuinely new error
                     # after a recovery still logs loudly.

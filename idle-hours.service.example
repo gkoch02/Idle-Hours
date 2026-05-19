@@ -1,5 +1,5 @@
 [Unit]
-Description=LitClock eInk display service
+Description=Idle Hours eInk display service
 After=network-online.target
 Wants=network-online.target
 
@@ -15,24 +15,24 @@ Type=notify
 WatchdogSec=180s
 
 User=pi
-WorkingDirectory=/home/pi/LitClock
+WorkingDirectory=/home/pi/IdleHours
 
-# StateDirectory=litclock makes systemd create /var/lib/litclock owned by the
-# service User (`pi` here) before ExecStart runs, and exposes it as %S/litclock
+# StateDirectory=idle-hours makes systemd create /var/lib/idle-hours owned by the
+# service User (`pi` here) before ExecStart runs, and exposes it as %S/idle-hours
 # below. That is the system-managed replacement for the historical
-# ~/.litclock/ directory — under the sandbox below ($HOME is read-only — see
+# ~/.idle-hours/ directory — under the sandbox below ($HOME is read-only — see
 # ProtectHome), a writable state dir under /var/lib is the least-surprising
-# option. Migration: ~/.litclock/ on older installs; symlink it to
-# /var/lib/litclock during the transition (see pi_setup_inky_impression.md).
-StateDirectory=litclock
+# option. Migration: ~/.idle-hours/ on older installs; symlink it to
+# /var/lib/idle-hours during the transition (see pi_setup_inky_impression.md).
+StateDirectory=idle-hours
 
 # All persistent settings live in the config file. Copy
-# assets/config.toml.example into %S/litclock/config.toml and edit there —
+# assets/config.toml.example into %S/idle-hours/config.toml and edit there —
 # the systemd unit itself stays stable across config changes, so you only
 # ever `systemctl restart` (no `daemon-reload`) when tuning the appliance.
 # CLI flags still override config values; use them for ad-hoc runs.
-ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/LitClock/run_clock.py \
-  --config %S/litclock/config.toml
+ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python /home/pi/IdleHours/run_clock.py \
+  --config %S/idle-hours/config.toml
 
 # Reads the prebuilt baked DB at assets/quote_database.jsonl (the canonical runtime
 # input). assets/candidates-attributed.jsonl is the raw corpus that feeds the baker
@@ -58,7 +58,7 @@ StandardOutput=journal
 StandardError=journal
 
 # ---- Sandboxing -------------------------------------------------------------
-# Modest least-privilege hardening. `systemd-analyze security litclock.service`
+# Modest least-privilege hardening. `systemd-analyze security idle-hours.service`
 # should show a meaningful improvement over an unsandboxed unit. These are
 # conservative defaults — if you run into trouble, strip them one at a time
 # and re-run systemd-analyze security to see what you gave up.
@@ -70,9 +70,9 @@ ProtectHome=read-only
 # so the service can write its state dir + the render output file. %S expands
 # to /var/lib (since StateDirectory= exists); the WorkingDirectory carve-out
 # is needed for the default --output=output/current.png write path.
-ReadWritePaths=%S/litclock /home/pi/LitClock/output
+ReadWritePaths=%S/idle-hours /home/pi/IdleHours/output
 # Kernel / IPC hardening. These are free for a render loop that only uses
-# POSIX sockets + GPIO / SPI / I2C char devices — which is what LitClock
+# POSIX sockets + GPIO / SPI / I2C char devices — which is what Idle Hours
 # actually does today.
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

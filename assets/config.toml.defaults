@@ -1,14 +1,14 @@
-# LitClock default config — every key set to the value run_clock.py would
+# Idle Hours default config — every key set to the value run_clock.py would
 # use if no config file were passed. Safe to copy verbatim:
 #
-#     cp assets/config.toml.defaults ~/.litclock/config.toml
-#     python3 run_clock.py --config ~/.litclock/config.toml
+#     cp assets/config.toml.defaults ~/.idle-hours/config.toml
+#     python3 run_clock.py --config ~/.idle-hours/config.toml
 #
 # …is behaviourally identical to `python3 run_clock.py` with no --config.
 # Use this when you want an explicit, always-know-what-you're-running
 # reference you can check into your deployment repo and diff against
 # future upstream bumps. For the appliance-oriented preset with
-# /var/lib/litclock/ paths, production mode, and systemctl-poweroff,
+# /var/lib/idle-hours/ paths, production mode, and systemctl-poweroff,
 # see assets/config.toml.example instead.
 #
 # Two CLI defaults are `None` (argparse) and therefore OMITTED here,
@@ -40,15 +40,15 @@ height           = 480
 interval_seconds = 60
 
 # ---- Persistent runtime state ----------------------------------------------
-# Default paths live under ~/.litclock/ for dev convenience. Under the
+# Default paths live under ~/.idle-hours/ for dev convenience. Under the
 # sandboxed systemd unit (ProtectHome=read-only) swap these to
-# /var/lib/litclock/... — see assets/config.toml.example.
-state_path            = "~/.litclock/state.json"
-history_path          = "~/.litclock/history.jsonl"
+# /var/lib/idle-hours/... — see assets/config.toml.example.
+state_path            = "~/.idle-hours/state.json"
+history_path          = "~/.idle-hours/history.jsonl"
 history_days          = 7
-telemetry_path        = "~/.litclock/telemetry.jsonl"
+telemetry_path        = "~/.idle-hours/telemetry.jsonl"
 telemetry_retain_days = 90
-pidfile               = "~/.litclock/run_clock.pid"
+pidfile               = "~/.idle-hours/run_clock.pid"
 
 # ---- Quiet hours -----------------------------------------------------------
 quiet_start = "22:00"

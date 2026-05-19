@@ -1,11 +1,11 @@
-"""Tests for the litclock_health telemetry summariser."""
+"""Tests for the idle_hours_health telemetry summariser."""
 from __future__ import annotations
 
 import datetime as dt
 import json
 from unittest.mock import patch
 
-import litclock_health
+import idle_hours_health
 
 
 def _ledger(tmp_path, lines: list[dict]):
@@ -23,28 +23,28 @@ def _ts(minutes_ago: int) -> str:
 
 class TestPercentile:
     def test_empty_returns_none(self):
-        assert litclock_health._percentile([], 50) is None
+        assert idle_hours_health._percentile([], 50) is None
 
     def test_single_value(self):
-        assert litclock_health._percentile([42], 50) == 42
+        assert idle_hours_health._percentile([42], 50) == 42
 
     def test_p50_of_three(self):
-        assert litclock_health._percentile([10, 20, 30], 50) == 20
+        assert idle_hours_health._percentile([10, 20, 30], 50) == 20
 
     def test_p95_clamps_to_max_index(self):
         # With 11 values 0..100, p95 lands between values[9]=90 and values[10]=100.
         values = list(range(0, 110, 10))
-        assert litclock_health._percentile(values, 95) == 95
+        assert idle_hours_health._percentile(values, 95) == 95
 
 
 class TestLoadEntries:
     def test_missing_path_returns_empty(self, tmp_path):
         # The base path and its parent both exist (tmp_path itself), but no telemetry files.
-        assert litclock_health.load_entries(tmp_path / "missing.jsonl", dt.datetime.now(dt.timezone.utc)) == []
+        assert idle_hours_health.load_entries(tmp_path / "missing.jsonl", dt.datetime.now(dt.timezone.utc)) == []
 
     def test_missing_parent_returns_empty(self, tmp_path):
         # Parent dir itself is absent → should quietly return [] without blowing up on glob.
-        assert litclock_health.load_entries(tmp_path / "nope" / "telemetry.jsonl", dt.datetime.now(dt.timezone.utc)) == []
+        assert idle_hours_health.load_entries(tmp_path / "nope" / "telemetry.jsonl", dt.datetime.now(dt.timezone.utc)) == []
 
     def test_skips_malformed_lines(self, tmp_path):
         path = tmp_path / "log.jsonl"
@@ -56,7 +56,7 @@ class TestLoadEntries:
             encoding="utf-8",
         )
         since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
-        assert len(litclock_health.load_entries(path, since)) == 2
+        assert len(idle_hours_health.load_entries(path, since)) == 2
 
     def test_filters_by_timestamp(self, tmp_path):
         path = _ledger(tmp_path, [
@@ -64,7 +64,7 @@ class TestLoadEntries:
             {"ts": _ts(30), "render_ms": 200},    # within window
         ])
         since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
-        rows = litclock_health.load_entries(path, since)
+        rows = idle_hours_health.load_entries(path, since)
         assert len(rows) == 1
         assert rows[0]["render_ms"] == 200
 
@@ -76,29 +76,29 @@ class TestSummarise:
             {"render_ms": 200, "display_ms": 100},
             {"error": "boom"},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["render_count"] == 2
         assert summary["error_count"] == 1
         assert summary["last_error"] == "boom"
 
     def test_latencies_computed(self):
         entries = [{"render_ms": v, "display_ms": v // 2} for v in (10, 20, 30, 40, 50)]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["render_p50_ms"] == 30
         assert summary["render_p95_ms"] is not None
         assert summary["display_p50_ms"] == 15
 
     def test_empty_returns_none_latencies(self):
-        summary = litclock_health.summarise([])
+        summary = idle_hours_health.summarise([])
         assert summary["render_count"] == 0
         assert summary["render_p50_ms"] is None
 
 
 class TestMain:
     def test_missing_log_exits_nonzero(self, tmp_path, capsys):
-        argv = ["litclock_health.py", "--telemetry-path", str(tmp_path / "missing.jsonl")]
+        argv = ["idle_hours_health.py", "--telemetry-path", str(tmp_path / "missing.jsonl")]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 1
         assert "No telemetry log" in capsys.readouterr().err
 
@@ -108,9 +108,9 @@ class TestMain:
             {"ts": _ts(10), "render_ms": 150, "display_ms": 70, "bucket": "h2_five_past"},
             {"ts": _ts(15), "error": "RuntimeError(...)", "bucket": "h2_ten_past"},
         ])
-        argv = ["litclock_health.py", "--telemetry-path", str(path), "--hours", "1"]
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1"]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 0
         out = capsys.readouterr().out
         assert "2 renders" in out
@@ -124,9 +124,9 @@ class TestJsonOutput:
         path = _ledger(tmp_path, [
             {"ts": _ts(5), "render_ms": 100, "display_ms": 50, "bucket": "h2_exact"},
         ])
-        argv = ["litclock_health.py", "--telemetry-path", str(path), "--hours", "1", "--json"]
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1", "--json"]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 0
         out = capsys.readouterr().out.strip()
         parsed = json.loads(out)
@@ -136,11 +136,11 @@ class TestJsonOutput:
 
     def test_json_flag_on_missing_log_still_emits_json(self, tmp_path, capsys):
         argv = [
-            "litclock_health.py", "--telemetry-path", str(tmp_path / "missing.jsonl"),
+            "idle_hours_health.py", "--telemetry-path", str(tmp_path / "missing.jsonl"),
             "--json",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 1
         out = capsys.readouterr().out.strip()
         parsed = json.loads(out)
@@ -148,7 +148,7 @@ class TestJsonOutput:
 
 
 class TestRotatedTelemetry:
-    """Verify that litclock_health reads across date-rotated telemetry files
+    """Verify that idle_hours_health reads across date-rotated telemetry files
     written by run_clock.append_telemetry, and falls back to the legacy
     unsuffixed file when older installations wrote directly to it.
     """
@@ -171,7 +171,7 @@ class TestRotatedTelemetry:
             {"ts": today.isoformat(), "render_ms": 200},
         ])
         since = today - dt.timedelta(hours=48)
-        rows = litclock_health.load_entries(base, since)
+        rows = idle_hours_health.load_entries(base, since)
         render_ms_values = sorted(r["render_ms"] for r in rows)
         assert render_ms_values == [100, 200]
 
@@ -181,14 +181,14 @@ class TestRotatedTelemetry:
         with base.open("w", encoding="utf-8") as handle:
             handle.write(json.dumps({"ts": _ts(5), "render_ms": 77}) + "\n")
         since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
-        rows = litclock_health.load_entries(base, since)
+        rows = idle_hours_health.load_entries(base, since)
         assert [r["render_ms"] for r in rows] == [77]
 
     def test_main_reports_no_log_when_no_files_at_all(self, tmp_path, capsys):
         """If neither the base nor any rotated sibling exists, main() returns 1."""
-        argv = ["litclock_health.py", "--telemetry-path", str(tmp_path / "telemetry.jsonl")]
+        argv = ["idle_hours_health.py", "--telemetry-path", str(tmp_path / "telemetry.jsonl")]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 1
 
     def test_main_succeeds_when_only_rotated_file_exists(self, tmp_path, capsys):
@@ -198,11 +198,11 @@ class TestRotatedTelemetry:
             {"ts": today.isoformat(), "render_ms": 100, "bucket": "h2_exact"},
         ])
         argv = [
-            "litclock_health.py", "--telemetry-path", str(tmp_path / "telemetry.jsonl"),
+            "idle_hours_health.py", "--telemetry-path", str(tmp_path / "telemetry.jsonl"),
             "--hours", "1",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 0
         assert "1 renders" in capsys.readouterr().out
 
@@ -216,10 +216,10 @@ class TestRotatedTelemetry:
         with backup.open("w", encoding="utf-8") as handle:
             handle.write(json.dumps({"ts": _ts(5), "render_ms": 9999}) + "\n")
         since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
-        rows = litclock_health.load_entries(base, since)
+        rows = idle_hours_health.load_entries(base, since)
         assert rows == []
         # Confirmed at the file-listing level too.
-        assert backup not in litclock_health.find_telemetry_files(base)
+        assert backup not in idle_hours_health.find_telemetry_files(base)
 
     def test_prunes_old_dated_files_by_filename(self, tmp_path):
         """Files dated well before the window are not opened — we prune by filename."""
@@ -233,7 +233,7 @@ class TestRotatedTelemetry:
             {"ts": today.isoformat(), "render_ms": 999},
         ])
         since = today - dt.timedelta(hours=1)
-        rows = litclock_health.load_entries(base, since)
+        rows = idle_hours_health.load_entries(base, since)
         assert rows == []
 
     def test_prune_includes_prior_day_to_tolerate_local_utc_skew(self, tmp_path):
@@ -253,27 +253,27 @@ class TestRotatedTelemetry:
             {"ts": (now_utc - dt.timedelta(minutes=5)).isoformat(), "render_ms": 42},
         ])
         since = now_utc - dt.timedelta(hours=1)
-        rows = litclock_health.load_entries(base, since)
+        rows = idle_hours_health.load_entries(base, since)
         assert [r["render_ms"] for r in rows] == [42]
 
 
 class TestEvaluateHealth:
     def test_healthy_returns_zero(self):
         summary = {"render_count": 10, "error_count": 0}
-        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 0
+        assert idle_hours_health.evaluate_health(summary, fail_if_no_renders=False) == 0
 
     def test_errors_but_some_renders_still_healthy(self):
         summary = {"render_count": 10, "error_count": 2}
-        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 0
+        assert idle_hours_health.evaluate_health(summary, fail_if_no_renders=False) == 0
 
     def test_errors_and_zero_renders_is_unhealthy(self):
         summary = {"render_count": 0, "error_count": 3}
-        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 2
+        assert idle_hours_health.evaluate_health(summary, fail_if_no_renders=False) == 2
 
     def test_fail_if_no_renders_triggers_exit_two(self):
         summary = {"render_count": 0, "error_count": 0}
-        assert litclock_health.evaluate_health(summary, fail_if_no_renders=True) == 2
-        assert litclock_health.evaluate_health(summary, fail_if_no_renders=False) == 0
+        assert idle_hours_health.evaluate_health(summary, fail_if_no_renders=True) == 2
+        assert idle_hours_health.evaluate_health(summary, fail_if_no_renders=False) == 0
 
 
 class TestMainExitCodes:
@@ -281,9 +281,9 @@ class TestMainExitCodes:
         path = _ledger(tmp_path, [
             {"ts": _ts(5), "error": "boom", "bucket": "h2_exact"},
         ])
-        argv = ["litclock_health.py", "--telemetry-path", str(path), "--hours", "1"]
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1"]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 2
 
     def test_fail_if_no_renders_with_empty_window(self, tmp_path):
@@ -292,11 +292,11 @@ class TestMainExitCodes:
             {"ts": _ts(24 * 60), "render_ms": 100, "bucket": "h2_exact"},
         ])
         argv = [
-            "litclock_health.py", "--telemetry-path", str(path),
+            "idle_hours_health.py", "--telemetry-path", str(path),
             "--hours", "1", "--fail-if-no-renders",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 2
 
 
@@ -312,8 +312,8 @@ class TestHeartbeatSummarisation:
             {"ts": _ts(5), "render_ms": 100, "bucket": "h2_exact"},
             {"ts": _ts(5), "error": "boom", "bucket": "h2_exact"},
         ])
-        entries = litclock_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
-        summary = litclock_health.summarise(entries)
+        entries = idle_hours_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
+        summary = idle_hours_health.summarise(entries)
         assert summary["heartbeat_count"] == 2
         assert summary["render_count"] == 1
         assert summary["error_count"] == 1
@@ -325,8 +325,8 @@ class TestHeartbeatSummarisation:
             {"ts": old_ts, "type": "heartbeat"},
             {"ts": new_ts, "type": "heartbeat"},
         ])
-        entries = litclock_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
-        summary = litclock_health.summarise(entries)
+        entries = idle_hours_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
+        summary = idle_hours_health.summarise(entries)
         assert summary["last_heartbeat_ts"] == new_ts
 
 
@@ -359,13 +359,13 @@ class TestFormatSummary:
         return base
 
     def test_basic_counts_in_output(self):
-        out = litclock_health.format_summary(self._base_summary(render_count=5, error_count=2), hours=24)
+        out = idle_hours_health.format_summary(self._base_summary(render_count=5, error_count=2), hours=24)
         assert "5 renders" in out
         assert "2 errors" in out
         assert "24h" in out
 
     def test_latency_shown_when_renders_exist(self):
-        out = litclock_health.format_summary(
+        out = idle_hours_health.format_summary(
             self._base_summary(render_count=2, render_p50_ms=120, render_p95_ms=300,
                                display_p50_ms=14000, display_p95_ms=17000),
             hours=1,
@@ -374,20 +374,20 @@ class TestFormatSummary:
         assert "14000ms" in out
 
     def test_latency_hidden_when_no_renders(self):
-        out = litclock_health.format_summary(self._base_summary(), hours=1)
+        out = idle_hours_health.format_summary(self._base_summary(), hours=1)
         assert "latency" not in out
 
     def test_last_error_shown_when_present(self):
-        out = litclock_health.format_summary(self._base_summary(last_error="boom"), hours=1)
+        out = idle_hours_health.format_summary(self._base_summary(last_error="boom"), hours=1)
         assert "last error" in out
         assert "boom" in out
 
     def test_stale_heartbeat_warning_shown(self):
-        out = litclock_health.format_summary(self._base_summary(stale_heartbeat=True), hours=1)
+        out = idle_hours_health.format_summary(self._base_summary(stale_heartbeat=True), hours=1)
         assert "stale" in out.lower() or "wedged" in out.lower()
 
     def test_actions_breakdown_shown_when_nonzero(self):
-        out = litclock_health.format_summary(
+        out = idle_hours_health.format_summary(
             self._base_summary(
                 action_count=3,
                 actions_by_type={"skip": 2, "theme": 1},
@@ -400,19 +400,19 @@ class TestFormatSummary:
         assert "theme 1" in out
 
     def test_press_dropped_shown_when_nonzero(self):
-        out = litclock_health.format_summary(self._base_summary(press_dropped_count=4), hours=1)
+        out = idle_hours_health.format_summary(self._base_summary(press_dropped_count=4), hours=1)
         assert "4 presses dropped" in out
 
     def test_web_auth_fail_shown_when_nonzero(self):
-        out = litclock_health.format_summary(self._base_summary(web_auth_fail_count=2), hours=1)
+        out = idle_hours_health.format_summary(self._base_summary(web_auth_fail_count=2), hours=1)
         assert "2 web auth failures" in out
 
     def test_web_error_shown_when_nonzero(self):
-        out = litclock_health.format_summary(self._base_summary(web_error_count=1), hours=1)
+        out = idle_hours_health.format_summary(self._base_summary(web_error_count=1), hours=1)
         assert "1 web POST errors" in out
 
     def test_quiet_hours_shown_when_nonzero(self):
-        out = litclock_health.format_summary(
+        out = idle_hours_health.format_summary(
             self._base_summary(quiet_enter_count=2, quiet_exit_count=1), hours=1,
         )
         assert "quiet hours" in out
@@ -421,7 +421,7 @@ class TestFormatSummary:
 
     def test_heartbeat_line_shown_when_present(self):
         ts = _ts(1)
-        out = litclock_health.format_summary(
+        out = idle_hours_health.format_summary(
             self._base_summary(heartbeat_count=10, last_heartbeat_ts=ts), hours=1,
         )
         assert "10 heartbeats" in out
@@ -430,26 +430,26 @@ class TestFormatSummary:
 class TestHeartbeatStaleness:
     def test_fresh_heartbeat_is_not_stale(self):
         summary = {"last_heartbeat_ts": _ts(2)}
-        assert litclock_health.is_heartbeat_stale(summary, max_age_minutes=5) is False
+        assert idle_hours_health.is_heartbeat_stale(summary, max_age_minutes=5) is False
 
     def test_old_heartbeat_is_stale(self):
         summary = {"last_heartbeat_ts": _ts(10)}
-        assert litclock_health.is_heartbeat_stale(summary, max_age_minutes=5) is True
+        assert idle_hours_health.is_heartbeat_stale(summary, max_age_minutes=5) is True
 
     def test_missing_heartbeat_is_stale(self):
         """An appliance running on pre-heartbeat code, OR wedged before the
         first emit, has no last_heartbeat_ts. Either interpretation should
         trip the staleness flag."""
-        assert litclock_health.is_heartbeat_stale({"last_heartbeat_ts": None}, max_age_minutes=5) is True
-        assert litclock_health.is_heartbeat_stale({}, max_age_minutes=5) is True
+        assert idle_hours_health.is_heartbeat_stale({"last_heartbeat_ts": None}, max_age_minutes=5) is True
+        assert idle_hours_health.is_heartbeat_stale({}, max_age_minutes=5) is True
 
     def test_malformed_timestamp_is_treated_as_stale(self):
         """A corrupted last_heartbeat_ts that can't be parsed must return stale=True
-        rather than crashing — the ValueError branch at litclock_health.py:312-313."""
-        assert litclock_health.is_heartbeat_stale(
+        rather than crashing — the ValueError branch at idle_hours_health.py:312-313."""
+        assert idle_hours_health.is_heartbeat_stale(
             {"last_heartbeat_ts": "not-a-date"}, max_age_minutes=5,
         ) is True
-        assert litclock_health.is_heartbeat_stale(
+        assert idle_hours_health.is_heartbeat_stale(
             {"last_heartbeat_ts": "2026-99-99T00:00:00"}, max_age_minutes=5,
         ) is True
 
@@ -461,14 +461,14 @@ class TestHeartbeatStaleness:
             {"ts": _ts(20), "type": "heartbeat"},
         ])
         argv = [
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(path),
             "--hours", "1",
             "--max-heartbeat-age-minutes", "5",
             "--json",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 2
         out = json.loads(capsys.readouterr().out.strip())
         assert out.get("stale_heartbeat") is True
@@ -479,13 +479,13 @@ class TestHeartbeatStaleness:
             {"ts": _ts(1), "type": "heartbeat"},
         ])
         argv = [
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(path),
             "--hours", "1",
             "--max-heartbeat-age-minutes", "5",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 0
 
 
@@ -504,8 +504,8 @@ class TestBackoffNotCountedAsRender:
         path = _ledger(tmp_path, [
             {"ts": _ts(5), "mode": "backoff", "failures": 3, "skip_seconds": 8, "bucket": "h2_exact"},
         ])
-        entries = litclock_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
-        summary = litclock_health.summarise(entries)
+        entries = idle_hours_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
+        summary = idle_hours_health.summarise(entries)
         assert summary["render_count"] == 0
         assert summary["error_count"] == 0
 
@@ -517,9 +517,9 @@ class TestBackoffNotCountedAsRender:
             {"ts": _ts(5), "error": "boom", "bucket": "h2_exact", "mode": "debug"},
             {"ts": _ts(5), "mode": "backoff", "failures": 3, "skip_seconds": 8, "bucket": "h2_exact"},
         ])
-        argv = ["litclock_health.py", "--telemetry-path", str(path), "--hours", "1"]
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1"]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 2
 
     def test_timeout_entries_counted_as_errors_not_renders(self, tmp_path):
@@ -530,8 +530,8 @@ class TestBackoffNotCountedAsRender:
             {"ts": _ts(5), "error": "TimeoutExpired", "mode": "render_timeout", "timeout_seconds": 45},
             {"ts": _ts(5), "error": "TimeoutExpired", "mode": "display_timeout", "timeout_seconds": 60},
         ])
-        entries = litclock_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
-        summary = litclock_health.summarise(entries)
+        entries = idle_hours_health.load_entries(path, dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1))
+        summary = idle_hours_health.summarise(entries)
         assert summary["render_count"] == 0
         assert summary["error_count"] == 2
 
@@ -539,7 +539,7 @@ class TestBackoffNotCountedAsRender:
 class TestActionSummarisation:
     """Phase 4 observability — operator actions, press-drops, web auth
     failures, and quiet-window transitions surface as counters in the
-    summary. See github.com/gkoch02/litclock issue #55.
+    summary. See github.com/gkoch02/idle-hours issue #55.
     """
 
     def test_actions_broken_down_by_type(self):
@@ -549,7 +549,7 @@ class TestActionSummarisation:
             {"ts": _ts(3), "mode": "action", "action": "theme", "label": "button B", "ok": True},
             {"ts": _ts(2), "mode": "action", "action": "theme", "label": "web", "ok": False, "error": "X"},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["action_count"] == 4
         assert summary["actions_by_type"] == {"skip": 2, "theme": 2}
         # last action is the most recent one in the list order
@@ -564,7 +564,7 @@ class TestActionSummarisation:
             {"ts": _ts(5), "mode": "action", "action": "skip", "ok": False, "error": "boom"},
             {"ts": _ts(4), "render_ms": 100},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["render_count"] == 1
         assert summary["error_count"] == 0
         assert summary["action_count"] == 1
@@ -574,14 +574,14 @@ class TestActionSummarisation:
             {"ts": _ts(5), "mode": "press_dropped", "label": "button A", "action": "skip", "reason": "render_in_flight"},
             {"ts": _ts(4), "mode": "press_dropped", "label": "web", "action": "theme", "reason": "render_in_flight"},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["press_dropped_count"] == 2
 
     def test_web_auth_fail_counted(self):
         entries = [
             {"ts": _ts(5), "mode": "web_auth_fail", "remote": "10.0.0.2", "path": "/api/action/theme"},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["web_auth_fail_count"] == 1
         # web_auth_fail has no error field, so it shouldn't influence error_count either way.
         assert summary["error_count"] == 0
@@ -594,7 +594,7 @@ class TestActionSummarisation:
             {"ts": _ts(5), "mode": "web_error", "status": 400, "path": "/api/overrides", "error": "invalid bucket"},
             {"ts": _ts(4), "mode": "web_error", "status": 500, "path": "/api/action/theme", "error": "RuntimeError()"},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["web_error_count"] == 2
         assert summary["error_count"] == 0
 
@@ -604,14 +604,14 @@ class TestActionSummarisation:
             {"ts": _ts(20), "mode": "quiet_exit"},
             {"ts": _ts(10), "mode": "quiet_enter", "manual": True},
         ]
-        summary = litclock_health.summarise(entries)
+        summary = idle_hours_health.summarise(entries)
         assert summary["quiet_enter_count"] == 2
         assert summary["quiet_exit_count"] == 1
 
     def test_summary_fields_all_present_on_empty(self):
         """Zero entries still produce every counter so downstream consumers
         don't need ``summary.get(..., 0)`` guards."""
-        summary = litclock_health.summarise([])
+        summary = idle_hours_health.summarise([])
         for key in (
             "action_count", "press_dropped_count", "web_auth_fail_count",
             "web_error_count", "quiet_enter_count", "quiet_exit_count",
@@ -631,13 +631,13 @@ class TestActionsOnlyView:
             {"ts": _ts(1), "mode": "quiet_enter", "manual": False},
         ])
         argv = [
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(path),
             "--hours", "1",
             "--actions-only",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         out = capsys.readouterr().out
         assert rc == 0
         assert "operator activity" in out
@@ -655,13 +655,13 @@ class TestActionsOnlyView:
             {"ts": _ts(5), "render_ms": 100},  # no action traffic, but a render exists so we don't exit 1
         ])
         argv = [
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(path),
             "--hours", "1",
             "--actions-only",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 0
         out = capsys.readouterr().out
         assert "actions: 0" in out
@@ -673,13 +673,13 @@ class TestActionsOnlyView:
         """Output is non-empty even when the telemetry file has no entries."""
         path = _ledger(tmp_path, [])
         argv = [
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(path),
             "--hours", "1",
             "--actions-only",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc in (0, 1)
         out = capsys.readouterr().out
         assert out.strip() != ""
@@ -691,13 +691,13 @@ class TestActionsOnlyView:
             {"ts": _ts(4), "mode": "press_dropped", "label": "web", "action": "skip", "reason": "render_in_flight"},
         ])
         argv = [
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(path),
             "--hours", "1",
             "--actions-only", "--json",
         ]
         with patch("sys.argv", argv):
-            rc = litclock_health.main()
+            rc = idle_hours_health.main()
         assert rc == 0
         data = json.loads(capsys.readouterr().out.strip())
         assert data["action_count"] == 1

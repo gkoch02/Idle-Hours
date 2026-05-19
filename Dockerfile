@@ -1,4 +1,4 @@
-# LitClock — multi-stage OCI image.
+# Idle Hours — multi-stage OCI image.
 #
 # Stage 1 builds wheels for the project + runtime deps; stage 2 installs them
 # into a slim runtime image. This split keeps the final image lean (no build
@@ -6,7 +6,7 @@
 # and a CVE in setuptools / a build header doesn't leak into runtime.
 #
 # Targets ARM64 first (the appliance — Raspberry Pi 4/5 / Zero 2 W) but stays
-# multi-arch via Docker buildx so x86 dev hosts can run `litclock --once`
+# multi-arch via Docker buildx so x86 dev hosts can run `idle-hours --once`
 # locally for smoke tests. The Pi-only `[pi]` extra (gpiozero / inky) is
 # *not* installed by default — that's a Pi-runtime concern; the appliance
 # either runs the bare-metal install (bootstrap_pi_inky.sh) or installs the
@@ -14,19 +14,19 @@
 # the curator UI without any GPIO bindings.
 #
 # Build:
-#   docker buildx build --platform linux/arm64,linux/amd64 -t litclock:2.0 .
+#   docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:2.0 .
 #
 # Run (one-shot render):
-#   docker run --rm -v "$PWD/output:/app/output" litclock:2.0 litclock render --time 14:30
+#   docker run --rm -v "$PWD/output:/app/output" idle-hours:2.0 idle-hours render --time 14:30
 #
 # Run (clock loop, no display):
-#   docker run --rm -p 8080:8080 -v litclock-state:/state litclock:2.0 \
-#       litclock run --buttons-off --skip-preflight \
-#                    --web-bind 0.0.0.0:8080 \
-#                    --state-path /state/state.json \
-#                    --history-path /state/history.jsonl \
-#                    --telemetry-path /state/telemetry.jsonl \
-#                    --pidfile /state/run_clock.pid
+#   docker run --rm -p 8080:8080 -v idle-hours-state:/state idle-hours:2.0 \
+#       idle-hours run --buttons-off --skip-preflight \
+#                      --web-bind 0.0.0.0:8080 \
+#                      --state-path /state/state.json \
+#                      --history-path /state/history.jsonl \
+#                      --telemetry-path /state/telemetry.jsonl \
+#                      --pidfile /state/run_clock.pid
 
 # ---- Stage 1: build wheels --------------------------------------------------
 FROM python:3.12-slim AS builder
@@ -51,7 +51,7 @@ COPY web/ ./web/
 COPY assets/ ./assets/
 COPY fonts/ ./fonts/
 
-# Build the LitClock wheel + every runtime dep into /wheels. Using
+# Build the Idle Hours wheel + every runtime dep into /wheels. Using
 # `pip wheel` (not `pip install`) so stage 2 can `pip install` in offline
 # mode against a known-good wheel set.
 RUN pip wheel --no-cache-dir --wheel-dir=/wheels .
@@ -70,19 +70,19 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root runtime user matching the systemd-unit conventions on the
-# appliance (StateDirectory=litclock → uid:litclock). ``--no-create-home``
+# appliance (StateDirectory=idle-hours → uid:idlehours). ``--no-create-home``
 # because the state path is provided via volume mount, not via $HOME.
-RUN groupadd --system --gid 1001 litclock \
-    && useradd --system --uid 1001 --gid 1001 --no-create-home --shell /usr/sbin/nologin litclock
+RUN groupadd --system --gid 1001 idlehours \
+    && useradd --system --uid 1001 --gid 1001 --no-create-home --shell /usr/sbin/nologin idlehours
 
 WORKDIR /app
 
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir --no-index --find-links=/wheels litclock \
+RUN pip install --no-cache-dir --no-index --find-links=/wheels idle-hours \
     && rm -rf /wheels
 
 # Bring in the static assets that the wheel doesn't carry. The wheel
-# installs the Python modules and the `litclock` console script; the
+# installs the Python modules and the `idle-hours` console script; the
 # corpus / fonts / web assets ship as volume-mountable defaults next to
 # the source tree so an operator can override them without rebuilding.
 # Mount over /app/assets and /app/fonts at runtime to swap in a custom
@@ -94,9 +94,9 @@ COPY --from=builder /build/web /app/web
 # Default state directory; mount a volume here for persistence across
 # container restarts. The runtime user owns it so the loop can write
 # state.json / history.jsonl / telemetry.jsonl without root.
-RUN mkdir -p /state /app/output && chown -R litclock:litclock /state /app/output /app
+RUN mkdir -p /state /app/output && chown -R idlehours:idlehours /state /app/output /app
 
-USER litclock
+USER idlehours
 
 # Default port for the curator web UI; bind 127.0.0.1 outside the container
 # unless you've also set --web-token (the loop refuses to start with a
@@ -105,5 +105,5 @@ EXPOSE 8080
 
 # Default command runs `--once` so an unconfigured `docker run` produces
 # something visible (the rendered PNG lands at /app/output/current.png).
-# Override with `litclock run …` for the loop.
-CMD ["litclock", "render", "--time", "14:30", "--mode", "production"]
+# Override with `idle-hours run …` for the loop.
+CMD ["idle-hours", "render", "--time", "14:30", "--mode", "production"]

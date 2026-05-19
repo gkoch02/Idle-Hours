@@ -967,7 +967,7 @@ class TestRuntimeStatePersistence:
 
     def test_load_validation_telemetrises(self, tmp_path):
         """Issue #53: a malformed state.json writes a telemetry entry so the
-        drift is visible in ``litclock_health.py`` summaries, not just stderr.
+        drift is visible in ``idle_hours_health.py`` summaries, not just stderr.
         """
         state_path = tmp_path / "state.json"
         telemetry_path = tmp_path / "telemetry.jsonl"
@@ -1010,7 +1010,7 @@ class TestRuntimeStatePersistence:
 
     def test_load_non_object_json_telemetrises(self, tmp_path):
         """A state.json that is valid JSON but not a dict (e.g. bare number) must
-        emit a telemetry entry so the drift is surfaced in litclock_health output."""
+        emit a telemetry entry so the drift is surfaced in idle_hours_health output."""
         state_path = tmp_path / "state.json"
         telemetry_path = tmp_path / "telemetry.jsonl"
         state_path.write_text("42", encoding="utf-8")
@@ -1242,7 +1242,7 @@ class TestAppendTelemetry:
 
     def test_render_entry_calls_fsync(self, tmp_path):
         """Render / error / action telemetry must fsync so a power loss after a
-        wedge-event entry can't lose the line that ``litclock_health`` needs to
+        wedge-event entry can't lose the line that ``idle_hours_health`` needs to
         distinguish "wedged" from "idle".
         """
         import runtime_telemetry

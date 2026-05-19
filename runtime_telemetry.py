@@ -22,7 +22,7 @@ from pathlib import Path
 
 from runtime_log import _log
 
-DEFAULT_TELEMETRY_PATH = "~/.litclock/telemetry.jsonl"
+DEFAULT_TELEMETRY_PATH = "~/.idle-hours/telemetry.jsonl"
 DEFAULT_TELEMETRY_RETAIN_DAYS = 90
 # Matches ``daily_telemetry_path``'s suffix format: stem-YYYYMMDD. We use a
 # glob and then a stricter fullmatch regex so an operator pointing --telemetry
@@ -33,10 +33,10 @@ _TELEMETRY_DATE_RE = re.compile(r"^(.+)-(\d{8})$")
 def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
     """Return the date-suffixed sibling of ``base`` for ``today``.
 
-    Given ``~/.litclock/telemetry.jsonl`` and 2026-04-20, returns
-    ``~/.litclock/telemetry-20260420.jsonl``. This is how we rotate telemetry
+    Given ``~/.idle-hours/telemetry.jsonl`` and 2026-04-20, returns
+    ``~/.idle-hours/telemetry-20260420.jsonl``. This is how we rotate telemetry
     by date so a multi-year-running appliance doesn't accumulate a single
-    unbounded JSONL file that eventually chokes ``litclock_health.py`` and
+    unbounded JSONL file that eventually chokes ``idle_hours_health.py`` and
     stalls append latency. Local date (not UTC) so an operator's ``grep`` /
     ``ls`` groups entries by their wall-clock day.
     """
@@ -51,7 +51,7 @@ def append_heartbeat(telemetry_path: str | None) -> None:
 
     Shares the rotation / fail-open / ``ts`` stamping with ``append_telemetry``;
     factored as a thin wrapper so call sites read as "emit heartbeat" instead
-    of passing a bare sentinel dict, and so ``litclock_health.py`` can keep
+    of passing a bare sentinel dict, and so ``idle_hours_health.py`` can keep
     a single ``"type"`` convention for any future marker types we add.
 
     Heartbeat entries are deliberately NOT counted toward ``render_count`` or
@@ -72,7 +72,7 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     """Append one JSON line to today's telemetry log. No-op when disabled.
 
     Rotates by date: writes to ``<base-stem>-YYYYMMDD<suffix>`` in the base
-    path's directory so the file size stays bounded. ``litclock_health.py``
+    path's directory so the file size stays bounded. ``idle_hours_health.py``
     globs the directory for date-suffixed siblings (plus any legacy
     unsuffixed file) so older entries are still summarised.
 
@@ -83,7 +83,7 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
 
     Entries are flushed and ``os.fsync``'d before close so a SIGKILL / power
     loss immediately after a render or error event can't leave the line
-    buffered in the kernel and lost — that's exactly when ``litclock_health``
+    buffered in the kernel and lost — that's exactly when ``idle_hours_health``
     needs the last few entries to distinguish "wedged" from "idle".
     Heartbeats skip the fsync via ``append_heartbeat`` (see its docstring).
 

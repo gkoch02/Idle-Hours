@@ -1,4 +1,4 @@
-"""Tests for pidfile.py — single-instance lock on ~/.litclock/run_clock.pid."""
+"""Tests for pidfile.py — single-instance lock on ~/.idle-hours/run_clock.pid."""
 from __future__ import annotations
 
 import multiprocessing

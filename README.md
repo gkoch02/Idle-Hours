@@ -1,15 +1,20 @@
-# LitClock
+# Idle Hours
 
-[![CI](https://github.com/gkoch02/litclock/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/litclock/actions/workflows/ci.yml)
+[![CI](https://github.com/gkoch02/idle-hours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/idle-hours/actions/workflows/ci.yml)
 
-LitClock is a literary clock built from public-domain text. It picks a quote that matches the current fuzzy time bucket, renders it into an 800×480 image, and can push that image to an eInk display such as the Pimoroni Inky Impression 7.3.
+Idle Hours is a literary clock built from public-domain text. It picks a quote that matches the current fuzzy time bucket, renders it into an 800×480 image, and can push that image to an eInk display such as the Pimoroni Inky Impression 7.3.
 
-![LitClock rendered in saloon, gothic, illuminated, and deco themes](assets/preview.png)
+![Idle Hours rendered in saloon, gothic, illuminated, and deco themes](assets/preview.png)
+
+> **Upgrading from LitClock?** This project was previously named LitClock.
+> The rename is hard (new package name, new CLI command, new filesystem
+> paths, new HTTP token header, new Prometheus metric names, new systemd
+> unit). See [`UPGRADE.md`](UPGRADE.md) for the one-time migration steps.
 
 ## Table of contents
 
 - [What this repo is](#what-this-repo-is)
-- [How LitClock was built](#how-litclock-was-built)
+- [How Idle Hours was built](#how-idle-hours-was-built)
 - [Repo map](#repo-map)
   - [Runtime](#runtime)
   - [Runtime assets](#runtime-assets)
@@ -48,7 +53,7 @@ This repo contains both:
 
 If you are deploying or operating the clock, you mostly care about the runtime and the prebuilt assets in `assets/`.
 
-## How LitClock was built
+## How Idle Hours was built
 
 At a high level, the project came together in stages:
 
@@ -65,7 +70,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 ### Runtime
 
-- `litclock_cli.py` - **unified `litclock <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `litclock` as a console script. Backwards-compatible — `python3 <script>.py` still works for every subcommand.
+- `idle_hours_cli.py` - **unified `idle-hours <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `idle-hours` as a console script. Backwards-compatible — `python3 <script>.py` still works for every subcommand.
 - `run_clock.py` - long-running clock loop, bucket-change refresh logic, optional display handoff
 - `runtime_*.py` - the seven siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` (architecture in [`CLAUDE.md`](CLAUDE.md))
 - `runtime_webhook.py` - v2 alert-firehose: posts alert-worthy telemetry events to an operator-configured HTTP endpoint on a daemon thread (errors, backoff, timeouts, button-died); never blocks the render path
@@ -74,7 +79,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 - `display_inky.py` - thin bridge that sends a rendered image to the Inky display
 - `inky_buttons.py` - listener for the four Inky Impression capacitive buttons (A/B/C/D), short + long press, liveness check
 - `probe_buttons.py` - standalone GPIO press probe for verifying which pin each physical button fires
-- `litclock_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`, reads date-rotated files
+- `idle_hours_health.py` - summarises the telemetry sidecar (render count, p50/p95 latency, last error); supports `--json`, reads date-rotated files
 - `buckets.py` - fuzzy time bucket mapping (single source of truth — every other script imports from it)
 - `atomic_io.py` - shared atomic-write primitive (tmp → fsync → rename → fsync dir) used by every file the next tick reads
 - `pidfile.py` - single-instance `fcntl.flock` pidfile so overlapping `systemctl restart` cycles can't race
@@ -111,10 +116,10 @@ The full pipeline order is documented in [Build pipeline notes](#build-pipeline-
 - `tests/` - automated tests (one module per script, plus golden fixtures under `tests/golden/`)
 - `output/` - generated output and analysis artifacts, not canonical runtime source
 - `fonts/` - bundled OFL typefaces used by the renderer (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers — one per theme)
-- `litclock.service.example` - example systemd service for Pi deployment
+- `idle-hours.service.example` - example systemd service for Pi deployment
 - `pi_setup_inky_impression.md` - Pi setup notes
 - `bootstrap_pi_inky.sh` - helper bootstrap script for Pi setup
-- `Dockerfile` + `.dockerignore` - v2 multi-stage OCI build (ARM64-first, Pi-runtime extra not bundled). `docker buildx build --platform linux/arm64,linux/amd64 -t litclock:2.0 .`
+- `Dockerfile` + `.dockerignore` - v2 multi-stage OCI build (ARM64-first, Pi-runtime extra not bundled). `docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:2.0 .`
 - `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` - process and policy docs
 - `FOLLOWUPS.md` - deferred-work list (carved out of larger PRs to keep them focused)
 
@@ -129,11 +134,11 @@ For normal runtime use, the clock expects prebuilt assets and does **not** need 
 | `assets/content_overrides.json` | per-row hand fixes (source-of-truth) | yes | no (build-time only) | hand-edited or web UI `POST /api/content-overrides` |
 | `assets/selection_overrides.json` | bans / boosts / preferred buckets / per-row bans (runtime-editable) | yes | yes | hand-edited or web UI `POST /api/overrides` |
 | `assets/bucket-coverage.{json,md}` | coverage snapshot | yes | optional | `bucket_coverage.py` |
-| `~/.litclock/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
-| `~/.litclock/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
-| `~/.litclock/telemetry-YYYYMMDD.jsonl` | render / error telemetry | — | runtime, per-appliance | `run_clock.py` |
+| `~/.idle-hours/state.json` | manual theme / quiet override | — | runtime, per-appliance | `run_clock.py` |
+| `~/.idle-hours/history.jsonl` | anti-repeat ledger | — | runtime, per-appliance | `run_clock.py` |
+| `~/.idle-hours/telemetry-YYYYMMDD.jsonl` | render / error telemetry | — | runtime, per-appliance | `run_clock.py` |
 
-Read it as: `candidates-attributed.jsonl` + `content_overrides.json` are the **source of truth**; `quote_database.jsonl` is **derived** (regenerated by the baker) and is what the clock actually reads; the `~/.litclock/*` files are **per-appliance runtime state**. Treat `data/` and the mining/enrichment scripts as build-time tooling, not service startup dependencies.
+Read it as: `candidates-attributed.jsonl` + `content_overrides.json` are the **source of truth**; `quote_database.jsonl` is **derived** (regenerated by the baker) and is what the clock actually reads; the `~/.idle-hours/*` files are **per-appliance runtime state**. Treat `data/` and the mining/enrichment scripts as build-time tooling, not service startup dependencies.
 
 If you are only updating the clock on a Pi, you should not need to rebuild the corpus on-device — the baked DB already ships in the repo.
 
@@ -149,22 +154,22 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-### The `litclock` CLI (v2)
+### The `idle-hours` CLI (v2)
 
-After `pip install -e .` the project ships a single `litclock` command
+After `pip install -e .` the project ships a single `idle-hours` command
 that dispatches to every script in the repo:
 
 ```bash
-litclock --help                          # list every subcommand
-litclock run --display-script display_inky.py
-litclock render --time 14:30
-litclock pick --bucket h3_half_past
-litclock health --hours 24 --json
-litclock bake
-litclock contact-sheet --output output/contact-sheet.png
+idle-hours --help                          # list every subcommand
+idle-hours run --display-script display_inky.py
+idle-hours render --time 14:30
+idle-hours pick --bucket h3_half_past
+idle-hours health --hours 24 --json
+idle-hours bake
+idle-hours contact-sheet --output output/contact-sheet.png
 ```
 
-`litclock <sub> --help` forwards to the backing script's argparse so the
+`idle-hours <sub> --help` forwards to the backing script's argparse so the
 flag list is identical to `python3 <sub>.py --help`. The umbrella CLI is
 purely additive — every `python3 <script>.py` invocation in the rest of
 this doc continues to work unchanged.
@@ -177,7 +182,7 @@ writes it to `output/current.png`:
 ```bash
 python3 run_clock.py --once
 # or, with the unified CLI (v2):
-litclock run --once
+idle-hours run --once
 ```
 
 ### Set up the config file
@@ -186,8 +191,8 @@ Anything beyond that smoke test should use a TOML config file. The
 repo ships two of them:
 
 - **`assets/config.toml.example`** — opinionated appliance preset
-  (production mode, `auto` theme, `/var/lib/litclock/` paths,
-  `systemctl poweroff` shutdown). This is what `litclock.service.example`
+  (production mode, `auto` theme, `/var/lib/idle-hours/` paths,
+  `systemctl poweroff` shutdown). This is what `idle-hours.service.example`
   expects; copy it verbatim for Pi deployments and tweak from there.
 - **`assets/config.toml.defaults`** — every key set to the value
   `run_clock.py` would use with no `--config` at all. Copying this
@@ -197,9 +202,9 @@ repo ships two of them:
 
 ```bash
 # Dev machine: start from the defaults and tweak
-mkdir -p ~/.litclock
-cp assets/config.toml.defaults ~/.litclock/config.toml
-$EDITOR ~/.litclock/config.toml
+mkdir -p ~/.idle-hours
+cp assets/config.toml.defaults ~/.idle-hours/config.toml
+$EDITOR ~/.idle-hours/config.toml
 ```
 
 Every key maps 1:1 to an argparse `dest` (snake_case — `display_script`,
@@ -222,7 +227,7 @@ to stderr, keeps running with argparse defaults); the one hard error is
 pointing `--config` at a non-existent path, so a typoed unit-file path
 fails fast in the journal instead of silently booting with defaults.
 
-The shipped `litclock.service.example` passes `--config %S/litclock/config.toml`
+The shipped `idle-hours.service.example` passes `--config %S/idle-hours/config.toml`
 exclusively — so tuning the appliance is a file edit plus `systemctl
 restart`, no `daemon-reload` needed.
 
@@ -233,7 +238,7 @@ every runtime knob (render script, display push, theme, quiet hours,
 etc.) from the file:
 
 ```bash
-python3 run_clock.py --config ~/.litclock/config.toml
+python3 run_clock.py --config ~/.idle-hours/config.toml
 ```
 
 ### Render once and push to the Inky display
@@ -242,7 +247,7 @@ Same config, `--once` on top for a one-shot render-and-push (useful for
 cron / bring-up):
 
 ```bash
-python3 run_clock.py --config ~/.litclock/config.toml --once
+python3 run_clock.py --config ~/.idle-hours/config.toml --once
 ```
 
 If you haven't staged a config yet, the equivalent ad-hoc CLI form is:
@@ -339,23 +344,23 @@ The loop can persist the manual theme and quiet overrides so they survive a rest
 ```bash
 # Default paths (pass an empty string to disable either)
 python3 run_clock.py \
-  --state-path ~/.litclock/state.json \
-  --telemetry-path ~/.litclock/telemetry.jsonl
+  --state-path ~/.idle-hours/state.json \
+  --telemetry-path ~/.idle-hours/telemetry.jsonl
 
 # Human-readable telemetry summary for the last 24h
-python3 litclock_health.py --hours 24
+python3 idle_hours_health.py --hours 24
 
 # JSON summary for cron / systemd health checks (exits 2 when unhealthy)
-python3 litclock_health.py --hours 1 --json --fail-if-no-renders
+python3 idle_hours_health.py --hours 1 --json --fail-if-no-renders
 ```
 
 Every file the next tick or boot reads is written atomically (`tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger.
 
-`SIGTERM` and `SIGINT` are handled gracefully: `systemctl restart litclock.service` flips a shared event that the main loop observes between ticks, drains any in-flight render via `state.render_lock`, stops the curator web server, closes GPIO buttons, and persists runtime state one last time before the process exits. `--once` keeps strict-exit behaviour for cron callers.
+`SIGTERM` and `SIGINT` are handled gracefully: `systemctl restart idle-hours.service` flips a shared event that the main loop observes between ticks, drains any in-flight render via `state.render_lock`, stops the curator web server, closes GPIO buttons, and persists runtime state one last time before the process exits. `--once` keeps strict-exit behaviour for cron callers.
 
-Telemetry is rotated by date: the `--telemetry-path` argument is a base path, but `run_clock.py` actually writes to `<stem>-YYYYMMDD<suffix>` siblings (e.g. `~/.litclock/telemetry-20260420.jsonl`) so a multi-year-running appliance keeps file size bounded. `--telemetry-retain-days` (default 90; pass 0 to disable) unlinks siblings older than that once per local-date rollover. `litclock_health.py` globs the directory for those siblings plus any legacy unsuffixed file at the exact base path and stream-reads them in order.
+Telemetry is rotated by date: the `--telemetry-path` argument is a base path, but `run_clock.py` actually writes to `<stem>-YYYYMMDD<suffix>` siblings (e.g. `~/.idle-hours/telemetry-20260420.jsonl`) so a multi-year-running appliance keeps file size bounded. `--telemetry-retain-days` (default 90; pass 0 to disable) unlinks siblings older than that once per local-date rollover. `idle_hours_health.py` globs the directory for those siblings plus any legacy unsuffixed file at the exact base path and stream-reads them in order.
 
-`litclock_health.py` exit codes:
+`idle_hours_health.py` exit codes:
 
 - `0` — healthy (renders happened in the window, or no errors with nothing scheduled)
 - `1` — telemetry log missing
@@ -380,11 +385,11 @@ Off by default. Pass `--web-bind` to expose a small local HTTP surface that mirr
 python3 run_clock.py --web-bind 127.0.0.1:8080
 # open http://127.0.0.1:8080 in a browser
 
-# LAN exposure: every POST requires a token supplied via X-LitClock-Token.
+# LAN exposure: every POST requires a token supplied via X-Idle-Hours-Token.
 # Prefer --web-token-file on production so the token doesn't show up in `ps`.
-echo "s0me-l0ng-random-string" > ~/.litclock/web.token
-chmod 640 ~/.litclock/web.token
-python3 run_clock.py --web-bind 0.0.0.0:8080 --web-token-file ~/.litclock/web.token
+echo "s0me-l0ng-random-string" > ~/.idle-hours/web.token
+chmod 640 ~/.idle-hours/web.token
+python3 run_clock.py --web-bind 0.0.0.0:8080 --web-token-file ~/.idle-hours/web.token
 ```
 
 #### Turning the web UI on for an existing install
@@ -401,10 +406,10 @@ python3 run_clock.py --web-bind 127.0.0.1:8080
 **Pi running under systemd.** Edit the config file that `ExecStart=` points at — no `daemon-reload` needed when you stay inside the config:
 
 ```bash
-sudoedit /var/lib/litclock/config.toml
+sudoedit /var/lib/idle-hours/config.toml
 # add: web_bind = "127.0.0.1:8080"
-sudo systemctl restart litclock.service
-systemctl status --no-pager litclock.service     # confirm it came back up
+sudo systemctl restart idle-hours.service
+systemctl status --no-pager idle-hours.service     # confirm it came back up
 ```
 
 `assets/config.toml.example` already ships commented-out `web_bind` / `web_token_file` lines near the bottom — uncomment the pair you want and you're done. (If the unit still uses raw `--web-bind` CLI flags on `ExecStart=`, `sudoedit` the unit itself and `daemon-reload` first, then `restart`.)
@@ -419,22 +424,22 @@ ssh -L 8080:127.0.0.1:8080 pi@raspberrypi.local
 **Reaching it directly over the LAN.** Switch to `0.0.0.0:8080` *and* supply a token file — `start_web_server` refuses to bind a non-loopback address without one, so you cannot accidentally expose a tokenless POST surface:
 
 ```bash
-sudo install -m 640 -o pi -g pi /dev/null /var/lib/litclock/web.token
-python3 -c "import secrets; print(secrets.token_urlsafe(32))" | sudo tee /var/lib/litclock/web.token > /dev/null
-# edit /var/lib/litclock/config.toml to set:
+sudo install -m 640 -o pi -g pi /dev/null /var/lib/idle-hours/web.token
+python3 -c "import secrets; print(secrets.token_urlsafe(32))" | sudo tee /var/lib/idle-hours/web.token > /dev/null
+# edit /var/lib/idle-hours/config.toml to set:
 #   web_bind       = "0.0.0.0:8080"
-#   web_token_file = "/var/lib/litclock/web.token"
-sudo systemctl restart litclock.service
+#   web_token_file = "/var/lib/idle-hours/web.token"
+sudo systemctl restart idle-hours.service
 ```
 
-Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-LitClock-Token: <the token>`. **Caveat:** the bundled `web/` UI does not currently attach that header — it was built for the loopback-no-auth path — so on a LAN+token bind the page loads and reads cleanly but the action buttons and overrides-save will come back as `401 missing or invalid token`. Until the UI grows a token field, the working options for a LAN+token deployment are:
+Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-Idle-Hours-Token: <the token>`. **Caveat:** the bundled `web/` UI does not currently attach that header — it was built for the loopback-no-auth path — so on a LAN+token bind the page loads and reads cleanly but the action buttons and overrides-save will come back as `401 missing or invalid token`. Until the UI grows a token field, the working options for a LAN+token deployment are:
 
-- Drive mutating endpoints from `curl` (or any other client), e.g. `curl -X POST -H "X-LitClock-Token: $(cat ~/.litclock/web.token)" http://<pi>:8080/api/action/rerender`.
+- Drive mutating endpoints from `curl` (or any other client), e.g. `curl -X POST -H "X-Idle-Hours-Token: $(cat ~/.idle-hours/web.token)" http://<pi>:8080/api/action/rerender`.
 - Or just use the SSH-tunnel flow above — loopback bind needs no token and the bundled UI works end-to-end.
 
-**How to tell it's working.** `journalctl -u litclock.service -n 20` should show a line like `web UI listening on 127.0.0.1:8080 (no token)` (or `(token required)` on a LAN bind). If the bind fails (port busy, missing token on a non-loopback bind) the main render loop keeps running and logs `web UI failed to start on …` — the panel won't go dark just because the web UI couldn't start.
+**How to tell it's working.** `journalctl -u idle-hours.service -n 20` should show a line like `web UI listening on 127.0.0.1:8080 (no token)` (or `(token required)` on a LAN bind). If the bind fails (port busy, missing token on a non-loopback bind) the main render loop keeps running and logs `web UI failed to start on …` — the panel won't go dark just because the web UI couldn't start.
 
-The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. **v2 reorganises it into a mobile-first four-tab layout** (Now / Curate / Coverage / Activity) with 44px tap targets and breakpoints at 768px (tablet) and 1024px (desktop), so the same UI works equally well from a phone-on-the-counter and a laptop. Tab state is kept in `location.hash` so a bookmark like `litclock.local#curate` jumps straight to the editor.
+The UI is vanilla HTML/JS/CSS served directly from `web/` — no build step, no framework, no extra runtime deps beyond what the clock already needs. **v2 reorganises it into a mobile-first four-tab layout** (Now / Curate / Coverage / Activity) with 44px tap targets and breakpoints at 768px (tablet) and 1024px (desktop), so the same UI works equally well from a phone-on-the-counter and a laptop. Tab state is kept in `location.hash` so a bookmark like `idle-hours.local#curate` jumps straight to the editor.
 
 #### First-run wizard (v2)
 
@@ -462,7 +467,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 
 #### Tab: Activity
 
-- Telemetry: renders / errors / p50 / p95 latencies over the last 24 h, reading the same date-rotated sidecar that `litclock_health.py` does.
+- Telemetry: renders / errors / p50 / p95 latencies over the last 24 h, reading the same date-rotated sidecar that `idle_hours_health.py` does.
 - History: the anti-repeat ledger, newest first.
 
 The UI shares the render lock with the button handlers, so every mutating action (skip, un-skip, theme, quiet, re-render, overrides save, bake) respects "first press wins": a POST that lands during a 10–20s Spectra 6 refresh returns `409 busy` instead of queueing.
@@ -473,7 +478,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /current.png` | Streams the current rendered frame |
 | `GET /metrics` | **v2** — Prometheus text-exposition format over a 24 h window (renders / errors / heartbeats / actions / latency p50+p95 / `last_heartbeat_age_seconds`). Unauthed on every bind. |
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
-| `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `litclock_health`) |
+| `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `idle_hours_health`) |
 | `GET /api/coverage` | The 144-bucket coverage snapshot from `assets/bucket-coverage.json` |
 | `GET /api/gaps?threshold=N` | **v2** — empty/sparse buckets with harvester phrase suggestions |
 | `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
@@ -490,7 +495,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `POST /api/setup` | **v2** — mark first-run wizard complete; optional `{"theme": "<name>"}` body applies a theme before dismissing |
 | `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field cycles. Malformed JSON returns 400 without mutating state. |
 
-Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-LitClock-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
+Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-Idle-Hours-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
 
 ### Quiet hours
 
@@ -530,7 +535,7 @@ The Pi should track `main` and use the prebuilt runtime assets already committed
 For a brand-new Raspberry Pi, the setup has two phases:
 
 1. install the Pimoroni Inky stack and verify the panel works
-2. clone LitClock, render once, push once, then install the service
+2. clone Idle Hours, render once, push once, then install the service
 
 #### OS baseline
 
@@ -578,12 +583,12 @@ cd ~/Pimoroni/inky/examples/spectra6
 python stripes.py
 ```
 
-#### Install LitClock on the Pi
+#### Install Idle Hours on the Pi
 
 ```bash
 source ~/.virtualenvs/pimoroni/bin/activate
-git clone git@github.com:gkoch02/LitClock.git
-cd ~/LitClock
+git clone git@github.com:gkoch02/idle-hours.git
+cd ~/IdleHours
 python3 run_clock.py --once
 python3 display_inky.py output/current.png
 python3 run_clock.py --once --display-script display_inky.py --mode production
@@ -599,21 +604,21 @@ There is also a helper script for first-time setup:
 bash bootstrap_pi_inky.sh
 ```
 
-That script installs base packages, launches the interactive Pimoroni installer, and then resumes LitClock setup after reboot.
+That script installs base packages, launches the interactive Pimoroni installer, and then resumes Idle Hours setup after reboot.
 
 ### Existing Pi update flow
 
-If the Pi is already provisioned and LitClock is installed, updating is simple:
+If the Pi is already provisioned and Idle Hours is installed, updating is simple:
 
 ```bash
 git pull --ff-only origin main
-sudo systemctl restart litclock.service
-systemctl status --no-pager litclock.service
+sudo systemctl restart idle-hours.service
+systemctl status --no-pager idle-hours.service
 ```
 
 ### Example service
 
-See `litclock.service.example`.
+See `idle-hours.service.example`.
 
 Current service model:
 
@@ -627,24 +632,24 @@ Current service model:
 Once manual render and display tests work on the Pi:
 
 ```bash
-cd ~/LitClock
+cd ~/IdleHours
 
 # Stage the unit file and the config it references. The unit declares
-# StateDirectory=litclock, which auto-creates /var/lib/litclock on service
+# StateDirectory=idle-hours, which auto-creates /var/lib/idle-hours on service
 # start — but we need the config file in place BEFORE the first start
-# (the sample unit passes --config %S/litclock/config.toml exclusively,
+# (the sample unit passes --config %S/idle-hours/config.toml exclusively,
 # and a missing --config path is a hard error by design).
-sudo cp litclock.service.example /etc/systemd/system/litclock.service
-sudoedit /etc/systemd/system/litclock.service    # fix User= / WorkingDirectory= / ExecStart= paths
+sudo cp idle-hours.service.example /etc/systemd/system/idle-hours.service
+sudoedit /etc/systemd/system/idle-hours.service    # fix User= / WorkingDirectory= / ExecStart= paths
 
-sudo install -d -o pi -g pi -m 0750 /var/lib/litclock
+sudo install -d -o pi -g pi -m 0750 /var/lib/idle-hours
 sudo install -o pi -g pi -m 0640 \
-    assets/config.toml.example /var/lib/litclock/config.toml
-sudoedit /var/lib/litclock/config.toml           # tune keys for this appliance
+    assets/config.toml.example /var/lib/idle-hours/config.toml
+sudoedit /var/lib/idle-hours/config.toml           # tune keys for this appliance
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now litclock.service
-sudo systemctl status litclock.service
+sudo systemctl enable --now idle-hours.service
+sudo systemctl status idle-hours.service
 ```
 
 Before enabling the service, update these fields to match the actual account and install path on the Pi:
@@ -654,11 +659,11 @@ Before enabling the service, update these fields to match the actual account and
 - `ExecStart=` (the path to `run_clock.py` and to the config file)
 
 Day-to-day tuning after this — theme, quiet hours, web UI, startup
-image, etc. — is a `sudoedit /var/lib/litclock/config.toml` +
+image, etc. — is a `sudoedit /var/lib/idle-hours/config.toml` +
 `systemctl restart`. No `daemon-reload` because the unit file itself
 doesn't change.
 
-If another display service is already running, disable it first so LitClock owns the panel.
+If another display service is already running, disable it first so Idle Hours owns the panel.
 
 ## Build pipeline notes
 
@@ -685,13 +690,13 @@ That work is intentionally separate from the steady-state render loop. Re-runnin
 - Thirty-two themes ship built-in (full table with previews in the [Themes](#themes) section above): `default`, `dark`, `swiss`, `scholar`, `herbarium`, `newsprint`, `nightvision`, `blueprint`, `illuminated`, `gothic`, `bauhaus`, `risograph`, `comic`, `dispatch`, `atomic`, `marker`, `saloon`, `roman`, `alchemy`, `grimoire`, `deco`, `glacier`, `mucha`, `chalkboard`, `placard`, `chanbara`, `lcars`, `fillmore`, `firmament` (17th-century celestial atlas — navy synthesised ground, white Cardo serif body, gold cream matched phrase, constellation polylines + corner astronomy ornaments), `astrarium` (astronomical-clock dashboard — custom dial-plus-quote layout), `kanagawa` (Hokusai-inspired seigaiha woodblock — Yuji Boku sumi-brush body, indigo fish-scale wave pattern, hanko seal), `diags` (calibration / status panel — excluded from `--theme random`). Every theme colour stays on the Spectra 6 palette.
 - `--theme auto` switches dark/default by wall-clock time (dark 18:00–06:00); broaden the rotation past the binary default with `--auto-day-theme` / `--auto-night-theme`. `--theme random` rerolls the theme each time the picked quote changes (not persisted across restarts). A manual button-B / web override wins over either mode until the next midnight rollover.
 - Per-theme saturation: `display_inky.py` picks `0.5` for light-background themes and `0.7` for dark-background themes so accents don't go muddy.
-- Telemetry at `--telemetry-path` (default `~/.litclock/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `litclock_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
-- The anti-repeat history ledger at `--history-path` (default `~/.litclock/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
+- Telemetry at `--telemetry-path` (default `~/.idle-hours/telemetry.jsonl`) is rotated by date — `run_clock.py` writes to a `telemetry-YYYYMMDD.jsonl` sibling so long-running appliances don't accumulate one unbounded file. One line per render, one per loop-level error. `idle_hours_health.py --json` feeds systemd / cron health checks and auto-discovers the rotated siblings.
+- The anti-repeat history ledger at `--history-path` (default `~/.idle-hours/history.jsonl`) is fsynced after each append so a power loss can't leave a buffered entry lost, and the reader logs a one-shot warning if it finds a malformed/torn line.
 - If the Inky button listener dies mid-run (pin claim lost, background thread failed), the loop logs one loud warning plus a telemetry entry with `mode=buttons_dead` and stops retrying — restart the process to reclaim the pins.
 - The optional curator web UI (`--web-bind`) runs in-process on a daemon thread and shares the render lock with the button handlers; it's the safe remote alternative to SSHing in to tap the panel or edit `selection_overrides.json` by hand. LAN binds require `--web-token` / `--web-token-file`.
 - **Webhook notifications (v2):** `--webhook-url <url>` posts a JSON body for each alert-worthy telemetry event (errors, backoff, render/display/shutdown timeouts, button-died, state-validation issues, web-auth failures). Heartbeats and successful renders are always filtered (alerting once a minute is spam, not signal). Best-effort: dispatched on a daemon thread with a 5 s timeout, failures log but never block the render path. Pass `--webhook-all-events` to widen the filter.
-- **Prometheus `/metrics` (v2):** the curator UI exposes a standard text-exposition endpoint over a fixed 24 h window. Reuses the same `litclock_health.summarise` aggregation as `litclock-health --json`, so the values match exactly. Stays open without auth on every bind so a Prometheus scraper on the LAN can hit it without managing a token.
-- **OCI container (v2):** `Dockerfile` provides a multi-stage build (ARM64-first) so the appliance can ship as a container instead of a git clone. Run with `docker run --rm -p 8080:8080 -v litclock-state:/state litclock:2.0 litclock run --buttons-off --skip-preflight --web-bind 0.0.0.0:8080 --state-path /state/state.json --history-path /state/history.jsonl --telemetry-path /state/telemetry.jsonl --pidfile /state/run_clock.pid` for a headless dev instance. The Pi-only `[pi]` extra (`gpiozero` / `inky`) is *not* installed by default — that's a Pi-runtime concern.
+- **Prometheus `/metrics` (v2):** the curator UI exposes a standard text-exposition endpoint over a fixed 24 h window. Reuses the same `idle_hours_health.summarise` aggregation as `idle-hours health --json`, so the values match exactly. Stays open without auth on every bind so a Prometheus scraper on the LAN can hit it without managing a token.
+- **OCI container (v2):** `Dockerfile` provides a multi-stage build (ARM64-first) so the appliance can ship as a container instead of a git clone. Run with `docker run --rm -p 8080:8080 -v idle-hours-state:/state idle-hours:2.0 idle-hours run --buttons-off --skip-preflight --web-bind 0.0.0.0:8080 --state-path /state/state.json --history-path /state/history.jsonl --telemetry-path /state/telemetry.jsonl --pidfile /state/run_clock.pid` for a headless dev instance. The Pi-only `[pi]` extra (`gpiozero` / `inky`) is *not* installed by default — that's a Pi-runtime concern.
 - The renderer is tuned for the Pimoroni Inky Impression 7.3 / Spectra 6 800×480 display.
 - Final renders are snapped to the exact Spectra 6 palette for better hardware fidelity.
 - Renderer changes can be surprisingly fragile around text normalization, wrapping, and emphasis/highlight matching, so keep render tests healthy.
@@ -706,11 +711,11 @@ If the clock is behaving oddly, these are the first files to inspect:
 - display handoff issues -> `display_inky.py`
 - button/long-press wiring -> `inky_buttons.py`
 - "which GPIO pin did that button actually fire?" -> `python3 probe_buttons.py` on the Pi
-- "is the appliance alive?" -> `python3 litclock_health.py --hours 24` (use `--json` from cron)
+- "is the appliance alive?" -> `python3 idle_hours_health.py --hours 24` (use `--json` from cron)
 - curator web UI / HTTP endpoints / overrides editor -> `web_server.py` + `web/` (enable with `--web-bind`)
-- telemetry log (one JSONL entry per render/error) -> `~/.litclock/telemetry.jsonl`
-- persisted manual theme / quiet override -> `~/.litclock/state.json`
-- anti-repeat ledger of recently-shown quotes -> `~/.litclock/history.jsonl`
+- telemetry log (one JSONL entry per render/error) -> `~/.idle-hours/telemetry.jsonl`
+- persisted manual theme / quiet override -> `~/.idle-hours/state.json`
+- anti-repeat ledger of recently-shown quotes -> `~/.idle-hours/history.jsonl`
 - runtime dataset questions -> `assets/quote_database.jsonl` (what the clock reads) + `assets/candidates-attributed.jsonl` (raw source)
 
 ## Contributing and security

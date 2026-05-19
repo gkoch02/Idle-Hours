@@ -1,13 +1,13 @@
-# Example LitClock appliance config.
+# Example Idle Hours appliance config.
 #
 # Every key here maps 1:1 to the argparse `dest` in run_clock.py::parse_args
 # (snake_case, not kebab-case). A CLI flag always overrides the value here,
 # and an absent key falls back to the argparse default — so you only need
 # to list keys you actually want to change.
 #
-# Copy to e.g. /var/lib/litclock/config.toml (or wherever your StateDirectory
+# Copy to e.g. /var/lib/idle-hours/config.toml (or wherever your StateDirectory
 # is) and reference it from the systemd unit as:
-#     ExecStart=... run_clock.py --config /var/lib/litclock/config.toml
+#     ExecStart=... run_clock.py --config /var/lib/idle-hours/config.toml
 #
 # Transient shell-only flags (--once, --skip-preflight, --config itself)
 # are deliberately rejected here with a stderr warning; pass those on the
@@ -38,12 +38,12 @@ interval_seconds = 60
 # ---- Persistent runtime state ----------------------------------------------
 # These paths are typically under systemd's StateDirectory. Use absolute
 # paths so the service works regardless of WorkingDirectory.
-state_path     = "/var/lib/litclock/state.json"
-history_path   = "/var/lib/litclock/history.jsonl"
+state_path     = "/var/lib/idle-hours/state.json"
+history_path   = "/var/lib/idle-hours/history.jsonl"
 history_days   = 7
-telemetry_path = "/var/lib/litclock/telemetry.jsonl"
+telemetry_path = "/var/lib/idle-hours/telemetry.jsonl"
 telemetry_retain_days = 90
-pidfile        = "/var/lib/litclock/run_clock.pid"
+pidfile        = "/var/lib/idle-hours/run_clock.pid"
 
 # ---- Quiet hours -----------------------------------------------------------
 # Overnight ranges (start > end) are supported. Set `quiet_off = true` to
@@ -86,7 +86,7 @@ shutdown_command = "systemctl poweroff"
 # other bind REQUIRES web_token_file (or web_token). Prefer web_token_file
 # so the secret never appears in `ps` / journald.
 # web_bind       = "127.0.0.1:8080"
-# web_token_file = "/var/lib/litclock/web.token"
+# web_token_file = "/var/lib/idle-hours/web.token"
 
 # ---- Webhook notifications (optional, v2) ----------------------------------
 # When set, the loop POSTs a JSON body for each alert-worthy telemetry event
@@ -99,5 +99,5 @@ shutdown_command = "systemctl poweroff"
 # Set webhook_all_events = true to widen the filter to "everything except
 # heartbeats and successful renders" (operator actions, quiet-hours
 # transitions, etc.).
-# webhook_url        = "https://hooks.example.test/litclock"
+# webhook_url        = "https://hooks.example.test/idle-hours"
 # webhook_all_events = false

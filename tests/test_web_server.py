@@ -1,6 +1,6 @@
 """Tests for the curator web UI (``web_server.py``).
 
-Every test binds an ephemeral-port ``_LitClockHTTPServer`` on 127.0.0.1, drives
+Every test binds an ephemeral-port ``_IdleHoursHTTPServer`` on 127.0.0.1, drives
 it via ``http.client`` in the same process, and tears it down in teardown.
 Real GPIO, real Inky hardware, and real subprocesses are never touched — the
 rendering action endpoints stub ``run_clock._render_unlocked`` and the picker.
@@ -56,7 +56,7 @@ def _make_args(tmp_path: Path, **overrides) -> argparse.Namespace:
 
 def _start(tmp_path: Path, *, token: str = "", args: argparse.Namespace | None = None,
            state: run_clock.RuntimeState | None = None):
-    """Spin up a ``_LitClockHTTPServer`` on an ephemeral port and return (server, state, args)."""
+    """Spin up an ``_IdleHoursHTTPServer`` on an ephemeral port and return (server, state, args)."""
     args = args or _make_args(tmp_path)
     state = state or run_clock.RuntimeState(args.theme)
     server, thread = web_server.start_web_server(args, state, token=token)
@@ -186,7 +186,7 @@ class TestTokenFileHotReload:
             # First token works; payload validation failure returns 400 which proves auth passed.
             status, _ = _post(
                 server, "/api/overrides", payload={"ban_source_ids": []},
-                headers={"X-LitClock-Token": "first-secret"},
+                headers={"X-Idle-Hours-Token": "first-secret"},
             )
             assert status in (200, 400)
 
@@ -198,14 +198,14 @@ class TestTokenFileHotReload:
             # Old token must now fail.
             status, body = _post(
                 server, "/api/overrides", payload={"ban_source_ids": []},
-                headers={"X-LitClock-Token": "first-secret"},
+                headers={"X-Idle-Hours-Token": "first-secret"},
             )
             assert status == 401, _json_body(body)
 
             # New token must succeed — no restart happened.
             status, _ = _post(
                 server, "/api/overrides", payload={"ban_source_ids": []},
-                headers={"X-LitClock-Token": "second-secret"},
+                headers={"X-Idle-Hours-Token": "second-secret"},
             )
             assert status in (200, 400)
         finally:
@@ -310,7 +310,7 @@ class TestReadEndpoints:
         status, body = _get(server, "/")
         assert status == 200
         assert b"<html" in body.lower() or b"<!doctype" in body.lower()
-        assert b"LitClock" in body
+        assert b"Idle Hours" in body
 
     def test_static_js_and_css(self, live_server):
         server, _, _ = live_server
@@ -320,9 +320,9 @@ class TestReadEndpoints:
         assert css_status == 200
         assert b"jsonFetch" in js_body
 
-    def test_main_js_attaches_x_litclock_token_header(self, live_server):
+    def test_main_js_attaches_x_idle_hours_token_header(self, live_server):
         """Regression guard for the LAN+token UX gap: the bundled UI must
-        attach ``X-LitClock-Token`` from localStorage to every fetch.
+        attach ``X-Idle-Hours-Token`` from localStorage to every fetch.
         Without this header, every POST on a tokenised LAN bind 401s and
         the documented operator workflow is unusable.
 
@@ -335,8 +335,8 @@ class TestReadEndpoints:
         text = js_body.decode("utf-8")
         # Sentinel strings — the implementation may evolve, but these
         # invariants must hold:
-        assert "X-LitClock-Token" in text, (
-            "main.js no longer references the X-LitClock-Token header — "
+        assert "X-Idle-Hours-Token" in text, (
+            "main.js no longer references the X-Idle-Hours-Token header — "
             "LAN+token deployments will break. See fix #1 in the v2 review."
         )
         assert "localStorage" in text, (
@@ -397,7 +397,7 @@ class TestReadEndpoints:
         # Write one successful render entry via date-rotated sidecar.
         import datetime as dt
 
-        import litclock_health  # noqa: F401  (sanity that it imports)
+        import idle_hours_health  # noqa: F401  (sanity that it imports)
         today = dt.datetime.now().strftime("%Y%m%d")
         rotated = Path(args.telemetry_path).with_name(
             f"{Path(args.telemetry_path).stem}-{today}.jsonl"
@@ -963,7 +963,7 @@ class TestAuth:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            status, body = _post(server, "/api/action/theme", headers={"X-LitClock-Token": "nope"})
+            status, body = _post(server, "/api/action/theme", headers={"X-Idle-Hours-Token": "nope"})
             assert status == 401
         finally:
             run_clock.stop_web_server((server, thread))
@@ -977,7 +977,7 @@ class TestAuth:
                  patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/theme",
-                    headers={"X-LitClock-Token": "secret"},
+                    headers={"X-Idle-Hours-Token": "secret"},
                 )
             assert status == 200
         finally:
@@ -1142,7 +1142,7 @@ class TestErrorBranches:
 
 # ============================================================================
 # Phase 4 observability — structured web telemetry
-# (github.com/gkoch02/litclock issue #55)
+# (github.com/gkoch02/idle-hours issue #55)
 # ============================================================================
 
 
@@ -1165,7 +1165,7 @@ class TestWebAuthFailTelemetry:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            status, _ = _post(server, "/api/action/theme", headers={"X-LitClock-Token": "wrong"})
+            status, _ = _post(server, "/api/action/theme", headers={"X-Idle-Hours-Token": "wrong"})
             assert status == 401
         finally:
             run_clock.stop_web_server((server, thread))
@@ -1190,7 +1190,7 @@ class TestWebAuthFailTelemetry:
 
     def test_auth_fail_strips_query_string_from_path(self, tmp_path):
         """Security: a fat-finger client putting a token in the URL (instead of
-        the X-LitClock-Token header) would otherwise plant the secret in the
+        the X-Idle-Hours-Token header) would otherwise plant the secret in the
         telemetry sidecar. ``log_message`` is silenced for the same reason."""
         args = _make_args(tmp_path, web_bind="0.0.0.0:0")
         state = run_clock.RuntimeState(args.theme)
@@ -1222,7 +1222,7 @@ class TestWebAuthFailTelemetry:
                  patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/theme",
-                    headers={"X-LitClock-Token": "secret"},
+                    headers={"X-Idle-Hours-Token": "secret"},
                 )
             assert status == 200
         finally:
@@ -1364,7 +1364,7 @@ class TestTokenComparison:
 
             status, _ = _post(
                 server, "/api/action/theme",
-                headers={"X-LitClock-Token": "secret"},
+                headers={"X-Idle-Hours-Token": "secret"},
             )
             # We don't care about the status here (it may 200 or 500 without
             # the peek stub) — only that compare_digest was invoked.
@@ -1988,15 +1988,15 @@ class TestMetricsEndpoint:
         assert status == 200
         text = body.decode("utf-8")
         # Required Prometheus header lines must appear for every metric.
-        assert "# HELP litclock_renders_total" in text
-        assert "# TYPE litclock_renders_total" in text
-        # The render count comes from litclock_health.summarise — the same
+        assert "# HELP idle_hours_renders_total" in text
+        assert "# TYPE idle_hours_renders_total" in text
+        # The render count comes from idle_hours_health.summarise — the same
         # source as /api/telemetry, so the values must match exactly.
-        assert "litclock_renders_total 2" in text
-        assert "litclock_errors_total 1" in text
+        assert "idle_hours_renders_total 2" in text
+        assert "idle_hours_errors_total 1" in text
         # p50 / p95 latencies are gauges with integer milliseconds.
-        assert "litclock_render_p50_ms" in text
-        assert "litclock_display_p50_ms" in text
+        assert "idle_hours_render_p50_ms" in text
+        assert "idle_hours_display_p50_ms" in text
 
     def test_metrics_no_telemetry_returns_zeros(self, tmp_path):
         """A telemetry-disabled appliance still exposes the metric names so
@@ -2009,8 +2009,8 @@ class TestMetricsEndpoint:
             status, body = _get(server, "/metrics")
             assert status == 200
             text = body.decode("utf-8")
-            assert "litclock_renders_total 0" in text
-            assert "litclock_errors_total 0" in text
+            assert "idle_hours_renders_total 0" in text
+            assert "idle_hours_errors_total 0" in text
         finally:
             run_clock.stop_web_server((server, thread))
 
@@ -2035,7 +2035,7 @@ class TestMetricsEndpoint:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret-token")
         try:
-            # No X-LitClock-Token header.
+            # No X-Idle-Hours-Token header.
             status, _ = _get(server, "/metrics")
             assert status == 200
         finally:

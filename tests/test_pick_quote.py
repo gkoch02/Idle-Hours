@@ -604,7 +604,7 @@ class TestRecentHistory:
         corpus_path = tmp_jsonl(rows)
         overrides_path = tmp_path / "overrides.json"
         overrides_path.write_text('{"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}}')
-        # No history_path passed → no file reads even if ~/.litclock exists.
+        # No history_path passed → no file reads even if ~/.idle-hours exists.
         result = pq.select_quote(bucket="h3_exact", input_path=str(corpus_path), overrides_path=str(overrides_path))
         assert result["source_id"] == "1"
 

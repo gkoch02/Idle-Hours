@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="git@github.com:gkoch02/LitClock.git"
-REPO_DIR="${HOME}/LitClock"
+REPO_URL="git@github.com:gkoch02/idle-hours.git"
+REPO_DIR="${HOME}/IdleHours"
 
 echo "==> Updating apt package lists"
 sudo apt update
@@ -35,7 +35,7 @@ if [ "${CONTINUE_AFTER_REBOOT:-0}" != "1" ]; then
   exit 0
 fi
 
-echo "==> Cloning LitClock repo"
+echo "==> Cloning Idle Hours repo"
 if [ ! -d "${REPO_DIR}" ]; then
   git clone "${REPO_URL}" "${REPO_DIR}"
 fi
@@ -50,17 +50,17 @@ python3 display_inky.py output/current.png
 
 echo
 printf '%s\n' "==> Optional: install systemd unit" \
-  "The sample unit at litclock.service.example uses Type=notify + WatchdogSec," \
-  "StateDirectory=litclock (creates /var/lib/litclock), and a modest sandbox." \
+  "The sample unit at idle-hours.service.example uses Type=notify + WatchdogSec," \
+  "StateDirectory=idle-hours (creates /var/lib/idle-hours), and a modest sandbox." \
   "To install:" \
-  "  sudo cp litclock.service.example /etc/systemd/system/litclock.service" \
+  "  sudo cp idle-hours.service.example /etc/systemd/system/idle-hours.service" \
   "  sudo systemctl daemon-reload" \
-  "  sudo systemctl enable --now litclock.service" \
-  "  systemctl status litclock.service  # should show Active: active (running); notify" \
+  "  sudo systemctl enable --now idle-hours.service" \
+  "  systemctl status idle-hours.service  # should show Active: active (running); notify" \
   "" \
-  "Migrating state from ~/.litclock/ to /var/lib/litclock/ (if needed) is documented" \
-  "in pi_setup_inky_impression.md under 'Migrating from ~/.litclock/'."
+  "Migrating state from ~/.idle-hours/ to /var/lib/idle-hours/ (if needed) is documented" \
+  "in pi_setup_inky_impression.md under 'Migrating from ~/.idle-hours/'."
 echo
 printf '%s\n' "Success path:" \
-  "  cd ~/LitClock" \
+  "  cd ~/IdleHours" \
   "  python3 run_clock.py --display-script display_inky.py"
