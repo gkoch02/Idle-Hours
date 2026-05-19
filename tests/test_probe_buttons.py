@@ -11,7 +11,7 @@ import types
 
 import pytest
 
-import probe_buttons
+from idle_hours import probe_buttons
 
 
 class FakeButton:

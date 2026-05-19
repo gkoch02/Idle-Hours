@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-import pick_quote as pq
+from idle_hours import pick_quote as pq
 from tests.conftest import make_row
 
 
@@ -511,7 +511,7 @@ class TestRecentHistory:
         append can't leave the line in the kernel page cache and vanish."""
         path = tmp_path / "history.jsonl"
         from unittest.mock import patch
-        with patch("pick_quote.os.fsync") as mock_fsync:
+        with patch("idle_hours.pick_quote.os.fsync") as mock_fsync:
             pq.append_history(str(path), "1234", 5678)
         # Exactly one fsync call per append.
         assert mock_fsync.call_count == 1
@@ -664,8 +664,7 @@ class TestCompactHistory:
 
     def test_routes_through_atomic_io_when_rewriting(self, tmp_path, monkeypatch):
         """The rewrite path goes through atomic_io so a mid-compact crash can't wipe the ledger."""
-        import atomic_io
-
+        from idle_hours import atomic_io
         path = tmp_path / "history.jsonl"
         now = dt.datetime.now(dt.timezone.utc)
         expired = {"ts": (now - dt.timedelta(days=30)).isoformat(), "source_id": "x", "line_number": 1}
@@ -679,7 +678,7 @@ class TestCompactHistory:
             calls.append((target, payload))
             return original(target, payload, **kwargs)
 
-        monkeypatch.setattr("pick_quote.atomic_io.atomic_write_text", spy)
+        monkeypatch.setattr("idle_hours.pick_quote.atomic_io.atomic_write_text", spy)
         assert pq.compact_history(str(path), 7) == 1
         assert len(calls) == 1
         # The rewritten payload contains only the fresh entry.

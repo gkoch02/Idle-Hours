@@ -19,8 +19,7 @@ from pathlib import Path
 
 import pytest
 
-import bake_quote_database
-import pick_quote
+from idle_hours import bake_quote_database, pick_quote
 
 DB_PATH = Path(__file__).resolve().parent.parent / "assets" / "quote_database.jsonl"
 

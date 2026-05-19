@@ -1,7 +1,7 @@
 """Tests for jsonl_io.iter_jsonl — the shared malformed-line-tolerant reader."""
 from __future__ import annotations
 
-from jsonl_io import iter_jsonl
+from idle_hours.jsonl_io import iter_jsonl
 
 
 class TestIterJsonl:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import sys
 
-from fix_legacy_buckets import canonical_bucket, main
+from idle_hours.fix_legacy_buckets import canonical_bucket, main
 
 
 class TestCanonicalBucket:

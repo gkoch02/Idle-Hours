@@ -5,7 +5,7 @@ import datetime as dt
 import json
 from unittest.mock import patch
 
-import idle_hours_health
+from idle_hours import idle_hours_health
 
 
 def _ledger(tmp_path, lines: list[dict]):

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from enrich_metadata import clean_author, parse_header
+from idle_hours.enrich_metadata import clean_author, parse_header
 
 
 class TestParseHeader:
@@ -106,7 +106,7 @@ class TestMain:
     def test_enriches_rows_with_metadata(self, tmp_path):
         import sys
 
-        from enrich_metadata import main
+        from idle_hours.enrich_metadata import main
 
         gutenberg_dir = tmp_path / "gutenberg"
         gutenberg_dir.mkdir()
@@ -134,7 +134,7 @@ class TestMain:
     def test_preserves_existing_title_author(self, tmp_path):
         import sys
 
-        from enrich_metadata import main
+        from idle_hours.enrich_metadata import main
 
         gutenberg_dir = tmp_path / "gutenberg"
         gutenberg_dir.mkdir()
@@ -167,7 +167,7 @@ class TestMain:
     def test_no_source_id_leaves_nulls(self, tmp_path):
         import sys
 
-        from enrich_metadata import main
+        from idle_hours.enrich_metadata import main
 
         gutenberg_dir = tmp_path / "gutenberg"
         gutenberg_dir.mkdir()

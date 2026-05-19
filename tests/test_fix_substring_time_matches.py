@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from fix_substring_time_matches import (
+from idle_hours.fix_substring_time_matches import (
     bucket_for_minute,
     infer_time_from_quote,
     parse_number_word,
@@ -53,7 +53,7 @@ class TestBucketForMinute:
     # These smoke tests confirm this module still exposes it under the historical
     # ``bucket_for_minute`` name for backward compatibility.
     def test_alias_resolves_to_shared_primitive(self):
-        from buckets import minute_bucket as shared
+        from idle_hours.buckets import minute_bucket as shared
         assert bucket_for_minute is shared
 
     def test_smoke(self):
@@ -141,7 +141,7 @@ class TestMain:
         """A row whose matched_text is a sub-string of the longer phrase gets updated."""
         import sys
 
-        from fix_substring_time_matches import main
+        from idle_hours.fix_substring_time_matches import main
 
         row = {
             "display_quote": "It was thirty-five minutes past two in the afternoon.",
@@ -166,7 +166,7 @@ class TestMain:
     def test_leaves_non_collision_rows_unchanged(self, tmp_path):
         import sys
 
-        from fix_substring_time_matches import main
+        from idle_hours.fix_substring_time_matches import main
 
         row = {
             "display_quote": "It was ten minutes past three.",

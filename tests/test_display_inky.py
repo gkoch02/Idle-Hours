@@ -14,7 +14,7 @@ import pytest
 # display_inky imports Pillow at module scope, so skip cleanly if unavailable.
 pytest.importorskip("PIL")
 
-import display_inky  # noqa: E402
+from idle_hours import display_inky  # noqa: E402
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def stub_inky_import(monkeypatch):
 
 class TestRetry:
     def test_success_on_first_attempt_no_retry(self, fake_image):
-        with patch("display_inky._push_to_panel", return_value=(800, 480)) as push, \
+        with patch("idle_hours.display_inky._push_to_panel", return_value=(800, 480)) as push, \
              patch("sys.argv", _argv(fake_image)), \
              patch("time.sleep") as sleep:
             rc = display_inky.main()
@@ -50,7 +50,7 @@ class TestRetry:
 
     def test_transient_failure_then_success(self, fake_image, capsys):
         side = [IOError("panel disconnected"), (800, 480)]
-        with patch("display_inky._push_to_panel", side_effect=side) as push, \
+        with patch("idle_hours.display_inky._push_to_panel", side_effect=side) as push, \
              patch("sys.argv", _argv(fake_image)), \
              patch("time.sleep") as sleep:
             rc = display_inky.main()
@@ -60,7 +60,7 @@ class TestRetry:
         assert "retrying" in capsys.readouterr().err
 
     def test_all_attempts_fail_raises(self, fake_image, capsys):
-        with patch("display_inky._push_to_panel", side_effect=IOError("boom")) as push, \
+        with patch("idle_hours.display_inky._push_to_panel", side_effect=IOError("boom")) as push, \
              patch("sys.argv", _argv(fake_image)), \
              patch("time.sleep"):
             with pytest.raises(SystemExit) as exc_info:
@@ -70,7 +70,7 @@ class TestRetry:
 
     def test_missing_image_exits_without_push(self, tmp_path):
         missing = tmp_path / "does-not-exist.png"
-        with patch("display_inky._push_to_panel") as push, \
+        with patch("idle_hours.display_inky._push_to_panel") as push, \
              patch("sys.argv", _argv(missing)):
             with pytest.raises(SystemExit) as exc_info:
                 display_inky.main()
@@ -110,7 +110,7 @@ class TestThemeSaturation:
         ``THEME_SATURATION`` entry. Without this the resolve call silently
         falls back to the default saturation, which can make a dark-background
         theme (``nightvision``) look muddier than intended."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         assert theme in rq.THEMES
         assert theme in display_inky.THEME_SATURATION
 
@@ -119,7 +119,7 @@ class TestThemeSaturation:
         exactly equal the saturation table's keys. Prevents a new theme from
         silently inheriting the default saturation just because someone added
         a THEMES entry without touching display_inky."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         assert set(rq.THEMES.keys()) == set(display_inky.THEME_SATURATION.keys())
 
     def test_main_passes_theme_saturation_to_panel(self, fake_image):
@@ -130,7 +130,7 @@ class TestThemeSaturation:
             return (800, 480)
 
         argv = ["display_inky.py", str(fake_image), "--theme", "dark"]
-        with patch("display_inky._push_to_panel", side_effect=capture), \
+        with patch("idle_hours.display_inky._push_to_panel", side_effect=capture), \
              patch("sys.argv", argv), \
              patch("time.sleep"):
             display_inky.main()
@@ -144,7 +144,7 @@ class TestThemeSaturation:
             return (800, 480)
 
         argv = ["display_inky.py", str(fake_image), "--theme", "dark", "--saturation", "0.1"]
-        with patch("display_inky._push_to_panel", side_effect=capture), \
+        with patch("idle_hours.display_inky._push_to_panel", side_effect=capture), \
              patch("sys.argv", argv), \
              patch("time.sleep"):
             display_inky.main()
@@ -170,7 +170,7 @@ class TestInkyImportGuard:
         # attribute on a module object raises ImportError at ``from`` time.)
 
         with patch("sys.argv", _argv(fake_image)), \
-             patch("display_inky._push_to_panel") as push:
+             patch("idle_hours.display_inky._push_to_panel") as push:
             with pytest.raises(SystemExit) as exc_info:
                 display_inky.main()
         msg = str(exc_info.value)

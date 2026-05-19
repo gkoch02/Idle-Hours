@@ -14,7 +14,7 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed")
 
-import render_quote as rq  # noqa: E402
+from idle_hours import render_quote as rq  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -2412,8 +2412,8 @@ class TestPickQuoteUsesBakedDatabase:
     corpus even when a baked DB is present."""
 
     def test_forwards_database_path(self, monkeypatch):
-        import pick_quote as pq
-        import render_quote
+        from idle_hours import pick_quote as pq
+        from idle_hours import render_quote
         captured: dict = {}
 
         def fake_select_quote(**kwargs):

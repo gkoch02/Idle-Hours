@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-import contact_sheet
+from idle_hours import contact_sheet
 
 
 class TestBucketToTime:
@@ -57,16 +57,16 @@ def _fake_select_quote(time_str, **kwargs):
 
 class TestRenderTile:
     def test_returns_correct_tile_size(self):
-        with patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             tile = contact_sheet.render_tile("03:00", 200, 120, "default", "production")
         assert tile.size == (200, 120)
 
     def test_placeholder_used_on_systemexit(self):
         with patch(
-            "contact_sheet.pick_quote_module.select_quote",
+            "idle_hours.contact_sheet.pick_quote_module.select_quote",
             side_effect=SystemExit("no candidates"),
-        ), patch("contact_sheet.render_quote_module.render", side_effect=_fake_render) as mock_render:
+        ), patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render) as mock_render:
             tile = contact_sheet.render_tile("02:20", 200, 120, "default", "production")
         assert tile.size == (200, 120)
         mock_render.assert_not_called()
@@ -78,8 +78,8 @@ class TestRenderTile:
             captured.update(kwargs)
             return _fake_select_quote(**kwargs)
 
-        with patch("contact_sheet.pick_quote_module.select_quote", side_effect=capture), \
-             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render):
+        with patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=capture), \
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render):
             contact_sheet.render_tile("03:00", 200, 120, "default", "production")
         assert captured.get("history_path") is None
         assert captured.get("history_days") == 0
@@ -87,14 +87,14 @@ class TestRenderTile:
 
 class TestBuildCell:
     def test_cell_includes_caption_height(self):
-        with patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             cell = contact_sheet.build_cell("03:00", "h3_exact", 200, 120, 18, "default", "production")
         assert cell.size == (200, 138)
 
     def test_cell_without_caption(self):
-        with patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             cell = contact_sheet.build_cell("03:00", "h3_exact", 200, 120, 0, "default", "production")
         assert cell.size == (200, 120)
 
@@ -107,8 +107,8 @@ class TestBuildSheet:
             called_times.append(time_str)
             return Image.new("RGB", (800, 480), color=(255, 255, 255))
 
-        with patch("contact_sheet.render_quote_module.render", side_effect=capture_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=capture_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             sheet = contact_sheet.build_sheet(
                 tile_w=100, tile_h=60, caption_h=16, margin=4,
                 theme="default", mode="production",
@@ -121,8 +121,8 @@ class TestBuildSheet:
         assert sheet.size == (12 * 100 + 13 * 4, 12 * 76 + 13 * 4)
 
     def test_sheet_dimensions_scale_with_margin(self):
-        with patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             sheet = contact_sheet.build_sheet(
                 tile_w=50, tile_h=30, caption_h=10, margin=0,
                 theme="default", mode="production",
@@ -144,8 +144,8 @@ class TestMainCLI:
             "--margin", "2",
         ]
         with patch("sys.argv", argv), \
-             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             rc = contact_sheet.main()
         assert rc == 0
         assert output.exists()
@@ -162,8 +162,8 @@ class TestMainCLI:
             "--tile-height", "24",
         ]
         with patch("sys.argv", argv), \
-             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             contact_sheet.main()
         assert output.exists()
 
@@ -178,8 +178,8 @@ class TestBucketIteration:
             seen.append(time_str)
             return Image.new("RGB", (800, 480))
 
-        with patch("contact_sheet.render_quote_module.render", side_effect=capture), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=capture), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             contact_sheet.build_sheet(
                 tile_w=50, tile_h=30, caption_h=0, margin=0,
                 theme="default", mode="production",
@@ -191,10 +191,10 @@ class TestBucketIteration:
 
     def test_corpus_is_loaded_only_once(self):
         """Regression: 144 tiles must not each re-parse the JSONL + overrides."""
-        with patch("contact_sheet.pick_quote_module.load_rows", return_value=[]) as mock_rows, \
-             patch("contact_sheet.pick_quote_module.load_overrides", return_value={}) as mock_overrides, \
-             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.pick_quote_module.load_rows", return_value=[]) as mock_rows, \
+             patch("idle_hours.contact_sheet.pick_quote_module.load_overrides", return_value={}) as mock_overrides, \
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             contact_sheet.build_sheet(
                 tile_w=50, tile_h=30, caption_h=0, margin=0,
                 theme="default", mode="production",
@@ -213,10 +213,10 @@ class TestBucketIteration:
             captured.append(kwargs)
             return _fake_select_quote(**kwargs)
 
-        with patch("contact_sheet.pick_quote_module.load_rows", return_value=preloaded_rows), \
-             patch("contact_sheet.pick_quote_module.load_overrides", return_value=preloaded_overrides), \
-             patch("contact_sheet.render_quote_module.render", side_effect=_fake_render), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=capture):
+        with patch("idle_hours.contact_sheet.pick_quote_module.load_rows", return_value=preloaded_rows), \
+             patch("idle_hours.contact_sheet.pick_quote_module.load_overrides", return_value=preloaded_overrides), \
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=capture):
             contact_sheet.build_sheet(
                 tile_w=50, tile_h=30, caption_h=0, margin=0,
                 theme="default", mode="production",
@@ -238,8 +238,8 @@ class TestBucketIteration:
             seen_themes.append(theme)
             return Image.new("RGB", (800, 480))
 
-        with patch("contact_sheet.render_quote_module.render", side_effect=capture), \
-             patch("contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+        with patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=capture), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
             contact_sheet.build_sheet(
                 tile_w=50, tile_h=30, caption_h=0, margin=0,
                 theme=theme, mode="production",

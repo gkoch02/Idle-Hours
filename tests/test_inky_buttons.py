@@ -12,7 +12,7 @@ import types
 
 import pytest
 
-import inky_buttons
+from idle_hours import inky_buttons
 
 
 class FakeButton:

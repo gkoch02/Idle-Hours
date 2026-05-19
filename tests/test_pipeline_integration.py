@@ -26,17 +26,19 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed")
 
-import apply_content_overrides  # noqa: E402
-import bake_quote_database  # noqa: E402
-import clean_display_quotes  # noqa: E402
-import enrich_metadata  # noqa: E402
-import gutenberg_time_miner as miner  # noqa: E402
-import merge_candidates  # noqa: E402
-import pick_quote  # noqa: E402
-import quality_filter  # noqa: E402
+from idle_hours import (  # noqa: E402
+    apply_content_overrides,
+    bake_quote_database,
+    clean_display_quotes,
+    enrich_metadata,
+    merge_candidates,
+    pick_quote,
+    quality_filter,
+)
+from idle_hours import gutenberg_time_miner as miner  # noqa: E402
 
 if PIL_AVAILABLE:
-    import render_quote  # noqa: E402
+    from idle_hours import render_quote  # noqa: E402
 
 # A minimal but realistic Gutenberg body. Must include a Gutenberg-style header
 # (so enrich_metadata picks up Title / Author) and enough phrasing that every
@@ -307,7 +309,7 @@ class TestPipelineWithBaking:
         hour_str, state = bucket.split("_", 1)
         hour = 12 if hour_str == "h12" else int(hour_str[1:])
         # Canonical minute for the bucket's minute-state (e.g. h3_exact → :00).
-        from buckets import DEFAULT_BUCKET_MINUTES
+        from idle_hours.buckets import DEFAULT_BUCKET_MINUTES
         minute = DEFAULT_BUCKET_MINUTES.get(state, 0)
         time_str = f"{hour:02d}:{minute:02d}"
 

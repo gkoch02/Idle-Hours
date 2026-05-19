@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from apply_content_overrides import apply_overrides, load_overrides, main, row_key
+from idle_hours.apply_content_overrides import apply_overrides, load_overrides, main, row_key
 
 
 class TestRowKey:

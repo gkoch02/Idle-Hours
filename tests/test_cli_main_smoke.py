@@ -3,7 +3,8 @@
 Existing modules (``test_pick_quote.py``, ``test_render_quote.py``, …) already
 exercise each library surface thoroughly, but they tend to import functions
 directly and call them in-process. These tests instead shell out to
-``python -m <script>`` so we catch the class of breakage that unit tests miss:
+``python -m idle_hours.<script>`` so we catch the class of breakage that unit
+tests miss:
 
 * An argparse default that evaluates to ``None`` on import (``--input`` required
   unexpectedly).
@@ -51,9 +52,16 @@ HELP_SCRIPTS = [
 
 
 def _run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
-    """Run ``python -m <script>`` from the repo root."""
+    """Run ``python -m idle_hours.<module>`` from the repo root.
+
+    Caller passes ``["<module>", ...flags]`` (bare module name, no ``.py`` —
+    this helper prepends ``-m idle_hours.``). The repo root is on ``sys.path``
+    automatically when ``cwd`` points there, so ``idle_hours`` resolves to the
+    in-tree package without requiring an editable install.
+    """
+    module, *rest = args
     return subprocess.run(
-        [sys.executable, *args],
+        [sys.executable, "-m", f"idle_hours.{module}", *rest],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -65,7 +73,7 @@ def _run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
 @pytest.mark.parametrize("script", HELP_SCRIPTS)
 def test_help_exits_zero(script):
     """Every script's ``--help`` must exit 0 and print usage."""
-    result = _run([f"{script}.py", "--help"])
+    result = _run([script, "--help"])
     assert result.returncode == 0, f"{script} --help exited {result.returncode}: {result.stderr}"
     assert "usage" in result.stdout.lower(), f"{script} --help produced no usage line"
 
@@ -74,7 +82,7 @@ class TestPickQuoteMain:
     def test_time_flag_runs_end_to_end(self, tmp_path):
         """``pick_quote --time HH:MM`` must emit valid JSON with required fields
         against the shipped corpus."""
-        result = _run(["pick_quote.py", "--time", "14:30", "--history-path", ""])
+        result = _run(["pick_quote", "--time", "14:30", "--history-path", ""])
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert "display_quote" in payload
@@ -82,7 +90,7 @@ class TestPickQuoteMain:
         assert "used_fallback" in payload
 
     def test_bucket_flag_runs(self):
-        result = _run(["pick_quote.py", "--bucket", "h2_half_past", "--history-path", ""])
+        result = _run(["pick_quote", "--bucket", "h2_half_past", "--history-path", ""])
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert payload.get("resolved_bucket", "").startswith("h2_")
@@ -91,14 +99,14 @@ class TestPickQuoteMain:
 class TestIdleHoursHealthMain:
     def test_missing_telemetry_exits_1(self, tmp_path):
         """``idle_hours_health --telemetry-path <missing>`` exits 1 (not 0, not crash)."""
-        result = _run(["idle_hours_health.py", "--telemetry-path", str(tmp_path / "nope.jsonl")])
+        result = _run(["idle_hours_health", "--telemetry-path", str(tmp_path / "nope.jsonl")])
         assert result.returncode == 1, f"expected 1, got {result.returncode}: {result.stderr}"
 
     def test_empty_telemetry_json_mode(self, tmp_path):
         """``--json`` with an empty-but-existing log emits valid JSON even with zero entries."""
         log = tmp_path / "telemetry.jsonl"
         log.write_text("", encoding="utf-8")
-        result = _run(["idle_hours_health.py", "--telemetry-path", str(log), "--json"])
+        result = _run(["idle_hours_health", "--telemetry-path", str(log), "--json"])
         # Empty log behaves like missing (exit 1) in current implementation —
         # we care that it's JSON on stdout OR a clean exit code, not a traceback.
         assert "Traceback" not in result.stderr, result.stderr
@@ -108,7 +116,7 @@ class TestIdleHoursHealthMain:
         log = tmp_path / "telemetry.jsonl"
         log.write_text("", encoding="utf-8")
         result = _run([
-            "idle_hours_health.py",
+            "idle_hours_health",
             "--telemetry-path", str(log),
             "--hours", "1",
             "--fail-if-no-renders",
@@ -147,7 +155,7 @@ class TestPipelineStageMains:
         }]
         inp = self._write_rows(tmp_path, rows)
         out = tmp_path / "merged.jsonl"
-        result = _run(["merge_candidates.py", str(inp), "--output", str(out)])
+        result = _run(["merge_candidates", str(inp), "--output", str(out)])
         assert result.returncode == 0, result.stderr
         assert out.exists()
         merged = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines() if line]
@@ -177,7 +185,7 @@ class TestPipelineStageMains:
         }]
         inp = self._write_rows(tmp_path, rows)
         out = tmp_path / "scored.jsonl"
-        result = _run(["quality_filter.py", str(inp), "--output", str(out)])
+        result = _run(["quality_filter", str(inp), "--output", str(out)])
         assert result.returncode == 0, result.stderr
         scored = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines() if line]
         assert "quality_score" in scored[0]
@@ -192,7 +200,7 @@ class TestRunClockOnce:
     def test_once_renders_a_frame(self, tmp_path):
         out = tmp_path / "frame.png"
         result = _run([
-            "run_clock.py",
+            "run_clock",
             "--once",
             "--output", str(out),
             "--mode", "production",
@@ -224,7 +232,7 @@ class TestRunClockOnce:
             encoding="utf-8",
         )
         result = _run([
-            "run_clock.py",
+            "run_clock",
             "--config", str(cfg),
             "--once",
             "--output", str(out),
@@ -236,7 +244,7 @@ class TestRunClockOnce:
     def test_once_with_missing_config_fails_fast(self, tmp_path):
         """Typoed --config path must exit 1, not silently boot with defaults."""
         result = _run([
-            "run_clock.py",
+            "run_clock",
             "--config", str(tmp_path / "does_not_exist.toml"),
             "--once",
             "--output", str(tmp_path / "frame.png"),

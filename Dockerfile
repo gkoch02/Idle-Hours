@@ -45,11 +45,10 @@ RUN apt-get update \
 
 # Copy only the minimum needed to resolve dependencies and produce wheels.
 # COPY-then-pip is split so a code change doesn't bust the wheel-build cache.
+# The entire package (Python modules + bundled assets/fonts/web) lives under
+# ``idle_hours/``; setuptools picks it up via packages.find + package-data.
 COPY pyproject.toml README.md ./
-COPY *.py ./
-COPY web/ ./web/
-COPY assets/ ./assets/
-COPY fonts/ ./fonts/
+COPY idle_hours/ ./idle_hours/
 
 # Build the Idle Hours wheel + every runtime dep into /wheels. Using
 # `pip wheel` (not `pip install`) so stage 2 can `pip install` in offline
@@ -81,15 +80,14 @@ COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels idle-hours \
     && rm -rf /wheels
 
-# Bring in the static assets that the wheel doesn't carry. The wheel
-# installs the Python modules and the `idle-hours` console script; the
-# corpus / fonts / web assets ship as volume-mountable defaults next to
-# the source tree so an operator can override them without rebuilding.
-# Mount over /app/assets and /app/fonts at runtime to swap in a custom
-# corpus or font bundle.
-COPY --from=builder /build/assets /app/assets
-COPY --from=builder /build/fonts /app/fonts
-COPY --from=builder /build/web /app/web
+# As of the v2.x package restructure, ``assets/``, ``fonts/``, and ``web/``
+# are shipped as ``package-data`` inside the ``idle_hours`` wheel itself.
+# That means a plain ``pip install`` is now sufficient — no separate COPY
+# of the static trees into /app is needed (and would just create a second
+# copy at a different path than ``BASE_DIR`` resolves to). Operators who
+# want to swap the corpus / fonts / web UI without rebuilding the image
+# can volume-mount over the installed copies, e.g.
+#   docker run -v /my/assets:/usr/local/lib/python3.12/site-packages/idle_hours/assets ...
 
 # Default state directory; mount a volume here for persistence across
 # container restarts. The runtime user owns it so the loop can write

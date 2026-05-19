@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from buckets import (
+from idle_hours.buckets import (
     BUCKET_ORDER,
     DEFAULT_BUCKET_MINUTES,
     bucket_for_time,

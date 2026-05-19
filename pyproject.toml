@@ -18,73 +18,22 @@ pi = ["inky", "gpiozero"]
 
 [project.scripts]
 # Single umbrella entry point — `idle-hours <subcommand>` dispatches to the
-# matching script's main(). Backwards-compat: `python3 <script>.py …` keeps
-# working for every subcommand. Defined here so `pip install .` registers
-# the console script in the bin/ directory of the active environment.
-idle-hours = "idle_hours_cli:main"
+# matching script's main(). Defined here so `pip install .` registers the
+# console script in the bin/ directory of the active environment.
+idle-hours = "idle_hours.idle_hours_cli:main"
 
-[tool.setuptools]
-# Keep this list in sync with the top-level *.py files in the repo root.
-# tests/test_packaging.py::test_py_modules_covers_top_level_modules enforces
-# the invariant — a module that exists on disk but is missing here will
-# silently break ``pip install .`` (the installed wheel won't contain it).
-#
-# **Known limitation (v2):** the wheel currently ships ONLY the Python
-# modules below — not the static assets in ``web/``, ``assets/``, or
-# ``fonts/``. ``pip install idle-hours`` (without ``-e`` and without Docker)
-# produces a CLI that 404s the curator UI, can't find bundled fonts, and
-# can't find the prebuilt corpus. Workable installation paths today:
-#
-# * ``pip install -e .`` from a git checkout (assets resolve via
-#   ``BASE_DIR = Path(__file__).resolve().parent``).
-# * The bundled ``Dockerfile`` (multi-stage build that COPYs assets next
-#   to the installed wheel inside the container).
-#
-# A proper fix requires moving ``web/`` / ``assets/`` / ``fonts/`` inside
-# a real ``idle_hours/`` package directory and declaring them via
-# ``[tool.setuptools.package-data]`` — that's tracked as a follow-up
-# in FOLLOWUPS.md. Until then, ``run_clock`` runs a startup guard that
-# fails loudly if the baked corpus is missing so a wheel-install operator
-# sees the breakage at first run rather than at first render.
-py-modules = [
-    "apply_content_overrides",
-    "atomic_io",
-    "bake_quote_database",
-    "bucket_coverage",
-    "buckets",
-    "clean_display_quotes",
-    "contact_sheet",
-    "display_inky",
-    "enrich_metadata",
-    "fix_legacy_buckets",
-    "fix_substring_time_matches",
-    "gutenberg_time_miner",
-    "idle_hours_cli",
-    "idle_hours_health",
-    "import_targeted_hits",
-    "inky_buttons",
-    "jsonl_io",
-    "merge_candidates",
-    "pick_quote",
-    "pidfile",
-    "probe_buttons",
-    "quality_filter",
-    "render_quote",
-    "run_clock",
-    "runtime_actions",
-    "runtime_config",
-    "runtime_log",
-    "runtime_quiet",
-    "runtime_state",
-    "runtime_store",
-    "runtime_telemetry",
-    "runtime_theme",
-    "runtime_webhook",
-    "sd_notify",
-    "target_sparse_buckets",
-    "theme_names",
-    "web_server",
-]
+[tool.setuptools.packages.find]
+# Discover the ``idle_hours/`` package (and any future subpackage under it).
+# Switched from the older ``py-modules = [...]`` flat-list form so the wheel
+# can carry ``web/`` / ``assets/`` / ``fonts/`` as ``package-data`` (below).
+include = ["idle_hours*"]
+
+[tool.setuptools.package-data]
+# Ship the static assets the renderer / curator UI / corpus need at runtime
+# inside the wheel itself. Without this, ``pip install idle-hours`` produced
+# a CLI that 404'd the curator UI, fell back to bitmap fonts, and couldn't
+# find the prebuilt corpus — only ``pip install -e .`` from a clone worked.
+idle_hours = ["assets/**/*", "fonts/**/*", "web/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -93,11 +42,11 @@ python_functions = ["test_*"]
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.coverage.run]
-source = ["."]
+source = ["idle_hours"]
 # display_inky.py stays in coverage: its module-level defaults + resolve_saturation
 # + main() retry/backoff logic are exercised by tests/test_display_inky.py with
 # the hardware call (_push_to_panel, which imports the Pimoroni Inky library) mocked out.
-omit = ["tests/*", "bootstrap_pi_inky.sh"]
+omit = ["tests/*"]
 
 [tool.coverage.report]
 exclude_lines = [

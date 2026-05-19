@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-import clean_display_quotes as cdq
+from idle_hours import clean_display_quotes as cdq
 from tests.conftest import make_row
 
 # ---------------------------------------------------------------------------

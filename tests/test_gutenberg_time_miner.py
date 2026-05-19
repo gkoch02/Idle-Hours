@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import gutenberg_time_miner as gtm
+from idle_hours import gutenberg_time_miner as gtm
 
 # ---------------------------------------------------------------------------
 # normalize_number_phrase

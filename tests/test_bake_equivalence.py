@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-import bake_quote_database as bq
-import pick_quote
-from buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES
+from idle_hours import bake_quote_database as bq
+from idle_hours import pick_quote
+from idle_hours.buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES
 
 
 def _bake_to(tmp_path, raw_rows):

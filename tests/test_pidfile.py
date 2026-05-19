@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-import pidfile
+from idle_hours import pidfile
 
 
 class TestAcquirePidfile:
@@ -273,7 +273,7 @@ class TestRunClockMainRejectsSecondInstance:
 
     def test_second_main_exits_one_with_log(self, tmp_path, capsys):
         """Hold the pidfile, then invoke main() and verify it returns 1 quickly."""
-        import run_clock
+        from idle_hours import run_clock
         pid_path = tmp_path / "run_clock.pid"
         state_path = tmp_path / "state.json"
         held = pidfile.acquire_pidfile(str(pid_path))
