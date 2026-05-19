@@ -185,6 +185,7 @@ def parse_args() -> argparse.Namespace:
         "chanbara",
         "lcars",
         "fillmore",
+        "kanagawa",
         "diags",
     ]
     parser.add_argument(

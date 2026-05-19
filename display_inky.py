@@ -185,6 +185,17 @@ THEME_SATURATION: dict[str, float] = {
     # blue matched phrase confidently saturated against the warm
     # yellow ground rather than half-fading into the page.
     "fillmore": 0.7,
+    # Kanagawa / Hokusai's "Great Wave" — white washi ground with a
+    # graduated sky-blue Bayer wash and an indigo wave silhouette
+    # carrying a navy depth post-pass, a maroon-rimmed sun disc, white
+    # foam clusters with contact-edge cyan halos, and a maroon-stippled
+    # hanko seal. Same chromatic-on-light profile as ``default`` /
+    # ``mucha`` / ``deco`` / ``placard``; the 0.5 tier preserves the
+    # synthesised tones — pushing higher would shift the navy trough
+    # toward a brighter solid indigo and erase the body-vs-trough
+    # tonal rhyme, plus shift the maroon sun rim toward a brighter
+    # red and break the "low hazy morning sun" reading.
+    "kanagawa": 0.5,
 }
 
 

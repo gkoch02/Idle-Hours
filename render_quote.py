@@ -73,6 +73,7 @@ THEME_ORDER: tuple[str, ...] = (
     "chanbara",
     "lcars",
     "fillmore",
+    "kanagawa",
     "diags",
 )
 THEMES = {
@@ -716,6 +717,46 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
+    # Kanagawa / Hokusai's "The Great Wave off Kanagawa" (1831, from the
+    # Thirty-six Views of Mount Fuji). The flagship of the rotation — the
+    # most heavily composited theme by a comfortable margin: seven distinct
+    # visual layers stacked from a vertically-graduated sky-blue Bayer wash
+    # through a distant Mt. Fuji silhouette, a low maroon-rimmed sun disc,
+    # a deterministic 32-point wave polygon with navy depth shading in the
+    # trough (B+K 1:1 — the documented recipe ``bauhaus``'s matched phrase
+    # already uses), white foam clusters at each curling claw tip, and a
+    # contact-edge cyan halo where foam meets the indigo wave silhouette
+    # (the first theme in the rotation to do a contact-edge post-pass —
+    # recolour only where two prior painted layers happen to meet). A
+    # small maroon-stippled hanko seal anchors the bottom-right corner.
+    # No outer frame — authentic woodblock prints have no border (same
+    # composition discipline as ``fillmore``). The matched-phrase blue
+    # is rerouted in ``_draw_text_body`` to a 50/50 B+K navy stipple, so
+    # the deepest indigo in the composition appears in both the wave
+    # trough and the time phrase — a deliberate ground-vs-figure rhyme.
+    # Body in Klee One (Fontworks, OFL — Japanese textbook-style hand-
+    # printed face with full Latin glyph coverage), the first Japanese-
+    # Latin hybrid hand in the bundle. Sits visually distinct from the
+    # rotation's other Japanese-flavoured theme (``chanbara`` — dramatic
+    # samurai-cinema brush via Shojumaru with a single off-canvas red
+    # sun and a chop seal, no wave): chanbara is samurai *cinema*;
+    # kanagawa is the famous *print*, with the wave as the primary
+    # subject and a wholly different compositional grammar (asymmetric
+    # foreground subject vs chanbara's flat rising-sun ground).
+    "kanagawa": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        # Accent sits on the blue sentinel; ``_draw_text_body`` routes
+        # blue fills through a B+K 1:1 stipple → navy in this theme so
+        # the matched time phrase reads as the deep indigo of the wave's
+        # trough — body-vs-decoration colour rhyme by construction.
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -989,6 +1030,18 @@ CORMORANT_VARIABLE = str(BASE_DIR / "fonts/cormorant-garamond/CormorantGaramond-
 # Mucha font chain the same way UnifrakturMaguntia lives alongside
 # EB Garamond in ``illuminated``.
 BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-Regular.ttf")
+# Klee One — Fontworks (OFL). Japanese textbook-style hand-printed face
+# whose Latin glyphs read as quiet, classroom-handwritten captioning —
+# the same register woodblock-print marginalia and Edo-era caption
+# inscriptions occupy. The first Japanese-Latin hybrid hand in the
+# rotation; sits visually distinct from chanbara's Shojumaru (dramatic
+# samurai-cinema brush) so both Japanese-flavoured themes stay
+# differentiable. Static TTFs for Regular and SemiBold (not a variable
+# font), so no ``set_variation_by_name`` pinning is needed — same
+# pattern Bangers / Special Elite / Atomic Age use. Used by the
+# ``kanagawa`` theme.
+KLEEONE_REGULAR = str(BASE_DIR / "fonts/klee-one/KleeOne-Regular.ttf")
+KLEEONE_SEMIBOLD = str(BASE_DIR / "fonts/klee-one/KleeOne-SemiBold.ttf")
 # Bungee Shade — David Jonathan Ross (OFL). 3D-blocked display face
 # with strong outline + drop-shadow shading, evoking the chunky shaded
 # lettering on 1960s rock concert posters — Wes Wilson, Victor Moscoso,
@@ -1817,6 +1870,44 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "kanagawa": {
+        # Klee One Regular for the body, SemiBold for the matched phrase
+        # and the oversized quote marks. The pen-printed letterforms
+        # land in the woodblock-caption register — quieter than
+        # Shojumaru's brush-painted samurai-cinema register that
+        # ``chanbara`` uses, so both Japanese-flavoured themes stay
+        # differentiable on the panel. Static TTFs (not a variable
+        # font), so no ``set_variation_by_name`` pinning needed.
+        # Fallback chain favours humanist serifs (Cormorant Garamond
+        # → EB Garamond → Old Standard TT → DejaVu Serif → Playfair)
+        # over sans because the woodblock register is closer to a
+        # quiet humanist serif than to any sans face the rotation
+        # carries — a missing Klee install should land on a serif
+        # silhouette rather than a grotesque sans that would clash
+        # with the ukiyo-e composition.
+        "quote_regular": [
+            KLEEONE_REGULAR,
+            (CORMORANT_VARIABLE, "Regular"),
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            KLEEONE_SEMIBOLD,
+            (CORMORANT_VARIABLE, "SemiBold"),
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        # Reuse SemiBold for the oversized quote marks — woodblock
+        # caption marginalia doesn't switch faces mid-line, so the
+        # opening / closing quote glyphs share the matched phrase's
+        # face for visual coherence.
+        "ornament": [
+            KLEEONE_SEMIBOLD,
+            (CORMORANT_VARIABLE, "SemiBold"),
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     # System sans for the diagnostic panel. The render path for diags is
     # the status-grid layout, not the literary frame — a clean grotesque
     # sans reads better at small label sizes than the Playfair serif
@@ -2596,6 +2687,20 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # square, solid yellow triangle, and the navy matched phrase
         # sits as a deeper variant of the blue accent within the
         # body block.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    elif theme == "kanagawa" and fill == SPECTRA6["blue"]:
+        # Matched phrase shifts to navy (B+K 1:1 — the same recipe
+        # ``bauhaus``'s matched phrase uses, via the documented two-ink
+        # table in ``spectra6_color_recipes.md``). The wave silhouette's
+        # depth post-pass in ``draw_kanagawa_border`` flips half of its
+        # blue trough pixels to navy via the same recipe, so the deepest
+        # indigo in the composition appears in BOTH the wave trough and
+        # the matched time phrase — a deliberate ground-vs-figure colour
+        # rhyme. The sun disc / Mt. Fuji silhouette / hanko seal stay
+        # in their own ink registers (maroon-rimmed red, solid blue,
+        # maroon-stippled red respectively), so the body's navy stays
+        # visually distinct from each decorative element while sharing
+        # the wave's tonal palette.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
     elif theme == "nightvision" and fill == SPECTRA6["yellow"]:
         # Matched phrase shifts to lime (Y+G 5/8:3/8) — yellow-biased
@@ -6945,6 +7050,355 @@ def draw_mucha_border(image: Image.Image, colors: dict) -> None:
                 pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
 
 
+def _build_kanagawa_wave(width: int, height: int, seed: int = 1) -> list[tuple[int, int]]:
+    """Return a deterministic polygon silhouette for the Great Wave's
+    primary body, sized to sit in the bottom-left corner clear of the
+    body-text block.
+
+    The shape is hand-shaped via a fixed-anchor polyline (not a randomly
+    wobbled blob) so the three iconic curling "claw" tendrils land in
+    the same place every render — the wave's silhouette is the most
+    recognisable part of the print and a randomised contour would lose
+    it. The ``seed`` argument is currently unused (kept for API
+    symmetry with ``_build_fillmore_blob`` so a future variant
+    could introduce wobble); two calls with the same ``seed`` are
+    guaranteed to return identical polygons, which the
+    ``TestKanagawaBorder`` determinism test pins.
+
+    The polygon extends off-canvas left (x < 0) and below (y > height)
+    so the wave appears to continue beyond the frame, the way Hokusai's
+    print actually composes. Sized so the highest claw tip lands at
+    roughly y ≈ 0.62 × height (about 2/3 of the way down a default
+    480 px canvas) — well below the typical body-text bottom edge
+    (~y=330 for a standard layout) so the quote body stays legible
+    on top of the painted ornament.
+    """
+    del seed  # reserved for future variant; currently deterministic
+    w = width
+    h = height
+    # Read counter-clockwise from the off-canvas lower-left corner:
+    # base trough → rising flank → three curling claw tendrils
+    # (each ending higher than the last) → back down the spine →
+    # back to the trough off-canvas. Y values stay in the bottom
+    # ~22% of the canvas (0.78 .. 1.05) so the body-text block
+    # above (typically y=80-330) AND the attribution band below
+    # (typically y=335-380) both remain unobstructed.
+    anchors_frac: list[tuple[float, float]] = [
+        (-0.02, 1.05),    # off-canvas lower-left anchor
+        (-0.02, 0.96),    # left flank base
+        (0.04, 0.93),     # rising slope
+        (0.08, 0.90),
+        (0.12, 0.88),     # ascending crest spine
+        (0.16, 0.86),
+        (0.19, 0.84),
+        (0.21, 0.83),     # first claw root
+        (0.24, 0.81),     # first claw tip (lowest of three)
+        (0.26, 0.83),     # claw return
+        (0.26, 0.85),     # interclaw notch
+        (0.29, 0.82),     # second claw root
+        (0.32, 0.79),     # second claw tip
+        (0.34, 0.82),     # claw return
+        (0.34, 0.84),     # interclaw notch
+        (0.37, 0.80),     # third claw root
+        (0.40, 0.78),     # third claw tip (highest)
+        (0.42, 0.81),     # claw return
+        (0.40, 0.86),     # curl-back into the body
+        (0.37, 0.90),
+        (0.32, 0.93),
+        (0.27, 0.96),     # descending back face
+        (0.20, 0.99),
+        (0.13, 1.01),
+        (0.06, 1.03),     # back to the base
+        (-0.02, 1.05),    # close the loop
+    ]
+    return [(round(fx * w), round(fy * h)) for fx, fy in anchors_frac]
+
+
+def _build_kanagawa_foam_clusters(
+    wave_polygon: list[tuple[int, int]], width: int, height: int, seed: int = 7
+) -> list[tuple[int, int, int]]:
+    """Return a deterministic list of ``(cx, cy, radius)`` foam droplets
+    scattered at the three claw tips and along the crest of the wave.
+
+    Positions are picked via a seeded RNG over a small bounded jitter
+    range so the spray reads as natural but two calls with the same
+    seed produce identical clusters — the determinism test pins this.
+    Each claw tip gets one primary droplet plus 1–2 satellites; the
+    crest gets a couple of scattered droplets between the claws.
+    """
+    import random as _random
+    del wave_polygon, height  # signature reserved for future per-shape adaptation
+    rng = _random.Random(seed)
+    w = width
+
+    # Claw tip anchor centres in canvas coords (matching the wave
+    # polygon's claw-tip indices 8 / 12 / 16 in
+    # ``_build_kanagawa_wave``'s anchor list — kept in lockstep so
+    # the foam clusters always land at the claw tips even if the
+    # wave's vertical position shifts).
+    h = 480
+    claw_tips = [
+        (round(0.24 * w), round(0.81 * h)),
+        (round(0.32 * w), round(0.79 * h)),
+        (round(0.40 * w), round(0.78 * h)),
+    ]
+    droplets: list[tuple[int, int, int]] = []
+    for cx, cy in claw_tips:
+        # Primary droplet at the tip, slightly above to read as "thrown
+        # off the crest".
+        droplets.append((cx, cy - 4, 3))
+        # One satellite droplet thrown above the crest.
+        dx = rng.randint(-8, 8)
+        dy = rng.randint(-12, -4)
+        droplets.append((cx + dx, cy + dy, 2))
+
+    # A couple of crest droplets between the claws.
+    crest_anchors = [
+        (round(0.28 * w), round(0.83 * h)),
+        (round(0.36 * w), round(0.80 * h)),
+    ]
+    for cx, cy in crest_anchors:
+        dx = rng.randint(-4, 4)
+        dy = rng.randint(-3, 3)
+        droplets.append((cx + dx, cy + dy, 2))
+
+    return droplets
+
+
+def draw_kanagawa_border(image: Image.Image, colors: dict) -> None:
+    """Paint a seven-layer Hokusai-inspired composition: vertically-graduated
+    sky-blue Bayer wash, distant Mt. Fuji silhouette, low maroon-rimmed sun
+    disc, the iconic three-claw wave silhouette in indigo with a navy
+    depth-shaded trough, white foam clusters at each claw tip with a
+    contact-edge cyan halo where they meet the wave, and a small maroon-
+    stippled hanko seal in the bottom-right corner. No outer frame —
+    authentic ukiyo-e woodblock prints have no border (same composition
+    discipline as ``fillmore``).
+
+    Layers, deepest → shallowest:
+
+    * **Layer 0 — vertically-graduated sky-blue Bayer wash.** The first
+      theme in the rotation to use a *gradient* Bayer wash rather than
+      a uniform density. Only ``page_bg`` pixels in the upper ~55% of
+      the canvas are touched; Bayer threshold tapers linearly from ~5/16
+      near the top (~31% blue) to 0 at the horizon (y ≈ 264). Reads as
+      morning haze over the sea.
+    * **Mt. Fuji silhouette** (mid-right, x ≈ 540–660, y ≈ 150–230). A
+      small isoceles triangle in solid Spectra blue with a white snow
+      cap at the apex. Fronts the sky wash; sits behind the wave.
+    * **Sun disc** (top-right, centre ≈ (700, 90), radius 32). Filled
+      red ellipse. Outer 4 px ring bbox post-pass: pixels at Euclidean
+      distance ``28 ≤ d < 32`` from centre flip half per ``(x+y)&1`` to
+      black → maroon rim (R+K 1:1, the documented recipe). Reads as a
+      low hazy sun.
+    * **The wave** (bottom-left dominant element). A deterministic
+      28-point polygon silhouette via ``_build_kanagawa_wave``; three
+      iconic claw tendrils curl upward and to the right, each ending
+      higher than the last. The polygon extends off-canvas left and
+      below so the silhouette appears to continue beyond the frame.
+    * **Wave depth post-pass.** Bbox-scoped to the lower portion of the
+      wave polygon. Flip half of blue pixels per ``(x+y)&1`` to black →
+      navy (B+K 1:1, the same recipe ``bauhaus``'s matched phrase uses
+      and the recipe ``_draw_text_body`` routes kanagawa's matched
+      phrase through — a deliberate ground-vs-figure colour rhyme).
+    * **Foam clusters** (deterministic, ~12 droplets). Small white
+      circles at each claw tip plus scattered crest droplets via
+      ``_build_kanagawa_foam_clusters``. Seeded RNG for jitter so the
+      spray reads as natural but renders are reproducible.
+    * **Foam cyan halos.** For each foam droplet, a bbox post-pass over
+      a 2 px ring: where the ring pixel is currently blue (the wave
+      silhouette), flip per ``(x+y)&1`` to green → cyan (G+B 1:1, the
+      ``glacier`` matched-phrase recipe). Reads as a tiny spray-mist
+      halo where foam touches water. The first theme to do a
+      *contact-edge* post-pass (recolour only where two prior layers
+      meet) — primitive new to the codebase.
+    * **Hanko seal** (bottom-right, ~22×30 px). Red filled rectangle
+      with two thin white horizontal strokes plus one vertical
+      (suggesting kanji density without committing to specific
+      characters — same trick ``chanbara``'s chop seal uses). Bbox
+      post-pass flips half of red pixels per ``(x+y)&1`` to black →
+      maroon (R+K 1:1). White strokes paint AFTER the post-pass so
+      they stay solid.
+
+    All seven layers stay on the Spectra 6 native palette; the maroon
+    rim / navy trough / cyan halos / maroon seal are synthesised by
+    bbox post-pass at paint time, never stored as off-palette colours.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    white_ink = SPECTRA6["white"]
+    black_ink = SPECTRA6["black"]
+    red_ink = SPECTRA6["red"]
+    blue_ink = SPECTRA6["blue"]
+    green_ink = SPECTRA6["green"]
+
+    pixels = image.load()
+
+    # ------------------------------------------------------------------
+    # Layer 0 — vertically-graduated sky-blue Bayer wash. Threshold
+    # tapers linearly from ~5/16 at the top (≈31% blue density) to 0 at
+    # ``horizon_y`` (≈55% down the canvas). Only ``page_bg`` pixels are
+    # flipped, so any future caller that pre-paints accents before this
+    # painter runs stays valid.
+    horizon_y = round(height * 0.55)
+    if page_bg is not None:
+        for y in range(horizon_y):
+            # Linear taper: 5 at y=0 → 0 at y=horizon_y. Round to int so
+            # the Bayer comparison is well-defined.
+            thr = max(0, round(5 * (1 - y / max(1, horizon_y))))
+            if thr == 0:
+                continue
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < thr:
+                    pixels[x, y] = blue_ink
+
+    # ------------------------------------------------------------------
+    # Mt. Fuji silhouette — small horizon-line element sitting between
+    # the wave (BL) and the hanko seal (BR) at the bottom band. Sized
+    # to read as a distant mountain rather than a dominant foreground
+    # element (the wave is the dominant element; Fuji is the
+    # background "fixed point" the print's title references). Apex
+    # sits below the attribution band (y ≤ 380) so the body block
+    # stays unobstructed, base sits above the wave's claw tips at
+    # y ≈ 0.78 × height so the two silhouettes don't merge.
+    fuji_apex_x = round(width * 0.56)
+    fuji_apex_y = round(height * 0.78)
+    fuji_base_y = round(height * 0.92)
+    fuji_half_base = round(width * 0.06)
+    fuji_polygon = [
+        (fuji_apex_x, fuji_apex_y),
+        (fuji_apex_x - fuji_half_base, fuji_base_y),
+        (fuji_apex_x + fuji_half_base, fuji_base_y),
+    ]
+    draw.polygon(fuji_polygon, fill=blue_ink)
+    # Snow cap: a small flattened triangle covering the top ~14 px of
+    # the apex. Painted in white directly (no post-pass needed — the
+    # cap reads as a solid highlight, not a synthesised tone).
+    snow_cap = [
+        (fuji_apex_x, fuji_apex_y),
+        (fuji_apex_x - 9, fuji_apex_y + 14),
+        (fuji_apex_x + 9, fuji_apex_y + 14),
+    ]
+    draw.polygon(snow_cap, fill=white_ink)
+
+    # ------------------------------------------------------------------
+    # Sun disc (top-right). Filled red ellipse with a maroon rim
+    # post-pass on the outer 4 px ring. Centre sits well to the right
+    # of Mt. Fuji's apex so the two silhouettes don't merge.
+    sun_cx = round(width * 0.88)
+    sun_cy = round(height * 0.19)
+    sun_r = 32
+    draw.ellipse(
+        (sun_cx - sun_r, sun_cy - sun_r, sun_cx + sun_r, sun_cy + sun_r),
+        fill=red_ink,
+    )
+    # Maroon rim post-pass: outer 4 px ring only. Iterate the bbox and
+    # flip half of the red pixels per (x+y) parity to black so the eye
+    # averages R+K at panel distance into oxblood maroon.
+    inner_sq = (sun_r - 4) ** 2
+    outer_sq = sun_r ** 2
+    for py in range(max(0, sun_cy - sun_r), min(height, sun_cy + sun_r + 1)):
+        for px in range(max(0, sun_cx - sun_r), min(width, sun_cx + sun_r + 1)):
+            d_sq = (px - sun_cx) ** 2 + (py - sun_cy) ** 2
+            if inner_sq <= d_sq < outer_sq and pixels[px, py] == red_ink and ((px + py) & 1) == 0:
+                pixels[px, py] = black_ink
+
+    # ------------------------------------------------------------------
+    # The wave — deterministic 28-point polygon silhouette.
+    wave_polygon = _build_kanagawa_wave(width, height)
+    draw.polygon(wave_polygon, fill=blue_ink)
+
+    # ------------------------------------------------------------------
+    # Wave depth post-pass — navy stipple in the trough. Bbox-scoped to
+    # the polygon's bbox below the wave centroid so only the trough
+    # (where the water reads as deep) gets the post-pass; the upper
+    # crest and claws stay in solid blue to keep the silhouette legible.
+    xs = [p[0] for p in wave_polygon]
+    ys = [p[1] for p in wave_polygon]
+    wave_x0 = max(0, min(xs))
+    wave_x1 = min(width - 1, max(xs))
+    wave_y0 = max(0, min(ys))
+    wave_y1 = min(height - 1, max(ys))
+    centroid_y = sum(ys) // len(ys)
+    trough_top_y = centroid_y + 20
+    for py in range(max(wave_y0, trough_top_y), wave_y1 + 1):
+        for px in range(wave_x0, wave_x1 + 1):
+            if pixels[px, py] == blue_ink and ((px + py) & 1) == 0:
+                pixels[px, py] = black_ink
+
+    # ------------------------------------------------------------------
+    # Foam clusters at each claw tip + scattered crest droplets.
+    foam_clusters = _build_kanagawa_foam_clusters(wave_polygon, width, height)
+    for cx, cy, r in foam_clusters:
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=white_ink)
+
+    # ------------------------------------------------------------------
+    # Foam cyan halos — the first contact-edge post-pass in the rotation.
+    # For each droplet, scan a 3 px ring around its outer edge: where
+    # the ring pixel is currently blue (i.e. the wave silhouette
+    # touches the foam), flip on a sparse 4×4 Bayer threshold (~25%
+    # density) to green so the eye averages G+B at panel distance into
+    # a faint cyan / sky-blue halo. A denser 50/50 (x+y)&1 flip reads
+    # as bright alternating green dots at desktop viewing distance even
+    # though it averages correctly on the eInk panel; the 25% sparse
+    # density reads as a subtle haze in both registers.
+    # Pixels already white (the droplet itself), red (the sun), or any
+    # other ink stay untouched — only the blue↔white contact edge picks
+    # up the cyan halo, which is the whole point of the contact-edge
+    # primitive: it recolours only where two prior painted layers
+    # happen to meet.
+    halo_thickness = 3
+    for cx, cy, r in foam_clusters:
+        ring_r_outer = r + halo_thickness
+        ring_outer_sq = ring_r_outer ** 2
+        ring_inner_sq = r ** 2
+        for py in range(max(0, cy - ring_r_outer), min(height, cy + ring_r_outer + 1)):
+            row = BAYER_4x4[py & 3]
+            for px in range(max(0, cx - ring_r_outer), min(width, cx + ring_r_outer + 1)):
+                d_sq = (px - cx) ** 2 + (py - cy) ** 2
+                if (
+                    ring_inner_sq < d_sq <= ring_outer_sq
+                    and pixels[px, py] == blue_ink
+                    and row[px & 3] < 4
+                ):
+                    pixels[px, py] = green_ink
+
+    # ------------------------------------------------------------------
+    # Hanko seal (bottom-right). Filled red rectangle with maroon
+    # post-pass, then white strokes painted on top so they stay solid.
+    seal_w = 22
+    seal_h = 30
+    seal_margin = 28
+    seal_x0 = width - seal_margin - seal_w
+    seal_y0 = height - seal_margin - seal_h
+    seal_x1 = seal_x0 + seal_w
+    seal_y1 = seal_y0 + seal_h
+    draw.rectangle((seal_x0, seal_y0, seal_x1, seal_y1), fill=red_ink)
+    # Maroon post-pass on the seal: bbox-scoped (x+y)&1 flip to black.
+    for py in range(seal_y0, seal_y1 + 1):
+        for px in range(seal_x0, seal_x1 + 1):
+            if pixels[px, py] == red_ink and ((px + py) & 1) == 0:
+                pixels[px, py] = black_ink
+    # White kanji-suggesting strokes painted AFTER the post-pass so they
+    # stay solid white. Two horizontal strokes (top third + bottom
+    # third) plus one vertical centred stroke — reads as a
+    # high-contrast chop seal at panel distance without committing to
+    # specific characters (same trick chanbara's chop seal uses).
+    stroke_inset = 4
+    strokes_x0 = seal_x0 + stroke_inset
+    strokes_x1 = seal_x1 - stroke_inset
+    horizontal_y1 = seal_y0 + 8
+    horizontal_y2 = seal_y1 - 9
+    vertical_x = (seal_x0 + seal_x1) // 2
+    vertical_y0 = seal_y0 + 4
+    vertical_y1 = seal_y1 - 4
+    draw.line((strokes_x0, horizontal_y1, strokes_x1, horizontal_y1), fill=white_ink, width=1)
+    draw.line((strokes_x0, horizontal_y2, strokes_x1, horizontal_y2), fill=white_ink, width=1)
+    draw.line((vertical_x, vertical_y0, vertical_x, vertical_y1), fill=white_ink, width=1)
+
+
 def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tuple[int, int]]:
     """Return a free-form 18-point polygon approximating a melted-amoeba
     blob silhouette centred on ``(cx, cy)``.
@@ -7107,6 +7561,7 @@ _BORDER_PAINTERS = {
     "herbarium": draw_herbarium_border,
     "mucha": draw_mucha_border,
     "fillmore": draw_fillmore_border,
+    "kanagawa": draw_kanagawa_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -7132,6 +7587,13 @@ _BORDER_PAINTERS = {
 #     right-aligned label's x range. Mid-edge starbursts sit at y=height//2,
 #     also clear of the label band. The rounded outer frame at inset 14 is
 #     identical to other framed themes here.
+#   - kanagawa: the TR sun disc's top edge sits at y=59 (centre at
+#     (width*0.88, height*0.19) = (704, 91), radius 32 → top pixel at
+#     y=91-32=59), well below the banner's y=14-29 band — they don't
+#     overlap vertically. Mt. Fuji's apex at (width*0.74, height*0.31) =
+#     (592, 149) is even lower. No outer frame, no other TR ornaments,
+#     so the default debug label clears every painted layer by
+#     construction.
 _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
