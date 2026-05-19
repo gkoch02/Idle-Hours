@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import io
 import math
 import re
@@ -9201,7 +9202,14 @@ def _astrarium_paint_constellation_field(
                         px[nx, ny] = SPECTRA6["white"]
 
 
-def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int, time_str: str) -> None:
+def _astrarium_paint_dial(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    time_str: str,
+    now: datetime.datetime,
+) -> None:
     """Paint the astronomical-clock dial centred at (cx, cy).
 
     Layered outside-in:
@@ -9320,8 +9328,10 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     # a fuzzy literary clock only repaints when the bucket changes, so
     # a digital HH:MM readout in the centre would be visibly stale up
     # to ~5 minutes of the time. The date doesn't have that problem.
-    import datetime
-    now = datetime.datetime.now()
+    # ``now`` is captured once at frame-build time and shared across
+    # the header / dial / datum strip so a render that straddles
+    # midnight can't produce a frame whose three regions disagree
+    # about today's date.
     date_text = now.strftime("%b %d")
     weekday_text = now.strftime("%A").upper()
 
@@ -9342,7 +9352,7 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     # visual middle and would crash into the weekday at cy+34.
     weekday_font = load_font(META_FONT_CANDIDATES, size=12)
     draw.text((cx, cy + 46), weekday_text, font=weekday_font, fill=BLACK, anchor="mm")
-    del time_str  # reserved on the signature for symmetry with the other dial painters; the centre disc is wall-clock derived from datetime.now()
+    del time_str  # reserved on the signature for symmetry with the other dial painters; the centre disc is wall-clock derived from the shared ``now``
 
     # Tiny tangerine sun glyph below "LOCAL TIME", above the digits.
     # Painted in red sentinel and bbox-post-passed to R+Y tangerine so
@@ -9370,10 +9380,17 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
                 px[x, y] = YELLOW
 
 
-def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, time_str: str) -> None:
+def _astrarium_paint_header(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    width: int,
+    time_str: str,
+    now: datetime.datetime,
+) -> None:
     """Top-strip dashboard chrome — brand on the left, mode/date on the
-    right, hairline rule beneath."""
-    import datetime
+    right, hairline rule beneath. ``now`` is captured once per frame
+    upstream so the right-side date stack here can't drift apart from
+    the dial's centre-disc date when a render straddles midnight."""
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
 
@@ -9394,7 +9411,6 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
 
     # Right-side date stack — bold SOL/year line on top, red day label
     # beneath. Anchored directly to the right margin.
-    now = datetime.datetime.now()
     day_label = now.strftime("%a · %b %d").upper()
     sol = f"SOL {now.timetuple().tm_yday} · YR {now.year}"
 
@@ -9408,7 +9424,7 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
     rule_y = 50
     for x in range(24, width - 24, 4):
         draw.point((x, rule_y), fill=BLACK)
-    del time_str  # reserved on the signature for symmetry with the dial/datum painters; this strip is wall-clock derived from datetime.now()
+    del time_str  # reserved on the signature for symmetry with the dial/datum painters; this strip is wall-clock derived from the shared ``now``
 
 
 def _astrarium_paint_quote_panel(
@@ -9579,6 +9595,7 @@ def _astrarium_paint_datum_strip(
     width: int,
     height: int,
     time_str: str,
+    now: datetime.datetime,
 ) -> None:
     """Paint the bottom datum strip — small panels with readouts that
     are actually derivable from the appliance's state (time of day,
@@ -9622,8 +9639,10 @@ def _astrarium_paint_datum_strip(
     solar_elevation = max(0.0, solar_norm) * 75.0
 
     # Lunar phase: deterministic from current day-of-year, modulo 30.
-    import datetime
-    doy = datetime.datetime.now().timetuple().tm_yday
+    # ``now`` is shared with the header / dial painters so the lunar
+    # cell here cannot disagree with the dial's centre-disc date when
+    # a render straddles midnight.
+    doy = now.timetuple().tm_yday
     moon_phase_pct = (doy % 30) / 30.0 * 100
 
     panels: list[tuple[str, str, str, tuple[int, int, int]]] = [
@@ -9697,8 +9716,16 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     _astrarium_paint_cream_wash(image)
     draw = ImageDraw.Draw(image)
 
+    # Capture the wall clock once per frame and share it across the
+    # header / dial / datum strip so a render that straddles midnight
+    # cannot emit a frame whose three date-bearing regions disagree —
+    # e.g. header from one day and the centre-disc weekday/date from
+    # the next, which would then persist on the panel until the next
+    # repaint (the fuzzy clock only repaints on bucket change).
+    now = datetime.datetime.now()
+
     # Top-strip dashboard chrome.
-    _astrarium_paint_header(image, draw, width, time_str)
+    _astrarium_paint_header(image, draw, width, time_str, now)
 
     # Dial centred in the left half. Use proportional positioning so
     # non-standard canvas sizes (thumbnails) still render the dial in
@@ -9707,7 +9734,7 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     dial_zone_w = int(width * 0.5)
     dial_cx = dial_zone_w // 2 + 8
     dial_cy = 64 + (height - 64 - 50) // 2
-    _astrarium_paint_dial(image, draw, dial_cx, dial_cy, time_str)
+    _astrarium_paint_dial(image, draw, dial_cx, dial_cy, time_str, now)
 
     # Quote panel in the right half. Left edge sits 12 px right of the
     # centre divider — the panel's own internal padding then adds
@@ -9729,7 +9756,7 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
         draw.point((div_x, y), fill=SPECTRA6["black"])
 
     # Bottom datum strip.
-    _astrarium_paint_datum_strip(image, draw, width, height, time_str)
+    _astrarium_paint_datum_strip(image, draw, width, height, time_str, now)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
