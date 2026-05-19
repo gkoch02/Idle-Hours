@@ -9211,7 +9211,10 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     3. Hour numeral band ("60" / "15" / "30" / "45" — minute reference,
        same orientation as on the mockup)
     4. Inner rule
-    5. Centre disc with HH:MM and AM/PM
+    5. Centre disc with the wall-clock date (e.g. "May 19") and the
+       day of the week — the panel only repaints when the fuzzy bucket
+       changes, so a digital time readout here would be visibly stale
+       most of the time; the date isn't.
     """
     import math
     BLACK = SPECTRA6["black"]
@@ -9305,34 +9308,41 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     # keeps the disc clean).
     draw.ellipse((cx - r_inner_rule + 2, cy - r_inner_rule + 2, cx + r_inner_rule - 2, cy + r_inner_rule - 2), fill=WHITE)
 
-    # Small "LOCAL TIME" header, centred horizontally on the dial axis.
+    # Small "TODAY" header, centred horizontally on the dial axis.
     # Uses PIL's anchor="mm" (middle-middle) rather than manual bbox
-    # math because the digit text below varies in glyph metrics
-    # depending on the time ("10:00" has no descenders; "2:15" has
+    # math because the centre-disc text below varies in glyph metrics
+    # depending on the date ("May 19" has no descenders; "Sep 30" has
     # tall/dropped strokes), and bbox-based centring drifts vertically
-    # between times. anchor="mm" uses the font's baseline reference,
-    # which stays consistent across all hour/minute combinations.
+    # between dates. anchor="mm" uses the font's baseline reference,
+    # which stays consistent across all month/day combinations.
+    #
+    # The dial reads from wall-clock date rather than ``time_str`` —
+    # a fuzzy literary clock only repaints when the bucket changes, so
+    # a digital HH:MM readout in the centre would be visibly stale up
+    # to ~5 minutes of the time. The date doesn't have that problem.
+    import datetime
+    now = datetime.datetime.now()
+    date_text = now.strftime("%b %d")
+    weekday_text = now.strftime("%A").upper()
+
     header_font = load_font(META_FONT_CANDIDATES, size=10)
-    draw.text((cx, cy - 50), "LOCAL TIME", font=header_font, fill=BLACK, anchor="mm")
+    draw.text((cx, cy - 50), "TODAY", font=header_font, fill=BLACK, anchor="mm")
 
-    # Big HH:MM digits, centred on the dial axis.
-    try:
-        hh, mm = time_str.split(":")
-        hour24 = int(hh)
-        minute = int(mm)
-    except (ValueError, AttributeError):
-        hour24 = 0
-        minute = 0
-    hour12 = hour24 % 12 or 12
-    ampm = "AM" if hour24 < 12 else "PM"
-    digit_text = f"{hour12}:{minute:02d}"
+    # Big date (e.g. "May 19"), centred on the dial axis — same slot
+    # and font as the previous HH:MM readout so the visual rhythm of
+    # the dial (header / sun / big / sub) is preserved.
+    date_font = load_font(theme_font_candidates("astrarium", "quote_bold"), size=54)
+    draw.text((cx, cy), date_text, font=date_font, fill=BLACK, anchor="mm")
 
-    time_font = load_font(theme_font_candidates("astrarium", "quote_bold"), size=54)
-    draw.text((cx, cy), digit_text, font=time_font, fill=BLACK, anchor="mm")
-
-    # AM/PM beneath the digits.
-    ampm_font = load_font(META_FONT_CANDIDATES, size=12)
-    draw.text((cx, cy + 34), ampm, font=ampm_font, fill=BLACK, anchor="mm")
+    # Day of week beneath the date (replaces AM/PM). Sits a few pixels
+    # lower than the old AM/PM (which was at cy+34) because the 54pt
+    # date can have descenders ("Sep", "Aug") where the digital HH:MM
+    # never did — anchor="mm" still vertical-centres on the font's
+    # baseline reference, so the descender extends ~10px past the
+    # visual middle and would crash into the weekday at cy+34.
+    weekday_font = load_font(META_FONT_CANDIDATES, size=12)
+    draw.text((cx, cy + 46), weekday_text, font=weekday_font, fill=BLACK, anchor="mm")
+    del time_str  # reserved on the signature for symmetry with the other dial painters; the centre disc is wall-clock derived from datetime.now()
 
     # Tiny tangerine sun glyph below "LOCAL TIME", above the digits.
     # Painted in red sentinel and bbox-post-passed to R+Y tangerine so
@@ -9572,19 +9582,24 @@ def _astrarium_paint_datum_strip(
 ) -> None:
     """Paint the bottom datum strip — small panels with readouts that
     are actually derivable from the appliance's state (time of day,
-    date, loop health). The earlier draft also surfaced tide,
-    temperature, and atmospheric-pressure values to fill the mockup's
-    six-cell strip, but the appliance has no thermometer / barometer /
-    tide sensor, so those were hardcoded placeholders pretending to be
-    live readings. Cosmetic faux-sensor cards were removed entirely;
-    the three remaining cells are honest signals."""
+    date). The earlier draft also surfaced tide, temperature, and
+    atmospheric-pressure values to fill the mockup's six-cell strip,
+    but the appliance has no thermometer / barometer / tide sensor, so
+    those were hardcoded placeholders pretending to be live readings.
+    Cosmetic faux-sensor cards were removed entirely; the two remaining
+    cells are honest signals and sit under the left-half dial,
+    leaving the right half (under the quote panel) deliberately open
+    so the quote isn't crowded by chrome it doesn't need."""
     import math
     BLACK = SPECTRA6["black"]
-    RED = SPECTRA6["red"]
 
     strip_top = height - 44
     strip_bottom = height - 8
-    # Top dashed rule (same dotted style as the header).
+    # Top dashed rule (same dotted style as the header). Spans the
+    # full inner width so it visually separates the quote panel from
+    # the strip below even where the right half has no cells.
+    inner_left = 24
+    inner_right = width // 2
     for x in range(24, width - 24, 4):
         draw.point((x, strip_top), fill=BLACK)
 
@@ -9614,11 +9629,8 @@ def _astrarium_paint_datum_strip(
     panels: list[tuple[str, str, str, tuple[int, int, int]]] = [
         ("SOLAR ELEVATION", f"{solar_elevation:.1f}", "°", BLACK),
         ("LUNAR PHASE", f"{int(moon_phase_pct)}", "%", BLACK),
-        ("SYSTEM STATUS", "OK", "·", RED),
     ]
 
-    inner_left = 24
-    inner_right = width - 24
     inner_width = inner_right - inner_left
     panel_w = inner_width // len(panels)
     for i, (label, value, unit, value_color) in enumerate(panels):
@@ -9642,6 +9654,13 @@ def _astrarium_paint_datum_strip(
             unit, font=unit_font, fill=BLACK,
         )
 
+    # Closing vertical rule on the right edge of the last cell, in line
+    # with the dial/quote-panel divider above (drawn in render at
+    # ``div_x = int(width * 0.5)``) so the two segments read as one
+    # continuous vertical guide.
+    for y in range(strip_top + 4, strip_bottom, 2):
+        draw.point((inner_right, y), fill=BLACK)
+
 
 def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Render the astrarium-theme dashboard frame.
@@ -9658,12 +9677,13 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
       │       60│   ┌──┐   │15                                          │
       │         │   │  │   │     “It was at  ten o'clock                │
       │         │   └──┘   │      today that the first                  │
-      │       45│ 10:00 AM │30    of all Time Machines                  │
-      │         ╰──────────╯      began its career.                     │
+      │       45│  May 19  │30    of all Time Machines                  │
+      │         │ TUESDAY  │      began its career.                     │
+      │         ╰──────────╯                                             │
       │                                                                │
       │ ─────────────────────────────────────────────────────────────  │
-      │ SOLAR ELEV │ LUNAR │ TIDE │ TEMP │ ATMOS │ SYS STATUS           │
-      │   53.2°    │  18%  │14:47 │18.6° │1013hPa│    OK                │
+      │ SOLAR ELEVATION │ LUNAR PHASE │                                │
+      │      53.2°      │     18%     │                                │
       └────────────────────────────────────────────────────────────────┘
 
     Stays fully on the Spectra 6 palette: the four halftone ring
