@@ -758,14 +758,17 @@ THEMES = {
     #
     # Matched time phrase: solid Spectra red — the classic ukiyo-e
     # signature-red register, tied tonally to the hanko seal's red
-    # base. Body in Klee One (Fontworks, OFL — Japanese textbook-
-    # style hand-printed face with full Latin glyph coverage), the
-    # first Japanese-Latin hybrid hand in the bundle. Sits visually
-    # distinct from the rotation's other Japanese-flavoured theme
-    # (``chanbara`` — dramatic samurai-cinema brush via Shojumaru
-    # with a single off-canvas red sun and a chop seal): chanbara
-    # is samurai *cinema*, kanagawa is woodblock-print *textile*,
-    # with seigaiha as the dominant motif.
+    # base. Body in Shippori Mincho (Fontworks, OFL — modern
+    # Japanese mincho serif with full Latin glyph coverage), the
+    # first proper Japanese mincho in the bundle. Mincho's thin-
+    # horizontal / thick-vertical contrast with small triangular
+    # "uroko" serifs is the same letterform real Edo-era woodblock
+    # print captions use. Sits visually distinct from the rotation's
+    # other Japanese-flavoured theme (``chanbara`` — dramatic
+    # samurai-cinema brush via Shojumaru with a single off-canvas
+    # red sun and a chop seal): chanbara is samurai *cinema* in
+    # a brush face, kanagawa is woodblock-print *textile* in a
+    # mincho face, with seigaiha as the dominant motif.
     "kanagawa": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1058,18 +1061,20 @@ CORMORANT_VARIABLE = str(BASE_DIR / "fonts/cormorant-garamond/CormorantGaramond-
 # Mucha font chain the same way UnifrakturMaguntia lives alongside
 # EB Garamond in ``illuminated``.
 BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-Regular.ttf")
-# Klee One — Fontworks (OFL). Japanese textbook-style hand-printed face
-# whose Latin glyphs read as quiet, classroom-handwritten captioning —
-# the same register woodblock-print marginalia and Edo-era caption
-# inscriptions occupy. The first Japanese-Latin hybrid hand in the
-# rotation; sits visually distinct from chanbara's Shojumaru (dramatic
-# samurai-cinema brush) so both Japanese-flavoured themes stay
-# differentiable. Static TTFs for Regular and SemiBold (not a variable
-# font), so no ``set_variation_by_name`` pinning is needed — same
-# pattern Bangers / Special Elite / Atomic Age use. Used by the
-# ``kanagawa`` theme.
-KLEEONE_REGULAR = str(BASE_DIR / "fonts/klee-one/KleeOne-Regular.ttf")
-KLEEONE_SEMIBOLD = str(BASE_DIR / "fonts/klee-one/KleeOne-SemiBold.ttf")
+# Shippori Mincho — Fontworks (OFL). Modern Japanese mincho serif
+# with full Latin glyph coverage. Mincho is the canonical Japanese
+# print typeface family — thin horizontal strokes contrasting with
+# thicker verticals and small triangular serifs (the "uroko" /
+# "scale" details), the same letterforms a real Edo-era woodblock
+# print uses for its captions. Pairs naturally with seigaiha as
+# both come from the Japanese textile / print tradition. Sits
+# visually distinct from chanbara's Shojumaru (dramatic samurai-
+# cinema brush) so both Japanese-flavoured themes stay
+# differentiable in the rotation. Static TTFs for Regular and Bold
+# (not a variable font), so no ``set_variation_by_name`` pinning
+# is needed. Used by the ``kanagawa`` theme.
+SHIPPORI_MINCHO_REGULAR = str(BASE_DIR / "fonts/shippori-mincho/ShipporiMincho-Regular.ttf")
+SHIPPORI_MINCHO_BOLD = str(BASE_DIR / "fonts/shippori-mincho/ShipporiMincho-Bold.ttf")
 # Bungee Shade — David Jonathan Ross (OFL). 3D-blocked display face
 # with strong outline + drop-shadow shading, evoking the chunky shaded
 # lettering on 1960s rock concert posters — Wes Wilson, Victor Moscoso,
@@ -1899,39 +1904,40 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "kanagawa": {
-        # Klee One Regular for the body, SemiBold for the matched phrase
-        # and the oversized quote marks. The pen-printed letterforms
-        # land in the woodblock-caption register — quieter than
-        # Shojumaru's brush-painted samurai-cinema register that
-        # ``chanbara`` uses, so both Japanese-flavoured themes stay
-        # differentiable on the panel. Static TTFs (not a variable
-        # font), so no ``set_variation_by_name`` pinning needed.
+        # Shippori Mincho Regular for the body, Bold for the matched
+        # phrase + the oversized quote marks. Mincho is the canonical
+        # Japanese print typeface family — thin horizontal strokes
+        # contrasting with thicker verticals and small triangular
+        # "uroko" / "scale" serifs, the same letterforms a real Edo-
+        # era woodblock print uses for its captions. Pairs naturally
+        # with seigaiha as both come from the Japanese textile /
+        # print tradition.
+        #
         # Fallback chain favours humanist serifs (Cormorant Garamond
         # → EB Garamond → Old Standard TT → DejaVu Serif → Playfair)
-        # over sans because the woodblock register is closer to a
-        # quiet humanist serif than to any sans face the rotation
-        # carries — a missing Klee install should land on a serif
-        # silhouette rather than a grotesque sans that would clash
-        # with the ukiyo-e composition.
+        # over sans because the mincho register is closest to a
+        # high-contrast humanist serif and a missing-Shippori install
+        # should land on a serif silhouette rather than a grotesque
+        # sans that would clash with the seascape composition.
         "quote_regular": [
-            KLEEONE_REGULAR,
+            SHIPPORI_MINCHO_REGULAR,
             (CORMORANT_VARIABLE, "Regular"),
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            KLEEONE_SEMIBOLD,
-            (CORMORANT_VARIABLE, "SemiBold"),
+            SHIPPORI_MINCHO_BOLD,
+            (CORMORANT_VARIABLE, "Bold"),
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
-        # Reuse SemiBold for the oversized quote marks — woodblock
-        # caption marginalia doesn't switch faces mid-line, so the
-        # opening / closing quote glyphs share the matched phrase's
-        # face for visual coherence.
+        # Reuse Bold for the oversized quote marks — woodblock-print
+        # captions don't switch faces mid-line, so the opening /
+        # closing quote glyphs share the matched phrase's face for
+        # visual coherence.
         "ornament": [
-            KLEEONE_SEMIBOLD,
-            (CORMORANT_VARIABLE, "SemiBold"),
+            SHIPPORI_MINCHO_BOLD,
+            (CORMORANT_VARIABLE, "Bold"),
             EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
