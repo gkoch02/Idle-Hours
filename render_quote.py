@@ -7051,23 +7051,24 @@ def draw_mucha_border(image: Image.Image, colors: dict) -> None:
 
 
 _KANAGAWA_PEAKS: tuple[tuple[float, float, float], ...] = (
-    # (centre_t, peak_height_frac, sharpness) — five rising peaks
+    # (centre_t, peak_height_frac, sharpness) — four rising peaks
     # generated via Gaussian exp(-((t - centre) * sharpness)**2), each
     # subtracted from the baseline. Heights are fractions of canvas
     # height; sharpness controls how quickly the peak falls off (higher
-    # = narrower peak). Composition follows Hokusai's print: the
-    # dominant curl is on the LEFT (the rolling-forward subject of
-    # the painting), with smaller trailing crests fading toward the
-    # right. Heights stay capped at 0.18 so the highest crest lands at
-    # y = (0.96 − 0.18) × height ≈ 0.78 × height (374 px on a 480 px
-    # canvas) — below the typical attribution-band bottom (y ≈ 380)
-    # so the body text and attribution remain unobstructed above the
-    # wave (no clear-rect knockout needed).
-    (0.16, 0.18, 14.0),   # the dominant curl — tallest, leftmost
-    (0.30, 0.14, 12.0),
-    (0.46, 0.11, 11.0),
-    (0.62, 0.08, 11.0),
-    (0.78, 0.05, 14.0),   # smallest trailing crest
+    # = narrower peak).
+    #
+    # Composition: the dominant peak sits at the MIDDLE-RIGHT of the
+    # canvas, deliberately *away* from the attribution band at x ≈
+    # 20–240 in the bottom-left where "Author / Title" lines render.
+    # Hokusai's print has the dominant curl on the left, but for
+    # LitClock the attribution always lives bottom-left, so reversing
+    # the rising-peak progression keeps the wave's left flank low
+    # enough to clear the attribution while still letting the dominant
+    # peak rise dramatically in the canvas centre.
+    (0.55, 0.16, 12.0),   # rising left flank, x ≈ 255
+    (0.68, 0.20, 10.0),   # DOMINANT peak, x ≈ 324
+    (0.80, 0.14, 11.0),   # trailing crest, x ≈ 388
+    (0.93, 0.07, 14.0),   # smallest trailing crest, x ≈ 458
 )
 
 
@@ -7198,22 +7199,55 @@ def _build_kanagawa_foam_clusters(
     return droplets
 
 
-_KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int], ...] = (
-    # (cx_frac, cy_frac, wingspan) — distant ink-stroke birds scattered
-    # in the upper sky band, well above the body text block. Kept as a
-    # module-level tuple so two paints of the same canvas size produce
-    # identical bird positions (no RNG involved). Each bird is rendered
-    # as two short diagonal line strokes meeting at the body — the
-    # classic Far Eastern shorthand for a distant flying bird, the same
-    # mark Hokusai's prints use to suggest depth in an empty sky.
+_KANAGAWA_SCROLLS: tuple[tuple[float, float, int, int, int], ...] = (
+    # (cx_frac, cy_frac, radius, arc_start_deg, arc_end_deg) — small
+    # white arc decorations painted inside the wave body, suggesting
+    # the scrolling foam pattern characteristic of ukiyo-e wave
+    # illustration. Each arc is a partial circle (typically a half- or
+    # three-quarter-circle "C" / "U" shape) at a specific position and
+    # orientation, hand-placed to follow the wave's silhouette.
+    # Painted in 2 px white strokes AFTER the wave silhouette so they
+    # sit on top of the blue body but before the navy trough post-pass
+    # so the lowest scrolls get partially absorbed into the depth
+    # gradient — same way real foam dissipates in deeper water.
+    # Heavier scrolls near the LEFT (where the dominant crest is) and
+    # fewer toward the right (trailing crests have less churn).
+    (0.40, 0.91,  8, 200, 360),
+    (0.45, 0.89, 11, 180, 360),
+    (0.50, 0.87, 14, 200, 350),
+    (0.54, 0.84, 10, 220, 360),
+    (0.58, 0.83, 16, 200, 360),
+    (0.62, 0.85, 12, 180, 340),
+    (0.66, 0.83, 10, 200, 360),
+    (0.70, 0.86, 13, 210, 360),
+    (0.75, 0.85,  9, 200, 360),
+    (0.80, 0.88, 11, 180, 360),
+    (0.85, 0.87,  8, 200, 360),
+    (0.90, 0.90, 10, 210, 360),
+)
+
+
+_KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int, int, int], ...] = (
+    # (cx_frac, cy_frac, wingspan, left_droop, right_droop) — distant
+    # ink-stroke birds scattered in the upper sky band, well above the
+    # body text block. Kept as a module-level tuple so two paints of
+    # the same canvas size produce identical bird positions (no RNG
+    # involved). Each bird is rendered as two diagonal line strokes
+    # meeting at the body — the classic Far Eastern shorthand for a
+    # distant flying bird, the same mark Hokusai's prints use to
+    # suggest depth in an empty sky.
     # Wingspan is generous (18-26 px) so the birds are visible at
     # panel-viewing distance against the stippled sky-blue wash;
     # smaller wingspans dithered down to "dust speck" on test renders.
-    (0.20, 0.06, 22),
-    (0.34, 0.04, 18),
-    (0.52, 0.08, 26),
-    (0.66, 0.05, 20),
-    (0.82, 0.07, 18),
+    # The two droop values give each wing an independent rise/fall so
+    # the flock doesn't read as five identical "V" stamps — some birds
+    # bank left (right droop > left droop), some bank right (left >
+    # right), some glide level (both equal).
+    (0.20, 0.06, 22,  6,  9),    # banking right
+    (0.34, 0.04, 18,  4,  4),    # gliding level
+    (0.52, 0.08, 26, 10,  4),    # banking left
+    (0.66, 0.05, 20,  5,  8),    # banking right
+    (0.82, 0.07, 18,  6,  3),    # banking left
 )
 
 
@@ -7364,20 +7398,17 @@ def draw_kanagawa_border(
 
     # ------------------------------------------------------------------
     # Distant birds — small "V" ink strokes scattered in the upper sky.
-    # Painted as two diagonal line segments meeting at the body, with a
-    # 2 px stroke so they're visible at panel-viewing distance against
-    # the stippled sky-blue wash. Position anchors are held on
-    # ``_KANAGAWA_BIRD_ANCHORS`` (module level) so renders are
-    # deterministic.
-    for cx_frac, cy_frac, wingspan in _KANAGAWA_BIRD_ANCHORS:
+    # Each bird is two diagonal line segments meeting at the body with
+    # asymmetric droop values (one wing rises further than the other)
+    # so the flock reads as five distinct soaring silhouettes rather
+    # than five identical V stamps. Position anchors held on the
+    # module-level ``_KANAGAWA_BIRD_ANCHORS`` for deterministic renders.
+    for cx_frac, cy_frac, wingspan, left_droop, right_droop in _KANAGAWA_BIRD_ANCHORS:
         bx = round(cx_frac * width)
         by = round(cy_frac * height)
-        # Wing tips dip slightly above the body for the dihedral
-        # "soaring bird" silhouette.
         wing = wingspan // 2
-        droop = max(3, wing // 3)
-        draw.line((bx - wing, by - droop, bx, by), fill=black_ink, width=2)
-        draw.line((bx, by, bx + wing, by - droop), fill=black_ink, width=2)
+        draw.line((bx - wing, by - left_droop, bx, by), fill=black_ink, width=2)
+        draw.line((bx, by, bx + wing, by - right_droop), fill=black_ink, width=2)
 
     # ------------------------------------------------------------------
     # Horizon line — a thin stippled blue rule at the sea-sky boundary,
@@ -7396,32 +7427,56 @@ def draw_kanagawa_border(
                 pixels[px, horizon_line_y + 1] = blue_ink
 
     # ------------------------------------------------------------------
-    # Mt. Fuji silhouette — small horizon-line element sitting between
-    # the wave (BL) and the hanko seal (BR) at the bottom band. Sized
-    # to read as a distant mountain rather than a dominant foreground
-    # element (the wave is the dominant element; Fuji is the
-    # background "fixed point" the print's title references). Apex
-    # sits below the attribution band (y ≤ 380) so the body block
-    # stays unobstructed.
+    # Mt. Fuji silhouette — a shaded mountain with a black ink contour,
+    # a navy-stippled shadow side, and a three-tier white snow cap.
+    # Sits at the horizon line between the wave (BL) and the hanko
+    # seal (BR); apex stays below the attribution band so the body
+    # block remains unobstructed.
     fuji_apex_x = round(width * 0.58)
-    fuji_apex_y = round(height * 0.74)
-    fuji_base_y = round(height * 0.92)
-    fuji_half_base = round(width * 0.075)
-    fuji_polygon = [
-        (fuji_apex_x, fuji_apex_y),
-        (fuji_apex_x - fuji_half_base, fuji_base_y),
-        (fuji_apex_x + fuji_half_base, fuji_base_y),
-    ]
+    fuji_apex_y = round(height * 0.72)
+    fuji_base_y = round(height * 0.93)
+    fuji_half_base = round(width * 0.085)
+    fuji_left_base = (fuji_apex_x - fuji_half_base, fuji_base_y)
+    fuji_right_base = (fuji_apex_x + fuji_half_base, fuji_base_y)
+    fuji_apex = (fuji_apex_x, fuji_apex_y)
+    fuji_polygon = [fuji_apex, fuji_left_base, fuji_right_base]
     draw.polygon(fuji_polygon, fill=blue_ink)
-    # Snow cap: a small flattened triangle covering the top ~16 px of
-    # the apex. Painted in white directly (no post-pass needed — the
-    # cap reads as a solid highlight, not a synthesised tone).
-    snow_cap = [
-        (fuji_apex_x, fuji_apex_y),
-        (fuji_apex_x - 10, fuji_apex_y + 16),
-        (fuji_apex_x + 10, fuji_apex_y + 16),
-    ]
-    draw.polygon(snow_cap, fill=white_ink)
+    # No left-side navy shading (over-darkens Fuji to near-black) and
+    # no outer contour (over-pronounces the geometric triangle and
+    # makes it read as "drawn", not "silhouetted"). The flat blue
+    # silhouette plus the snow cap reads as a stylised mountain
+    # silhouette, the way distant Fuji appears in Hokusai's prints —
+    # a quiet flat shape, not a 3D shaded mountain.
+    # Three-tier snow cap. Each tier is a flattened white wedge sized
+    # to STAY INSIDE the Fuji triangle at the relevant y range — the
+    # half-width is derived from the slope ratio (fuji_half_base over
+    # vertical extent), with a small inset so the white edge sits 1 px
+    # inside the slope and the black contour line stays visible.
+    fuji_slope = fuji_half_base / max(1, (fuji_base_y - fuji_apex_y))
+    cap_top_y = fuji_apex_y + 2
+    cap_bands = (
+        # Each tuple: (band_height_in_px). Top tier is the smallest
+        # (only 6 rows tall starting at the apex); subsequent tiers
+        # extend the snow further down the cone.
+        6,
+        7,
+        7,
+    )
+    band_y = cap_top_y
+    for band_h in cap_bands:
+        next_y = band_y + band_h
+        top_hw = max(0, round((band_y - fuji_apex_y) * fuji_slope) - 1)
+        bot_hw = max(0, round((next_y - fuji_apex_y) * fuji_slope) - 1)
+        if top_hw + bot_hw == 0:
+            band_y = next_y
+            continue
+        draw.polygon([
+            (fuji_apex_x - top_hw, band_y),
+            (fuji_apex_x + top_hw, band_y),
+            (fuji_apex_x + bot_hw, next_y),
+            (fuji_apex_x - bot_hw, next_y),
+        ], fill=white_ink)
+        band_y = next_y
 
     # ------------------------------------------------------------------
     # The wave — smooth ~102-point polygon silhouette.
@@ -7437,6 +7492,14 @@ def draw_kanagawa_border(
     wave_y1 = min(height - 1, max(ys))
 
     # ------------------------------------------------------------------
+    # (Top-edge contour intentionally absent. An earlier revision drew
+    # a 2 px black ink stroke along the wave's top edge to mimic the
+    # sumi key block of a real woodblock print, but combined with the
+    # foam scatter + scrolls + navy gradient it produced a muddled
+    # dark band at the top of the wave that overwhelmed the silhouette.
+    # The clean blue→navy fill reads more cleanly without it.)
+
+    # ------------------------------------------------------------------
     # Foam inside the wave body — sparse white Bayer scatter in the
     # band just below the crest, tapering to zero half-way down.
     # Operates on the already-painted blue pixels so the silhouette
@@ -7444,6 +7507,31 @@ def draw_kanagawa_border(
     _kanagawa_foam_inside_wave(
         pixels, wave_x0, wave_y0, wave_x1, wave_y1, wave_y0, blue_ink, white_ink
     )
+
+    # ------------------------------------------------------------------
+    # Hokusai-style foam scroll curls inside the wave body. Each scroll
+    # is a 2 px white partial-circle arc at a hand-placed position,
+    # suggesting the iconic scrolling foam pattern Hokusai's wave
+    # carries throughout its body. Density is heaviest near the
+    # dominant left-side crest and tapers toward the trailing right
+    # crests, mirroring the energy distribution of a real breaking
+    # wave. Painted on top of the blue body but BEFORE the navy depth
+    # post-pass, so the lower scrolls get partially absorbed into the
+    # darkening trough — the way foam in deep water dissipates from
+    # view as it drops below the surface.
+    for cx_frac, cy_frac, scroll_r, start_deg, end_deg in _KANAGAWA_SCROLLS:
+        cx = round(cx_frac * width)
+        cy = round(cy_frac * height)
+        # Only paint scrolls that fall inside the wave silhouette —
+        # PIL's draw.arc would otherwise stamp the curve outside the
+        # wave too. Bumping the scroll radius by 50% and stroke width
+        # to 3 px also helps the curls read as foam-curl decorations
+        # at desktop preview, not as faint dust marks.
+        if 0 <= cx < width and 0 <= cy < height and pixels[cx, cy] == blue_ink:
+            draw.arc(
+                (cx - scroll_r, cy - scroll_r, cx + scroll_r, cy + scroll_r),
+                start_deg, end_deg, fill=white_ink, width=3,
+            )
 
     # ------------------------------------------------------------------
     # Wave depth post-pass — gradient navy stipple in the trough. Black
