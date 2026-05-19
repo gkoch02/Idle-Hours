@@ -9038,18 +9038,26 @@ def _astrarium_paint_quote_panel(
         pattern_offset=(1, 0),
     )
 
-    # Attribution (author + title) — small serif, below the closing mark.
+    # Attribution (author + title) — small sans, below the closing
+    # mark. Switched from Cormorant Regular @ 14 / 12 (the body face)
+    # to the dashboard's grotesque sans chain because Cormorant's
+    # hairline serifs at byline sizes broke up after
+    # ``snap_image_to_palette`` — one-pixel stems quantise unevenly on
+    # a 6-colour panel. Sans glyphs at the same point sizes survive
+    # the snap cleanly. Editorially it also matches the header date
+    # and datum-strip labels (the page's other metadata), which is the
+    # publishing convention modern editorial layouts use anyway:
+    # serif body, sans metadata.
     author = quote_row.get("author") or None
     title = quote_row.get("title") or fallback_title(quote_row)
-    attrib_font = load_font(theme_font_candidates("astrarium", "quote_regular"), size=14)
+    author_font = load_font(META_FONT_BOLD_CANDIDATES, size=13)
+    title_font = load_font(META_FONT_CANDIDATES, size=12)
     attrib_y = max(y + 6, close_y + close_h - 18)
-    attrib_y = min(attrib_y, panel_bottom - 36)
+    attrib_y = min(attrib_y, panel_bottom - 32)
     if author:
-        draw.text((panel_left + 8, attrib_y), author, font=attrib_font, fill=BLACK)
-        attrib_y += 16
+        draw.text((panel_left + 8, attrib_y), author, font=author_font, fill=BLACK)
+        attrib_y += 15
     if title:
-        title_font = load_font(theme_font_candidates("astrarium", "quote_regular"), size=12)
-        # Wrap if too long for the panel.
         title_lines = wrap_text(draw, title, title_font, max_text_width)[:1]
         if title_lines:
             draw.text((panel_left + 8, attrib_y), title_lines[0], font=title_font, fill=BLACK)
