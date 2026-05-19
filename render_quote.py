@@ -7356,19 +7356,22 @@ def draw_kanagawa_border(
         draw.rounded_rectangle(
             (cx0, cy0, cx1, cy1), radius=12, outline=black_ink, width=1,
         )
-        # Cream stipple via two 8×8 off-grid anchor scatters. Each
-        # 8×8 tile gets a yellow dot at (1, 3) and at (5, 6) — total
-        # 2/64 = ~3% density. The non-period-4 anchor positions break
-        # the visible-lattice effect a regular Bayer pattern produces
-        # at desktop zoom against the saturated seigaiha indigo.
+        # Cream stipple via four 8×8 off-grid anchor scatters. Each
+        # 8×8 tile gets a yellow dot at (1, 3), (5, 6), (2, 7), and
+        # (6, 2) — total 4/64 = ~6.25% density. The non-period-4
+        # anchor positions break the visible-lattice effect a regular
+        # 4×4 Bayer pattern produces at desktop zoom against the
+        # saturated seigaiha indigo. At 6% density the eye averages
+        # W + Y at panel-viewing distance into the warm vellum tone
+        # the user asked for ("more creamy"), without the dots
+        # reading as a printed grid in either register.
         yellow_ink = SPECTRA6["yellow"]
+        cream_anchors = frozenset({(1, 3), (5, 6), (2, 7), (6, 2)})
         for py in range(cy0, cy1 + 1):
             y8 = py & 7
             for px in range(cx0, cx1 + 1):
                 x8 = px & 7
-                if pixels[px, py] == white_ink and (
-                    (x8 == 1 and y8 == 3) or (x8 == 5 and y8 == 6)
-                ):
+                if pixels[px, py] == white_ink and (x8, y8) in cream_anchors:
                     pixels[px, py] = yellow_ink
 
 
