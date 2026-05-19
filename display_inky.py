@@ -185,16 +185,35 @@ THEME_SATURATION: dict[str, float] = {
     # blue matched phrase confidently saturated against the warm
     # yellow ground rather than half-fading into the page.
     "fillmore": 0.7,
-    # Kanagawa / Hokusai's "Great Wave" — white washi ground with a
-    # graduated sky-blue Bayer wash and an indigo wave silhouette
-    # carrying a navy depth post-pass, a maroon-rimmed sun disc, white
-    # foam clusters with contact-edge cyan halos, and a maroon-stippled
-    # hanko seal. Same chromatic-on-light profile as ``default`` /
-    # ``mucha`` / ``deco`` / ``placard``; the 0.5 tier preserves the
-    # synthesised tones — pushing higher would shift the navy trough
-    # toward a brighter solid indigo and erase the body-vs-trough
-    # tonal rhyme, plus shift the maroon sun rim toward a brighter
-    # red and break the "low hazy morning sun" reading.
+    # Firmament / 17th-century celestial atlas — navy (B+K stipple)
+    # ground with chromatic ornaments (yellow stars, sky-blue moon,
+    # tangerine + cyan Saturn, lavender Milky Way). Same dark-ground
+    # tier as ``dark`` / ``nightvision`` / ``gothic`` / ``chanbara``
+    # so the matched-phrase cream (Y+W) and the synthesised ornament
+    # tones stay punchy against the navy ground rather than fading
+    # into a dim mid-tone.
+    "firmament": 0.7,
+    # Astrarium / astronomical-clock dashboard — cream-washed white
+    # ground, black serif body, tangerine matched phrase (R+Y 5/8:3/8
+    # — same recipe ``deco`` uses), with teal (G+B) and sepia (R+G)
+    # ring quadrants on the dial. Same chromatic-on-light profile as
+    # ``deco`` / ``dispatch`` / ``herbarium`` / ``mucha`` — the
+    # gentler 0.5 tier preserves the dashboard's mid-tone
+    # halftone-stipple register. Pushing higher would saturate the
+    # synthesised tangerine into a brighter fluorescent orange that
+    # breaks the editorial / instrument-panel reading the layout is
+    # going for.
+    "astrarium": 0.5,
+    # Kanagawa / stylised Japanese seascape — white washi-paper ground
+    # with a seigaiha textile band (indigo half-disks + white concentric
+    # arcs + navy deepest-row post-pass) anchored at the bottom, a
+    # cream-tinted rounded paper panel knocked out for the body text,
+    # and a red rounded-rectangle hanko seal in the bottom-right corner.
+    # Same chromatic-on-light profile as ``default`` / ``mucha`` /
+    # ``deco`` / ``placard``; the 0.5 tier preserves the cream-panel
+    # vellum register and the navy deepest-row reading — pushing higher
+    # would saturate the panel's Y+W cream into a brighter lemon yellow
+    # and shift the navy stipple toward solid indigo.
     "kanagawa": 0.5,
 }
 

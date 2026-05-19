@@ -711,7 +711,7 @@ class TestThemes:
         "just type on the ground colour". Pin the four new entries
         explicitly so a future refactor that drops the dict key
         fails this test loudly."""
-        for name in ("swiss", "herbarium", "mucha", "fillmore"):
+        for name in ("swiss", "herbarium", "mucha", "fillmore", "firmament"):
             assert name in rq._BORDER_PAINTERS, name
 
     def test_risograph_theme_uses_no_black_ink(self):
@@ -800,6 +800,7 @@ class TestRender:
             "bauhaus",
             "risograph",
             "comic",
+            "firmament",
         ],
     )
     def test_render_new_themes_smoke(self, theme):
@@ -2163,6 +2164,27 @@ class TestKanagawaBorder:
         silently break the registration."""
         assert "kanagawa" in rq._BORDER_PAINTERS
         assert rq._BORDER_PAINTERS["kanagawa"] is rq.draw_kanagawa_border
+
+    def test_kanagawa_renders_at_tiny_preview_size(self):
+        """The web curator UI's ``/api/preview`` endpoint clamps to a
+        floor of 80x60 px. At that size the hanko seal's coordinates
+        land partly off-canvas (``seal_y0`` = 60 - 26 - 38 = -4) — PIL's
+        drawing primitives clip silently, but the pixel-level maroon
+        post-pass would crash on negative ``pixels[px, py]`` indexing
+        without explicit bounds clamping. The clear_rect knockout can
+        also produce a collapsed rect (cx1 < cx0 + 4 after clamping)
+        that crashes ``draw.rounded_rectangle`` with a
+        "y1 must be greater than or equal to y0" ValueError. Both
+        guards are pinned here so a regression that strips them
+        surfaces immediately."""
+        # Direct-call path (no clear_rect, hanko coordinates still
+        # land partly off-canvas).
+        image = Image.new("RGB", (80, 60), color=rq.SPECTRA6["white"])
+        rq.draw_kanagawa_border(image, rq.THEMES["kanagawa"])
+        # Full render() pipeline (computes clear_rect from the body
+        # block bbox — collapses at 80x60).
+        img = rq.render("04:30", self._row(), 80, 60, mode="production", theme="kanagawa")
+        assert img.size == (80, 60)
 
 
 class TestRenderCard:
