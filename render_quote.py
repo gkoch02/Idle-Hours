@@ -7306,20 +7306,46 @@ def draw_kanagawa_border(
     draw.line((sx1, sy0, sx1, sy1), fill=white_ink, width=1)
 
     # ------------------------------------------------------------------
-    # Body-text knockout. When ``clear_rect`` is provided by render(),
-    # reset every pixel inside it back to ``page_bg``. The seigaiha
-    # band can then extend up to the body-text bottom edge without
-    # obstructing the body block's legibility — same pattern blueprint
-    # uses for its graph-paper grid.
+    # Body-text knockout — cream-tinted rounded panel. When clear_rect
+    # is provided by render(), reset the pixels inside to a cream
+    # ground: a rounded-rectangle white fill (radius 12) followed by a
+    # very sparse yellow stipple applied via two interleaved 8×8
+    # off-grid scatters (avoids the period-4 lattice the 4×4 Bayer
+    # matrix produces, which reads as a visible yellow grid at desktop
+    # zoom). The eye averages the W + Y dots at panel distance into
+    # the warm vellum tone real archival paper carries, and the
+    # off-grid placement reads as fibre / paper noise rather than as
+    # a printed lattice in both registers.
+    #
+    # The rounded corners read as a hand-pressed paper card laid over
+    # the seigaiha textile, where pure-white square corners would read
+    # as a digital sticker by comparison. The corner pixels OUTSIDE
+    # the rounded arc are deliberately left as seigaiha — body text
+    # sits well inside the panel (the clear_pad_x = 14 / pad_top = 6
+    # dispatch values keep the text bbox 14 px / 6 px in from the
+    # panel edges), so the rounded-corner cutouts never expose any
+    # painted glyphs.
     if clear_rect is not None and page_bg is not None:
         cx0, cy0, cx1, cy1 = clear_rect
         cx0 = max(0, cx0)
         cy0 = max(0, cy0)
         cx1 = min(width - 1, cx1)
         cy1 = min(height - 1, cy1)
+        draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=12, fill=white_ink)
+        # Cream stipple via two 8×8 off-grid anchor scatters. Each
+        # 8×8 tile gets a yellow dot at (1, 3) and at (5, 6) — total
+        # 2/64 = ~3% density. The non-period-4 anchor positions break
+        # the visible-lattice effect a regular Bayer pattern produces
+        # at desktop zoom against the saturated seigaiha indigo.
+        yellow_ink = SPECTRA6["yellow"]
         for py in range(cy0, cy1 + 1):
+            y8 = py & 7
             for px in range(cx0, cx1 + 1):
-                pixels[px, py] = page_bg
+                x8 = px & 7
+                if pixels[px, py] == white_ink and (
+                    (x8 == 1 and y8 == 3) or (x8 == 5 and y8 == 6)
+                ):
+                    pixels[px, py] = yellow_ink
 
 
 def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tuple[int, int]]:
