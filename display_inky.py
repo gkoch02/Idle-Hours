@@ -204,6 +204,17 @@ THEME_SATURATION: dict[str, float] = {
     # breaks the editorial / instrument-panel reading the layout is
     # going for.
     "astrarium": 0.5,
+    # Kanagawa / stylised Japanese seascape — white washi-paper ground
+    # with a seigaiha textile band (indigo half-disks + white concentric
+    # arcs + navy deepest-row post-pass) anchored at the bottom, a
+    # cream-tinted rounded paper panel knocked out for the body text,
+    # and a red rounded-rectangle hanko seal in the bottom-right corner.
+    # Same chromatic-on-light profile as ``default`` / ``mucha`` /
+    # ``deco`` / ``placard``; the 0.5 tier preserves the cream-panel
+    # vellum register and the navy deepest-row reading — pushing higher
+    # would saturate the panel's Y+W cream into a brighter lemon yellow
+    # and shift the navy stipple toward solid indigo.
+    "kanagawa": 0.5,
 }
 
 
