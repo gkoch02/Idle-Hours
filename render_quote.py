@@ -7202,10 +7202,11 @@ _FIRMAMENT_STAR_SEED = 0xF18
 
 
 def _build_firmament_stars(width: int, height: int) -> list[tuple[int, int, int]]:
-    """Return ~80 deterministic (x, y, magnitude) stars confined to the
-    top and bottom decoration margins. Magnitude 1 = brightest (rayed),
-    2 = medium (cross), 3 = faintest (single pixel). Reseeded per call
-    so a different canvas size still produces a stable scatter.
+    """Return ~150 deterministic (x, y, magnitude) stars confined to the
+    top and bottom decoration margins. Magnitude 1 = brightest (8-point
+    sparkle with tapered rays), 2 = medium (4-point compass cross),
+    3 = faint (2x2 cluster), 4 = faintest (single pixel). Reseeded per
+    call so a different canvas size still produces a stable scatter.
     """
     import random as _random  # match the in-function import pattern used by _build_fillmore_blob
 
@@ -7223,10 +7224,70 @@ def _build_firmament_stars(width: int, height: int) -> list[tuple[int, int, int]
                 y = rng.randint(height - 64, height - 4)
             stars.append((x, y, magnitude))
 
-    _add(50, 3)
-    _add(20, 2)
-    _add(10, 1)
+    _add(80, 4)   # very faint pinprick stars
+    _add(40, 3)   # faint 2x2 clusters
+    _add(20, 2)   # medium 4-point crosses
+    _add(10, 1)   # bright 8-point sparkles
     return stars
+
+
+def _paint_firmament_star(pixels, width: int, height: int, sx: int, sy: int, magnitude: int) -> None:
+    """Paint a single deterministic yellow star at (sx, sy) onto the
+    image's pixel-access object. Magnitude controls the shape:
+
+    * mag 4: single yellow pixel (faintest)
+    * mag 3: 2×2 cluster (faint cluster)
+    * mag 2: 4-point compass cross with 2px arms + a centre dot
+    * mag 1: 8-point sparkle — long N/S/E/W rays that taper from 3px
+      core to 1px tip, plus shorter diagonal NE/NW/SE/SW rays. Reads
+      as a deliberate "navigational" star like the bright stars on
+      17th-century atlas pages (Bayer's Uranometria, Cellarius's
+      Harmonia Macrocosmica).
+    """
+    yellow = SPECTRA6["yellow"]
+
+    def _set(ax: int, ay: int) -> None:
+        if 0 <= ax < width and 0 <= ay < height:
+            pixels[ax, ay] = yellow
+
+    if magnitude >= 4:
+        _set(sx, sy)
+    elif magnitude == 3:
+        for dy in (0, 1):
+            for dx in (0, 1):
+                _set(sx + dx, sy + dy)
+    elif magnitude == 2:
+        # 4-point cross — vertical/horizontal arms with a 2x2 core.
+        for dy in (0, 1):
+            for dx in (0, 1):
+                _set(sx + dx, sy + dy)
+        _set(sx + 2, sy)
+        _set(sx + 2, sy + 1)
+        _set(sx - 1, sy)
+        _set(sx - 1, sy + 1)
+        _set(sx, sy + 2)
+        _set(sx + 1, sy + 2)
+        _set(sx, sy - 1)
+        _set(sx + 1, sy - 1)
+    else:
+        # Magnitude 1 — 8-point sparkle. 3x3 core, long cardinal rays
+        # (5 px tip → tapered, single-pixel terminal), short
+        # inter-cardinal rays (2 px, diagonal).
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                _set(sx + dx, sy + dy)
+        # Long cardinal rays — 5px each, tapered (1px ray after the core).
+        for offset in range(2, 6):
+            _set(sx, sy - offset)  # N
+            _set(sx, sy + offset)  # S
+            _set(sx - offset, sy)  # W
+            _set(sx + offset, sy)  # E
+        # Inter-cardinal sparkle accents (2px diagonal stubs).
+        for offset in (2, 3):
+            _set(sx - offset, sy - offset)  # NW
+            _set(sx + offset, sy - offset)  # NE
+            _set(sx - offset, sy + offset)  # SW
+            _set(sx + offset, sy + offset)  # SE
 
 
 def draw_firmament_border(image: Image.Image, colors: dict) -> None:
@@ -7354,90 +7415,103 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
                 if pixels[x, y] == page_bg and (x + y) & 1:
                     pixels[x, y] = blue_ink
 
-    # ---- Layer 1: Milky Way wisps (sparse R+B+W 3-ink over navy) ----
-    # Two narrow diagonal wisps in the top and bottom margins, positioned
-    # to NOT overlap any corner ornament. Each polygon is painted with an
-    # off-palette sentinel, then a per-pixel walk replaces sentinel pixels
-    # via a *sparse* 3-way Bayer partition: only cells 0 and 1 paint red /
-    # blue / white (one ink each); the remaining cells revert to the navy
-    # ground showing through. Total density ≈ 3/16 ≈ 19% of the band's
-    # pixels — reads as a faint hazy wisp rather than a vivid lavender
-    # block. The wisps thread between the corner ornaments rather than
-    # filling whole corner margins:
-    #   * top wisp: x in [200, width-200], y in [44, 68] — runs between
-    #     the sun/Cassiopeia (left) and the moon/Milky-Way-ecliptic
-    #     region (right). Diagonal slant for naturalism.
-    #   * bottom wisp: x in [200, width-260], y in [height-32, height-12]
-    #     — runs between the compass rose (left) and Orion's Belt /
-    #     Saturn (right).
-    milky_polys = [
-        # Top wisp — gentle diagonal across the top margin centre.
-        [(200, 60), (width - 240, 44), (width - 200, 68), (240, 80)],
-        # Bottom wisp — opposite-direction diagonal across the bottom
-        # margin centre, clear of compass rose and Saturn corners.
-        [(200, height - 32), (width - 260, height - 12),
-         (width - 240, height - 4), (180, height - 24)],
-    ]
-    for poly in milky_polys:
+    # ---- Layer 1: Milky Way (dense star scatter inside two flowing blobs) ----
+    # The Milky Way is literally a region of densely concentrated
+    # stars, so render it that way: define two irregular flowing
+    # blob silhouettes — NOT rectangles — and scatter additional
+    # yellow pinprick stars inside each blob at much higher density
+    # than the ambient star field. Faint pixel-level red/blue
+    # "nebular dust" accents (cells 0/1 of a 4×4 Bayer at 12.5%
+    # total density) add a warm/cool hint without dominating the
+    # silhouette. The result reads as the dense star fields and
+    # nebular haze a 17th-century atlas (Cellarius, Hevelius) drew
+    # by stippling the engraving plate.
+    #
+    # Sentinel-painted polygons, then a per-pixel walk inside each
+    # blob's bbox: painted sentinel pixels are replaced via a
+    # deterministic per-position hash so the scatter is reproducible
+    # without an RNG-state thread through the post-pass. Ratios:
+    #   * ~1/22 of blob pixels → yellow star (dense star scatter)
+    #   * cell 0 (1/16) → red speck (warm nebular dust)
+    #   * cell 1 (1/16) → blue speck (cool nebular dust)
+    #   * remainder → revert to the Layer 0 navy ground
+    import random as _random_blob
+
+    blob_rng = _random_blob.Random(_FIRMAMENT_STAR_SEED ^ 0x42)
+
+    def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0) -> list[tuple[float, float]]:
+        n = 32
+        points = []
+        for i in range(n):
+            t = 2.0 * math.pi * i / n
+            # Per-vertex radial wobble in [0.65, 1.15] * base_r so the
+            # silhouette reads as organic, not geometric. Two-octave
+            # noise: a slow wobble plus a faster one for cliff-like
+            # detail.
+            r = base_r * (0.65 + 0.40 * blob_rng.random()) * (
+                0.85 + 0.30 * blob_rng.random()
+            )
+            points.append((cx + r * math.cos(t) * aspect, cy + r * math.sin(t)))
+        return points
+
+    # Top blob — drifts above the moon, shorter and shallower than
+    # before so the band reads as a wispy nebula rather than a solid
+    # cloud. Sits between Cassiopeia (TL) and Lyra (TR), threading
+    # below the ecliptic arc.
+    top_blob = _build_blob(width / 2 + 30, 52, 36, aspect=2.2)
+    # Bottom blob — narrower, mirrored opposite-diagonal.
+    bottom_blob = _build_blob(width / 2 - 60, height - 30, 32, aspect=2.4)
+
+    for poly in (top_blob, bottom_blob):
         draw.polygon(poly, fill=milky_sentinel)
         xs = [p[0] for p in poly]
         ys = [p[1] for p in poly]
-        x0, x1 = max(0, min(xs)), min(width, max(xs) + 1)
-        y0, y1 = max(0, min(ys)), min(height, max(ys) + 1)
-        # Sparse 3-way partition: cell 0 → white, cell 1 → red, cell 2 →
-        # blue, cells 3..15 → revert to navy ground (B+K parity). The
-        # ratio (1:1:1 white:red:blue with 13/16 navy showing through)
-        # produces a faint warm-cool stipple that reads as nebular haze
-        # without dominating the band.
+        x0, x1 = max(0, int(min(xs))), min(width, int(max(xs)) + 1)
+        y0, y1 = max(0, int(min(ys))), min(height, int(max(ys)) + 1)
         for y in range(y0, y1):
             for x in range(x0, x1):
                 if pixels[x, y] != milky_sentinel:
                     continue
-                cell = BAYER_4x4[y & 3][x & 3]
-                if cell == 0:
-                    pixels[x, y] = white_ink
-                elif cell == 1:
-                    pixels[x, y] = red_ink
-                elif cell == 2:
-                    pixels[x, y] = blue_ink
+                # Deterministic per-position hash → very sparse paint:
+                # 1/40 chance yellow pin-star, 1/30 chance red dust,
+                # 1/30 chance blue dust. Total ~9% painted; remaining
+                # ~91% reverts to the navy ground. At panel viewing
+                # distance the eye averages this to a faint cloudy
+                # haze with embedded pin-stars — what 17th-century
+                # atlas engravers stippled when they drew the
+                # Milky Way's diffuse trail.
+                star_hash = (x * 73856093) ^ (y * 19349663)
+                bucket = star_hash % 120
+                if bucket < 3:
+                    pixels[x, y] = yellow_ink   # 3/120 = 1/40 star
+                elif bucket < 7:
+                    pixels[x, y] = red_ink      # 4/120 ≈ 1/30 warm dust
+                elif bucket < 11:
+                    pixels[x, y] = blue_ink     # 4/120 ≈ 1/30 cool dust
                 else:
-                    # Revert to navy ground (apply the Layer 0 parity).
+                    # Revert to navy ground (Layer 0 parity).
                     pixels[x, y] = blue_ink if (x + y) & 1 else black_ink
 
     # ---- Layer 2: Star field ----
     for sx, sy, mag in _build_firmament_stars(width, height):
-        if mag == 3:
-            pixels[sx, sy] = yellow_ink
-        elif mag == 2:
-            # 5-pixel + cross
-            for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
-                ax, ay = sx + dx, sy + dy
-                if 0 <= ax < width and 0 <= ay < height:
-                    pixels[ax, ay] = yellow_ink
-        else:
-            # Magnitude 1: 3x3 filled square plus 4 single-pixel rays.
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    ax, ay = sx + dx, sy + dy
-                    if 0 <= ax < width and 0 <= ay < height:
-                        pixels[ax, ay] = yellow_ink
-            for dx, dy in ((2, 0), (-2, 0), (0, 2), (0, -2)):
-                ax, ay = sx + dx, sy + dy
-                if 0 <= ax < width and 0 <= ay < height:
-                    pixels[ax, ay] = yellow_ink
+        _paint_firmament_star(pixels, width, height, sx, sy, mag)
 
-    # ---- Layer 3: Constellation polylines ----
+    # ---- Layer 3: Constellation polylines + Latin labels ----
+    # Cardo Italic for constellation names — the small-caps register of
+    # 17th-century celestial-atlas labels. ImageFont is loaded lazily so
+    # the label step is graceful if the font is missing.
+    try:
+        label_font = ImageFont.truetype(CARDO_ITALIC, 11)
+    except OSError:
+        label_font = ImageFont.load_default()
+
     # Cassiopeia — W shape, top-left margin. Five canonical stars.
     cassiopeia = [(60, 34), (95, 50), (130, 28), (165, 50), (200, 36)]
-    # Paint a mag-1 star at each vertex first so the constellation
-    # reads even if the seeded scatter didn't place a star there.
     for cx, cy in cassiopeia:
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                ax, ay = cx + dx, cy + dy
-                if 0 <= ax < width and 0 <= ay < height:
-                    pixels[ax, ay] = yellow_ink
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=1)
     draw.line(cassiopeia, fill=white_ink, width=1)
+    # Latin label below the W, white italic.
+    draw.text((90, 60), "CASSIOPEIA", font=label_font, fill=white_ink)
 
     # Orion's Belt — three stars in a tilted line, bottom-right margin.
     orion_belt = [
@@ -7446,106 +7520,203 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
         (width - 100, height - 42),
     ]
     for cx, cy in orion_belt:
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                ax, ay = cx + dx, cy + dy
-                if 0 <= ax < width and 0 <= ay < height:
-                    pixels[ax, ay] = yellow_ink
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=1)
     draw.line(orion_belt, fill=white_ink, width=1)
+    draw.text((width - 196, height - 18), "ORION", font=label_font, fill=white_ink)
+
+    # Lyra — small parallelogram in the top-right margin, between the
+    # Milky Way wisp and the moon. Four stars; the brightest is Vega.
+    lyra = [
+        (width - 280, 28),
+        (width - 240, 18),
+        (width - 220, 42),
+        (width - 268, 52),
+    ]
+    for cx, cy in lyra:
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=2)
+    # Vega — promote the first vertex to a brighter sparkle.
+    _paint_firmament_star(pixels, width, height, lyra[0][0], lyra[0][1], magnitude=1)
+    # Close the parallelogram (4 segments).
+    lyra_closed = lyra + [lyra[0]]
+    draw.line(lyra_closed, fill=white_ink, width=1)
+    draw.text((width - 280, 60), "LYRA", font=label_font, fill=white_ink)
+
+    # Crux (Southern Cross) — four stars in a cross pattern, bottom-left
+    # margin. Compact, fits between the compass rose and the body block.
+    crux = [
+        (200, height - 56),   # top
+        (216, height - 42),   # right
+        (200, height - 28),   # bottom
+        (184, height - 42),   # left
+    ]
+    _paint_firmament_star(pixels, width, height, crux[0][0], crux[0][1], magnitude=1)
+    for cx, cy in crux[1:]:
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=2)
+    # Two crossing lines.
+    draw.line((crux[0], crux[2]), fill=white_ink, width=1)
+    draw.line((crux[1], crux[3]), fill=white_ink, width=1)
+    draw.text((132, height - 18), "CRUX AUSTRALIS", font=label_font, fill=white_ink)
 
     # ---- Layer 4: Four corner astronomy ornaments ----
 
-    # TL Sun: filled yellow disc + 8 short rays. Solid yellow, no post-pass.
-    sun_cx, sun_cy = 32, 32
-    sun_r = 8
+    # TL Sun (Sol Invictus). Filled yellow disc + 16 alternating-length
+    # rays + a faint single-pixel halo of yellow at the cardinal
+    # boundaries → reads as a medieval sun-in-splendour rather than a
+    # geometric asterisk. The face stays implied (a small 2px crescent
+    # carved into the lower-right of the disc suggests a smile contour
+    # without committing to a literal face that would read as
+    # cartoonish at 12 px). All solid yellow, no post-pass.
+    sun_cx, sun_cy = 36, 36
+    sun_r = 11
     draw.ellipse(
         (sun_cx - sun_r, sun_cy - sun_r, sun_cx + sun_r, sun_cy + sun_r),
         fill=yellow_ink,
     )
-    for angle_deg in range(0, 360, 45):
+    # 16 rays in alternating tiers — 8 long primary, 8 short secondary.
+    for i, angle_deg in enumerate(range(0, 360, 22)):
         angle = math.radians(angle_deg)
-        x1 = sun_cx + (sun_r + 2) * math.cos(angle)
-        y1 = sun_cy + (sun_r + 2) * math.sin(angle)
-        x2 = sun_cx + 14 * math.cos(angle)
-        y2 = sun_cy + 14 * math.sin(angle)
+        is_long = i % 2 == 0
+        ray_inner = sun_r + (1 if is_long else 3)
+        ray_outer = sun_r + (12 if is_long else 6)
+        x1 = sun_cx + ray_inner * math.cos(angle)
+        y1 = sun_cy + ray_inner * math.sin(angle)
+        x2 = sun_cx + ray_outer * math.cos(angle)
+        y2 = sun_cy + ray_outer * math.sin(angle)
         draw.line((x1, y1, x2, y2), fill=yellow_ink, width=1)
+    # Implied "face" — two tiny navy carved dots for eyes + a 3px
+    # smile arc, sitting in the lower half of the disc. Painted in the
+    # navy ground colours via the (x+y)&1 parity of the existing Layer
+    # 0 stipple, so it reads as a deliberate carved relief rather than
+    # an additional decoration layer. Two left+right eye dots at
+    # cy-2, a 3px wide smile centred at cy+3.
+    for ex in (sun_cx - 3, sun_cx + 3):
+        pixels[ex, sun_cy - 2] = blue_ink if (ex + sun_cy - 2) & 1 else black_ink
+    # Smile — 3 px arc.
+    for dx in (-2, -1, 0, 1, 2):
+        sy = sun_cy + 3 + (1 if abs(dx) >= 2 else 0)
+        pixels[sun_cx + dx, sy] = blue_ink if (sun_cx + dx + sy) & 1 else black_ink
 
-    # TR Crescent moon: off-palette sentinel circle, carved with page_bg
-    # offset, then bbox post-pass converts sentinel pixels to sky-blue
-    # (B+W 1:1 via (x+y)&1 parity → half blue, half white). Using
-    # ``moon_sentinel`` (off-palette) instead of ``blue_ink`` so the
-    # post-pass cannot touch the Layer 0 navy stipple's blue pixels in
-    # the surrounding margin.
-    moon_cx, moon_cy = width - 32, 54
-    moon_r = 10
+    # TR Crescent moon (Luna). The phase is a waning gibbous with a
+    # small "Luna" face suggestion (two tiny dark dots for craters).
+    # Sentinel-painted then bbox post-passed to sky-blue (B+W 1:1).
+    moon_cx, moon_cy = width - 36, 50
+    moon_r = 13
     draw.ellipse(
         (moon_cx - moon_r, moon_cy - moon_r, moon_cx + moon_r, moon_cy + moon_r),
         fill=moon_sentinel,
     )
-    carve_r = 8
-    carve_cx = moon_cx - 4
+    # Carve the shadow.
+    carve_r = 11
+    carve_cx = moon_cx - 5
     draw.ellipse(
         (carve_cx - carve_r, moon_cy - carve_r, carve_cx + carve_r, moon_cy + carve_r),
         fill=page_bg if page_bg is not None else black_ink,
     )
+    # Sky-blue post-pass, scoped to the moon bbox.
     mx0, mx1 = moon_cx - moon_r - 1, moon_cx + moon_r + 1
     my0, my1 = moon_cy - moon_r - 1, moon_cy + moon_r + 1
     for y in range(max(0, my0), min(height, my1 + 1)):
         for x in range(max(0, mx0), min(width, mx1 + 1)):
             if pixels[x, y] == moon_sentinel:
                 pixels[x, y] = white_ink if (x + y) & 1 else blue_ink
+    # Two small "craters" — pixel-relief navy dots in the lit portion.
+    for cx_off, cy_off in ((4, -2), (6, 3)):
+        ax, ay = moon_cx + cx_off, moon_cy + cy_off
+        if 0 <= ax < width and 0 <= ay < height:
+            pixels[ax, ay] = blue_ink if (ax + ay) & 1 else black_ink
 
-    # BL Compass rose: 8 rays from a yellow centre dot, alternating long
-    # (cardinals, 12 px) and short (inter-cardinals, 7 px).
-    rose_cx, rose_cy = 32, height - 40
-    for i, angle_deg in enumerate(range(0, 360, 45)):
+    # BL Compass rose (Wind Rose). Replace the earlier stick-ray design
+    # with a filled-wedge portolan-chart compass: four large filled
+    # triangular points at the cardinals (N, S, E, W) painted in white,
+    # four smaller diagonal points (NE, SE, SW, NW) in white, plus a
+    # filled yellow inner diamond and a small "N" label above the
+    # north point so the orientation reads at a glance.
+    rose_cx, rose_cy = 40, height - 44
+    long_r = 18
+    short_r = 8
+    side = 4  # half-width of the cardinal wedge at the base
+    # Cardinal wedges — each a filled triangle from centre to the
+    # tip, with a small width at the base for the silhouette.
+    cardinals = [
+        ((rose_cx, rose_cy - long_r), (rose_cx - side, rose_cy), (rose_cx + side, rose_cy)),   # N
+        ((rose_cx + long_r, rose_cy), (rose_cx, rose_cy - side), (rose_cx, rose_cy + side)),   # E
+        ((rose_cx, rose_cy + long_r), (rose_cx - side, rose_cy), (rose_cx + side, rose_cy)),   # S
+        ((rose_cx - long_r, rose_cy), (rose_cx, rose_cy - side), (rose_cx, rose_cy + side)),   # W
+    ]
+    for triangle in cardinals:
+        draw.polygon(triangle, fill=white_ink)
+    # Diagonal points — thinner short wedges.
+    diag_side = 2
+    for angle_deg in (45, 135, 225, 315):
         angle = math.radians(angle_deg)
-        ray_len = 12 if i % 2 == 0 else 7
-        x1 = rose_cx + 2 * math.cos(angle)
-        y1 = rose_cy + 2 * math.sin(angle)
-        x2 = rose_cx + ray_len * math.cos(angle)
-        y2 = rose_cy + ray_len * math.sin(angle)
-        draw.line((x1, y1, x2, y2), fill=white_ink, width=1)
-    draw.ellipse(
-        (rose_cx - 2, rose_cy - 2, rose_cx + 2, rose_cy + 2),
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        # Perpendicular for the base width.
+        perp_x, perp_y = -sin_a, cos_a
+        tip = (rose_cx + short_r * cos_a, rose_cy + short_r * sin_a)
+        base_a = (rose_cx + diag_side * perp_x, rose_cy + diag_side * perp_y)
+        base_b = (rose_cx - diag_side * perp_x, rose_cy - diag_side * perp_y)
+        draw.polygon((tip, base_a, base_b), fill=white_ink)
+    # Inner filled yellow diamond (the "pivot").
+    draw.polygon(
+        ((rose_cx, rose_cy - 3), (rose_cx + 3, rose_cy),
+         (rose_cx, rose_cy + 3), (rose_cx - 3, rose_cy)),
         fill=yellow_ink,
     )
+    # "N" label above the north point.
+    try:
+        n_font = ImageFont.truetype(CARDO_BOLD, 11)
+    except OSError:
+        n_font = ImageFont.load_default()
+    draw.text((rose_cx - 4, rose_cy - long_r - 13), "N", font=n_font, fill=yellow_ink)
 
-    # BR Saturn: tangerine disc + cyan ring.
-    saturn_cx, saturn_cy = width - 44, height - 40
-    saturn_r = 8
-    # Filled disc in red sentinel.
+    # BR Saturn (Saturnus). Proper banded gas giant with the Cassini
+    # division: a tangerine disc with a single navy "equatorial band"
+    # darkening the centre row, plus TWO concentric ring lines (outer
+    # + inner with a 1 px gap = Cassini division), drawn as 64-point
+    # polyline approximations rotated 18° to suggest the planet's
+    # axial tilt. The two rings paint in green sentinel and bbox-
+    # post-pass independently to cyan (G+B 1:1). The disc paints in
+    # red sentinel and post-passes to tangerine (R+Y 5/8:3/8). The
+    # bbox post-pass filters on its sentinel so the rings and disc
+    # don't collide.
+    saturn_cx, saturn_cy = width - 56, height - 48
+    saturn_r = 11
     draw.ellipse(
         (saturn_cx - saturn_r, saturn_cy - saturn_r,
          saturn_cx + saturn_r, saturn_cy + saturn_r),
         fill=red_ink,
     )
-    # Elliptical ring approximated as a 64-point polyline rotated 20°.
-    # Same rotation-matrix trick draw_atomic_border uses for its orbits.
-    ring_a = 16
-    ring_b = 6
-    angle = math.radians(20)
-    cos_a = math.cos(angle)
-    sin_a = math.sin(angle)
-    ring_points = []
-    n_points = 64
-    for i in range(n_points + 1):
-        t = 2.0 * math.pi * i / n_points
-        xu = ring_a * math.cos(t)
-        yu = ring_b * math.sin(t)
-        ring_points.append((
-            saturn_cx + xu * cos_a - yu * sin_a,
-            saturn_cy + xu * sin_a + yu * cos_a,
-        ))
-    draw.line(ring_points, fill=green_ink, width=1)
-
+    # Outer ring + inner ring (Cassini division 1 px between them).
+    angle = math.radians(18)
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    n_points = 96
+    for ring_a, ring_b in ((22, 8), (19, 6)):
+        ring_points = []
+        for i in range(n_points + 1):
+            t = 2.0 * math.pi * i / n_points
+            xu = ring_a * math.cos(t)
+            yu = ring_b * math.sin(t)
+            ring_points.append((
+                saturn_cx + xu * cos_a - yu * sin_a,
+                saturn_cy + xu * sin_a + yu * cos_a,
+            ))
+        draw.line(ring_points, fill=green_ink, width=1)
+    # Equatorial band — single horizontal dark line across the disc
+    # (deliberately drawn AFTER the disc so it cuts through the
+    # tangerine). Paint in black so it survives the disc post-pass.
+    band_y = saturn_cy + 1
+    draw.line(
+        (saturn_cx - saturn_r + 2, band_y, saturn_cx + saturn_r - 2, band_y),
+        fill=black_ink, width=1,
+    )
     # Saturn post-pass — bbox scoped to the corner. Two independent
     # sentinel filters (red → tangerine, green → cyan) inside the same
-    # bbox.
-    sat_x0 = max(0, saturn_cx - ring_a - 2)
-    sat_x1 = min(width, saturn_cx + ring_a + 3)
-    sat_y0 = max(0, saturn_cy - ring_a - 2)
-    sat_y1 = min(height, saturn_cy + ring_a + 3)
+    # bbox. The black band pixels match neither sentinel and survive.
+    sat_pad = 24
+    sat_x0 = max(0, saturn_cx - sat_pad)
+    sat_x1 = min(width, saturn_cx + sat_pad + 1)
+    sat_y0 = max(0, saturn_cy - sat_pad)
+    sat_y1 = min(height, saturn_cy + sat_pad + 1)
     for y in range(sat_y0, sat_y1):
         for x in range(sat_x0, sat_x1):
             px_val = pixels[x, y]
@@ -7553,6 +7724,28 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
                 pixels[x, y] = yellow_ink
             elif px_val == green_ink and (x + y) & 1:
                 pixels[x, y] = blue_ink
+
+    # ---- Layer 4b: Roman-numeral hour markers ----
+    # XII / III / VI / IX at the four cardinal page positions. Reads
+    # as a horological-astrolabe rim, the period instrument that
+    # married astronomy to timekeeping. Subtle (small italic Cardo
+    # at the very edges of the canvas) so it doesn't compete with
+    # the ornaments. Each numeral is positioned to sit clear of
+    # the corner ornaments and the body region.
+    try:
+        roman_font = ImageFont.truetype(CARDO_ITALIC, 12)
+    except OSError:
+        roman_font = ImageFont.load_default()
+    # XII — top centre. Offset right slightly so it clears the top
+    # Milky Way blob (centred at width/2 + 30) on its left side.
+    draw.text((width // 2 - 60, 4), "XII", font=roman_font, fill=white_ink)
+    # VI — bottom RIGHT of centre. The bottom Milky Way blob sits
+    # left-of-centre (width/2 - 60), so VI lives to the right of it.
+    draw.text((width // 2 + 60, height - 16), "VI", font=roman_font, fill=white_ink)
+    # III — right edge, vertically at the body horizontal centre.
+    draw.text((width - 16, height // 2 - 6), "III", font=roman_font, fill=white_ink)
+    # IX — left edge, mirroring III.
+    draw.text((4, height // 2 - 6), "IX", font=roman_font, fill=white_ink)
 
     # ---- Layer 5: Ecliptic arc ----
     # A shallow arc across the top margin: bbox that crosses near
