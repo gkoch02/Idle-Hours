@@ -9095,8 +9095,8 @@ def _astrarium_paint_datum_strip(
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
 
-    strip_top = height - 78
-    strip_bottom = height - 14
+    strip_top = height - 44
+    strip_bottom = height - 8
     # Top dashed rule (same dotted style as the header).
     for x in range(24, width - 24, 4):
         draw.point((x, strip_top), fill=BLACK)
@@ -9136,17 +9136,17 @@ def _astrarium_paint_datum_strip(
     panel_w = inner_width // len(panels)
     for i, (label, value, unit, value_color) in enumerate(panels):
         px0 = inner_left + i * panel_w
-        px1 = inner_left + (i + 1) * panel_w if i < len(panels) - 1 else inner_right
-        # Vertical separator.
+        # Vertical separator between panels.
         if i > 0:
-            for y in range(strip_top + 6, strip_bottom - 4, 2):
+            for y in range(strip_top + 4, strip_bottom, 2):
                 draw.point((px0, y), fill=BLACK)
-        # Label.
-        lbl_y = strip_top + 6
+        # Label on top.
+        lbl_y = strip_top + 4
         draw.text((px0 + 4, lbl_y), label, font=label_font, fill=BLACK)
-        # Value (bold) + unit beside it.
+        # Value (bold) + unit beside it, on a tighter baseline so the
+        # whole strip fits inside its 36-px band without a sparkline row.
         val_bbox = draw.textbbox((0, 0), value, font=value_font)
-        val_y = strip_top + 22
+        val_y = strip_top + 18
         draw.text((px0 + 4 - val_bbox[0], val_y - val_bbox[1]), value, font=value_font, fill=value_color)
         val_w = val_bbox[2] - val_bbox[0]
         unit_bbox = draw.textbbox((0, 0), unit, font=unit_font)
@@ -9154,15 +9154,6 @@ def _astrarium_paint_datum_strip(
             (px0 + 4 + val_w + 4 - unit_bbox[0], val_y + (val_bbox[3] - val_bbox[1]) - (unit_bbox[3] - unit_bbox[1]) - unit_bbox[1]),
             unit, font=unit_font, fill=BLACK,
         )
-        # Tiny inline glyph for variety — a few dots in the panel's
-        # bottom area suggesting a sparkline/indicator.
-        sparkline_y = strip_top + 52
-        for j in range(8):
-            sx = px0 + 4 + j * 7
-            if sx >= px1 - 8:
-                break
-            offset = int(2 * math.sin(j * 0.9 + i)) - 1
-            draw.point((sx, sparkline_y + offset), fill=BLACK)
 
 
 def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
@@ -9204,23 +9195,24 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
 
     # Dial centred in the left half. Use proportional positioning so
     # non-standard canvas sizes (thumbnails) still render the dial in
-    # the correct quadrant.
+    # the correct quadrant. The 50-px reserve below covers the datum
+    # strip (height − 44, plus a small breathing gap).
     dial_zone_w = int(width * 0.5)
     dial_cx = dial_zone_w // 2 + 8
-    dial_cy = 64 + (height - 64 - 78) // 2
+    dial_cy = 64 + (height - 64 - 50) // 2
     _astrarium_paint_dial(image, draw, dial_cx, dial_cy, time_str)
 
     # Quote panel in the right half.
     panel_left = int(width * 0.5) - 4
     panel_right = width - 24
     panel_top = 62
-    panel_bottom = height - 86
+    panel_bottom = height - 52
     _astrarium_paint_quote_panel(image, draw, quote_row, panel_left, panel_right, panel_top, panel_bottom)
 
     # Vertical hairline divider between the dial and the quote panel
     # (a faint dotted line, similar to the dashed header rule).
     div_x = int(width * 0.5)
-    for y in range(64, height - 82, 4):
+    for y in range(64, height - 48, 4):
         draw.point((div_x, y), fill=SPECTRA6["black"])
 
     # Bottom datum strip.
