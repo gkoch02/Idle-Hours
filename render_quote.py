@@ -7223,11 +7223,12 @@ def draw_kanagawa_border(
       row above. The deepest row picks up a navy stipple post-pass
       (B+K 1:1, the ``bauhaus`` matched-phrase recipe and the
       ``_draw_text_body`` matched-phrase routing for kanagawa).
-    * **Hanko seal** (bottom-right, ~26×30 px). Red filled rounded
-      rectangle with a stylised "kawa" (三 / three vertical strokes)
-      kanji in white; bbox post-pass flips half of red pixels per
-      ``(x+y)&1`` to black → maroon (R+K 1:1). White strokes paint
-      AFTER the post-pass so they stay solid.
+    * **Hanko seal** (bottom-right, ~32×38 px). Red filled rounded
+      rectangle with a stylised "kawa" (川 / three vertical strokes,
+      "river") kanji in 2 px white strokes; bbox post-pass flips
+      half of the red pixels per ``(x+y)&1`` to black → maroon
+      (R+K 1:1). White strokes paint AFTER the post-pass so they
+      stay solid against the surrounding maroon stipple.
 
     When ``clear_rect`` is provided (the standard render path —
     ``render()`` computes it from the body block's bounding rect like
