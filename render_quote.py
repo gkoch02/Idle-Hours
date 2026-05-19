@@ -9582,20 +9582,24 @@ def _astrarium_paint_datum_strip(
 ) -> None:
     """Paint the bottom datum strip — small panels with readouts that
     are actually derivable from the appliance's state (time of day,
-    date, loop health). The earlier draft also surfaced tide,
-    temperature, and atmospheric-pressure values to fill the mockup's
-    six-cell strip, but the appliance has no thermometer / barometer /
-    tide sensor, so those were hardcoded placeholders pretending to be
-    live readings. Cosmetic faux-sensor cards were removed entirely;
-    the three remaining cells are honest signals."""
+    date). The earlier draft also surfaced tide, temperature, and
+    atmospheric-pressure values to fill the mockup's six-cell strip,
+    but the appliance has no thermometer / barometer / tide sensor, so
+    those were hardcoded placeholders pretending to be live readings.
+    Cosmetic faux-sensor cards were removed entirely; the two remaining
+    cells are honest signals and sit under the left-half dial,
+    leaving the right half (under the quote panel) deliberately open
+    so the quote isn't crowded by chrome it doesn't need."""
     import math
     BLACK = SPECTRA6["black"]
-    RED = SPECTRA6["red"]
 
     strip_top = height - 44
     strip_bottom = height - 8
-    # Top dashed rule (same dotted style as the header).
-    for x in range(24, width - 24, 4):
+    # Top dashed rule (same dotted style as the header). Stops at the
+    # mid-divider — the right half of the strip is intentionally empty.
+    inner_left = 24
+    inner_right = width // 2
+    for x in range(inner_left, inner_right, 4):
         draw.point((x, strip_top), fill=BLACK)
 
     label_font = load_font(META_FONT_BOLD_CANDIDATES, size=9)
@@ -9624,11 +9628,8 @@ def _astrarium_paint_datum_strip(
     panels: list[tuple[str, str, str, tuple[int, int, int]]] = [
         ("SOLAR ELEVATION", f"{solar_elevation:.1f}", "°", BLACK),
         ("LUNAR PHASE", f"{int(moon_phase_pct)}", "%", BLACK),
-        ("SYSTEM STATUS", "OK", "·", RED),
     ]
 
-    inner_left = 24
-    inner_right = width - 24
     inner_width = inner_right - inner_left
     panel_w = inner_width // len(panels)
     for i, (label, value, unit, value_color) in enumerate(panels):
@@ -9672,9 +9673,9 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
       │         │ TUESDAY  │      began its career.                     │
       │         ╰──────────╯                                             │
       │                                                                │
-      │ ─────────────────────────────────────────────────────────────  │
-      │ SOLAR ELEV │ LUNAR │ TIDE │ TEMP │ ATMOS │ SYS STATUS           │
-      │   53.2°    │  18%  │14:47 │18.6° │1013hPa│    OK                │
+      │ ─────────────────────────────                                  │
+      │ SOLAR ELEVATION │ LUNAR PHASE │                                │
+      │      53.2°      │     18%     │                                │
       └────────────────────────────────────────────────────────────────┘
 
     Stays fully on the Spectra 6 palette: the four halftone ring
