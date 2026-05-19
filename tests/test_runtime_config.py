@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import run_clock
-import runtime_config
+from idle_hours import run_clock, runtime_config
 
 
 def _hhmm(value: str) -> str:
@@ -340,7 +339,7 @@ class TestRunClockIntegration:
         assert "not in allowed choices" in capsys.readouterr().err
 
     def test_shipped_example_loads_through_parse_args(self, monkeypatch):
-        """The committed ``assets/config.toml.example`` must load cleanly
+        """The committed ``idle_hours/assets/config.toml.example`` must load cleanly
         through the *real* parse_args pipeline (not just the loader),
         so type coercion + choices validation are exercised end-to-end.
 
@@ -349,8 +348,8 @@ class TestRunClockIntegration:
         doesn't exist in argparse, HH:MM value the validator rejects)
         and operators copy-paste a broken config.
         """
-        example = Path(__file__).resolve().parent.parent / "assets" / "config.toml.example"
-        assert example.exists(), "missing assets/config.toml.example"
+        example = Path(__file__).resolve().parent.parent / "idle_hours" / "assets" / "config.toml.example"
+        assert example.exists(), "missing idle_hours/assets/config.toml.example"
         monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", str(example)])
         args = run_clock.parse_args()
         # Spot-check that the example actually affected the namespace
@@ -365,28 +364,28 @@ class TestRunClockIntegration:
         Complements ``TestSchemaSync`` (which pins argparse ↔ schema) by
         pinning example ↔ schema. Without this, adding a typoed key to
         the example would warn at runtime but never fail a test."""
-        example = Path(__file__).resolve().parent.parent / "assets" / "config.toml.example"
+        example = Path(__file__).resolve().parent.parent / "idle_hours" / "assets" / "config.toml.example"
         import tomllib
         raw = tomllib.loads(example.read_text(encoding="utf-8"))
         unknown = set(raw.keys()) - set(runtime_config.CONFIG_SCHEMA.keys())
         assert not unknown, (
-            f"assets/config.toml.example has keys not in CONFIG_SCHEMA: "
+            f"idle_hours/assets/config.toml.example has keys not in CONFIG_SCHEMA: "
             f"{sorted(unknown)}"
         )
 
 
 class TestShippedDefaultsFile:
-    """``assets/config.toml.defaults`` is the faithful dump: every key set
+    """``idle_hours/assets/config.toml.defaults`` is the faithful dump: every key set
     to the argparse default. Copying it verbatim must be a no-op vs. no
     --config at all, so operators who want an explicit, reviewable
     reference can diff it against future upstream bumps.
     """
 
     def _defaults_path(self) -> Path:
-        return Path(__file__).resolve().parent.parent / "assets" / "config.toml.defaults"
+        return Path(__file__).resolve().parent.parent / "idle_hours" / "assets" / "config.toml.defaults"
 
     def test_file_exists(self):
-        assert self._defaults_path().exists(), "missing assets/config.toml.defaults"
+        assert self._defaults_path().exists(), "missing idle_hours/assets/config.toml.defaults"
 
     def test_loads_through_parse_args_without_warnings(self, monkeypatch, capsys):
         monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", str(self._defaults_path())])
@@ -442,6 +441,6 @@ class TestShippedDefaultsFile:
         }
         missing = expected - set(raw.keys())
         assert not missing, (
-            f"assets/config.toml.defaults missing schema keys with "
+            f"idle_hours/assets/config.toml.defaults missing schema keys with "
             f"non-None argparse defaults: {sorted(missing)}"
         )

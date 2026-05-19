@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-import buckets as bk
+from idle_hours import buckets as bk
 
 
 class TestMinuteBucket:

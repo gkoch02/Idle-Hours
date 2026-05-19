@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 
-import bucket_coverage as bc
-from bucket_coverage import build_summary, expected_buckets, render_markdown
+from idle_hours import bucket_coverage as bc
+from idle_hours.bucket_coverage import build_summary, expected_buckets, render_markdown
 from tests.conftest import make_row
 
 

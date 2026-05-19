@@ -15,7 +15,7 @@ up in the wrong bucket).
 """
 from __future__ import annotations
 
-import gutenberg_time_miner as miner
+from idle_hours import gutenberg_time_miner as miner
 
 
 def _first_candidate(text: str, match_type: str | None = None):

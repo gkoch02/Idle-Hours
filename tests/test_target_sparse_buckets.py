@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 
-import target_sparse_buckets as tsb
-from target_sparse_buckets import expected_targets, sentence_window, templates_for_bucket
+from idle_hours import target_sparse_buckets as tsb
+from idle_hours.target_sparse_buckets import expected_targets, sentence_window, templates_for_bucket
 
 
 class TestExpectedTargets:

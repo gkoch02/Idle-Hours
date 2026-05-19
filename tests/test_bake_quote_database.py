@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-import bake_quote_database as bq
-import pick_quote
+from idle_hours import bake_quote_database as bq
+from idle_hours import pick_quote
 from tests.conftest import make_row
 
 
@@ -213,8 +213,7 @@ class TestMain:
         output_path = tmp_path / "quote_database.jsonl"
         output_path.write_text('{"sentinel": true}\n', encoding="utf-8")
 
-        import atomic_io
-
+        from idle_hours import atomic_io
         def boom(*args, **kwargs):
             raise OSError("simulated disk full")
 

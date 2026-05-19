@@ -38,7 +38,7 @@ from collections import Counter
 
 import pytest
 
-import pick_quote
+from idle_hours import pick_quote
 
 BUCKET = "h3_exact"
 TIME = "03:00"

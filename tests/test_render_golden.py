@@ -53,7 +53,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageChops
 
-import render_quote as rq
+from idle_hours import render_quote as rq
 
 GOLDEN_DIR = Path(__file__).parent / "golden" / "renderer"
 

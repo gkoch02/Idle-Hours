@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from import_targeted_hits import minute_for_bucket, row_from_targeted
+from idle_hours.import_targeted_hits import minute_for_bucket, row_from_targeted
 
 
 class TestMinuteForBucket:
@@ -128,7 +128,7 @@ class TestMain:
     def test_converts_rows(self, tmp_path):
         import sys
 
-        from import_targeted_hits import main
+        from idle_hours.import_targeted_hits import main
 
         raw = {
             "resolved_bucket": "h3_exact",

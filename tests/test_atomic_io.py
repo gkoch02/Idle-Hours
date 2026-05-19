@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import atomic_io
+from idle_hours import atomic_io
 
 
 class TestAtomicWriteText:

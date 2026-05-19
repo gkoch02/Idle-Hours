@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-import idle_hours_cli
+from idle_hours import idle_hours_cli
 
 
 def _fake_module(main_fn):
@@ -69,11 +69,11 @@ class TestHelpAndDispatch:
         # We patch importlib so we don't actually run the heavy backing module;
         # the lazy-import contract is exactly what we want to verify.
         fake_module = _fake_module(lambda: 0)
-        with patch("idle_hours_cli.importlib.import_module", return_value=fake_module) as imp:
+        with patch("idle_hours.idle_hours_cli.importlib.import_module", return_value=fake_module) as imp:
             rc = idle_hours_cli.main(["pick", "--time", "03:00"])
         assert rc == 0
-        # SUBCOMMANDS["pick"][0] is "pick_quote"
-        imp.assert_called_once_with("pick_quote")
+        # SUBCOMMANDS["pick"][0] is "idle_hours.pick_quote"
+        imp.assert_called_once_with("idle_hours.pick_quote")
 
     def test_dispatch_rewrites_sys_argv_for_backing_main(self):
         """The backing module's parse_args() reads sys.argv directly; we have
@@ -87,7 +87,7 @@ class TestHelpAndDispatch:
         fake_module = _fake_module(fake_main)
         original_argv = sys.argv
         try:
-            with patch("idle_hours_cli.importlib.import_module", return_value=fake_module):
+            with patch("idle_hours.idle_hours_cli.importlib.import_module", return_value=fake_module):
                 idle_hours_cli.main(["render", "--time", "12:00", "--mode", "debug"])
             # argv[0] becomes the umbrella + subcommand name; the rest is
             # forwarded verbatim.
@@ -97,14 +97,14 @@ class TestHelpAndDispatch:
             sys.argv = original_argv
 
     def test_main_propagates_int_return(self):
-        with patch("idle_hours_cli.importlib.import_module", return_value=_fake_module(lambda: 42)):
+        with patch("idle_hours.idle_hours_cli.importlib.import_module", return_value=_fake_module(lambda: 42)):
             rc = idle_hours_cli.main(["health"])
         assert rc == 42
 
     def test_main_normalises_none_return_to_zero(self):
         """Many existing scripts return None (success). Don't surface that as
         ``raise SystemExit(None)`` — normalise to 0."""
-        with patch("idle_hours_cli.importlib.import_module", return_value=_fake_module(lambda: None)):
+        with patch("idle_hours.idle_hours_cli.importlib.import_module", return_value=_fake_module(lambda: None)):
             rc = idle_hours_cli.main(["health"])
         assert rc == 0
 
@@ -112,7 +112,7 @@ class TestHelpAndDispatch:
         """A SUBCOMMANDS pointer to a module without a main() is a packaging
         bug; we surface it loudly rather than crashing with AttributeError."""
         broken = types.SimpleNamespace()  # no .main attribute
-        with patch("idle_hours_cli.importlib.import_module", return_value=broken):
+        with patch("idle_hours.idle_hours_cli.importlib.import_module", return_value=broken):
             with pytest.raises(SystemExit):
                 idle_hours_cli.main(["pick"])
 
@@ -150,7 +150,7 @@ class TestEntryPoint:
         with open(repo_root / "pyproject.toml", "rb") as handle:
             config = tomllib.load(handle)
         scripts = config.get("project", {}).get("scripts", {})
-        assert scripts.get("idle-hours") == "idle_hours_cli:main", (
-            "pyproject.toml must declare [project.scripts] idle-hours = 'idle_hours_cli:main'; "
+        assert scripts.get("idle-hours") == "idle_hours.idle_hours_cli:main", (
+            "pyproject.toml must declare [project.scripts] idle-hours = 'idle_hours.idle_hours_cli:main'; "
             "without it `pip install` won't register the umbrella command on the appliance."
         )

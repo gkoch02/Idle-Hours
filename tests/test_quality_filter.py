@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-import quality_filter as qf
+from idle_hours import quality_filter as qf
 from tests.conftest import make_row
 
 

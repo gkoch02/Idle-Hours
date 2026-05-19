@@ -28,8 +28,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import pick_quote
-import run_clock
+from idle_hours import pick_quote, run_clock
 
 
 def _args(tmp_path: Path, **overrides) -> argparse.Namespace:
@@ -260,14 +259,14 @@ class TestActionThemeToggleArithmetic:
     THEME_ORDER revisit the head exactly."""
 
     def test_n_sequential_presses_return_to_head_of_cycle(self, tmp_path):
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         args = _args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = rq.THEME_ORDER[0]
 
-        with patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             for _ in range(len(rq.THEME_ORDER)):
                 result = run_clock.action_theme(args, state, label="test")
                 assert result["ok"] is True

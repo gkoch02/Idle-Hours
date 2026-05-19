@@ -20,7 +20,7 @@ from collections import Counter
 
 import pytest
 
-import pick_quote
+from idle_hours import pick_quote
 
 BUCKET = "h3_exact"
 TIME = "03:00"
@@ -240,7 +240,7 @@ class TestBakedRawEquivalence:
         """Produce a baked version of ``row`` via the same primitive the
         baker uses, so we test the compose/score pair without writing a
         file."""
-        import bake_quote_database
+        from idle_hours import bake_quote_database
         baked = dict(row)
         baked["baked_score"] = bake_quote_database._static_score(row, counts)
         baked["inferred_quote_minute"] = pick_quote.infer_quote_minute(row)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-import merge_candidates as mc
+from idle_hours import merge_candidates as mc
 from tests.conftest import make_row
 
 # ---------------------------------------------------------------------------

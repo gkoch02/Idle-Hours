@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from buckets import BUCKET_ORDER, bucket_for_time, minute_bucket
+from idle_hours.buckets import BUCKET_ORDER, bucket_for_time, minute_bucket
 
 CORPUS_PATH = Path(__file__).resolve().parent.parent / "assets" / "candidates-attributed.jsonl"
 
@@ -256,7 +256,7 @@ class TestBakedDatabaseInvariants:
     def test_every_row_has_valid_bucket(self, baked_rows):
         """Baking drops all daypart-only rows; every kept row routes to a
         concrete h{1..12}_{state} bucket."""
-        from pick_quote import valid_bucket_names
+        from idle_hours.pick_quote import valid_bucket_names
         valid = valid_bucket_names()
         for row in baked_rows:
             bucket = row.get("fuzzy_bucket")

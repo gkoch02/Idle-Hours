@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-import runtime_webhook
+from idle_hours import runtime_webhook
 
 
 @pytest.fixture(autouse=True)
@@ -122,13 +122,13 @@ class TestAlertFilter:
 class TestPostEvent:
     def test_no_url_is_noop(self):
         """Empty URL must not spawn a thread or call urlopen."""
-        with patch("runtime_webhook._post_blocking") as blocking:
+        with patch("idle_hours.runtime_webhook._post_blocking") as blocking:
             runtime_webhook.post_event(None, {"error": "x"})
         blocking.assert_not_called()
 
     def test_filtered_event_is_noop(self):
         """A successful render must not POST even when a URL is configured."""
-        with patch("runtime_webhook._post_blocking") as blocking:
+        with patch("idle_hours.runtime_webhook._post_blocking") as blocking:
             runtime_webhook.post_event(
                 "https://x.test/h", {"render_ms": 120, "mode": "debug"},
             )
@@ -143,7 +143,7 @@ class TestPostEvent:
         def fake_blocking(url, entry, timeout):
             called.set()
 
-        with patch("runtime_webhook._post_blocking", side_effect=fake_blocking):
+        with patch("idle_hours.runtime_webhook._post_blocking", side_effect=fake_blocking):
             runtime_webhook.post_event("https://x.test/h", {"error": "render failed"})
             assert called.wait(timeout=2), "_post_blocking was not called within timeout"
 
@@ -156,7 +156,7 @@ class TestPostEvent:
         def fake_blocking(url, entry, timeout):
             seen_daemon.append(threading.current_thread().daemon)
 
-        with patch("runtime_webhook._post_blocking", side_effect=fake_blocking):
+        with patch("idle_hours.runtime_webhook._post_blocking", side_effect=fake_blocking):
             runtime_webhook.post_event("https://x.test/h", {"error": "x"})
             _wait_for_threads()
         assert seen_daemon == [True]
@@ -171,7 +171,7 @@ class TestPostEvent:
 
         # Custom alert_modes that ONLY listens for "skip" actions; a real
         # backoff entry should be filtered out.
-        with patch("runtime_webhook._post_blocking", side_effect=fake_blocking):
+        with patch("idle_hours.runtime_webhook._post_blocking", side_effect=fake_blocking):
             runtime_webhook.post_event(
                 "https://x.test/h",
                 {"mode": "backoff", "failures": 6},
@@ -201,7 +201,7 @@ class TestPostBlocking:
             captured["timeout"] = timeout
             return FakeResponse()
 
-        with patch("runtime_webhook.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("idle_hours.runtime_webhook.urllib.request.urlopen", side_effect=fake_urlopen):
             runtime_webhook._post_blocking("https://x.test/h", {"error": "boom"}, 5.0)
 
         assert captured["url"] == "https://x.test/h"
@@ -219,7 +219,7 @@ class TestPostBlocking:
             raise urllib.error.URLError("connection refused")
 
         # Should not raise.
-        with patch("runtime_webhook.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("idle_hours.runtime_webhook.urllib.request.urlopen", side_effect=fake_urlopen):
             runtime_webhook._post_blocking("https://x.test/h", {"error": "boom"}, 5.0)
 
         # Stderr should mention the failure so an operator can grep for it.
@@ -298,7 +298,7 @@ class TestConcurrencyCap:
         for _ in range(runtime_webhook._WEBHOOK_MAX_INFLIGHT):
             assert runtime_webhook._inflight_semaphore.acquire(blocking=False)
         try:
-            with patch("runtime_webhook._post_blocking") as blocking:
+            with patch("idle_hours.runtime_webhook._post_blocking") as blocking:
                 runtime_webhook.post_event(
                     "https://x.test/h", {"error": "storm"},
                 )
@@ -318,7 +318,7 @@ class TestConcurrencyCap:
         def fake_blocking(url, entry, timeout):
             completed.set()
 
-        with patch("runtime_webhook._post_blocking", side_effect=fake_blocking):
+        with patch("idle_hours.runtime_webhook._post_blocking", side_effect=fake_blocking):
             runtime_webhook.post_event("https://x.test/h", {"error": "x"})
             assert completed.wait(timeout=2)
         # Wait for the wrapper's finally to run — give the thread a moment
@@ -336,7 +336,7 @@ class TestConcurrencyCap:
         permit must still be returned (defensive — _post_blocking already
         swallows everything internally, but the wrapper's finally is the
         safety net)."""
-        with patch("runtime_webhook._post_blocking", side_effect=RuntimeError("boom")):
+        with patch("idle_hours.runtime_webhook._post_blocking", side_effect=RuntimeError("boom")):
             runtime_webhook.post_event("https://x.test/h", {"error": "x"})
         # Permit eventually returned.
         deadline = time.monotonic() + 1.0

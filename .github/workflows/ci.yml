@@ -73,7 +73,7 @@ jobs:
         if: matrix.python-version == '3.12'
         env:
           COVERAGE_CORE: sysmon
-        run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=. --cov-report=term-missing --cov-report=xml
+        run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=idle_hours --cov-report=term-missing --cov-report=xml
 
       - name: End-to-end --once smoke (verifies rendered PNG decodes)
         # One Python version is enough — the existing test job already exercises
@@ -84,7 +84,7 @@ jobs:
         # has no display script on the configured path.
         if: matrix.python-version == '3.12'
         run: |
-          python run_clock.py --once --skip-preflight --buttons-off --quiet-off \
+          python -m idle_hours.run_clock --once --skip-preflight --buttons-off --quiet-off \
             --history-path "" --state-path "" --pidfile "" --telemetry-path "" \
             --mode production
           python -c "from PIL import Image; im = Image.open('output/current.png'); im.verify(); im.close(); print('PNG OK')"
@@ -122,19 +122,25 @@ jobs:
   package-build:
     # Builds a wheel + sdist from pyproject.toml and installs the wheel into
     # a fresh venv with NO extras (no ``[dev]``, no ``[pi]``). Then imports
-    # every production module from the installed wheel and runs
-    # ``python -m run_clock --help`` as a canonical entrypoint smoke. This
-    # catches three install-time failure modes that the rest of CI (which
-    # uses ``pip install -e .``) cannot see:
+    # every production module from the installed wheel, confirms the
+    # ``idle_hours/`` package data (assets / fonts / web) shipped, and runs
+    # ``python -m idle_hours.run_clock --help`` as a canonical entrypoint
+    # smoke. This catches install-time failure modes that the rest of CI
+    # (which uses ``pip install -e .``) cannot see:
     #
-    #   1. Modules missing from ``[tool.setuptools] py-modules`` — the wheel
-    #      ships only what's listed there. A missing entry produces a wheel
-    #      that crashes on first ``import``.
-    #   2. Optional-dep leakage at module import time — if any module hoists
+    #   1. Modules missing from the package (``packages.find`` misconfig).
+    #      The wheel ships exactly what setuptools picked up; a module that
+    #      slipped out of the package directory would crash on first import.
+    #   2. ``package-data`` missing or wrong patterns — without the bundled
+    #      assets the curator UI 404s, the renderer falls back to bitmap
+    #      fonts, and the corpus can't load. The data-file check below is
+    #      the single guard against that regression.
+    #   3. Optional-dep leakage at module import time — if any module hoists
     #      an ``import gpiozero`` / ``import inky`` from a function body to
     #      the top of the file, the wheel becomes unusable on non-Pi hosts.
-    #   3. Broken ``__main__`` wiring — ``python -m run_clock`` only resolves
-    #      against installed top-level modules, not the source checkout.
+    #   4. Broken ``__main__`` wiring — ``python -m idle_hours.run_clock``
+    #      only resolves against installed top-level modules, not the
+    #      source checkout.
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -162,14 +168,15 @@ jobs:
       - name: Import every production module from the installed wheel
         # Run from /tmp, not the repo root: when Python starts, ``sys.path[0]``
         # is the CWD, so a step run from the checkout would resolve
-        # ``import run_clock`` to ``./run_clock.py`` BEFORE the installed
-        # wheel — defeating the whole point of this job. ``cd /tmp`` forces
-        # imports to come from site-packages.
+        # ``idle_hours`` against ``./idle_hours/`` BEFORE the installed wheel —
+        # defeating the whole point of this job. ``cd /tmp`` forces imports
+        # to come from site-packages.
         working-directory: /tmp
         run: |
           /tmp/whlcheck/bin/python - <<'PY'
           import importlib
           import sys
+          from pathlib import Path
 
           MODULES = [
               "apply_content_overrides", "atomic_io", "bake_quote_database",
@@ -182,12 +189,15 @@ jobs:
               "pidfile", "probe_buttons", "quality_filter", "render_quote",
               "run_clock", "runtime_actions", "runtime_config", "runtime_log",
               "runtime_quiet", "runtime_state", "runtime_store",
-              "runtime_telemetry", "runtime_theme", "sd_notify",
-              "target_sparse_buckets", "web_server",
+              "runtime_telemetry", "runtime_theme", "runtime_webhook",
+              "sd_notify", "target_sparse_buckets", "theme_names",
+              "web_server",
           ]
           site_packages = "/tmp/whlcheck/lib"
+          import idle_hours
+          package_root = Path(idle_hours.__file__).resolve().parent
           for name in MODULES:
-              mod = importlib.import_module(name)
+              mod = importlib.import_module(f"idle_hours.{name}")
               # Defence in depth: confirm the import resolved to the installed
               # wheel, not a stray copy on sys.path. If this assertion ever
               # fires the working-directory above is wrong.
@@ -196,15 +206,37 @@ jobs:
                   f"expected something under {site_packages!r}"
               )
 
+          # package-data invariants — the wheel must ship the bundled fonts,
+          # corpus, and curator-UI assets next to the Python modules so a
+          # bare ``pip install`` produces a working install.
+          for sub in ("assets", "fonts", "web"):
+              path = package_root / sub
+              assert path.is_dir(), (
+                  f"package-data {sub!r} missing from installed wheel at "
+                  f"{path}. Check [tool.setuptools.package-data] in pyproject.toml."
+              )
+          assert (package_root / "assets" / "quote_database.jsonl").exists(), (
+              "baked corpus missing from wheel — runtime picker will fail."
+          )
+          assert (package_root / "web" / "index.html").exists(), (
+              "curator UI missing from wheel — /api endpoints would 404."
+          )
+
           forbidden = ("gpiozero", "inky", "RPi")
           leaked = sorted(m for m in sys.modules if m.split(".", 1)[0] in forbidden)
           assert leaked == [], f"hardware deps leaked into sys.modules: {leaked}"
-          print(f"OK: {len(MODULES)} modules importable from installed wheel; no leakage")
+          print(f"OK: {len(MODULES)} modules importable from installed wheel; assets present; no leakage")
           PY
 
       - name: Smoke-test installed entrypoint
         # Same ``working-directory`` reasoning as above — without it,
-        # ``python -m run_clock`` would resolve against the source checkout
-        # instead of the wheel.
+        # ``python -m idle_hours.run_clock`` would resolve against the source
+        # checkout instead of the wheel.
         working-directory: /tmp
-        run: /tmp/whlcheck/bin/python -m run_clock --help
+        run: /tmp/whlcheck/bin/python -m idle_hours.run_clock --help
+
+      - name: Smoke-test console script
+        # The wheel registers ``idle-hours`` via [project.scripts]; verify
+        # the entry-point wires through to the SUBCOMMANDS dispatcher.
+        working-directory: /tmp
+        run: /tmp/whlcheck/bin/idle-hours --help

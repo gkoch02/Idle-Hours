@@ -17,9 +17,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-import pick_quote
-import run_clock
-import web_server
+from idle_hours import pick_quote, run_clock, web_server
 
 
 def _make_args(tmp_path: Path, **overrides) -> argparse.Namespace:
@@ -371,7 +369,7 @@ class TestReadEndpoints:
             state.last_quote_id = ("141", 482, "hello world", "three o'clock")
             state.last_bucket = "h3_exact"
             state.last_effective_theme = "default"
-        with patch("run_clock.current_time_str", return_value="03:00"):
+        with patch("idle_hours.run_clock.current_time_str", return_value="03:00"):
             status, body = _get(server, "/api/current")
         assert status == 200
         data = _json_body(body)
@@ -385,7 +383,7 @@ class TestReadEndpoints:
 
     def test_api_current_handles_no_quote(self, live_server):
         server, _state, _args = live_server
-        with patch("run_clock.current_time_str", return_value="12:00"):
+        with patch("idle_hours.run_clock.current_time_str", return_value="12:00"):
             status, body = _get(server, "/api/current")
         assert status == 200
         data = _json_body(body)
@@ -397,7 +395,7 @@ class TestReadEndpoints:
         # Write one successful render entry via date-rotated sidecar.
         import datetime as dt
 
-        import idle_hours_health  # noqa: F401  (sanity that it imports)
+        from idle_hours import idle_hours_health  # noqa: F401  (sanity that it imports)
         today = dt.datetime.now().strftime("%Y%m%d")
         rotated = Path(args.telemetry_path).with_name(
             f"{Path(args.telemetry_path).stem}-{today}.jsonl"
@@ -463,7 +461,7 @@ class TestReadEndpoints:
         cycle list, the CLI ``theme_arg``, and either the manual override
         or the auto-resolved effective theme. Pin the shape so the UI
         doesn't silently break when a new field is added or renamed."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         server, state, _args = live_server
         with state.lock:
             state.manual_theme = "scholar"
@@ -497,7 +495,7 @@ class TestReadEndpoints:
                 "is_winner": True,
             },
         ]
-        with patch("pick_quote.select_candidates", return_value=fake):
+        with patch("idle_hours.pick_quote.select_candidates", return_value=fake):
             status, body = _get(server, "/api/bucket/h3_exact?top=5")
         assert status == 200
         data = _json_body(body)
@@ -513,7 +511,7 @@ class TestReadEndpoints:
 
     def test_api_bucket_swallows_systemexit(self, live_server):
         server, _, _ = live_server
-        with patch("pick_quote.select_candidates", side_effect=SystemExit("no candidates")):
+        with patch("idle_hours.pick_quote.select_candidates", side_effect=SystemExit("no candidates")):
             status, body = _get(server, "/api/bucket/h3_exact")
         assert status == 404
         assert "no candidates" in _json_body(body)["error"]
@@ -594,7 +592,7 @@ class TestActionEndpointsLocking:
     def _patch_render(self):
         """Context that stubs _render_unlocked + pick so actions don't shell out."""
         return patch.multiple(
-            "run_clock",
+            "idle_hours.run_clock",
             _render_unlocked=lambda args, state, time_str, history_path, **kw: None,
             peek_quote_id=lambda ts, **kw: ("141", 1, "hello", "three o'clock"),
         )
@@ -761,8 +759,8 @@ class TestActionEndpointsLocking:
         def fake_render(*a, **kw):
             rendered["count"] += 1
 
-        with patch("run_clock._render_unlocked", side_effect=fake_render), \
-             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.run_clock._render_unlocked", side_effect=fake_render), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, body = _post(server, "/api/action/quiet")
         assert status == 200
         assert _json_body(body)["manual_quiet"] is False
@@ -775,9 +773,9 @@ class TestActionEndpointsLocking:
         def fake_render(_args, _state, time_str, _hp, bucket=None, quote_id=None, **_kw):
             calls.append((time_str, bucket, quote_id))
 
-        with patch("run_clock._render_unlocked", side_effect=fake_render), \
-             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")), \
-             patch("run_clock.current_time_str", return_value="03:15"):
+        with patch("idle_hours.run_clock._render_unlocked", side_effect=fake_render), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="03:15"):
             status, body = _post(server, "/api/action/rerender")
         assert status == 200
         data = _json_body(body)
@@ -810,7 +808,7 @@ class TestActionEndpointsLocking:
 
     def test_action_exception_returns_500(self, live_server):
         server, _state, _args = live_server
-        with patch("run_clock._render_unlocked", side_effect=RuntimeError("boom")):
+        with patch("idle_hours.run_clock._render_unlocked", side_effect=RuntimeError("boom")):
             status, body = _post(server, "/api/action/theme")
         assert status == 500
         assert "boom" in _json_body(body)["error"]
@@ -894,7 +892,7 @@ class TestOverrideValidation:
             path.write_text(payload)
 
         target = tmp_path / "overrides.json"
-        with patch("atomic_io.atomic_write_text", side_effect=fake):
+        with patch("idle_hours.atomic_io.atomic_write_text", side_effect=fake):
             web_server.write_overrides_atomic(target, {"ban_source_ids": []})
         assert called["n"] == 1
         assert target.exists()
@@ -942,8 +940,8 @@ class TestOverrideValidation:
 class TestAuth:
     def test_localhost_bind_allows_post_without_token(self, live_server):
         server, _, _ = live_server
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, _ = _post(server, "/api/action/theme")
         assert status == 200
 
@@ -973,8 +971,8 @@ class TestAuth:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            with patch("run_clock._render_unlocked"), \
-                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.run_clock._render_unlocked"), \
+                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/theme",
                     headers={"X-Idle-Hours-Token": "secret"},
@@ -1104,7 +1102,7 @@ class TestErrorBranches:
     def test_get_handler_exception_returns_500(self, tmp_path, live_server, monkeypatch):
         """Force _api_current to blow up and assert we return 500 (not crash the server)."""
         server, _, _ = live_server
-        import run_clock as rc
+        from idle_hours import run_clock as rc
         monkeypatch.setattr(rc, "current_time_str", lambda: (_ for _ in ()).throw(RuntimeError("clock fail")))
         status, body = _get(server, "/api/current")
         assert status == 500
@@ -1218,8 +1216,8 @@ class TestWebAuthFailTelemetry:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            with patch("run_clock._render_unlocked"), \
-                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.run_clock._render_unlocked"), \
+                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/theme",
                     headers={"X-Idle-Hours-Token": "secret"},
@@ -1328,8 +1326,8 @@ class TestRenderLockContention:
         try:
             state.render_lock.acquire()
             state.render_lock.release()
-            with patch("run_clock._render_unlocked"), \
-                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.run_clock._render_unlocked"), \
+                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, body = _post(server, "/api/action/rerender", {})
             assert status == 200, f"expected 200 after release, got {status}: {body!r}"
         finally:
@@ -1360,7 +1358,7 @@ class TestTokenComparison:
                 calls.append((a, b))
                 return real_compare(a, b)
 
-            monkeypatch.setattr("web_server.hmac.compare_digest", spy)
+            monkeypatch.setattr("idle_hours.web_server.hmac.compare_digest", spy)
 
             status, _ = _post(
                 server, "/api/action/theme",
@@ -1378,8 +1376,8 @@ class TestTokenComparison:
         suddenly requires a token would break every existing local install."""
         server, thread, _state, _args = _start(tmp_path, token="")
         try:
-            with patch("run_clock._render_unlocked"), \
-                 patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.run_clock._render_unlocked"), \
+                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(server, "/api/action/rerender", {})
             assert status == 200
         finally:
@@ -1778,7 +1776,7 @@ class TestApiPreview:
             "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
             "source_id": "141", "line_number": 42,
         }
-        with patch("pick_quote.select_quote", return_value=fake_row):
+        with patch("idle_hours.pick_quote.select_quote", return_value=fake_row):
             status, body = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
         assert status == 200
         # Spectra 6 PNG signature.
@@ -1834,14 +1832,14 @@ class TestApiPreview:
             "normalized_time": "00:00", "fuzzy_bucket": "h12_exact",
             "source_id": "1", "line_number": 1,
         }
-        with patch("pick_quote.select_quote", return_value=fake_row):
+        with patch("idle_hours.pick_quote.select_quote", return_value=fake_row):
             for boundary in ("00:00", "23:59"):
                 status, _body = _get(server, f"/api/preview?theme=default&time={boundary}")
                 assert status == 200, f"{boundary} should be accepted"
 
     def test_preview_swallows_picker_failure(self, v2_server):
         server, _state, _args = v2_server
-        with patch("pick_quote.select_quote", side_effect=SystemExit("no picks")):
+        with patch("idle_hours.pick_quote.select_quote", side_effect=SystemExit("no picks")):
             status, body = _get(server, "/api/preview?theme=default&time=03:00")
         assert status == 404
 
@@ -1855,8 +1853,8 @@ class TestApiPreview:
             "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
             "source_id": "1", "line_number": 1,
         }
-        with patch("pick_quote.select_quote", return_value=fake_row), \
-             patch("render_quote.render", side_effect=RuntimeError("pillow exploded")):
+        with patch("idle_hours.pick_quote.select_quote", return_value=fake_row), \
+             patch("idle_hours.render_quote.render", side_effect=RuntimeError("pillow exploded")):
             status, body = _get(server, "/api/preview?theme=default&time=03:00")
         assert status == 500
 
@@ -1870,8 +1868,8 @@ class TestApiPreview:
         }
         image = Image.new("RGB", (1, 1), "white")
         with (
-            patch("pick_quote.select_quote", return_value=fake_row),
-            patch("render_quote.render", return_value=image) as render,
+            patch("idle_hours.pick_quote.select_quote", return_value=fake_row),
+            patch("idle_hours.render_quote.render", return_value=image) as render,
         ):
             status, body = _get(server, "/api/preview?theme=default&time=03:00&width=100000&height=100000")
         # Should not OOM — verify the untrusted request was capped before render.
@@ -2079,8 +2077,8 @@ class TestApiSetup:
         # action_theme returns ok=True only if it can render — patch the
         # render path (run_clock._render_unlocked) so we don't actually
         # invoke pillow / pick_quote here.
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, body = _post(server, "/api/setup", {"theme": "scholar"})
         assert status == 200, _json_body(body)
         data = _json_body(body)
@@ -2091,8 +2089,8 @@ class TestApiSetup:
 
     def test_post_rejects_unknown_theme(self, live_server):
         server, _state, _args = live_server
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, body = _post(server, "/api/setup", {"theme": "imaginary-theme"})
         assert status == 400
         assert "unknown theme" in _json_body(body)["error"]
@@ -2118,7 +2116,7 @@ class TestApiSetup:
         ``setup_complete`` — closing the wizard while the panel still shows
         the old theme is confusing UX. Operator's next click retries."""
         server, state, args = live_server
-        with patch("run_clock.action_theme", return_value={"ok": False, "error": "busy"}):
+        with patch("idle_hours.run_clock.action_theme", return_value={"ok": False, "error": "busy"}):
             status, body = _post(server, "/api/setup", {"theme": "scholar"})
         assert status == 409, _json_body(body)
         data = _json_body(body)
@@ -2135,7 +2133,7 @@ class TestApiSetup:
     def test_post_does_not_complete_when_theme_apply_5xx(self, live_server):
         """Generic theme-handler exception → 500 + setup stays incomplete."""
         server, state, _args = live_server
-        with patch("run_clock.action_theme",
+        with patch("idle_hours.run_clock.action_theme",
                    return_value={"ok": False, "error": "RuntimeError('boom')"}):
             status, body = _post(server, "/api/setup", {"theme": "scholar"})
         assert status == 500
@@ -2148,7 +2146,7 @@ class TestApiSetup:
         """If state.json write fails, we keep the in-memory flag flipped
         for the current session and log. Operator can fix the disk later."""
         server, state, _args = live_server
-        with patch("runtime_store.save_runtime_state", side_effect=OSError("disk full")):
+        with patch("idle_hours.runtime_store.save_runtime_state", side_effect=OSError("disk full")):
             status, body = _post(server, "/api/setup", {})
         assert status == 200, _json_body(body)
         assert _json_body(body)["setup_complete"] is True
@@ -2164,11 +2162,10 @@ class TestTelemetryWebhookFanout:
     def test_append_telemetry_calls_webhook_when_configured(self, tmp_path):
         """append_telemetry reads the module-level webhook config; an error
         entry should fan out to the webhook on a daemon thread."""
-        import runtime_telemetry
-        import runtime_webhook
+        from idle_hours import runtime_telemetry, runtime_webhook
         runtime_webhook.configure("https://x.test/h")
         try:
-            with patch("runtime_webhook.post_event") as post:
+            with patch("idle_hours.runtime_webhook.post_event") as post:
                 runtime_telemetry.append_telemetry(
                     str(tmp_path / "telemetry.jsonl"),
                     {"error": "boom", "bucket": "h3_exact"},
@@ -2182,10 +2179,9 @@ class TestTelemetryWebhookFanout:
 
     def test_append_telemetry_skips_webhook_when_unconfigured(self, tmp_path):
         """An unconfigured webhook URL must not fire post_event at all."""
-        import runtime_telemetry
-        import runtime_webhook
+        from idle_hours import runtime_telemetry, runtime_webhook
         runtime_webhook.configure(None)
-        with patch("runtime_webhook.post_event") as post:
+        with patch("idle_hours.runtime_webhook.post_event") as post:
             runtime_telemetry.append_telemetry(
                 str(tmp_path / "telemetry.jsonl"),
                 {"error": "boom"},

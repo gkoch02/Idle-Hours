@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-import sd_notify
+from idle_hours import sd_notify
 
 
 @pytest.fixture(autouse=True)
@@ -156,7 +156,7 @@ class TestMainLoopReadyNotification:
     only gets ``READY=1`` once the appliance is actually able to respond."""
 
     def test_notify_ready_called_before_first_tick(self, tmp_path):
-        import run_clock
+        from idle_hours import run_clock
         argv = [
             "run_clock.py",
             "--output", str(tmp_path / "current.png"),
@@ -178,12 +178,12 @@ class TestMainLoopReadyNotification:
             raise KeyboardInterrupt
 
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "m")), \
-             patch("run_clock.current_bucket", return_value="h3_exact"), \
-             patch("run_clock.current_time_str", return_value="12:00"), \
-             patch("run_clock._loop_sleep", side_effect=stop_immediately), \
-             patch("sd_notify.notify_ready") as mock_ready:
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "m")), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h3_exact"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=stop_immediately), \
+             patch("idle_hours.sd_notify.notify_ready") as mock_ready:
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert mock_ready.called, "main() must send READY=1 so Type=notify units come up"
@@ -197,27 +197,27 @@ class TestHeartbeatPingsWatchdog:
     """
 
     def test_heartbeat_emits_watchdog(self, tmp_path):
-        import run_clock
+        from idle_hours import run_clock
         state = run_clock.RuntimeState("default")
         telemetry_base = tmp_path / "telemetry.jsonl"
-        with patch("sd_notify.notify_watchdog") as mock_watchdog:
+        with patch("idle_hours.sd_notify.notify_watchdog") as mock_watchdog:
             run_clock._maybe_emit_heartbeat(state, str(telemetry_base))
         assert mock_watchdog.called
 
     def test_throttled_heartbeat_does_not_emit_watchdog(self, tmp_path):
         """Throttle applies to BOTH the telemetry write AND the watchdog ping."""
-        import run_clock
+        from idle_hours import run_clock
         state = run_clock.RuntimeState("default")
         telemetry_base = tmp_path / "telemetry.jsonl"
-        with patch("sd_notify.notify_watchdog") as mock_watchdog:
+        with patch("idle_hours.sd_notify.notify_watchdog") as mock_watchdog:
             for _ in range(3):
                 run_clock._maybe_emit_heartbeat(state, str(telemetry_base))
         assert mock_watchdog.call_count == 1
 
     def test_watchdog_fires_even_when_telemetry_disabled(self):
         """An operator who passed --telemetry-path="" still gets supervised."""
-        import run_clock
+        from idle_hours import run_clock
         state = run_clock.RuntimeState("default")
-        with patch("sd_notify.notify_watchdog") as mock_watchdog:
+        with patch("idle_hours.sd_notify.notify_watchdog") as mock_watchdog:
             run_clock._maybe_emit_heartbeat(state, None)
         assert mock_watchdog.called

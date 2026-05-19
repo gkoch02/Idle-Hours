@@ -9,12 +9,12 @@ from unittest.mock import patch
 
 import pytest
 
-import run_clock
+from idle_hours import run_clock
 
 
 class TestCurrentBucket:
     def _bucket_for(self, hhmm: str) -> str:
-        with patch("run_clock.current_time_str", return_value=hhmm):
+        with patch("idle_hours.run_clock.current_time_str", return_value=hhmm):
             return run_clock.current_bucket()
 
     def test_midnight_exact(self):
@@ -54,7 +54,7 @@ class TestCurrentBucket:
 class TestRenderNow:
     def test_calls_render_script(self, tmp_path):
         with patch("subprocess.run") as mock_call, \
-             patch("run_clock.current_time_str", return_value="14:30"):
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -73,7 +73,7 @@ class TestRenderNow:
 
     def test_mode_passed_through(self, tmp_path):
         with patch("subprocess.run") as mock_call, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -87,7 +87,7 @@ class TestRenderNow:
 
     def test_theme_passed_through(self, tmp_path):
         with patch("subprocess.run") as mock_call, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -102,7 +102,7 @@ class TestRenderNow:
     def test_display_script_called_when_provided(self, tmp_path):
         calls = []
         with patch("subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd)), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -116,7 +116,7 @@ class TestRenderNow:
 
     def test_no_display_script_one_call(self, tmp_path):
         with patch("subprocess.run") as mock_call, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -163,11 +163,11 @@ class TestMainLoopResilience:
         # Pin wall clock outside the default 22:00–06:00 quiet window; otherwise the
         # loop enters the quiet-hours branch when tests run in the evening.
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.current_time_str", return_value="12:00"), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after_ticks(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=buckets), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after_ticks(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         return render_calls
@@ -213,7 +213,7 @@ class TestMainLoopResilience:
         argv = ["run_clock.py", "--once", "--output", str(tmp_path / "current.png")]
         err = subprocess.CalledProcessError(1, ["render_quote.py"])
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=err):
+             patch("idle_hours.run_clock.render_now", side_effect=err):
             with pytest.raises(subprocess.CalledProcessError):
                 run_clock.main()
 
@@ -221,7 +221,7 @@ class TestMainLoopResilience:
 class TestPeekQuoteId:
     def test_returns_identity_tuple(self):
         with patch(
-            "run_clock.pick_quote_module.select_quote",
+            "idle_hours.run_clock.pick_quote_module.select_quote",
             return_value={
                 "source_id": "141",
                 "line_number": 482,
@@ -236,14 +236,14 @@ class TestPeekQuoteId:
         # matched_text must NOT produce the same identity — the highlighted phrase differs
         # on screen.
         base = {"source_id": "6133", "line_number": 6906, "display_quote": "…"}
-        with patch("run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Ten minutes to three"}):
+        with patch("idle_hours.run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Ten minutes to three"}):
             first = run_clock.peek_quote_id("02:50")
-        with patch("run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Five minutes to three"}):
+        with patch("idle_hours.run_clock.pick_quote_module.select_quote", return_value={**base, "matched_text": "Five minutes to three"}):
             second = run_clock.peek_quote_id("02:55")
         assert first != second
 
     def test_returns_none_on_pick_failure(self, capsys):
-        with patch("run_clock.pick_quote_module.select_quote", side_effect=RuntimeError("no corpus")):
+        with patch("idle_hours.run_clock.pick_quote_module.select_quote", side_effect=RuntimeError("no corpus")):
             assert run_clock.peek_quote_id("10:00") is None
         assert "pick_quote failed" in capsys.readouterr().err
 
@@ -251,7 +251,7 @@ class TestPeekQuoteId:
         # pick_quote.pick_best raises SystemExit when no candidate clears the quality gate
         # in the target bucket or its neighbours. The loop must survive that.
         with patch(
-            "run_clock.pick_quote_module.select_quote",
+            "idle_hours.run_clock.pick_quote_module.select_quote",
             side_effect=SystemExit("No candidates found"),
         ):
             assert run_clock.peek_quote_id("10:00") is None
@@ -260,7 +260,7 @@ class TestPeekQuoteId:
         """The runtime loop must pass ``database_path=DEFAULT_DATABASE_PATH`` so
         ``select_quote`` takes the fast baked-DB path. Without this, ``database_path``
         defaults to ``None`` and the loop silently keeps reading the raw corpus."""
-        import pick_quote as pq
+        from idle_hours import pick_quote as pq
         captured: dict = {}
 
         def fake_select_quote(**kwargs):
@@ -270,7 +270,7 @@ class TestPeekQuoteId:
                 "display_quote": "x", "matched_text": "y",
             }
 
-        with patch("run_clock.pick_quote_module.select_quote", side_effect=fake_select_quote):
+        with patch("idle_hours.run_clock.pick_quote_module.select_quote", side_effect=fake_select_quote):
             run_clock.peek_quote_id("10:00")
         assert captured.get("database_path") == pq.DEFAULT_DATABASE_PATH
 
@@ -296,11 +296,11 @@ class TestLoopQuoteDedup:
         # Pin wall clock outside the default 22:00–06:00 quiet window; otherwise the
         # loop enters the quiet-hours branch when tests run in the evening.
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.current_time_str", return_value="12:00"), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after_ticks(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=buckets), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after_ticks(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         return render_calls
@@ -403,9 +403,9 @@ class TestQuietHours:
             "--quiet-start", "22:00", "--quiet-end", "07:00", "--quiet-image", "",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -438,11 +438,11 @@ class TestQuietHours:
             "--quiet-start", "22:00", "--quiet-end", "07:00", "--quiet-image", "",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -474,11 +474,11 @@ class TestQuietHours:
             "--interval-seconds", "0", "--quiet-off",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=lambda: next(bucket_seq)), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_seq)), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -491,8 +491,8 @@ class TestQuietHours:
             "--quiet-start", "00:00", "--quiet-end", "23:59",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.current_time_str", return_value="12:00"):
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"):
             run_clock.main()
         assert mock_render.called
 
@@ -508,13 +508,13 @@ class TestLedgerWrite:
             "--history-path", str(ledger),
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
              patch(
-                 "run_clock.peek_quote_id",
+                 "idle_hours.run_clock.peek_quote_id",
                  return_value=("src-42", 101, "quote text", "two thirty"),
              ), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append:
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             run_clock.main()
         mock_append.assert_called_once()
         args, _kwargs = mock_append.call_args
@@ -529,10 +529,10 @@ class TestLedgerWrite:
             "--history-path", str(tmp_path / "history.jsonl"),
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="14:30"), \
-             patch("run_clock.peek_quote_id", return_value=None), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append:
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             run_clock.main()
         mock_append.assert_not_called()
 
@@ -543,13 +543,13 @@ class TestLedgerWrite:
             "--history-path", "",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
              patch(
-                 "run_clock.peek_quote_id",
+                 "idle_hours.run_clock.peek_quote_id",
                  return_value=("src-42", 101, "quote text", "two thirty"),
              ), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append:
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             run_clock.main()
         # append_history is still called (to be safe), but with None as the path so it no-ops.
         if mock_append.called:
@@ -575,11 +575,11 @@ class TestLedgerWrite:
             "--quiet-off",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=buckets), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_iter)), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert mock_append.call_count == 2
@@ -607,11 +607,11 @@ class TestLedgerWrite:
             "--history-path", str(tmp_path / "history.jsonl"),
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock._display_quiet_image"), \
-             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock._display_quiet_image"), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         mock_append.assert_not_called()
@@ -636,11 +636,11 @@ class TestLedgerWrite:
             "--quiet-off",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=RuntimeError("boom")), \
-             patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=RuntimeError("boom")), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=buckets), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         mock_append.assert_not_called()
@@ -666,11 +666,11 @@ class TestLedgerWrite:
             "--quiet-off",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.current_bucket", side_effect=buckets), \
-             patch("run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append, \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=buckets), \
+             patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda _ts, **_kw: next(peek_ids)), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append, \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # Only the first render appends; second tick sees unchanged quote and skips.
@@ -686,12 +686,12 @@ class TestLedgerWrite:
         ]
         with patch("sys.argv", argv), \
              patch("subprocess.run") as mock_call, \
-             patch("run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
              patch(
-                 "run_clock.peek_quote_id",
+                 "idle_hours.run_clock.peek_quote_id",
                  return_value=("src-1", 1, "q", "mt"),
              ), \
-             patch("run_clock.pick_quote_module.append_history"):
+             patch("idle_hours.run_clock.pick_quote_module.append_history"):
             run_clock.main()
         cmd = mock_call.call_args[0][0]
         assert "--history-path" in cmd
@@ -748,10 +748,10 @@ class TestDisplayQuietImage:
             "--quiet-image", str(src),
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock._display_quiet_image", side_effect=lambda *a, **kw: display_calls.append(a)), \
-             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock._display_quiet_image", side_effect=lambda *a, **kw: display_calls.append(a)), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -1035,7 +1035,7 @@ class TestRuntimeStatePersistence:
         hardcoded the pair ('default', 'dark'), which silently dropped any
         persisted theme that was added later — a user who hit button B to
         land on ``scholar`` would boot tomorrow with ``manual_theme=None``."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         for name in rq.THEMES:
             s = run_clock.RuntimeState("auto", persisted={"manual_theme": name, "manual_quiet": False})
             assert s.manual_theme == name, f"{name} was dropped by validator"
@@ -1105,7 +1105,7 @@ class TestRuntimeStatePersistence:
         run_clock.save_runtime_state(str(path), {"manual_theme": "default", "manual_quiet": False})
         original = path.read_text(encoding="utf-8")
 
-        with patch("atomic_io.os.replace", side_effect=OSError("simulated crash")):
+        with patch("idle_hours.atomic_io.os.replace", side_effect=OSError("simulated crash")):
             with pytest.raises(OSError):
                 run_clock.save_runtime_state(str(path), {"manual_theme": "dark", "manual_quiet": True})
 
@@ -1115,7 +1115,7 @@ class TestRuntimeStatePersistence:
     def test_save_writes_via_tmp_file(self, tmp_path):
         """Verify the tmp+rename path is actually used (not a direct write)."""
         path = tmp_path / "state.json"
-        with patch("atomic_io.os.replace") as mock_replace:
+        with patch("idle_hours.atomic_io.os.replace") as mock_replace:
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
             assert mock_replace.called
             src, dst = mock_replace.call_args[0]
@@ -1130,7 +1130,7 @@ class TestRuntimeStatePersistence:
         Assert the directory fd is opened and fsynced after ``os.replace``.
         """
         path = tmp_path / "state.json"
-        with patch("atomic_io.os.fsync") as mock_fsync:
+        with patch("idle_hours.atomic_io.os.fsync") as mock_fsync:
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
         # Two fsyncs: one for the tmp file fd, one for the parent directory fd.
         assert mock_fsync.call_count == 2
@@ -1144,7 +1144,7 @@ class TestRuntimeStatePersistence:
         still land in place and no exception must escape.
         """
         path = tmp_path / "state.json"
-        import atomic_io as _atomic_io
+        from idle_hours import atomic_io as _atomic_io
         real_open = _atomic_io.os.open
         real_fsync = _atomic_io.os.fsync
 
@@ -1154,8 +1154,8 @@ class TestRuntimeStatePersistence:
                 raise OSError("simulated no-op dir fsync")
             return real_open(pth, flags)
 
-        with patch("atomic_io.os.open", side_effect=flaky_open), \
-             patch("atomic_io.os.fsync", side_effect=real_fsync):
+        with patch("idle_hours.atomic_io.os.open", side_effect=flaky_open), \
+             patch("idle_hours.atomic_io.os.fsync", side_effect=real_fsync):
             # Must not raise.
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
         assert json.loads(path.read_text()) == {"manual_theme": "dark"}
@@ -1205,12 +1205,12 @@ class TestAppendTelemetry:
         import datetime as _dt
         day1 = _dt.date(2026, 4, 19)
         day2 = _dt.date(2026, 4, 20)
-        with patch("runtime_telemetry.dt") as mock_dt:
+        with patch("idle_hours.runtime_telemetry.dt") as mock_dt:
             mock_dt.date.today.return_value = day1
             mock_dt.datetime = dt.datetime
             mock_dt.timezone = dt.timezone
             run_clock.append_telemetry(str(base), {"bucket": "day1"})
-        with patch("runtime_telemetry.dt") as mock_dt:
+        with patch("idle_hours.runtime_telemetry.dt") as mock_dt:
             mock_dt.date.today.return_value = day2
             mock_dt.datetime = dt.datetime
             mock_dt.timezone = dt.timezone
@@ -1245,8 +1245,7 @@ class TestAppendTelemetry:
         wedge-event entry can't lose the line that ``idle_hours_health`` needs to
         distinguish "wedged" from "idle".
         """
-        import runtime_telemetry
-
+        from idle_hours import runtime_telemetry
         base = tmp_path / "telemetry.jsonl"
         fsync_calls: list[int] = []
         with patch.object(runtime_telemetry.os, "fsync", side_effect=lambda fd: fsync_calls.append(fd)):
@@ -1261,8 +1260,7 @@ class TestAppendTelemetry:
         (a missed minute of "alive" pings is fine), so they skip fsync to
         bound SD-card write amplification.
         """
-        import runtime_telemetry
-
+        from idle_hours import runtime_telemetry
         base = tmp_path / "telemetry.jsonl"
         fsync_calls: list[int] = []
         with patch.object(runtime_telemetry.os, "fsync", side_effect=lambda fd: fsync_calls.append(fd)):
@@ -1290,7 +1288,7 @@ class TestRenderNowTelemetry:
     def test_writes_telemetry_after_successful_render(self, tmp_path):
         telemetry_base = tmp_path / "telemetry.jsonl"
         with patch("subprocess.run"), \
-             patch("run_clock.current_time_str", return_value="14:30"):
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -1313,7 +1311,7 @@ class TestRenderNowTelemetry:
 
     def test_no_telemetry_when_disabled(self, tmp_path):
         with patch("subprocess.run"), \
-             patch("run_clock.current_time_str", return_value="14:30"):
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -1328,7 +1326,7 @@ class TestRenderNowTelemetry:
     def test_display_script_passes_theme(self, tmp_path):
         calls = []
         with patch("subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd)), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -1376,11 +1374,11 @@ class TestThemePersistenceEndToEnd:
             "--interval-seconds", "0",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
 
@@ -1417,11 +1415,11 @@ class TestAutoThemeLoopIntegration:
             "--interval-seconds", "0",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", return_value="20:00"), \
-             patch("run_clock.current_bucket", return_value="h8_exact"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", return_value="20:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h8_exact"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert captured_themes == ["dark"]
@@ -1467,11 +1465,11 @@ class TestAutoThemeLoopIntegration:
             "--interval-seconds", "0",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", return_value=now), \
-             patch("run_clock.current_bucket", return_value="h1_exact"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", return_value=now), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h1_exact"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert captured_themes == [expected]
@@ -1506,11 +1504,11 @@ class TestAutoThemeLoopIntegration:
             "--interval-seconds", "0",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
-             patch("run_clock.current_bucket", return_value="h6_exact"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: next(time_strs)), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h6_exact"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=lambda _s, _sec: stop_after(_sec)):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert captured_themes == ["default", "dark"]
@@ -1605,11 +1603,11 @@ class TestButtonHandlers:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
-        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"), \
-             patch("run_clock.pick_quote_module.append_history") as mock_append:
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["A"]()
         # First append: ban the previous quote. Second: log the new one.
@@ -1622,9 +1620,9 @@ class TestButtonHandlers:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
-        with patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
         assert state.manual_theme == "dark"
@@ -1643,14 +1641,14 @@ class TestButtonHandlers:
         ``default``. The expected next theme is read from THEME_ORDER
         directly so re-ordering the rotation doesn't require touching
         this test."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "dark"
         expected_next = rq.THEME_ORDER[rq.THEME_ORDER.index("dark") + 1]
-        with patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
         assert state.manual_theme == expected_next
@@ -1660,13 +1658,13 @@ class TestButtonHandlers:
         never gets stuck past the end of the cycle. Anchored on the live
         ``THEME_ORDER`` so adding a theme to the tuple doesn't silently break
         the wrap test (it would still pass against the OLD last entry)."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = rq.THEME_ORDER[-1]
-        with patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
         assert state.manual_theme == rq.THEME_ORDER[0]
@@ -1679,9 +1677,9 @@ class TestButtonHandlers:
         """
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.render_now"), \
-             patch("run_clock.current_bucket", side_effect=AssertionError("must not call current_bucket")), \
-             patch("run_clock.current_time_str", side_effect=AssertionError("must not call current_time_str")):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_bucket", side_effect=AssertionError("must not call current_bucket")), \
+             patch("idle_hours.run_clock.current_time_str", side_effect=AssertionError("must not call current_time_str")):
             run_clock._do_render(args, state, "03:02", history_path=None, quote_id=("src", 1, "q", "mt"))
         assert state.last_bucket == "h3_exact"
 
@@ -1689,11 +1687,11 @@ class TestButtonHandlers:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         # Patch threading.Timer so the test doesn't leave a 5s timer running.
-        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.threading.Timer") as mock_timer, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["C"]()
         kwargs = mock_render.call_args[1]
@@ -1711,11 +1709,11 @@ class TestButtonHandlers:
         """
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.threading.Timer") as mock_timer, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["C"]()
             # First render is the card itself.
@@ -1735,11 +1733,11 @@ class TestButtonHandlers:
         thread without any useful error message)."""
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.render_now", side_effect=[None, RuntimeError("restore boom")]), \
-             patch("run_clock.threading.Timer") as mock_timer, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.render_now", side_effect=[None, RuntimeError("restore boom")]), \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["C"]()
             # Fire the restore callback — the second render_now raises.
@@ -1756,7 +1754,7 @@ class TestButtonHandlers:
         state.manual_quiet = False
         # action_quiet calls runtime_quiet._display_quiet_image directly (not through
         # run_clock), so the patch target is the action module's binding.
-        with patch("runtime_actions._display_quiet_image") as mock_display:
+        with patch("idle_hours.runtime_actions._display_quiet_image") as mock_display:
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         assert state.manual_quiet is True
@@ -1768,10 +1766,10 @@ class TestButtonHandlers:
         args = self._args(tmp_path, quiet_image="")
         state = run_clock.RuntimeState("default")
         state.manual_quiet = True
-        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         assert state.manual_quiet is False
@@ -1787,8 +1785,8 @@ class TestButtonHandlers:
         # state.json must not pre-exist — a pre-existing file would make "did we persist?"
         # ambiguous. argparse.Namespace doesn't create it; confirm.
         assert not (tmp_path / "state.json").exists()
-        with patch("run_clock.render_now", side_effect=RuntimeError("I/O boom")), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock.render_now", side_effect=RuntimeError("I/O boom")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
         # manual_theme reverted to its pre-flip value; state.json must never
@@ -1805,7 +1803,7 @@ class TestButtonHandlers:
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
         assert not (tmp_path / "state.json").exists()
-        with patch("runtime_actions._display_quiet_image", side_effect=OSError("disk full")):
+        with patch("idle_hours.runtime_actions._display_quiet_image", side_effect=OSError("disk full")):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         # Rolled back: manual_quiet stays False; nothing persisted.
@@ -1818,8 +1816,8 @@ class TestButtonHandlers:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
-        with patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
         assert state.manual_theme == "dark"
@@ -1834,9 +1832,9 @@ class TestButtonHandlers:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
-        with patch("run_clock.render_now"), \
-             patch("run_clock.save_runtime_state", side_effect=OSError("disk full")), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.save_runtime_state", side_effect=OSError("disk full")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["B"]()
         # In-memory state keeps the flip — the panel showed "dark", and so must we.
@@ -1853,8 +1851,8 @@ class TestButtonHandlers:
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
-        with patch("runtime_actions._display_quiet_image"), \
-             patch("run_clock.save_runtime_state", side_effect=OSError("disk full")):
+        with patch("idle_hours.runtime_actions._display_quiet_image"), \
+             patch("idle_hours.run_clock.save_runtime_state", side_effect=OSError("disk full")):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         assert state.manual_quiet is True
@@ -1869,7 +1867,7 @@ class TestMaybeStartButtons:
 
     def test_import_failure_logs_and_returns_none(self, tmp_path, capsys, monkeypatch):
         # Force import of inky_buttons.start_listener to raise.
-        import inky_buttons as ib
+        from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no gpio")))
         args = argparse.Namespace(
             buttons_off=False,
@@ -1890,7 +1888,7 @@ class TestMaybeStartButtons:
             captured["hold"] = hold_handlers
             return ["stub"]
 
-        import inky_buttons as ib
+        from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", fake_start)
         args = argparse.Namespace(
             buttons_off=False,
@@ -1907,7 +1905,7 @@ class TestMaybeStartButtons:
 
     def test_successful_start_attaches_handles_to_state(self, tmp_path, monkeypatch):
         """The liveness check relies on state.button_handles; make sure start wires it up."""
-        import inky_buttons as ib
+        from idle_hours import inky_buttons as ib
         monkeypatch.setattr(ib, "start_listener", lambda *a, **kw: ["h1", "h2"])
         args = argparse.Namespace(
             buttons_off=False,
@@ -1943,9 +1941,9 @@ class TestCheckButtonLiveness:
     def test_dead_logs_once_and_latches(self, tmp_path, capsys, monkeypatch):
         state = run_clock.RuntimeState("default")
         state.button_handles = ["anything"]
-        monkeypatch.setattr("inky_buttons.buttons_alive", lambda _handles: False)
+        monkeypatch.setattr("idle_hours.inky_buttons.buttons_alive", lambda _handles: False)
         telemetry_base = tmp_path / "telemetry.jsonl"
-        with patch("run_clock.current_bucket", return_value="h3_exact"):
+        with patch("idle_hours.run_clock.current_bucket", return_value="h3_exact"):
             run_clock._check_button_liveness(state, str(telemetry_base))
             # Second call: already latched, must not log again.
             run_clock._check_button_liveness(state, str(telemetry_base))
@@ -1981,11 +1979,11 @@ class TestUnskipHandler:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
-        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"), \
-             patch("run_clock.pick_quote_module.append_history"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history"):
             short, _hold = run_clock._build_button_handlers(args, state)
             short["A"]()
         assert state.last_skipped == ("src-old", 5, "q-old", "mt-old")
@@ -1994,12 +1992,12 @@ class TestUnskipHandler:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = ("src-old", 5, "q-old", "mt-old")
-        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"), \
-             patch("run_clock.pick_quote_module.remove_last_history_entry", return_value=True) as mock_rm, \
-             patch("run_clock.pick_quote_module.append_history") as mock_append:
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
+             patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry", return_value=True) as mock_rm, \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["A"]()
         # Removed the ban.
@@ -2016,8 +2014,8 @@ class TestUnskipHandler:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = None
-        with patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.pick_quote_module.remove_last_history_entry") as mock_rm:
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry") as mock_rm:
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["A"]()
         assert not mock_rm.called
@@ -2044,8 +2042,8 @@ class TestShutdownHandler:
     def test_shutdown_invokes_configured_command(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.subprocess.run") as mock_check, \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.subprocess.run") as mock_check, \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
         assert mock_check.called
@@ -2055,8 +2053,8 @@ class TestShutdownHandler:
     def test_empty_shutdown_command_skips_invocation(self, tmp_path, capsys):
         args = self._args(tmp_path, shutdown_command="")
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.subprocess.run") as mock_check, \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.subprocess.run") as mock_check, \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
         assert not mock_check.called
@@ -2068,10 +2066,10 @@ class TestShutdownHandler:
         args = self._args(tmp_path, shutdown_command="")
         state = run_clock.RuntimeState("default")
         assert state.manual_quiet is False
-        with patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.subprocess.run"), \
-             patch("run_clock.save_runtime_state") as mock_save, \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock._display_quiet_image") as mock_display, \
+             patch("idle_hours.run_clock.subprocess.run"), \
+             patch("idle_hours.run_clock.save_runtime_state") as mock_save, \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
         assert state.manual_quiet is False
@@ -2083,9 +2081,9 @@ class TestShutdownHandler:
         quiet.write_bytes(b"\x89PNG")
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
-        with patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.subprocess.run"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock._display_quiet_image") as mock_display, \
+             patch("idle_hours.run_clock.subprocess.run"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
         assert mock_display.called
@@ -2093,8 +2091,8 @@ class TestShutdownHandler:
     def test_shutdown_command_failure_is_logged_not_raised(self, tmp_path, capsys):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.subprocess.run", side_effect=RuntimeError("nope")), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.subprocess.run", side_effect=RuntimeError("nope")), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             # Must not raise.
             hold["D"]()
@@ -2114,9 +2112,9 @@ class TestShutdownHandler:
         def record_display(*a, **kw):
             seen_flag_at_display.append(state.manual_quiet)
 
-        with patch("run_clock._display_quiet_image", side_effect=record_display), \
-             patch("run_clock.subprocess.run"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock._display_quiet_image", side_effect=record_display), \
+             patch("idle_hours.run_clock.subprocess.run"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
         assert seen_flag_at_display == [True]
@@ -2127,9 +2125,9 @@ class TestShutdownHandler:
         quiet.write_bytes(b"\x89PNG")
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
-        with patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.subprocess.run"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock._display_quiet_image") as mock_display, \
+             patch("idle_hours.run_clock.subprocess.run"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
         kwargs = mock_display.call_args.kwargs
@@ -2183,8 +2181,8 @@ class TestStartupImage:
         monkeypatch.setattr(run_clock, "_display_quiet_image", fake_display)
         monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: fake_sleep(_sec))
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")):
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # Startup image was pushed before any render.
@@ -2220,8 +2218,8 @@ class TestStartupImage:
         monkeypatch.setattr(run_clock, "_maybe_start_buttons", fake_start_buttons)
         monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.peek_quote_id", return_value=("s", 1, "q", "m")):
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("s", 1, "q", "m")):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # Startup display must precede button listener.
@@ -2245,8 +2243,8 @@ class TestStartupImage:
         )
         monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.peek_quote_id", return_value=None):
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert displayed == []
@@ -2276,9 +2274,9 @@ class TestStartupImage:
         monkeypatch.setattr(run_clock, "_display_quiet_image", lambda *a, **kw: display_calls.append(a))
         monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
         with patch("sys.argv", argv), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.current_time_str", return_value="22:30"), \
-             patch("run_clock.current_bucket", return_value="h10_half_past"):
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="22:30"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_half_past"):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # First render call is the startup goodnight frame.
@@ -2317,10 +2315,10 @@ class TestQuietGoodnightOnTheFly:
     def test_quiet_image_auto_routes_through_render_now_goodnight(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("auto")
-        with patch("run_clock.render_now") as mock_render, \
-             patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.append_telemetry"):
-            from runtime_quiet import enter_quiet
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock._display_quiet_image") as mock_display, \
+             patch("idle_hours.run_clock.append_telemetry"):
+            from idle_hours.runtime_quiet import enter_quiet
             enter_quiet(args, state, "22:00")
         # render_now invoked with mode="goodnight"; static-PNG copy NOT called.
         assert mock_render.called
@@ -2334,9 +2332,9 @@ class TestQuietGoodnightOnTheFly:
         sentinel branch."""
         args = self._args(tmp_path, auto_day_theme="scholar", auto_night_theme="nightvision")
         state = run_clock.RuntimeState("auto")
-        with patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.append_telemetry"):
-            from runtime_quiet import enter_quiet
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.append_telemetry"):
+            from idle_hours.runtime_quiet import enter_quiet
             enter_quiet(args, state, "22:00")
         assert mock_render.called
         # render_now signature: theme is positional[6].
@@ -2347,10 +2345,10 @@ class TestQuietGoodnightOnTheFly:
         the operator's normal mode) must NOT be hijacked by the new sentinel."""
         args = self._args(tmp_path, quiet_image="", mode="production")
         state = run_clock.RuntimeState("auto")
-        with patch("run_clock.render_now") as mock_render, \
-             patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.append_telemetry"):
-            from runtime_quiet import enter_quiet
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock._display_quiet_image") as mock_display, \
+             patch("idle_hours.run_clock.append_telemetry"):
+            from idle_hours.runtime_quiet import enter_quiet
             enter_quiet(args, state, "22:00")
         assert mock_render.called
         # Mode is the configured render mode, NOT goodnight.
@@ -2365,10 +2363,10 @@ class TestQuietGoodnightOnTheFly:
         png.write_bytes(b"\x89PNG")
         args = self._args(tmp_path, quiet_image=str(png))
         state = run_clock.RuntimeState("auto")
-        with patch("run_clock.render_now") as mock_render, \
-             patch("run_clock._display_quiet_image") as mock_display, \
-             patch("run_clock.append_telemetry"):
-            from runtime_quiet import enter_quiet
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock._display_quiet_image") as mock_display, \
+             patch("idle_hours.run_clock.append_telemetry"):
+            from idle_hours.runtime_quiet import enter_quiet
             enter_quiet(args, state, "22:00")
         assert mock_display.called
         assert mock_render.called is False
@@ -2401,10 +2399,10 @@ class TestButtonRenderGate:
         state = run_clock.RuntimeState("default")
         state.render_lock.acquire()  # Simulate an in-flight render.
         try:
-            with patch("run_clock.render_now") as mock_render, \
-                 patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-                 patch("run_clock.current_time_str", return_value="10:00"), \
-                 patch("run_clock.current_bucket", return_value="h10_exact"):
+            with patch("idle_hours.run_clock.render_now") as mock_render, \
+                 patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+                 patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+                 patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
                 short, _hold = run_clock._build_button_handlers(args, state)
                 short["A"]()
         finally:
@@ -2420,9 +2418,9 @@ class TestButtonRenderGate:
         state = run_clock.RuntimeState("default")
         state.render_lock.acquire()
         try:
-            with patch("run_clock.render_now"), \
-                 patch("run_clock.save_runtime_state") as mock_save, \
-                 patch("run_clock.current_time_str", return_value="10:00"):
+            with patch("idle_hours.run_clock.render_now"), \
+                 patch("idle_hours.run_clock.save_runtime_state") as mock_save, \
+                 patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
                 short, _hold = run_clock._build_button_handlers(args, state)
                 short["B"]()
         finally:
@@ -2434,9 +2432,9 @@ class TestButtonRenderGate:
         """Gate must release the lock on handler exception so subsequent presses work."""
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.peek_quote_id", side_effect=RuntimeError("boom")), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", side_effect=RuntimeError("boom")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             short, _hold = run_clock._build_button_handlers(args, state)
             short["A"]()  # Exception is caught by handler's try/except; gate must still release.
         # Lock should be free now; acquiring non-blocking must succeed.
@@ -2596,7 +2594,7 @@ class TestShutdown:
                 observations.append(("button_close", state.render_lock.locked()))
 
         state.button_handles = [FakeButton()]
-        with patch("run_clock.stop_web_server", side_effect=observe_stop):
+        with patch("idle_hours.run_clock.stop_web_server", side_effect=observe_stop):
             run_clock._shutdown(args, state, web_handle=object())
 
         # The web server and button close both observed the lock as HELD.
@@ -2776,10 +2774,10 @@ class TestActionExceptionBranches:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_quote_id = ("src-old", 5, "q-old", "mt-old")
-        with patch("run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
-             patch("run_clock._render_unlocked", side_effect=RuntimeError("panel disconnected")), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src-new", 7, "q-new", "mt-new")), \
+             patch("idle_hours.run_clock._render_unlocked", side_effect=RuntimeError("panel disconnected")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_skip(args, state, label="web")
         assert result["ok"] is False
         assert "panel disconnected" in result["error"]
@@ -2796,9 +2794,9 @@ class TestActionExceptionBranches:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = ("src-banned", 42)
-        with patch("run_clock.pick_quote_module.remove_last_history_entry",
+        with patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry",
                    side_effect=OSError("disk full")), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_unskip(args, state, label="web")
         assert result["ok"] is False
         assert "disk full" in result["error"]
@@ -2812,9 +2810,9 @@ class TestActionExceptionBranches:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
-        with patch("run_clock._render_unlocked", side_effect=RuntimeError("pillow boom")), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock._render_unlocked", side_effect=RuntimeError("pillow boom")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_theme(args, state, label="web")
         assert result["ok"] is False
         assert "pillow boom" in result["error"]
@@ -2829,10 +2827,10 @@ class TestActionExceptionBranches:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.manual_quiet = True  # toggling will flip to False and try to wake-render
-        with patch("run_clock._render_unlocked", side_effect=RuntimeError("no corpus")), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock._render_unlocked", side_effect=RuntimeError("no corpus")), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_quiet(args, state, label="web")
         assert result["ok"] is False
         assert "no corpus" in result["error"]
@@ -2840,10 +2838,10 @@ class TestActionExceptionBranches:
     def test_rerender_failure_returns_error_dict(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock._render_unlocked", side_effect=RuntimeError("pick failed")), \
-             patch("run_clock.current_time_str", return_value="10:00"), \
-             patch("run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._render_unlocked", side_effect=RuntimeError("pick failed")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_rerender(args, state, label="web")
         assert result["ok"] is False
         assert "pick failed" in result["error"]
@@ -2918,9 +2916,9 @@ class TestActionSuccessTelemetry:
     def test_skip_success_emits_action_entry(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock._render_unlocked"), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_skip(args, state, label="button A")
         assert result["ok"] is True
         entries = self._read_telemetry(tmp_path)
@@ -2934,8 +2932,8 @@ class TestActionSuccessTelemetry:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web")
         assert result["ok"] is True
         entries = self._read_telemetry(tmp_path)
@@ -2948,9 +2946,9 @@ class TestActionSuccessTelemetry:
         args = self._args(tmp_path, quiet_image="")
         state = run_clock.RuntimeState("default")
         state.manual_quiet = True
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_quiet(args, state, label="button D")
         assert result["ok"] is True
         entries = self._read_telemetry(tmp_path)
@@ -2961,9 +2959,9 @@ class TestActionSuccessTelemetry:
     def test_rerender_success_emits_action_entry(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_rerender(args, state, label="web")
         assert result["ok"] is True
         entries = self._read_telemetry(tmp_path)
@@ -3013,12 +3011,12 @@ class TestActionThemeCycle:
         """N presses from ``THEME_ORDER[0]`` visit every registered theme
         exactly once and wrap back to the head. Covers the full cycle plus
         the wrap edge case and guarantees nothing silently drops."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = rq.THEME_ORDER[0]
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             visited = []
             for _ in range(len(rq.THEME_ORDER)):
                 result = run_clock.action_theme(args, state, label="web")
@@ -3037,8 +3035,8 @@ class TestActionThemeCycle:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "default"
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web", target="nightvision")
         assert result == {"ok": True, "theme": "nightvision", "previous": "default"}
         assert state.manual_theme == "nightvision"
@@ -3051,8 +3049,8 @@ class TestActionThemeCycle:
         state = run_clock.RuntimeState("default")
         state.manual_theme = "scholar"
         state.last_effective_theme = "scholar"
-        with patch("run_clock._render_unlocked") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web", target="chartreuse")
         assert result["ok"] is False
         assert result["error"] == "unknown_theme"
@@ -3064,12 +3062,12 @@ class TestActionThemeCycle:
         """If a persisted ``manual_theme`` names a theme a newer build has
         removed, the cycle restarts at ``THEME_ORDER[0]`` rather than
         stranding the user on an unrecognised value."""
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = "retired_theme"
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web")
         assert result["theme"] == rq.THEME_ORDER[0]
 
@@ -3082,8 +3080,8 @@ class TestActionThemeCycle:
         state = run_clock.RuntimeState("default")
         state.manual_theme = "scholar"
         state.last_effective_theme = "scholar"
-        with patch("run_clock._render_unlocked") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web", target="scholar")
         assert result["ok"] is True
         assert result["noop"] is True
@@ -3102,8 +3100,8 @@ class TestActionThemeCycle:
         state = run_clock.RuntimeState("auto")
         state.manual_theme = None
         state.last_effective_theme = "default"  # auto-resolved daytime value
-        with patch("run_clock._render_unlocked") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="web", target="default")
         assert result["ok"] is True
         assert result["noop"] is True
@@ -3120,8 +3118,8 @@ class TestActionThemeCycle:
         state = run_clock.RuntimeState("default")
         state.manual_theme = "default"
         state.last_effective_theme = "default"
-        with patch("run_clock._render_unlocked") as mock_render, \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             result = run_clock.action_theme(args, state, label="button B")
         assert result["ok"] is True
         assert result.get("noop") is not True
@@ -3134,7 +3132,7 @@ class TestActionThemeCycle:
         fails loudly here instead of silently rejecting the new value on
         systemd startup.
         """
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         for name in list(rq.THEME_ORDER) + ["auto"]:
             with patch("sys.argv", ["run_clock.py", "--theme", name, "--once"]):
                 try:
@@ -3151,7 +3149,7 @@ class TestActionThemeCycle:
         recursion. Same drift hazard as the parent test: a new theme in
         ``THEME_ORDER`` must reach these flags too.
         """
-        import render_quote as rq
+        from idle_hours import render_quote as rq
         for name in rq.THEME_ORDER:
             for flag in ("--auto-day-theme", "--auto-night-theme"):
                 with patch("sys.argv", ["run_clock.py", flag, name, "--once"]):
@@ -3175,7 +3173,7 @@ class TestRandomThemeMode:
 
     def test_pick_random_theme_returns_registered_theme(self):
         """``pick_random_theme()`` always returns a name from the registered cycle."""
-        from theme_names import theme_cycle
+        from idle_hours.theme_names import theme_cycle
         valid = set(theme_cycle())
         for _ in range(30):
             result = run_clock.pick_random_theme()
@@ -3193,7 +3191,7 @@ class TestRandomThemeMode:
 
     def test_resolve_random_fallback_when_none(self):
         """When ``current_random_theme`` is None, a valid theme is picked on the fly."""
-        from theme_names import theme_cycle
+        from idle_hours.theme_names import theme_cycle
         result = run_clock.resolve_effective_theme("random", "10:00", None, current_random_theme=None)
         assert result in set(theme_cycle())
 
@@ -3223,11 +3221,11 @@ class TestRandomThemeMode:
             "--skip-preflight",
         ]
         with patch("sys.argv", argv), \
-             patch("run_clock.pick_random_theme", return_value="scholar") as mock_pick, \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.peek_quote_id", return_value=None), \
-             patch("run_clock.current_bucket", return_value="h12_exact"), \
-             patch("run_clock.current_time_str", return_value="12:00"):
+             patch("idle_hours.run_clock.pick_random_theme", return_value="scholar") as mock_pick, \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"):
             rc = run_clock.main()
         assert rc == 0
         mock_pick.assert_called_once()
@@ -3279,7 +3277,7 @@ class TestRandomThemeMode:
         synchronously) instead of ``last_quote_id`` (advanced only on
         successful render).
         """
-        from runtime_theme import random_theme_pool
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
         state = run_clock.RuntimeState("random")
         quote_id = ("111", 10, "q", "m")
@@ -3332,7 +3330,7 @@ class TestRandomThemeMode:
         panel, not a quote), so the expected set is ``random_theme_pool``,
         not the full ``theme_cycle``.
         """
-        from runtime_theme import random_theme_pool
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
         state = run_clock.RuntimeState("random")
         seen: list[str] = []
@@ -3346,7 +3344,7 @@ class TestRandomThemeMode:
 
     def test_random_mode_bag_refills_after_pass(self):
         """When the bag empties it's refilled from the random-eligible cycle."""
-        from runtime_theme import random_theme_pool
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
         state = run_clock.RuntimeState("random")
         for i in range(len(themes)):
@@ -3367,7 +3365,7 @@ class TestRandomThemeMode:
         construct a cycle where ``random.shuffle`` would put it at the
         pop position. The swap must move it.
         """
-        from runtime_theme import random_theme_pool
+        from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
         just_played = themes[0]
         state = run_clock.RuntimeState("random")
@@ -3380,8 +3378,8 @@ class TestRandomThemeMode:
             b[:] = forced  # random.shuffle mutates in place
 
         # randint patched to a deterministic in-range swap index.
-        with patch("runtime_theme.random.shuffle", side_effect=_force_order), \
-             patch("runtime_theme.random.randint", return_value=0):
+        with patch("idle_hours.runtime_theme.random.shuffle", side_effect=_force_order), \
+             patch("idle_hours.runtime_theme.random.randint", return_value=0):
             pick = run_clock._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
         assert pick != just_played, "back-to-back repeat at reshuffle boundary"
 
@@ -3391,7 +3389,7 @@ class TestRandomThemeMode:
         frame with a swatch screen. Exhaustively drive 50 fresh bags and
         assert every draw avoids the exclusion list.
         """
-        from runtime_theme import RANDOM_EXCLUDED_THEMES, random_theme_pool
+        from idle_hours.runtime_theme import RANDOM_EXCLUDED_THEMES, random_theme_pool
         assert "diags" in RANDOM_EXCLUDED_THEMES
         assert "diags" not in random_theme_pool()
         state = run_clock.RuntimeState("random")
@@ -3414,7 +3412,7 @@ class TestRandomThemeMode:
             theme="random", state_path=str(tmp_path / "state.json"),
             auto_day_theme="default", auto_night_theme="dark",
         )
-        with patch("run_clock.save_runtime_state"), \
+        with patch("idle_hours.run_clock.save_runtime_state"), \
              patch("datetime.date") as mock_date:
             mock_date.today.return_value = dt.date(2026, 1, 2)
             run_clock._maybe_reset_manual_theme_at_midnight(args, state)
@@ -3437,9 +3435,9 @@ class TestRandomThemeMode:
             auto_day_theme="default", auto_night_theme="dark",
         )
         state.random_theme_bag = ["scholar"]
-        with patch("run_clock.peek_quote_id", return_value=new_quote_id), \
-             patch("run_clock._render_unlocked"), \
-             patch("run_clock._append_history_after_render"):
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock._append_history_after_render"):
             run_clock.action_skip(args, state, label="button A")
 
         assert state.current_random_theme == "scholar"
@@ -3461,10 +3459,10 @@ class TestRandomThemeMode:
             auto_day_theme="default", auto_night_theme="dark",
         )
         state.random_theme_bag = ["nightvision"]
-        with patch("run_clock.peek_quote_id", return_value=new_quote_id), \
-             patch("run_clock._render_unlocked"), \
-             patch("run_clock._append_history_after_render"), \
-             patch("run_clock.pick_quote_module") as mock_pq:
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=new_quote_id), \
+             patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock._append_history_after_render"), \
+             patch("idle_hours.run_clock.pick_quote_module") as mock_pq:
             mock_pq.remove_last_history_entry.return_value = True
             run_clock.action_unskip(args, state, label="button A")
 
@@ -3530,9 +3528,9 @@ class TestPressDroppedTelemetry:
         render lock for 9 of the 10 presses, then releasing for the 10th."""
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        with patch("run_clock._render_unlocked"), \
-             patch("run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
-             patch("run_clock.current_time_str", return_value="10:00"):
+        with patch("idle_hours.run_clock._render_unlocked"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             state.render_lock.acquire()
             try:
                 for _ in range(9):
@@ -3556,7 +3554,7 @@ class TestQuietHoursTelemetry:
     """
 
     def test_enter_quiet_emits_telemetry(self, tmp_path):
-        import runtime_quiet
+        from idle_hours import runtime_quiet
         args = argparse.Namespace(
             history_path="",
             telemetry_path=str(tmp_path / "telemetry.jsonl"),
@@ -3572,8 +3570,8 @@ class TestQuietHoursTelemetry:
             history_days=7,
         )
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.render_now"), \
-             patch("run_clock._display_quiet_image"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock._display_quiet_image"):
             runtime_quiet.enter_quiet(args, state, "22:30", manual_only=False)
         entries = []
         for path in tmp_path.glob("telemetry-*.jsonl"):
@@ -3585,7 +3583,7 @@ class TestQuietHoursTelemetry:
         assert matching[0]["manual"] is False
 
     def test_manual_quiet_enter_records_manual_true(self, tmp_path):
-        import runtime_quiet
+        from idle_hours import runtime_quiet
         args = argparse.Namespace(
             history_path="",
             telemetry_path=str(tmp_path / "telemetry.jsonl"),
@@ -3601,8 +3599,8 @@ class TestQuietHoursTelemetry:
             history_days=7,
         )
         state = run_clock.RuntimeState("default")
-        with patch("run_clock.render_now"), \
-             patch("run_clock._display_quiet_image"):
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock._display_quiet_image"):
             runtime_quiet.enter_quiet(args, state, "12:00", manual_only=True)
         entries = []
         for path in tmp_path.glob("telemetry-*.jsonl"):
@@ -3688,11 +3686,16 @@ class TestParseArgsBasic:
             run_clock.parse_args()
         assert exc_info.value.code != 0
 
-    def test_relative_output_path_is_resolved_against_base_dir(self, monkeypatch, tmp_path):
-        """A relative --output path must be joined against BASE_DIR in main().
+    def test_relative_output_path_is_resolved_against_cwd(self, monkeypatch, tmp_path):
+        """A relative ``--output`` path must be resolved against the caller's
+        CWD in ``main()``.
 
-        This exercises the ``output_target = BASE_DIR / output_target`` branch
-        that was previously uncovered.
+        Previously the resolve was anchored on ``BASE_DIR`` (the directory
+        ``run_clock.py`` lives in). After the ``idle_hours/`` package move
+        ``BASE_DIR`` points *inside* the installed package, so anchoring the
+        operator's render artifact there would bury it in site-packages.
+        CWD-relative matches the contract used by the Gutenberg cache and by
+        every other operator-controlled path on the CLI.
         """
         # Minimal args that let main() exit before the loop via pidfile-locked or --once.
         argv = [
@@ -3715,21 +3718,19 @@ class TestParseArgsBasic:
             real_mkdir(self_path, **kwargs)
 
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now") as mock_render, \
-             patch("run_clock.peek_quote_id", return_value=None), \
-             patch("run_clock.current_bucket", return_value="h12_exact"), \
-             patch("run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
              patch.object(_Path, "mkdir", _capture_mkdir):
             run_clock.main()
         # render_now was called; what matters is that the output *parent directory*
         # was created via the resolved absolute path (BASE_DIR / "output/current.png").parent.
         assert mock_render.called
-        # At least one mkdir call should target an absolute path under BASE_DIR.
+        # At least one mkdir call should target an absolute path resolved from CWD.
         abs_mkdirs = [p for p in mkdir_calls if p.is_absolute()]
         assert abs_mkdirs, "expected mkdir to be called with an absolute path"
-        # The resolved parent of "output/current.png" relative to BASE_DIR.
-        import run_clock as rc_mod
-        expected_parent = (rc_mod.BASE_DIR / "output/current.png").parent
+        expected_parent = (_Path.cwd() / "output/current.png").parent
         assert any(p == expected_parent for p in abs_mkdirs), (
             f"expected mkdir at {expected_parent}, got {abs_mkdirs}"
         )
@@ -3759,7 +3760,7 @@ class TestMaybeStartWebServer:
         """If web_server.start_web_server raises, we log and return None —
         never propagate the exception and never kill the loop."""
         state = run_clock.RuntimeState("default")
-        import web_server
+        from idle_hours import web_server
         monkeypatch.setattr(web_server, "start_web_server",
                             lambda *a, **kw: (_ for _ in ()).throw(ValueError("bad bind")))
         result = run_clock._maybe_start_web_server(self._args("0.0.0.0:8080"), state)
@@ -3813,8 +3814,7 @@ class TestStopWebServer:
 
     def test_real_server_is_stopped(self, tmp_path):
         """stop_web_server calls server.shutdown() + server_close() and joins the thread."""
-        import web_server
-
+        from idle_hours import web_server
         args = argparse.Namespace(
             render_script="render_quote.py",
             output=str(tmp_path / "current.png"),
@@ -3864,7 +3864,7 @@ class TestRenderSubprocessTimeout:
     def test_render_timeout_writes_telemetry_and_reraises(self, tmp_path, capsys):
         telemetry_base = tmp_path / "telemetry.jsonl"
         with patch("subprocess.run", side_effect=self._boom), \
-             patch("run_clock.current_time_str", return_value="14:30"):
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
             with pytest.raises(subprocess.TimeoutExpired):
                 run_clock.render_now(
                     render_script="render_quote.py",
@@ -3893,7 +3893,7 @@ class TestRenderSubprocessTimeout:
             raise subprocess.TimeoutExpired(cmd=["display_inky.py"], timeout=run_clock.DISPLAY_TIMEOUT_SECONDS)
 
         with patch("subprocess.run", side_effect=side), \
-             patch("run_clock.current_time_str", return_value="14:30"):
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
             with pytest.raises(subprocess.TimeoutExpired):
                 run_clock.render_now(
                     render_script="render_quote.py",
@@ -3917,7 +3917,7 @@ class TestRenderSubprocessTimeout:
             captured.update(kw)
 
         with patch("subprocess.run", side_effect=record), \
-             patch("run_clock.current_time_str", return_value="14:30"):
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
             run_clock.render_now(
                 render_script="render_quote.py",
                 output_path=str(tmp_path / "current.png"),
@@ -4090,10 +4090,10 @@ class TestBackoffSkipsSubprocess:
             self.backoff_skip_until = _time.monotonic() + 60.0
 
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now", side_effect=fake_render), \
-             patch("run_clock.RuntimeState.__init__", init_with_backoff), \
-             patch("run_clock.current_time_str", return_value="12:00"), \
-             patch("run_clock._loop_sleep", side_effect=stop_after_ticks):
+             patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.RuntimeState.__init__", init_with_backoff), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=stop_after_ticks):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         assert render_calls == [], "render_now must not run while backoff_skip_until is in the future"
@@ -4147,12 +4147,12 @@ class TestDedupResetsBackoff:
             captured["state"] = self
 
         with patch("sys.argv", argv), \
-             patch("run_clock.render_now") as render_mock, \
-             patch("run_clock.RuntimeState.__init__", init_with_pending_failures), \
-             patch("run_clock.current_time_str", return_value="12:00"), \
-             patch("run_clock.current_bucket", return_value="h12_exact"), \
-             patch("run_clock.peek_quote_id", return_value=("src-1", 1, "q", "mt")), \
-             patch("run_clock._loop_sleep", side_effect=stop_after):
+             patch("idle_hours.run_clock.render_now") as render_mock, \
+             patch("idle_hours.run_clock.RuntimeState.__init__", init_with_pending_failures), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("src-1", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=stop_after):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # Dedup branch fired (render_now not called), and the counter was reset.
@@ -4167,7 +4167,7 @@ class TestQuietImageTimeoutTelemetry:
     """
 
     def test_quiet_image_display_timeout_writes_telemetry(self, tmp_path, capsys):
-        import runtime_quiet
+        from idle_hours import runtime_quiet
         src = tmp_path / "goodnight.png"
         src.write_bytes(b"\x89PNG")
         out = tmp_path / "current.png"
@@ -4313,9 +4313,9 @@ class TestOnceSignalHandlers:
             installed.append(state)
 
         with patch("sys.argv", argv), \
-             patch("run_clock._install_signal_handlers", side_effect=record), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.peek_quote_id", return_value=None):
+             patch("idle_hours.run_clock._install_signal_handlers", side_effect=record), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None):
             rc = run_clock.main()
         assert rc == 0
         assert len(installed) == 1
@@ -4339,9 +4339,9 @@ class TestOnceSignalHandlers:
             state.stop_requested.set()
 
         with patch("sys.argv", argv), \
-             patch("run_clock._install_signal_handlers", side_effect=install_and_fire), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.peek_quote_id", return_value=None):
+             patch("idle_hours.run_clock._install_signal_handlers", side_effect=install_and_fire), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None):
             rc = run_clock.main()
         assert rc == 143
 
@@ -4439,7 +4439,7 @@ class TestTransientRenderDoesNotUpdateIdentity:
         state = run_clock.RuntimeState("default")
         # Seed pre-card identity (the frame the restore timer will rebuild).
         state.commit_render_result("h3_half_past", "default", ("src", 10, "q", "mt"))
-        with patch("run_clock.render_now"):
+        with patch("idle_hours.run_clock.render_now"):
             state.render_lock.acquire()
             try:
                 run_clock._render_unlocked(
@@ -4460,8 +4460,8 @@ class TestTransientRenderDoesNotUpdateIdentity:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         persisted_payloads = []
-        with patch("run_clock.render_now"), \
-             patch("run_clock.save_runtime_state",
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.save_runtime_state",
                    side_effect=lambda path, payload: persisted_payloads.append(payload)):
             state.render_lock.acquire()
             try:
@@ -4484,7 +4484,7 @@ class TestTransientRenderDoesNotUpdateIdentity:
         # Prime with a pending backoff; a transient render must clear it.
         state.consecutive_render_failures = 2
         state.backoff_skip_until = _time.monotonic() + 30
-        with patch("run_clock.render_now"):
+        with patch("idle_hours.run_clock.render_now"):
             state.render_lock.acquire()
             try:
                 run_clock._render_unlocked(
@@ -4502,8 +4502,8 @@ class TestTransientRenderDoesNotUpdateIdentity:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         persisted_payloads = []
-        with patch("run_clock.render_now"), \
-             patch("run_clock.save_runtime_state",
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.save_runtime_state",
                    side_effect=lambda path, payload: persisted_payloads.append(payload)):
             state.render_lock.acquire()
             try:
@@ -4524,7 +4524,7 @@ class TestPidfileIntegration:
     """Issue #53: a second run_clock must detect the held pidfile and exit 1."""
 
     def test_main_exits_one_when_pidfile_held(self, tmp_path, capsys):
-        import pidfile
+        from idle_hours import pidfile
         pid_path = tmp_path / "run_clock.pid"
         held = pidfile.acquire_pidfile(str(pid_path))
         try:
@@ -4563,11 +4563,11 @@ class TestPidfileIntegration:
             "--skip-preflight",
         ]
         with patch("sys.argv", argv_loop), \
-             patch("run_clock._loop_sleep", side_effect=KeyboardInterrupt), \
-             patch("run_clock.render_now"), \
-             patch("run_clock.peek_quote_id", return_value=None), \
-             patch("run_clock.current_bucket", return_value="h12_exact"), \
-             patch("run_clock.current_time_str", return_value="12:00"):
+             patch("idle_hours.run_clock._loop_sleep", side_effect=KeyboardInterrupt), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"):
             with pytest.raises(KeyboardInterrupt):
                 run_clock.main()
         # Pidfile should be gone.
