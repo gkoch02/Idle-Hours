@@ -185,6 +185,7 @@ def parse_args() -> argparse.Namespace:
         "chanbara",
         "lcars",
         "fillmore",
+        "firmament",
         "diags",
     ]
     parser.add_argument(
@@ -263,6 +264,13 @@ def parse_args() -> argparse.Namespace:
             "tangerine, stacked colour-coded rail blocks down the sidebar "
             "(lavender / yellow / coral / lilac / red / coral / blue), LCARS "
             "wordmark in the top bar and STARDATE callout in the bottom bar). "
+            "'firmament' (navy synthesised ground / white Cardo humanist serif "
+            "body / yellow→cream matched phrase, 17th-century celestial atlas — "
+            "lavender Milky Way swaths in two corners, ~80 scattered yellow "
+            "stars in three magnitude tiers, Cassiopeia + Orion's Belt "
+            "constellation polylines, sun / crescent moon / compass rose / "
+            "ringed Saturn corner ornaments, and a sky-blue ecliptic arc "
+            "across the top margin). "
             "'auto' selects 'dark' between "
             "18:00 and 06:00 and 'default' otherwise — broaden the rotation via "
             "--auto-day-theme / --auto-night-theme. "

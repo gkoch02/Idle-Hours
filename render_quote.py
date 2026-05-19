@@ -73,6 +73,7 @@ THEME_ORDER: tuple[str, ...] = (
     "chanbara",
     "lcars",
     "fillmore",
+    "firmament",
     "diags",
 )
 THEMES = {
@@ -716,6 +717,45 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
+    # 17th-century celestial atlas (Bayer's *Uranometria*, Cellarius's
+    # *Harmonia Macrocosmica*). White serif body on a navy night-sky
+    # ground, with gold/cream matched time phrases, scattered yellow
+    # stars in three magnitude tiers, recognisable constellation
+    # polylines (Cassiopeia + Orion's Belt), and four distinct corner
+    # astronomy ornaments (sun, crescent moon, compass rose, ringed
+    # Saturn). The first theme in the rotation to claim NAVY (B+K 1:1)
+    # as a page ground — ``page_bg`` is stored as solid black and
+    # ``draw_firmament_border`` synthesises the navy in Layer 0 via a
+    # ``(x+y) & 1`` parity post-pass that flips half of the black
+    # pixels to blue (same idempotent shape ``mucha`` / ``fillmore`` /
+    # ``atomic`` use for their respective Layer 0 ground washes). The
+    # ``accent`` slot is yellow as a sentinel; ``_draw_text_body``
+    # reroutes it through a Y+W 1:1 cream stipple so the matched
+    # phrase reads as gilded constellation labels against the navy
+    # ground. The first theme to use 3-ink mixes for decoration
+    # outside the ``diags`` panel (the Milky Way swaths use R+B+W
+    # lavender via sentinel-paint-then-bbox-post-pass, since the
+    # ``_fill_swatch_stipple_3way`` helper unconditionally overwrites
+    # every rect pixel and would wipe the navy ground if invoked
+    # directly), and the first to combine TWO synthesised tones in a
+    # single ornament (Saturn's R+Y tangerine body + G+B cyan ring).
+    # Astronomy is the origin of timekeeping, so the celestial-atlas
+    # register has the strongest thematic resonance of any theme in
+    # the rotation for a literary clock that quotes time. Body in
+    # Cardo, a humanist serif designed for classical scholarship
+    # (David Perry, OFL) — visually distinct from the EB Garamond
+    # used by illuminated/gothic and the Cormorant Garamond used by
+    # mucha.
+    "firmament": {
+        "page_bg": SPECTRA6["black"],   # navy synthesised in Layer 0
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],   # rerouted to Y+W cream in _draw_text_body
+        "ornament_dark": SPECTRA6["yellow"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1003,6 +1043,20 @@ BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-R
 # install lands on a chunky display silhouette rather than dropping
 # the fillmore theme onto an elegant transitional serif.
 BUNGEE_SHADE_REGULAR = str(BASE_DIR / "fonts/bungee-shade/BungeeShade-Regular.ttf")
+# Cardo — David J. Perry (OFL). Humanist Renaissance serif designed for
+# classical scholarship: Garamond-family proportions with full Polytonic
+# Greek and Latin epigraphic coverage. Used as the primary body face of
+# the ``firmament`` theme — pairs the period-correct silhouette of
+# 17th-century celestial atlas typography with strong legibility on a
+# navy night-sky ground. Visually distinct from the other Garamond-class
+# faces in the rotation (EB Garamond in illuminated/gothic; Cormorant
+# Garamond in mucha). Ships Regular / Bold / Italic. Falls back through
+# EB Garamond (already bundled) → DejaVu Serif → Liberation Serif → the
+# Playfair Display chain so a missing install lands on at least a
+# humanist-serif silhouette rather than the bitmap default.
+CARDO_REGULAR = str(BASE_DIR / "fonts/cardo/Cardo-Regular.ttf")
+CARDO_BOLD = str(BASE_DIR / "fonts/cardo/Cardo-Bold.ttf")
+CARDO_ITALIC = str(BASE_DIR / "fonts/cardo/Cardo-Italic.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -1780,6 +1834,41 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "firmament": {
+        # Cardo (David Perry, OFL) — humanist Renaissance serif designed
+        # for classical scholarship. Pairs the period silhouette of 17th-
+        # century celestial atlas typography with strong on-eInk
+        # legibility. Visually distinct from the other Garamond-class
+        # faces in the rotation: EB Garamond (illuminated/gothic) and
+        # Cormorant Garamond (mucha). Italic fills the ornament role for
+        # the oversized opening quote mark — Italic Garamonds carry the
+        # classical / mythological register of constellation names. Falls
+        # back through EB Garamond → DejaVu Serif → Liberation Serif →
+        # Playfair so a missing-Cardo install still lands on a humanist
+        # serif rather than the Playfair display silhouette.
+        "quote_regular": [
+            CARDO_REGULAR,
+            EBGARAMOND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CARDO_BOLD,
+            EBGARAMOND_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CARDO_ITALIC,
+            CARDO_BOLD,
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     "lcars": {
         # Antonio (Vernon Adams, OFL) — the de-facto free LCARS substitute:
         # a tall narrow condensed sans whose silhouette mirrors Helvetica
@@ -2522,6 +2611,16 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       candidates for the chromatic-mix register the time phrase
       occupies). Body / attribution / source-id text in black
       passes through solid.
+    * ``firmament`` — only the yellow matched-phrase accent gets
+      dithered, 50/50 yellow-on-white checkerboard via the
+      documented two-ink cream / gold recipe (``dark=yellow,
+      light=white`` — the same recipe the diags synth band labels
+      "cream"). Reads as gilded constellation labels against the
+      navy night-sky ground, the canonical ink-on-vellum register
+      of 17th-century celestial atlases. The body white passes
+      through solid; only the matched-phrase yellow sentinel hits
+      this seam. Stars, constellation lines, and corner ornaments
+      paint outside this seam via ``draw_firmament_border``.
     """
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
@@ -2656,6 +2755,20 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # cool teal accent that reads cleanly against the warm maroon
         # body, completing the period palette of Belle-Époque posters.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
+    elif theme == "firmament" and fill == SPECTRA6["yellow"]:
+        # Cream / parchment gold (Y+W 1:1 — the documented two-ink
+        # recipe the ``diags`` synth band labels "cream"). On the
+        # navy night-sky ground (B+K stipple from ``draw_firmament_
+        # border``'s Layer 0), Y+W reads as warm gilded text — the
+        # canonical ink-on-vellum register of 17th-century celestial
+        # atlases like Cellarius's *Harmonia Macrocosmica*, where
+        # constellation names and zodiac labels were rendered in
+        # gilt against deep indigo ground. Yellow and white both sit
+        # far from blue in Spectra-6 space, so the perceived contrast
+        # against the navy is strong even at panel viewing distance.
+        # The body white passes through solid via the ``else`` branch
+        # below; only the matched-phrase yellow accent hits this seam.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -7076,6 +7189,582 @@ def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
     )
 
 
+# Deterministic 80-star scatter for ``draw_firmament_border``. The
+# (x, y, magnitude) tuples are precomputed via ``random.Random(0xF18)``
+# at module load — see the seed-and-shuffle preamble inline below the
+# scatter list — so the star field is reproducible across renders and
+# the test suite can pin specific stars to specific pixels without
+# depending on Python's random implementation. Restricted to the top
+# margin (y in [4, 64]) and the bottom margin (y in [height-64,
+# height-4]) so stars never collide with the body text (block_top ≥ 72
+# and attribution sits at height-72 onward).
+_FIRMAMENT_STAR_SEED = 0xF18
+
+
+def _build_firmament_stars(width: int, height: int) -> list[tuple[int, int, int]]:
+    """Return ~150 deterministic (x, y, magnitude) stars confined to the
+    top and bottom decoration margins. Magnitude 1 = brightest (8-point
+    sparkle with tapered rays), 2 = medium (4-point compass cross),
+    3 = faint (2x2 cluster), 4 = faintest (single pixel). Reseeded per
+    call so a different canvas size still produces a stable scatter.
+    """
+    import random as _random  # match the in-function import pattern used by _build_fillmore_blob
+
+    rng = _random.Random(_FIRMAMENT_STAR_SEED)
+    stars: list[tuple[int, int, int]] = []
+    side_margin = 20
+
+    def _add(count: int, magnitude: int) -> None:
+        for _ in range(count):
+            x = rng.randint(side_margin, width - side_margin - 1)
+            # Bias y to top or bottom margin band (each ~60 px tall).
+            if rng.random() < 0.5:
+                y = rng.randint(4, 64)
+            else:
+                y = rng.randint(height - 64, height - 4)
+            stars.append((x, y, magnitude))
+
+    _add(80, 4)   # very faint pinprick stars
+    _add(40, 3)   # faint 2x2 clusters
+    _add(20, 2)   # medium 4-point crosses
+    _add(10, 1)   # bright 8-point sparkles
+    return stars
+
+
+def _paint_firmament_star(pixels, width: int, height: int, sx: int, sy: int, magnitude: int) -> None:
+    """Paint a single deterministic yellow star at (sx, sy) onto the
+    image's pixel-access object. Magnitude controls the shape:
+
+    * mag 4: single yellow pixel (faintest)
+    * mag 3: 2×2 cluster (faint cluster)
+    * mag 2: 4-point compass cross with 2px arms + a centre dot
+    * mag 1: 8-point sparkle — long N/S/E/W rays that taper from 3px
+      core to 1px tip, plus shorter diagonal NE/NW/SE/SW rays. Reads
+      as a deliberate "navigational" star like the bright stars on
+      17th-century atlas pages (Bayer's Uranometria, Cellarius's
+      Harmonia Macrocosmica).
+    """
+    yellow = SPECTRA6["yellow"]
+
+    def _set(ax: int, ay: int) -> None:
+        if 0 <= ax < width and 0 <= ay < height:
+            pixels[ax, ay] = yellow
+
+    if magnitude >= 4:
+        _set(sx, sy)
+    elif magnitude == 3:
+        for dy in (0, 1):
+            for dx in (0, 1):
+                _set(sx + dx, sy + dy)
+    elif magnitude == 2:
+        # 4-point cross — vertical/horizontal arms with a 2x2 core.
+        for dy in (0, 1):
+            for dx in (0, 1):
+                _set(sx + dx, sy + dy)
+        _set(sx + 2, sy)
+        _set(sx + 2, sy + 1)
+        _set(sx - 1, sy)
+        _set(sx - 1, sy + 1)
+        _set(sx, sy + 2)
+        _set(sx + 1, sy + 2)
+        _set(sx, sy - 1)
+        _set(sx + 1, sy - 1)
+    else:
+        # Magnitude 1 — 8-point sparkle. 3x3 core, long cardinal rays
+        # (5 px tip → tapered, single-pixel terminal), short
+        # inter-cardinal rays (2 px, diagonal).
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                _set(sx + dx, sy + dy)
+        # Long cardinal rays — 5px each, tapered (1px ray after the core).
+        for offset in range(2, 6):
+            _set(sx, sy - offset)  # N
+            _set(sx, sy + offset)  # S
+            _set(sx - offset, sy)  # W
+            _set(sx + offset, sy)  # E
+        # Inter-cardinal sparkle accents (2px diagonal stubs).
+        for offset in (2, 3):
+            _set(sx - offset, sy - offset)  # NW
+            _set(sx + offset, sy - offset)  # NE
+            _set(sx - offset, sy + offset)  # SW
+            _set(sx + offset, sy + offset)  # SE
+
+
+def draw_firmament_border(image: Image.Image, colors: dict) -> None:
+    """Paint a 17th-century celestial-atlas frame around the quote:
+    navy ground wash, lavender Milky Way swaths in two corners,
+    scattered yellow stars in three magnitude tiers, two recognisable
+    constellation polylines (Cassiopeia + Orion's Belt), four corner
+    astronomy ornaments (sun, crescent moon, compass rose, ringed
+    Saturn), and a sky-blue ecliptic arc across the top margin.
+
+    Six layers, painted in Z-order so each successive layer overpaints
+    the previous:
+
+    * **Layer 0 — Navy ground wash.** ``page_bg`` is stored as solid
+      black; this pass flips half of those black pixels to blue on
+      ``(x + y) & 1`` parity. The eye averages B+K at panel distance
+      into navy (the documented two-ink recipe). Same idempotent
+      shape ``mucha`` / ``fillmore`` / ``atomic`` use for their
+      Layer 0 ground washes — the second ``_paint_theme_border``
+      invocation (post-text in ``render``) is a no-op because
+      already-flipped pixels no longer match ``page_bg``.
+
+    * **Layer 1 — Milky Way swaths (R+B+W lavender 3-ink).** Two
+      short polygon swaths in opposite corner margins: BL (top of
+      bottom margin) and TR (top margin, deliberately *left* of
+      the crescent moon to avoid sentinel collision in the moon's
+      blue-sentinel bbox). Each polygon is painted in an off-palette
+      sentinel ink (``(2, 2, 2)``), then a per-pixel walk inside
+      each polygon's bbox replaces sentinel pixels via the same
+      3-way Bayer partition ``_fill_swatch_stipple_3way`` uses
+      (cells 0–4 → red, 5–9 → blue, 10–15 → white). Cannot call
+      the helper directly — it unconditionally overwrites every
+      rect pixel and would wipe the navy ground. The lavender
+      density (~1/3 each of three inks) means the band reads as
+      a faint pastel violet stripe — the visible-spectrum
+      arm of the Milky Way as classical atlases drew it.
+
+    * **Layer 2 — Star field.** ~80 deterministic stars in three
+      magnitude tiers, confined to the top and bottom margins so
+      they never overlap body text. Mag-3 (faintest, ~50 stars):
+      single yellow pixel. Mag-2 (medium, ~20 stars): 5-pixel
+      yellow ``+`` cross. Mag-1 (brightest, ~10 stars): 3×3
+      filled yellow square plus 4 single-pixel rays radiating
+      N/S/E/W to form a small asterisk.
+
+    * **Layer 3 — Constellation polylines.** Cassiopeia (5 stars,
+      W shape) in the top-left margin and Orion's Belt (3 stars,
+      tilted line) in the bottom-right margin. Each star is
+      explicitly painted at its polyline vertex so the pattern
+      reads even when the seeded scatter happens to leave that
+      coordinate empty. Thin (1 px) white lines connect them via
+      ``draw.line``.
+
+    * **Layer 4 — Four corner astronomy ornaments.**
+
+      * **TL Sun** at ``(32, 32)``: filled yellow disc (radius 8)
+        plus 8 short yellow rays radiating outward to radius 14.
+        Solid yellow throughout, no post-pass — the sun is the
+        only ornament that paints in its final ink directly.
+      * **TR Crescent moon** at ``(width - 32, 54)``: a filled
+        circle (radius 10) painted in blue sentinel, then a
+        smaller circle (radius 8) in ``page_bg`` (black) offset
+        4 px left to carve the crescent. A bbox-scoped post-pass
+        flips blue sentinel pixels to white on ``(x + y) & 1``
+        parity, producing sky-blue (B+W 1:1 — the documented
+        recipe ``glacier``'s frost-crystal tips use). Centre at
+        y=54 sits well below the y=14-29 DEBUG MODE banner
+        band, so no ``_DEBUG_LABEL_RIGHT_INSET`` entry is needed
+        (same exemption pattern as ``dispatch`` / ``atomic``).
+      * **BL Compass rose** at ``(32, height - 40)``: 8 thin
+        white lines radiating from a small yellow centre dot,
+        alternating long (12 px on the cardinals) and short
+        (7 px on the inter-cardinals) — the canonical compass
+        silhouette of a portolan-chart wind rose.
+      * **BR Saturn** at ``(width - 44, height - 40)``: a filled
+        disc (radius 8) in red sentinel that bbox-post-passes
+        to tangerine (R+Y 5/8:3/8 via ``BAYER_4x4 < 6`` — the
+        documented recipe ``deco``'s matched phrase and
+        ``atomic``'s starburst rays use), plus an elliptical
+        ring (semi-major 16, semi-minor 6, rotated 20°)
+        approximated as a 64-point polyline (PIL has no native
+        ellipse rotation — same trick ``draw_atomic_border``'s
+        atom orbits use), painted in green sentinel and bbox-
+        post-passed to cyan (G+B 1:1 via ``(x + y) & 1`` — the
+        documented recipe ``mucha``'s outer rule and
+        ``glacier``'s matched phrase use). The two post-passes
+        share the Saturn corner bbox but filter on distinct
+        sentinels (red vs green), so they don't collide. The
+        first theme in the rotation to combine TWO synthesised
+        tones in a single ornament.
+
+    * **Layer 5 — Ecliptic arc.** A shallow sky-blue arc across
+      the top margin from ``(40, 70)`` to ``(width - 40, 70)``,
+      curving up to ``y = 20`` at its midpoint — the path of
+      the sun and planets through the zodiac as a celestial-
+      atlas page would have drawn it. Painted in blue sentinel
+      via ``draw.arc``, then a bbox-scoped post-pass flips half
+      to white on ``(x + y) & 1`` parity producing sky-blue.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    pixels = image.load()
+
+    blue_ink = SPECTRA6["blue"]
+    white_ink = SPECTRA6["white"]
+    yellow_ink = SPECTRA6["yellow"]
+    red_ink = SPECTRA6["red"]
+    green_ink = SPECTRA6["green"]
+    black_ink = SPECTRA6["black"]
+    # Off-palette sentinels — each is a unique RGB triple that no other
+    # Spectra-6 ink shares, so the per-ornament post-pass can filter on
+    # its sentinel without touching Layer 0's blue pixels (Layer 0 flips
+    # half the navy ground to blue, so reusing SPECTRA6["blue"] as a
+    # sentinel here would have the post-pass spray sky-blue stipple
+    # across every Layer 0 blue pixel inside the ornament's bbox).
+    milky_sentinel = (2, 2, 2)
+    moon_sentinel = (3, 3, 3)
+    arc_sentinel = (4, 4, 4)
+
+    # ---- Layer 0: Navy ground wash (B+K 1:1 via (x+y)&1 parity) ----
+    if page_bg is not None:
+        for y in range(height):
+            for x in range(width):
+                if pixels[x, y] == page_bg and (x + y) & 1:
+                    pixels[x, y] = blue_ink
+
+    # ---- Layer 1: Milky Way (dense star scatter inside two flowing blobs) ----
+    # The Milky Way is literally a region of densely concentrated
+    # stars, so render it that way: define two irregular flowing
+    # blob silhouettes — NOT rectangles — and scatter additional
+    # yellow pinprick stars inside each blob at much higher density
+    # than the ambient star field. Faint pixel-level red/blue
+    # "nebular dust" accents (cells 0/1 of a 4×4 Bayer at 12.5%
+    # total density) add a warm/cool hint without dominating the
+    # silhouette. The result reads as the dense star fields and
+    # nebular haze a 17th-century atlas (Cellarius, Hevelius) drew
+    # by stippling the engraving plate.
+    #
+    # Sentinel-painted polygons, then a per-pixel walk inside each
+    # blob's bbox: painted sentinel pixels are replaced via a
+    # deterministic per-position hash so the scatter is reproducible
+    # without an RNG-state thread through the post-pass. Ratios:
+    #   * ~1/22 of blob pixels → yellow star (dense star scatter)
+    #   * cell 0 (1/16) → red speck (warm nebular dust)
+    #   * cell 1 (1/16) → blue speck (cool nebular dust)
+    #   * remainder → revert to the Layer 0 navy ground
+    import random as _random_blob
+
+    blob_rng = _random_blob.Random(_FIRMAMENT_STAR_SEED ^ 0x42)
+
+    def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0) -> list[tuple[float, float]]:
+        n = 32
+        points = []
+        for i in range(n):
+            t = 2.0 * math.pi * i / n
+            # Per-vertex radial wobble in [0.65, 1.15] * base_r so the
+            # silhouette reads as organic, not geometric. Two-octave
+            # noise: a slow wobble plus a faster one for cliff-like
+            # detail.
+            r = base_r * (0.65 + 0.40 * blob_rng.random()) * (
+                0.85 + 0.30 * blob_rng.random()
+            )
+            points.append((cx + r * math.cos(t) * aspect, cy + r * math.sin(t)))
+        return points
+
+    # Top blob — drifts above the moon, shorter and shallower than
+    # before so the band reads as a wispy nebula rather than a solid
+    # cloud. Sits between Cassiopeia (TL) and Lyra (TR), threading
+    # below the ecliptic arc.
+    top_blob = _build_blob(width / 2 + 30, 52, 36, aspect=2.2)
+    # Bottom blob — narrower, mirrored opposite-diagonal.
+    bottom_blob = _build_blob(width / 2 - 60, height - 30, 32, aspect=2.4)
+
+    for poly in (top_blob, bottom_blob):
+        draw.polygon(poly, fill=milky_sentinel)
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        x0, x1 = max(0, int(min(xs))), min(width, int(max(xs)) + 1)
+        y0, y1 = max(0, int(min(ys))), min(height, int(max(ys)) + 1)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if pixels[x, y] != milky_sentinel:
+                    continue
+                # Deterministic per-position hash → very sparse paint:
+                # 1/40 chance yellow pin-star, 1/30 chance red dust,
+                # 1/30 chance blue dust. Total ~9% painted; remaining
+                # ~91% reverts to the navy ground. At panel viewing
+                # distance the eye averages this to a faint cloudy
+                # haze with embedded pin-stars — what 17th-century
+                # atlas engravers stippled when they drew the
+                # Milky Way's diffuse trail.
+                star_hash = (x * 73856093) ^ (y * 19349663)
+                bucket = star_hash % 120
+                if bucket < 3:
+                    pixels[x, y] = yellow_ink   # 3/120 = 1/40 star
+                elif bucket < 7:
+                    pixels[x, y] = red_ink      # 4/120 ≈ 1/30 warm dust
+                elif bucket < 11:
+                    pixels[x, y] = blue_ink     # 4/120 ≈ 1/30 cool dust
+                else:
+                    # Revert to navy ground (Layer 0 parity).
+                    pixels[x, y] = blue_ink if (x + y) & 1 else black_ink
+
+    # ---- Layer 2: Star field ----
+    for sx, sy, mag in _build_firmament_stars(width, height):
+        _paint_firmament_star(pixels, width, height, sx, sy, mag)
+
+    # ---- Layer 3: Constellation polylines + Latin labels ----
+    # Cardo Italic for constellation names — the small-caps register of
+    # 17th-century celestial-atlas labels. ImageFont is loaded lazily so
+    # the label step is graceful if the font is missing.
+    try:
+        label_font = ImageFont.truetype(CARDO_ITALIC, 11)
+    except OSError:
+        label_font = ImageFont.load_default()
+
+    # Cassiopeia — W shape, top-left margin. Five canonical stars.
+    cassiopeia = [(60, 34), (95, 50), (130, 28), (165, 50), (200, 36)]
+    for cx, cy in cassiopeia:
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=1)
+    draw.line(cassiopeia, fill=white_ink, width=1)
+    # Latin label below the W, white italic.
+    draw.text((90, 60), "CASSIOPEIA", font=label_font, fill=white_ink)
+
+    # Orion's Belt — three stars in a tilted line, bottom-right margin.
+    orion_belt = [
+        (width - 220, height - 30),
+        (width - 160, height - 36),
+        (width - 100, height - 42),
+    ]
+    for cx, cy in orion_belt:
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=1)
+    draw.line(orion_belt, fill=white_ink, width=1)
+    draw.text((width - 196, height - 18), "ORION", font=label_font, fill=white_ink)
+
+    # Lyra — small parallelogram in the top-right margin, between the
+    # Milky Way wisp and the moon. Four stars; the brightest is Vega.
+    lyra = [
+        (width - 280, 28),
+        (width - 240, 18),
+        (width - 220, 42),
+        (width - 268, 52),
+    ]
+    for cx, cy in lyra:
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=2)
+    # Vega — promote the first vertex to a brighter sparkle.
+    _paint_firmament_star(pixels, width, height, lyra[0][0], lyra[0][1], magnitude=1)
+    # Close the parallelogram (4 segments).
+    lyra_closed = lyra + [lyra[0]]
+    draw.line(lyra_closed, fill=white_ink, width=1)
+    draw.text((width - 280, 60), "LYRA", font=label_font, fill=white_ink)
+
+    # Crux (Southern Cross) — four stars in a cross pattern, bottom-left
+    # margin. Compact, fits between the compass rose and the body block.
+    crux = [
+        (200, height - 56),   # top
+        (216, height - 42),   # right
+        (200, height - 28),   # bottom
+        (184, height - 42),   # left
+    ]
+    _paint_firmament_star(pixels, width, height, crux[0][0], crux[0][1], magnitude=1)
+    for cx, cy in crux[1:]:
+        _paint_firmament_star(pixels, width, height, cx, cy, magnitude=2)
+    # Two crossing lines.
+    draw.line((crux[0], crux[2]), fill=white_ink, width=1)
+    draw.line((crux[1], crux[3]), fill=white_ink, width=1)
+    draw.text((132, height - 18), "CRUX AUSTRALIS", font=label_font, fill=white_ink)
+
+    # ---- Layer 4: Four corner astronomy ornaments ----
+
+    # TL Sun (Sol Invictus). Filled yellow disc + 16 alternating-length
+    # rays + a faint single-pixel halo of yellow at the cardinal
+    # boundaries → reads as a medieval sun-in-splendour rather than a
+    # geometric asterisk. The face stays implied (a small 2px crescent
+    # carved into the lower-right of the disc suggests a smile contour
+    # without committing to a literal face that would read as
+    # cartoonish at 12 px). All solid yellow, no post-pass.
+    sun_cx, sun_cy = 36, 36
+    sun_r = 11
+    draw.ellipse(
+        (sun_cx - sun_r, sun_cy - sun_r, sun_cx + sun_r, sun_cy + sun_r),
+        fill=yellow_ink,
+    )
+    # 16 rays in alternating tiers — 8 long primary, 8 short secondary.
+    for i, angle_deg in enumerate(range(0, 360, 22)):
+        angle = math.radians(angle_deg)
+        is_long = i % 2 == 0
+        ray_inner = sun_r + (1 if is_long else 3)
+        ray_outer = sun_r + (12 if is_long else 6)
+        x1 = sun_cx + ray_inner * math.cos(angle)
+        y1 = sun_cy + ray_inner * math.sin(angle)
+        x2 = sun_cx + ray_outer * math.cos(angle)
+        y2 = sun_cy + ray_outer * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=yellow_ink, width=1)
+    # Implied "face" — two tiny navy carved dots for eyes + a 3px
+    # smile arc, sitting in the lower half of the disc. Painted in the
+    # navy ground colours via the (x+y)&1 parity of the existing Layer
+    # 0 stipple, so it reads as a deliberate carved relief rather than
+    # an additional decoration layer. Two left+right eye dots at
+    # cy-2, a 3px wide smile centred at cy+3.
+    for ex in (sun_cx - 3, sun_cx + 3):
+        pixels[ex, sun_cy - 2] = blue_ink if (ex + sun_cy - 2) & 1 else black_ink
+    # Smile — 3 px arc.
+    for dx in (-2, -1, 0, 1, 2):
+        sy = sun_cy + 3 + (1 if abs(dx) >= 2 else 0)
+        pixels[sun_cx + dx, sy] = blue_ink if (sun_cx + dx + sy) & 1 else black_ink
+
+    # TR Crescent moon (Luna). The phase is a waning gibbous with a
+    # small "Luna" face suggestion (two tiny dark dots for craters).
+    # Sentinel-painted then bbox post-passed to sky-blue (B+W 1:1).
+    moon_cx, moon_cy = width - 36, 50
+    moon_r = 13
+    draw.ellipse(
+        (moon_cx - moon_r, moon_cy - moon_r, moon_cx + moon_r, moon_cy + moon_r),
+        fill=moon_sentinel,
+    )
+    # Carve the shadow.
+    carve_r = 11
+    carve_cx = moon_cx - 5
+    draw.ellipse(
+        (carve_cx - carve_r, moon_cy - carve_r, carve_cx + carve_r, moon_cy + carve_r),
+        fill=page_bg if page_bg is not None else black_ink,
+    )
+    # Sky-blue post-pass, scoped to the moon bbox.
+    mx0, mx1 = moon_cx - moon_r - 1, moon_cx + moon_r + 1
+    my0, my1 = moon_cy - moon_r - 1, moon_cy + moon_r + 1
+    for y in range(max(0, my0), min(height, my1 + 1)):
+        for x in range(max(0, mx0), min(width, mx1 + 1)):
+            if pixels[x, y] == moon_sentinel:
+                pixels[x, y] = white_ink if (x + y) & 1 else blue_ink
+    # Two small "craters" — pixel-relief navy dots in the lit portion.
+    for cx_off, cy_off in ((4, -2), (6, 3)):
+        ax, ay = moon_cx + cx_off, moon_cy + cy_off
+        if 0 <= ax < width and 0 <= ay < height:
+            pixels[ax, ay] = blue_ink if (ax + ay) & 1 else black_ink
+
+    # BL Compass rose (Wind Rose). Replace the earlier stick-ray design
+    # with a filled-wedge portolan-chart compass: four large filled
+    # triangular points at the cardinals (N, S, E, W) painted in white,
+    # four smaller diagonal points (NE, SE, SW, NW) in white, plus a
+    # filled yellow inner diamond and a small "N" label above the
+    # north point so the orientation reads at a glance.
+    rose_cx, rose_cy = 40, height - 44
+    long_r = 18
+    short_r = 8
+    side = 4  # half-width of the cardinal wedge at the base
+    # Cardinal wedges — each a filled triangle from centre to the
+    # tip, with a small width at the base for the silhouette.
+    cardinals = [
+        ((rose_cx, rose_cy - long_r), (rose_cx - side, rose_cy), (rose_cx + side, rose_cy)),   # N
+        ((rose_cx + long_r, rose_cy), (rose_cx, rose_cy - side), (rose_cx, rose_cy + side)),   # E
+        ((rose_cx, rose_cy + long_r), (rose_cx - side, rose_cy), (rose_cx + side, rose_cy)),   # S
+        ((rose_cx - long_r, rose_cy), (rose_cx, rose_cy - side), (rose_cx, rose_cy + side)),   # W
+    ]
+    for triangle in cardinals:
+        draw.polygon(triangle, fill=white_ink)
+    # Diagonal points — thinner short wedges.
+    diag_side = 2
+    for angle_deg in (45, 135, 225, 315):
+        angle = math.radians(angle_deg)
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        # Perpendicular for the base width.
+        perp_x, perp_y = -sin_a, cos_a
+        tip = (rose_cx + short_r * cos_a, rose_cy + short_r * sin_a)
+        base_a = (rose_cx + diag_side * perp_x, rose_cy + diag_side * perp_y)
+        base_b = (rose_cx - diag_side * perp_x, rose_cy - diag_side * perp_y)
+        draw.polygon((tip, base_a, base_b), fill=white_ink)
+    # Inner filled yellow diamond (the "pivot").
+    draw.polygon(
+        ((rose_cx, rose_cy - 3), (rose_cx + 3, rose_cy),
+         (rose_cx, rose_cy + 3), (rose_cx - 3, rose_cy)),
+        fill=yellow_ink,
+    )
+    # "N" label above the north point.
+    try:
+        n_font = ImageFont.truetype(CARDO_BOLD, 11)
+    except OSError:
+        n_font = ImageFont.load_default()
+    draw.text((rose_cx - 4, rose_cy - long_r - 13), "N", font=n_font, fill=yellow_ink)
+
+    # BR Saturn (Saturnus). Proper banded gas giant with the Cassini
+    # division: a tangerine disc with a single navy "equatorial band"
+    # darkening the centre row, plus TWO concentric ring lines (outer
+    # + inner with a 1 px gap = Cassini division), drawn as 64-point
+    # polyline approximations rotated 18° to suggest the planet's
+    # axial tilt. The two rings paint in green sentinel and bbox-
+    # post-pass independently to cyan (G+B 1:1). The disc paints in
+    # red sentinel and post-passes to tangerine (R+Y 5/8:3/8). The
+    # bbox post-pass filters on its sentinel so the rings and disc
+    # don't collide.
+    saturn_cx, saturn_cy = width - 56, height - 48
+    saturn_r = 11
+    draw.ellipse(
+        (saturn_cx - saturn_r, saturn_cy - saturn_r,
+         saturn_cx + saturn_r, saturn_cy + saturn_r),
+        fill=red_ink,
+    )
+    # Outer ring + inner ring (Cassini division 1 px between them).
+    angle = math.radians(18)
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    n_points = 96
+    for ring_a, ring_b in ((22, 8), (19, 6)):
+        ring_points = []
+        for i in range(n_points + 1):
+            t = 2.0 * math.pi * i / n_points
+            xu = ring_a * math.cos(t)
+            yu = ring_b * math.sin(t)
+            ring_points.append((
+                saturn_cx + xu * cos_a - yu * sin_a,
+                saturn_cy + xu * sin_a + yu * cos_a,
+            ))
+        draw.line(ring_points, fill=green_ink, width=1)
+    # Equatorial band — single horizontal dark line across the disc
+    # (deliberately drawn AFTER the disc so it cuts through the
+    # tangerine). Paint in black so it survives the disc post-pass.
+    band_y = saturn_cy + 1
+    draw.line(
+        (saturn_cx - saturn_r + 2, band_y, saturn_cx + saturn_r - 2, band_y),
+        fill=black_ink, width=1,
+    )
+    # Saturn post-pass — bbox scoped to the corner. Two independent
+    # sentinel filters (red → tangerine, green → cyan) inside the same
+    # bbox. The black band pixels match neither sentinel and survive.
+    sat_pad = 24
+    sat_x0 = max(0, saturn_cx - sat_pad)
+    sat_x1 = min(width, saturn_cx + sat_pad + 1)
+    sat_y0 = max(0, saturn_cy - sat_pad)
+    sat_y1 = min(height, saturn_cy + sat_pad + 1)
+    for y in range(sat_y0, sat_y1):
+        for x in range(sat_x0, sat_x1):
+            px_val = pixels[x, y]
+            if px_val == red_ink and BAYER_4x4[y & 3][x & 3] < 6:
+                pixels[x, y] = yellow_ink
+            elif px_val == green_ink and (x + y) & 1:
+                pixels[x, y] = blue_ink
+
+    # ---- Layer 4b: Roman-numeral hour markers ----
+    # XII / III / VI / IX at the four cardinal page positions. Reads
+    # as a horological-astrolabe rim, the period instrument that
+    # married astronomy to timekeeping. Subtle (small italic Cardo
+    # at the very edges of the canvas) so it doesn't compete with
+    # the ornaments. Each numeral is positioned to sit clear of
+    # the corner ornaments and the body region.
+    try:
+        roman_font = ImageFont.truetype(CARDO_ITALIC, 12)
+    except OSError:
+        roman_font = ImageFont.load_default()
+    # XII — top centre. Offset right slightly so it clears the top
+    # Milky Way blob (centred at width/2 + 30) on its left side.
+    draw.text((width // 2 - 60, 4), "XII", font=roman_font, fill=white_ink)
+    # VI — bottom RIGHT of centre. The bottom Milky Way blob sits
+    # left-of-centre (width/2 - 60), so VI lives to the right of it.
+    draw.text((width // 2 + 60, height - 16), "VI", font=roman_font, fill=white_ink)
+    # III — right edge, vertically at the body horizontal centre.
+    draw.text((width - 16, height // 2 - 6), "III", font=roman_font, fill=white_ink)
+    # IX — left edge, mirroring III.
+    draw.text((4, height // 2 - 6), "IX", font=roman_font, fill=white_ink)
+
+    # ---- Layer 5: Ecliptic arc ----
+    # A shallow arc across the top margin: bbox that crosses near
+    # (width/2, 20) at its peak and meets y=70 at x=40 and x=width-40.
+    # Use draw.arc on a tall bbox so only the bottom segment of the
+    # ellipse paints, producing the upward-curving sun-path silhouette.
+    # Painted in ``arc_sentinel`` (off-palette) — the bbox post-pass
+    # filters on the sentinel so it can't touch the Layer 0 navy
+    # stipple's blue pixels in the same band.
+    arc_bbox = (40, 20, width - 40, 140)
+    draw.arc(arc_bbox, start=180, end=360, fill=arc_sentinel, width=1)
+    ax0, ay0 = 40, 14
+    ax1, ay1 = width - 40, 72
+    for y in range(max(0, ay0), min(height, ay1 + 1)):
+        for x in range(max(0, ax0), min(width, ax1 + 1)):
+            if pixels[x, y] == arc_sentinel:
+                pixels[x, y] = white_ink if (x + y) & 1 else blue_ink
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -7107,6 +7796,7 @@ _BORDER_PAINTERS = {
     "herbarium": draw_herbarium_border,
     "mucha": draw_mucha_border,
     "fillmore": draw_fillmore_border,
+    "firmament": draw_firmament_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -7192,7 +7882,12 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # TR corner unornamented for asymmetric
                         # composition. ``fillmore``'s TR concentric
                         # rings sit at y=110 (centre), well below
-                        # the banner band.
+                        # the banner band. ``firmament``'s TR crescent
+                        # moon centre sits at y=54 (well below the
+                        # y=14-29 banner band) and the TR Milky Way
+                        # swath is bounded at x ≤ width-100 (left of
+                        # the default label right edge), so neither
+                        # graphic touches the label bbox.
 }
 
 # Themes whose matched-phrase (``quote_bold``) face has a distinctive

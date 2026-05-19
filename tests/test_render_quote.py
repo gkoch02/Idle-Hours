@@ -711,7 +711,7 @@ class TestThemes:
         "just type on the ground colour". Pin the four new entries
         explicitly so a future refactor that drops the dict key
         fails this test loudly."""
-        for name in ("swiss", "herbarium", "mucha", "fillmore"):
+        for name in ("swiss", "herbarium", "mucha", "fillmore", "firmament"):
             assert name in rq._BORDER_PAINTERS, name
 
     def test_risograph_theme_uses_no_black_ink(self):
@@ -800,6 +800,7 @@ class TestRender:
             "bauhaus",
             "risograph",
             "comic",
+            "firmament",
         ],
     )
     def test_render_new_themes_smoke(self, theme):
