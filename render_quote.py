@@ -7268,42 +7268,45 @@ def draw_kanagawa_border(
     )
 
     # ------------------------------------------------------------------
-    # Hanko seal (bottom-right). Compact red rounded rectangle with a
-    # stylised "kawa" (川 / three vertical strokes — "river") kanji
-    # painted in white after a maroon post-pass softens the seal's
+    # Hanko seal (bottom-right). Red rounded rectangle with a stylised
+    # "kawa" (川 / three vertical strokes — "river") kanji painted in
+    # 2 px white strokes after a maroon post-pass softens the seal's
     # base colour from fire-engine red to oxblood (R+K 1:1, the
     # documented recipe ``dispatch`` and ``chanbara`` both use).
-    seal_w = 26
-    seal_h = 30
-    seal_margin = 30
+    # Sized at 32×38 px so the kanji has room to breathe — earlier
+    # 26×30 px sized strokes that read as "scratchy lines" rather than
+    # a deliberate signature mark.
+    seal_w = 32
+    seal_h = 38
+    seal_margin = 26
     seal_x0 = width - seal_margin - seal_w
     seal_y0 = height - seal_margin - seal_h
     seal_x1 = seal_x0 + seal_w
     seal_y1 = seal_y0 + seal_h
-    draw.rounded_rectangle((seal_x0, seal_y0, seal_x1, seal_y1), radius=2, fill=red_ink)
+    draw.rounded_rectangle((seal_x0, seal_y0, seal_x1, seal_y1), radius=3, fill=red_ink)
     # Maroon post-pass on the seal: bbox-scoped (x+y)&1 flip to black.
     for py in range(seal_y0, seal_y1 + 1):
         for px in range(seal_x0, seal_x1 + 1):
             if pixels[px, py] == red_ink and ((px + py) & 1) == 0:
                 pixels[px, py] = black_ink
-    # Stylised "kawa" — three vertical white strokes, leftmost slightly
-    # kinked at the top to suggest the canonical brush motion. Painted
-    # AFTER the post-pass so the whites stay solid against the
-    # surrounding maroon stipple.
-    stroke_inset_x = 6
-    stroke_inset_y = 5
+    # Stylised "kawa" — three vertical white strokes, leftmost kinked
+    # at the top to suggest the canonical brush motion (the stroke
+    # starts down-right and turns vertical). The 2 px width matches
+    # the kanji weight of a real hanko impression.
+    stroke_inset_x = 7
+    stroke_inset_y = 6
     sx0 = seal_x0 + stroke_inset_x
     sx1 = seal_x1 - stroke_inset_x
     sxm = (seal_x0 + seal_x1) // 2
     sy0 = seal_y0 + stroke_inset_y
     sy1 = seal_y1 - stroke_inset_y
-    # Left stroke (kinked).
-    draw.line((sx0 + 2, sy0, sx0, sy0 + 3), fill=white_ink, width=1)
-    draw.line((sx0, sy0 + 3, sx0, sy1), fill=white_ink, width=1)
+    # Left stroke — kinked at the top (brush-down motion).
+    draw.line((sx0 + 3, sy0, sx0, sy0 + 4), fill=white_ink, width=2)
+    draw.line((sx0, sy0 + 4, sx0, sy1), fill=white_ink, width=2)
     # Middle stroke — slightly shorter than the flanking strokes.
-    draw.line((sxm, sy0 + 4, sxm, sy1 - 2), fill=white_ink, width=1)
+    draw.line((sxm, sy0 + 5, sxm, sy1 - 3), fill=white_ink, width=2)
     # Right stroke.
-    draw.line((sx1, sy0, sx1, sy1), fill=white_ink, width=1)
+    draw.line((sx1, sy0, sx1, sy1), fill=white_ink, width=2)
 
     # ------------------------------------------------------------------
     # Body-text knockout — cream-tinted rounded panel. When clear_rect
@@ -7331,7 +7334,28 @@ def draw_kanagawa_border(
         cy0 = max(0, cy0)
         cx1 = min(width - 1, cx1)
         cy1 = min(height - 1, cy1)
+        # Drop shadow — solid black rounded rect offset 2 px right and
+        # down. The cream panel paints on top in the next step,
+        # covering all but the 2 px ledge along the panel's bottom and
+        # right edges; that ledge is the visible "shadow" reading as a
+        # lifted paper card hovering above the seigaiha textile. The
+        # offset is deliberately small (2 px) — a deeper offset would
+        # cast a hard shadow that competes with the rest of the
+        # composition rather than reading as a subtle paper edge.
+        draw.rounded_rectangle(
+            (cx0 + 2, cy0 + 2, cx1 + 2, cy1 + 2),
+            radius=12, fill=black_ink,
+        )
         draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=12, fill=white_ink)
+        # Thin 1 px frame around the panel — reads as a hand-pressed
+        # paper card's edge wear, the way a real card laid on a
+        # textile has a slight outline where the paper meets the
+        # cloth. Painted in solid black at 1 px width; PIL's
+        # rounded_rectangle outline parameter automatically follows
+        # the rounded-corner arc.
+        draw.rounded_rectangle(
+            (cx0, cy0, cx1, cy1), radius=12, outline=black_ink, width=1,
+        )
         # Cream stipple via two 8×8 off-grid anchor scatters. Each
         # 8×8 tile gets a yellow dot at (1, 3) and at (5, 6) — total
         # 2/64 = ~3% density. The non-period-4 anchor positions break
