@@ -9654,6 +9654,13 @@ def _astrarium_paint_datum_strip(
             unit, font=unit_font, fill=BLACK,
         )
 
+    # Closing vertical rule on the right edge of the last cell, in line
+    # with the dial/quote-panel divider above (drawn in render at
+    # ``div_x = int(width * 0.5)``) so the two segments read as one
+    # continuous vertical guide.
+    for y in range(strip_top + 4, strip_bottom, 2):
+        draw.point((inner_right, y), fill=BLACK)
+
 
 def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Render the astrarium-theme dashboard frame.
