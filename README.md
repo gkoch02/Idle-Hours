@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="idle_hours/assets/logo.svg" alt="Idle Hours" width="800">
+</p>
+
 # Idle Hours
 
 [![CI](https://github.com/gkoch02/idle-hours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/idle-hours/actions/workflows/ci.yml)
