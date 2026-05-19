@@ -9334,9 +9334,14 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     date_font = load_font(theme_font_candidates("astrarium", "quote_bold"), size=54)
     draw.text((cx, cy), date_text, font=date_font, fill=BLACK, anchor="mm")
 
-    # Day of week beneath the date (replaces AM/PM).
+    # Day of week beneath the date (replaces AM/PM). Sits a few pixels
+    # lower than the old AM/PM (which was at cy+34) because the 54pt
+    # date can have descenders ("Sep", "Aug") where the digital HH:MM
+    # never did — anchor="mm" still vertical-centres on the font's
+    # baseline reference, so the descender extends ~10px past the
+    # visual middle and would crash into the weekday at cy+34.
     weekday_font = load_font(META_FONT_CANDIDATES, size=12)
-    draw.text((cx, cy + 34), weekday_text, font=weekday_font, fill=BLACK, anchor="mm")
+    draw.text((cx, cy + 46), weekday_text, font=weekday_font, fill=BLACK, anchor="mm")
     del time_str  # reserved on the signature for symmetry with the other dial painters; the centre disc is wall-clock derived from datetime.now()
 
     # Tiny tangerine sun glyph below "LOCAL TIME", above the digits.
