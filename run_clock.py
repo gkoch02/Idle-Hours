@@ -186,6 +186,7 @@ def parse_args() -> argparse.Namespace:
         "lcars",
         "fillmore",
         "firmament",
+        "astrarium",
         "diags",
     ]
     parser.add_argument(

@@ -193,6 +193,17 @@ THEME_SATURATION: dict[str, float] = {
     # tones stay punchy against the navy ground rather than fading
     # into a dim mid-tone.
     "firmament": 0.7,
+    # Astrarium / astronomical-clock dashboard — cream-washed white
+    # ground, black serif body, tangerine matched phrase (R+Y 5/8:3/8
+    # — same recipe ``deco`` uses), with teal (G+B) and sepia (R+G)
+    # ring quadrants on the dial. Same chromatic-on-light profile as
+    # ``deco`` / ``dispatch`` / ``herbarium`` / ``mucha`` — the
+    # gentler 0.5 tier preserves the dashboard's mid-tone
+    # halftone-stipple register. Pushing higher would saturate the
+    # synthesised tangerine into a brighter fluorescent orange that
+    # breaks the editorial / instrument-panel reading the layout is
+    # going for.
+    "astrarium": 0.5,
 }
 
 
