@@ -3735,6 +3735,48 @@ class TestParseArgsBasic:
             f"expected mkdir at {expected_parent}, got {abs_mkdirs}"
         )
 
+    def test_main_persists_resolved_output_back_to_args(self, monkeypatch, tmp_path):
+        """``main()`` must write the resolved absolute output path back onto
+        ``args.output`` so every downstream consumer (``web_server``,
+        ``runtime_quiet``, the render-subprocess plumbing) sees the same file.
+
+        Without this, a relative ``--output output/current.png`` flows
+        through ``args.output`` unchanged; each consumer re-resolves it on
+        its own, and any consumer whose resolver anchors differently from
+        ``run_clock.main``'s would silently target a different file —
+        producing a stale ``/current.png`` in the curator UI or a wrong
+        ``goodnight.png`` location during quiet hours.
+        """
+        argv = [
+            "run_clock.py",
+            "--output", "output/current.png",  # relative — exercises the rewrite
+            "--once",
+            "--buttons-off",
+            "--history-path", "",
+            "--telemetry-path", "",
+            "--state-path", "",
+            "--pidfile", "",
+            "--quiet-off",
+            "--skip-preflight",
+        ]
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", argv), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"):
+            run_clock.main()
+        # ``render_now(render_script, output_path, ...)`` — positional[1] is
+        # the output path. After ``main()``'s rewrite, this must be the
+        # absolute CWD-resolved path so every other downstream consumer
+        # (web_server, runtime_quiet) reads from the same file.
+        assert mock_render.called
+        positional_output = mock_render.call_args.args[1]
+        expected = str((tmp_path / "output" / "current.png").resolve())
+        assert positional_output == expected, (
+            f"render_now received {positional_output!r}, expected absolute {expected!r}"
+        )
+
 
 class TestMaybeStartWebServer:
     """The web server is optional; startup failures must not abort the loop."""
@@ -4227,7 +4269,9 @@ class TestPreflightPaths:
         assert any("render-script" in e for e in errors)
 
     def test_repo_default_render_script_exists(self):
-        """The default render_quote.py in the repo resolves against BASE_DIR."""
+        """The default ``render_quote.py`` resolves to the bundled
+        ``idle_hours/render_quote.py`` via the CWD-then-BASE_DIR fallback
+        in ``resolve_input_path``."""
         errors = run_clock._preflight_paths(self._args(render_script="render_quote.py"))
         assert errors == []
 

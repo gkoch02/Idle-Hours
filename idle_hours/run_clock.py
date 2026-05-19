@@ -17,6 +17,7 @@ from pathlib import Path
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours import pidfile, runtime_config, runtime_webhook, sd_notify
 from idle_hours.buckets import bucket_for_time
+from idle_hours.path_resolution import resolve_input_path
 from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     _button_render_gate,
     action_quiet,
@@ -583,12 +584,13 @@ def render_now(
     if time_str is None:
         time_str = current_time_str()
     python_executable = sys.executable
-    render_script_path = str((BASE_DIR / render_script).resolve()) if not Path(render_script).is_absolute() else render_script
-    # Output is a runtime artifact, not a bundled package asset — resolve
-    # relative paths against the caller's CWD so operators get
-    # ``./output/current.png`` rather than a copy buried inside the installed
-    # package directory.
-    output_path_resolved = str(Path(output_path).resolve()) if not Path(output_path).is_absolute() else output_path
+    # render-script is an INPUT path: prefer CWD (operator's checkout or
+    # custom script) and fall back to the bundled ``idle_hours/render_quote.py``
+    # when the CWD candidate doesn't exist. ``output_path`` is an OUTPUT and
+    # always CWD-relative — writing into ``BASE_DIR`` would put the file
+    # inside the installed package.
+    render_script_path = str(resolve_input_path(render_script, BASE_DIR))
+    output_path_resolved = str(Path(output_path).expanduser().resolve())
     render_start = time.monotonic()
     try:
         subprocess.run(
@@ -637,7 +639,7 @@ def render_now(
     _log(f"Rendered {time_str} -> {output_path_resolved} ({render_ms} ms)")
     display_ms: int | None = None
     if display_script:
-        display_script_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
+        display_script_path = str(resolve_input_path(display_script, BASE_DIR))
         display_start = time.monotonic()
         try:
             subprocess.run(
@@ -1330,8 +1332,11 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
 
     This catches the "typoed path in the systemd unit file" class of failure at
     startup instead of at first use (first bucket change, first quiet-hours
-    entry, first cold boot). All paths are resolved against ``BASE_DIR`` to
-    match how ``render_now`` / ``_display_quiet_image`` look them up.
+    entry, first cold boot). Operator-supplied relative paths resolve against
+    CWD; bundled defaults are absolute strings (anchored on ``BASE_DIR``) at
+    argparse-time. Both branches match the resolver used by ``render_now`` /
+    ``_display_quiet_image`` so a path that passes pre-flight will also be
+    found at run-time.
 
     Also catches the "the wheel doesn't ship static assets" class of failure
     that ``pip install idle-hours`` produces today: when ``BASE_DIR`` doesn't
@@ -1354,9 +1359,12 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
         # so pre-flight existence checks would reject a perfectly valid config.
         if attr in ("quiet_image", "startup_image") and value == "auto":
             continue
-        path = Path(value)
-        if not path.is_absolute():
-            path = BASE_DIR / path
+        # Matches the resolver used by ``render_now`` / ``_display_quiet_image``:
+        # input paths try CWD first and fall back to the bundled location
+        # under ``BASE_DIR``. Lets ``--render-script render_quote.py`` (a
+        # config-file or default value) find the bundled script while an
+        # operator's ``./my_script.py`` still wins when present.
+        path = resolve_input_path(value, BASE_DIR)
         if not path.exists():
             errors.append(f"--{attr.replace('_', '-')} {value!r} does not exist (resolved to {path})")
     # Static-asset guard: the corpus is the one runtime input we cannot
@@ -1397,10 +1405,19 @@ def main() -> int:
     # Output is a runtime artifact (see render_now() — same rationale): resolve
     # relative paths against the caller's CWD, not against ``BASE_DIR`` (which
     # now points inside the installed ``idle_hours/`` package).
+    #
+    # Persist the resolved absolute path back onto ``args.output`` so every
+    # downstream consumer (``web_server.WebContext``, ``runtime_quiet`` paths,
+    # the render-subprocess flag plumbing in ``render_now``) sees the same
+    # absolute path and can't drift apart. Without this, a relative
+    # ``args.output = "output/current.png"`` would be re-resolved per-callsite
+    # — and any consumer whose resolver still anchors on ``BASE_DIR`` would
+    # silently target a different file than the main loop is writing.
     output_target = Path(args.output).expanduser()
     if not output_target.is_absolute():
         output_target = output_target.resolve()
     output_target.parent.mkdir(parents=True, exist_ok=True)
+    args.output = str(output_target)
 
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None

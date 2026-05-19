@@ -31,6 +31,7 @@ import traceback
 from pathlib import Path
 
 from idle_hours.buckets import bucket_for_time
+from idle_hours.path_resolution import resolve_input_path
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme
@@ -82,12 +83,21 @@ def _display_quiet_image(
     contract the render/display paths in ``run_clock.render_now`` follow so operators
     can see quiet-image wedges in ``idle_hours_health.py`` summaries.
     """
-    quiet_path = Path(quiet_image) if Path(quiet_image).is_absolute() else (BASE_DIR / quiet_image).resolve()
-    output_resolved = str((BASE_DIR / output).resolve()) if not Path(output).is_absolute() else output
+    # ``quiet_image`` / ``display_script`` are INPUT paths — try CWD first
+    # (operator's custom override), fall back to ``BASE_DIR`` for the
+    # bundled defaults (``assets/goodnight.png``, ``display_inky.py``).
+    # ``output`` is an OUTPUT path — always CWD-relative, never BASE_DIR
+    # (which would write the goodnight frame inside the installed package).
+    # ``run_clock.main`` also persists the resolved absolute ``args.output``
+    # back onto the namespace before this is reached, so in practice
+    # ``output`` arrives here already absolute on the loop path; the
+    # CWD-resolve is defence in depth for any direct caller.
+    quiet_path = resolve_input_path(quiet_image, BASE_DIR)
+    output_resolved = str(Path(output).expanduser().resolve())
     shutil.copy2(str(quiet_path), output_resolved)
     _log(f"{reason}: {quiet_path.name} -> {output_resolved}")
     if display_script:
-        display_path = str((BASE_DIR / display_script).resolve()) if not Path(display_script).is_absolute() else display_script
+        display_path = str(resolve_input_path(display_script, BASE_DIR))
         try:
             subprocess.run(
                 [sys.executable, display_path, output_resolved],
