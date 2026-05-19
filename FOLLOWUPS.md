@@ -19,13 +19,3 @@ is something the codebase is fine without but would be cleaner with.
   (move every top-level `*.py` and the static directories under it) and
   declare them via `[tool.setuptools.package-data]`. That's a sweeping
   rename across imports, tests, and docs — separate PR.
-
-- **GitHub repository rename.** The product was renamed from `LitClock` to
-  `Idle Hours` in-repo; the GitHub repository itself still lives at
-  `gkoch02/litclock`. Rename via the GitHub admin UI to `gkoch02/idle-hours`
-  so the URLs in `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
-  `pi_setup_inky_impression.md`, and the CI badge resolve directly instead of
-  via GitHub's compatibility redirect (~12 months from the rename). No code
-  changes required; this is purely an admin action plus a `git remote
-  set-url origin git@github.com:gkoch02/idle-hours.git` on existing
-  checkouts.
