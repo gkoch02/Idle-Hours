@@ -8884,29 +8884,13 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
     x += bbox[2] - bbox[0] + 8
     draw.text((x, y), "ASTRARIUM", font=brand_bold, fill=RED)
 
-    # Right-side info stack: date (red label + bold value) and a small
-    # "S6" box anchored to the right margin.
+    # Right-side date stack — bold SOL/year line on top, red day label
+    # beneath. Anchored directly to the right margin.
     now = datetime.datetime.now()
     day_label = now.strftime("%a · %b %d").upper()
     sol = f"SOL {now.timetuple().tm_yday} · YR {now.year}"
 
-    s6_label = "S6"
-    s6_label_bbox = draw.textbbox((0, 0), s6_label, font=chrome_bold)
-    s6_label_w = s6_label_bbox[2] - s6_label_bbox[0]
-    s6_right = width - 24
-    s6_box_x0 = s6_right - s6_label_w - 12
-    s6_box_y0 = 14
-    s6_box_x1 = s6_right
-    s6_box_y1 = 34
-    draw.rectangle((s6_box_x0, s6_box_y0, s6_box_x1, s6_box_y1), outline=BLACK, width=1)
-    draw.text(
-        (s6_box_x0 + (s6_box_x1 - s6_box_x0 - s6_label_w) // 2 - s6_label_bbox[0],
-         s6_box_y0 + (s6_box_y1 - s6_box_y0 - (s6_label_bbox[3] - s6_label_bbox[1])) // 2 - s6_label_bbox[1]),
-        s6_label, font=chrome_bold, fill=BLACK,
-    )
-
-    # Date stack to the left of the S6 box.
-    date_right = s6_box_x0 - 14
+    date_right = width - 24
     sol_bbox = draw.textbbox((0, 0), sol, font=chrome_bold)
     day_bbox = draw.textbbox((0, 0), day_label, font=chrome_bold)
     draw.text((date_right - (sol_bbox[2] - sol_bbox[0]) - sol_bbox[0], 16 - sol_bbox[1]), sol, font=chrome_bold, fill=BLACK)
