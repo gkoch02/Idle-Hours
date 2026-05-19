@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover - Windows
 
 from runtime_log import _log
 
-DEFAULT_PIDFILE_PATH = "~/.litclock/run_clock.pid"
+DEFAULT_PIDFILE_PATH = "~/.idle-hours/run_clock.pid"
 
 
 class PidfileLockedError(RuntimeError):

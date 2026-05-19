@@ -1,6 +1,6 @@
-# Contributing to LitClock
+# Contributing to Idle Hours
 
-Thanks for considering a contribution. LitClock is a small hobby project, so
+Thanks for considering a contribution. Idle Hours is a small hobby project, so
 process is deliberately light — the goal is to make it easy for someone who
 just wants to fix a typo, improve a quote, or add a pipeline stage.
 
@@ -19,8 +19,8 @@ Python 3.11 or 3.12. The runtime is pure stdlib + Pillow; the Pi deployment
 additionally needs `inky` and `gpiozero`.
 
 ```bash
-git clone https://github.com/gkoch02/litclock.git
-cd litclock
+git clone https://github.com/gkoch02/idle-hours.git
+cd idle-hours
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
@@ -32,12 +32,12 @@ pytest
 ruff check .
 python3 run_clock.py --once --buttons-off     # one-shot render to output/current.png
 # or, with the unified CLI (v2):
-litclock run --once --buttons-off
+idle-hours run --once --buttons-off
 ```
 
-`pip install -e ".[dev]"` registers `litclock` as a console script — every
-backing module is reachable via `litclock <subcommand>`, with `python3
-<script>.py` continuing to work for backwards compat. Run `litclock --help`
+`pip install -e ".[dev]"` registers `idle-hours` as a console script — every
+backing module is reachable via `idle-hours <subcommand>`, with `python3
+<script>.py` continuing to work for backwards compat. Run `idle-hours --help`
 for the full subcommand list.
 
 `pip install -e ".[dev]"` is the single source of truth for dev deps; CI
@@ -57,7 +57,7 @@ workflow files — they'll drift.
 
 ## What kind of change are you making?
 
-### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote.py`, `pick_quote.py`, `web_server.py`, `litclock_cli.py`, …)
+### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote.py`, `pick_quote.py`, `web_server.py`, `idle_hours_cli.py`, …)
 
 The runtime is a thin orchestrator (`run_clock.py`) that delegates to eight
 `runtime_*` siblings (`runtime_state` / `runtime_store` / `runtime_telemetry`
@@ -83,21 +83,21 @@ modules. Highlights:
   shape (a new `mode` value) instead.
 - New web endpoints belong in `web_server.py`'s route dispatch and should
   reuse `pick_quote.valid_bucket_names()` / `apply_content_overrides.ALLOWED_FIELDS`
-  / `litclock_health.summarise` rather than reimplementing validation /
+  / `idle_hours_health.summarise` rather than reimplementing validation /
   aggregation.
 
 ### Adding a subcommand to the umbrella CLI
 
-`litclock_cli.py` registers every backing module in a single `SUBCOMMANDS`
+`idle_hours_cli.py` registers every backing module in a single `SUBCOMMANDS`
 dict mapping `<kebab-case-name>` to `(module_name, description)`. To expose
-a new script as `litclock <name>`:
+a new script as `idle-hours <name>`:
 
-1. Add the `(name → module)` entry to `SUBCOMMANDS` in `litclock_cli.py`.
+1. Add the `(name → module)` entry to `SUBCOMMANDS` in `idle_hours_cli.py`.
 2. Make sure the backing module has a callable `main()` (every script in
    the repo already does).
 3. Add the module name to `[tool.setuptools] py-modules` in `pyproject.toml`
    so the wheel ships it.
-4. `tests/test_litclock_cli.py::TestSubcommandRegistry` will catch a
+4. `tests/test_idle_hours_cli.py::TestSubcommandRegistry` will catch a
    `SUBCOMMANDS` entry that points at a missing module or a module without
    a `main`. `tests/test_packaging.py` will catch the `py-modules` drift.
 
@@ -230,9 +230,9 @@ Open a GitHub issue with:
 - what actually happened,
 - reproduction steps (command-line flags, time of day if relevant — some
   bugs only surface in specific buckets),
-- relevant log lines from `journalctl -u litclock` or the terminal.
+- relevant log lines from `journalctl -u idle-hours` or the terminal.
 
-For the appliance specifically, `python3 litclock_health.py --hours 24`
+For the appliance specifically, `python3 idle_hours_health.py --hours 24`
 output is usually the fastest way to share state.
 
 ## License

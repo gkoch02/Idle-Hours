@@ -88,7 +88,7 @@ class TestNotifyAbstractSocket:
         if not hasattr(socket, "AF_UNIX"):
             pytest.skip("AF_UNIX not available")
         # Pick a unique abstract name so parallel test runs don't collide.
-        abstract_name = f"litclock-test-{os.getpid()}"
+        abstract_name = f"idle-hours-test-{os.getpid()}"
         server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         try:
             server.bind("\0" + abstract_name)

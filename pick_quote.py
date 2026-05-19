@@ -15,7 +15,7 @@ import atomic_io
 from buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
 from jsonl_io import iter_jsonl
 
-DEFAULT_HISTORY_PATH = "~/.litclock/history.jsonl"
+DEFAULT_HISTORY_PATH = "~/.idle-hours/history.jsonl"
 DEFAULT_HISTORY_DAYS = 7
 
 # Paths of the two corpus artifacts committed in ``assets/``. ``DEFAULT_DATABASE_PATH``
@@ -99,7 +99,7 @@ PRONOUN_HEAVY_OPENINGS = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Pick the best LitClock quote for a time.")
+    parser = argparse.ArgumentParser(description="Pick the best Idle Hours quote for a time.")
     parser.add_argument(
         "--input",
         default=DEFAULT_INPUT_PATH,

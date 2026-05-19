@@ -1,16 +1,16 @@
-// LitClock curator — vanilla JS, no build step.
+// Idle Hours curator — vanilla JS, no build step.
 // Every fetch is relative so we inherit the page's origin; token auth lives
 // entirely on the server side and is only required for LAN binds (see README).
 
 const $ = (id) => document.getElementById(id);
 
 // Token storage. Loopback binds need no token (server ignores the header);
-// LAN binds reject every POST with 401 unless `X-LitClock-Token` matches the
+// LAN binds reject every POST with 401 unless `X-Idle-Hours-Token` matches the
 // configured value. We persist the operator's token in localStorage so a
 // page reload doesn't re-prompt, and reactively recover from 401 by asking
 // the operator to paste the current token. No token is ever embedded in
 // the served HTML — that would leak it into shoulder-surf and HTTP caches.
-const TOKEN_KEY = "litclock.web.token";
+const TOKEN_KEY = "idle-hours.web.token";
 const getToken = () => {
   try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
 };
@@ -34,7 +34,7 @@ const log = (msg, cls = "") => {
 async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   const headers = { ...(opts.headers || {}) };
   const token = getToken();
-  if (token) headers["X-LitClock-Token"] = token;
+  if (token) headers["X-Idle-Hours-Token"] = token;
   const resp = await fetch(url, { ...opts, headers });
   const text = await resp.text();
   let data = null;
@@ -59,7 +59,7 @@ function promptForToken() {
   // documents that they'll be asked. Returning the trimmed value (or "")
   // lets the caller decide whether to retry the failed request.
   const value = window.prompt(
-    "This LitClock instance requires a token for write operations.\n" +
+    "This Idle Hours instance requires a token for write operations.\n" +
     "Paste the contents of --web-token-file:",
     "",
   );

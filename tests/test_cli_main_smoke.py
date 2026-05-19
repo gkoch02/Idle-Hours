@@ -38,8 +38,8 @@ HELP_SCRIPTS = [
     "fix_legacy_buckets",
     "fix_substring_time_matches",
     "gutenberg_time_miner",
+    "idle_hours_health",
     "import_targeted_hits",
-    "litclock_health",
     "merge_candidates",
     "pick_quote",
     "probe_buttons",
@@ -88,17 +88,17 @@ class TestPickQuoteMain:
         assert payload.get("resolved_bucket", "").startswith("h2_")
 
 
-class TestLitclockHealthMain:
+class TestIdleHoursHealthMain:
     def test_missing_telemetry_exits_1(self, tmp_path):
-        """``litclock_health --telemetry-path <missing>`` exits 1 (not 0, not crash)."""
-        result = _run(["litclock_health.py", "--telemetry-path", str(tmp_path / "nope.jsonl")])
+        """``idle_hours_health --telemetry-path <missing>`` exits 1 (not 0, not crash)."""
+        result = _run(["idle_hours_health.py", "--telemetry-path", str(tmp_path / "nope.jsonl")])
         assert result.returncode == 1, f"expected 1, got {result.returncode}: {result.stderr}"
 
     def test_empty_telemetry_json_mode(self, tmp_path):
         """``--json`` with an empty-but-existing log emits valid JSON even with zero entries."""
         log = tmp_path / "telemetry.jsonl"
         log.write_text("", encoding="utf-8")
-        result = _run(["litclock_health.py", "--telemetry-path", str(log), "--json"])
+        result = _run(["idle_hours_health.py", "--telemetry-path", str(log), "--json"])
         # Empty log behaves like missing (exit 1) in current implementation —
         # we care that it's JSON on stdout OR a clean exit code, not a traceback.
         assert "Traceback" not in result.stderr, result.stderr
@@ -108,7 +108,7 @@ class TestLitclockHealthMain:
         log = tmp_path / "telemetry.jsonl"
         log.write_text("", encoding="utf-8")
         result = _run([
-            "litclock_health.py",
+            "idle_hours_health.py",
             "--telemetry-path", str(log),
             "--hours", "1",
             "--fail-if-no-renders",
@@ -213,7 +213,7 @@ class TestRunClockOnce:
         theme/mode.
         """
         out = tmp_path / "frame.png"
-        cfg = tmp_path / "litclock.toml"
+        cfg = tmp_path / "idle-hours.toml"
         cfg.write_text(
             'mode = "production"\n'
             'theme = "dark"\n'

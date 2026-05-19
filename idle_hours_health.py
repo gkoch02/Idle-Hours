@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Summarise the LitClock runtime telemetry log.
+"""Summarise the Idle Hours runtime telemetry log.
 
 ``run_clock.py`` writes one JSONL entry per render attempt to
-``~/.litclock/telemetry.jsonl``. This script reads the last N hours and prints
+``~/.idle-hours/telemetry.jsonl``. This script reads the last N hours and prints
 render counts, error counts, and render-latency percentiles so the appliance can
 be inspected without ``journalctl`` spelunking.
 """
@@ -14,16 +14,16 @@ import json
 import sys
 from pathlib import Path
 
-DEFAULT_TELEMETRY_PATH = "~/.litclock/telemetry.jsonl"
+DEFAULT_TELEMETRY_PATH = "~/.idle-hours/telemetry.jsonl"
 DEFAULT_HOURS = 24
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Summarise LitClock telemetry.")
+    parser = argparse.ArgumentParser(description="Summarise Idle Hours telemetry.")
     parser.add_argument(
         "--telemetry-path",
         default=DEFAULT_TELEMETRY_PATH,
-        help="JSONL log written by run_clock.py (default: ~/.litclock/telemetry.jsonl)",
+        help="JSONL log written by run_clock.py (default: ~/.idle-hours/telemetry.jsonl)",
     )
     parser.add_argument(
         "--hours",

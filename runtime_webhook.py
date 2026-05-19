@@ -1,14 +1,14 @@
 """Webhook notifier for telemetry events.
 
 Posts a subset of ``runtime_telemetry`` events to an operator-configured
-HTTP endpoint so a fleet operator can wire LitClock into their existing
+HTTP endpoint so a fleet operator can wire Idle Hours into their existing
 alerting (Slack, Discord, n8n, plain HTTP listener — we don't care).
 
 Why a webhook and not a push-notification SDK: the appliance is a
 single-operator home device; the operator is already running their own
 plumbing for everything else (HomeAssistant, ntfy, etc.). A plain
 ``POST <url>`` with a JSON body is the minimum viable surface that
-plumbs into any of those without binding LitClock to a specific
+plumbs into any of those without binding Idle Hours to a specific
 provider's SDK.
 
 **Fire-and-forget on a daemon thread.** The webhook MUST NOT block the
@@ -149,7 +149,7 @@ def get_config() -> tuple[str, bool]:
 def _is_render_entry(entry: dict) -> bool:
     """True when ``entry`` is a successful-render telemetry record.
 
-    Matches ``litclock_health.summarise``'s rule (``render_ms`` is a
+    Matches ``idle_hours_health.summarise``'s rule (``render_ms`` is a
     numeric value), but accepts both ``int`` and ``float`` so a future
     timer that reports floats doesn't silently start spamming the webhook
     with one POST per minute. Excludes ``bool`` explicitly because
@@ -251,7 +251,7 @@ def post_event(
 
     threading.Thread(
         target=_run_and_release,
-        name="litclock-webhook",
+        name="idle-hours-webhook",
         daemon=True,
     ).start()
 
@@ -269,7 +269,7 @@ def _post_blocking(webhook_url: str, entry: dict, timeout_seconds: float) -> Non
         method="POST",
         headers={
             "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "LitClock/2.0",
+            "User-Agent": "IdleHours/2.0",
         },
     )
     try:

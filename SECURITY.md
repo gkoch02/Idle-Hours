@@ -1,6 +1,6 @@
 # Security Policy
 
-LitClock is a small, single-operator home appliance. It is not a hosted
+Idle Hours is a small, single-operator home appliance. It is not a hosted
 service, has no accounts or user data, and the canonical deployment is a
 Raspberry Pi pushing an eInk frame once per fuzzy-minute bucket. The surface
 area below is what exists; anything outside it is not in scope.
@@ -15,9 +15,9 @@ there are no long-lived release branches.
 **Please do not open a public GitHub issue for security reports.**
 
 Use GitHub's private vulnerability reporting to file a report against
-`gkoch02/litclock`:
+`gkoch02/idle-hours`:
 
-- https://github.com/gkoch02/litclock/security/advisories/new
+- https://github.com/gkoch02/idle-hours/security/advisories/new
 
 Include:
 
@@ -43,7 +43,7 @@ These are the surfaces where a security bug would matter:
   assumption that the OS-level trust boundary is sufficient; non-loopback
   binds **require** `--web-token` or `--web-token-file`, and `start_web_server`
   refuses to bind `0.0.0.0` without one. Token checks use
-  `hmac.compare_digest` against the `X-LitClock-Token` header only. Report
+  `hmac.compare_digest` against the `X-Idle-Hours-Token` header only. Report
   anything that lets an unauthenticated caller mutate state, read tokens from
   logs, or bypass the bind check.
 - **Mutating endpoints (`POST /api/overrides`, `POST /api/content-overrides`,
@@ -64,7 +64,7 @@ These are the surfaces where a security bug would matter:
   corpus (e.g. arbitrary file reads via the search filter), trigger
   unbounded resource use (the preview width/height are clamped to
   `800×480` and the search limit to 500), or bypass the bind check.
-  `/metrics` reuses `litclock_health.summarise` over a fixed 24 h window —
+  `/metrics` reuses `idle_hours_health.summarise` over a fixed 24 h window —
   if the summariser ever leaks request data into the metric values, that's
   in scope.
 - **Webhook fan-out (`runtime_webhook.py`).** When `--webhook-url` is set,
@@ -96,7 +96,7 @@ These are the surfaces where a security bug would matter:
   `gpiozero`). Please report those to their upstream projects. Mitigations
   we can apply (pinning, sandboxing, workarounds) are in scope.
 - Vulnerabilities in Project Gutenberg itself or in cached texts under
-  `data/gutenberg/`. Out of scope as a LitClock issue; in scope only if our
+  `data/gutenberg/`. Out of scope as a Idle Hours issue; in scope only if our
   handling of untrusted input is what creates the risk.
 - Issues that require physical access to the Pi (GPIO, SD card, serial
   console) — if you can touch the device, you can already reboot it.
@@ -106,9 +106,9 @@ These are the surfaces where a security bug would matter:
 
 ## Hardening defaults worth knowing
 
-- The example systemd unit (`litclock.service.example`) runs with
+- The example systemd unit (`idle-hours.service.example`) runs with
   `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=read-only`,
-  `PrivateTmp=yes`, and a scoped `StateDirectory=litclock`. The Button-D
+  `PrivateTmp=yes`, and a scoped `StateDirectory=idle-hours`. The Button-D
   shutdown default (`sudo -n shutdown`) is **incompatible** with
   `NoNewPrivileges=yes`; swap it for `systemctl poweroff` under the sandbox.
 - `--web-token-file` is preferred over `--web-token` in production so the

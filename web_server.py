@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Curator web UI for LitClock — local HTTP surface for browsing and tweaking the clock.
+"""Curator web UI for Idle Hours — local HTTP surface for browsing and tweaking the clock.
 
 This runs in-process inside ``run_clock.py`` on a background daemon thread, sharing
 ``RuntimeState.render_lock`` / ``state.lock`` / ``state.ledger_lock`` with the GPIO
@@ -16,7 +16,7 @@ Design notes:
   additionally requires a token (``--web-token`` or ``--web-token-file``);
   otherwise ``start_web_server`` refuses to start so an operator can't
   accidentally open a tokenless POST surface on the network.
-* Token is checked via the ``X-LitClock-Token`` header only, never a query string,
+* Token is checked via the ``X-Idle-Hours-Token`` header only, never a query string,
   since ``BaseHTTPRequestHandler`` logs request paths — a token in the URL would
   leak into journald.
 * GETs are never token-gated (telemetry/coverage/current.png aren't sensitive);
@@ -51,7 +51,7 @@ DEFAULT_RAW_CORPUS_PATH = BASE_DIR / "assets" / "candidates-attributed.jsonl"
 DEFAULT_BAKED_DB_PATH = BASE_DIR / "assets" / "quote_database.jsonl"
 DEFAULT_OUTPUT_PATH = BASE_DIR / "output" / "current.png"
 
-TOKEN_HEADER = "X-LitClock-Token"
+TOKEN_HEADER = "X-Idle-Hours-Token"
 MAX_BODY_BYTES = 64 * 1024  # Overrides payloads are tiny; cap to stop runaway requests.
 PREVIEW_MIN_WIDTH = 80
 PREVIEW_MIN_HEIGHT = 60
@@ -200,7 +200,7 @@ def _resolve_path(path_str: str) -> Path:
     return path
 
 
-class _LitClockHTTPServer(ThreadingHTTPServer):
+class _IdleHoursHTTPServer(ThreadingHTTPServer):
     """``ThreadingHTTPServer`` with a ``context`` attribute attached.
 
     The handler reaches ``args``, ``state``, and the token via ``self.server.context``.
@@ -352,7 +352,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
     up in ``self.path`` and thus the log line.
     """
 
-    server_version = "LitClockCurator/1.0"
+    server_version = "IdleHoursCurator/1.0"
 
     def log_message(self, format, *args):
         # Silence the default stderr access log; we already log meaningful events
@@ -559,7 +559,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self._json(HTTPStatus.OK, payload)
 
     def _api_telemetry(self, query: dict) -> None:
-        import litclock_health
+        import idle_hours_health
         try:
             hours = int(query.get("hours", ["24"])[0])
         except (TypeError, ValueError):
@@ -572,15 +572,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
                                               "display_p50_ms": None, "display_p95_ms": None,
                                               "last_error": None, "note": "telemetry disabled"})
         since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)
-        entries = litclock_health.load_entries(Path(ctx.telemetry_path).expanduser(), since)
-        summary = litclock_health.summarise(entries)
+        entries = idle_hours_health.load_entries(Path(ctx.telemetry_path).expanduser(), since)
+        summary = idle_hours_health.summarise(entries)
         self._json(HTTPStatus.OK, {"hours": hours, **summary})
 
     def _api_metrics(self) -> None:
         """Prometheus text-format scrape endpoint over a 24h window.
 
-        Re-uses :func:`litclock_health.load_entries` + :func:`litclock_health.summarise`
-        so the metric values match exactly what ``litclock-health --json`` reports;
+        Re-uses :func:`idle_hours_health.load_entries` + :func:`idle_hours_health.summarise`
+        so the metric values match exactly what ``idle-hours health --json`` reports;
         no parallel aggregation logic to drift. Window is fixed at 24h because
         Prometheus is responsible for time-windowing on its end (rate(),
         increase()): exposing a configurable window via query string here would
@@ -600,13 +600,13 @@ class CuratorHandler(BaseHTTPRequestHandler):
         managing a token. Operators concerned about leaking telemetry to
         the LAN already bind to 127.0.0.1.
         """
-        import litclock_health
+        import idle_hours_health
         ctx = self._ctx()
         lines: list[str] = []
         if ctx.telemetry_path:
             since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
-            entries = litclock_health.load_entries(Path(ctx.telemetry_path).expanduser(), since)
-            summary = litclock_health.summarise(entries)
+            entries = idle_hours_health.load_entries(Path(ctx.telemetry_path).expanduser(), since)
+            summary = idle_hours_health.summarise(entries)
         else:
             # Telemetry disabled: still emit the metric names with zero values
             # so a Prometheus scrape against a fresh appliance doesn't 500 or
@@ -631,35 +631,35 @@ class CuratorHandler(BaseHTTPRequestHandler):
             if value is not None:
                 lines.append(f"{name} {value}")
 
-        metric("litclock_renders_total", summary.get("render_count", 0),
+        metric("idle_hours_renders_total", summary.get("render_count", 0),
                "Successful renders in the last 24 hours.", mtype="gauge")
-        metric("litclock_errors_total", summary.get("error_count", 0),
+        metric("idle_hours_errors_total", summary.get("error_count", 0),
                "Render / display / runtime errors in the last 24 hours.", mtype="gauge")
-        metric("litclock_heartbeats_total", summary.get("heartbeat_count", 0),
+        metric("idle_hours_heartbeats_total", summary.get("heartbeat_count", 0),
                "Loop heartbeat pings in the last 24 hours.", mtype="gauge")
-        metric("litclock_actions_total", summary.get("action_count", 0),
+        metric("idle_hours_actions_total", summary.get("action_count", 0),
                "Operator actions (button + web) in the last 24 hours.", mtype="gauge")
-        metric("litclock_press_dropped_total", summary.get("press_dropped_count", 0),
+        metric("idle_hours_press_dropped_total", summary.get("press_dropped_count", 0),
                "Button presses dropped because a render was in flight.", mtype="gauge")
-        metric("litclock_web_auth_fails_total", summary.get("web_auth_fail_count", 0),
+        metric("idle_hours_web_auth_fails_total", summary.get("web_auth_fail_count", 0),
                "Web UI POSTs that failed token auth in the last 24 hours.", mtype="gauge")
-        metric("litclock_web_errors_total", summary.get("web_error_count", 0),
+        metric("idle_hours_web_errors_total", summary.get("web_error_count", 0),
                "Web UI 4xx/5xx responses in the last 24 hours.", mtype="gauge")
-        metric("litclock_quiet_enter_total", summary.get("quiet_enter_count", 0),
+        metric("idle_hours_quiet_enter_total", summary.get("quiet_enter_count", 0),
                "Quiet-hours rising-edge transitions in the last 24 hours.", mtype="gauge")
-        metric("litclock_quiet_exit_total", summary.get("quiet_exit_count", 0),
+        metric("idle_hours_quiet_exit_total", summary.get("quiet_exit_count", 0),
                "Quiet-hours falling-edge transitions in the last 24 hours.", mtype="gauge")
-        metric("litclock_render_p50_ms", summary.get("render_p50_ms"),
+        metric("idle_hours_render_p50_ms", summary.get("render_p50_ms"),
                "Median render subprocess duration over the last 24 hours.")
-        metric("litclock_render_p95_ms", summary.get("render_p95_ms"),
+        metric("idle_hours_render_p95_ms", summary.get("render_p95_ms"),
                "p95 render subprocess duration over the last 24 hours.")
-        metric("litclock_display_p50_ms", summary.get("display_p50_ms"),
+        metric("idle_hours_display_p50_ms", summary.get("display_p50_ms"),
                "Median Inky display push duration over the last 24 hours.")
-        metric("litclock_display_p95_ms", summary.get("display_p95_ms"),
+        metric("idle_hours_display_p95_ms", summary.get("display_p95_ms"),
                "p95 Inky display push duration over the last 24 hours.")
 
         # Heartbeat age is the metric an operator alerts on for "is the loop
-        # alive" — equivalent to litclock-health's --max-heartbeat-age-minutes.
+        # alive" — equivalent to idle-hours health's --max-heartbeat-age-minutes.
         last_hb = summary.get("last_heartbeat_ts")
         if last_hb:
             try:
@@ -667,7 +667,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 if hb_dt.tzinfo is None:
                     hb_dt = hb_dt.replace(tzinfo=dt.timezone.utc)
                 age_seconds = (dt.datetime.now(dt.timezone.utc) - hb_dt).total_seconds()
-                metric("litclock_last_heartbeat_age_seconds", int(max(0, age_seconds)),
+                metric("idle_hours_last_heartbeat_age_seconds", int(max(0, age_seconds)),
                        "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
             except ValueError:
                 pass
@@ -1322,7 +1322,7 @@ def start_web_server(
             "--web-token / --web-token-file was provided. Either bind to 127.0.0.1 "
             "or set a token before starting the server."
         )
-    server = _LitClockHTTPServer((host, port), CuratorHandler, ctx)
-    thread = threading.Thread(target=server.serve_forever, name="litclock-web", daemon=True)
+    server = _IdleHoursHTTPServer((host, port), CuratorHandler, ctx)
+    thread = threading.Thread(target=server.serve_forever, name="idle-hours-web", daemon=True)
     thread.start()
     return server, thread

@@ -8,7 +8,7 @@ data/
 # Per-render outputs and runtime state.
 output/
 *.pid
-.litclock/
+.idle-hours/
 
 # Test / dev / VCS noise.
 .git/

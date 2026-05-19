@@ -1,4 +1,4 @@
-"""Shared fixtures for LitClock tests."""
+"""Shared fixtures for Idle Hours tests."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ import pytest
 def _isolate_home(tmp_path_factory, monkeypatch):
     """Redirect ``~`` to a per-test tmp directory so tests that use default
     ``--state-path`` / ``--history-path`` / ``--telemetry-path`` / ``--pidfile``
-    don't leak state into the developer's real ``~/.litclock`` (and can't
+    don't leak state into the developer's real ``~/.idle-hours`` (and can't
     contaminate *each other* within a test run by persisting state between
     tests). The main-loop now persists the render-identity triple
     (``last_bucket`` / ``last_quote_id`` / ``last_effective_theme``) to

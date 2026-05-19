@@ -1,6 +1,6 @@
 """Persistent runtime-state store (manual theme / manual quiet) with atomic writes.
 
-Loads ``~/.litclock/state.json`` at loop startup so the user's last button-B /
+Loads ``~/.idle-hours/state.json`` at loop startup so the user's last button-B /
 button-D choices survive a restart, and writes atomically (tmp-sibling →
 ``fsync`` → ``os.replace`` → dir-``fsync`` via :mod:`atomic_io`) so a crash
 mid-write never leaves the file truncated. Extracted from :mod:`run_clock`;
@@ -14,7 +14,7 @@ from pathlib import Path
 import atomic_io
 from runtime_log import _log
 
-DEFAULT_STATE_PATH = "~/.litclock/state.json"
+DEFAULT_STATE_PATH = "~/.idle-hours/state.json"
 
 # Known top-level keys on ``state.json`` and the accepted runtime shape
 # for each. Extra keys are flagged but tolerated (forward-compat for a
@@ -53,7 +53,7 @@ def _validate_state_payload(path: Path, parsed: dict, telemetry_path: str | None
 
     Malformed fields are telemetrised as ``mode="state_validation"`` when
     a telemetry path is supplied so operators can see the drift in
-    ``litclock_health.py`` rather than having to tail stderr.
+    ``idle_hours_health.py`` rather than having to tail stderr.
     """
     cleaned: dict = {}
     issues: list[str] = []
@@ -100,7 +100,7 @@ def load_runtime_state(state_path: str | None, telemetry_path: str | None = None
     When ``telemetry_path`` is supplied, malformed-but-parseable entries are
     logged AND recorded to the telemetry sidecar (``mode="state_validation"``)
     so silent drift (a hand-edit with ``manual_theme=42`` or a botched migration)
-    surfaces in ``litclock_health.py`` output.
+    surfaces in ``idle_hours_health.py`` output.
     """
     path = _resolve_state_path(state_path)
     if path is None or not path.exists():

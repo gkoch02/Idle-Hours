@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Unified ``litclock`` command — single entry point for every script in the repo.
+"""Unified ``idle-hours`` command — single entry point for every script in the repo.
 
-Replaces ``python3 run_clock.py …`` / ``python3 litclock_health.py …`` /
+Replaces ``python3 run_clock.py …`` / ``python3 idle_hours_health.py …`` /
 ``python3 pick_quote.py …`` / etc. with a single discoverable command:
 
-    litclock run --display-script display_inky.py
-    litclock health --hours 24
-    litclock pick --time 14:30
-    litclock bake
-    litclock --help          # lists every subcommand
+    idle-hours run --display-script display_inky.py
+    idle-hours health --hours 24
+    idle-hours pick --time 14:30
+    idle-hours bake
+    idle-hours --help          # lists every subcommand
 
 **How dispatch works.** Each subcommand is a thin wrapper around the
 existing module's ``main()`` function. The wrapper imports the target
 module lazily and rewrites ``sys.argv`` so the existing ``parse_args()``
 inside that module sees a sensible ``argv[0]`` plus the unmodified flag
-list — no per-script refactor needed. Lazy import matters: ``litclock
+list — no per-script refactor needed. Lazy import matters: ``idle-hours
 --help`` must not pull Pillow / TOML / runtime_telemetry just to print
-the subcommand list. Without it, an operator running ``litclock health``
+the subcommand list. Without it, an operator running ``idle-hours health``
 on a dev host would also load the renderer.
 
 **Backwards compat is preserved.** Every existing
@@ -32,11 +32,11 @@ import sys
 from typing import Callable
 
 # Subcommand → (module name, one-line description). Module is loaded lazily
-# at dispatch time. Description is shown in ``litclock --help``.
+# at dispatch time. Description is shown in ``idle-hours --help``.
 #
 # Order is operator-relevance: the runtime / QA / health commands first,
 # then the corpus pipeline, then dev / debug helpers. Aim is "the things
-# you'll grep ``litclock --help`` for are at the top."
+# you'll grep ``idle-hours --help`` for are at the top."
 SUBCOMMANDS: dict[str, tuple[str, str]] = {
     # Runtime / display
     "run": ("run_clock", "Run the clock loop (render + display + buttons + web UI)."),
@@ -44,7 +44,7 @@ SUBCOMMANDS: dict[str, tuple[str, str]] = {
     "pick": ("pick_quote", "Pick the best quote for a time or bucket; print JSON."),
     "display": ("display_inky", "Push a PNG to the Inky Impression panel (Pi-only)."),
     # QA / health
-    "health": ("litclock_health", "Summarise telemetry: render counts, latency, last error."),
+    "health": ("idle_hours_health", "Summarise telemetry: render counts, latency, last error."),
     "contact-sheet": ("contact_sheet", "Render a 12×12 grid of every fuzzy bucket."),
     "probe-buttons": ("probe_buttons", "Diagnose which GPIO pin each Inky button fires (Pi-only)."),
     # Corpus pipeline
@@ -65,23 +65,23 @@ SUBCOMMANDS: dict[str, tuple[str, str]] = {
 
 
 def _format_help() -> str:
-    """Render the top-level ``litclock --help`` message.
+    """Render the top-level ``idle-hours --help`` message.
 
     We hand-roll this rather than letting argparse do it because argparse's
     subparser help is verbose (one block per subcommand including its full
     flag list), and we want the equivalent of ``git help`` — a one-line
-    summary per command and a pointer to ``litclock <cmd> --help`` for
+    summary per command and a pointer to ``idle-hours <cmd> --help`` for
     details. The lazy-import contract is also incompatible with argparse
     subparsers (which would have to import every module up front to register
     the parsers).
     """
     width = max(len(name) for name in SUBCOMMANDS) + 2
     lines = [
-        "Usage: litclock <subcommand> [args...]",
+        "Usage: idle-hours <subcommand> [args...]",
         "",
-        "Run any LitClock pipeline / runtime / QA script through one entry point.",
+        "Run any Idle Hours pipeline / runtime / QA script through one entry point.",
         "Subcommands accept the same flags as their backing scripts; pass",
-        "`litclock <subcommand> --help` for the full per-subcommand argument list.",
+        "`idle-hours <subcommand> --help` for the full per-subcommand argument list.",
         "",
         "Subcommands:",
     ]
@@ -107,7 +107,7 @@ def _resolve_main(module_name: str) -> Callable[[], int]:
     main = getattr(module, "main", None)
     if not callable(main):
         raise SystemExit(
-            f"litclock: backing module {module_name!r} has no callable main(); "
+            f"idle-hours: backing module {module_name!r} has no callable main(); "
             "this is a packaging bug — please report it."
         )
     return main
@@ -135,15 +135,15 @@ def main(argv: list[str] | None = None) -> int:
         # (e.g. running from a fresh checkout without `pip install -e .`).
         try:
             from importlib.metadata import PackageNotFoundError, version
-            print(f"litclock {version('litclock')}")
+            print(f"idle-hours {version('idle-hours')}")
         except PackageNotFoundError:
-            print("litclock (unreleased; running from source checkout)")
+            print("idle-hours (unreleased; running from source checkout)")
         return 0
 
     subcommand = argv[0]
     if subcommand not in SUBCOMMANDS:
         print(
-            f"litclock: unknown subcommand {subcommand!r}\n\n"
+            f"idle-hours: unknown subcommand {subcommand!r}\n\n"
             f"{_format_help()}",
             file=sys.stderr,
         )
@@ -152,8 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     module_name, _description = SUBCOMMANDS[subcommand]
     # Rewrite sys.argv so the backing module's parse_args() sees a clean
     # invocation. argv[0] becomes the script-style name so error messages
-    # mention "litclock run" rather than the umbrella entry point.
-    sys.argv = [f"litclock {subcommand}", *argv[1:]]
+    # mention "idle-hours run" rather than the umbrella entry point.
+    sys.argv = [f"idle-hours {subcommand}", *argv[1:]]
 
     backing_main = _resolve_main(module_name)
     result = backing_main()

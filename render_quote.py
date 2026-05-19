@@ -706,7 +706,7 @@ THEMES = {
     # yellow blob inks, black in the body's R+K stipple +
     # Bungee Shade's drop-shadows). Body in Bungee Shade, a
     # chunky 3D-blocked display face that lands "psychedelic-
-    # adjacent" without sacrificing the readability LitClock
+    # adjacent" without sacrificing the readability Idle Hours
     # requires.
     "fillmore": {
         "page_bg": SPECTRA6["yellow"],
@@ -2730,7 +2730,7 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # Matched phrase shifts to violet/purple (R+B 1:1) — the AUTHENTIC
         # riso double-pass overprint. Real risograph prints with red on
         # one plate and blue on another physically create purple wherever
-        # the two ink passes overlap; the digital LitClock render
+        # the two ink passes overlap; the digital Idle Hours render
         # synthesises the same effect via a 50/50 R+B stipple. Preserves
         # the theme's defining "no-black-ink" invariant by construction
         # (purple is red + blue, both already in the palette). Body red
@@ -8403,7 +8403,7 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
     # Header bar
     header_font = load_font(META_FONT_BOLD_CANDIDATES, size=14)
-    header = "LITCLOCK · DIAGS"
+    header = "IDLE HOURS · DIAGS"
     draw.text((PAD_X, INSET + 8), header, font=header_font, fill=colors["accent"])
     rule_y = INSET + 32
     draw.line((PAD_X, rule_y, width - PAD_X, rule_y), fill=colors["text"])
@@ -8871,11 +8871,11 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
     brand_regular = load_font(META_FONT_CANDIDATES, size=14)
     chrome_bold = load_font(META_FONT_BOLD_CANDIDATES, size=10)
 
-    # Brand line: "LITCLOCK // ASTRARIUM"
+    # Brand line: "IDLE HOURS // ASTRARIUM"
     x = 24
     y = 22
-    draw.text((x, y), "LITCLOCK", font=brand_bold, fill=BLACK)
-    bbox = draw.textbbox((0, 0), "LITCLOCK", font=brand_bold)
+    draw.text((x, y), "IDLE HOURS", font=brand_bold, fill=BLACK)
+    bbox = draw.textbbox((0, 0), "IDLE HOURS", font=brand_bold)
     x += bbox[2] - bbox[0] + 10
     draw.text((x, y), "//", font=brand_regular, fill=BLACK)
     bbox = draw.textbbox((0, 0), "//", font=brand_regular)
@@ -9151,7 +9151,7 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     still produce a recognisable thumbnail):
 
       ┌────────────────────────────────────────────────────────────────┐
-      │ LITCLOCK // ASTRARIUM           SAT · MAY 19  | S6 │ 800×480   │
+      │ IDLE HOURS // ASTRARIUM         SAT · MAY 19  | S6 │ 800×480   │
       │ ─────────────────────────────────────────────────────────────  │
       │                                                                │
       │         ╭──────────╮                  ★                        │

@@ -1,6 +1,6 @@
 """Canonical fuzzy-bucket primitives shared by the mining, selection, and runtime scripts.
 
-LitClock divides each of 12 hours into 12 minute-state buckets (144 total), named
+Idle Hours divides each of 12 hours into 12 minute-state buckets (144 total), named
 ``h{HOUR}_{STATE}``. The miner, ``pick_quote``, ``run_clock``, and the substring
 repair tool must all agree on the state names and rounding rule, so this module
 is the single source of truth. Prior to extraction, four independent copies drifted

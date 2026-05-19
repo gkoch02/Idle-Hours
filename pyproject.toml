@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "litclock"
+name = "idle-hours"
 version = "0.1.0"
-description = "Literary clock: harvest time phrases from Project Gutenberg and render a matching quote on an Inky Impression eInk display."
+description = "Idle Hours: a literary clock that harvests time phrases from Project Gutenberg and renders a matching quote on an Inky Impression eInk display."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,11 +17,11 @@ dev = ["pytest", "pytest-cov", "pytest-xdist", "ruff"]
 pi = ["inky", "gpiozero"]
 
 [project.scripts]
-# Single umbrella entry point — `litclock <subcommand>` dispatches to the
+# Single umbrella entry point — `idle-hours <subcommand>` dispatches to the
 # matching script's main(). Backwards-compat: `python3 <script>.py …` keeps
 # working for every subcommand. Defined here so `pip install .` registers
 # the console script in the bin/ directory of the active environment.
-litclock = "litclock_cli:main"
+idle-hours = "idle_hours_cli:main"
 
 [tool.setuptools]
 # Keep this list in sync with the top-level *.py files in the repo root.
@@ -31,7 +31,7 @@ litclock = "litclock_cli:main"
 #
 # **Known limitation (v2):** the wheel currently ships ONLY the Python
 # modules below — not the static assets in ``web/``, ``assets/``, or
-# ``fonts/``. ``pip install litclock`` (without ``-e`` and without Docker)
+# ``fonts/``. ``pip install idle-hours`` (without ``-e`` and without Docker)
 # produces a CLI that 404s the curator UI, can't find bundled fonts, and
 # can't find the prebuilt corpus. Workable installation paths today:
 #
@@ -41,7 +41,7 @@ litclock = "litclock_cli:main"
 #   to the installed wheel inside the container).
 #
 # A proper fix requires moving ``web/`` / ``assets/`` / ``fonts/`` inside
-# a real ``litclock/`` package directory and declaring them via
+# a real ``idle_hours/`` package directory and declaring them via
 # ``[tool.setuptools.package-data]`` — that's tracked as a follow-up
 # in FOLLOWUPS.md. Until then, ``run_clock`` runs a startup guard that
 # fails loudly if the baked corpus is missing so a wheel-install operator
@@ -59,11 +59,11 @@ py-modules = [
     "fix_legacy_buckets",
     "fix_substring_time_matches",
     "gutenberg_time_miner",
+    "idle_hours_cli",
+    "idle_hours_health",
     "import_targeted_hits",
     "inky_buttons",
     "jsonl_io",
-    "litclock_cli",
-    "litclock_health",
     "merge_candidates",
     "pick_quote",
     "pidfile",

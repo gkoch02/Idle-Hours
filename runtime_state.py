@@ -29,7 +29,7 @@ class RuntimeState:
     def __init__(self, theme_arg: str, persisted: dict | None = None):
         self.lock = threading.Lock()
         self.render_lock = threading.Lock()
-        # Serialises read-modify-write of ~/.litclock/history.jsonl. Button A's
+        # Serialises read-modify-write of ~/.idle-hours/history.jsonl. Button A's
         # long-press does a remove-last-entry that would otherwise race the main
         # loop's post-render append and silently drop it.
         self.ledger_lock = threading.Lock()

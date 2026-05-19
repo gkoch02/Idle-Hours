@@ -12,7 +12,7 @@ welcoming project to contribute to.
 
 To report a concern, open a private report via GitHub:
 
-- https://github.com/gkoch02/litclock/security/advisories/new
+- https://github.com/gkoch02/idle-hours/security/advisories/new
 
 (Using the security advisory channel keeps reports out of public issues; the
 same inbox handles both conduct and security reports for this small project.)
