@@ -717,42 +717,70 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
-    # Kanagawa / Hokusai's "The Great Wave off Kanagawa" (1831, from the
-    # Thirty-six Views of Mount Fuji). The flagship of the rotation — the
-    # most heavily composited theme by a comfortable margin: seven distinct
-    # visual layers stacked from a vertically-graduated sky-blue Bayer wash
-    # through a distant Mt. Fuji silhouette, a low maroon-rimmed sun disc,
-    # a deterministic 32-point wave polygon with navy depth shading in the
-    # trough (B+K 1:1 — the documented recipe ``bauhaus``'s matched phrase
-    # already uses), white foam clusters at each curling claw tip, and a
-    # contact-edge cyan halo where foam meets the indigo wave silhouette
-    # (the first theme in the rotation to do a contact-edge post-pass —
-    # recolour only where two prior painted layers happen to meet). A
-    # small maroon-stippled hanko seal anchors the bottom-right corner.
-    # No outer frame — authentic woodblock prints have no border (same
-    # composition discipline as ``fillmore``). The matched-phrase blue
-    # is rerouted in ``_draw_text_body`` to a 50/50 B+K navy stipple, so
-    # the deepest indigo in the composition appears in both the wave
-    # trough and the time phrase — a deliberate ground-vs-figure rhyme.
-    # Body in Klee One (Fontworks, OFL — Japanese textbook-style hand-
-    # printed face with full Latin glyph coverage), the first Japanese-
-    # Latin hybrid hand in the bundle. Sits visually distinct from the
-    # rotation's other Japanese-flavoured theme (``chanbara`` — dramatic
-    # samurai-cinema brush via Shojumaru with a single off-canvas red
-    # sun and a chop seal, no wave): chanbara is samurai *cinema*;
-    # kanagawa is the famous *print*, with the wave as the primary
-    # subject and a wholly different compositional grammar (asymmetric
-    # foreground subject vs chanbara's flat rising-sun ground).
+    # Kanagawa — a stylised Japanese seascape evoking Hokusai's
+    # "Thirty-six Views of Mount Fuji" series without literally
+    # reproducing the Great Wave (PIL polygon fills + a 6-colour
+    # palette can't carry the ink-brush nuance the print needs; an
+    # earlier revision that attempted the literal silhouette read as
+    # "rolling hills" no matter how the curves were tuned). The final
+    # composition pivots to the canonical seigaiha (青海波 / "blue
+    # ocean waves") textile pattern as the centrepiece: overlapping
+    # fish-scale half-disks in indigo with three concentric white arc
+    # stripes inside each scale, filling the bottom ~34 % of the
+    # canvas in tight overlapping rows so only the upper crescent of
+    # each scale shows — the iconic woven-textile rhythm.
+    #
+    # Atmospheric layers above the seigaiha: a vertically-graduated
+    # sky-blue Bayer wash (the first gradient wash in the codebase),
+    # five distant ink-stroke birds at module-level deterministic
+    # anchors, a faint sparse-stippled horizon line at the sea-sky
+    # boundary, and the deepest seigaiha row picks up a navy stipple
+    # post-pass (B+K 1:1) so the bottom of the "ocean" reads as
+    # deeper water. A red rounded-rectangle hanko seal with a
+    # stylised 川 ("river") kanji in white anchors the bottom-right
+    # corner; the seal's base is post-passed to oxblood maroon (R+K
+    # 1:1, the documented recipe ``dispatch`` and ``chanbara`` both
+    # use).
+    #
+    # Body text sits in a cream-tinted rounded paper panel knocked
+    # out of the seigaiha (same blueprint clear-rect pattern), with
+    # a 1 px black frame and a 2 px drop shadow on the bottom-right
+    # edge that reads as a lifted paper card hovering above the
+    # textile. The cream tint is a sparse 4-anchor 8×8 off-grid
+    # yellow scatter (~6 % density) on white — the documented Y+W
+    # cream recipe, applied here via an off-grid pattern rather than
+    # a regular Bayer to avoid the visible-lattice "lemon grid"
+    # effect a Bayer pattern produces at desktop zoom against the
+    # saturated seigaiha indigo (the eye averages the off-grid
+    # scatter to warm vellum at panel viewing distance, the same way
+    # it averages a regular Bayer, but without the lattice artefact
+    # in either register).
+    #
+    # Matched time phrase: solid Spectra red — the classic ukiyo-e
+    # signature-red register, tied tonally to the hanko seal's red
+    # base. Body in Klee One (Fontworks, OFL — Japanese textbook-
+    # style hand-printed face with full Latin glyph coverage), the
+    # first Japanese-Latin hybrid hand in the bundle. Sits visually
+    # distinct from the rotation's other Japanese-flavoured theme
+    # (``chanbara`` — dramatic samurai-cinema brush via Shojumaru
+    # with a single off-canvas red sun and a chop seal): chanbara
+    # is samurai *cinema*, kanagawa is woodblock-print *textile*,
+    # with seigaiha as the dominant motif.
     "kanagawa": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
         "subtle": SPECTRA6["black"],
         "faint": SPECTRA6["black"],
-        # Accent sits on the blue sentinel; ``_draw_text_body`` routes
-        # blue fills through a B+K 1:1 stipple → navy in this theme so
-        # the matched time phrase reads as the deep indigo of the wave's
-        # trough — body-vs-decoration colour rhyme by construction.
-        "accent": SPECTRA6["blue"],
+        # Solid red matched phrase — high-contrast accent against the
+        # cream-stippled panel ground that ties tonally to the hanko's
+        # red base (the hanko's R+K maroon post-pass shares the same
+        # ink). Earlier revisions routed blue → B+K navy stipple via
+        # ``_draw_text_body`` to rhyme with the seigaiha indigo below,
+        # but at desktop preview the alternating B+K pixels read as
+        # vivid blue rather than navy, and the user preferred a clean
+        # red accent — the same classic ukiyo-e signature-red register
+        # the hanko occupies.
+        "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
@@ -2688,20 +2716,13 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # sits as a deeper variant of the blue accent within the
         # body block.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
-    elif theme == "kanagawa" and fill == SPECTRA6["blue"]:
-        # Matched phrase shifts to navy (B+K 1:1 — the same recipe
-        # ``bauhaus``'s matched phrase uses, via the documented two-ink
-        # table in ``spectra6_color_recipes.md``). The wave silhouette's
-        # depth post-pass in ``draw_kanagawa_border`` flips half of its
-        # blue trough pixels to navy via the same recipe, so the deepest
-        # indigo in the composition appears in BOTH the wave trough and
-        # the matched time phrase — a deliberate ground-vs-figure colour
-        # rhyme. The sun disc / Mt. Fuji silhouette / hanko seal stay
-        # in their own ink registers (maroon-rimmed red, solid blue,
-        # maroon-stippled red respectively), so the body's navy stays
-        # visually distinct from each decorative element while sharing
-        # the wave's tonal palette.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    # ``kanagawa`` previously routed matched-phrase blue → B+K navy
+    # stipple here to rhyme with the seigaiha indigo below; the
+    # current theme uses solid Spectra red as its accent (see THEMES
+    # docstring rationale) so the per-theme dispatch falls through to
+    # the unguarded ``draw.text`` call below — same path other red-
+    # accent themes (default / dark / placard) take for their matched
+    # phrase.
     elif theme == "nightvision" and fill == SPECTRA6["yellow"]:
         # Matched phrase shifts to lime (Y+G 5/8:3/8) — yellow-biased
         # green that reads as the bright neon "tactical readout" glow
