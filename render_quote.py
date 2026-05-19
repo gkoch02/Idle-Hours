@@ -8805,14 +8805,17 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     # keeps the disc clean).
     draw.ellipse((cx - r_inner_rule + 2, cy - r_inner_rule + 2, cx + r_inner_rule - 2, cy + r_inner_rule - 2), fill=WHITE)
 
-    # Small "LOCAL TIME" header above the digits.
+    # Small "LOCAL TIME" header, centred horizontally on the dial axis.
+    # Uses PIL's anchor="mm" (middle-middle) rather than manual bbox
+    # math because the digit text below varies in glyph metrics
+    # depending on the time ("10:00" has no descenders; "2:15" has
+    # tall/dropped strokes), and bbox-based centring drifts vertically
+    # between times. anchor="mm" uses the font's baseline reference,
+    # which stays consistent across all hour/minute combinations.
     header_font = load_font(META_FONT_CANDIDATES, size=10)
-    label = "LOCAL TIME"
-    bbox = draw.textbbox((0, 0), label, font=header_font)
-    lw = bbox[2] - bbox[0]
-    draw.text((cx - lw // 2 - bbox[0], cy - 56 - bbox[1]), label, font=header_font, fill=BLACK)
+    draw.text((cx, cy - 50), "LOCAL TIME", font=header_font, fill=BLACK, anchor="mm")
 
-    # Big HH:MM digits.
+    # Big HH:MM digits, centred on the dial axis.
     try:
         hh, mm = time_str.split(":")
         hour24 = int(hh)
@@ -8825,16 +8828,11 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     digit_text = f"{hour12}:{minute:02d}"
 
     time_font = load_font(theme_font_candidates("astrarium", "quote_bold"), size=54)
-    bbox = draw.textbbox((0, 0), digit_text, font=time_font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    draw.text((cx - tw // 2 - bbox[0], cy - th // 2 - bbox[1] - 6), digit_text, font=time_font, fill=BLACK)
+    draw.text((cx, cy), digit_text, font=time_font, fill=BLACK, anchor="mm")
 
     # AM/PM beneath the digits.
     ampm_font = load_font(META_FONT_CANDIDATES, size=12)
-    bbox = draw.textbbox((0, 0), ampm, font=ampm_font)
-    aw = bbox[2] - bbox[0]
-    draw.text((cx - aw // 2 - bbox[0], cy + 28 - bbox[1]), ampm, font=ampm_font, fill=BLACK)
+    draw.text((cx, cy + 34), ampm, font=ampm_font, fill=BLACK, anchor="mm")
 
     # Tiny tangerine sun glyph below "LOCAL TIME", above the digits.
     # Painted in red sentinel and bbox-post-passed to R+Y tangerine so
