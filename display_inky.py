@@ -185,6 +185,14 @@ THEME_SATURATION: dict[str, float] = {
     # blue matched phrase confidently saturated against the warm
     # yellow ground rather than half-fading into the page.
     "fillmore": 0.7,
+    # Firmament / 17th-century celestial atlas — navy (B+K stipple)
+    # ground with chromatic ornaments (yellow stars, sky-blue moon,
+    # tangerine + cyan Saturn, lavender Milky Way). Same dark-ground
+    # tier as ``dark`` / ``nightvision`` / ``gothic`` / ``chanbara``
+    # so the matched-phrase cream (Y+W) and the synthesised ornament
+    # tones stay punchy against the navy ground rather than fading
+    # into a dim mid-tone.
+    "firmament": 0.7,
 }
 
 
