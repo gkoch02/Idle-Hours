@@ -8945,9 +8945,11 @@ def _astrarium_paint_quote_panel(
 
     # Body block: fit the quote into the panel's interior. The panel
     # interior is narrower than the standard 660px layout so use a
-    # smaller font range.
-    body_top = panel_top + 44
-    body_bottom = panel_bottom - 42
+    # smaller font range. The +36 / −38 padding reserves room for the
+    # star ornament (24 px tall at panel_top+18) plus a small breathing
+    # gap, and for the closing quote mark + attribution beneath.
+    body_top = panel_top + 36
+    body_bottom = panel_bottom - 38
     body_height = body_bottom - body_top
     quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
         draw,
@@ -9185,10 +9187,13 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     # centre divider — the panel's own internal padding then adds
     # another 4–8 px before the opening quote mark / body text begin,
     # so the body has ~16–20 px of breathing room against the divider.
+    # Top sits 4 px below the header rule (y=50), bottom sits 2 px above
+    # the datum strip (y=height−44) — maximises body height between the
+    # two horizontal rules without crowding either of them.
     panel_left = int(width * 0.5) + 12
     panel_right = width - 24
-    panel_top = 62
-    panel_bottom = height - 52
+    panel_top = 54
+    panel_bottom = height - 46
     _astrarium_paint_quote_panel(image, draw, quote_row, panel_left, panel_right, panel_top, panel_bottom)
 
     # Vertical hairline divider between the dial and the quote panel
