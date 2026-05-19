@@ -9083,15 +9083,17 @@ def _astrarium_paint_datum_strip(
     height: int,
     time_str: str,
 ) -> None:
-    """Paint the bottom datum strip — six small panels with decorative
-    sensor-style readouts. Values are deterministic but not "live"
-    (the appliance has no thermometer / tide sensor); they exist to
-    sell the dashboard aesthetic the mockup uses."""
+    """Paint the bottom datum strip — small panels with readouts that
+    are actually derivable from the appliance's state (time of day,
+    date, loop health). The earlier draft also surfaced tide,
+    temperature, and atmospheric-pressure values to fill the mockup's
+    six-cell strip, but the appliance has no thermometer / barometer /
+    tide sensor, so those were hardcoded placeholders pretending to be
+    live readings. Cosmetic faux-sensor cards were removed entirely;
+    the three remaining cells are honest signals."""
     import math
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    GREEN = SPECTRA6["green"]
-    BLUE = SPECTRA6["blue"]
 
     strip_top = height - 78
     strip_bottom = height - 14
@@ -9125,9 +9127,6 @@ def _astrarium_paint_datum_strip(
     panels: list[tuple[str, str, str, tuple[int, int, int]]] = [
         ("SOLAR ELEVATION", f"{solar_elevation:.1f}", "°", BLACK),
         ("LUNAR PHASE", f"{int(moon_phase_pct)}", "%", BLACK),
-        ("NEXT HIGH TIDE", "14:47", "+3.2m", BLUE),
-        ("TEMPERATURE", "18.6", "°C", RED),
-        ("ATMOSPHERIC", "1013", "hPa", GREEN),
         ("SYSTEM STATUS", "OK", "·", RED),
     ]
 
