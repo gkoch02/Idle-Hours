@@ -1061,6 +1061,15 @@ CORMORANT_VARIABLE = str(BASE_DIR / "fonts/cormorant-garamond/CormorantGaramond-
 # Mucha font chain the same way UnifrakturMaguntia lives alongside
 # EB Garamond in ``illuminated``.
 BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-Regular.ttf")
+# Yuji Boku — Yuji Hamasaki (OFL, via Google Fonts). Sumi-brush
+# Japanese face with uneven hand-painted strokes — the texture of
+# brush-on-paper calligraphy. Single weight (Regular only); the
+# matched-phrase role re-uses Regular and gains differentiation
+# from the red accent colour alone, same trick comic / dispatch /
+# atomic / marker / saloon / deco / glacier / chalkboard / placard /
+# chanbara already use. Candidate body face for the ``kanagawa``
+# theme; sits in trial alongside Shippori Mincho below.
+YUJI_BOKU_REGULAR = str(BASE_DIR / "fonts/yuji-boku/YujiBoku-Regular.ttf")
 # Shippori Mincho — Fontworks (OFL). Modern Japanese mincho serif
 # with full Latin glyph coverage. Mincho is the canonical Japanese
 # print typeface family — thin horizontal strokes contrasting with
@@ -1920,22 +1929,21 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # should land on a serif silhouette rather than a grotesque
         # sans that would clash with the seascape composition.
         "quote_regular": [
+            YUJI_BOKU_REGULAR,
             SHIPPORI_MINCHO_REGULAR,
             (CORMORANT_VARIABLE, "Regular"),
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
+            YUJI_BOKU_REGULAR,
             SHIPPORI_MINCHO_BOLD,
             (CORMORANT_VARIABLE, "Bold"),
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
-        # Reuse Bold for the oversized quote marks — woodblock-print
-        # captions don't switch faces mid-line, so the opening /
-        # closing quote glyphs share the matched phrase's face for
-        # visual coherence.
         "ornament": [
+            YUJI_BOKU_REGULAR,
             SHIPPORI_MINCHO_BOLD,
             (CORMORANT_VARIABLE, "Bold"),
             EBGARAMOND_BOLD,
