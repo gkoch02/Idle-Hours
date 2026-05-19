@@ -8871,7 +8871,6 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
 
     brand_bold = load_font(META_FONT_BOLD_CANDIDATES, size=14)
     brand_regular = load_font(META_FONT_CANDIDATES, size=14)
-    chrome_small = load_font(META_FONT_CANDIDATES, size=10)
     chrome_bold = load_font(META_FONT_BOLD_CANDIDATES, size=10)
 
     # Brand line: "LITCLOCK // ASTRARIUM"
@@ -8885,18 +8884,15 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
     x += bbox[2] - bbox[0] + 8
     draw.text((x, y), "ASTRARIUM", font=brand_bold, fill=RED)
 
-    # Right-side info stack: date (red label + bold value) and "S6 800×480"
-    # box. Anchored to the right margin.
+    # Right-side info stack: date (red label + bold value) and a small
+    # "S6" box anchored to the right margin.
     now = datetime.datetime.now()
     day_label = now.strftime("%a · %b %d").upper()
     sol = f"SOL {now.timetuple().tm_yday} · YR {now.year}"
 
     s6_label = "S6"
-    s6_meta = f"{image.width}×{image.height}"
     s6_label_bbox = draw.textbbox((0, 0), s6_label, font=chrome_bold)
-    s6_meta_bbox = draw.textbbox((0, 0), s6_meta, font=chrome_small)
     s6_label_w = s6_label_bbox[2] - s6_label_bbox[0]
-    s6_meta_w = s6_meta_bbox[2] - s6_meta_bbox[0]
     s6_right = width - 24
     s6_box_x0 = s6_right - s6_label_w - 12
     s6_box_y0 = 14
@@ -8908,7 +8904,6 @@ def _astrarium_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width
          s6_box_y0 + (s6_box_y1 - s6_box_y0 - (s6_label_bbox[3] - s6_label_bbox[1])) // 2 - s6_label_bbox[1]),
         s6_label, font=chrome_bold, fill=BLACK,
     )
-    draw.text((s6_right - s6_meta_w - s6_meta_bbox[0], 38 - s6_meta_bbox[1]), s6_meta, font=chrome_small, fill=BLACK)
 
     # Date stack to the left of the S6 box.
     date_right = s6_box_x0 - 14
@@ -9202,8 +9197,11 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     dial_cy = 64 + (height - 64 - 50) // 2
     _astrarium_paint_dial(image, draw, dial_cx, dial_cy, time_str)
 
-    # Quote panel in the right half.
-    panel_left = int(width * 0.5) - 4
+    # Quote panel in the right half. Left edge sits 12 px right of the
+    # centre divider — the panel's own internal padding then adds
+    # another 4–8 px before the opening quote mark / body text begin,
+    # so the body has ~16–20 px of breathing room against the divider.
+    panel_left = int(width * 0.5) + 12
     panel_right = width - 24
     panel_top = 62
     panel_bottom = height - 52
