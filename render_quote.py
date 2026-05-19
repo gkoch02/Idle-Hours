@@ -9211,7 +9211,10 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     3. Hour numeral band ("60" / "15" / "30" / "45" — minute reference,
        same orientation as on the mockup)
     4. Inner rule
-    5. Centre disc with HH:MM and AM/PM
+    5. Centre disc with the wall-clock date (e.g. "May 19") and the
+       day of the week — the panel only repaints when the fuzzy bucket
+       changes, so a digital time readout here would be visibly stale
+       most of the time; the date isn't.
     """
     import math
     BLACK = SPECTRA6["black"]
@@ -9305,34 +9308,36 @@ def _astrarium_paint_dial(image: Image.Image, draw: ImageDraw.ImageDraw, cx: int
     # keeps the disc clean).
     draw.ellipse((cx - r_inner_rule + 2, cy - r_inner_rule + 2, cx + r_inner_rule - 2, cy + r_inner_rule - 2), fill=WHITE)
 
-    # Small "LOCAL TIME" header, centred horizontally on the dial axis.
+    # Small "TODAY" header, centred horizontally on the dial axis.
     # Uses PIL's anchor="mm" (middle-middle) rather than manual bbox
-    # math because the digit text below varies in glyph metrics
-    # depending on the time ("10:00" has no descenders; "2:15" has
+    # math because the centre-disc text below varies in glyph metrics
+    # depending on the date ("May 19" has no descenders; "Sep 30" has
     # tall/dropped strokes), and bbox-based centring drifts vertically
-    # between times. anchor="mm" uses the font's baseline reference,
-    # which stays consistent across all hour/minute combinations.
+    # between dates. anchor="mm" uses the font's baseline reference,
+    # which stays consistent across all month/day combinations.
+    #
+    # The dial reads from wall-clock date rather than ``time_str`` —
+    # a fuzzy literary clock only repaints when the bucket changes, so
+    # a digital HH:MM readout in the centre would be visibly stale up
+    # to ~5 minutes of the time. The date doesn't have that problem.
+    import datetime
+    now = datetime.datetime.now()
+    date_text = now.strftime("%b %d")
+    weekday_text = now.strftime("%A").upper()
+
     header_font = load_font(META_FONT_CANDIDATES, size=10)
-    draw.text((cx, cy - 50), "LOCAL TIME", font=header_font, fill=BLACK, anchor="mm")
+    draw.text((cx, cy - 50), "TODAY", font=header_font, fill=BLACK, anchor="mm")
 
-    # Big HH:MM digits, centred on the dial axis.
-    try:
-        hh, mm = time_str.split(":")
-        hour24 = int(hh)
-        minute = int(mm)
-    except (ValueError, AttributeError):
-        hour24 = 0
-        minute = 0
-    hour12 = hour24 % 12 or 12
-    ampm = "AM" if hour24 < 12 else "PM"
-    digit_text = f"{hour12}:{minute:02d}"
+    # Big date (e.g. "May 19"), centred on the dial axis — same slot
+    # and font as the previous HH:MM readout so the visual rhythm of
+    # the dial (header / sun / big / sub) is preserved.
+    date_font = load_font(theme_font_candidates("astrarium", "quote_bold"), size=54)
+    draw.text((cx, cy), date_text, font=date_font, fill=BLACK, anchor="mm")
 
-    time_font = load_font(theme_font_candidates("astrarium", "quote_bold"), size=54)
-    draw.text((cx, cy), digit_text, font=time_font, fill=BLACK, anchor="mm")
-
-    # AM/PM beneath the digits.
-    ampm_font = load_font(META_FONT_CANDIDATES, size=12)
-    draw.text((cx, cy + 34), ampm, font=ampm_font, fill=BLACK, anchor="mm")
+    # Day of week beneath the date (replaces AM/PM).
+    weekday_font = load_font(META_FONT_CANDIDATES, size=12)
+    draw.text((cx, cy + 34), weekday_text, font=weekday_font, fill=BLACK, anchor="mm")
+    del time_str  # reserved on the signature for symmetry with the other dial painters; the centre disc is wall-clock derived from datetime.now()
 
     # Tiny tangerine sun glyph below "LOCAL TIME", above the digits.
     # Painted in red sentinel and bbox-post-passed to R+Y tangerine so
@@ -9658,8 +9663,9 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
       │       60│   ┌──┐   │15                                          │
       │         │   │  │   │     “It was at  ten o'clock                │
       │         │   └──┘   │      today that the first                  │
-      │       45│ 10:00 AM │30    of all Time Machines                  │
-      │         ╰──────────╯      began its career.                     │
+      │       45│  May 19  │30    of all Time Machines                  │
+      │         │ TUESDAY  │      began its career.                     │
+      │         ╰──────────╯                                             │
       │                                                                │
       │ ─────────────────────────────────────────────────────────────  │
       │ SOLAR ELEV │ LUNAR │ TIDE │ TEMP │ ATMOS │ SYS STATUS           │
