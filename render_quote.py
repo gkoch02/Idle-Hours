@@ -9595,11 +9595,12 @@ def _astrarium_paint_datum_strip(
 
     strip_top = height - 44
     strip_bottom = height - 8
-    # Top dashed rule (same dotted style as the header). Stops at the
-    # mid-divider — the right half of the strip is intentionally empty.
+    # Top dashed rule (same dotted style as the header). Spans the
+    # full inner width so it visually separates the quote panel from
+    # the strip below even where the right half has no cells.
     inner_left = 24
     inner_right = width // 2
-    for x in range(inner_left, inner_right, 4):
+    for x in range(24, width - 24, 4):
         draw.point((x, strip_top), fill=BLACK)
 
     label_font = load_font(META_FONT_BOLD_CANDIDATES, size=9)
@@ -9673,7 +9674,7 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
       │         │ TUESDAY  │      began its career.                     │
       │         ╰──────────╯                                             │
       │                                                                │
-      │ ─────────────────────────────                                  │
+      │ ─────────────────────────────────────────────────────────────  │
       │ SOLAR ELEVATION │ LUNAR PHASE │                                │
       │      53.2°      │     18%     │                                │
       └────────────────────────────────────────────────────────────────┘
