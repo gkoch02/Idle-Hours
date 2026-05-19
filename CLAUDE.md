@@ -942,7 +942,6 @@ output/                                 runtime render target (output/current.pn
 data/gutenberg/                         cached Gutenberg text downloads (gitignored)
 
 CLAUDE.md                               this file
-FOLLOWUPS.md                            deferred-work list — items deliberately carved out of larger PRs to keep them focused; not a bug tracker
 README.md                               user-facing overview + quick start
 LICENSE                                 MIT
 Dockerfile                              v2 multi-stage OCI image (Python 3.12-slim base, builder produces wheels, runtime installs them as a non-root user). ARM64-first for Pi appliance use; multi-arch via `docker buildx build --platform linux/arm64,linux/amd64`. The wheel ships fonts/assets/web as package-data, so no separate COPY of the static trees is needed in the runtime image.

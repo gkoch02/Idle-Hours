@@ -121,7 +121,6 @@ The full pipeline order is documented in [Build pipeline notes](#build-pipeline-
 - `scripts/bootstrap_pi_inky.sh` - helper bootstrap script for Pi setup
 - `Dockerfile` + `.dockerignore` - v2 multi-stage OCI build (ARM64-first, Pi-runtime extra not bundled). `docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:2.0 .`
 - `docs/CONTRIBUTING.md`, `docs/SECURITY.md`, `docs/CODE_OF_CONDUCT.md` - process and policy docs
-- `FOLLOWUPS.md` - deferred-work list (carved out of larger PRs to keep them focused)
 
 ## Runtime data contract
 
@@ -723,6 +722,5 @@ If the clock is behaving oddly, these are the first files to inspect:
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — dev environment, pipeline overview, what to do for each kind of change (runtime / corpus / pipeline / rendering), test conventions.
 - [`docs/SECURITY.md`](docs/SECURITY.md) — how to report a vulnerability, what's in and out of scope.
 - [`docs/CODE_OF_CONDUCT.md`](docs/CODE_OF_CONDUCT.md) — Contributor Covenant v2.1.
-- [`FOLLOWUPS.md`](FOLLOWUPS.md) — deferred work items deliberately carved out of larger PRs.
 
 Deeper architecture and design notes live in [`CLAUDE.md`](CLAUDE.md); skim that first when modifying the runtime or pipeline.

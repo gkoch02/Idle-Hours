@@ -2252,8 +2252,8 @@ class TestStartupImage:
     def test_startup_image_auto_routes_through_render_now_goodnight(self, tmp_path, monkeypatch):
         """``--startup-image auto`` paints the goodnight frame in the active
         theme via ``render_now(mode='goodnight')`` rather than copying a
-        static PNG. Mirrors the quiet-hours sentinel — same FOLLOWUPS gap,
-        same rendering path."""
+        static PNG. Mirrors the quiet-hours sentinel — same gap, same
+        rendering path."""
         argv = [
             "run_clock.py",
             "--startup-image", "auto",
@@ -2293,7 +2293,7 @@ class TestQuietGoodnightOnTheFly:
     """``--quiet-image auto`` paints the goodnight frame in the active theme
     via ``render_now(mode='goodnight')`` rather than copying ``goodnight.png``.
 
-    Closes the FOLLOWUPS.md "Goodnight frame ignores active theme" carve-out
+    Originally a "Goodnight frame ignores active theme" carve-out — landed
     on opt-in: the static-PNG default is unchanged, so existing installs see
     no behaviour change unless they pass ``--quiet-image auto``.
     """
