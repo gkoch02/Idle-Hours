@@ -107,6 +107,37 @@ def live_server(tmp_path):
 # Lifecycle
 # ============================================================================
 
+class TestOutputPathAlignment:
+    """The curator UI's ``/current.png`` endpoint must serve the same file
+    ``run_clock`` writes to, otherwise the preview tile shows a stale or
+    absent frame.
+
+    Pre-restructure, both resolved relative paths against the same
+    ``BASE_DIR`` (the repo root). After the v2.x package move ``BASE_DIR``
+    points inside the installed package; ``run_clock`` now resolves
+    ``--output output/current.png`` against CWD, and the web server has
+    to match.
+    """
+
+    def test_relative_output_resolves_to_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        # Mirror the argparse default exactly — this is what `run_clock`
+        # would pass when the operator hasn't overridden --output.
+        args = _make_args(tmp_path, output="output/current.png")
+        ctx = web_server.WebContext(args, state=run_clock.RuntimeState(args.theme))
+        expected = (tmp_path / "output" / "current.png").resolve()
+        assert ctx.output_path == expected, (
+            f"web_server output_path = {ctx.output_path!r}, "
+            f"expected CWD-relative {expected!r} (matching run_clock.main)"
+        )
+
+    def test_absolute_output_passes_through(self, tmp_path):
+        absolute = tmp_path / "rendered" / "frame.png"
+        args = _make_args(tmp_path, output=str(absolute))
+        ctx = web_server.WebContext(args, state=run_clock.RuntimeState(args.theme))
+        assert ctx.output_path == absolute.resolve()
+
+
 class TestWebServerLifecycle:
     def test_server_starts_and_stops_on_ephemeral_port(self, tmp_path):
         server, thread, _state, _args = _start(tmp_path)

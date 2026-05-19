@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="Input JSONL file (typically assets/candidates-attributed.jsonl)")
     parser.add_argument(
         "--overrides",
-        default="assets/content_overrides.json",
+        default=str(BASE_DIR / "assets/content_overrides.json"),
         help="Path to the content overrides sidecar JSON",
     )
     parser.add_argument("--output", default=None, help="Output path; defaults to in-place overwrite")

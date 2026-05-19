@@ -48,8 +48,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
-    output_path = ((BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()) if args.output else input_path
+    input_path = Path(args.input).expanduser().resolve()
+    output_path = (Path(args.output).expanduser().resolve()) if args.output else input_path
 
     rows = []
     bucket_fixes = 0

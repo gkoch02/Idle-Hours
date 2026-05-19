@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="Input JSONL corpus file")
     parser.add_argument(
         "--output",
-        default="assets/candidates-attributed.jsonl",
+        default=str(BASE_DIR / "assets/candidates-attributed.jsonl"),
         help="Output JSONL path for the packaged runtime dataset",
     )
     parser.add_argument(
@@ -71,8 +71,8 @@ def parse_header(path: Path) -> tuple[str | None, str | None]:
 
 def main() -> int:
     args = parse_args()
-    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    input_path = Path(args.input).expanduser().resolve()
+    output_path = Path(args.output).expanduser().resolve()
     gutenberg_dir = Path(args.gutenberg_dir).expanduser()
 
     rows = []

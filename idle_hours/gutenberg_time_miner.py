@@ -526,7 +526,7 @@ def print_sample(candidates: Sequence[Candidate], limit: int) -> None:
 def main() -> int:
     args = parse_args()
     candidates = mine(args)
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    output_path = Path(args.output).expanduser().resolve()
 
     if args.format == "jsonl":
         count = write_jsonl(output_path, candidates)

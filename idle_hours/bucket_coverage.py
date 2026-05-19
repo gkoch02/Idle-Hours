@@ -141,11 +141,11 @@ def render_markdown(summary: dict) -> str:
 
 def main() -> int:
     args = parse_args()
-    rows = load_rows((BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser())
+    rows = load_rows(Path(args.input).expanduser().resolve())
     summary = build_summary(rows)
 
-    output_json = (BASE_DIR / args.output_json).expanduser() if not Path(args.output_json).is_absolute() else Path(args.output_json).expanduser()
-    output_md = (BASE_DIR / args.output_md).expanduser() if not Path(args.output_md).is_absolute() else Path(args.output_md).expanduser()
+    output_json = Path(args.output_json).expanduser().resolve()
+    output_md = Path(args.output_md).expanduser().resolve()
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_md.parent.mkdir(parents=True, exist_ok=True)
     output_json.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

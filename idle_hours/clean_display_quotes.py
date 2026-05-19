@@ -276,8 +276,8 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
 
 def main() -> int:
     args = parse_args()
-    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    input_path = Path(args.input).expanduser().resolve()
+    output_path = Path(args.output).expanduser().resolve()
     rows = []
     for row in iter_jsonl(input_path):
         display_quote, is_fragment, cleanup_status = best_display_quote(row)

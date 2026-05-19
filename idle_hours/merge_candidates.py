@@ -123,8 +123,8 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 def main() -> int:
     args = parse_args()
     merged, summary = dedupe(iter_records(args.inputs))
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
-    summary_path = (BASE_DIR / args.summary).expanduser() if not Path(args.summary).is_absolute() else Path(args.summary).expanduser()
+    output_path = Path(args.output).expanduser().resolve()
+    summary_path = Path(args.summary).expanduser().resolve()
     write_jsonl(output_path, merged)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

@@ -193,10 +193,20 @@ class WebContext:
 
 
 def _resolve_path(path_str: str) -> Path:
-    path = Path(path_str).expanduser()
-    if not path.is_absolute():
-        path = BASE_DIR / path
-    return path
+    """Resolve an operator-supplied path string.
+
+    Relative paths anchor on CWD (the same contract ``run_clock.main()``
+    uses for ``--output`` and what every other operator-controlled path
+    on the CLI expects). Previously this joined against ``BASE_DIR`` —
+    fine when ``BASE_DIR`` was the repo root, but after the v2.x package
+    move ``BASE_DIR`` points inside the installed package, so a
+    BASE_DIR-relative resolve would bury the operator's render artifact
+    inside site-packages and read the wrong (stale or absent) file from
+    the curator UI. Bundled defaults still anchor on ``BASE_DIR`` via
+    the ``DEFAULT_*_PATH`` module constants — this helper is only
+    consulted when the operator supplied an explicit value on the CLI.
+    """
+    return Path(path_str).expanduser().resolve()
 
 
 class _IdleHoursHTTPServer(ThreadingHTTPServer):

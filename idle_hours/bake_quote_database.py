@@ -99,12 +99,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "input",
         nargs="?",
-        default="assets/candidates-attributed.jsonl",
+        default=str(BASE_DIR / "assets/candidates-attributed.jsonl"),
         help="Input JSONL (typically assets/candidates-attributed.jsonl).",
     )
     parser.add_argument(
         "--output",
-        default="assets/quote_database.jsonl",
+        default=str(BASE_DIR / "assets/quote_database.jsonl"),
         help="Output JSONL path (the baked database).",
     )
     parser.add_argument(

@@ -199,7 +199,7 @@ def main() -> int:
         for row in bucket_results:
             resolved_counts[row["resolved_bucket"]] += 1
 
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    output_path = Path(args.output).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
         for row in all_results:

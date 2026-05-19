@@ -89,8 +89,8 @@ def row_from_targeted(raw: dict) -> dict:
 
 def main() -> int:
     args = parse_args()
-    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    input_path = Path(args.input).expanduser().resolve()
+    output_path = Path(args.output).expanduser().resolve()
     rows = []
     for raw in iter_jsonl(input_path):
         rows.append(row_from_targeted(raw))

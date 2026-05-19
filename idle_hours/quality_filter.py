@@ -84,8 +84,8 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
 
 def main() -> int:
     args = parse_args()
-    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
-    output_path = (BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()
+    input_path = Path(args.input).expanduser().resolve()
+    output_path = Path(args.output).expanduser().resolve()
     rows = []
     for row in iter_jsonl(input_path):
         display_quote = row.get("display_quote") or ""

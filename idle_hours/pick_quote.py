@@ -18,13 +18,22 @@ from idle_hours.jsonl_io import iter_jsonl
 DEFAULT_HISTORY_PATH = "~/.idle-hours/history.jsonl"
 DEFAULT_HISTORY_DAYS = 7
 
-# Paths of the two corpus artifacts committed in ``assets/``. ``DEFAULT_DATABASE_PATH``
-# is the baked, display-ready corpus produced by ``bake_quote_database.py`` and
-# consulted at runtime; ``DEFAULT_INPUT_PATH`` is the raw attributed corpus and
-# is used by the curator UI's bucket-inspector (``select_candidates``) plus as a
-# defensive fallback when the baked file is missing.
-DEFAULT_DATABASE_PATH = "assets/quote_database.jsonl"
-DEFAULT_INPUT_PATH = "assets/candidates-attributed.jsonl"
+# Paths of the two corpus artifacts shipped inside ``idle_hours/assets/`` as
+# package-data. ``DEFAULT_DATABASE_PATH`` is the baked, display-ready corpus
+# produced by ``bake_quote_database.py`` and consulted at runtime;
+# ``DEFAULT_INPUT_PATH`` is the raw attributed corpus, used by the curator UI's
+# bucket-inspector (``select_candidates``) plus as a defensive fallback when
+# the baked file is missing.
+#
+# These are absolute paths anchored on the package directory so they resolve
+# correctly whether the operator runs from a checkout or against an installed
+# wheel — ``resolve_path`` below treats operator-supplied relative values as
+# CWD-relative, so anchoring the bundled defaults on ``BASE_DIR`` is the only
+# way to keep them stable regardless of where the operator's CWD points.
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_DATABASE_PATH = str(BASE_DIR / "assets" / "quote_database.jsonl")
+DEFAULT_INPUT_PATH = str(BASE_DIR / "assets" / "candidates-attributed.jsonl")
+DEFAULT_OVERRIDES_PATH = str(BASE_DIR / "assets" / "selection_overrides.json")
 
 # Order of the ten row-intrinsic score components stored in ``row["baked_score"]``.
 # Kept in sync with ``bake_quote_database.BAKED_SCORE_COMPONENTS``; reordering
@@ -64,8 +73,6 @@ EXACT_MINUTE_PATTERNS = {
     50: ["ten minutes to", "ten to"],
     55: ["five minutes to", "five to"],
 }
-
-BASE_DIR = Path(__file__).resolve().parent
 
 DIALOGUE_FILLER_PATTERNS = [
     "he said",
@@ -135,7 +142,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--overrides",
-        default="assets/selection_overrides.json",
+        default=DEFAULT_OVERRIDES_PATH,
         help="JSON overrides for manual boosts/bans/preferred bucket picks.",
     )
     parser.add_argument(
@@ -157,10 +164,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_path(path_str: str) -> Path:
-    path = Path(path_str).expanduser()
-    if not path.is_absolute():
-        path = BASE_DIR / path
-    return path
+    """Resolve a CLI / kwarg path string.
+
+    Relative values anchor on CWD so operator-supplied paths land where the
+    operator expects (next to their working tree). Bundled defaults that
+    need to point inside the installed package — the baked corpus, the raw
+    attributed corpus, the selection-overrides sidecar — are exposed as the
+    ``DEFAULT_*_PATH`` module constants which are already absolute,
+    anchored on ``BASE_DIR``.
+
+    Pre v2.x this helper joined relatives with ``BASE_DIR`` (the repo root),
+    which silently buried operator outputs inside the package directory
+    once the codebase moved under ``idle_hours/``.
+    """
+    return Path(path_str).expanduser().resolve()
 
 
 def load_rows(path: Path) -> list[dict]:

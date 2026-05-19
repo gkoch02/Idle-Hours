@@ -159,9 +159,7 @@ def main() -> int:
         args.mode,
         log=lambda msg: print(msg, file=sys.stderr, flush=True),
     )
-    output = Path(args.output)
-    if not output.is_absolute():
-        output = BASE_DIR / output
+    output = Path(args.output).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output)
     print(f"Wrote {output} ({sheet.size[0]}x{sheet.size[1]})")

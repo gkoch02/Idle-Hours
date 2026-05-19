@@ -101,8 +101,8 @@ def infer_time_from_quote(display_quote: str):
 
 def main() -> int:
     args = parse_args()
-    input_path = (BASE_DIR / args.input).expanduser() if not Path(args.input).is_absolute() else Path(args.input).expanduser()
-    output_path = ((BASE_DIR / args.output).expanduser() if not Path(args.output).is_absolute() else Path(args.output).expanduser()) if args.output else input_path
+    input_path = Path(args.input).expanduser().resolve()
+    output_path = (Path(args.output).expanduser().resolve()) if args.output else input_path
     rows = []
     fixed = 0
     for row in iter_jsonl(input_path):
