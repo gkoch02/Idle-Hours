@@ -2582,13 +2582,14 @@ class TestDrawTextDithered:
             f"alchemy purple dither must use 50/50 density (default); got {density}"
         )
 
-    def test_gothic_call_site_uses_candlelit_density(self):
+    def test_gothic_call_site_uses_amber_recipe(self):
         """``_draw_text_body`` must call ``draw_text_dithered`` for the
-        gothic red-accent path with ``light_density=0.25`` toward white.
-        A regression to solid red would lose the candlelit-rubric
-        signature that ties gothic to its sister blackletter theme
-        (grimoire), and a flip to ``light=yellow`` or any other density
-        would shift the matched phrase off the agreed candlelit tone.
+        gothic red-accent path with the documented amber recipe — 50/50
+        yellow-on-red checkerboard (``light=yellow``, default density).
+        A regression to solid red, to ``light=white``, or to any
+        non-default density would shift the matched phrase off the
+        agreed amber tone that ties gothic to the ``diags`` synth band's
+        "amber" swatch (R+Y 1:1).
         """
         captured: dict = {}
 
@@ -2603,13 +2604,13 @@ class TestDrawTextDithered:
             font = ImageFont.load_default()
             rq._draw_text_body(image, draw, (10, 10), "test", font, rq.SPECTRA6["red"], "gothic")
 
-        assert captured.get("density") == 0.25, (
-            f"gothic red-accent dither expected light_density=0.25, "
+        assert captured.get("density") in (None, 0.5), (
+            f"gothic amber dither must use 50/50 density (default); "
             f"got {captured.get('density')}"
         )
-        assert captured.get("light") == rq.SPECTRA6["white"], (
-            "gothic red-accent dither must stipple toward white for the "
-            "candlelit-rubric register"
+        assert captured.get("light") == rq.SPECTRA6["yellow"], (
+            "gothic red-accent dither must stipple toward yellow for the "
+            "amber register (R+Y 1:1)"
         )
 
     def test_saloon_foxing_speckles_split_red_and_green(self):

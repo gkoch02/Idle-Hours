@@ -447,12 +447,14 @@ THEMES = {
         "subtle": SPECTRA6["white"],
         "faint": SPECTRA6["white"],
         "accent": SPECTRA6["red"],
-        # Both ornament keys collapse onto red so the oversized quote marks
-        # render as solid red against the black ground — same trick
-        # ``gothic`` / ``atomic`` use to keep dramatic accent ornaments from
-        # half-dithering into the page colour.
-        "ornament_dark": SPECTRA6["red"],
-        "ornament_light": SPECTRA6["red"],
+        # Oversized quote marks render as a 50/50 blue/white checkerboard
+        # via ``draw_faux_gray_text`` — the same B+W 1:1 mix the ``diags``
+        # synth band labels "sky". Against the black cathedral ground the
+        # eye averages the two inks into a cool moon-silver sky-blue, a
+        # complementary cold-light counterpoint to the warm operative red
+        # the rest of the grimoire iconography is painted in.
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
     # Art-deco poster: white ground / black body / red-stippled-to-yellow
@@ -2288,6 +2290,86 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
                 px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
 
 
+def draw_faux_3way_text(
+    image: Image.Image,
+    xy,
+    text,
+    font,
+    ink_a,
+    ink_b,
+    ink_c,
+    density_a: float,
+    density_b: float,
+    pattern_offset=(0, 0),
+):
+    """Paint ``text`` as a three-ink Bayer stipple.
+
+    Same masking strategy as ``draw_faux_gray_text`` but partitions the
+    shared 4×4 Bayer tile by two thresholds: cells below
+    ``round(density_a*16)`` get ``ink_a``, cells below
+    ``round((density_a + density_b)*16)`` get ``ink_b``, the remainder
+    get ``ink_c``. Mirrors the ``_fill_swatch_stipple_3way`` partition
+    used by the ``diags`` triple-swatch row, so a theme's text glyphs
+    and the ``diags`` reference swatch share one perceived hue at panel
+    distance. Currently used by ``chanbara``'s oversized quote marks
+    for the documented burnt-orange recipe (R+Y+G 50/40/10).
+    """
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.text(xy, text, font=font, fill=255)
+    px = image.load()
+    mx = mask.load()
+    ox, oy = pattern_offset
+    threshold_a = round(density_a * 16)
+    threshold_b = round((density_a + density_b) * 16)
+    for y in range(image.height):
+        for x in range(image.width):
+            if mx[x, y]:
+                tile = BAYER_4x4[(y + oy) % 4][(x + ox) % 4]
+                if tile < threshold_a:
+                    px[x, y] = ink_a
+                elif tile < threshold_b:
+                    px[x, y] = ink_b
+                else:
+                    px[x, y] = ink_c
+
+
+def _paint_ornament_mark(image, xy, text, font, theme: str, colors: dict, pattern_offset=(0, 0)) -> None:
+    """Dispatch the oversized opening / closing quote-mark painter.
+
+    Most themes paint via ``draw_faux_gray_text`` (a 50/50 checkerboard
+    between ``ornament_dark`` and ``ornament_light``). ``chanbara``
+    overrides to a three-ink burnt-orange Bayer stipple (R+Y+G at
+    50/40/10) — the same recipe the ``diags`` synth band labels "burnt
+    orange" — so the oversized marks read as the warm rust-orange of a
+    weathered samurai-cinema title card rather than the fire-engine red
+    a solid-red paint would produce.
+    """
+    if theme == "chanbara":
+        draw_faux_3way_text(
+            image,
+            xy,
+            text,
+            font=font,
+            ink_a=SPECTRA6["red"],
+            ink_b=SPECTRA6["yellow"],
+            ink_c=SPECTRA6["green"],
+            density_a=0.50,
+            density_b=0.40,
+            pattern_offset=pattern_offset,
+        )
+        return
+    draw_faux_gray_text(
+        image,
+        xy,
+        text,
+        font=font,
+        dark=colors["ornament_dark"],
+        light=colors["ornament_light"],
+        pattern_offset=pattern_offset,
+    )
+
+
 def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_offset=(0, 0), light_density: float = 0.5):
     """Paint ``text`` as a ``dark``/``light`` Bayer stipple, like
     ``draw_faux_gray_text`` but iterates only over the text's bounding box.
@@ -2421,14 +2503,13 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       pixels using the same Bayer threshold so the matched phrase
       and border decoration share one orange tone.
     * ``gothic`` — only the red matched-phrase blackletter gets
-      dithered, sparse 1-in-4 white-on-red (75% red / 25% white),
-      so the phrase glows like a candlelit rubric against the black
-      ground without diluting into pink. Mirrors the recipe
-      ``grimoire`` already uses on *its* blackletter matched
-      phrase: the two themes are deliberately complementary-
-      polarity blackletter sisters, and sharing the candlelit-
-      rubric signature ties them visually while their grounds keep
-      them distinct.
+      dithered, 50/50 yellow-on-red checkerboard via the shared
+      two-ink amber recipe (``dark=red, light=yellow`` — the same
+      mix the ``diags`` synth band labels "amber"). The matched
+      phrase reads as warm candle-flame against the black
+      cathedral ground, sitting visually distinct from the solid-
+      red corner quatrefoils and mid-edge diamonds the
+      ``draw_gothic_border`` painter still paints in pure red.
     * ``alchemy`` — only the red matched-phrase accent gets
       dithered, 50/50 blue-on-red checkerboard via the documented
       two-ink purple/violet recipe (``dark=red, light=blue``), so
@@ -2450,8 +2531,11 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # TFoust hollow-display face + bold weight.
         draw.text(xy, text, font=font, fill=SPECTRA6["white"])
     elif theme == "gothic" and fill == SPECTRA6["red"]:
-        # Same candlelit-rubric recipe as ``grimoire``; see docstring.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"], light_density=0.25)
+        # Amber (R+Y 1:1) — the same recipe the ``diags`` synth band
+        # labels "amber". Reads as warm candle-flame against the black
+        # cathedral ground, lifting the matched phrase clear of the
+        # red border ornaments instead of sharing their ink.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"])
     elif theme == "alchemy" and fill == SPECTRA6["red"]:
         # 50/50 red+blue checkerboard → perceived purple; see docstring.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
@@ -7876,13 +7960,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     open_h = open_bb[3] - open_bb[1]
     open_x = SIDE_MARGIN + 18
     open_y = quote_top - open_h // 3
-    draw_faux_gray_text(
+    _paint_ornament_mark(
         image,
         (open_x - open_bb[0], open_y - open_bb[1]),
         "“",
         font=mark_font,
-        dark=colors["ornament_dark"],
-        light=colors["ornament_light"],
+        theme=theme,
+        colors=colors,
         pattern_offset=(0, 0),
     )
 
@@ -7950,13 +8034,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     close_h = close_bb[3] - close_bb[1]
     close_x = width - SIDE_MARGIN - 18 - close_w
     close_y = block_bottom - close_h * 2 // 3
-    draw_faux_gray_text(
+    _paint_ornament_mark(
         image,
         (close_x - close_bb[0], close_y - close_bb[1]),
         "”",
         font=mark_font,
-        dark=colors["ornament_dark"],
-        light=colors["ornament_light"],
+        theme=theme,
+        colors=colors,
         pattern_offset=(1, 0),
     )
 
