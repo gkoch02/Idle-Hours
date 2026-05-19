@@ -75,6 +75,7 @@ THEME_ORDER: tuple[str, ...] = (
     "fillmore",
     "firmament",
     "astrarium",
+    "kanagawa",
     "diags",
 )
 THEMES = {
@@ -780,6 +781,77 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Kanagawa — a stylised Japanese seascape evoking Hokusai's
+    # "Thirty-six Views of Mount Fuji" series without literally
+    # reproducing the Great Wave (PIL polygon fills + a 6-colour
+    # palette can't carry the ink-brush nuance the print needs; an
+    # earlier revision that attempted the literal silhouette read as
+    # "rolling hills" no matter how the curves were tuned). The final
+    # composition pivots to the canonical seigaiha (青海波 / "blue
+    # ocean waves") textile pattern as the centrepiece: overlapping
+    # fish-scale half-disks in indigo with three concentric white arc
+    # stripes inside each scale, filling the bottom ~34 % of the
+    # canvas in tight overlapping rows so only the upper crescent of
+    # each scale shows — the iconic woven-textile rhythm.
+    #
+    # Atmospheric layers above the seigaiha: a vertically-graduated
+    # sky-blue Bayer wash (the first gradient wash in the codebase),
+    # five distant ink-stroke birds at module-level deterministic
+    # anchors, a faint sparse-stippled horizon line at the sea-sky
+    # boundary, and the deepest seigaiha row picks up a navy stipple
+    # post-pass (B+K 1:1) so the bottom of the "ocean" reads as
+    # deeper water. A red rounded-rectangle hanko seal with a
+    # stylised 川 ("river") kanji in white anchors the bottom-right
+    # corner; the seal's base is post-passed to oxblood maroon (R+K
+    # 1:1, the documented recipe ``dispatch`` and ``chanbara`` both
+    # use).
+    #
+    # Body text sits in a cream-tinted rounded paper panel knocked
+    # out of the seigaiha (same blueprint clear-rect pattern), with
+    # a 1 px black frame and a 2 px drop shadow on the bottom-right
+    # edge that reads as a lifted paper card hovering above the
+    # textile. The cream tint is a sparse 4-anchor 8×8 off-grid
+    # yellow scatter (~6 % density) on white — the documented Y+W
+    # cream recipe, applied here via an off-grid pattern rather than
+    # a regular Bayer to avoid the visible-lattice "lemon grid"
+    # effect a Bayer pattern produces at desktop zoom against the
+    # saturated seigaiha indigo (the eye averages the off-grid
+    # scatter to warm vellum at panel viewing distance, the same way
+    # it averages a regular Bayer, but without the lattice artefact
+    # in either register).
+    #
+    # Matched time phrase: solid Spectra red — the classic ukiyo-e
+    # signature-red register, tied tonally to the hanko seal's red
+    # base. Body in Yuji Boku (Yuji Hamasaki, OFL via Google Fonts —
+    # a sumi-brush Japanese face with uneven hand-painted strokes),
+    # the first proper Japanese sumi-brush face in the bundle. The
+    # brush-on-paper texture pairs naturally with the seigaiha
+    # pattern: both come from the Japanese brush / ink-on-paper
+    # tradition. Sits visually distinct from the rotation's other
+    # Japanese-flavoured theme (``chanbara`` — dramatic all-caps
+    # samurai-cinema brush via Shojumaru with a single off-canvas
+    # red sun and a chop seal): chanbara is samurai *cinema* in a
+    # bold display brush, kanagawa is woodblock-print *textile* in
+    # a calligraphic body brush, with seigaiha as the dominant motif.
+    "kanagawa": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        # Solid red matched phrase — high-contrast accent against the
+        # cream-stippled panel ground that ties tonally to the hanko's
+        # red base (the hanko's R+K maroon post-pass shares the same
+        # ink). Earlier revisions routed blue → B+K navy stipple via
+        # ``_draw_text_body`` to rhyme with the seigaiha indigo below,
+        # but at desktop preview the alternating B+K pixels read as
+        # vivid blue rather than navy, and the user preferred a clean
+        # red accent — the same classic ukiyo-e signature-red register
+        # the hanko occupies.
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1053,6 +1125,20 @@ CORMORANT_VARIABLE = str(BASE_DIR / "fonts/cormorant-garamond/CormorantGaramond-
 # Mucha font chain the same way UnifrakturMaguntia lives alongside
 # EB Garamond in ``illuminated``.
 BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-Regular.ttf")
+# Yuji Boku — Yuji Hamasaki (OFL, via Google Fonts). Sumi-brush
+# Japanese face with hand-painted strokes — the texture of brush-
+# on-paper calligraphy that pairs naturally with the seigaiha
+# (青海波 / "blue ocean waves") textile pattern at the heart of
+# the ``kanagawa`` theme: both come from the Japanese brush /
+# ink-on-paper tradition. Single weight (Regular only); the
+# matched-phrase role re-uses Regular and gains differentiation
+# from the red accent colour alone, same trick comic / dispatch /
+# atomic / marker / saloon / deco / glacier / chalkboard / placard /
+# chanbara already use. Sits visually distinct from chanbara's
+# Shojumaru (dramatic samurai-cinema brush, single weight, all
+# caps) so both Japanese-flavoured themes stay differentiable in
+# the rotation. Used by the ``kanagawa`` theme.
+YUJI_BOKU_REGULAR = str(BASE_DIR / "fonts/yuji-boku/YujiBoku-Regular.ttf")
 # Bungee Shade — David Jonathan Ross (OFL). 3D-blocked display face
 # with strong outline + drop-shadow shading, evoking the chunky shaded
 # lettering on 1960s rock concert posters — Wes Wilson, Victor Moscoso,
@@ -1957,6 +2043,42 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "kanagawa": {
+        # Yuji Boku for both body and matched-phrase roles — a sumi-
+        # brush Japanese face whose uneven hand-painted strokes pair
+        # naturally with the seigaiha tile pattern (both come from
+        # the Japanese brush / ink-on-paper tradition). Single weight
+        # only (Regular); the matched-phrase role re-uses Regular
+        # and gains differentiation from the red accent colour alone
+        # — the same trick comic / dispatch / atomic / marker /
+        # saloon / deco / glacier / chalkboard / placard / chanbara
+        # use for their single-weight display faces.
+        #
+        # Fallback chain favours humanist serifs (Cormorant Garamond
+        # → EB Garamond → Old Standard TT → DejaVu Serif → Playfair)
+        # over sans because the sumi-brush register is closest to a
+        # high-contrast humanist serif silhouette, and a missing-Yuji
+        # install should land on a serif rather than a grotesque sans
+        # that would clash with the brush-calligraphy seascape mood.
+        "quote_regular": [
+            YUJI_BOKU_REGULAR,
+            (CORMORANT_VARIABLE, "Regular"),
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            YUJI_BOKU_REGULAR,
+            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            YUJI_BOKU_REGULAR,
+            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     # System sans for the diagnostic panel. The render path for diags is
     # the status-grid layout, not the literary frame — a clean grotesque
     # sans reads better at small label sizes than the Playfair serif
@@ -2747,6 +2869,13 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # sits as a deeper variant of the blue accent within the
         # body block.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["black"])
+    # ``kanagawa`` previously routed matched-phrase blue → B+K navy
+    # stipple here to rhyme with the seigaiha indigo below; the
+    # current theme uses solid Spectra red as its accent (see THEMES
+    # docstring rationale) so the per-theme dispatch falls through to
+    # the unguarded ``draw.text`` call below — same path other red-
+    # accent themes (default / dark / placard) take for their matched
+    # phrase.
     elif theme == "nightvision" and fill == SPECTRA6["yellow"]:
         # Matched phrase shifts to lime (Y+G 5/8:3/8) — yellow-biased
         # green that reads as the bright neon "tactical readout" glow
@@ -7109,6 +7238,369 @@ def draw_mucha_border(image: Image.Image, colors: dict) -> None:
                 pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
 
 
+_KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int, int, int], ...] = (
+    # (cx_frac, cy_frac, wingspan, left_droop, right_droop) — distant
+    # ink-stroke birds scattered in the upper sky band, well above
+    # the body text block. Each bird is two diagonal line strokes
+    # meeting at the body with asymmetric droop values so the flock
+    # reads as five distinct soaring silhouettes rather than five
+    # identical "V" stamps. Wingspans 18-26 px with a 2 px stroke so
+    # the birds are visible against the stippled sky-blue wash at
+    # panel-viewing distance.
+    (0.20, 0.06, 22,  6,  9),    # banking right
+    (0.34, 0.04, 18,  4,  4),    # gliding level
+    (0.52, 0.08, 26, 10,  4),    # banking left
+    (0.66, 0.05, 20,  5,  8),    # banking right
+    (0.82, 0.07, 18,  6,  3),    # banking left
+)
+
+
+# Per-tile geometry for the seigaiha (青海波 / "blue ocean waves")
+# pattern. Tuned so a default 800x480 canvas hosts ~8 visible rows
+# across the bottom 30%, each row hosting ~17 tiles. Smaller radii
+# produce a denser pattern that reads as woven fabric; larger radii
+# read as a graphic-design tile motif. The chosen radius lands in the
+# middle ground — visibly hand-drawn but rhythmic.
+_SEIGAIHA_TILE_RADIUS = 28
+# Visible "crescent" of each tile = radius minus row_overlap. With
+# row_overlap = radius // 2 = 14, the visible scale strip per tile is
+# 14 px tall — wide enough for three concentric white arcs (at radii
+# 23 / 18 / 13) to read distinctly. The 4-px stripe spacing matches
+# the visual rhythm of real seigaiha textile prints.
+_SEIGAIHA_RING_RADII: tuple[int, ...] = (23, 18, 13)
+
+
+def _draw_seigaiha_band(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    band_top_y: int,
+    band_bottom_y: int,
+    blue_ink: tuple[int, int, int],
+    white_ink: tuple[int, int, int],
+    black_ink: tuple[int, int, int],
+    *,
+    radius: int = _SEIGAIHA_TILE_RADIUS,
+) -> None:
+    """Fill the horizontal band ``(0, band_top_y) – (width, band_bottom_y)``
+    with the seigaiha (青海波 / "blue ocean waves") tile pattern.
+
+    Each tile is a filled half-disk (pie slice from 180° to 360°, i.e.
+    the upper hemisphere in PIL's clockwise angle convention) painted
+    in indigo, overlaid with three thin white concentric arcs at the
+    radii held in ``_SEIGAIHA_RING_RADII`` — the canonical "fish-scale
+    stripe" pattern. Tiles are arranged in tight rows with row spacing
+    equal to ``radius // 2``, so the bottom half of each tile is
+    overpainted by the row below and only a 14 px crescent of arc
+    stripes remains visible per scale — the rhythm that gives seigaiha
+    its woven-textile look.
+
+    Rows alternate horizontal offsets by ``radius`` (half the column
+    spacing) so adjacent rows interlock — each new scale sits at the
+    junction of two scales in the row above. The pattern naturally
+    extends past the band edges by ``radius // 2`` on each side so
+    the visible scales fully cover the band without exposed borders.
+
+    The DEEPEST row (last painted) picks up a navy stipple post-pass
+    (B+K 1:1, the documented ``bauhaus`` matched-phrase recipe and
+    the same recipe ``_draw_text_body`` routes the kanagawa matched
+    phrase through) so the bottom of the ocean reads as deeper water,
+    tying tonally to the matched-phrase indigo above.
+    """
+    width = image.size[0]
+    row_spacing = max(8, radius // 2)
+    col_spacing = radius
+
+    # Track which y-rows are the "deepest" so we can post-pass them
+    # to navy after all tiles are drawn.
+    deepest_band_top = max(band_top_y, band_bottom_y - row_spacing * 2)
+
+    y = band_top_y
+    row = 0
+    while y <= band_bottom_y + row_spacing:
+        x_offset = (col_spacing // 2) if row % 2 == 1 else 0
+        x = -col_spacing + x_offset
+        while x <= width + col_spacing:
+            # Filled upper-half disk (the "fish scale" body) in indigo.
+            draw.pieslice(
+                (x - radius, y - radius, x + radius, y + radius),
+                180, 360, fill=blue_ink,
+            )
+            # Three concentric white arc stripes inside the scale,
+            # spaced 4-5 px apart so each tile shows three distinct
+            # stripes in its visible crescent.
+            for ring_r in _SEIGAIHA_RING_RADII:
+                draw.arc(
+                    (x - ring_r, y - ring_r, x + ring_r, y + ring_r),
+                    180, 360, fill=white_ink, width=1,
+                )
+            x += col_spacing
+        y += row_spacing
+        row += 1
+
+    # Navy depth post-pass on the deepest band so the bottom of the
+    # ocean reads as darker water. Bbox-scoped to the lowest band,
+    # flips half of blue pixels per (x+y)&1 to black → navy (B+K 1:1).
+    # Clamp the iteration bounds to the canvas — a caller passing
+    # negative ``band_top_y`` (or otherwise unusual bounds on a tiny
+    # preview canvas) would otherwise crash on negative-index pixel
+    # reads, since PIL's PixelAccess doesn't clip like the drawing
+    # primitives do.
+    pixels = image.load()
+    py_start = max(0, deepest_band_top)
+    py_end = min(image.size[1] - 1, band_bottom_y)
+    for py in range(py_start, py_end + 1):
+        for px in range(width):
+            if pixels[px, py] == blue_ink and ((px + py) & 1) == 0:
+                pixels[px, py] = black_ink
+
+
+def draw_kanagawa_border(
+    image: Image.Image,
+    colors: dict,
+    clear_rect: tuple[int, int, int, int] | None = None,
+) -> None:
+    """Paint a stylised Japanese seascape: vertically-graduated sky-blue
+    Bayer wash, five distant ink-stroke birds in the upper sky, a thin
+    horizon-line wash at the sea-sky boundary, the iconic seigaiha
+    (青海波 / "blue ocean waves") tile pattern filling the bottom band
+    in indigo with white concentric scale stripes plus a navy depth
+    post-pass on the deepest row, and a small maroon-stippled hanko
+    seal in the bottom-right corner. No outer frame — authentic
+    ukiyo-e woodblock prints have no border (same composition
+    discipline as ``fillmore``).
+
+    Layers, deepest → shallowest:
+
+    * **Layer 0 — vertically-graduated sky-blue Bayer wash.** The first
+      theme in the rotation to use a *gradient* Bayer wash rather than
+      a uniform density. Only ``page_bg`` pixels in the upper ~55% of
+      the canvas are touched; Bayer threshold tapers linearly from
+      ~5/16 near the top (~31% blue) to 0 at the horizon (y ≈ 264).
+      Reads as morning haze over the sea.
+    * **Distant birds.** Five small black "V" ink strokes scattered
+      across the upper sky band (well above the body-text block) at
+      positions held on ``_KANAGAWA_BIRD_ANCHORS``. Each bird is two
+      diagonal line segments meeting at the body with asymmetric
+      droop values so the flock reads as five distinct soaring
+      silhouettes rather than identical V stamps.
+    * **Horizon line.** A thin sparse Bayer-stippled blue line at
+      y ≈ 0.62 × height, separating the sky wash from the seigaiha
+      band. Reads as the sea-sky boundary a real seascape carries.
+    * **Seigaiha tile band** (bottom ~35% of canvas). A repeating
+      pattern of overlapping fish-scale arcs in indigo with three
+      thin white concentric stripes inside each scale — the
+      canonical Japanese 青海波 textile pattern. Tiles arranged in
+      tight rows with each row offset by half a tile width from the
+      row above. The deepest row picks up a navy stipple post-pass
+      (B+K 1:1, the ``bauhaus`` matched-phrase recipe and the
+      ``_draw_text_body`` matched-phrase routing for kanagawa).
+    * **Hanko seal** (bottom-right, ~32×38 px). Red filled rounded
+      rectangle with a stylised "kawa" (川 / three vertical strokes,
+      "river") kanji in 2 px white strokes; bbox post-pass flips
+      half of the red pixels per ``(x+y)&1`` to black → maroon
+      (R+K 1:1). White strokes paint AFTER the post-pass so they
+      stay solid against the surrounding maroon stipple.
+
+    When ``clear_rect`` is provided (the standard render path —
+    ``render()`` computes it from the body block's bounding rect like
+    it does for ``blueprint``), the seigaiha pattern's painted blue /
+    navy pixels falling INSIDE the rect are reset to ``page_bg`` so
+    the body text + attribution sit cleanly on the page colour. The
+    tile band can therefore extend up to the body-text bottom edge
+    without obstructing legibility. Same pattern ``blueprint`` uses
+    to keep its graph-paper grid out of the quote block.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    white_ink = SPECTRA6["white"]
+    black_ink = SPECTRA6["black"]
+    red_ink = SPECTRA6["red"]
+    blue_ink = SPECTRA6["blue"]
+
+    pixels = image.load()
+
+    # ------------------------------------------------------------------
+    # Layer 0 — vertically-graduated sky-blue Bayer wash.
+    horizon_y = round(height * 0.55)
+    if page_bg is not None:
+        for y in range(horizon_y):
+            thr = max(0, round(5 * (1 - y / max(1, horizon_y))))
+            if thr == 0:
+                continue
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < thr:
+                    pixels[x, y] = blue_ink
+
+    # ------------------------------------------------------------------
+    # Distant birds in the upper sky.
+    for cx_frac, cy_frac, wingspan, left_droop, right_droop in _KANAGAWA_BIRD_ANCHORS:
+        bx = round(cx_frac * width)
+        by = round(cy_frac * height)
+        wing = wingspan // 2
+        draw.line((bx - wing, by - left_droop, bx, by), fill=black_ink, width=2)
+        draw.line((bx, by, bx + wing, by - right_droop), fill=black_ink, width=2)
+
+    # ------------------------------------------------------------------
+    # Horizon line just above the seigaiha band. Bounds-guarded so the
+    # 2-row paint (y and y+1) can't index past the canvas bottom on
+    # tiny preview sizes (the web preview clamps to 80x60, where
+    # horizon_line_y+1 could otherwise reach height).
+    horizon_line_y = round(height * 0.62)
+    if page_bg is not None and 0 <= horizon_line_y < height:
+        horizon_row = BAYER_4x4[horizon_line_y & 3]
+        for px in range(width):
+            if pixels[px, horizon_line_y] == page_bg and horizon_row[px & 3] < 4:
+                pixels[px, horizon_line_y] = blue_ink
+        next_y = horizon_line_y + 1
+        if next_y < height:
+            next_row = BAYER_4x4[next_y & 3]
+            for px in range(width):
+                if pixels[px, next_y] == page_bg and next_row[px & 3] < 4:
+                    pixels[px, next_y] = blue_ink
+
+    # ------------------------------------------------------------------
+    # Seigaiha tile band — the centrepiece of the theme.
+    # Band occupies y = 0.66 × height to canvas bottom (~163 px tall on
+    # a 480 px canvas), giving room for ~8 visible rows of tiles.
+    band_top_y = round(height * 0.66)
+    _draw_seigaiha_band(
+        image, draw, band_top_y, height - 1, blue_ink, white_ink, black_ink
+    )
+
+    # ------------------------------------------------------------------
+    # Hanko seal (bottom-right). Red rounded rectangle with a stylised
+    # "kawa" (川 / three vertical strokes — "river") kanji painted in
+    # 2 px white strokes after a maroon post-pass softens the seal's
+    # base colour from fire-engine red to oxblood (R+K 1:1, the
+    # documented recipe ``dispatch`` and ``chanbara`` both use).
+    # Sized at 32×38 px so the kanji has room to breathe — earlier
+    # 26×30 px sized strokes that read as "scratchy lines" rather than
+    # a deliberate signature mark.
+    seal_w = 32
+    seal_h = 38
+    seal_margin = 26
+    seal_x0 = width - seal_margin - seal_w
+    seal_y0 = height - seal_margin - seal_h
+    seal_x1 = seal_x0 + seal_w
+    seal_y1 = seal_y0 + seal_h
+    # ``draw.rounded_rectangle`` clips out-of-bounds coordinates silently
+    # so a tiny canvas (e.g. the curator UI's 80x60 preview clamp, where
+    # ``seal_y0`` lands at -4) paints whatever portion of the seal fits.
+    draw.rounded_rectangle((seal_x0, seal_y0, seal_x1, seal_y1), radius=3, fill=red_ink)
+    # Maroon post-pass on the seal — clamp the iteration bounds to the
+    # canvas before indexing ``pixels``. PIL's PixelAccess raises on
+    # negative indices rather than clipping, so a negative ``seal_y0``
+    # would otherwise crash the small-preview render. Skip the post-pass
+    # entirely when the seal sits fully off-canvas (degenerate clamp).
+    seal_px0 = max(0, seal_x0)
+    seal_py0 = max(0, seal_y0)
+    seal_px1 = min(width - 1, seal_x1)
+    seal_py1 = min(height - 1, seal_y1)
+    if seal_px0 <= seal_px1 and seal_py0 <= seal_py1:
+        for py in range(seal_py0, seal_py1 + 1):
+            for px in range(seal_px0, seal_px1 + 1):
+                if pixels[px, py] == red_ink and ((px + py) & 1) == 0:
+                    pixels[px, py] = black_ink
+    # Stylised "kawa" — three vertical white strokes, leftmost kinked
+    # at the top to suggest the canonical brush motion (the stroke
+    # starts down-right and turns vertical). The 2 px width matches
+    # the kanji weight of a real hanko impression.
+    stroke_inset_x = 7
+    stroke_inset_y = 6
+    sx0 = seal_x0 + stroke_inset_x
+    sx1 = seal_x1 - stroke_inset_x
+    sxm = (seal_x0 + seal_x1) // 2
+    sy0 = seal_y0 + stroke_inset_y
+    sy1 = seal_y1 - stroke_inset_y
+    # Left stroke — kinked at the top (brush-down motion).
+    draw.line((sx0 + 3, sy0, sx0, sy0 + 4), fill=white_ink, width=2)
+    draw.line((sx0, sy0 + 4, sx0, sy1), fill=white_ink, width=2)
+    # Middle stroke — slightly shorter than the flanking strokes.
+    draw.line((sxm, sy0 + 5, sxm, sy1 - 3), fill=white_ink, width=2)
+    # Right stroke.
+    draw.line((sx1, sy0, sx1, sy1), fill=white_ink, width=2)
+
+    # ------------------------------------------------------------------
+    # Body-text knockout — cream-tinted rounded panel. When clear_rect
+    # is provided by render(), reset the pixels inside to a cream
+    # ground: a rounded-rectangle white fill (radius 12) followed by a
+    # very sparse yellow stipple applied via two interleaved 8×8
+    # off-grid scatters (avoids the period-4 lattice the 4×4 Bayer
+    # matrix produces, which reads as a visible yellow grid at desktop
+    # zoom). The eye averages the W + Y dots at panel distance into
+    # the warm vellum tone real archival paper carries, and the
+    # off-grid placement reads as fibre / paper noise rather than as
+    # a printed lattice in both registers.
+    #
+    # The rounded corners read as a hand-pressed paper card laid over
+    # the seigaiha textile, where pure-white square corners would read
+    # as a digital sticker by comparison. The corner pixels OUTSIDE
+    # the rounded arc are deliberately left as seigaiha — body text
+    # sits well inside the panel (the clear_pad_x = 14 / pad_top = 6
+    # dispatch values keep the text bbox 14 px / 6 px in from the
+    # panel edges), so the rounded-corner cutouts never expose any
+    # painted glyphs.
+    if clear_rect is not None and page_bg is not None:
+        cx0, cy0, cx1, cy1 = clear_rect
+        cx0 = max(0, cx0)
+        cy0 = max(0, cy0)
+        cx1 = min(width - 1, cx1)
+        cy1 = min(height - 1, cy1)
+    # Skip the knockout entirely if the clamped rect collapsed — PIL's
+    # ``rounded_rectangle`` raises ``ValueError`` when ``x1 < x0`` or
+    # ``y1 < y0`` rather than degrading to a no-op, and the web-preview
+    # clamp (80x60 canvas, body text barely fits) can produce a
+    # clear_rect smaller than the rounded-corner radius plus the 2 px
+    # shadow offset.
+    if (
+        clear_rect is not None
+        and page_bg is not None
+        and cx1 > cx0
+        and cy1 > cy0
+    ):
+        # Drop shadow — solid black rounded rect offset 2 px right and
+        # down. The cream panel paints on top in the next step,
+        # covering all but the 2 px ledge along the panel's bottom and
+        # right edges; that ledge is the visible "shadow" reading as a
+        # lifted paper card hovering above the seigaiha textile. The
+        # offset is deliberately small (2 px) — a deeper offset would
+        # cast a hard shadow that competes with the rest of the
+        # composition rather than reading as a subtle paper edge.
+        draw.rounded_rectangle(
+            (cx0 + 2, cy0 + 2, cx1 + 2, cy1 + 2),
+            radius=12, fill=black_ink,
+        )
+        draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=12, fill=white_ink)
+        # Thin 1 px frame around the panel — reads as a hand-pressed
+        # paper card's edge wear, the way a real card laid on a
+        # textile has a slight outline where the paper meets the
+        # cloth. Painted in solid black at 1 px width; PIL's
+        # rounded_rectangle outline parameter automatically follows
+        # the rounded-corner arc.
+        draw.rounded_rectangle(
+            (cx0, cy0, cx1, cy1), radius=12, outline=black_ink, width=1,
+        )
+        # Cream stipple via four 8×8 off-grid anchor scatters. Each
+        # 8×8 tile gets a yellow dot at (1, 3), (5, 6), (2, 7), and
+        # (6, 2) — total 4/64 = ~6.25% density. The non-period-4
+        # anchor positions break the visible-lattice effect a regular
+        # 4×4 Bayer pattern produces at desktop zoom against the
+        # saturated seigaiha indigo. At 6% density the eye averages
+        # W + Y at panel-viewing distance into the warm vellum tone
+        # the user asked for ("more creamy"), without the dots
+        # reading as a printed grid in either register.
+        yellow_ink = SPECTRA6["yellow"]
+        cream_anchors = frozenset({(1, 3), (5, 6), (2, 7), (6, 2)})
+        for py in range(cy0, cy1 + 1):
+            y8 = py & 7
+            for px in range(cx0, cx1 + 1):
+                x8 = px & 7
+                if pixels[px, py] == white_ink and (x8, y8) in cream_anchors:
+                    pixels[px, py] = yellow_ink
+
+
 def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tuple[int, int]]:
     """Return a free-form 18-point polygon approximating a melted-amoeba
     blob silhouette centred on ``(cx, cy)``.
@@ -7848,6 +8340,7 @@ _BORDER_PAINTERS = {
     "mucha": draw_mucha_border,
     "fillmore": draw_fillmore_border,
     "firmament": draw_firmament_border,
+    "kanagawa": draw_kanagawa_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -7873,6 +8366,13 @@ _BORDER_PAINTERS = {
 #     right-aligned label's x range. Mid-edge starbursts sit at y=height//2,
 #     also clear of the label band. The rounded outer frame at inset 14 is
 #     identical to other framed themes here.
+#   - kanagawa: the TR sun disc's top edge sits at y=59 (centre at
+#     (width*0.88, height*0.19) = (704, 91), radius 32 → top pixel at
+#     y=91-32=59), well below the banner's y=14-29 band — they don't
+#     overlap vertically. Mt. Fuji's apex at (width*0.74, height*0.31) =
+#     (592, 149) is even lower. No outer frame, no other TR ornaments,
+#     so the default debug label clears every painted layer by
+#     construction.
 _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
@@ -9318,10 +9818,15 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         y_probe += line_height
 
     clear_rect = None
-    if theme == "blueprint" and quote_line_boxes:
-        clear_pad_x = 2
-        clear_pad_top = 2
-        clear_pad_bottom = 2
+    if theme in ("blueprint", "kanagawa") and quote_line_boxes:
+        # Kanagawa gets a wider horizontal pad so the seigaiha tile
+        # pattern doesn't graze the right edge of the lowest line
+        # (which is usually shorter than max_width); the per-tile
+        # 28 px radius means even a tile centred 16 px past the text
+        # bbox would leave a visible scale-crescent slice.
+        clear_pad_x = 14 if theme == "kanagawa" else 2
+        clear_pad_top = 6 if theme == "kanagawa" else 2
+        clear_pad_bottom = 6 if theme == "kanagawa" else 2
         clear_top = max(0, quote_line_boxes[0][1] - clear_pad_top)
         clear_bottom = min(height - 1, block_bottom + clear_pad_bottom)
         clear_rect = (
@@ -9337,6 +9842,14 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             clear_draw = ImageDraw.Draw(image)
             clear_draw.rectangle(clear_rect, fill=colors["page_bg"])
             draw_blueprint_border(image, colors, clear_rect=clear_rect)
+    elif theme == "kanagawa":
+        # Kanagawa is painted in one shot with ``clear_rect`` threaded
+        # through so the seigaiha tile pattern knocks out the body-text
+        # rect after finishing. Unlike blueprint's two-call pattern,
+        # kanagawa has no decorative grid to re-add inside the cleared
+        # rect — once the rect is reset to page_bg, the body text
+        # paints cleanly on top.
+        draw_kanagawa_border(image, colors, clear_rect=clear_rect)
     else:
         _paint_theme_border(image, theme, colors)
 

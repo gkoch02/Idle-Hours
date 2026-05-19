@@ -400,6 +400,37 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "chanbara",
     },
+    # Kanagawa is the most heavily composited theme in the rotation —
+    # seven distinct layers (sky gradient + birds + horizon line +
+    # seigaiha tile band + navy deepest-row post-pass + cream-tinted
+    # rounded panel knockout + hanko seal) on top of the Yuji Boku
+    # brush face for body + matched-phrase. A regression in any of
+    # those layers flips hundreds-to-thousands of pixels here: the
+    # seigaiha lattice geometry alone (each scale is a half-disk with
+    # three concentric white arcs) accounts for ~30k painted pixels in
+    # the bottom band, and a font drop to the Cormorant fallback would
+    # flip every body-text glyph silhouette. The clear_rect knockout
+    # also pins the rounded-corner panel geometry (radius 12, 2 px
+    # shadow ledge, 1 px black frame, ~6% off-grid yellow cream
+    # stipple) — a regression that mis-sized any of those would land
+    # here loudly.
+    {
+        "name": "standard_kanagawa_production",
+        "time": "04:30",
+        "row": _row(
+            "It was almost half past four when the bell finally rang and "
+            "the waves crashed against the harbour wall.",
+            "half past four",
+            author="Jane Austen",
+            title="Pride and Prejudice",
+            bucket="h4_half_past",
+            resolved_bucket="h4_half_past",
+            quality_score=88,
+            source_id="1342",
+        ),
+        "mode": "production",
+        "theme": "kanagawa",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",
