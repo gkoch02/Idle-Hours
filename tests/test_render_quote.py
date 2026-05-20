@@ -2637,6 +2637,52 @@ class TestDiagsTripleSwatches:
             assert non_bg, f"3-ink row at y={y_sample} painted no non-background pixels"
 
 
+class TestAstrariumFrame:
+    """The ``astrarium`` theme dispatches into its own custom render path
+    (``render_astrarium_frame``) the same way ``diags`` does — bypassing
+    the standard literary layout entirely. None of the helpers
+    (``_astrarium_paint_cream_wash`` / ``_paint_ring_quadrant`` /
+    ``_paint_constellation_field`` / ``_paint_dial`` / ``_paint_header`` /
+    ``_paint_quote_panel`` / ``_paint_datum_strip``) were exercised by
+    any test, leaving ~520 lines of theme code uncovered. The two
+    smoke tests below mirror the diags pattern: render at canonical
+    800×480 to exercise every helper, and again at thumbnail size to
+    confirm proportional positioning doesn't crash on a narrow canvas
+    (the curator UI's theme preview grid asks for 320×192).
+    """
+
+    _ROW = {
+        "display_quote": "It was at ten o'clock today that the first of all Time Machines began its career.",
+        "matched_text": "ten o'clock",
+        "bucket": "h10_exact",
+        "quality_score": 80,
+        "source_id": "35",
+        "line_number": 1,
+        "author": "H. G. Wells",
+        "title": "The Time Machine",
+    }
+
+    def test_render_dispatches_to_astrarium_frame(self):
+        img = rq.render("10:00", self._ROW, 800, 480, mode="production", theme="astrarium")
+        assert img.size == (800, 480)
+        # ``render_astrarium_frame`` ends in ``snap_image_to_palette`` so
+        # every pixel must land on the Spectra 6 palette.
+        unique = {img.getpixel((x, y)) for y in range(0, 480, 40) for x in range(0, 800, 40)}
+        assert unique.issubset(set(rq.SPECTRA6_PALETTE)), (
+            f"astrarium frame produced off-palette pixels: {unique - set(rq.SPECTRA6_PALETTE)}"
+        )
+
+    def test_render_astrarium_frame_at_thumbnail_size(self):
+        """The curator UI's theme preview grid issues
+        ``/api/preview?theme=astrarium&width=320&height=192`` for the
+        thumbnail. The dial uses proportional positioning so the
+        narrow canvas must still produce a recognisable thumbnail
+        without raising (e.g. via ``PixelAccess`` IndexError or a
+        negative font size from ``fit_quote``)."""
+        img = rq.render_astrarium_frame("10:00", self._ROW, 320, 192)
+        assert img.size == (320, 192)
+
+
 class TestFillSwatchStipple3way:
     """``_fill_swatch_stipple_3way`` is the new ``_three_way_bayer``
     primitive ``spectra6_color_recipes.md`` references as the
