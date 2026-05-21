@@ -10148,14 +10148,16 @@ def _marquee_paint_credits(
     width: int,
     y_top: int,
 ) -> None:
-    """STARRING [AUTHOR] credit chrome.
+    """WRITTEN BY [AUTHOR] credit chrome.
 
-    Yellow Antonio Bold "STARRING" label + white Cardo Italic author
-    name. Centred on the canvas. The book title used to appear on a
-    second "IN [TITLE]" credit line here, but the title is now the
-    big Bungee Shade feature-title chrome at the top of the marquee,
-    so the credits simplify to the author alone — the canonical
-    "above-the-title star credit" convention from real movie posters.
+    Yellow Antonio Bold "WRITTEN BY" label + white Cardo Italic
+    author name. Centred on the canvas. Earlier revisions used the
+    canonical movie-poster credit ``STARRING`` here, but the author
+    didn't perform in the book — they wrote it — so the literary
+    context wants the more accurate verb. The marquee chrome
+    continues to lean on the movie-palace vocabulary
+    (NOW SHOWING / ONE NIGHT ONLY) everywhere else, but the credit
+    line is the one place where the literary register has to win.
     """
     YELLOW = SPECTRA6["yellow"]
     WHITE = SPECTRA6["white"]
@@ -10165,7 +10167,7 @@ def _marquee_paint_credits(
     cx = width // 2
     label_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=14)
     name_font = load_font(theme_font_candidates("marquee", "quote_regular"), size=20)
-    label = "STARRING"
+    label = "WRITTEN BY"
     label_bbox = draw.textbbox((0, 0), label, font=label_font)
     label_w = label_bbox[2] - label_bbox[0]
     name_bbox = draw.textbbox((0, 0), author, font=name_font)
@@ -10189,8 +10191,8 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
     top; the book title as the big chunky Bungee Shade feature-title
     chrome below (uppercased, auto-sized and wrapped to 2 lines for
     long titles); literary quote below in white Cardo Italic with a
-    red matched-phrase accent; STARRING [AUTHOR] credit chrome at the
-    bottom in yellow + white; "ONE NIGHT ONLY" tagline above the
+    red matched-phrase accent; WRITTEN BY [AUTHOR] credit chrome at
+    the bottom in yellow + white; "ONE NIGHT ONLY" tagline above the
     bottom bulbs.
 
     ``time_str`` is intentionally never rendered as digital chrome —
@@ -10221,7 +10223,7 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
     body_rect = (60, 200, width - 60, 360)
     _marquee_paint_body(image, draw, quote_row, body_rect)
 
-    # Credits chrome — STARRING [AUTHOR] only (title moved to the top).
+    # Credits chrome — WRITTEN BY [AUTHOR] only (title moved to the top).
     _marquee_paint_credits(image, draw, quote_row, width, y_top=384)
 
     # "ONE NIGHT ONLY" tagline just above the bottom bulb row.

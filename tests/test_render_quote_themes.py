@@ -162,17 +162,17 @@ class TestMarqueeFrame:
         assert set(img.getdata()).issubset(palette)
 
     def test_credits_render_when_author_present(self):
-        """STARRING label paints in yellow when the row carries an
+        """WRITTEN BY label paints in yellow when the row carries an
         author; the label lives in the credits band at y≈384 onward.
         Title is no longer in the credits (it moved to the top
-        chrome) so the test only asserts the STARRING line."""
+        chrome) so the test only asserts the WRITTEN BY line."""
         row = make_row(author="L. M. Montgomery", title="Anne of Avonlea")
         img = rq.render("14:30", row, 800, 480, theme="marquee")
         yellow_seen = any(
             img.getpixel((x, 386)) == rq.SPECTRA6["yellow"]
             for x in range(100, 700, 4)
         )
-        assert yellow_seen, "STARRING label should paint yellow pixels in the credits band"
+        assert yellow_seen, "WRITTEN BY label should paint yellow pixels in the credits band"
 
     def test_renders_without_credits(self):
         """Missing author + title must not crash; the credits painter
