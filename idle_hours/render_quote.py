@@ -505,7 +505,11 @@ THEMES = {
     # (blue *ground* / white body / red accent). Iceland is a geometric techno
     # display face; the matching border (``draw_glacier_border``) drops angular
     # "frost crystal" shards into the four corners plus small four-armed star
-    # ticks at the mid-edges, echoing the font's architectural symmetry.
+    # ticks at the mid-edges, echoing the font's architectural symmetry. The
+    # matched-phrase green is rerouted in ``_draw_text_body`` to a 5/8:3/8 G+B
+    # teal stipple — green-biased via Bayer threshold 6/16 so the phrase pulls
+    # clearly off the body's solid blue at panel viewing distance (the previous
+    # 50/50 cyan averaged too close to blue and read as a near-sibling tone).
     "glacier": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["blue"],
@@ -2968,15 +2972,24 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # and the corner cabochons share an R+B tonal register.
         draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=SPECTRA6["blue"])
     elif theme == "glacier" and fill == SPECTRA6["green"]:
-        # Matched phrase shifts to cyan (G+B 1:1) — the genuine aurora
-        # teal of borealis light catching on glacial ice, lifting the
-        # phrase off the flat Spectra-6 saturated green that read as a
-        # muddy mid-tone against the blue body text. The frost-crystal
-        # border's diagonal-shard tips already get a sky-blue post-pass
-        # (B+W) for sunlight-on-ice; the matched-phrase cyan completes
-        # the cool-palette gradient: blue body → cyan matched phrase
-        # → sky-blue ornament highlights.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
+        # Matched phrase shifts to teal (G+B 5/8:3/8) — green-biased
+        # via Bayer threshold 6/16, the same luminance-bias pattern
+        # ``nightvision``'s lime (Y+G 5/8:3/8) and ``deco``'s tangerine
+        # (R+Y 5/8:3/8) use to lift a matched phrase off a same-axis
+        # body colour. An earlier revision shipped this seam at 50/50
+        # G+B cyan; against the solid-blue body the cyan averaged too
+        # close to blue at panel viewing distance and read as a near-
+        # sibling tone rather than a highlight. Biasing toward green
+        # (5/8 green + 3/8 blue) pulls the matched phrase away from
+        # the body's blue while keeping it in the cool-palette family,
+        # so the gradient now reads as blue body → teal matched phrase
+        # → sky-blue ornament highlights on the frost-crystal border —
+        # a wider hue stride than the previous near-uniform cool wash.
+        # Solid Spectra-6 green was tried and rejected before cyan
+        # because it read as a muddy mid-tone; the 3/8 blue stipple
+        # keeps the recipe out of that "flat saturated green" failure
+        # mode while still pulling cleanly off the body blue.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"], light_density=0.375)
     elif theme == "risograph" and fill == SPECTRA6["blue"]:
         # Matched phrase shifts to violet/purple (R+B 1:1) — the AUTHENTIC
         # riso double-pass overprint. Real risograph prints with red on
@@ -8815,6 +8828,7 @@ _DIAGS_SYNTH_SWATCHES: list[tuple[str, tuple[int, int, int], tuple[int, int, int
     ("lime",      SPECTRA6["yellow"], SPECTRA6["green"],  0.375, "Y+G 5:3"),
     ("forest",    SPECTRA6["green"],  SPECTRA6["black"],  0.5,   "G+K 1:1"),
     ("cyan",      SPECTRA6["green"],  SPECTRA6["blue"],   0.5,   "G+B 1:1"),
+    ("teal",      SPECTRA6["green"],  SPECTRA6["blue"],   0.375, "G+B 5:3"),
     ("sky",       SPECTRA6["blue"],   SPECTRA6["white"],  0.5,   "B+W 1:1"),
     ("navy",      SPECTRA6["blue"],   SPECTRA6["black"],  0.5,   "B+K 1:1"),
     ("gray",      SPECTRA6["black"],  SPECTRA6["white"],  0.5,   "K+W 1:1"),
@@ -9139,7 +9153,7 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
         draw.text((x0 + 5, sw_top + 18), hex_code, font=label_reg, fill=label_fill)
 
     # ----- Synth bands -----
-    # Two-ink: 17 recipes in 2 rows (8 + 9). Three-ink: 12 recipes in 2 rows
+    # Two-ink: 18 recipes in 2 rows (8 + 10). Three-ink: 12 recipes in 2 rows
     # (6 + 6). All four rows share the same per-swatch geometry; only the
     # column count and the painter (2-ink vs 3-ink Bayer partition) change.
     # Labels are bold-name + faded-recipe, two 9 pt lines. The four rows
