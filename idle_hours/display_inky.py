@@ -215,6 +215,33 @@ THEME_SATURATION: dict[str, float] = {
     # would saturate the panel's Y+W cream into a brighter lemon yellow
     # and shift the navy stipple toward solid indigo.
     "kanagawa": 0.5,
+    # Departures / Solari split-flap board — black flap-chassis ground
+    # with cream-on-charcoal flap text (Y+W stipple), solid yellow
+    # "NOW BOARDING" highlight, and a maroon (R+K) "DEPARTED" status.
+    # Same dark-ground tier as ``dark`` / ``lcars`` / ``firmament`` /
+    # ``gothic`` / ``nightvision`` — the 0.7 saturation keeps the yellow
+    # boarding-now band confidently chromatic against the panel's
+    # anchored black, and the red destination accent crisp.
+    "departures": 0.7,
+    # Tarot / major-arcana card — cream-washed white ground (Y+W
+    # Bayer wash, same recipe as ``illuminated`` / ``herbarium`` /
+    # ``mucha`` / ``astrarium``), doubled red+black rubricated border,
+    # Tyrian-purple matched-phrase card name. Same chromatic-on-light
+    # profile as ``illuminated`` / ``mucha`` / ``astrarium`` — the
+    # gentler 0.5 tier preserves the rubricated red and the synthesised
+    # purple register without over-saturating the corner pentagrams.
+    "tarot": 0.5,
+    # Vinyl / turntable + record label — cream-washed sleeve ground
+    # (right half) plus a solid black vinyl disk (left half). The
+    # sleeve is the dominant region visually, and the black disk has
+    # no synthesised colour that needs a saturation boost — the red
+    # label and red stylus arm are solid Spectra 6 red. Same
+    # chromatic-on-light profile as ``default`` / ``deco`` /
+    # ``astrarium`` so the gentler 0.5 tier is the natural starting
+    # point. The matched-phrase tangerine (R+Y 5:3) on the sleeve
+    # uses the same recipe ``astrarium`` does and reads correctly at
+    # this saturation.
+    "vinyl": 0.5,
 }
 
 

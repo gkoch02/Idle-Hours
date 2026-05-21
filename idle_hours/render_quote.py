@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import functools
 import io
+import json
 import math
+import random
 import re
 import sys
 from pathlib import Path
@@ -14,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
+from idle_hours.buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time
 
 BASE_DIR = Path(__file__).resolve().parent
 _FONT_FALLBACK_WARNED = False
@@ -77,6 +81,9 @@ THEME_ORDER: tuple[str, ...] = (
     "firmament",
     "astrarium",
     "kanagawa",
+    "departures",
+    "tarot",
+    "vinyl",
     "diags",
 )
 THEMES = {
@@ -851,6 +858,56 @@ THEMES = {
         "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Solari split-flap departures board. Custom-render theme — render()
+    # dispatches to render_departures_frame, which paints a transit-hub
+    # board with the current bucket as a yellow "NOW BOARDING" row,
+    # history-ledger entries above as "DEPARTED" rows, and the next
+    # bucket clocks below as "SCHEDULED" rows. Black chassis ground;
+    # the eight palette keys are kept so render_source_card (button-C
+    # overlay) has fallback colours.
+    "departures": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
+    # Major-arcana tarot card. Custom-render theme — render() dispatches
+    # to render_tarot_frame, which paints a single centred card with
+    # cream Y+W vellum wash, doubled red+black rubricated border,
+    # Roman-numeral hour in Cinzel Decorative Black, matched-phrase
+    # card name in Tyrian purple (R+B 1:1 stipple), hour-mapped emblem
+    # at centre, EB Garamond body below. Mirror-symmetric chrome.
+    "tarot": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
+    },
+    # Turntable + record label. Custom-render theme — render() dispatches
+    # to render_vinyl_frame, which paints a black vinyl disk (left half)
+    # with a red label at its centre carrying the matched phrase + catalog
+    # number + "IDLE HOURS / VOLUME I" stamp, a red stylus arm whose angle
+    # tracks the current minute (sweeping clockwise from 12-o'-clock-top),
+    # and a cream-stippled "album sleeve" (right half) with the quote body
+    # rendered in Cormorant + a tangerine R+Y matched-phrase substitution.
+    "vinyl": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
@@ -2077,6 +2134,67 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             YUJI_BOKU_REGULAR,
             (CORMORANT_VARIABLE, "Bold"),
             EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Departures — Antonio Bold for all three roles. Custom render
+    # only uses the chrome chain (DejaVu/Liberation/Noto sans) for the
+    # actual flap text via load_font(META_FONT_BOLD_CANDIDATES, ...),
+    # but THEME_FONTS still needs a complete entry so render_source_card
+    # (the button-C overlay fallback path) has fonts to load.
+    "departures": {
+        "quote_regular": [
+            (ANTONIO_VARIABLE, "Bold"),
+            *META_FONT_BOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (ANTONIO_VARIABLE, "Bold"),
+            *META_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (ANTONIO_VARIABLE, "Bold"),
+            *META_FONT_BOLD_CANDIDATES,
+        ],
+    },
+    # Tarot — EB Garamond Regular for the body (reads as 17th-century
+    # treatise type alongside the rubricated border), Cinzel Decorative
+    # Bold for the matched-phrase card name (capitalis monumentalis
+    # carved into the card face), Cinzel Decorative Black for the
+    # Roman-numeral hour ornament (the heaviest weight in the family
+    # so the numeral reads as carved relief at chrome scale).
+    "tarot": {
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CINZELDECORATIVE_BOLD,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CINZELDECORATIVE_BLACK,
+            CINZELDECORATIVE_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Vinyl — Cormorant Garamond Regular/Bold body+matched chain.
+    # Cormorant pairs naturally with the centre-label typography of
+    # 1960s album sleeves: high-contrast didone forms that read at
+    # both label scale (12pt around the spindle) and body scale
+    # (~32pt on the sleeve). Ornament chain reuses Bold for the
+    # 33⅓ rpm badge so the format mark sits in the same family.
+    "vinyl": {
+        "quote_regular": [
+            (CORMORANT_VARIABLE, "Regular"),
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (CORMORANT_VARIABLE, "Bold"),
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (CORMORANT_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -9761,6 +9879,936 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── departures (Solari split-flap board) ────────────────────────────────────
+
+_DEPARTURES_HEADER_H = 44
+_DEPARTURES_COLHEAD_H = 28
+_DEPARTURES_FOOTER_H = 24
+_DEPARTURES_ROW_H = 52
+_DEPARTURES_ROW_GAP = 2
+_DEPARTURES_ROW_COUNT = 7
+_DEPARTURES_BOARDING_ROW = 3  # zero-based; the centre of the 7-row stack
+
+
+@functools.lru_cache(maxsize=1)
+def _departures_load_corpus_index() -> dict:
+    """Index the baked corpus by ``(source_id, line_number)``.
+
+    Cached so the JSONL is read once per process — the runtime loop is one
+    long-lived process so cache invalidation on restart is acceptable. A
+    failure to load (missing file, parse error) returns ``{}`` so the
+    departures frame degrades to placeholder destinations rather than
+    blowing up the render.
+    """
+    try:
+        corpus_path = Path(pick_quote_module.DEFAULT_DATABASE_PATH)
+        rows = pick_quote_module.load_rows(corpus_path)
+    except Exception:
+        return {}
+    index: dict[tuple, dict] = {}
+    for row in rows:
+        sid = row.get("source_id")
+        lno = row.get("line_number")
+        if sid is None or lno is None:
+            continue
+        index[(str(sid), int(lno))] = row
+    return index
+
+
+def _departures_recent_history(limit: int = 3) -> list[dict]:
+    """Read the last ``limit`` distinct entries from the history ledger.
+
+    Returns oldest→newest within the slice (so the caller can paint top
+    rows as oldest). Each entry: ``{"time": "HH:MM", "destination":
+    str, "author": str | None}``. Empty list on any I/O failure or
+    missing ledger.
+    """
+    try:
+        history_path = Path(pick_quote_module.DEFAULT_HISTORY_PATH).expanduser()
+    except Exception:
+        return []
+    if not history_path.exists():
+        return []
+    raw_entries: list[dict] = []
+    try:
+        with history_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw_entries.append(json.loads(line))
+                except (ValueError, json.JSONDecodeError):
+                    continue
+    except OSError:
+        return []
+    if not raw_entries:
+        return []
+    # Sort by ts desc, take last ``limit``, then reverse so the caller
+    # gets oldest→newest (top-of-board → bottom-of-board reading order).
+    raw_entries.sort(key=lambda e: e.get("ts", ""), reverse=True)
+    raw_entries = raw_entries[:limit]
+    raw_entries.reverse()
+
+    index = _departures_load_corpus_index()
+    out: list[dict] = []
+    for entry in raw_entries:
+        ts = entry.get("ts", "")
+        # Extract HH:MM from an ISO timestamp; fall back to "--:--" on parse failure.
+        time_label = "--:--"
+        try:
+            dt_obj = datetime.datetime.fromisoformat(ts)
+            time_label = dt_obj.strftime("%H:%M")
+        except (ValueError, TypeError):
+            pass
+        sid = entry.get("source_id")
+        lno = entry.get("line_number")
+        row = index.get((str(sid) if sid is not None else "", int(lno) if lno is not None else -1))
+        if row is None:
+            destination = "— — —"
+            author = None
+        else:
+            title = row.get("title") or ""
+            destination = title.upper()[:36] if title else "— — —"
+            author_full = row.get("author") or ""
+            # Surname-only: take the last whitespace-separated token.
+            author = author_full.strip().split()[-1].upper() if author_full.strip() else None
+        out.append({"time": time_label, "destination": destination, "author": author})
+    return out
+
+
+def _departures_upcoming_buckets(time_str: str, count: int = 3) -> list[dict]:
+    """Walk forward ``count`` canonical buckets from ``time_str``.
+
+    Returns a list of ``{"time": "HH:MM", "destination": "— — —", "author": None}``
+    entries — destination/author are placeholder since we have no future ledger.
+    """
+    out: list[dict] = []
+    try:
+        hour_str, minute_str = time_str.split(":", 1)
+        hour, minute = int(hour_str), int(minute_str)
+    except (ValueError, AttributeError):
+        return out
+    # Find the current canonical-bucket position, then walk forward.
+    rounded = ((minute + 2) // 5) * 5
+    if rounded == 60:
+        rounded = 0
+        hour = (hour + 1) % 24
+    state_idx = next((i for i, state in enumerate(BUCKET_ORDER)
+                      if DEFAULT_BUCKET_MINUTES[state] == rounded), 0)
+    for step in range(1, count + 1):
+        next_idx = (state_idx + step) % len(BUCKET_ORDER)
+        rollover = (state_idx + step) // len(BUCKET_ORDER)
+        next_minute = DEFAULT_BUCKET_MINUTES[BUCKET_ORDER[next_idx]]
+        next_hour = (hour + rollover) % 24
+        out.append({
+            "time": f"{next_hour:02d}:{next_minute:02d}",
+            "destination": "— — —",
+            "author": None,
+        })
+    return out
+
+
+def _departures_paint_chassis(image: Image.Image) -> None:
+    """Solid black chassis ground.
+
+    An earlier revision laid a sparse K+W stipple here for "machined"
+    texture, but the stipple swallowed the small column-header / flap-
+    text glyphs into illegibility at desktop preview and would do the
+    same on panel. A flat black ground reads cleanest with solid yellow
+    flap text on top — exactly the contrast of a real Solari board's
+    black chassis and white flap characters.
+    """
+    image.paste(SPECTRA6["black"], (0, 0, image.width, image.height))
+
+
+def _departures_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, time_str: str) -> None:
+    """Top brand band: solid black, yellow Antonio Bold lettering."""
+    YELLOW = SPECTRA6["yellow"]
+    BLACK = SPECTRA6["black"]
+    draw.rectangle((0, 0, width, _DEPARTURES_HEADER_H), fill=BLACK)
+    brand_font = load_font(theme_font_candidates("departures", "ornament"), size=22)
+    time_font = load_font(theme_font_candidates("departures", "ornament"), size=26)
+    draw.text((16, 8), "IDLE HOURS DEPARTURES", font=brand_font, fill=YELLOW)
+    time_bbox = draw.textbbox((0, 0), time_str, font=time_font)
+    time_w = time_bbox[2] - time_bbox[0]
+    draw.text((width - time_w - 16, 6), time_str, font=time_font, fill=YELLOW)
+    # 1px yellow underline.
+    draw.line((0, _DEPARTURES_HEADER_H - 1, width, _DEPARTURES_HEADER_H - 1), fill=YELLOW, width=1)
+
+
+def _departures_paint_column_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int) -> None:
+    """Solid-white column-header strip with black Antonio Bold labels.
+
+    Solid white reads as the canonical "schedule paper" header strip
+    real Solari boards mount above their flap rows. Earlier revisions
+    used a K+W checkerboard for a mid-gray look, but the checkerboard
+    rendered as a static-TV blur that swallowed the column titles.
+    """
+    WHITE = SPECTRA6["white"]
+    BLACK = SPECTRA6["black"]
+    y0 = _DEPARTURES_HEADER_H
+    y1 = y0 + _DEPARTURES_COLHEAD_H
+    draw.rectangle((0, y0, width, y1), fill=WHITE)
+    label_font = load_font(theme_font_candidates("departures", "ornament"), size=16)
+    draw.text((20, y0 + 5), "TIME", font=label_font, fill=BLACK)
+    draw.text((140, y0 + 5), "DESTINATION", font=label_font, fill=BLACK)
+    draw.text((630, y0 + 5), "STATUS", font=label_font, fill=BLACK)
+
+
+def _departures_paint_row(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    y_top: int,
+    row: dict,
+    kind: str,
+) -> None:
+    """Paint one flap row at ``y_top``.
+
+    ``kind`` ∈ {"departed", "boarding", "scheduled"} drives the colour
+    treatment. All non-boarding text is solid yellow on solid black —
+    the canonical Solari board lettering. Boarding flips to solid black
+    text on a solid yellow flap. The single chromatic accent on each
+    row is the status word: red ``DEPARTED`` for history rows, red
+    ``BOARDING`` on the highlighted row, and white ``SCHEDULED`` for
+    future rows.
+
+    Layout:
+      x= 20..130  TIME column (Antonio Bold 28)
+      x=140..620  DESTINATION column (Antonio Bold 22, with optional
+                  author surname subline at 14pt)
+      x=630..780  STATUS column (Antonio Bold 18)
+    """
+    BLACK = SPECTRA6["black"]
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+    h = _DEPARTURES_ROW_H
+    width = image.width
+    if kind == "boarding":
+        draw.rectangle((10, y_top, width - 10, y_top + h), fill=YELLOW)
+    # else: keep the chassis-black background; row separation comes from
+    # the 2-px gutter and the column-header strip above. Earlier
+    # revisions painted a horizontal fold-rule hairline through the
+    # cell midline to suggest the physical split-flap mechanism, but
+    # the rule bisected the glyphs and made the destination text hard
+    # to read at panel resolution. The gutter alone is enough mechanical
+    # feel.
+
+    time_font = load_font(theme_font_candidates("departures", "ornament"), size=28)
+    dest_font = load_font(theme_font_candidates("departures", "ornament"), size=22)
+    status_font = load_font(theme_font_candidates("departures", "ornament"), size=18)
+    author_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
+
+    if kind == "boarding":
+        draw.text((20, y_top + 8), row.get("time", "--:--"), font=time_font, fill=BLACK)
+        dest = row.get("destination", "— — —")
+        draw.text((140, y_top + 4), dest, font=dest_font, fill=BLACK)
+        author = row.get("author")
+        if author:
+            draw.text((140, y_top + 30), author, font=author_font, fill=BLACK)
+        draw.text((630, y_top + 14), "BOARDING", font=status_font, fill=RED)
+        _departures_paint_now_boarding_chevrons(image, draw, y_top, h)
+    else:
+        # Yellow flap text on black chassis — solid colour for readability.
+        draw.text((20, y_top + 8), row.get("time", "--:--"), font=time_font, fill=YELLOW)
+        dest = row.get("destination", "— — —")
+        draw.text((140, y_top + 4), dest, font=dest_font, fill=YELLOW)
+        author = row.get("author")
+        if author and kind == "departed":
+            draw.text((140, y_top + 30), author, font=author_font, fill=YELLOW)
+        if kind == "departed":
+            draw.text((630, y_top + 14), "DEPARTED", font=status_font, fill=RED)
+        else:
+            draw.text((630, y_top + 14), "SCHEDULED", font=status_font, fill=WHITE)
+
+
+def _departures_paint_now_boarding_chevrons(
+    image: Image.Image, draw: ImageDraw.ImageDraw, y_top: int, row_h: int,
+) -> None:
+    """Small red triangle bookends flanking the BOARDING row."""
+    RED = SPECTRA6["red"]
+    cy = y_top + row_h // 2
+    # Left chevron pointing right.
+    draw.polygon([(2, cy - 8), (12, cy), (2, cy + 8)], fill=RED)
+    # Right chevron pointing left.
+    right_x = image.width - 2
+    draw.polygon([(right_x, cy - 8), (right_x - 10, cy), (right_x, cy + 8)], fill=RED)
+
+
+def _departures_paint_footer(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    width: int,
+    height: int,
+    bucket_label: str,
+) -> None:
+    """Bottom hairline + bucket label (right-aligned)."""
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    y_top = height - _DEPARTURES_FOOTER_H
+    draw.line((10, y_top, width - 10, y_top), fill=YELLOW, width=1)
+    footer_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
+    draw.text((16, y_top + 5), "IH-TRANSIT // LIVE FEED", font=footer_font, fill=WHITE)
+    bbox = draw.textbbox((0, 0), bucket_label, font=footer_font)
+    label_w = bbox[2] - bbox[0]
+    draw.text((width - label_w - 16, y_top + 5), bucket_label, font=footer_font, fill=WHITE)
+
+
+def render_departures_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Solari split-flap departures board.
+
+    Reads the history ledger for the three rows above the current bucket
+    (rendered as ``DEPARTED`` with author surname appended) and walks
+    forward through ``BUCKET_ORDER`` for the three rows below
+    (rendered as ``SCHEDULED`` with placeholder destinations). The
+    current bucket is the highlighted middle row, ``BOARDING`` in red
+    on solid-yellow, with the picked quote's title + author surname.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    _departures_paint_chassis(image)
+    draw = ImageDraw.Draw(image)
+
+    _departures_paint_header(image, draw, width, time_str)
+    _departures_paint_column_header(image, draw, width)
+
+    # Assemble the 7-row table around the current bucket.
+    history = _departures_recent_history(limit=_DEPARTURES_BOARDING_ROW)
+    upcoming = _departures_upcoming_buckets(time_str, count=_DEPARTURES_ROW_COUNT - _DEPARTURES_BOARDING_ROW - 1)
+    # Pad history with placeholders if the ledger has fewer than expected entries.
+    while len(history) < _DEPARTURES_BOARDING_ROW:
+        history.insert(0, {"time": "--:--", "destination": "— — —", "author": None})
+
+    title = (quote_row.get("title") or "").upper()[:36] if quote_row.get("title") else "— — —"
+    author_full = (quote_row.get("author") or "").strip()
+    author = author_full.split()[-1].upper() if author_full else None
+    boarding_row = {
+        "time": time_str,
+        "destination": title,
+        "author": author,
+    }
+
+    rows = history + [boarding_row] + upcoming
+    # Guarantee exactly 7 rows (in case upcoming is short due to wrap-edge math).
+    while len(rows) < _DEPARTURES_ROW_COUNT:
+        rows.append({"time": "--:--", "destination": "— — —", "author": None})
+    rows = rows[:_DEPARTURES_ROW_COUNT]
+
+    rows_y = _DEPARTURES_HEADER_H + _DEPARTURES_COLHEAD_H + 4
+    for idx, row in enumerate(rows):
+        if idx < _DEPARTURES_BOARDING_ROW:
+            kind = "departed"
+        elif idx == _DEPARTURES_BOARDING_ROW:
+            kind = "boarding"
+        else:
+            kind = "scheduled"
+        y_top = rows_y + idx * (_DEPARTURES_ROW_H + _DEPARTURES_ROW_GAP)
+        _departures_paint_row(image, draw, y_top, row, kind)
+
+    bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
+    _departures_paint_footer(image, draw, width, height, f"BUCKET {bucket}")
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+# ─── tarot (major-arcana card) ───────────────────────────────────────────────
+
+_TAROT_ROMAN_NUMERALS = {
+    1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
+    7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII",
+}
+
+
+def _tarot_paint_doubled_border(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+) -> None:
+    """Outer 3-px red rule + 2-px gap + inner 1-px black rule."""
+    RED = SPECTRA6["red"]
+    BLACK = SPECTRA6["black"]
+    x0, y0, x1, y1 = rect
+    # Outer red rule (3 px thick).
+    for offset in range(3):
+        draw.rectangle((x0 + offset, y0 + offset, x1 - offset, y1 - offset), outline=RED)
+    # Inner black rule, 5 px inset (3 px outer + 2 px gap).
+    draw.rectangle((x0 + 5, y0 + 5, x1 - 5, y1 - 5), outline=BLACK)
+
+
+def _tarot_paint_corner_pentagrams(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+) -> None:
+    """Five-point red pentagrams just inside the four card corners."""
+    RED = SPECTRA6["red"]
+    x0, y0, x1, y1 = rect
+    inset = 18
+    radius = 9
+    for (cx, cy) in [
+        (x0 + inset, y0 + inset),
+        (x1 - inset, y0 + inset),
+        (x0 + inset, y1 - inset),
+        (x1 - inset, y1 - inset),
+    ]:
+        _tarot_paint_pentagram(draw, cx, cy, radius, RED)
+
+
+def _tarot_paint_pentagram(
+    draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float, color: tuple,
+) -> None:
+    """Single five-point star as a 10-vertex polygon (alternating r_out/r_in)."""
+    points: list[tuple[float, float]] = []
+    for i in range(10):
+        # Start at the top point (270°), alternate outer/inner radius.
+        angle = -math.pi / 2 + i * math.pi / 5
+        radius = r if i % 2 == 0 else r * 0.4
+        points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    draw.polygon(points, fill=color)
+
+
+def _tarot_paint_roman_numeral(
+    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int, cx: int, y_top: int,
+) -> None:
+    """Roman numeral hour in Cinzel Decorative Black 36, solid black."""
+    BLACK = SPECTRA6["black"]
+    font = load_font(theme_font_candidates("tarot", "ornament"), size=36)
+    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    bbox = draw.textbbox((0, 0), numeral, font=font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), numeral, font=font, fill=BLACK)
+
+
+def _tarot_paint_card_name(
+    image: Image.Image, draw: ImageDraw.ImageDraw, name: str, cx: int, y_top: int,
+) -> None:
+    """Card name (matched-phrase) in Tyrian purple, Cinzel Decorative Bold."""
+    RED = SPECTRA6["red"]
+    BLUE = SPECTRA6["blue"]
+    font = load_font(theme_font_candidates("tarot", "quote_bold"), size=22)
+    text = (name or "").upper().strip()
+    if not text:
+        return
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    # Re-anchor so left edge of the bbox lands at the intended start.
+    draw_text_dithered(
+        image,
+        (cx - w // 2 - bbox[0], y_top - bbox[1]),
+        text,
+        font=font,
+        dark=RED,
+        light=BLUE,
+        light_density=0.5,
+    )
+
+
+def _tarot_emblem_magician(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Magician (I): vertical staff + double ribbon arcs (lemniscate) + cap dots."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    draw.line((cx, cy - 58, cx, cy + 58), fill=BLACK, width=4)
+    draw.ellipse((cx - 9, cy - 66, cx + 9, cy - 48), fill=RED)
+    draw.ellipse((cx - 9, cy + 48, cx + 9, cy + 66), fill=RED)
+    # Infinity-ribbon arcs above and below centre.
+    draw.arc((cx - 44, cy - 18, cx + 44, cy + 34), start=200, end=340, fill=RED, width=3)
+    draw.arc((cx - 44, cy - 34, cx + 44, cy + 18), start=20, end=160, fill=RED, width=3)
+
+
+def _tarot_emblem_hermit(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Hermit (IX): lantern on a diagonal staff with a red flame."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Diagonal staff.
+    draw.line((cx - 44, cy + 58, cx + 18, cy - 44), fill=BLACK, width=4)
+    # Lantern body (top of staff).
+    lx0, ly0, lx1, ly1 = cx + 4, cy - 52, cx + 36, cy - 22
+    draw.rectangle((lx0, ly0, lx1, ly1), outline=BLACK, width=3)
+    # Lantern bail.
+    draw.line(((lx0 + lx1) // 2, ly0, (lx0 + lx1) // 2, ly0 - 8), fill=BLACK, width=2)
+    draw.arc((lx0 + 2, ly0 - 12, lx1 - 2, ly0 - 2), 0, 180, fill=BLACK, width=2)
+    # Flame: red 8-point star inside the lantern.
+    fx, fy = (lx0 + lx1) // 2, (ly0 + ly1) // 2
+    flame_pts: list[tuple[float, float]] = []
+    for i in range(16):
+        angle = -math.pi / 2 + i * math.pi / 8
+        r = 9 if i % 2 == 0 else 4
+        flame_pts.append((fx + r * math.cos(angle), fy + r * math.sin(angle)))
+    draw.polygon(flame_pts, fill=RED)
+
+
+def _tarot_emblem_wheel(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Wheel of Fortune (X): spoked wheel with cardinal letter studs."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Outer rim.
+    draw.ellipse((cx - 56, cy - 56, cx + 56, cy + 56), outline=BLACK, width=4)
+    # Inner hub.
+    draw.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), outline=BLACK, width=2, fill=RED)
+    # Eight spokes.
+    for i in range(8):
+        angle = i * math.pi / 4
+        x2 = cx + 50 * math.cos(angle)
+        y2 = cy + 50 * math.sin(angle)
+        draw.line((cx, cy, x2, y2), fill=BLACK, width=2)
+
+
+def _tarot_emblem_default(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Generic five-point red star fallback for unmapped hours."""
+    _tarot_paint_pentagram(draw, cx, cy, 56, SPECTRA6["red"])
+
+
+_TAROT_EMBLEMS = {
+    1: _tarot_emblem_magician,
+    9: _tarot_emblem_hermit,
+    10: _tarot_emblem_wheel,
+    # 2-8, 11, 12 fall through to the generic pentagram default below.
+    # Adding more is a one-line registry insert once their helpers exist.
+}
+
+
+def _tarot_paint_emblem(
+    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int, cx: int, cy: int,
+) -> None:
+    """Dispatch the hour-mapped emblem painter."""
+    painter = _TAROT_EMBLEMS.get(hour_int, _tarot_emblem_default)
+    painter(draw, cx, cy)
+
+
+def _tarot_paint_body(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Quote body fitted into ``rect`` with matched-phrase Tyrian purple."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    BLUE = SPECTRA6["blue"]
+    x0, y0, x1, y1 = rect
+    width = x1 - x0
+    height = y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw,
+        display_quote,
+        matched,
+        width,
+        height,
+        font_max=22,
+        font_min=14,
+        line_height_mult=1.28,
+        theme="tarot",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        # Trim leading/trailing whitespace tokens.
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        # Centre the line horizontally.
+        line_width = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            line_width += bbox[2] - bbox[0]
+        x = x0 + max(0, (width - line_width) // 2)
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            if is_bold:
+                draw_text_dithered(
+                    image, (x, chunk_y), chunk, font=font,
+                    dark=RED, light=BLUE, light_density=0.5,
+                )
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _tarot_paint_attribution(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    cx: int,
+    y_top: int,
+) -> None:
+    """Author · title in Cinzel Decorative Regular 12, solid black, centred."""
+    BLACK = SPECTRA6["black"]
+    font = load_font(theme_font_candidates("tarot", "ornament"), size=12)
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = " · ".join(parts)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    # Truncate if too wide (card-inner is ~480 px).
+    max_w = 470
+    if w > max_w:
+        # Shorten title side first.
+        while parts and w > max_w:
+            if len(parts[-1]) > 6:
+                parts[-1] = parts[-1][:-3] + "…"
+            else:
+                parts.pop()
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
+
+
+def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Single centred tarot card.
+
+    Cream-washed vellum ground, doubled red+black rubricated border, red
+    corner pentagrams, Roman-numeral hour, matched-phrase card name in
+    Tyrian purple, hour-mapped emblem at centre, EB Garamond quote body
+    (with Tyrian purple matched-phrase substitution), centred author ·
+    title attribution.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    _astrarium_paint_cream_wash(image)
+    draw = ImageDraw.Draw(image)
+
+    # Card rect: centred 520 × 440. Width 800 → x∈[140, 660]; height 480 → y∈[20, 460].
+    card_w, card_h = 520, 440
+    cx = width // 2
+    x0 = (width - card_w) // 2
+    y0 = (height - card_h) // 2
+    x1 = x0 + card_w
+    y1 = y0 + card_h
+    card_rect = (x0, y0, x1, y1)
+    _tarot_paint_doubled_border(image, draw, card_rect)
+    _tarot_paint_corner_pentagrams(image, draw, card_rect)
+
+    # Hour numeral.
+    try:
+        hour24 = int(time_str.split(":", 1)[0])
+    except (ValueError, AttributeError):
+        hour24 = 0
+    hour_int = hour24 % 12 or 12
+    _tarot_paint_roman_numeral(image, draw, hour_int, cx, y0 + 24)
+
+    # Card name (matched phrase).
+    name = quote_row.get("matched_text") or ""
+    _tarot_paint_card_name(image, draw, name, cx, y0 + 68)
+
+    # Emblem at centre.
+    _tarot_paint_emblem(image, draw, hour_int, cx, y0 + 160)
+
+    # Body — sits below the emblem.
+    body_rect = (x0 + 20, y0 + 220, x1 - 20, y0 + 370)
+    _tarot_paint_body(image, draw, quote_row, body_rect)
+
+    # Attribution at the bottom.
+    _tarot_paint_attribution(image, draw, quote_row, cx, y1 - 28)
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+# ─── vinyl (turntable + record label) ────────────────────────────────────────
+
+_VINYL_DISK_CX = 200
+_VINYL_DISK_CY = 240
+_VINYL_DISK_R = 200
+_VINYL_LABEL_R = 80
+
+
+def _vinyl_paint_wear_speckle(image: Image.Image, seed: int) -> None:
+    """Sparse 1-in-32 black speckle on the sleeve, daily-seeded for variation.
+
+    Only flips pixels that are currently the cream-wash colour (white or
+    yellow from the Bayer wash); doesn't touch the black vinyl disk or
+    any non-sleeve graphic.
+    """
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    rng = random.Random(seed)
+    px = image.load()
+    w, h = image.size
+    # Only on the right half (sleeve region — x >= 400).
+    for y in range(0, h, 2):
+        for x in range(400, w, 2):
+            if rng.random() < 1 / 32 and px[x, y] in (WHITE, YELLOW):
+                px[x, y] = BLACK
+
+
+def _vinyl_paint_disk(
+    image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int, r_outer: int, r_label: int,
+) -> None:
+    """Solid black disk + concentric groove ring hairlines + red label + spindle.
+
+    Grooves are 1-px-wide white ellipses spaced every 16 px from the
+    label edge to the rim, then re-snapped to palette so they read as
+    faint silvery rings against the solid black disk. Spacing chosen
+    larger than 8 px so individual rings survive ``snap_image_to_palette``
+    (at 8 px spacing they crowd into a uniform grey wash).
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+    # Outer disk.
+    draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), fill=BLACK)
+    # Groove ring hairlines (white on black — reads as faint silvery
+    # pressing-line at panel distance). Three rings only; more crowds
+    # into a wash and breaks the "pressed vinyl" silhouette.
+    for r in range(r_label + 28, r_outer - 4, 28):
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=WHITE, width=1)
+    # Label.
+    draw.ellipse((cx - r_label, cy - r_label, cx + r_label, cy + r_label), fill=RED)
+    # Spindle hole.
+    draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=WHITE)
+
+
+def _vinyl_paint_label(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    r_label: int,
+    matched_text: str,
+    bucket: str,
+) -> None:
+    """White-on-red label text stack."""
+    WHITE = SPECTRA6["white"]
+    # Stack from top of label downward, centred horizontally.
+    # Matched phrase (truncated).
+    matched_font = load_font(theme_font_candidates("vinyl", "quote_bold"), size=11)
+    snippet = (matched_text or "").strip()
+    if len(snippet) > 18:
+        snippet = snippet[:17] + "…"
+    if snippet:
+        bbox = draw.textbbox((0, 0), snippet, font=matched_font)
+        w = bbox[2] - bbox[0]
+        draw.text((cx - w // 2 - bbox[0], cy - 38 - bbox[1]), snippet, font=matched_font, fill=WHITE)
+    # Hairline under matched phrase.
+    draw.line((cx - r_label + 18, cy - 22, cx + r_label - 18, cy - 22), fill=WHITE, width=1)
+    # IDLE HOURS line.
+    title_font = load_font(theme_font_candidates("vinyl", "quote_bold"), size=14)
+    title_text = "IDLE HOURS"
+    bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy - 18 - bbox[1]), title_text, font=title_font, fill=WHITE)
+    # VOLUME I.
+    vol_font = load_font(theme_font_candidates("vinyl", "quote_regular"), size=11)
+    vol_text = "VOLUME I"
+    bbox = draw.textbbox((0, 0), vol_text, font=vol_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy + 12 - bbox[1]), vol_text, font=vol_font, fill=WHITE)
+    # Catalog number (mono).
+    cat_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=9)
+    cat_text = _vinyl_catalog_number(bucket)
+    bbox = draw.textbbox((0, 0), cat_text, font=cat_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy + 36 - bbox[1]), cat_text, font=cat_font, fill=WHITE)
+
+
+def _vinyl_paint_stylus(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    r_outer: int,
+    r_label: int,
+    minute: int,
+) -> None:
+    """Red stylus arm sweeping at the current-minute angle.
+
+    Minute 0 points straight up (12-o'-clock orientation), sweeping
+    clockwise. The arm runs from the disk rim inward to the label edge,
+    and a small filled circle at the rim end is the cartridge tip.
+    """
+    RED = SPECTRA6["red"]
+    angle_deg = (minute / 60.0) * 360.0 - 90.0
+    angle = math.radians(angle_deg)
+    rim_x = cx + r_outer * math.cos(angle)
+    rim_y = cy + r_outer * math.sin(angle)
+    inner_x = cx + r_label * math.cos(angle)
+    inner_y = cy + r_label * math.sin(angle)
+    draw.line((inner_x, inner_y, rim_x, rim_y), fill=RED, width=3)
+    # Cartridge tip at the rim end.
+    draw.ellipse((rim_x - 5, rim_y - 5, rim_x + 5, rim_y + 5), fill=RED)
+
+
+def _vinyl_paint_33rpm_badge(
+    image: Image.Image, draw: ImageDraw.ImageDraw, x_right: int, y_top: int,
+) -> None:
+    """Small red rect with white '33⅓' Space Mono Bold, top-right corner."""
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+    rect = (x_right - 60, y_top, x_right, y_top + 24)
+    draw.rectangle(rect, fill=RED)
+    font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=12)
+    text = "33⅓"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    h = bbox[3] - bbox[1]
+    rect_cx = (rect[0] + rect[2]) // 2
+    rect_cy = (rect[1] + rect[3]) // 2
+    draw.text((rect_cx - w // 2 - bbox[0], rect_cy - h // 2 - bbox[1]), text, font=font, fill=WHITE)
+
+
+def _vinyl_paint_quote_body(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Quote body on the sleeve with tangerine matched-phrase substitution."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    YELLOW = SPECTRA6["yellow"]
+    x0, y0, x1, y1 = rect
+    width = x1 - x0
+    height = y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw,
+        display_quote,
+        matched,
+        width,
+        height,
+        font_max=32,
+        font_min=18,
+        line_height_mult=1.22,
+        theme="vinyl",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        x = x0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            if is_bold:
+                # Tangerine R+Y 5/8:3/8, same recipe astrarium uses.
+                draw_text_dithered(
+                    image, (x, chunk_y), chunk, font=font,
+                    dark=RED, light=YELLOW, light_density=0.375,
+                )
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _vinyl_paint_attribution(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    x_right: int,
+    y_top: int,
+) -> None:
+    """Right-aligned author + ' · ' + title at the bottom of the sleeve."""
+    BLACK = SPECTRA6["black"]
+    font = load_font([EBGARAMOND_BOLD, *META_FONT_BOLD_CANDIDATES], size=12)
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = " · ".join(parts)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    # Truncate if too wide for the sleeve column (~360 px).
+    max_w = 360
+    if w > max_w:
+        while parts and w > max_w:
+            if len(parts[-1]) > 6:
+                parts[-1] = parts[-1][:-3] + "…"
+            else:
+                parts.pop()
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            w = bbox[2] - bbox[0]
+    draw.text((x_right - w - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
+
+
+def _vinyl_catalog_number(bucket: str) -> str:
+    """Derive an album-style catalog number from a fuzzy bucket.
+
+    e.g. ``"h2_half_past"`` → ``"IH-H2-30"``. Falls back to ``"IH-?"`` for
+    malformed inputs so callers never raise.
+    """
+    if not bucket or "_" not in bucket:
+        return "IH-?"
+    hour_part, _, state = bucket.partition("_")
+    minute = DEFAULT_BUCKET_MINUTES.get(state)
+    if minute is None:
+        return f"IH-{hour_part.upper()}-?"
+    return f"IH-{hour_part.upper()}-{minute:02d}"
+
+
+def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Turntable + record label.
+
+    Left half: black vinyl disk (radius 200, centred at (200, 240)) with
+    a red 80-px-radius label at the spindle carrying the matched phrase,
+    "IDLE HOURS / VOLUME I" stamp, and a Space Mono catalog number. A
+    red stylus arm sweeps from the disk rim inward to the label at the
+    angle corresponding to the current minute (12-o'-clock = minute 0,
+    clockwise). Right half: cream-washed "album sleeve" with the quote
+    body in Cormorant Garamond and a tangerine matched-phrase
+    substitution, plus a small 33⅓ rpm badge in the top-right corner.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    # Sleeve cream wash full-canvas — the disk will overpaint the left half.
+    _astrarium_paint_cream_wash(image)
+    # Daily-seeded wear marks on the sleeve (right half only).
+    today = datetime.date.today()
+    speckle_seed = int(today.strftime("%Y%m%d"))
+    _vinyl_paint_wear_speckle(image, speckle_seed)
+
+    draw = ImageDraw.Draw(image)
+
+    # Disk + label + stylus.
+    _vinyl_paint_disk(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, _VINYL_LABEL_R)
+    bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
+    matched = quote_row.get("matched_text") or ""
+    _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
+
+    try:
+        minute = int(time_str.split(":", 1)[1])
+    except (ValueError, IndexError):
+        minute = 0
+    _vinyl_paint_stylus(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY,
+                        _VINYL_DISK_R, _VINYL_LABEL_R, minute)
+
+    # 33⅓ rpm badge in the sleeve's top-right.
+    _vinyl_paint_33rpm_badge(image, draw, x_right=width - 20, y_top=20)
+
+    # Quote body on the sleeve.
+    body_rect = (420, 60, width - 20, 400)
+    _vinyl_paint_quote_body(image, draw, quote_row, body_rect)
+
+    # Attribution.
+    _vinyl_paint_attribution(image, draw, quote_row, x_right=width - 20, y_top=440)
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -9768,6 +10816,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_diags_frame(time_str, quote_row, width, height)
     if theme == "astrarium":
         return render_astrarium_frame(time_str, quote_row, width, height)
+    if theme == "departures":
+        return render_departures_frame(time_str, quote_row, width, height)
+    if theme == "tarot":
+        return render_tarot_frame(time_str, quote_row, width, height)
+    if theme == "vinyl":
+        return render_vinyl_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
