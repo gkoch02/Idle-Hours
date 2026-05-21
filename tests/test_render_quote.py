@@ -2510,6 +2510,7 @@ class TestDiagsSynthSwatches:
             "mint",
             "sage",
             "cyan",
+            "teal",
             "sky",
             "violet",
             "sepia",
@@ -2535,10 +2536,10 @@ class TestDiagsSynthSwatches:
         # holds the remainder. Guard against a future edit that grows the
         # list without rebalancing the row counts (which would silently
         # shrink row-1 swatches and overflow row-2 onto a third row).
-        assert len(rq._DIAGS_SYNTH_SWATCHES) == 17
+        assert len(rq._DIAGS_SYNTH_SWATCHES) == 18
         assert rq._DIAGS_SYNTH_ROW1_COUNT == 8
         row2 = len(rq._DIAGS_SYNTH_SWATCHES) - rq._DIAGS_SYNTH_ROW1_COUNT
-        assert row2 == 9
+        assert row2 == 10
 
     def test_both_rows_paint_non_background_pixels(self):
         # Full-canvas render: both two-ink swatch rows must actually paint,
