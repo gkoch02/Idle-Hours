@@ -83,20 +83,21 @@ class TestDeparturesFrame:
         # No history.jsonl in the freshly-monkeypatched $HOME.
         assert rq._departures_recent_history(limit=3) == []
 
-    def test_frame_emits_status_columns(self):
-        """The boarding row carries the picked title (uppercased) and the
-        author surname; missing history shows placeholder ``— — —``."""
+    def test_frame_emits_announcement_panel(self):
+        """The dominant central announcement panel exists: top stripe is
+        solid red (the NOW BOARDING banner), and the body underneath is
+        the solid-yellow panel ground. Sampling near the panel corners
+        avoids the quote-text region in the centre."""
         rq._departures_load_corpus_index.cache_clear()
         row = make_row(title="A Tale of Two Cities", author="Charles Dickens")
         img = rq.render("14:30", row, 800, 480, theme="departures")
-        # Spot-check that the boarding row is paint as solid yellow (the
-        # canonical highlight band — failing means the highlight didn't
-        # land at the expected row position).
-        # _DEPARTURES_BOARDING_ROW=3, header+colhead = 44+28 = 72,
-        # gap+4 padding = 76 start, then 3 rows of 54 = 162 → y≈238 for centre.
-        # Sample at the middle row's centre.
-        cx, cy = 400, 264
-        assert img.getpixel((cx, cy)) == rq.SPECTRA6["yellow"]
+        # Panel runs x∈[10, 790]; banner y∈[150, 180]; yellow body y∈[180, 378].
+        # Banner: sample at the left edge (clear of centred text).
+        assert img.getpixel((20, 160)) == rq.SPECTRA6["red"], \
+            "banner band must be solid red"
+        # Yellow panel ground: sample near the panel's bottom-left corner.
+        assert img.getpixel((20, 360)) == rq.SPECTRA6["yellow"], \
+            "announcement panel must be solid yellow"
 
 
 class TestTarotFrame:

@@ -9879,15 +9879,26 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-# ─── departures (Solari split-flap board) ────────────────────────────────────
+# ─── departures (Solari split-flap announcement board) ──────────────────────
+# Layout brief: the Solari board is *chrome* surrounding a dominant central
+# announcement panel that carries the actual literary quote. The board
+# metaphor still drives the time display (big HH:MM in the header) and
+# anchors the page with compact history / upcoming rows above and below
+# the announcement, but the quote — the whole point of a literary clock —
+# occupies the visual centre of the canvas rather than competing with
+# seven equally-weighted board rows. An earlier revision used a 7-row
+# table with the quote's title compressed into a single DESTINATION cell;
+# that hid the actual quote text completely, which is the opposite of
+# what a literary clock is for.
 
-_DEPARTURES_HEADER_H = 44
-_DEPARTURES_COLHEAD_H = 28
+_DEPARTURES_HEADER_H = 40
+_DEPARTURES_COLHEAD_H = 26
 _DEPARTURES_FOOTER_H = 24
-_DEPARTURES_ROW_H = 52
-_DEPARTURES_ROW_GAP = 2
-_DEPARTURES_ROW_COUNT = 7
-_DEPARTURES_BOARDING_ROW = 3  # zero-based; the centre of the 7-row stack
+_DEPARTURES_COMPACT_ROW_H = 36
+_DEPARTURES_BOARDING_PANEL_H = 228
+_DEPARTURES_BANNER_H = 30
+_DEPARTURES_HISTORY_ROWS = 2
+_DEPARTURES_UPCOMING_ROWS = 2
 
 
 @functools.lru_cache(maxsize=1)
@@ -10010,130 +10021,246 @@ def _departures_upcoming_buckets(time_str: str, count: int = 3) -> list[dict]:
 
 
 def _departures_paint_chassis(image: Image.Image) -> None:
-    """Solid black chassis ground.
-
-    An earlier revision laid a sparse K+W stipple here for "machined"
-    texture, but the stipple swallowed the small column-header / flap-
-    text glyphs into illegibility at desktop preview and would do the
-    same on panel. A flat black ground reads cleanest with solid yellow
-    flap text on top — exactly the contrast of a real Solari board's
-    black chassis and white flap characters.
-    """
+    """Solid black chassis ground."""
     image.paste(SPECTRA6["black"], (0, 0, image.width, image.height))
 
 
 def _departures_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, time_str: str) -> None:
-    """Top brand band: solid black, yellow Antonio Bold lettering."""
+    """Top brand band: solid black, brand left + big flap-style HH:MM right."""
     YELLOW = SPECTRA6["yellow"]
     BLACK = SPECTRA6["black"]
     draw.rectangle((0, 0, width, _DEPARTURES_HEADER_H), fill=BLACK)
-    brand_font = load_font(theme_font_candidates("departures", "ornament"), size=22)
-    time_font = load_font(theme_font_candidates("departures", "ornament"), size=26)
+    brand_font = load_font(theme_font_candidates("departures", "ornament"), size=20)
+    time_font = load_font(theme_font_candidates("departures", "ornament"), size=32)
     draw.text((16, 8), "IDLE HOURS DEPARTURES", font=brand_font, fill=YELLOW)
     time_bbox = draw.textbbox((0, 0), time_str, font=time_font)
     time_w = time_bbox[2] - time_bbox[0]
-    draw.text((width - time_w - 16, 6), time_str, font=time_font, fill=YELLOW)
-    # 1px yellow underline.
+    draw.text((width - time_w - 16, 2), time_str, font=time_font, fill=YELLOW)
     draw.line((0, _DEPARTURES_HEADER_H - 1, width, _DEPARTURES_HEADER_H - 1), fill=YELLOW, width=1)
 
 
 def _departures_paint_column_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int) -> None:
-    """Solid-white column-header strip with black Antonio Bold labels.
-
-    Solid white reads as the canonical "schedule paper" header strip
-    real Solari boards mount above their flap rows. Earlier revisions
-    used a K+W checkerboard for a mid-gray look, but the checkerboard
-    rendered as a static-TV blur that swallowed the column titles.
-    """
+    """Solid-white column-header strip with black Antonio Bold labels."""
     WHITE = SPECTRA6["white"]
     BLACK = SPECTRA6["black"]
     y0 = _DEPARTURES_HEADER_H
     y1 = y0 + _DEPARTURES_COLHEAD_H
     draw.rectangle((0, y0, width, y1), fill=WHITE)
-    label_font = load_font(theme_font_candidates("departures", "ornament"), size=16)
+    label_font = load_font(theme_font_candidates("departures", "ornament"), size=15)
     draw.text((20, y0 + 5), "TIME", font=label_font, fill=BLACK)
     draw.text((140, y0 + 5), "DESTINATION", font=label_font, fill=BLACK)
     draw.text((630, y0 + 5), "STATUS", font=label_font, fill=BLACK)
 
 
-def _departures_paint_row(
+def _departures_paint_compact_row(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
     y_top: int,
     row: dict,
     kind: str,
 ) -> None:
-    """Paint one flap row at ``y_top``.
+    """Paint one compact history / upcoming row at ``y_top``.
 
-    ``kind`` ∈ {"departed", "boarding", "scheduled"} drives the colour
-    treatment. All non-boarding text is solid yellow on solid black —
-    the canonical Solari board lettering. Boarding flips to solid black
-    text on a solid yellow flap. The single chromatic accent on each
-    row is the status word: red ``DEPARTED`` for history rows, red
-    ``BOARDING`` on the highlighted row, and white ``SCHEDULED`` for
-    future rows.
-
-    Layout:
-      x= 20..130  TIME column (Antonio Bold 28)
-      x=140..620  DESTINATION column (Antonio Bold 22, with optional
-                  author surname subline at 14pt)
-      x=630..780  STATUS column (Antonio Bold 18)
+    These are the 36-px-tall context rows that flank the central
+    announcement panel. Solid yellow text on the black chassis; the
+    only chromatic accent is the colour-coded status word (red
+    ``DEPARTED`` or white ``SCHEDULED``).
     """
-    BLACK = SPECTRA6["black"]
     YELLOW = SPECTRA6["yellow"]
     RED = SPECTRA6["red"]
     WHITE = SPECTRA6["white"]
-    h = _DEPARTURES_ROW_H
-    width = image.width
-    if kind == "boarding":
-        draw.rectangle((10, y_top, width - 10, y_top + h), fill=YELLOW)
-    # else: keep the chassis-black background; row separation comes from
-    # the 2-px gutter and the column-header strip above. Earlier
-    # revisions painted a horizontal fold-rule hairline through the
-    # cell midline to suggest the physical split-flap mechanism, but
-    # the rule bisected the glyphs and made the destination text hard
-    # to read at panel resolution. The gutter alone is enough mechanical
-    # feel.
-
-    time_font = load_font(theme_font_candidates("departures", "ornament"), size=28)
-    dest_font = load_font(theme_font_candidates("departures", "ornament"), size=22)
-    status_font = load_font(theme_font_candidates("departures", "ornament"), size=18)
-    author_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
-
-    if kind == "boarding":
-        draw.text((20, y_top + 8), row.get("time", "--:--"), font=time_font, fill=BLACK)
-        dest = row.get("destination", "— — —")
-        draw.text((140, y_top + 4), dest, font=dest_font, fill=BLACK)
-        author = row.get("author")
-        if author:
-            draw.text((140, y_top + 30), author, font=author_font, fill=BLACK)
-        draw.text((630, y_top + 14), "BOARDING", font=status_font, fill=RED)
-        _departures_paint_now_boarding_chevrons(image, draw, y_top, h)
+    time_font = load_font(theme_font_candidates("departures", "ornament"), size=22)
+    dest_font = load_font(theme_font_candidates("departures", "ornament"), size=16)
+    status_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
+    draw.text((20, y_top + 6), row.get("time", "--:--"), font=time_font, fill=YELLOW)
+    dest = row.get("destination", "— — —")
+    draw.text((140, y_top + 10), dest, font=dest_font, fill=YELLOW)
+    if kind == "departed":
+        draw.text((630, y_top + 11), "DEPARTED", font=status_font, fill=RED)
     else:
-        # Yellow flap text on black chassis — solid colour for readability.
-        draw.text((20, y_top + 8), row.get("time", "--:--"), font=time_font, fill=YELLOW)
-        dest = row.get("destination", "— — —")
-        draw.text((140, y_top + 4), dest, font=dest_font, fill=YELLOW)
-        author = row.get("author")
-        if author and kind == "departed":
-            draw.text((140, y_top + 30), author, font=author_font, fill=YELLOW)
-        if kind == "departed":
-            draw.text((630, y_top + 14), "DEPARTED", font=status_font, fill=RED)
-        else:
-            draw.text((630, y_top + 14), "SCHEDULED", font=status_font, fill=WHITE)
+        draw.text((630, y_top + 11), "SCHEDULED", font=status_font, fill=WHITE)
 
 
-def _departures_paint_now_boarding_chevrons(
-    image: Image.Image, draw: ImageDraw.ImageDraw, y_top: int, row_h: int,
+def _departures_paint_now_boarding_banner(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    panel_x0: int,
+    panel_y0: int,
+    panel_x1: int,
+    time_str: str,
 ) -> None:
-    """Small red triangle bookends flanking the BOARDING row."""
+    """Solid red banner at the top of the boarding panel.
+
+    Spans the full panel width; the banner's red ink is the announcement
+    layer's chromatic anchor — solid red text on the yellow panel reads
+    as the canonical "NOW BOARDING" emergency-flag colour real station
+    boards use to draw the eye.
+    """
     RED = SPECTRA6["red"]
-    cy = y_top + row_h // 2
-    # Left chevron pointing right.
-    draw.polygon([(2, cy - 8), (12, cy), (2, cy + 8)], fill=RED)
-    # Right chevron pointing left.
-    right_x = image.width - 2
-    draw.polygon([(right_x, cy - 8), (right_x - 10, cy), (right_x, cy + 8)], fill=RED)
+    BLACK = SPECTRA6["black"]
+    YELLOW = SPECTRA6["yellow"]
+    # Banner background: solid red strip across the top of the panel.
+    draw.rectangle((panel_x0, panel_y0, panel_x1, panel_y0 + _DEPARTURES_BANNER_H), fill=RED)
+    banner_font = load_font(theme_font_candidates("departures", "ornament"), size=18)
+    # Track number: a deterministic 1..24 derived from the minute so it
+    # feels station-board-real without claiming literal accuracy.
+    track_n = (int(time_str.split(":", 1)[1]) % 24 + 1) if ":" in time_str else 14
+    text = f"NOW BOARDING  ·  TRACK {track_n:02d}  ·  {time_str}"
+    bbox = draw.textbbox((0, 0), text, font=banner_font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    banner_cx = (panel_x0 + panel_x1) // 2
+    banner_cy = panel_y0 + _DEPARTURES_BANNER_H // 2
+    # Yellow text on red — high contrast, reads as a real transit-board
+    # "URGENT" announcement.
+    draw.text(
+        (banner_cx - tw // 2 - bbox[0], banner_cy - th // 2 - bbox[1]),
+        text,
+        font=banner_font,
+        fill=YELLOW,
+    )
+    # Polygon-drawn chevrons flanking the banner text — Antonio doesn't
+    # carry the U+25B6/25C0 chevron glyphs and would tofu them, so paint
+    # them directly as 12×16 triangles in yellow against the red banner.
+    chev_gap = 14
+    chev_h = 14
+    chev_w = 10
+    left_tip = banner_cx - tw // 2 - chev_gap
+    right_tip = banner_cx + tw // 2 + chev_gap
+    # Left chevron pointing right (▶).
+    draw.polygon(
+        [
+            (left_tip - chev_w, banner_cy - chev_h // 2),
+            (left_tip, banner_cy),
+            (left_tip - chev_w, banner_cy + chev_h // 2),
+        ],
+        fill=YELLOW,
+    )
+    # Right chevron pointing left (◀).
+    draw.polygon(
+        [
+            (right_tip + chev_w, banner_cy - chev_h // 2),
+            (right_tip, banner_cy),
+            (right_tip + chev_w, banner_cy + chev_h // 2),
+        ],
+        fill=YELLOW,
+    )
+    # 1-px black hairline separating the banner from the quote area.
+    draw.line(
+        (panel_x0, panel_y0 + _DEPARTURES_BANNER_H, panel_x1, panel_y0 + _DEPARTURES_BANNER_H),
+        fill=BLACK,
+        width=1,
+    )
+
+
+def _departures_paint_boarding_panel(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    panel_x0: int,
+    panel_y0: int,
+    panel_x1: int,
+    panel_y1: int,
+    time_str: str,
+) -> None:
+    """Solid-yellow announcement panel carrying the literary quote.
+
+    Composition top-to-bottom:
+      * 30-px red banner with the ``NOW BOARDING · TRACK NN · HH:MM`` callout
+        (yellow text on red — high-contrast emergency-flag register).
+      * Quote body (~140 px), fit via ``fit_quote`` with Antonio Bold and
+        the matched-phrase substring rendered in solid red.
+      * Author + title attribution at the panel bottom (centred, black on
+        yellow, small).
+    """
+    YELLOW = SPECTRA6["yellow"]
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Panel background.
+    draw.rectangle((panel_x0, panel_y0, panel_x1, panel_y1), fill=YELLOW)
+    # Banner strip.
+    _departures_paint_now_boarding_banner(image, draw, panel_x0, panel_y0, panel_x1, time_str)
+
+    # Quote area.
+    body_top = panel_y0 + _DEPARTURES_BANNER_H + 6
+    body_bottom = panel_y1 - 42
+    body_left = panel_x0 + 20
+    body_right = panel_x1 - 20
+    body_w = body_right - body_left
+    body_h = body_bottom - body_top
+
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    if not display_quote:
+        display_quote = "— silence on the platform —"
+
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw,
+        display_quote,
+        matched,
+        body_w,
+        body_h,
+        font_max=30,
+        font_min=16,
+        line_height_mult=1.18,
+        theme="departures",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = body_top + max(0, (body_h - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        # Centre each line within the body width.
+        line_w = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            line_w += bbox[2] - bbox[0]
+        x = body_left + max(0, (body_w - line_w) // 2)
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            fill = RED if is_bold else BLACK
+            draw.text((x, chunk_y), chunk, font=font, fill=fill)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+    # Attribution at the bottom of the panel.
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author.upper(), title.upper()) if p]
+    attrib_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
+    if parts:
+        text = "  ·  ".join(parts)
+        bbox = draw.textbbox((0, 0), text, font=attrib_font)
+        tw = bbox[2] - bbox[0]
+        # Truncate if too wide for the panel width.
+        max_w = (panel_x1 - panel_x0) - 40
+        if tw > max_w:
+            while parts and tw > max_w:
+                if len(parts[-1]) > 6:
+                    parts[-1] = parts[-1][:-3] + "…"
+                else:
+                    parts.pop()
+                text = "  ·  ".join(parts)
+                bbox = draw.textbbox((0, 0), text, font=attrib_font)
+                tw = bbox[2] - bbox[0]
+        attrib_cx = (panel_x0 + panel_x1) // 2
+        attrib_y = panel_y1 - 30
+        draw.text(
+            (attrib_cx - tw // 2 - bbox[0], attrib_y - bbox[1]),
+            text,
+            font=attrib_font,
+            fill=BLACK,
+        )
 
 
 def _departures_paint_footer(
@@ -10156,14 +10283,16 @@ def _departures_paint_footer(
 
 
 def render_departures_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Solari split-flap departures board.
+    """Solari split-flap announcement board.
 
-    Reads the history ledger for the three rows above the current bucket
-    (rendered as ``DEPARTED`` with author surname appended) and walks
-    forward through ``BUCKET_ORDER`` for the three rows below
-    (rendered as ``SCHEDULED`` with placeholder destinations). The
-    current bucket is the highlighted middle row, ``BOARDING`` in red
-    on solid-yellow, with the picked quote's title + author surname.
+    The Solari board is chrome surrounding a central announcement panel:
+    a header strip up top with the brand + big flap-style HH:MM, a white
+    column-header strip, two compact ``DEPARTED`` rows pulled from the
+    history ledger, then a dominant yellow ``NOW BOARDING`` panel
+    carrying the literary quote (matched phrase in red), two compact
+    ``SCHEDULED`` rows for upcoming bucket clocks, and a footer hairline
+    with the bucket label. The quote is visually primary; the board
+    surrounds rather than competes with it.
     """
     image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
     _departures_paint_chassis(image)
@@ -10172,38 +10301,47 @@ def render_departures_frame(time_str: str, quote_row: dict, width: int, height: 
     _departures_paint_header(image, draw, width, time_str)
     _departures_paint_column_header(image, draw, width)
 
-    # Assemble the 7-row table around the current bucket.
-    history = _departures_recent_history(limit=_DEPARTURES_BOARDING_ROW)
-    upcoming = _departures_upcoming_buckets(time_str, count=_DEPARTURES_ROW_COUNT - _DEPARTURES_BOARDING_ROW - 1)
-    # Pad history with placeholders if the ledger has fewer than expected entries.
-    while len(history) < _DEPARTURES_BOARDING_ROW:
+    # Compact DEPARTED rows from the history ledger.
+    history = _departures_recent_history(limit=_DEPARTURES_HISTORY_ROWS)
+    while len(history) < _DEPARTURES_HISTORY_ROWS:
         history.insert(0, {"time": "--:--", "destination": "— — —", "author": None})
+    departed_rows = []
+    for entry in history[-_DEPARTURES_HISTORY_ROWS:]:
+        dest_parts = []
+        if entry.get("destination") and entry["destination"] != "— — —":
+            dest_parts.append(entry["destination"])
+        if entry.get("author"):
+            dest_parts.append(entry["author"])
+        dest = "  ·  ".join(dest_parts) if dest_parts else "— — —"
+        departed_rows.append({"time": entry["time"], "destination": dest})
 
-    title = (quote_row.get("title") or "").upper()[:36] if quote_row.get("title") else "— — —"
-    author_full = (quote_row.get("author") or "").strip()
-    author = author_full.split()[-1].upper() if author_full else None
-    boarding_row = {
-        "time": time_str,
-        "destination": title,
-        "author": author,
-    }
+    y_cursor = _DEPARTURES_HEADER_H + _DEPARTURES_COLHEAD_H + 4
+    for row in departed_rows:
+        _departures_paint_compact_row(image, draw, y_cursor, row, kind="departed")
+        y_cursor += _DEPARTURES_COMPACT_ROW_H + 2
 
-    rows = history + [boarding_row] + upcoming
-    # Guarantee exactly 7 rows (in case upcoming is short due to wrap-edge math).
-    while len(rows) < _DEPARTURES_ROW_COUNT:
-        rows.append({"time": "--:--", "destination": "— — —", "author": None})
-    rows = rows[:_DEPARTURES_ROW_COUNT]
+    # Central boarding panel — the literary content.
+    panel_y0 = y_cursor + 4
+    panel_y1 = panel_y0 + _DEPARTURES_BOARDING_PANEL_H
+    _departures_paint_boarding_panel(
+        image, draw, quote_row,
+        panel_x0=10, panel_y0=panel_y0,
+        panel_x1=width - 10, panel_y1=panel_y1,
+        time_str=time_str,
+    )
+    y_cursor = panel_y1 + 4
 
-    rows_y = _DEPARTURES_HEADER_H + _DEPARTURES_COLHEAD_H + 4
-    for idx, row in enumerate(rows):
-        if idx < _DEPARTURES_BOARDING_ROW:
-            kind = "departed"
-        elif idx == _DEPARTURES_BOARDING_ROW:
-            kind = "boarding"
-        else:
-            kind = "scheduled"
-        y_top = rows_y + idx * (_DEPARTURES_ROW_H + _DEPARTURES_ROW_GAP)
-        _departures_paint_row(image, draw, y_top, row, kind)
+    # Compact SCHEDULED rows after the panel.
+    upcoming = _departures_upcoming_buckets(time_str, count=_DEPARTURES_UPCOMING_ROWS)
+    while len(upcoming) < _DEPARTURES_UPCOMING_ROWS:
+        upcoming.append({"time": "--:--", "destination": "— — —", "author": None})
+    for entry in upcoming[:_DEPARTURES_UPCOMING_ROWS]:
+        _departures_paint_compact_row(
+            image, draw, y_cursor,
+            {"time": entry["time"], "destination": entry.get("destination") or "— — —"},
+            kind="scheduled",
+        )
+        y_cursor += _DEPARTURES_COMPACT_ROW_H + 2
 
     bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
     _departures_paint_footer(image, draw, width, height, f"BUCKET {bucket}")
@@ -10300,58 +10438,166 @@ def _tarot_paint_card_name(
 
 
 def _tarot_emblem_magician(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Magician (I): vertical staff + double ribbon arcs (lemniscate) + cap dots."""
+    """Magician (I): tall staff held aloft, four suit symbols on a small
+    altar table, infinity lemniscate above the head — the canonical
+    Rider-Waite Magician composition compressed into a ~180×180 box.
+    """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    draw.line((cx, cy - 58, cx, cy + 58), fill=BLACK, width=4)
-    draw.ellipse((cx - 9, cy - 66, cx + 9, cy - 48), fill=RED)
-    draw.ellipse((cx - 9, cy + 48, cx + 9, cy + 66), fill=RED)
-    # Infinity-ribbon arcs above and below centre.
-    draw.arc((cx - 44, cy - 18, cx + 44, cy + 34), start=200, end=340, fill=RED, width=3)
-    draw.arc((cx - 44, cy - 34, cx + 44, cy + 18), start=20, end=160, fill=RED, width=3)
+    # The vertical staff (held aloft, dominant axis).
+    draw.line((cx, cy - 90, cx, cy + 50), fill=BLACK, width=4)
+    # Staff cap dots (one above, one below the figure's "hand").
+    draw.ellipse((cx - 10, cy - 100, cx + 10, cy - 80), fill=RED)
+    draw.ellipse((cx - 10, cy + 42, cx + 10, cy + 62), fill=RED)
+    # Infinity lemniscate floating above the figure (Rider-Waite Magician
+    # has this hovering over the head — represents eternity / mastery).
+    draw.arc((cx - 36, cy - 76, cx,    cy - 50), start=0,   end=360, fill=BLACK, width=2)
+    draw.arc((cx,      cy - 76, cx + 36, cy - 50), start=0, end=360, fill=BLACK, width=2)
+    # Small altar table beneath the figure carrying the four suit symbols
+    # (cup / wand / sword / pentacle — the elemental tools of the trade).
+    altar_y = cy + 64
+    altar_x0, altar_x1 = cx - 70, cx + 70
+    draw.rectangle((altar_x0, altar_y, altar_x1, altar_y + 6), fill=BLACK)
+    # Suit pip 1: cup (left). U-shape outline.
+    sx = altar_x0 + 18
+    draw.arc((sx - 10, altar_y - 18, sx + 10, altar_y + 2), 0, 180, fill=RED, width=2)
+    draw.line((sx - 10, altar_y - 8, sx - 10, altar_y - 18), fill=RED, width=2)
+    draw.line((sx + 10, altar_y - 8, sx + 10, altar_y - 18), fill=RED, width=2)
+    # Suit pip 2: wand (centre-left). Short vertical stroke.
+    sx = altar_x0 + 50
+    draw.line((sx, altar_y - 22, sx, altar_y - 2), fill=BLACK, width=3)
+    draw.ellipse((sx - 4, altar_y - 26, sx + 4, altar_y - 18), fill=RED)
+    # Suit pip 3: sword (centre-right). Vertical line + crossguard.
+    sx = altar_x1 - 50
+    draw.line((sx, altar_y - 22, sx, altar_y - 2), fill=BLACK, width=2)
+    draw.line((sx - 6, altar_y - 16, sx + 6, altar_y - 16), fill=BLACK, width=2)
+    # Suit pip 4: pentacle (right). Small red 5-point star.
+    sx = altar_x1 - 16
+    _tarot_paint_pentagram(draw, sx, altar_y - 12, 9, RED)
 
 
 def _tarot_emblem_hermit(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Hermit (IX): lantern on a diagonal staff with a red flame."""
+    """Hermit (IX): hooded silhouette with raised lantern + diagonal staff,
+    six-point star inside the lantern — Rider-Waite Hermit on his
+    mountain at ~180×180 scale.
+    """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Diagonal staff.
-    draw.line((cx - 44, cy + 58, cx + 18, cy - 44), fill=BLACK, width=4)
-    # Lantern body (top of staff).
-    lx0, ly0, lx1, ly1 = cx + 4, cy - 52, cx + 36, cy - 22
+    # Hooded silhouette body — a stylised triangle for the robe with a
+    # smaller triangle on top for the hood.
+    robe = [
+        (cx - 32, cy + 80),  # left foot
+        (cx - 16, cy + 8),   # left shoulder
+        (cx - 10, cy - 20),  # neck (left side of hood)
+        (cx + 14, cy - 20),  # neck (right side of hood)
+        (cx + 20, cy + 8),   # right shoulder
+        (cx + 36, cy + 80),  # right foot
+    ]
+    draw.polygon(robe, fill=BLACK)
+    # Hood: pointed peak above the head.
+    hood = [
+        (cx - 14, cy - 18),
+        (cx + 2, cy - 50),
+        (cx + 18, cy - 18),
+    ]
+    draw.polygon(hood, fill=BLACK)
+    # Diagonal staff in the right hand — extends from shoulder down to
+    # the ground at the right of the figure.
+    draw.line((cx + 18, cy + 4, cx + 60, cy + 90), fill=BLACK, width=4)
+    # Raised lantern at the left — the Hermit's iconic lamp, held aloft
+    # above the left shoulder.
+    lx0, ly0, lx1, ly1 = cx - 60, cy - 50, cx - 28, cy - 14
     draw.rectangle((lx0, ly0, lx1, ly1), outline=BLACK, width=3)
-    # Lantern bail.
-    draw.line(((lx0 + lx1) // 2, ly0, (lx0 + lx1) // 2, ly0 - 8), fill=BLACK, width=2)
-    draw.arc((lx0 + 2, ly0 - 12, lx1 - 2, ly0 - 2), 0, 180, fill=BLACK, width=2)
-    # Flame: red 8-point star inside the lantern.
-    fx, fy = (lx0 + lx1) // 2, (ly0 + ly1) // 2
+    # Lantern panes — two vertical bars dividing the front face into 3.
+    third = (lx1 - lx0) // 3
+    draw.line((lx0 + third, ly0 + 2, lx0 + third, ly1 - 2), fill=BLACK, width=1)
+    draw.line((lx0 + 2 * third, ly0 + 2, lx0 + 2 * third, ly1 - 2), fill=BLACK, width=1)
+    # Lantern bail (handle).
+    bail_cx = (lx0 + lx1) // 2
+    draw.line((bail_cx, ly0, bail_cx, ly0 - 10), fill=BLACK, width=2)
+    draw.arc((lx0 + 2, ly0 - 14, lx1 - 2, ly0 - 4), 0, 180, fill=BLACK, width=2)
+    # Holding-arm line from lantern bail up to figure's hand.
+    draw.line((bail_cx, ly0 - 10, cx - 10, cy - 14), fill=BLACK, width=2)
+    # Flame inside the lantern — large red 12-point star fills the pane.
+    fx, fy = bail_cx, (ly0 + ly1) // 2
     flame_pts: list[tuple[float, float]] = []
-    for i in range(16):
-        angle = -math.pi / 2 + i * math.pi / 8
-        r = 9 if i % 2 == 0 else 4
+    for i in range(24):
+        angle = -math.pi / 2 + i * math.pi / 12
+        r = 12 if i % 2 == 0 else 5
         flame_pts.append((fx + r * math.cos(angle), fy + r * math.sin(angle)))
     draw.polygon(flame_pts, fill=RED)
 
 
 def _tarot_emblem_wheel(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Wheel of Fortune (X): spoked wheel with cardinal letter studs."""
+    """Wheel of Fortune (X): two concentric rims with engraved spokes, a
+    red filled hub at the centre, and four cardinal alchemical sigils
+    at the rim — the Rider-Waite Wheel turned into a 180-px medallion.
+    """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
+    r_outer = 88
+    r_mid = 70
+    r_inner = 40
+    r_hub = 16
     # Outer rim.
-    draw.ellipse((cx - 56, cy - 56, cx + 56, cy + 56), outline=BLACK, width=4)
-    # Inner hub.
-    draw.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), outline=BLACK, width=2, fill=RED)
-    # Eight spokes.
+    draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), outline=BLACK, width=4)
+    # Mid rim (inscribed band).
+    draw.ellipse((cx - r_mid, cy - r_mid, cx + r_mid, cy + r_mid), outline=BLACK, width=2)
+    # Inner rim.
+    draw.ellipse((cx - r_inner, cy - r_inner, cx + r_inner, cy + r_inner), outline=BLACK, width=2)
+    # Eight spokes from inner rim to mid rim — the wheel's structural axles.
     for i in range(8):
         angle = i * math.pi / 4
-        x2 = cx + 50 * math.cos(angle)
-        y2 = cy + 50 * math.sin(angle)
-        draw.line((cx, cy, x2, y2), fill=BLACK, width=2)
+        x1 = cx + r_inner * math.cos(angle)
+        y1 = cy + r_inner * math.sin(angle)
+        x2 = cx + r_mid * math.cos(angle)
+        y2 = cy + r_mid * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=2)
+    # Red filled hub at the centre.
+    draw.ellipse((cx - r_hub, cy - r_hub, cx + r_hub, cy + r_hub), fill=RED)
+    # Cardinal sigil glyphs in the inscribed band (between mid and outer
+    # rims). The four alchemical / elemental marks at N/E/S/W positions.
+    sigil_r = (r_outer + r_mid) // 2
+    sigil_font = load_font(theme_font_candidates("tarot", "ornament"), size=14)
+    for angle_deg, glyph in ((-90, "T"), (0, "A"), (90, "R"), (180, "O")):
+        angle = math.radians(angle_deg)
+        sx = cx + sigil_r * math.cos(angle)
+        sy = cy + sigil_r * math.sin(angle)
+        bbox = draw.textbbox((0, 0), glyph, font=sigil_font)
+        gw = bbox[2] - bbox[0]
+        gh = bbox[3] - bbox[1]
+        draw.text((sx - gw // 2 - bbox[0], sy - gh // 2 - bbox[1]), glyph, font=sigil_font, fill=BLACK)
+    # Short radial tick marks along the outer rim every 30° — engraver's
+    # divisions, evoking the Wheel-of-Fortune's twelve houses.
+    for i in range(12):
+        angle = i * math.pi / 6
+        x1 = cx + (r_outer - 6) * math.cos(angle)
+        y1 = cy + (r_outer - 6) * math.sin(angle)
+        x2 = cx + r_outer * math.cos(angle)
+        y2 = cy + r_outer * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=1)
 
 
 def _tarot_emblem_default(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Generic five-point red star fallback for unmapped hours."""
-    _tarot_paint_pentagram(draw, cx, cy, 56, SPECTRA6["red"])
+    """Generic red pentagram with a small inscribed circle and surrounding
+    radial dashes — placeholder for the 9 unmapped hours. Reads as a
+    real ritual sigil rather than a flat stick-figure star.
+    """
+    RED = SPECTRA6["red"]
+    BLACK = SPECTRA6["black"]
+    # Inscribed circle behind the star.
+    draw.ellipse((cx - 90, cy - 90, cx + 90, cy + 90), outline=BLACK, width=2)
+    draw.ellipse((cx - 72, cy - 72, cx + 72, cy + 72), outline=BLACK, width=1)
+    # Big pentagram.
+    _tarot_paint_pentagram(draw, cx, cy, 70, RED)
+    # Twelve radial dashes around the outer ring — clock-face ticks.
+    for i in range(12):
+        angle = i * math.pi / 6
+        x1 = cx + 96 * math.cos(angle)
+        y1 = cy + 96 * math.sin(angle)
+        x2 = cx + 104 * math.cos(angle)
+        y2 = cy + 104 * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=1)
 
 
 _TAROT_EMBLEMS = {
@@ -10496,21 +10742,25 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     except (ValueError, AttributeError):
         hour24 = 0
     hour_int = hour24 % 12 or 12
-    _tarot_paint_roman_numeral(image, draw, hour_int, cx, y0 + 24)
+    _tarot_paint_roman_numeral(image, draw, hour_int, cx, y0 + 16)
 
     # Card name (matched phrase).
     name = quote_row.get("matched_text") or ""
-    _tarot_paint_card_name(image, draw, name, cx, y0 + 68)
+    _tarot_paint_card_name(image, draw, name, cx, y0 + 58)
 
-    # Emblem at centre.
-    _tarot_paint_emblem(image, draw, hour_int, cx, y0 + 160)
+    # Emblem at centre — the dominant illustration. Bigger emblems
+    # (~140–200 px tall depending on hour) anchor the visual centre.
+    # Centre is pushed below the card name + a 10 px breathing gap so
+    # the tallest emblems (Magician's staff reaches ~100 px above
+    # centre) clear the name band.
+    _tarot_paint_emblem(image, draw, hour_int, cx, y0 + 200)
 
-    # Body — sits below the emblem.
-    body_rect = (x0 + 20, y0 + 220, x1 - 20, y0 + 370)
+    # Body — sits below the emblem in the lower third of the card.
+    body_rect = (x0 + 20, y0 + 310, x1 - 20, y0 + 400)
     _tarot_paint_body(image, draw, quote_row, body_rect)
 
     # Attribution at the bottom.
-    _tarot_paint_attribution(image, draw, quote_row, cx, y1 - 28)
+    _tarot_paint_attribution(image, draw, quote_row, cx, y1 - 24)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
