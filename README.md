@@ -8,7 +8,7 @@
 
 Idle Hours is a literary clock built from public-domain text. It picks a quote that matches the current fuzzy time bucket, renders it into an 800×480 image, and can push that image to an eInk display such as the Pimoroni Inky Impression 7.3.
 
-![Idle Hours rendered in saloon, gothic, astrarium, and deco themes](idle_hours/assets/preview.png)
+![Idle Hours rendered in marquee, tarot, vinyl, and astrarium themes](idle_hours/assets/preview.png)
 
 > **Upgrading from LitClock?** This project was previously named LitClock.
 > The rename is hard (new package name, new CLI command, new filesystem
