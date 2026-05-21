@@ -11229,28 +11229,42 @@ def _vinyl_paint_wear_speckle(image: Image.Image, seed: int) -> None:
 def _vinyl_paint_disk(
     image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int, r_outer: int, r_label: int,
 ) -> None:
-    """Solid black disk + concentric groove ring hairlines + red label + spindle.
+    """Solid black disk + densely-packed groove band + dead-wax + label + spindle.
 
-    Grooves are 1-px-wide white ellipses spaced every 16 px from the
-    label edge to the rim, then re-snapped to palette so they read as
-    faint silvery rings against the solid black disk. Spacing chosen
-    larger than 8 px so individual rings survive ``snap_image_to_palette``
-    (at 8 px spacing they crowd into a uniform grey wash).
+    Three concentric pressing zones modelled after a real 12-inch LP:
+
+    1. Dead-wax / run-out (``r_label`` → ``r_label + 12``): smooth
+       black ring between the inner groove and the label, where the
+       record holds the run-out groove and the matrix etching. Drawn
+       implicitly by NOT painting any groove rings in this band.
+    2. Programme band (``r_label + 12`` → ``r_outer - 10``): the
+       music-bearing groove area, painted as ~33 fine 1-px white
+       hairline ellipses spaced every 3 px. At panel viewing distance
+       these blur into a textured silvery band — the iconic
+       "pressed vinyl" silhouette. Earlier revisions used only 3-4
+       hairlines spaced 28 px apart; those read as decorative rings
+       rather than as actual grooves, so the disk looked toy-like.
+    3. Lead-in groove (``r_outer - 6`` → ``r_outer - 3``): a slightly
+       heavier 2-px white ring near the very rim, where a real LP's
+       tonearm first contacts the record.
     """
     BLACK = SPECTRA6["black"]
-    RED = SPECTRA6["red"]
     WHITE = SPECTRA6["white"]
     # Outer disk.
     draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), fill=BLACK)
-    # Groove ring hairlines (white on black — reads as faint silvery
-    # pressing-line at panel distance). Three rings only; more crowds
-    # into a wash and breaks the "pressed vinyl" silhouette.
-    for r in range(r_label + 28, r_outer - 4, 28):
+    # Programme band — dense 1-px groove hairlines every 3 px.
+    for r in range(r_label + 12, r_outer - 10, 3):
         draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=WHITE, width=1)
-    # Label.
-    draw.ellipse((cx - r_label, cy - r_label, cx + r_label, cy + r_label), fill=RED)
-    # Spindle hole.
-    draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=WHITE)
+    # Lead-in groove — slightly heavier ring just inside the rim.
+    lead_in_r = r_outer - 4
+    draw.ellipse(
+        (cx - lead_in_r, cy - lead_in_r, cx + lead_in_r, cy + lead_in_r),
+        outline=WHITE, width=2,
+    )
+    # NOTE: the label fill + spindle are intentionally NOT painted here;
+    # ``_vinyl_paint_label`` paints them so the label sits on top of the
+    # tonearm in the render order, covering any part of the arm that
+    # crosses behind the spindle.
 
 
 def _vinyl_paint_label(
@@ -11262,10 +11276,46 @@ def _vinyl_paint_label(
     matched_text: str,
     bucket: str,
 ) -> None:
-    """White-on-red label text stack."""
+    """White-on-red label with STEREO + matched-phrase + brand + side + year.
+
+    Authentic LP-label composition top to bottom:
+
+    * Outer black ring border (3 px inset from the label edge) — every
+      LP-jacket label has this anchoring rule, separating the printed
+      label area from the dead-wax beyond.
+    * "STEREO" mark in small white caps along the top of the label
+      arc — the canonical mid-century LP convention indicating the
+      pressing's mix format.
+    * Matched-phrase snippet (truncated to 18 chars + ellipsis) as
+      the "track title", in Cormorant Bold.
+    * Thin white hairline divider.
+    * "IDLE HOURS" brand name in Cormorant Bold 14pt.
+    * "VOLUME I" sub-title.
+    * Catalog number in Space Mono Bold ("IH-H11-15" etc).
+    * Current calendar year at the bottom of the label arc, small.
+
+    A real LP label has dozens of typographic elements; this stack
+    picks the four or five most iconic ones (STEREO mark, brand,
+    catalog, year) and keeps everything else off so the label still
+    reads at the 80-px-radius scale.
+    """
     WHITE = SPECTRA6["white"]
-    # Stack from top of label downward, centred horizontally.
-    # Matched phrase (truncated).
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Label red fill — painted here (not in ``_vinyl_paint_disk``) so the
+    # label sits on top of the tonearm in the render order and covers any
+    # part of the arm that crosses behind it.
+    draw.ellipse((cx - r_label, cy - r_label, cx + r_label, cy + r_label), fill=RED)
+    # Outer black ring border — 2 px thick, inset 4 px from the label edge.
+    ring_r = r_label - 4
+    draw.ellipse((cx - ring_r, cy - ring_r, cx + ring_r, cy + ring_r), outline=BLACK, width=2)
+    # STEREO mark at the top of the label arc.
+    stereo_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
+    stereo_text = "· STEREO ·"
+    bbox = draw.textbbox((0, 0), stereo_text, font=stereo_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy - 60 - bbox[1]), stereo_text, font=stereo_font, fill=WHITE)
+    # Matched phrase (truncated) — the "track title".
     matched_font = load_font(theme_font_candidates("vinyl", "quote_bold"), size=11)
     snippet = (matched_text or "").strip()
     if len(snippet) > 18:
@@ -11287,58 +11337,199 @@ def _vinyl_paint_label(
     vol_text = "VOLUME I"
     bbox = draw.textbbox((0, 0), vol_text, font=vol_font)
     w = bbox[2] - bbox[0]
-    draw.text((cx - w // 2 - bbox[0], cy + 12 - bbox[1]), vol_text, font=vol_font, fill=WHITE)
+    draw.text((cx - w // 2 - bbox[0], cy + 8 - bbox[1]), vol_text, font=vol_font, fill=WHITE)
     # Catalog number (mono).
     cat_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=9)
     cat_text = _vinyl_catalog_number(bucket)
     bbox = draw.textbbox((0, 0), cat_text, font=cat_font)
     w = bbox[2] - bbox[0]
-    draw.text((cx - w // 2 - bbox[0], cy + 36 - bbox[1]), cat_text, font=cat_font, fill=WHITE)
+    draw.text((cx - w // 2 - bbox[0], cy + 28 - bbox[1]), cat_text, font=cat_font, fill=WHITE)
+    # Current year at the bottom arc of the label.
+    year_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
+    year_text = f"© {datetime.date.today().year}"
+    bbox = draw.textbbox((0, 0), year_text, font=year_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy + 50 - bbox[1]), year_text, font=year_font, fill=WHITE)
+    # Spindle hole at the dead centre — painted last so it sits on top
+    # of any text or graphic that landed within 4 px of centre.
+    draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=WHITE)
 
 
-def _vinyl_paint_stylus(
+_VINYL_TONEARM_PIVOT = (388, 70)
+
+
+def _vinyl_paint_tonearm(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
     cx: int,
     cy: int,
     r_outer: int,
-    r_label: int,
     minute: int,
 ) -> None:
-    """Red stylus arm sweeping at the current-minute angle.
+    """Pivoted tonearm with cartridge headshell and counterweight.
 
-    Minute 0 points straight up (12-o'-clock orientation), sweeping
-    clockwise. The arm runs from the disk rim inward to the label edge,
-    and a small filled circle at the rim end is the cartridge tip.
+    The tonearm pivots from a fixed point at the upper-right of the
+    turntable plate (``_VINYL_TONEARM_PIVOT``, off the disk itself).
+    The cartridge headshell at the front of the arm contacts the disk
+    at the current-minute rim position (minute 0 = top, sweeping
+    clockwise — same convention as the earlier straight-stylus
+    rendition). A counterweight cylinder sits behind the pivot,
+    visually balancing the cartridge end.
+
+    Earlier revisions painted just a straight red line from rim to
+    label centre, which read as a diagram of the stylus path rather
+    than as a real tonearm. The pivot-plus-counterweight-plus-
+    cartridge silhouette is the canonical "this is a turntable"
+    visual that every consumer LP-deck has worn into collective
+    memory; without it the disk reads as a generic vinyl drawing
+    rather than as a playing record.
+
+    Geometry is allowed to be non-physical for some minute angles
+    (a real swinging arm only sweeps a ~40° arc, not 360°); the
+    cartridge always lands on the rim at the current-minute angle
+    even when that would require a comically-stretched arm. At
+    panel viewing distance casual readers see "arm pointing at the
+    current minute" and the metaphor lands; analysing the geometry
+    isn't the point.
     """
+    BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
+    pivot_x, pivot_y = _VINYL_TONEARM_PIVOT
+    # Cartridge tip position on the disk rim at the current-minute angle.
     angle_deg = (minute / 60.0) * 360.0 - 90.0
-    angle = math.radians(angle_deg)
-    rim_x = cx + r_outer * math.cos(angle)
-    rim_y = cy + r_outer * math.sin(angle)
-    inner_x = cx + r_label * math.cos(angle)
-    inner_y = cy + r_label * math.sin(angle)
-    draw.line((inner_x, inner_y, rim_x, rim_y), fill=RED, width=3)
-    # Cartridge tip at the rim end.
-    draw.ellipse((rim_x - 5, rim_y - 5, rim_x + 5, rim_y + 5), fill=RED)
+    rim_angle = math.radians(angle_deg)
+    tip_x = cx + r_outer * math.cos(rim_angle)
+    tip_y = cy + r_outer * math.sin(rim_angle)
+    # Unit vector from cartridge tip back to pivot.
+    dx = pivot_x - tip_x
+    dy = pivot_y - tip_y
+    arm_length = math.hypot(dx, dy)
+    if arm_length < 1:
+        return
+    ux, uy = dx / arm_length, dy / arm_length
+    # Counterweight sits behind the pivot — extend the arm 36 px past
+    # the pivot in the away-from-cartridge direction.
+    cw_distance = 36
+    cw_x = pivot_x + ux * cw_distance
+    cw_y = pivot_y + uy * cw_distance
+    # Main arm: black line from cartridge end of the arm to the
+    # counterweight end (drawn through the pivot, all one stroke so
+    # the arm reads as a single rigid object).
+    draw.line((tip_x + ux * 6, tip_y + uy * 6, cw_x, cw_y), fill=BLACK, width=4)
+    # Pivot mount: small black filled circle marking the pivot point.
+    draw.ellipse((pivot_x - 8, pivot_y - 8, pivot_x + 8, pivot_y + 8), fill=BLACK)
+    # Inner pivot dot in red (mimics the pivot's coloured cap on
+    # vintage decks — also visually rhymes with the red label).
+    draw.ellipse((pivot_x - 3, pivot_y - 3, pivot_x + 3, pivot_y + 3), fill=RED)
+    # Counterweight cylinder at the back of the arm.
+    cw_r = 9
+    draw.ellipse((cw_x - cw_r, cw_y - cw_r, cw_x + cw_r, cw_y + cw_r), fill=BLACK)
+    # Counterweight outline ring in red — adds visual weight without
+    # making the back end disappear into the chassis-distant sleeve.
+    draw.ellipse((cw_x - cw_r, cw_y - cw_r, cw_x + cw_r, cw_y + cw_r), outline=RED, width=1)
+    # Cartridge headshell at the tip — a small black quadrilateral
+    # oriented roughly perpendicular to the arm, with a red stylus pin
+    # underneath touching the groove. The headshell is rendered as a
+    # 4-point polygon (a rotated rectangle approximation) so it can
+    # follow the arm angle without PIL needing a rotate-rectangle
+    # primitive.
+    perp_x, perp_y = -uy, ux
+    head_long = 12   # along the arm axis
+    head_wide = 8    # perpendicular to the arm axis
+    # Cartridge body centre is just behind the contact tip.
+    body_cx = tip_x + ux * (head_long * 0.4)
+    body_cy = tip_y + uy * (head_long * 0.4)
+    head_pts = [
+        (body_cx + ux * head_long / 2 + perp_x * head_wide / 2,
+         body_cy + uy * head_long / 2 + perp_y * head_wide / 2),
+        (body_cx + ux * head_long / 2 - perp_x * head_wide / 2,
+         body_cy + uy * head_long / 2 - perp_y * head_wide / 2),
+        (body_cx - ux * head_long / 2 - perp_x * head_wide / 2,
+         body_cy - uy * head_long / 2 - perp_y * head_wide / 2),
+        (body_cx - ux * head_long / 2 + perp_x * head_wide / 2,
+         body_cy - uy * head_long / 2 + perp_y * head_wide / 2),
+    ]
+    draw.polygon(head_pts, fill=BLACK)
+    # Stylus pin contact point — small filled red dot exactly on the
+    # rim of the disk at the current-minute angle.
+    draw.ellipse((tip_x - 3, tip_y - 3, tip_x + 3, tip_y + 3), fill=RED)
 
 
 def _vinyl_paint_33rpm_badge(
     image: Image.Image, draw: ImageDraw.ImageDraw, x_right: int, y_top: int,
 ) -> None:
-    """Small red rect with white '33⅓' Space Mono Bold, top-right corner."""
+    """Small red rect with white '33 RPM' Space Mono Bold, top-right corner.
+
+    Earlier revisions used the unicode glyph "33⅓" (U+2153 VULGAR
+    FRACTION ONE THIRD), but Space Mono Bold doesn't carry that
+    codepoint and the badge rendered as tofu. ASCII "33 RPM" is the
+    canonical fallback every record-jacket designer reaches for when
+    the fractional ⅓ isn't available in their typeface.
+    """
     RED = SPECTRA6["red"]
     WHITE = SPECTRA6["white"]
-    rect = (x_right - 60, y_top, x_right, y_top + 24)
+    rect = (x_right - 64, y_top, x_right, y_top + 24)
     draw.rectangle(rect, fill=RED)
     font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=12)
-    text = "33⅓"
+    text = "33 RPM"
     bbox = draw.textbbox((0, 0), text, font=font)
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
     rect_cx = (rect[0] + rect[2]) // 2
     rect_cy = (rect[1] + rect[3]) // 2
     draw.text((rect_cx - w // 2 - bbox[0], rect_cy - h // 2 - bbox[1]), text, font=font, fill=WHITE)
+
+
+def _vinyl_paint_track_heading(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    x_left: int,
+    y_top: int,
+) -> None:
+    """Small red "TRACK ONE" heading above the quote body.
+
+    Reads as a liner-notes section marker — the kind of label that
+    introduces the song's lyrics on the back of an LP sleeve. The
+    chunky Bungee-Shade-adjacent register would be too loud here;
+    Antonio Bold small caps reads as functional liner-note chrome.
+    """
+    RED = SPECTRA6["red"]
+    font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=13)
+    text = "—  TRACK ONE  —"
+    draw.text((x_left, y_top), text, font=font, fill=RED)
+
+
+def _vinyl_paint_catalog_bar(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    bucket: str,
+    x_left: int,
+    x_right: int,
+    y_top: int,
+) -> None:
+    """Bottom-of-sleeve catalog info bar: brand · catalog · year.
+
+    Justified across the available width, set in small italic
+    Cardo-or-Cormorant — the typographic register real LP back
+    covers use for the legal / catalog small-print band at the
+    bottom of the jacket. The catalog number repeats what's on
+    the label centre (just like real records repeat their cat
+    number on both the label and the jacket).
+    """
+    BLACK = SPECTRA6["black"]
+    font = load_font([CARDO_ITALIC, *META_FONT_CANDIDATES], size=11)
+    year = datetime.date.today().year
+    cat = _vinyl_catalog_number(bucket)
+    left_text = "IDLE HOURS RECORDS"
+    right_text = f"CAT NO. {cat}  ·  © {year}"
+    draw.text((x_left, y_top), left_text, font=font, fill=BLACK)
+    bbox = draw.textbbox((0, 0), right_text, font=font)
+    w = bbox[2] - bbox[0]
+    draw.text((x_right - w - bbox[0], y_top - bbox[1]), right_text, font=font, fill=BLACK)
+    # Thin horizontal black rule just above the catalog text for the
+    # "back-of-jacket" reading effect.
+    rule_y = y_top - 6
+    draw.line((x_left, rule_y, x_right, rule_y), fill=BLACK, width=1)
 
 
 def _vinyl_paint_quote_body(
@@ -11445,16 +11636,23 @@ def _vinyl_catalog_number(bucket: str) -> str:
 
 
 def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Turntable + record label.
+    """Turntable + record-jacket back-cover.
 
-    Left half: black vinyl disk (radius 200, centred at (200, 240)) with
-    a red 80-px-radius label at the spindle carrying the matched phrase,
-    "IDLE HOURS / VOLUME I" stamp, and a Space Mono catalog number. A
-    red stylus arm sweeps from the disk rim inward to the label at the
-    angle corresponding to the current minute (12-o'-clock = minute 0,
-    clockwise). Right half: cream-washed "album sleeve" with the quote
-    body in Cormorant Garamond and a tangerine matched-phrase
-    substitution, plus a small 33⅓ rpm badge in the top-right corner.
+    Left half: a black vinyl LP (radius 200, centred at (200, 240))
+    with densely-packed concentric grooves, a heavier lead-in groove
+    at the rim, a smooth dead-wax ring just outside the red label, and
+    a pivoted black tonearm whose cartridge headshell contacts the
+    disk at the current-minute rim position (pivot at the upper-right
+    of the turntable, counterweight at the back). The red label
+    carries an outer black ring border + STEREO mark, matched-phrase
+    track title, IDLE HOURS / VOLUME I brand stack, Space Mono catalog
+    number, and a © year stamp.
+
+    Right half: cream-washed "back-of-jacket" liner-notes panel with
+    a small red TRACK ONE heading, the literary quote in Cormorant
+    Garamond + tangerine matched-phrase substitution, a bottom catalog
+    bar (IDLE HOURS RECORDS · CAT NO. · © year) and the author/title
+    attribution. Includes the 33 RPM badge in the top-right.
     """
     image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
     # Sleeve cream wash full-canvas — the disk will overpaint the left half.
@@ -11466,28 +11664,35 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
     draw = ImageDraw.Draw(image)
 
-    # Disk + label + stylus.
+    # Render order on the turntable side: disk body (black + grooves
+    # only, no label/spindle) → tonearm (line may cross over the inner
+    # disk and label area) → label (red fill + outer ring + STEREO +
+    # brand + spindle, paints on top of the arm so the label sits
+    # over the arm without the arm cutting through the text).
     _vinyl_paint_disk(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, _VINYL_LABEL_R)
     bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
     matched = quote_row.get("matched_text") or ""
-    _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
-
     try:
         minute = int(time_str.split(":", 1)[1])
     except (ValueError, IndexError):
         minute = 0
-    _vinyl_paint_stylus(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY,
-                        _VINYL_DISK_R, _VINYL_LABEL_R, minute)
+    _vinyl_paint_tonearm(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, minute)
+    _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
 
-    # 33⅓ rpm badge in the sleeve's top-right.
-    _vinyl_paint_33rpm_badge(image, draw, x_right=width - 20, y_top=20)
-
+    # Right-half liner-notes chrome.
+    sleeve_x_left, sleeve_x_right = 420, width - 20
+    # 33 RPM badge in the sleeve's top-right.
+    _vinyl_paint_33rpm_badge(image, draw, x_right=sleeve_x_right, y_top=20)
+    # TRACK ONE heading at the top of the liner-notes column.
+    _vinyl_paint_track_heading(image, draw, x_left=sleeve_x_left, y_top=24)
     # Quote body on the sleeve.
-    body_rect = (420, 60, width - 20, 400)
+    body_rect = (sleeve_x_left, 60, sleeve_x_right, 390)
     _vinyl_paint_quote_body(image, draw, quote_row, body_rect)
-
-    # Attribution.
-    _vinyl_paint_attribution(image, draw, quote_row, x_right=width - 20, y_top=440)
+    # Author + title attribution (right-aligned).
+    _vinyl_paint_attribution(image, draw, quote_row, x_right=sleeve_x_right, y_top=412)
+    # Bottom catalog bar — the LP back-cover small-print band.
+    _vinyl_paint_catalog_bar(image, draw, bucket, x_left=sleeve_x_left,
+                             x_right=sleeve_x_right, y_top=450)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 

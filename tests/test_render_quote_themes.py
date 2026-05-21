@@ -233,7 +233,7 @@ class TestTarotFrame:
 
 
 class TestVinylFrame:
-    """Turntable + record label — stylus angle math + catalog number."""
+    """Turntable + LP back-cover — tonearm angle math + catalog number."""
 
     @pytest.mark.parametrize("minute,expected_axis", [
         (0,  "up"),     # 0° = pointing up (12-o'-clock)
@@ -241,11 +241,12 @@ class TestVinylFrame:
         (30, "down"),   # 180° = pointing down
         (45, "left"),   # 270° = pointing left
     ])
-    def test_stylus_angle_renders_at_expected_axis(self, minute, expected_axis):
-        """The stylus arm sweeps clockwise from 12-o'-clock. Verify the red
-        cartridge tip lands on the expected rim octant. The cartridge is a
-        small red ellipse near the rim; we sample the 8 cardinal points
-        and assert the right one carries red ink."""
+    def test_tonearm_cartridge_lands_at_expected_axis(self, minute, expected_axis):
+        """The pivoted tonearm's cartridge tip lands on the disk rim at
+        the current-minute angle (sweeping clockwise from 12-o'-clock).
+        The cartridge stylus pin is a small red filled circle at the
+        tip; sample around the expected cardinal point and assert red
+        ink appears."""
         img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
         cx, cy, r = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY, rq._VINYL_DISK_R
         # Cardinal probe points just inside the rim.
