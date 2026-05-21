@@ -109,12 +109,20 @@ class TestTarotFrame:
         assert img.size == (800, 480)
         assert _on_palette(img)
 
-    def test_unmapped_hour_falls_back_to_pentagram(self):
-        """The emblem registry only ships 3 of 12 templates; unmapped hours
-        must reach the generic-pentagram fallback (no KeyError)."""
-        # h=2 (II) is unmapped at v1; should hit _tarot_emblem_default.
-        img = rq.render("02:00", make_row(), 800, 480, theme="tarot")
-        assert img.size == (800, 480)
+    def test_all_twelve_emblems_registered(self):
+        """Every hour 1..12 has its own emblem painter (no pentagram
+        fallback in normal use). The defensive ``_tarot_emblem_default``
+        is still exposed for hours outside that range."""
+        assert set(rq._TAROT_EMBLEMS.keys()) == set(range(1, 13))
+        # The defensive fallback still exists and renders for an
+        # out-of-range hour (e.g. dispatch with hour_int=0 / 13 would
+        # hit _tarot_emblem_default, but the dispatch in render_tarot_frame
+        # always normalises to 1..12, so this is purely defence-in-depth).
+        from PIL import Image, ImageDraw
+        sandbox = Image.new("RGB", (200, 200), rq.SPECTRA6["white"])
+        rq._tarot_emblem_default(ImageDraw.Draw(sandbox), 100, 100)
+        # No assertion on visual content; just that the call returns
+        # without raising for an unmapped hour.
 
     def test_card_name_is_dithered_tyrian_purple(self):
         """The matched-phrase card name paints via draw_text_dithered with

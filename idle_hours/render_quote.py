@@ -10351,6 +10351,51 @@ def render_departures_frame(time_str: str, quote_row: dict, width: int, height: 
 
 # ─── tarot (major-arcana card) ───────────────────────────────────────────────
 
+def _tarot_paint_vellum(image: Image.Image) -> None:
+    """Sparse R+G sepia foxing-stipple over a warm Y+W cream ground.
+
+    Two-layer aged-paper recipe:
+
+    1. Cream Y+W base — same 1-in-8 yellow Bayer wash as
+       ``_astrarium_paint_cream_wash``. Gives the page a warm
+       parchment tone before any foxing lands.
+    2. Sparse R+G foxing — one red OR one green pixel per 4×4 Bayer
+       tile at cell value 0 (1-in-16 ≈ 6% density), with the
+       red-vs-green choice driven by tile-coordinate parity so the
+       foxing scatter looks random at panel distance rather than
+       grid-aligned. Adjacent R + G dots blend into the rust-brown
+       sepia tone real archival paper develops as the lignin
+       oxidises — the same chromatic-aging recipe ``newsprint``
+       uses for its foxing layer, but at half the density and
+       layered over cream rather than over a darker halftone.
+
+    Reads as older, archival ritual-document card stock — distinct
+    from the cleaner gold-cream Y+W register the manuscript-themed
+    themes (illuminated / herbarium / mucha / astrarium) use.
+    """
+    px = image.load()
+    w, h = image.size
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    GREEN = SPECTRA6["green"]
+    for y in range(h):
+        row = BAYER_4x4[y % 4]
+        for x in range(w):
+            if px[x, y] != WHITE:
+                continue
+            cell = row[x % 4]
+            if cell < 2:
+                # Layer 1: cream Y+W base — 2-in-16 yellow wash.
+                px[x, y] = YELLOW
+            elif cell == 4 and (((x // 4) + (y // 4)) & 1):
+                # Layer 2a: sparse red foxing dot (1-in-32, parity-half).
+                px[x, y] = RED
+            elif cell == 5 and not (((x // 4) + (y // 4)) & 1):
+                # Layer 2b: sparse green foxing dot (1-in-32, opposite parity).
+                px[x, y] = GREEN
+
+
 _TAROT_ROMAN_NUMERALS = {
     1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
     7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII",
@@ -10371,21 +10416,62 @@ def _tarot_paint_doubled_border(
     draw.rectangle((x0 + 5, y0 + 5, x1 - 5, y1 - 5), outline=BLACK)
 
 
-def _tarot_paint_corner_pentagrams(
-    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+def _tarot_paint_corner_numerals(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int], hour_int: int,
 ) -> None:
-    """Five-point red pentagrams just inside the four card corners."""
+    """Small Roman numerals in all four corners (bottom corners rotated 180°).
+
+    Playing-card convention: the rank glyph sits in every corner so the
+    hour reads regardless of orientation. Each numeral is rendered to a
+    small ``L``-mode mask, optionally rotated 180° for the bottom
+    corners, then painted into the card via a black solid fill — works
+    around PIL's lack of native ``draw.text(rotation=...)``.
+    """
+    BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
     x0, y0, x1, y1 = rect
-    inset = 18
-    radius = 9
-    for (cx, cy) in [
-        (x0 + inset, y0 + inset),
-        (x1 - inset, y0 + inset),
-        (x0 + inset, y1 - inset),
-        (x1 - inset, y1 - inset),
-    ]:
-        _tarot_paint_pentagram(draw, cx, cy, radius, RED)
+    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    font = load_font(theme_font_candidates("tarot", "ornament"), size=18)
+    # Render the glyph to a tight mask we can paint+rotate as a unit.
+    glyph_bbox = draw.textbbox((0, 0), numeral, font=font)
+    gw = glyph_bbox[2] - glyph_bbox[0]
+    gh = glyph_bbox[3] - glyph_bbox[1]
+    pad = 2
+    tile_w = gw + 2 * pad
+    tile_h = gh + 2 * pad
+    mask = Image.new("L", (tile_w, tile_h), 0)
+    ImageDraw.Draw(mask).text((pad - glyph_bbox[0], pad - glyph_bbox[1]), numeral, font=font, fill=255)
+
+    inset = 14
+    upright_positions = [
+        (x0 + inset, y0 + inset),               # top-left
+        (x1 - inset - tile_w, y0 + inset),      # top-right
+    ]
+    rotated_positions = [
+        (x0 + inset, y1 - inset - tile_h),      # bottom-left
+        (x1 - inset - tile_w, y1 - inset - tile_h),  # bottom-right
+    ]
+    # Upright corners: paint via the mask directly.
+    for (px_x, px_y) in upright_positions:
+        ink = Image.new("RGB", (tile_w, tile_h), BLACK)
+        image.paste(ink, (px_x, px_y), mask)
+    # Rotated corners: rotate the mask 180° before pasting.
+    rotated_mask = mask.rotate(180)
+    for (px_x, px_y) in rotated_positions:
+        ink = Image.new("RGB", (tile_w, tile_h), BLACK)
+        image.paste(ink, (px_x, px_y), rotated_mask)
+    # Tiny red dot underneath each upright numeral (and above each rotated
+    # one) as a "suit pip" — distinguishes the IH rank glyph from a real
+    # playing card without competing with the central illustration.
+    pip_r = 2
+    for (px_x, px_y) in upright_positions:
+        dot_cx = px_x + tile_w // 2
+        dot_cy = px_y + tile_h + 3
+        draw.ellipse((dot_cx - pip_r, dot_cy - pip_r, dot_cx + pip_r, dot_cy + pip_r), fill=RED)
+    for (px_x, px_y) in rotated_positions:
+        dot_cx = px_x + tile_w // 2
+        dot_cy = px_y - 3
+        draw.ellipse((dot_cx - pip_r, dot_cy - pip_r, dot_cx + pip_r, dot_cy + pip_r), fill=RED)
 
 
 def _tarot_paint_pentagram(
@@ -10600,12 +10686,417 @@ def _tarot_emblem_default(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
         draw.line((x1, y1, x2, y2), fill=BLACK, width=1)
 
 
+def _tarot_emblem_priestess(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """High Priestess (II): two pillars (B / J) flanking a crescent moon.
+
+    Rider-Waite Priestess sits between the Temple of Solomon's pillars
+    Boaz (black, left) and Jachin (white, right); her crown bears a
+    crescent moon, and a smaller moon rests at her feet. The compact
+    silhouette here captures both pillars + the lunar emblem between.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Two pillars, left+right, height ~140.
+    draw.rectangle((cx - 70, cy - 70, cx - 50, cy + 70), outline=BLACK, width=3)
+    draw.rectangle((cx + 50, cy - 70, cx + 70, cy + 70), outline=BLACK, width=3)
+    # Pillar capitals (cap blocks at the top of each).
+    draw.rectangle((cx - 76, cy - 80, cx - 44, cy - 70), fill=BLACK)
+    draw.rectangle((cx + 44, cy - 80, cx + 76, cy - 70), fill=BLACK)
+    # "B" / "J" letters carved on the pillars.
+    pillar_font = load_font(theme_font_candidates("tarot", "ornament"), size=18)
+    for label, anchor_cx in (("B", cx - 60), ("J", cx + 60)):
+        bbox = draw.textbbox((0, 0), label, font=pillar_font)
+        gw = bbox[2] - bbox[0]
+        gh = bbox[3] - bbox[1]
+        draw.text(
+            (anchor_cx - gw // 2 - bbox[0], cy - gh // 2 - bbox[1]),
+            label, font=pillar_font, fill=BLACK,
+        )
+    # Crescent moon between the pillars, near the top — a circle minus
+    # an offset overlay circle is the canonical crescent silhouette.
+    moon_cx, moon_cy, moon_r = cx, cy - 50, 18
+    draw.ellipse((moon_cx - moon_r, moon_cy - moon_r, moon_cx + moon_r, moon_cy + moon_r), fill=BLACK)
+    # Knock out the right portion to create the crescent.
+    knock_cx = moon_cx + 8
+    draw.ellipse((knock_cx - moon_r, moon_cy - moon_r, knock_cx + moon_r, moon_cy + moon_r), fill=SPECTRA6["white"])
+    # Scroll / TORA tablet at the priestess's lap (centred between pillars).
+    scroll_cx, scroll_cy = cx, cy + 8
+    draw.rectangle((scroll_cx - 16, scroll_cy - 12, scroll_cx + 16, scroll_cy + 12), outline=BLACK, width=2)
+    # Three horizontal "text" hairlines on the scroll.
+    for dy in (-5, 0, 5):
+        draw.line((scroll_cx - 12, scroll_cy + dy, scroll_cx + 12, scroll_cy + dy), fill=BLACK, width=1)
+    # Small red lunar dot at her feet — the moon she stands on.
+    draw.ellipse((cx - 6, cy + 60, cx + 6, cy + 72), fill=RED)
+
+
+def _tarot_emblem_empress(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Empress (III): crowned figure on a throne with wheat at her feet.
+
+    Compact silhouette: trapezoidal throne + a 12-star crown arc above
+    the head + a wheat-sheaf fan beneath the throne. The 12 stars are
+    the Empress's iconic ``corona stellarum duodecim`` (12-star crown,
+    Revelation 12 — also the crown of the Virgin Mary).
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Throne (trapezoidal, wider at the base).
+    throne = [
+        (cx - 60, cy + 60),
+        (cx - 40, cy - 20),
+        (cx + 40, cy - 20),
+        (cx + 60, cy + 60),
+    ]
+    draw.polygon(throne, outline=BLACK, width=3)
+    # Head (circle at top of throne back).
+    draw.ellipse((cx - 14, cy - 50, cx + 14, cy - 22), outline=BLACK, width=3)
+    # 12-star crown — arc of small red star dots above the head.
+    crown_r = 30
+    for i in range(12):
+        # Half-circle arc from angle 200° to 340° (~140° sweep above the head).
+        angle = math.radians(200 + i * (140 / 11))
+        sx = cx + crown_r * math.cos(angle)
+        sy = cy - 36 + crown_r * math.sin(angle)
+        draw.ellipse((sx - 2, sy - 2, sx + 2, sy + 2), fill=RED)
+    # Heart-shield with Venus symbol on the empress's chest — simplified
+    # to a small red filled heart silhouette at chest height.
+    draw.polygon([
+        (cx, cy + 12),
+        (cx - 10, cy - 2),
+        (cx - 6, cy - 10),
+        (cx, cy - 4),
+        (cx + 6, cy - 10),
+        (cx + 10, cy - 2),
+    ], fill=RED)
+    # Wheat sheaf fan beneath the throne — short black lines radiating
+    # from a centre point.
+    wheat_cy = cy + 78
+    for i in range(7):
+        angle = math.radians(250 + i * 10)
+        x2 = cx + 26 * math.cos(angle)
+        y2 = wheat_cy + 26 * math.sin(angle)
+        draw.line((cx, wheat_cy, x2, y2), fill=BLACK, width=2)
+        # Wheat-head terminal dot.
+        draw.ellipse((x2 - 2, y2 - 2, x2 + 2, y2 + 2), fill=BLACK)
+
+
+def _tarot_emblem_emperor(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Emperor (IV): stone throne with ram-head finials + ankh scepter.
+
+    Rider-Waite Emperor's throne is carved with four ram heads (Aries,
+    his ruling sign); he holds the ankh (life) in his right hand and
+    an orb (dominion) in his left. The compact silhouette here marks
+    the throne's two upper finials as ram horns and shows the ankh
+    centred over the chest.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Throne (rectangular base + back).
+    draw.rectangle((cx - 56, cy - 30, cx + 56, cy + 80), outline=BLACK, width=3)
+    # Two ram-head finials at the top corners of the throne — spiral
+    # horns rendered as small curved arc clusters.
+    for finial_cx in (cx - 56, cx + 56):
+        # Stylised horn: two concentric arcs forming a spiral.
+        draw.arc((finial_cx - 14, cy - 50, finial_cx + 14, cy - 22), 0, 360, fill=BLACK, width=3)
+        draw.arc((finial_cx - 8, cy - 44, finial_cx + 8, cy - 28), 0, 360, fill=BLACK, width=2)
+    # Crowned head silhouette centred on the throne back.
+    draw.ellipse((cx - 14, cy - 18, cx + 14, cy + 10), outline=BLACK, width=3)
+    # Spiked crown above the head — three triangular points.
+    for tip_x in (cx - 10, cx, cx + 10):
+        draw.polygon([(tip_x - 4, cy - 18), (tip_x, cy - 28), (tip_x + 4, cy - 18)], fill=BLACK)
+    # Ankh scepter held in the right hand — circle on top of a cross.
+    ankh_cx, ankh_cy = cx + 38, cy + 30
+    draw.ellipse((ankh_cx - 6, ankh_cy - 14, ankh_cx + 6, ankh_cy - 2), outline=RED, width=2)
+    draw.line((ankh_cx, ankh_cy - 2, ankh_cx, ankh_cy + 20), fill=RED, width=2)
+    draw.line((ankh_cx - 8, ankh_cy + 6, ankh_cx + 8, ankh_cy + 6), fill=RED, width=2)
+    # Orb in the left hand — small filled red circle.
+    draw.ellipse((cx - 42, cy + 22, cx - 30, cy + 34), fill=RED)
+
+
+def _tarot_emblem_hierophant(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Hierophant (V): triple-tiered papal tiara + crossed keys.
+
+    Rider-Waite Hierophant wears the three-tier ``triregnum`` (papal
+    crown) and holds three crossed keys at his feet. The compact
+    silhouette here shows the stacked-trapezoid crown above the head
+    + crossed-keys below as the two anchoring motifs.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Head silhouette.
+    draw.ellipse((cx - 16, cy - 30, cx + 16, cy + 6), outline=BLACK, width=3)
+    # Triple tiara — three stacked trapezoids of decreasing width.
+    for i, (top_w, bot_w, top_y) in enumerate([
+        (28, 36, cy - 50),  # bottom tier
+        (22, 28, cy - 70),  # middle tier
+        (16, 22, cy - 88),  # top tier
+    ]):
+        bot_y = top_y + 14
+        draw.polygon([
+            (cx - bot_w // 2, bot_y),
+            (cx - top_w // 2, top_y),
+            (cx + top_w // 2, top_y),
+            (cx + bot_w // 2, bot_y),
+        ], fill=BLACK)
+    # Small cross on top of the highest tier.
+    draw.line((cx, cy - 88, cx, cy - 100), fill=BLACK, width=2)
+    draw.line((cx - 4, cy - 96, cx + 4, cy - 96), fill=BLACK, width=2)
+    # Vestment trapezoid below the head (suggests the figure's robe).
+    draw.polygon([
+        (cx - 18, cy + 6),
+        (cx + 18, cy + 6),
+        (cx + 42, cy + 60),
+        (cx - 42, cy + 60),
+    ], outline=BLACK, width=3)
+    # Crossed keys at his feet — two diagonal red lines with bow-handles.
+    draw.line((cx - 30, cy + 90, cx + 30, cy + 60), fill=RED, width=3)
+    draw.line((cx + 30, cy + 90, cx - 30, cy + 60), fill=RED, width=3)
+    # Bow handles at the upper ends.
+    draw.ellipse((cx + 24, cy + 54, cx + 38, cy + 68), outline=RED, width=2)
+    draw.ellipse((cx - 38, cy + 54, cx - 24, cy + 68), outline=RED, width=2)
+
+
+def _tarot_emblem_lovers(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Lovers (VI): two intertwined hearts beneath a hovering cherub.
+
+    Rider-Waite Lovers shows a man + woman beneath the angel Raphael
+    against a backdrop of the Tree of Knowledge (right) and Tree of
+    Life (left). The compact silhouette here distils that to the two
+    intertwined hearts (union) under a small winged-figure (the angel)
+    flanked by two stylised tree silhouettes.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Sun behind the angel — a small filled red disc.
+    draw.ellipse((cx - 14, cy - 90, cx + 14, cy - 62), fill=RED)
+    # Sun rays — 8 short red radials.
+    for i in range(8):
+        angle = i * math.pi / 4
+        x1 = cx + 18 * math.cos(angle)
+        y1 = cy - 76 + 18 * math.sin(angle)
+        x2 = cx + 26 * math.cos(angle)
+        y2 = cy - 76 + 26 * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=RED, width=2)
+    # Angel silhouette — small head + spread wings beneath the sun.
+    draw.ellipse((cx - 8, cy - 52, cx + 8, cy - 36), outline=BLACK, width=2)
+    # Wings: two stylised arcs sweeping outward.
+    draw.arc((cx - 36, cy - 50, cx, cy - 30), 270, 90, fill=BLACK, width=3)
+    draw.arc((cx, cy - 50, cx + 36, cy - 30), 90, 270, fill=BLACK, width=3)
+    # Two intertwined hearts at the centre — overlapping heart silhouettes,
+    # left red-outline and right black-outline so they read as a couple.
+    def heart(draw_, cx_, cy_, scale, fill_, outline_):
+        # Polygon approximation of a heart shape.
+        pts = []
+        for t in range(0, 360, 6):
+            theta = math.radians(t)
+            r = scale * (1 - math.sin(theta))
+            x = cx_ + r * math.cos(theta) * 1.0
+            y = cy_ + r * math.sin(theta) * 0.9 - scale * 0.4
+            pts.append((x, y))
+        if fill_:
+            draw_.polygon(pts, fill=fill_)
+        if outline_:
+            for i in range(len(pts)):
+                draw_.line((pts[i], pts[(i + 1) % len(pts)]), fill=outline_, width=2)
+    heart(draw, cx - 14, cy + 16, 22, RED, None)
+    heart(draw, cx + 14, cy + 16, 22, None, BLACK)
+    # Two stylised tree silhouettes flanking the hearts.
+    for tree_cx in (cx - 60, cx + 60):
+        # Trunk.
+        draw.line((tree_cx, cy + 70, tree_cx, cy + 30), fill=BLACK, width=3)
+        # Canopy — small filled black circle.
+        draw.ellipse((tree_cx - 14, cy + 14, tree_cx + 14, cy + 36), outline=BLACK, width=2)
+
+
+def _tarot_emblem_chariot(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Chariot (VII): canopied chariot box on two wheels.
+
+    Rider-Waite Chariot shows the charioteer in a starry blue canopy
+    drawn by a pair of sphinxes (black + white). The compact silhouette
+    here distils that to the chariot box (rectangular cab + canopy with
+    four star-spotted columns) on two wheels.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Two wheels at the base.
+    for wheel_cx in (cx - 50, cx + 50):
+        draw.ellipse((wheel_cx - 18, cy + 50, wheel_cx + 18, cy + 86), outline=BLACK, width=3)
+        # 4-spoke wheel.
+        draw.line((wheel_cx, cy + 50, wheel_cx, cy + 86), fill=BLACK, width=2)
+        draw.line((wheel_cx - 18, cy + 68, wheel_cx + 18, cy + 68), fill=BLACK, width=2)
+        # Red hub.
+        draw.ellipse((wheel_cx - 4, cy + 64, wheel_cx + 4, cy + 72), fill=RED)
+    # Chariot box (cab) — solid rectangle resting on the wheel axles.
+    draw.rectangle((cx - 56, cy + 10, cx + 56, cy + 56), outline=BLACK, width=3)
+    # Starry canopy above — four columns and a roof.
+    # Roof.
+    draw.line((cx - 60, cy - 30, cx + 60, cy - 30), fill=BLACK, width=3)
+    # Four columns dropping from the roof to the box top.
+    for col_x in (cx - 50, cx - 18, cx + 18, cx + 50):
+        draw.line((col_x, cy - 30, col_x, cy + 10), fill=BLACK, width=2)
+    # Red star centred above the canopy peak.
+    _tarot_paint_pentagram(draw, cx, cy - 50, 12, RED)
+    # Charioteer's head peeking above the cab.
+    draw.ellipse((cx - 10, cy - 8, cx + 10, cy + 12), outline=BLACK, width=2)
+    # Crown points on the head.
+    for tip_x in (cx - 6, cx, cx + 6):
+        draw.polygon([(tip_x - 3, cy - 8), (tip_x, cy - 14), (tip_x + 3, cy - 8)], fill=BLACK)
+
+
+def _tarot_emblem_strength(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Strength (VIII): lion's head crowned by an infinity lemniscate.
+
+    Rider-Waite Strength shows a woman gently closing a lion's jaws,
+    with the infinity symbol hovering above her head. The compact
+    silhouette here distils that to the lion's head with a flowing
+    mane (the iconic "she-and-the-beast" pairing) and the lemniscate
+    floating above as the symbol of eternal will.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Infinity lemniscate at the top — two overlapping circles.
+    draw.arc((cx - 44, cy - 100, cx, cy - 70), 0, 360, fill=BLACK, width=3)
+    draw.arc((cx, cy - 100, cx + 44, cy - 70), 0, 360, fill=BLACK, width=3)
+    # Lion's mane — many short black lines radiating outward from the head.
+    head_cx, head_cy, head_r = cx, cy + 10, 36
+    for i in range(28):
+        angle = 2 * math.pi * i / 28
+        # Vary the mane length slightly so it looks furry.
+        r_out = head_r + (14 if i % 2 == 0 else 22)
+        x1 = head_cx + head_r * math.cos(angle)
+        y1 = head_cy + head_r * math.sin(angle)
+        x2 = head_cx + r_out * math.cos(angle)
+        y2 = head_cy + r_out * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=2)
+    # Lion's face — filled black circle with red eye dots and a stylised mouth.
+    draw.ellipse((head_cx - head_r, head_cy - head_r, head_cx + head_r, head_cy + head_r), fill=BLACK)
+    # Eyes.
+    draw.ellipse((head_cx - 14, head_cy - 8, head_cx - 6, head_cy), fill=RED)
+    draw.ellipse((head_cx + 6, head_cy - 8, head_cx + 14, head_cy), fill=RED)
+    # Mouth — small red curve.
+    draw.arc((head_cx - 10, head_cy + 4, head_cx + 10, head_cy + 20), 0, 180, fill=RED, width=2)
+    # Two small fang triangles in the mouth.
+    draw.polygon([(head_cx - 4, head_cy + 14), (head_cx - 2, head_cy + 20), (head_cx, head_cy + 14)], fill=SPECTRA6["white"])
+    draw.polygon([(head_cx, head_cy + 14), (head_cx + 2, head_cy + 20), (head_cx + 4, head_cy + 14)], fill=SPECTRA6["white"])
+
+
+def _tarot_emblem_justice(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Justice (XI): crowned figure with raised sword + balanced scales.
+
+    Rider-Waite Justice sits between two pillars, sword raised in her
+    right hand, scales held aloft in her left. The compact silhouette
+    here distils that to the vertical sword + horizontal scale-beam
+    + two hanging pans, with a small crown above as the figure's
+    silhouette anchor.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Crown silhouette at the top (three-spike crown).
+    for tip_x in (cx - 14, cx, cx + 14):
+        draw.polygon([(tip_x - 5, cy - 70), (tip_x, cy - 90), (tip_x + 5, cy - 70)], fill=BLACK)
+    # Crown base.
+    draw.rectangle((cx - 20, cy - 70, cx + 20, cy - 60), fill=BLACK)
+    # Vertical sword — long blade pointing up, crossguard near the base.
+    draw.line((cx, cy - 60, cx, cy + 40), fill=BLACK, width=4)
+    # Crossguard (horizontal bar near top).
+    draw.line((cx - 16, cy - 50, cx + 16, cy - 50), fill=BLACK, width=3)
+    # Pommel (red circle below crossguard).
+    draw.ellipse((cx - 5, cy + 40, cx + 5, cy + 50), fill=RED)
+    # Scales — horizontal beam across the figure's chest.
+    beam_y = cy + 12
+    draw.line((cx - 60, beam_y, cx + 60, beam_y), fill=BLACK, width=2)
+    # Chains hanging from each end of the beam down to the pan.
+    for pan_cx in (cx - 50, cx + 50):
+        draw.line((pan_cx, beam_y, pan_cx, beam_y + 20), fill=BLACK, width=2)
+        # Pan: shallow trapezoid.
+        draw.polygon([
+            (pan_cx - 14, beam_y + 20),
+            (pan_cx + 14, beam_y + 20),
+            (pan_cx + 10, beam_y + 30),
+            (pan_cx - 10, beam_y + 30),
+        ], fill=BLACK)
+    # Central pivot point on the beam — small red diamond.
+    draw.polygon([
+        (cx, beam_y - 4),
+        (cx + 4, beam_y),
+        (cx, beam_y + 4),
+        (cx - 4, beam_y),
+    ], fill=RED)
+
+
+def _tarot_emblem_world(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """World (XII): dancing figure within a laurel wreath, four corner creatures.
+
+    Rider-Waite World shows the cosmic dancer inside an oval laurel
+    wreath, with the four creatures of Ezekiel (bull, lion, eagle,
+    angel) at each corner — the same four creatures that anchor the
+    Wheel of Fortune. The compact silhouette here distils that to the
+    wreath silhouette + a centred dancing figure + four small creature
+    glyphs at the corners.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Laurel wreath — oval of small leaf shapes around a central oval.
+    wreath_a, wreath_b = 60, 80  # semi-major / semi-minor axes
+    n_leaves = 24
+    for i in range(n_leaves):
+        angle = 2 * math.pi * i / n_leaves
+        ox = cx + wreath_a * math.cos(angle)
+        oy = cy + wreath_b * math.sin(angle)
+        # Leaf: small ellipse oriented tangent to the wreath.
+        leaf_a, leaf_b = 8, 4
+        # Polygon-approximated rotated ellipse (PIL has no rotate-ellipse).
+        leaf_pts = []
+        for j in range(8):
+            la = 2 * math.pi * j / 8
+            lx = leaf_a * math.cos(la)
+            ly = leaf_b * math.sin(la)
+            # Rotate by the wreath-tangent angle (perpendicular to radial).
+            tangent = angle + math.pi / 2
+            rx = lx * math.cos(tangent) - ly * math.sin(tangent)
+            ry = lx * math.sin(tangent) + ly * math.cos(tangent)
+            leaf_pts.append((ox + rx, oy + ry))
+        draw.polygon(leaf_pts, fill=BLACK)
+    # Dancing figure inside the wreath — stick figure with bent legs.
+    # Head.
+    draw.ellipse((cx - 8, cy - 36, cx + 8, cy - 20), fill=BLACK)
+    # Torso.
+    draw.line((cx, cy - 20, cx, cy + 10), fill=BLACK, width=4)
+    # Arms (one raised, one out).
+    draw.line((cx, cy - 12, cx - 20, cy - 26), fill=BLACK, width=3)
+    draw.line((cx, cy - 12, cx + 20, cy + 6), fill=BLACK, width=3)
+    # Legs (one straight, one bent — dancing pose).
+    draw.line((cx, cy + 10, cx - 14, cy + 40), fill=BLACK, width=3)
+    draw.line((cx, cy + 10, cx + 14, cy + 30), fill=BLACK, width=3)
+    draw.line((cx + 14, cy + 30, cx + 6, cy + 44), fill=BLACK, width=3)
+    # Wreath ribbons — two red bow-knots at top and bottom where the wreath ties.
+    draw.ellipse((cx - 6, cy - 86, cx + 6, cy - 74), fill=RED)
+    draw.ellipse((cx - 6, cy + 74, cx + 6, cy + 86), fill=RED)
+    # Four corner creatures — tiny red filled triangles + black "creature" glyph.
+    # Top-left bull, top-right eagle, bottom-left lion, bottom-right angel.
+    creature_r = 6
+    for (corner_cx, corner_cy, glyph) in [
+        (cx - 90, cy - 80, "♉"),  # bull → fall back to plain triangle if missing
+        (cx + 90, cy - 80, "♅"),  # eagle
+        (cx - 90, cy + 80, "♌"),  # lion
+        (cx + 90, cy + 80, "♍"),  # angel
+    ]:
+        # Small red star to anchor the corner.
+        _tarot_paint_pentagram(draw, corner_cx, corner_cy, creature_r, RED)
+
+
 _TAROT_EMBLEMS = {
     1: _tarot_emblem_magician,
+    2: _tarot_emblem_priestess,
+    3: _tarot_emblem_empress,
+    4: _tarot_emblem_emperor,
+    5: _tarot_emblem_hierophant,
+    6: _tarot_emblem_lovers,
+    7: _tarot_emblem_chariot,
+    8: _tarot_emblem_strength,
     9: _tarot_emblem_hermit,
     10: _tarot_emblem_wheel,
-    # 2-8, 11, 12 fall through to the generic pentagram default below.
-    # Adding more is a one-line registry insert once their helpers exist.
+    11: _tarot_emblem_justice,
+    12: _tarot_emblem_world,
 }
 
 
@@ -10722,7 +11213,7 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     title attribution.
     """
     image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
-    _astrarium_paint_cream_wash(image)
+    _tarot_paint_vellum(image)
     draw = ImageDraw.Draw(image)
 
     # Card rect: centred 520 × 440. Width 800 → x∈[140, 660]; height 480 → y∈[20, 460].
@@ -10734,7 +11225,6 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     y1 = y0 + card_h
     card_rect = (x0, y0, x1, y1)
     _tarot_paint_doubled_border(image, draw, card_rect)
-    _tarot_paint_corner_pentagrams(image, draw, card_rect)
 
     # Hour numeral.
     try:
@@ -10742,6 +11232,9 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     except (ValueError, AttributeError):
         hour24 = 0
     hour_int = hour24 % 12 or 12
+    # Playing-card-style numerals in all four corners (bottom corners
+    # rotated 180° for the playing-card orientation convention).
+    _tarot_paint_corner_numerals(image, draw, card_rect, hour_int)
     _tarot_paint_roman_numeral(image, draw, hour_int, cx, y0 + 16)
 
     # Card name (matched phrase).
