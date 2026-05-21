@@ -893,13 +893,17 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
-    # Turntable + record label. Custom-render theme — render() dispatches
-    # to render_vinyl_frame, which paints a black vinyl disk (left half)
-    # with a red label at its centre carrying the matched phrase + catalog
-    # number + "IDLE HOURS / VOLUME I" stamp, a red stylus arm whose angle
-    # tracks the current minute (sweeping clockwise from 12-o'-clock-top),
-    # and a cream-stippled "album sleeve" (right half) with the quote body
-    # rendered in Cormorant + a tangerine R+Y matched-phrase substitution.
+    # Turntable + literary-audiobook LP back-cover. Custom-render
+    # theme — render() dispatches to render_vinyl_frame, which paints
+    # a 1950s/60s spoken-word LP (Caedmon Records / Spoken Arts
+    # register) with the literary quote rendered as the "reading
+    # passage" on the jacket back. Visually identical to a music LP
+    # (turntable, dense grooves, pivoted tonearm, label, sleeve);
+    # the chrome text (SPOKEN WORD format mark on the label,
+    # "— READING —" heading on the sleeve, READ ALOUD label
+    # subtitle, IDLE HOURS LITERARY RECORDINGS catalog bar) anchors
+    # the audiobook framing so the vinyl visual fits the literary
+    # corpus rather than mismatching it.
     "vinyl": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -11276,26 +11280,34 @@ def _vinyl_paint_label(
     matched_text: str,
     bucket: str,
 ) -> None:
-    """White-on-red label with STEREO + matched-phrase + brand + side + year.
+    """White-on-red label for a literary-audiobook LP.
 
-    Authentic LP-label composition top to bottom:
+    Visually identical to a 1950s/60s music-LP label, but the chrome
+    text is reframed for the audiobook-recording register that real
+    spoken-word labels — Caedmon Records, Spoken Arts, Listening
+    Library — used to press literary readings to vinyl. The disk and
+    sleeve are mechanically identical to a music LP; only the
+    typographic chrome distinguishes the format.
 
-    * Outer black ring border (3 px inset from the label edge) — every
-      LP-jacket label has this anchoring rule, separating the printed
+    Composition top to bottom:
+
+    * Outer black ring border (3 px inset from the label edge) — the
+      anchoring rule every LP-jacket label has, separating the printed
       label area from the dead-wax beyond.
-    * "STEREO" mark in small white caps along the top of the label
-      arc — the canonical mid-century LP convention indicating the
-      pressing's mix format.
+    * "SPOKEN WORD" mark in small white caps along the top of the
+      label arc — the spoken-word equivalent of the music-LP "STEREO"
+      mark, declaring the format-of-pressing.
     * Matched-phrase snippet (truncated to 18 chars + ellipsis) as
-      the "track title", in Cormorant Bold.
+      the "passage title", in Cormorant Bold.
     * Thin white hairline divider.
     * "IDLE HOURS" brand name in Cormorant Bold 14pt.
-    * "VOLUME I" sub-title.
+    * "READ ALOUD" sub-title — the audiobook-LP equivalent of a music
+      LP's volume number, anchoring the format.
     * Catalog number in Space Mono Bold ("IH-H11-15" etc).
     * Current calendar year at the bottom of the label arc, small.
 
     A real LP label has dozens of typographic elements; this stack
-    picks the four or five most iconic ones (STEREO mark, brand,
+    picks the four or five most iconic ones (format mark, brand,
     catalog, year) and keeps everything else off so the label still
     reads at the 80-px-radius scale.
     """
@@ -11309,12 +11321,13 @@ def _vinyl_paint_label(
     # Outer black ring border — 2 px thick, inset 4 px from the label edge.
     ring_r = r_label - 4
     draw.ellipse((cx - ring_r, cy - ring_r, cx + ring_r, cy + ring_r), outline=BLACK, width=2)
-    # STEREO mark at the top of the label arc.
-    stereo_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
-    stereo_text = "· STEREO ·"
-    bbox = draw.textbbox((0, 0), stereo_text, font=stereo_font)
+    # SPOKEN WORD mark at the top of the label arc — the audiobook-
+    # label equivalent of a music LP's STEREO format mark.
+    format_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
+    format_text = "· SPOKEN WORD ·"
+    bbox = draw.textbbox((0, 0), format_text, font=format_font)
     w = bbox[2] - bbox[0]
-    draw.text((cx - w // 2 - bbox[0], cy - 60 - bbox[1]), stereo_text, font=stereo_font, fill=WHITE)
+    draw.text((cx - w // 2 - bbox[0], cy - 60 - bbox[1]), format_text, font=format_font, fill=WHITE)
     # Matched phrase (truncated) — the "track title".
     matched_font = load_font(theme_font_candidates("vinyl", "quote_bold"), size=11)
     snippet = (matched_text or "").strip()
@@ -11332,12 +11345,13 @@ def _vinyl_paint_label(
     bbox = draw.textbbox((0, 0), title_text, font=title_font)
     w = bbox[2] - bbox[0]
     draw.text((cx - w // 2 - bbox[0], cy - 18 - bbox[1]), title_text, font=title_font, fill=WHITE)
-    # VOLUME I.
-    vol_font = load_font(theme_font_candidates("vinyl", "quote_regular"), size=11)
-    vol_text = "VOLUME I"
-    bbox = draw.textbbox((0, 0), vol_text, font=vol_font)
+    # READ ALOUD subtitle — the audiobook-LP equivalent of a music
+    # LP's "VOLUME I" / "SIDE A" anchoring line.
+    sub_font = load_font(theme_font_candidates("vinyl", "quote_regular"), size=11)
+    sub_text = "READ ALOUD"
+    bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
     w = bbox[2] - bbox[0]
-    draw.text((cx - w // 2 - bbox[0], cy + 8 - bbox[1]), vol_text, font=vol_font, fill=WHITE)
+    draw.text((cx - w // 2 - bbox[0], cy + 8 - bbox[1]), sub_text, font=sub_font, fill=WHITE)
     # Catalog number (mono).
     cat_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=9)
     cat_text = _vinyl_catalog_number(bucket)
@@ -11486,16 +11500,17 @@ def _vinyl_paint_track_heading(
     x_left: int,
     y_top: int,
 ) -> None:
-    """Small red "TRACK ONE" heading above the quote body.
+    """Small red "READING" heading above the quote body.
 
-    Reads as a liner-notes section marker — the kind of label that
-    introduces the song's lyrics on the back of an LP sleeve. The
-    chunky Bungee-Shade-adjacent register would be too loud here;
-    Antonio Bold small caps reads as functional liner-note chrome.
+    The audiobook-LP equivalent of a music LP's "TRACK ONE" liner-
+    note section marker — Caedmon Records sleeves used "READING",
+    "PASSAGE", or "EXCERPT" to introduce each spoken-word selection
+    on the jacket back. Antonio Bold small caps reads as functional
+    liner-note chrome at this size.
     """
     RED = SPECTRA6["red"]
     font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=13)
-    text = "—  TRACK ONE  —"
+    text = "—  READING  —"
     draw.text((x_left, y_top), text, font=font, fill=RED)
 
 
@@ -11520,7 +11535,7 @@ def _vinyl_paint_catalog_bar(
     font = load_font([CARDO_ITALIC, *META_FONT_CANDIDATES], size=11)
     year = datetime.date.today().year
     cat = _vinyl_catalog_number(bucket)
-    left_text = "IDLE HOURS RECORDS"
+    left_text = "IDLE HOURS LITERARY RECORDINGS"
     right_text = f"CAT NO. {cat}  ·  © {year}"
     draw.text((x_left, y_top), left_text, font=font, fill=BLACK)
     bbox = draw.textbbox((0, 0), right_text, font=font)
@@ -11636,7 +11651,15 @@ def _vinyl_catalog_number(bucket: str) -> str:
 
 
 def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Turntable + record-jacket back-cover.
+    """Turntable + literary-audiobook LP back-cover.
+
+    Same chassis a music LP would have, with the chrome text reframed
+    for the spoken-word / literary-audiobook register that real labels
+    like Caedmon Records and Spoken Arts pressed in the 1950s and 60s
+    — those discs carried Dylan Thomas, T. S. Eliot, Auden et al.
+    reading their own work, looked mechanically identical to music
+    LPs (33 RPM, grooved, jacketed, library-distributed), and are the
+    historical bridge between a vinyl visual and a literary corpus.
 
     Left half: a black vinyl LP (radius 200, centred at (200, 240))
     with densely-packed concentric grooves, a heavier lead-in groove
@@ -11644,15 +11667,15 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     a pivoted black tonearm whose cartridge headshell contacts the
     disk at the current-minute rim position (pivot at the upper-right
     of the turntable, counterweight at the back). The red label
-    carries an outer black ring border + STEREO mark, matched-phrase
-    track title, IDLE HOURS / VOLUME I brand stack, Space Mono catalog
-    number, and a © year stamp.
+    carries an outer black ring border + SPOKEN WORD format mark, the
+    matched-phrase passage title, IDLE HOURS / READ ALOUD brand
+    stack, Space Mono catalog number, and a © year stamp.
 
     Right half: cream-washed "back-of-jacket" liner-notes panel with
-    a small red TRACK ONE heading, the literary quote in Cormorant
+    a small red "— READING —" heading, the literary quote in Cormorant
     Garamond + tangerine matched-phrase substitution, a bottom catalog
-    bar (IDLE HOURS RECORDS · CAT NO. · © year) and the author/title
-    attribution. Includes the 33 RPM badge in the top-right.
+    bar (IDLE HOURS LITERARY RECORDINGS · CAT NO. · © year) and the
+    author/title attribution. Includes the 33 RPM badge in the top-right.
     """
     image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
     # Sleeve cream wash full-canvas — the disk will overpaint the left half.
