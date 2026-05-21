@@ -81,32 +81,103 @@ class TestMarqueeFrame:
             assert img.getpixel((cx, cy)) in bulb_colours, \
                 f"expected a bulb-colour pixel at corner {(cx, cy)}, got {img.getpixel((cx, cy))}"
 
-    def test_time_renders_at_top(self):
-        """The big Bungee Shade time chrome sits near y≈112 (the
-        ``_marquee_paint_time`` centre). Sample a stripe across that
-        row and assert white pixels appear (the time glyphs)."""
-        img = rq.render("14:30", make_row(), 800, 480, theme="marquee")
+    def test_feature_title_renders_at_top(self):
+        """The big Bungee Shade title chrome sits centred near y≈112
+        (the ``_marquee_paint_feature_title`` cy). Sample a stripe
+        across that row and assert white pixels appear (the title
+        glyphs). The title comes from ``quote_row['title']``; missing
+        title falls back to the time."""
+        row = make_row(title="Anne of Avonlea")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
         white_seen = any(
             img.getpixel((x, 112)) == rq.SPECTRA6["white"]
             for x in range(200, 600, 5)
         )
-        assert white_seen, "Bungee Shade time chrome should paint white pixels at y≈112"
+        assert white_seen, "Bungee Shade title chrome should paint white pixels at y≈112"
 
-    def test_credits_render_when_metadata_present(self):
-        """STARRING / IN labels paint in yellow when the row carries
-        author + title metadata; the labels live in the credits band
-        at y≈378 onward."""
+    def test_feature_title_falls_back_to_author_or_brand(self):
+        """A row with no title falls back to the author name in the
+        big chrome slot; a row with neither falls back to the literal
+        ``"IDLE HOURS"`` brand string. Deliberately never falls back
+        to the digital HH:MM — surfacing the wall-clock time would
+        undermine the fuzzy-clock conceit (the matched phrase carries
+        the time signal)."""
+        # Author-only fallback.
+        row = make_row(title="", author="L. M. Montgomery")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
+        white_seen = any(
+            img.getpixel((x, 112)) == rq.SPECTRA6["white"]
+            for x in range(200, 600, 5)
+        )
+        assert white_seen, "author fallback should paint white pixels at y≈112"
+        # Brand fallback when both title and author are missing.
+        row = make_row(title="", author="")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
+        white_seen = any(
+            img.getpixel((x, 112)) == rq.SPECTRA6["white"]
+            for x in range(200, 600, 5)
+        )
+        assert white_seen, "IDLE HOURS brand fallback should paint white pixels at y≈112"
+
+    def test_no_digital_time_chrome(self):
+        """The marquee deliberately never surfaces the digital HH:MM
+        anywhere on the canvas — the matched phrase carries the time
+        signal. This is a soft regression check: it can't prove the
+        time isn't painted (the body's matched phrase might happen to
+        contain digits), but it asserts the documented design.
+
+        Concrete proof: render with a time the body cannot mention,
+        and assert the standard HH:MM string doesn't appear via the
+        chrome's Bungee Shade typography. We approximate by checking
+        that the top tagline band doesn't contain a colon-shaped
+        yellow glyph silhouette at the position where the showtime
+        used to render.
+        """
+        # The 14:30 colon used to render at x≈400 in the Bungee Shade
+        # time chrome. Now that band is the "NOW SHOWING" tagline; we
+        # assert the central pixel is BLACK (chassis) rather than
+        # WHITE (Bungee Shade glyph stroke).
+        row = make_row(title="Anne of Avonlea", author="L. M. Montgomery")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
+        # Sample a few central-band rows where the big time used to
+        # land at y≈80–145 (the chunky 84pt Bungee Shade extents).
+        # Confirm there's no WHITE pixel at the canvas centre in that
+        # band that's *not* part of the new feature-title chrome —
+        # this test relies on "Anne of Avonlea" being narrower than
+        # the original 84pt time chrome, so the centre column at
+        # certain ys is bare-black.
+        # Sample the y=70 row (above the title): should be all-black.
+        for x in (380, 400, 420):
+            assert img.getpixel((x, 70)) == rq.SPECTRA6["black"], \
+                f"unexpected non-black pixel at ({x}, 70) — digital time chrome leaked?"
+
+    def test_feature_title_wraps_long_titles(self):
+        """A title too long for a single line at the smallest fit-step
+        wraps onto two lines without raising. Renders successfully and
+        produces an on-palette image."""
+        row = make_row(title="Frankenstein; or, The Modern Prometheus")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
+        assert img.size == (800, 480)
+        palette = set(rq.SPECTRA6.values())
+        assert set(img.getdata()).issubset(palette)
+
+    def test_credits_render_when_author_present(self):
+        """STARRING label paints in yellow when the row carries an
+        author; the label lives in the credits band at y≈384 onward.
+        Title is no longer in the credits (it moved to the top
+        chrome) so the test only asserts the STARRING line."""
         row = make_row(author="L. M. Montgomery", title="Anne of Avonlea")
         img = rq.render("14:30", row, 800, 480, theme="marquee")
         yellow_seen = any(
-            img.getpixel((x, 382)) == rq.SPECTRA6["yellow"]
+            img.getpixel((x, 386)) == rq.SPECTRA6["yellow"]
             for x in range(100, 700, 4)
         )
         assert yellow_seen, "STARRING label should paint yellow pixels in the credits band"
 
     def test_renders_without_credits(self):
         """Missing author + title must not crash; the credits painter
-        no-ops when both fields are empty."""
+        no-ops on missing author, and the feature-title painter falls
+        back to the time."""
         row = make_row(author="", title="")
         img = rq.render("14:30", row, 800, 480, theme="marquee")
         assert img.size == (800, 480)

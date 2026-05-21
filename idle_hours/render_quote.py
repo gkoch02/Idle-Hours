@@ -9971,25 +9971,97 @@ def _marquee_paint_label_band(
     draw.text((cx - tw // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=colour)
 
 
-def _marquee_paint_time(
+def _marquee_paint_feature_title(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
     width: int,
-    time_str: str,
+    quote_row: dict,
     cy: int,
 ) -> None:
-    """Big white Bungee Shade ``HH:MM`` — the marquee "feature title".
+    """Big chunky white Bungee Shade book-title chrome — the marquee
+    "feature title".
 
-    Centred horizontally and vertically on ``cy``. Bungee Shade's 3D-
-    blocked silhouette reads as physical relief letters mounted on the
-    marquee canopy.
+    Centred horizontally on ``width`` and vertically on ``cy``. Bungee
+    Shade's 3D-blocked silhouette reads as physical relief letters
+    mounted on the marquee canopy. Title is uppercased (the canonical
+    marquee convention) and shrunk to fit width — starts at 72pt and
+    steps down in 4pt increments through 32pt. If it still overflows
+    the available width at 32pt, the title is wrapped onto two lines
+    at the nearest space-character to the midpoint, and a fresh
+    size-fit sweep finds a size where both lines fit.
+
+    Fallback chain when ``quote_row['title']`` is missing: author
+    (uppercased) → the literal brand string ``"IDLE HOURS"``. The
+    fallback deliberately never surfaces the wall-clock HH:MM —
+    showing the digital time would defeat the whole point of a
+    quote-based fuzzy clock (the matched-phrase IS the time signal).
     """
     WHITE = SPECTRA6["white"]
-    font = load_font(theme_font_candidates("marquee", "ornament"), size=84)
-    bbox = draw.textbbox((0, 0), time_str, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    draw.text((width // 2 - tw // 2 - bbox[0], cy - th // 2 - bbox[1]), time_str, font=font, fill=WHITE)
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    author = (quote_row.get("author") or "").strip()
+    text = title.upper() or author.upper() or "IDLE HOURS"
+    if not text:
+        return
+    max_text_width = width - 100  # 50 px inset each side
+
+    # Try single-line fit first, biggest size down.
+    chain = theme_font_candidates("marquee", "ornament")
+    for size in (72, 64, 56, 50, 44, 38, 32):
+        font = load_font(chain, size=size)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        if tw <= max_text_width:
+            th = bbox[3] - bbox[1]
+            draw.text(
+                (width // 2 - tw // 2 - bbox[0], cy - th // 2 - bbox[1]),
+                text, font=font, fill=WHITE,
+            )
+            return
+
+    # Wrap to two lines at the space nearest the midpoint.
+    mid = len(text) // 2
+    left_break = text.rfind(" ", 0, mid + 4)
+    right_break = text.find(" ", mid)
+    candidates = [b for b in (left_break, right_break) if b > 0]
+    if not candidates:
+        # No space at all — render at smallest size, will overflow but
+        # nothing better to do.
+        font = load_font(chain, size=28)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        draw.text(
+            (width // 2 - tw // 2 - bbox[0], cy - th // 2 - bbox[1]),
+            text, font=font, fill=WHITE,
+        )
+        return
+    split_at = min(candidates, key=lambda b: abs(b - mid))
+    line1, line2 = text[:split_at].strip(), text[split_at + 1:].strip()
+
+    for size in (54, 48, 42, 36, 32, 28, 24):
+        font = load_font(chain, size=size)
+        bbox1 = draw.textbbox((0, 0), line1, font=font)
+        bbox2 = draw.textbbox((0, 0), line2, font=font)
+        tw1 = bbox1[2] - bbox1[0]
+        tw2 = bbox2[2] - bbox2[0]
+        if tw1 <= max_text_width and tw2 <= max_text_width:
+            break
+
+    th = bbox1[3] - bbox1[1]
+    line_gap = 10
+    block_h = th * 2 + line_gap
+    top_y = cy - block_h // 2
+    # Line 1.
+    draw.text(
+        (width // 2 - (bbox1[2] - bbox1[0]) // 2 - bbox1[0], top_y - bbox1[1]),
+        line1, font=font, fill=WHITE,
+    )
+    # Line 2.
+    draw.text(
+        (width // 2 - (bbox2[2] - bbox2[0]) // 2 - bbox2[0],
+         top_y + th + line_gap - bbox2[1]),
+        line2, font=font, fill=WHITE,
+    )
 
 
 def _marquee_paint_divider(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, cy: int) -> None:
@@ -10076,58 +10148,36 @@ def _marquee_paint_credits(
     width: int,
     y_top: int,
 ) -> None:
-    """STARRING [AUTHOR] / IN [TITLE] credit chrome.
+    """STARRING [AUTHOR] credit chrome.
 
-    Yellow chrome labels (STARRING, IN) in small Bungee Shade; white
-    name + title in Cardo Italic. Centred on the canvas. The credit
-    chrome convention is the canonical "above-the-title" marquee
-    layout from real movie posters.
+    Yellow Antonio Bold "STARRING" label + white Cardo Italic author
+    name. Centred on the canvas. The book title used to appear on a
+    second "IN [TITLE]" credit line here, but the title is now the
+    big Bungee Shade feature-title chrome at the top of the marquee,
+    so the credits simplify to the author alone — the canonical
+    "above-the-title star credit" convention from real movie posters.
     """
     YELLOW = SPECTRA6["yellow"]
     WHITE = SPECTRA6["white"]
     author = (quote_row.get("author") or "").strip()
-    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
-    if not author and not title:
+    if not author:
         return
     cx = width // 2
-    # STARRING / IN labels use Antonio Bold (same legibility argument as
-    # _marquee_paint_label_band) so the chrome reads cleanly at 13pt.
-    label_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=13)
-    name_font = load_font(theme_font_candidates("marquee", "quote_regular"), size=18)
-    y = y_top
-    # STARRING [AUTHOR] line.
-    if author:
-        label = "STARRING"
-        label_bbox = draw.textbbox((0, 0), label, font=label_font)
-        label_w = label_bbox[2] - label_bbox[0]
-        name_bbox = draw.textbbox((0, 0), author, font=name_font)
-        name_w = name_bbox[2] - name_bbox[0]
-        gap = 12
-        total_w = label_w + gap + name_w
-        line_x = cx - total_w // 2
-        draw.text((line_x - label_bbox[0], y - label_bbox[1]), label, font=label_font, fill=YELLOW)
-        draw.text((line_x + label_w + gap - name_bbox[0], y - name_bbox[1] - 2), author, font=name_font, fill=WHITE)
-        y += 26
-    # IN [TITLE] line.
-    if title:
-        label = "IN"
-        label_bbox = draw.textbbox((0, 0), label, font=label_font)
-        label_w = label_bbox[2] - label_bbox[0]
-        name_bbox = draw.textbbox((0, 0), title, font=name_font)
-        name_w = name_bbox[2] - name_bbox[0]
-        gap = 12
-        total_w = label_w + gap + name_w
-        # Truncate title if too wide for the inner content area.
-        max_total_w = width - 80
-        truncated = title
-        while total_w > max_total_w and len(truncated) > 8:
-            truncated = truncated[:-2] + "…"
-            name_bbox = draw.textbbox((0, 0), truncated, font=name_font)
-            name_w = name_bbox[2] - name_bbox[0]
-            total_w = label_w + gap + name_w
-        line_x = cx - total_w // 2
-        draw.text((line_x - label_bbox[0], y - label_bbox[1]), label, font=label_font, fill=YELLOW)
-        draw.text((line_x + label_w + gap - name_bbox[0], y - name_bbox[1] - 2), truncated, font=name_font, fill=WHITE)
+    label_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=14)
+    name_font = load_font(theme_font_candidates("marquee", "quote_regular"), size=20)
+    label = "STARRING"
+    label_bbox = draw.textbbox((0, 0), label, font=label_font)
+    label_w = label_bbox[2] - label_bbox[0]
+    name_bbox = draw.textbbox((0, 0), author, font=name_font)
+    name_w = name_bbox[2] - name_bbox[0]
+    gap = 14
+    total_w = label_w + gap + name_w
+    line_x = cx - total_w // 2
+    draw.text((line_x - label_bbox[0], y_top - label_bbox[1]), label, font=label_font, fill=YELLOW)
+    draw.text(
+        (line_x + label_w + gap - name_bbox[0], y_top - name_bbox[1] - 2),
+        author, font=name_font, fill=WHITE,
+    )
 
 
 def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
@@ -10135,32 +10185,44 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
 
     Black ground; alternating yellow/red bulb-light border around the
     perimeter (with small white highlight pixels on each bulb so they
-    read as lit glass); big chunky Bungee Shade ``HH:MM`` as the
-    "feature title" at the top; literary quote below in white Cardo
-    Italic with a red matched-phrase accent; STARRING / IN credit
-    chrome at the bottom in yellow + white; "ONE NIGHT ONLY" tagline
-    above the bottom bulbs.
+    read as lit glass); a small "NOW SHOWING" chrome tagline at the
+    top; the book title as the big chunky Bungee Shade feature-title
+    chrome below (uppercased, auto-sized and wrapped to 2 lines for
+    long titles); literary quote below in white Cardo Italic with a
+    red matched-phrase accent; STARRING [AUTHOR] credit chrome at the
+    bottom in yellow + white; "ONE NIGHT ONLY" tagline above the
+    bottom bulbs.
+
+    ``time_str`` is intentionally never rendered as digital chrome —
+    the quote's matched phrase ("half past two", "nine o'clock", etc.)
+    carries the time signal, and surfacing a parallel digital HH:MM
+    would defeat the whole point of a quote-based fuzzy clock. The
+    parameter is retained because the custom-render dispatch signature
+    is shared with the other frame painters (astrarium / tarot / vinyl
+    / diags); keeping the signature uniform is more valuable than
+    micro-optimising it away.
     """
+    del time_str  # see docstring; deliberately unused.
     image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
     _marquee_paint_facade(image)
     draw = ImageDraw.Draw(image)
     _marquee_paint_bulb_border(image, draw, width, height)
 
-    # Top "NOW SHOWING" label band, just below the top bulb row.
+    # Top "NOW SHOWING" tagline, just below the top bulb row.
     _marquee_paint_label_band(image, draw, width, y_top=40, text="—  NOW SHOWING  —", size=14)
 
-    # Big time chrome — the feature title.
-    _marquee_paint_time(image, draw, width, time_str, cy=112)
+    # Big chrome — the book title as the feature display.
+    _marquee_paint_feature_title(image, draw, width, quote_row, cy=112)
 
-    # Decorative double-rule dividing the time from the quote body.
+    # Decorative double-rule dividing the title from the quote body.
     _marquee_paint_divider(image, draw, width, cy=180)
 
     # Literary quote body — centred between the divider and the credits.
     body_rect = (60, 200, width - 60, 360)
     _marquee_paint_body(image, draw, quote_row, body_rect)
 
-    # Credits chrome.
-    _marquee_paint_credits(image, draw, quote_row, width, y_top=378)
+    # Credits chrome — STARRING [AUTHOR] only (title moved to the top).
+    _marquee_paint_credits(image, draw, quote_row, width, y_top=384)
 
     # "ONE NIGHT ONLY" tagline just above the bottom bulb row.
     _marquee_paint_label_band(image, draw, width, y_top=448, text="—  ONE NIGHT ONLY  —", size=12)
