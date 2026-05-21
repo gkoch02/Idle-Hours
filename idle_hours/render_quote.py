@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import functools
 import io
-import json
 import math
 import random
 import re
@@ -17,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
-from idle_hours.buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time
+from idle_hours.buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time
 
 BASE_DIR = Path(__file__).resolve().parent
 _FONT_FALLBACK_WARNED = False
@@ -81,7 +79,7 @@ THEME_ORDER: tuple[str, ...] = (
     "firmament",
     "astrarium",
     "kanagawa",
-    "departures",
+    "marquee",
     "tarot",
     "vinyl",
     "diags",
@@ -860,22 +858,24 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Solari split-flap departures board. Custom-render theme — render()
-    # dispatches to render_departures_frame, which paints a transit-hub
-    # board with the current bucket as a yellow "NOW BOARDING" row,
-    # history-ledger entries above as "DEPARTED" rows, and the next
-    # bucket clocks below as "SCHEDULED" rows. Black chassis ground;
-    # the eight palette keys are kept so render_source_card (button-C
-    # overlay) has fallback colours.
-    "departures": {
+    # Cinema marquee. Custom-render theme — render() dispatches to
+    # render_marquee_frame, which paints a 1930s movie-palace facade:
+    # black ground, yellow bulb-light border around the perimeter, the
+    # current HH:MM as the big chunky Bungee Shade "feature title" in
+    # white, the literary quote below as the feature copy in white
+    # Cormorant Italic with a red matched-phrase accent, and STARRING
+    # / IN credit lines at the bottom in yellow. The eight palette
+    # keys are kept so render_source_card (button-C overlay) has
+    # fallback colours.
+    "marquee": {
         "page_bg": SPECTRA6["black"],
-        "text": SPECTRA6["yellow"],
+        "text": SPECTRA6["white"],
         "subtle": SPECTRA6["white"],
-        "faint": SPECTRA6["white"],
+        "faint": SPECTRA6["yellow"],
         "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["yellow"],
-        "source": SPECTRA6["black"],
+        "source": SPECTRA6["yellow"],
     },
     # Major-arcana tarot card. Custom-render theme — render() dispatches
     # to render_tarot_frame, which paints a single centred card with
@@ -2137,23 +2137,29 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Departures — Antonio Bold for all three roles. Custom render
-    # only uses the chrome chain (DejaVu/Liberation/Noto sans) for the
-    # actual flap text via load_font(META_FONT_BOLD_CANDIDATES, ...),
-    # but THEME_FONTS still needs a complete entry so render_source_card
-    # (the button-C overlay fallback path) has fonts to load.
-    "departures": {
+    # Marquee — Cardo Italic for the literary body (warm humanist
+    # serif italic carries the "feature copy" register; Cardo is the
+    # same humanist serif firmament uses as its ornament-slot italic,
+    # so the font palette stays cohesive). Cardo Bold for the matched
+    # phrase to keep weight differentiation independent of the red
+    # accent. Bungee Shade for the chunky chrome time-display (3D-
+    # blocked display face shared with fillmore — reads as physical
+    # relief letters mounted on the marquee canopy).
+    "marquee": {
         "quote_regular": [
-            (ANTONIO_VARIABLE, "Bold"),
-            *META_FONT_BOLD_CANDIDATES,
+            CARDO_ITALIC,
+            CARDO_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            (ANTONIO_VARIABLE, "Bold"),
-            *META_FONT_BOLD_CANDIDATES,
+            CARDO_BOLD,
+            CARDO_ITALIC,
+            *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
-            (ANTONIO_VARIABLE, "Bold"),
-            *META_FONT_BOLD_CANDIDATES,
+            BUNGEE_SHADE_REGULAR,
+            CARDO_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
         ],
     },
     # Tarot — EB Garamond Regular for the body (reads as 17th-century
@@ -9879,334 +9885,164 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-# ─── departures (Solari split-flap announcement board) ──────────────────────
-# Layout brief: the Solari board is *chrome* surrounding a dominant central
-# announcement panel that carries the actual literary quote. The board
-# metaphor still drives the time display (big HH:MM in the header) and
-# anchors the page with compact history / upcoming rows above and below
-# the announcement, but the quote — the whole point of a literary clock —
-# occupies the visual centre of the canvas rather than competing with
-# seven equally-weighted board rows. An earlier revision used a 7-row
-# table with the quote's title compressed into a single DESTINATION cell;
-# that hid the actual quote text completely, which is the opposite of
-# what a literary clock is for.
+# ─── marquee (1930s movie-palace facade) ─────────────────────────────────────
+# Layout brief: a black "theater facade at night" — a row of yellow
+# bulb-lights frames the perimeter (the iconic lit-marquee silhouette),
+# the current HH:MM sits at the top as the chunky Bungee Shade "feature
+# title", the literary quote sits below as the feature copy in white
+# Cardo Italic with a red matched-phrase accent, and STARRING / IN
+# credit chrome runs along the bottom. An earlier revision tried a
+# Solari split-flap "departures" board for this slot; the wayfinding
+# register (yellow / black / red + Antonio condensed sans) fought the
+# literary content. The marquee keeps the same chrome-surrounds-
+# centerpiece structure but moves to a warmer movie-palace register
+# where the literary face (Cardo Italic) and the dramatic chrome
+# (Bungee Shade) both belong.
 
-_DEPARTURES_HEADER_H = 40
-_DEPARTURES_COLHEAD_H = 26
-_DEPARTURES_FOOTER_H = 24
-_DEPARTURES_COMPACT_ROW_H = 36
-_DEPARTURES_BOARDING_PANEL_H = 228
-_DEPARTURES_BANNER_H = 30
-_DEPARTURES_HISTORY_ROWS = 2
-_DEPARTURES_UPCOMING_ROWS = 2
+_MARQUEE_BULB_INSET = 16
+_MARQUEE_BULB_RADIUS = 5
+_MARQUEE_BULB_SPACING = 32
 
 
-@functools.lru_cache(maxsize=1)
-def _departures_load_corpus_index() -> dict:
-    """Index the baked corpus by ``(source_id, line_number)``.
-
-    Cached so the JSONL is read once per process — the runtime loop is one
-    long-lived process so cache invalidation on restart is acceptable. A
-    failure to load (missing file, parse error) returns ``{}`` so the
-    departures frame degrades to placeholder destinations rather than
-    blowing up the render.
-    """
-    try:
-        corpus_path = Path(pick_quote_module.DEFAULT_DATABASE_PATH)
-        rows = pick_quote_module.load_rows(corpus_path)
-    except Exception:
-        return {}
-    index: dict[tuple, dict] = {}
-    for row in rows:
-        sid = row.get("source_id")
-        lno = row.get("line_number")
-        if sid is None or lno is None:
-            continue
-        index[(str(sid), int(lno))] = row
-    return index
-
-
-def _departures_recent_history(limit: int = 3) -> list[dict]:
-    """Read the last ``limit`` distinct entries from the history ledger.
-
-    Returns oldest→newest within the slice (so the caller can paint top
-    rows as oldest). Each entry: ``{"time": "HH:MM", "destination":
-    str, "author": str | None}``. Empty list on any I/O failure or
-    missing ledger.
-    """
-    try:
-        history_path = Path(pick_quote_module.DEFAULT_HISTORY_PATH).expanduser()
-    except Exception:
-        return []
-    if not history_path.exists():
-        return []
-    raw_entries: list[dict] = []
-    try:
-        with history_path.open(encoding="utf-8") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    raw_entries.append(json.loads(line))
-                except (ValueError, json.JSONDecodeError):
-                    continue
-    except OSError:
-        return []
-    if not raw_entries:
-        return []
-    # Sort by ts desc, take last ``limit``, then reverse so the caller
-    # gets oldest→newest (top-of-board → bottom-of-board reading order).
-    raw_entries.sort(key=lambda e: e.get("ts", ""), reverse=True)
-    raw_entries = raw_entries[:limit]
-    raw_entries.reverse()
-
-    index = _departures_load_corpus_index()
-    out: list[dict] = []
-    for entry in raw_entries:
-        ts = entry.get("ts", "")
-        # Extract HH:MM from an ISO timestamp; fall back to "--:--" on parse failure.
-        time_label = "--:--"
-        try:
-            dt_obj = datetime.datetime.fromisoformat(ts)
-            time_label = dt_obj.strftime("%H:%M")
-        except (ValueError, TypeError):
-            pass
-        sid = entry.get("source_id")
-        lno = entry.get("line_number")
-        row = index.get((str(sid) if sid is not None else "", int(lno) if lno is not None else -1))
-        if row is None:
-            destination = "— — —"
-            author = None
-        else:
-            title = row.get("title") or ""
-            destination = title.upper()[:36] if title else "— — —"
-            author_full = row.get("author") or ""
-            # Surname-only: take the last whitespace-separated token.
-            author = author_full.strip().split()[-1].upper() if author_full.strip() else None
-        out.append({"time": time_label, "destination": destination, "author": author})
-    return out
-
-
-def _departures_upcoming_buckets(time_str: str, count: int = 3) -> list[dict]:
-    """Walk forward ``count`` canonical buckets from ``time_str``.
-
-    Returns a list of ``{"time": "HH:MM", "destination": "— — —", "author": None}``
-    entries — destination/author are placeholder since we have no future ledger.
-    """
-    out: list[dict] = []
-    try:
-        hour_str, minute_str = time_str.split(":", 1)
-        hour, minute = int(hour_str), int(minute_str)
-    except (ValueError, AttributeError):
-        return out
-    # Find the current canonical-bucket position, then walk forward.
-    rounded = ((minute + 2) // 5) * 5
-    if rounded == 60:
-        rounded = 0
-        hour = (hour + 1) % 24
-    state_idx = next((i for i, state in enumerate(BUCKET_ORDER)
-                      if DEFAULT_BUCKET_MINUTES[state] == rounded), 0)
-    for step in range(1, count + 1):
-        next_idx = (state_idx + step) % len(BUCKET_ORDER)
-        rollover = (state_idx + step) // len(BUCKET_ORDER)
-        next_minute = DEFAULT_BUCKET_MINUTES[BUCKET_ORDER[next_idx]]
-        next_hour = (hour + rollover) % 24
-        out.append({
-            "time": f"{next_hour:02d}:{next_minute:02d}",
-            "destination": "— — —",
-            "author": None,
-        })
-    return out
-
-
-def _departures_paint_chassis(image: Image.Image) -> None:
-    """Solid black chassis ground."""
+def _marquee_paint_facade(image: Image.Image) -> None:
+    """Solid black ground — the theater facade at night."""
     image.paste(SPECTRA6["black"], (0, 0, image.width, image.height))
 
 
-def _departures_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, time_str: str) -> None:
-    """Top brand band: solid black, brand left + big flap-style HH:MM right."""
+def _marquee_paint_bulb_border(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Yellow + red bulb-light border around the entire perimeter.
+
+    Filled circles at evenly spaced intervals along the top, bottom,
+    left, and right edges. The colour cycles yellow → red → yellow → red
+    around the perimeter so the strip reads as a vintage colored-bulb
+    marquee rather than a uniform yellow lamp row. Each bulb gets a
+    small inner pure-white "highlight" pixel so the bulb reads as lit
+    glass rather than a flat painted dot.
+    """
     YELLOW = SPECTRA6["yellow"]
-    BLACK = SPECTRA6["black"]
-    draw.rectangle((0, 0, width, _DEPARTURES_HEADER_H), fill=BLACK)
-    brand_font = load_font(theme_font_candidates("departures", "ornament"), size=20)
-    time_font = load_font(theme_font_candidates("departures", "ornament"), size=32)
-    draw.text((16, 8), "IDLE HOURS DEPARTURES", font=brand_font, fill=YELLOW)
-    time_bbox = draw.textbbox((0, 0), time_str, font=time_font)
-    time_w = time_bbox[2] - time_bbox[0]
-    draw.text((width - time_w - 16, 2), time_str, font=time_font, fill=YELLOW)
-    draw.line((0, _DEPARTURES_HEADER_H - 1, width, _DEPARTURES_HEADER_H - 1), fill=YELLOW, width=1)
-
-
-def _departures_paint_column_header(image: Image.Image, draw: ImageDraw.ImageDraw, width: int) -> None:
-    """Solid-white column-header strip with black Antonio Bold labels."""
+    RED = SPECTRA6["red"]
     WHITE = SPECTRA6["white"]
-    BLACK = SPECTRA6["black"]
-    y0 = _DEPARTURES_HEADER_H
-    y1 = y0 + _DEPARTURES_COLHEAD_H
-    draw.rectangle((0, y0, width, y1), fill=WHITE)
-    label_font = load_font(theme_font_candidates("departures", "ornament"), size=15)
-    draw.text((20, y0 + 5), "TIME", font=label_font, fill=BLACK)
-    draw.text((140, y0 + 5), "DESTINATION", font=label_font, fill=BLACK)
-    draw.text((630, y0 + 5), "STATUS", font=label_font, fill=BLACK)
+    r = _MARQUEE_BULB_RADIUS
+    inset = _MARQUEE_BULB_INSET
+    spacing = _MARQUEE_BULB_SPACING
+    # Walk the perimeter and emit a bulb at each step.
+    bulbs: list[tuple[int, int]] = []
+    # Top edge: left → right.
+    for x in range(inset, width - inset + 1, spacing):
+        bulbs.append((x, inset))
+    # Right edge: top → bottom (skip first to avoid double-tap of corner).
+    for y in range(inset + spacing, height - inset + 1, spacing):
+        bulbs.append((width - inset, y))
+    # Bottom edge: right → left.
+    for x in range(width - inset - spacing, inset - 1, -spacing):
+        bulbs.append((x, height - inset))
+    # Left edge: bottom → top.
+    for y in range(height - inset - spacing, inset, -spacing):
+        bulbs.append((inset, y))
+    for i, (cx, cy) in enumerate(bulbs):
+        bulb_colour = YELLOW if i % 2 == 0 else RED
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=bulb_colour)
+        # Small white highlight near top-left of the bulb — sells the
+        # "lit glass" register.
+        draw.ellipse((cx - 1, cy - 2, cx + 1, cy), fill=WHITE)
 
 
-def _departures_paint_compact_row(
+def _marquee_paint_label_band(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
+    width: int,
     y_top: int,
-    row: dict,
-    kind: str,
+    text: str,
+    *,
+    size: int = 14,
+    colour: tuple[int, int, int] | None = None,
 ) -> None:
-    """Paint one compact history / upcoming row at ``y_top``.
-
-    These are the 36-px-tall context rows that flank the central
-    announcement panel. Solid yellow text on the black chassis; the
-    only chromatic accent is the colour-coded status word (red
-    ``DEPARTED`` or white ``SCHEDULED``).
-    """
-    YELLOW = SPECTRA6["yellow"]
-    RED = SPECTRA6["red"]
-    WHITE = SPECTRA6["white"]
-    time_font = load_font(theme_font_candidates("departures", "ornament"), size=22)
-    dest_font = load_font(theme_font_candidates("departures", "ornament"), size=16)
-    status_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
-    draw.text((20, y_top + 6), row.get("time", "--:--"), font=time_font, fill=YELLOW)
-    dest = row.get("destination", "— — —")
-    draw.text((140, y_top + 10), dest, font=dest_font, fill=YELLOW)
-    if kind == "departed":
-        draw.text((630, y_top + 11), "DEPARTED", font=status_font, fill=RED)
-    else:
-        draw.text((630, y_top + 11), "SCHEDULED", font=status_font, fill=WHITE)
+    """Centred chrome label in Bungee Shade — for NOW SHOWING / ONE NIGHT ONLY taglines."""
+    if colour is None:
+        colour = SPECTRA6["yellow"]
+    # Small chrome labels use Antonio Bold (condensed sans, very legible
+    # at 12–14pt) instead of Bungee Shade — the 3D-blocked Bungee Shade
+    # is gorgeous at the 84pt time-chrome size but muddies into noise at
+    # small label sizes.
+    font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    cx = width // 2
+    draw.text((cx - tw // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=colour)
 
 
-def _departures_paint_now_boarding_banner(
+def _marquee_paint_time(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
-    panel_x0: int,
-    panel_y0: int,
-    panel_x1: int,
+    width: int,
     time_str: str,
+    cy: int,
 ) -> None:
-    """Solid red banner at the top of the boarding panel.
+    """Big white Bungee Shade ``HH:MM`` — the marquee "feature title".
 
-    Spans the full panel width; the banner's red ink is the announcement
-    layer's chromatic anchor — solid red text on the yellow panel reads
-    as the canonical "NOW BOARDING" emergency-flag colour real station
-    boards use to draw the eye.
+    Centred horizontally and vertically on ``cy``. Bungee Shade's 3D-
+    blocked silhouette reads as physical relief letters mounted on the
+    marquee canopy.
     """
-    RED = SPECTRA6["red"]
-    BLACK = SPECTRA6["black"]
-    YELLOW = SPECTRA6["yellow"]
-    # Banner background: solid red strip across the top of the panel.
-    draw.rectangle((panel_x0, panel_y0, panel_x1, panel_y0 + _DEPARTURES_BANNER_H), fill=RED)
-    banner_font = load_font(theme_font_candidates("departures", "ornament"), size=18)
-    # Track number: a deterministic 1..24 derived from the minute so it
-    # feels station-board-real without claiming literal accuracy.
-    track_n = (int(time_str.split(":", 1)[1]) % 24 + 1) if ":" in time_str else 14
-    text = f"NOW BOARDING  ·  TRACK {track_n:02d}  ·  {time_str}"
-    bbox = draw.textbbox((0, 0), text, font=banner_font)
+    WHITE = SPECTRA6["white"]
+    font = load_font(theme_font_candidates("marquee", "ornament"), size=84)
+    bbox = draw.textbbox((0, 0), time_str, font=font)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
-    banner_cx = (panel_x0 + panel_x1) // 2
-    banner_cy = panel_y0 + _DEPARTURES_BANNER_H // 2
-    # Yellow text on red — high contrast, reads as a real transit-board
-    # "URGENT" announcement.
-    draw.text(
-        (banner_cx - tw // 2 - bbox[0], banner_cy - th // 2 - bbox[1]),
-        text,
-        font=banner_font,
-        fill=YELLOW,
-    )
-    # Polygon-drawn chevrons flanking the banner text — Antonio doesn't
-    # carry the U+25B6/25C0 chevron glyphs and would tofu them, so paint
-    # them directly as 12×16 triangles in yellow against the red banner.
-    chev_gap = 14
-    chev_h = 14
-    chev_w = 10
-    left_tip = banner_cx - tw // 2 - chev_gap
-    right_tip = banner_cx + tw // 2 + chev_gap
-    # Left chevron pointing right (▶).
-    draw.polygon(
-        [
-            (left_tip - chev_w, banner_cy - chev_h // 2),
-            (left_tip, banner_cy),
-            (left_tip - chev_w, banner_cy + chev_h // 2),
-        ],
-        fill=YELLOW,
-    )
-    # Right chevron pointing left (◀).
-    draw.polygon(
-        [
-            (right_tip + chev_w, banner_cy - chev_h // 2),
-            (right_tip, banner_cy),
-            (right_tip + chev_w, banner_cy + chev_h // 2),
-        ],
-        fill=YELLOW,
-    )
-    # 1-px black hairline separating the banner from the quote area.
-    draw.line(
-        (panel_x0, panel_y0 + _DEPARTURES_BANNER_H, panel_x1, panel_y0 + _DEPARTURES_BANNER_H),
-        fill=BLACK,
-        width=1,
-    )
+    draw.text((width // 2 - tw // 2 - bbox[0], cy - th // 2 - bbox[1]), time_str, font=font, fill=WHITE)
 
 
-def _departures_paint_boarding_panel(
+def _marquee_paint_divider(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, cy: int) -> None:
+    """Decorative double-rule dividing the time chrome from the quote body.
+
+    Two parallel horizontal lines — a thicker yellow upper rule and a
+    thin red lower rule — with a small filled red diamond centred
+    between them. Reads as a vintage proscenium / poster divider.
+    """
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    x_left = 80
+    x_right = width - 80
+    draw.line((x_left, cy - 4, x_right, cy - 4), fill=YELLOW, width=2)
+    draw.line((x_left, cy + 4, x_right, cy + 4), fill=RED, width=1)
+    # Centred red diamond between the rules.
+    cx = width // 2
+    draw.polygon([(cx, cy - 5), (cx + 5, cy), (cx, cy + 5), (cx - 5, cy)], fill=RED)
+
+
+def _marquee_paint_body(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
     quote_row: dict,
-    panel_x0: int,
-    panel_y0: int,
-    panel_x1: int,
-    panel_y1: int,
-    time_str: str,
+    rect: tuple[int, int, int, int],
 ) -> None:
-    """Solid-yellow announcement panel carrying the literary quote.
+    """Quote body in white Cardo Italic with a red matched-phrase accent.
 
-    Composition top-to-bottom:
-      * 30-px red banner with the ``NOW BOARDING · TRACK NN · HH:MM`` callout
-        (yellow text on red — high-contrast emergency-flag register).
-      * Quote body (~140 px), fit via ``fit_quote`` with Antonio Bold and
-        the matched-phrase substring rendered in solid red.
-      * Author + title attribution at the panel bottom (centred, black on
-        yellow, small).
+    Centred line-by-line within ``rect``. Uses ``fit_quote`` so the
+    quote shrinks to fit when dense; standard Spectra-6 white-on-black
+    text contrast keeps it legible against the facade ground.
     """
-    YELLOW = SPECTRA6["yellow"]
-    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
     RED = SPECTRA6["red"]
-    # Panel background.
-    draw.rectangle((panel_x0, panel_y0, panel_x1, panel_y1), fill=YELLOW)
-    # Banner strip.
-    _departures_paint_now_boarding_banner(image, draw, panel_x0, panel_y0, panel_x1, time_str)
-
-    # Quote area.
-    body_top = panel_y0 + _DEPARTURES_BANNER_H + 6
-    body_bottom = panel_y1 - 42
-    body_left = panel_x0 + 20
-    body_right = panel_x1 - 20
-    body_w = body_right - body_left
-    body_h = body_bottom - body_top
-
+    x0, y0, x1, y1 = rect
+    width = x1 - x0
+    height = y1 - y0
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     matched = quote_row.get("matched_text") or ""
-    if not display_quote:
-        display_quote = "— silence on the platform —"
 
     quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
         draw,
         display_quote,
         matched,
-        body_w,
-        body_h,
+        width,
+        height,
         font_max=30,
-        font_min=16,
-        line_height_mult=1.18,
-        theme="departures",
+        font_min=18,
+        line_height_mult=1.22,
+        theme="marquee",
     )
     quote_block_height = len(wrapped_quote) * line_height
-    block_top = body_top + max(0, (body_h - quote_block_height) // 2)
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
     body_ascent = _font_ascent(quote_font)
     y = block_top
     for line in wrapped_quote:
@@ -10217,134 +10053,117 @@ def _departures_paint_boarding_panel(
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
         drawable = line[start:end]
-        # Centre each line within the body width.
         line_w = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             bbox = draw.textbbox((0, 0), chunk, font=font)
             line_w += bbox[2] - bbox[0]
-        x = body_left + max(0, (body_w - line_w) // 2)
+        x = x0 + max(0, (width - line_w) // 2)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))
-            fill = RED if is_bold else BLACK
+            fill = RED if is_bold else WHITE
             draw.text((x, chunk_y), chunk, font=font, fill=fill)
             bbox = draw.textbbox((0, 0), chunk, font=font)
             x += bbox[2] - bbox[0]
         y += line_height
 
-    # Attribution at the bottom of the panel.
-    author = quote_row.get("author") or ""
-    title = quote_row.get("title") or fallback_title(quote_row)
-    parts = [p for p in (author.upper(), title.upper()) if p]
-    attrib_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
-    if parts:
-        text = "  ·  ".join(parts)
-        bbox = draw.textbbox((0, 0), text, font=attrib_font)
-        tw = bbox[2] - bbox[0]
-        # Truncate if too wide for the panel width.
-        max_w = (panel_x1 - panel_x0) - 40
-        if tw > max_w:
-            while parts and tw > max_w:
-                if len(parts[-1]) > 6:
-                    parts[-1] = parts[-1][:-3] + "…"
-                else:
-                    parts.pop()
-                text = "  ·  ".join(parts)
-                bbox = draw.textbbox((0, 0), text, font=attrib_font)
-                tw = bbox[2] - bbox[0]
-        attrib_cx = (panel_x0 + panel_x1) // 2
-        attrib_y = panel_y1 - 30
-        draw.text(
-            (attrib_cx - tw // 2 - bbox[0], attrib_y - bbox[1]),
-            text,
-            font=attrib_font,
-            fill=BLACK,
-        )
 
-
-def _departures_paint_footer(
+def _marquee_paint_credits(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
+    quote_row: dict,
     width: int,
-    height: int,
-    bucket_label: str,
+    y_top: int,
 ) -> None:
-    """Bottom hairline + bucket label (right-aligned)."""
-    WHITE = SPECTRA6["white"]
+    """STARRING [AUTHOR] / IN [TITLE] credit chrome.
+
+    Yellow chrome labels (STARRING, IN) in small Bungee Shade; white
+    name + title in Cardo Italic. Centred on the canvas. The credit
+    chrome convention is the canonical "above-the-title" marquee
+    layout from real movie posters.
+    """
     YELLOW = SPECTRA6["yellow"]
-    y_top = height - _DEPARTURES_FOOTER_H
-    draw.line((10, y_top, width - 10, y_top), fill=YELLOW, width=1)
-    footer_font = load_font(theme_font_candidates("departures", "ornament"), size=14)
-    draw.text((16, y_top + 5), "IH-TRANSIT // LIVE FEED", font=footer_font, fill=WHITE)
-    bbox = draw.textbbox((0, 0), bucket_label, font=footer_font)
-    label_w = bbox[2] - bbox[0]
-    draw.text((width - label_w - 16, y_top + 5), bucket_label, font=footer_font, fill=WHITE)
+    WHITE = SPECTRA6["white"]
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    if not author and not title:
+        return
+    cx = width // 2
+    # STARRING / IN labels use Antonio Bold (same legibility argument as
+    # _marquee_paint_label_band) so the chrome reads cleanly at 13pt.
+    label_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=13)
+    name_font = load_font(theme_font_candidates("marquee", "quote_regular"), size=18)
+    y = y_top
+    # STARRING [AUTHOR] line.
+    if author:
+        label = "STARRING"
+        label_bbox = draw.textbbox((0, 0), label, font=label_font)
+        label_w = label_bbox[2] - label_bbox[0]
+        name_bbox = draw.textbbox((0, 0), author, font=name_font)
+        name_w = name_bbox[2] - name_bbox[0]
+        gap = 12
+        total_w = label_w + gap + name_w
+        line_x = cx - total_w // 2
+        draw.text((line_x - label_bbox[0], y - label_bbox[1]), label, font=label_font, fill=YELLOW)
+        draw.text((line_x + label_w + gap - name_bbox[0], y - name_bbox[1] - 2), author, font=name_font, fill=WHITE)
+        y += 26
+    # IN [TITLE] line.
+    if title:
+        label = "IN"
+        label_bbox = draw.textbbox((0, 0), label, font=label_font)
+        label_w = label_bbox[2] - label_bbox[0]
+        name_bbox = draw.textbbox((0, 0), title, font=name_font)
+        name_w = name_bbox[2] - name_bbox[0]
+        gap = 12
+        total_w = label_w + gap + name_w
+        # Truncate title if too wide for the inner content area.
+        max_total_w = width - 80
+        truncated = title
+        while total_w > max_total_w and len(truncated) > 8:
+            truncated = truncated[:-2] + "…"
+            name_bbox = draw.textbbox((0, 0), truncated, font=name_font)
+            name_w = name_bbox[2] - name_bbox[0]
+            total_w = label_w + gap + name_w
+        line_x = cx - total_w // 2
+        draw.text((line_x - label_bbox[0], y - label_bbox[1]), label, font=label_font, fill=YELLOW)
+        draw.text((line_x + label_w + gap - name_bbox[0], y - name_bbox[1] - 2), truncated, font=name_font, fill=WHITE)
 
 
-def render_departures_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Solari split-flap announcement board.
+def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """1930s movie-palace marquee.
 
-    The Solari board is chrome surrounding a central announcement panel:
-    a header strip up top with the brand + big flap-style HH:MM, a white
-    column-header strip, two compact ``DEPARTED`` rows pulled from the
-    history ledger, then a dominant yellow ``NOW BOARDING`` panel
-    carrying the literary quote (matched phrase in red), two compact
-    ``SCHEDULED`` rows for upcoming bucket clocks, and a footer hairline
-    with the bucket label. The quote is visually primary; the board
-    surrounds rather than competes with it.
+    Black ground; alternating yellow/red bulb-light border around the
+    perimeter (with small white highlight pixels on each bulb so they
+    read as lit glass); big chunky Bungee Shade ``HH:MM`` as the
+    "feature title" at the top; literary quote below in white Cardo
+    Italic with a red matched-phrase accent; STARRING / IN credit
+    chrome at the bottom in yellow + white; "ONE NIGHT ONLY" tagline
+    above the bottom bulbs.
     """
     image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
-    _departures_paint_chassis(image)
+    _marquee_paint_facade(image)
     draw = ImageDraw.Draw(image)
+    _marquee_paint_bulb_border(image, draw, width, height)
 
-    _departures_paint_header(image, draw, width, time_str)
-    _departures_paint_column_header(image, draw, width)
+    # Top "NOW SHOWING" label band, just below the top bulb row.
+    _marquee_paint_label_band(image, draw, width, y_top=40, text="—  NOW SHOWING  —", size=14)
 
-    # Compact DEPARTED rows from the history ledger.
-    history = _departures_recent_history(limit=_DEPARTURES_HISTORY_ROWS)
-    while len(history) < _DEPARTURES_HISTORY_ROWS:
-        history.insert(0, {"time": "--:--", "destination": "— — —", "author": None})
-    departed_rows = []
-    for entry in history[-_DEPARTURES_HISTORY_ROWS:]:
-        dest_parts = []
-        if entry.get("destination") and entry["destination"] != "— — —":
-            dest_parts.append(entry["destination"])
-        if entry.get("author"):
-            dest_parts.append(entry["author"])
-        dest = "  ·  ".join(dest_parts) if dest_parts else "— — —"
-        departed_rows.append({"time": entry["time"], "destination": dest})
+    # Big time chrome — the feature title.
+    _marquee_paint_time(image, draw, width, time_str, cy=112)
 
-    y_cursor = _DEPARTURES_HEADER_H + _DEPARTURES_COLHEAD_H + 4
-    for row in departed_rows:
-        _departures_paint_compact_row(image, draw, y_cursor, row, kind="departed")
-        y_cursor += _DEPARTURES_COMPACT_ROW_H + 2
+    # Decorative double-rule dividing the time from the quote body.
+    _marquee_paint_divider(image, draw, width, cy=180)
 
-    # Central boarding panel — the literary content.
-    panel_y0 = y_cursor + 4
-    panel_y1 = panel_y0 + _DEPARTURES_BOARDING_PANEL_H
-    _departures_paint_boarding_panel(
-        image, draw, quote_row,
-        panel_x0=10, panel_y0=panel_y0,
-        panel_x1=width - 10, panel_y1=panel_y1,
-        time_str=time_str,
-    )
-    y_cursor = panel_y1 + 4
+    # Literary quote body — centred between the divider and the credits.
+    body_rect = (60, 200, width - 60, 360)
+    _marquee_paint_body(image, draw, quote_row, body_rect)
 
-    # Compact SCHEDULED rows after the panel.
-    upcoming = _departures_upcoming_buckets(time_str, count=_DEPARTURES_UPCOMING_ROWS)
-    while len(upcoming) < _DEPARTURES_UPCOMING_ROWS:
-        upcoming.append({"time": "--:--", "destination": "— — —", "author": None})
-    for entry in upcoming[:_DEPARTURES_UPCOMING_ROWS]:
-        _departures_paint_compact_row(
-            image, draw, y_cursor,
-            {"time": entry["time"], "destination": entry.get("destination") or "— — —"},
-            kind="scheduled",
-        )
-        y_cursor += _DEPARTURES_COMPACT_ROW_H + 2
+    # Credits chrome.
+    _marquee_paint_credits(image, draw, quote_row, width, y_top=378)
 
-    bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
-    _departures_paint_footer(image, draw, width, height, f"BUCKET {bucket}")
+    # "ONE NIGHT ONLY" tagline just above the bottom bulb row.
+    _marquee_paint_label_band(image, draw, width, y_top=448, text="—  ONE NIGHT ONLY  —", size=12)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
@@ -11616,8 +11435,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_diags_frame(time_str, quote_row, width, height)
     if theme == "astrarium":
         return render_astrarium_frame(time_str, quote_row, width, height)
-    if theme == "departures":
-        return render_departures_frame(time_str, quote_row, width, height)
+    if theme == "marquee":
+        return render_marquee_frame(time_str, quote_row, width, height)
     if theme == "tarot":
         return render_tarot_frame(time_str, quote_row, width, height)
     if theme == "vinyl":

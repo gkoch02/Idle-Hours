@@ -215,14 +215,14 @@ THEME_SATURATION: dict[str, float] = {
     # would saturate the panel's Y+W cream into a brighter lemon yellow
     # and shift the navy stipple toward solid indigo.
     "kanagawa": 0.5,
-    # Departures / Solari split-flap board — black flap-chassis ground
-    # with cream-on-charcoal flap text (Y+W stipple), solid yellow
-    # "NOW BOARDING" highlight, and a maroon (R+K) "DEPARTED" status.
-    # Same dark-ground tier as ``dark`` / ``lcars`` / ``firmament`` /
-    # ``gothic`` / ``nightvision`` — the 0.7 saturation keeps the yellow
-    # boarding-now band confidently chromatic against the panel's
-    # anchored black, and the red destination accent crisp.
-    "departures": 0.7,
+    # Marquee / 1930s movie-palace facade — black ground, yellow
+    # bulb-light border, big chunky Bungee Shade time digits in white,
+    # Cardo Italic quote body with red matched-phrase accent. Same
+    # dark-ground tier as ``dark`` / ``lcars`` / ``firmament`` /
+    # ``gothic`` / ``nightvision`` so the yellow bulb-lights, the
+    # white Cardo body, and the red matched-phrase accent all stay
+    # confidently chromatic against the panel's anchored black.
+    "marquee": 0.7,
     # Tarot / major-arcana card — cream-washed white ground (Y+W
     # Bayer wash, same recipe as ``illuminated`` / ``herbarium`` /
     # ``mucha`` / ``astrarium``), doubled red+black rubricated border,

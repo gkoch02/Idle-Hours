@@ -1,6 +1,6 @@
 """Smoke tests for the custom-render themes that bypass the standard literary layout.
 
-These themes (``astrarium``, ``diags``, ``departures``, ``tarot``, ``vinyl``)
+These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``, ``vinyl``)
 each dispatch out of ``render()`` into their own frame function and own their
 composition top to bottom. The contracts every custom-render frame must keep:
 
@@ -23,7 +23,7 @@ from idle_hours import render_quote as rq
 
 from .conftest import make_row
 
-CUSTOM_THEMES = ("departures", "tarot", "vinyl")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -58,46 +58,58 @@ class TestCustomRenderContract:
         assert img.size == (800, 480)
 
 
-class TestDeparturesFrame:
-    """Solari split-flap board — history-ledger sourcing + bucket math."""
+class TestMarqueeFrame:
+    """1930s movie-palace marquee — bulb-light border + chunky time chrome."""
 
-    def test_upcoming_buckets_walk_forward_three(self):
-        rows = rq._departures_upcoming_buckets("14:30", count=3)
-        # Walking forward from h2_half_past (the canonical bucket for 14:30):
-        # twenty_five_to / twenty_to / quarter_to → 14:35 / 14:40 / 14:45.
-        assert [r["time"] for r in rows] == ["14:35", "14:40", "14:45"]
+    def test_bulb_border_lights_perimeter(self):
+        """Yellow + red bulb-lights run along all four edges. Sample a
+        known bulb position on each edge and assert one of the two
+        canonical bulb colours sits there. Spacing 32 px, inset 16 px,
+        radius 5 px — first top-edge bulb sits at (16, 16); first
+        right-edge bulb at (784, 48); etc."""
+        img = rq.render("14:30", make_row(), 800, 480, theme="marquee")
+        # Pick the canvas-edge bulb positions defined by the constants.
+        positions = [
+            (rq._MARQUEE_BULB_INSET, rq._MARQUEE_BULB_INSET),                # top-left corner
+            (800 - rq._MARQUEE_BULB_INSET, rq._MARQUEE_BULB_INSET),          # top-right corner
+            (rq._MARQUEE_BULB_INSET, 480 - rq._MARQUEE_BULB_INSET),          # bottom-left corner
+            (800 - rq._MARQUEE_BULB_INSET, 480 - rq._MARQUEE_BULB_INSET),    # bottom-right corner
+        ]
+        bulb_colours = {rq.SPECTRA6["yellow"], rq.SPECTRA6["red"], rq.SPECTRA6["white"]}
+        for (cx, cy) in positions:
+            # The bulb covers a small region; pick the centre pixel.
+            assert img.getpixel((cx, cy)) in bulb_colours, \
+                f"expected a bulb-colour pixel at corner {(cx, cy)}, got {img.getpixel((cx, cy))}"
 
-    def test_upcoming_buckets_roll_over_to_next_hour(self):
-        rows = rq._departures_upcoming_buckets("14:55", count=3)
-        # 14:55 → h3_exact (15:00) → h3_five_past → h3_ten_past.
-        assert [r["time"] for r in rows] == ["15:00", "15:05", "15:10"]
+    def test_time_renders_at_top(self):
+        """The big Bungee Shade time chrome sits near y≈112 (the
+        ``_marquee_paint_time`` centre). Sample a stripe across that
+        row and assert white pixels appear (the time glyphs)."""
+        img = rq.render("14:30", make_row(), 800, 480, theme="marquee")
+        white_seen = any(
+            img.getpixel((x, 112)) == rq.SPECTRA6["white"]
+            for x in range(200, 600, 5)
+        )
+        assert white_seen, "Bungee Shade time chrome should paint white pixels at y≈112"
 
-    def test_upcoming_buckets_handles_malformed_time(self):
-        assert rq._departures_upcoming_buckets("garbage") == []
+    def test_credits_render_when_metadata_present(self):
+        """STARRING / IN labels paint in yellow when the row carries
+        author + title metadata; the labels live in the credits band
+        at y≈378 onward."""
+        row = make_row(author="L. M. Montgomery", title="Anne of Avonlea")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
+        yellow_seen = any(
+            img.getpixel((x, 382)) == rq.SPECTRA6["yellow"]
+            for x in range(100, 700, 4)
+        )
+        assert yellow_seen, "STARRING label should paint yellow pixels in the credits band"
 
-    def test_recent_history_returns_empty_when_ledger_missing(self, tmp_path, monkeypatch):
-        """The isolate_home conftest fixture redirects $HOME; with no ledger
-        on disk the helper returns ``[]`` so the frame renders placeholder
-        rows rather than crashing."""
-        rq._departures_load_corpus_index.cache_clear()
-        # No history.jsonl in the freshly-monkeypatched $HOME.
-        assert rq._departures_recent_history(limit=3) == []
-
-    def test_frame_emits_announcement_panel(self):
-        """The dominant central announcement panel exists: top stripe is
-        solid red (the NOW BOARDING banner), and the body underneath is
-        the solid-yellow panel ground. Sampling near the panel corners
-        avoids the quote-text region in the centre."""
-        rq._departures_load_corpus_index.cache_clear()
-        row = make_row(title="A Tale of Two Cities", author="Charles Dickens")
-        img = rq.render("14:30", row, 800, 480, theme="departures")
-        # Panel runs x∈[10, 790]; banner y∈[150, 180]; yellow body y∈[180, 378].
-        # Banner: sample at the left edge (clear of centred text).
-        assert img.getpixel((20, 160)) == rq.SPECTRA6["red"], \
-            "banner band must be solid red"
-        # Yellow panel ground: sample near the panel's bottom-left corner.
-        assert img.getpixel((20, 360)) == rq.SPECTRA6["yellow"], \
-            "announcement panel must be solid yellow"
+    def test_renders_without_credits(self):
+        """Missing author + title must not crash; the credits painter
+        no-ops when both fields are empty."""
+        row = make_row(author="", title="")
+        img = rq.render("14:30", row, 800, 480, theme="marquee")
+        assert img.size == (800, 480)
 
 
 class TestTarotFrame:

@@ -186,7 +186,7 @@ def parse_args() -> argparse.Namespace:
         "firmament",
         "astrarium",
         "kanagawa",
-        "departures",
+        "marquee",
         "tarot",
         "vinyl",
         "diags",
