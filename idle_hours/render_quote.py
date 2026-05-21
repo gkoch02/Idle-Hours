@@ -6,6 +6,7 @@ import argparse
 import datetime
 import io
 import math
+import random
 import re
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
+from idle_hours.buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time
 
 BASE_DIR = Path(__file__).resolve().parent
 _FONT_FALLBACK_WARNED = False
@@ -77,6 +79,9 @@ THEME_ORDER: tuple[str, ...] = (
     "firmament",
     "astrarium",
     "kanagawa",
+    "marquee",
+    "tarot",
+    "vinyl",
     "diags",
 )
 THEMES = {
@@ -851,6 +856,62 @@ THEMES = {
         "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Cinema marquee. Custom-render theme — render() dispatches to
+    # render_marquee_frame, which paints a 1930s movie-palace facade:
+    # black ground, yellow bulb-light border around the perimeter, the
+    # current HH:MM as the big chunky Bungee Shade "feature title" in
+    # white, the literary quote below as the feature copy in white
+    # Cormorant Italic with a red matched-phrase accent, and STARRING
+    # / IN credit lines at the bottom in yellow. The eight palette
+    # keys are kept so render_source_card (button-C overlay) has
+    # fallback colours.
+    "marquee": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["yellow"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["yellow"],
+    },
+    # Major-arcana tarot card. Custom-render theme — render() dispatches
+    # to render_tarot_frame, which paints a single centred card with
+    # cream Y+W vellum wash, doubled red+black rubricated border,
+    # Roman-numeral hour in Cinzel Decorative Black, matched-phrase
+    # card name in Tyrian purple (R+B 1:1 stipple), hour-mapped emblem
+    # at centre, EB Garamond body below. Mirror-symmetric chrome.
+    "tarot": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
+    },
+    # Turntable + literary-audiobook LP back-cover. Custom-render
+    # theme — render() dispatches to render_vinyl_frame, which paints
+    # a 1950s/60s spoken-word LP (Caedmon Records / Spoken Arts
+    # register) with the literary quote rendered as the "reading
+    # passage" on the jacket back. Visually identical to a music LP
+    # (turntable, dense grooves, pivoted tonearm, label, sleeve);
+    # the chrome text (SPOKEN WORD format mark on the label,
+    # "— READING —" heading on the sleeve, READ ALOUD label
+    # subtitle, IDLE HOURS LITERARY RECORDINGS catalog bar) anchors
+    # the audiobook framing so the vinyl visual fits the literary
+    # corpus rather than mismatching it.
+    "vinyl": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
@@ -2077,6 +2138,73 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             YUJI_BOKU_REGULAR,
             (CORMORANT_VARIABLE, "Bold"),
             EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Marquee — Cardo Italic for the literary body (warm humanist
+    # serif italic carries the "feature copy" register; Cardo is the
+    # same humanist serif firmament uses as its ornament-slot italic,
+    # so the font palette stays cohesive). Cardo Bold for the matched
+    # phrase to keep weight differentiation independent of the red
+    # accent. Bungee Shade for the chunky chrome time-display (3D-
+    # blocked display face shared with fillmore — reads as physical
+    # relief letters mounted on the marquee canopy).
+    "marquee": {
+        "quote_regular": [
+            CARDO_ITALIC,
+            CARDO_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CARDO_BOLD,
+            CARDO_ITALIC,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            BUNGEE_SHADE_REGULAR,
+            CARDO_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Tarot — EB Garamond Regular for the body (reads as 17th-century
+    # treatise type alongside the rubricated border), Cinzel Decorative
+    # Bold for the matched-phrase card name (capitalis monumentalis
+    # carved into the card face), Cinzel Decorative Black for the
+    # Roman-numeral hour ornament (the heaviest weight in the family
+    # so the numeral reads as carved relief at chrome scale).
+    "tarot": {
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CINZELDECORATIVE_BOLD,
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CINZELDECORATIVE_BLACK,
+            CINZELDECORATIVE_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Vinyl — Cormorant Garamond Regular/Bold body+matched chain.
+    # Cormorant pairs naturally with the centre-label typography of
+    # 1960s album sleeves: high-contrast didone forms that read at
+    # both label scale (12pt around the spindle) and body scale
+    # (~32pt on the sleeve). Ornament chain reuses Bold for the
+    # 33⅓ rpm badge so the format mark sits in the same family.
+    "vinyl": {
+        "quote_regular": [
+            (CORMORANT_VARIABLE, "Regular"),
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (CORMORANT_VARIABLE, "Bold"),
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (CORMORANT_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -9761,6 +9889,1837 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── marquee (1930s movie-palace facade) ─────────────────────────────────────
+# Layout brief: a black "theater facade at night" — a row of yellow
+# bulb-lights frames the perimeter (the iconic lit-marquee silhouette),
+# the current HH:MM sits at the top as the chunky Bungee Shade "feature
+# title", the literary quote sits below as the feature copy in white
+# Cardo Italic with a red matched-phrase accent, and STARRING / IN
+# credit chrome runs along the bottom. An earlier revision tried a
+# Solari split-flap "departures" board for this slot; the wayfinding
+# register (yellow / black / red + Antonio condensed sans) fought the
+# literary content. The marquee keeps the same chrome-surrounds-
+# centerpiece structure but moves to a warmer movie-palace register
+# where the literary face (Cardo Italic) and the dramatic chrome
+# (Bungee Shade) both belong.
+
+_MARQUEE_BULB_INSET = 16
+_MARQUEE_BULB_RADIUS = 5
+_MARQUEE_BULB_SPACING = 32
+
+
+def _marquee_paint_facade(image: Image.Image) -> None:
+    """Solid black ground — the theater facade at night."""
+    image.paste(SPECTRA6["black"], (0, 0, image.width, image.height))
+
+
+def _marquee_paint_bulb_border(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Yellow + red bulb-light border around the entire perimeter.
+
+    Filled circles at evenly spaced intervals along the top, bottom,
+    left, and right edges. The colour cycles yellow → red → yellow → red
+    around the perimeter so the strip reads as a vintage colored-bulb
+    marquee rather than a uniform yellow lamp row. Each bulb gets a
+    small inner pure-white "highlight" pixel so the bulb reads as lit
+    glass rather than a flat painted dot.
+    """
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+    r = _MARQUEE_BULB_RADIUS
+    inset = _MARQUEE_BULB_INSET
+    spacing = _MARQUEE_BULB_SPACING
+    # Walk the perimeter and emit a bulb at each step.
+    bulbs: list[tuple[int, int]] = []
+    # Top edge: left → right.
+    for x in range(inset, width - inset + 1, spacing):
+        bulbs.append((x, inset))
+    # Right edge: top → bottom (skip first to avoid double-tap of corner).
+    for y in range(inset + spacing, height - inset + 1, spacing):
+        bulbs.append((width - inset, y))
+    # Bottom edge: right → left.
+    for x in range(width - inset - spacing, inset - 1, -spacing):
+        bulbs.append((x, height - inset))
+    # Left edge: bottom → top.
+    for y in range(height - inset - spacing, inset, -spacing):
+        bulbs.append((inset, y))
+    for i, (cx, cy) in enumerate(bulbs):
+        bulb_colour = YELLOW if i % 2 == 0 else RED
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=bulb_colour)
+        # Small white highlight near top-left of the bulb — sells the
+        # "lit glass" register.
+        draw.ellipse((cx - 1, cy - 2, cx + 1, cy), fill=WHITE)
+
+
+def _marquee_paint_label_band(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    width: int,
+    y_top: int,
+    text: str,
+    *,
+    size: int = 14,
+    colour: tuple[int, int, int] | None = None,
+) -> None:
+    """Centred chrome label in Bungee Shade — for NOW SHOWING / ONE NIGHT ONLY taglines."""
+    if colour is None:
+        colour = SPECTRA6["yellow"]
+    # Small chrome labels use Antonio Bold (condensed sans, very legible
+    # at 12–14pt) instead of Bungee Shade — the 3D-blocked Bungee Shade
+    # is gorgeous at the 84pt time-chrome size but muddies into noise at
+    # small label sizes.
+    font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    cx = width // 2
+    draw.text((cx - tw // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=colour)
+
+
+def _marquee_paint_feature_title(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    width: int,
+    quote_row: dict,
+    cy: int,
+) -> None:
+    """Big chunky white Bungee Shade book-title chrome — the marquee
+    "feature title".
+
+    Centred horizontally on ``width`` and vertically on ``cy``. Bungee
+    Shade's 3D-blocked silhouette reads as physical relief letters
+    mounted on the marquee canopy. Title is uppercased (the canonical
+    marquee convention) and shrunk to fit width — starts at 72pt and
+    steps down in 4pt increments through 32pt. If it still overflows
+    the available width at 32pt, the title is wrapped onto two lines
+    at the nearest space-character to the midpoint, and a fresh
+    size-fit sweep finds a size where both lines fit.
+
+    Fallback chain when ``quote_row['title']`` is missing: author
+    (uppercased) → the literal brand string ``"IDLE HOURS"``. The
+    fallback deliberately never surfaces the wall-clock HH:MM —
+    showing the digital time would defeat the whole point of a
+    quote-based fuzzy clock (the matched-phrase IS the time signal).
+    """
+    WHITE = SPECTRA6["white"]
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    author = (quote_row.get("author") or "").strip()
+    text = title.upper() or author.upper() or "IDLE HOURS"
+    if not text:
+        return
+    max_text_width = width - 100  # 50 px inset each side
+
+    # Try single-line fit first, biggest size down.
+    chain = theme_font_candidates("marquee", "ornament")
+    for size in (72, 64, 56, 50, 44, 38, 32):
+        font = load_font(chain, size=size)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        if tw <= max_text_width:
+            th = bbox[3] - bbox[1]
+            draw.text(
+                (width // 2 - tw // 2 - bbox[0], cy - th // 2 - bbox[1]),
+                text, font=font, fill=WHITE,
+            )
+            return
+
+    # Wrap to two lines at the space nearest the midpoint.
+    mid = len(text) // 2
+    left_break = text.rfind(" ", 0, mid + 4)
+    right_break = text.find(" ", mid)
+    candidates = [b for b in (left_break, right_break) if b > 0]
+    if not candidates:
+        # No space at all — render at smallest size, will overflow but
+        # nothing better to do.
+        font = load_font(chain, size=28)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        draw.text(
+            (width // 2 - tw // 2 - bbox[0], cy - th // 2 - bbox[1]),
+            text, font=font, fill=WHITE,
+        )
+        return
+    split_at = min(candidates, key=lambda b: abs(b - mid))
+    line1, line2 = text[:split_at].strip(), text[split_at + 1:].strip()
+
+    for size in (54, 48, 42, 36, 32, 28, 24):
+        font = load_font(chain, size=size)
+        bbox1 = draw.textbbox((0, 0), line1, font=font)
+        bbox2 = draw.textbbox((0, 0), line2, font=font)
+        tw1 = bbox1[2] - bbox1[0]
+        tw2 = bbox2[2] - bbox2[0]
+        if tw1 <= max_text_width and tw2 <= max_text_width:
+            break
+
+    th = bbox1[3] - bbox1[1]
+    line_gap = 10
+    block_h = th * 2 + line_gap
+    top_y = cy - block_h // 2
+    # Line 1.
+    draw.text(
+        (width // 2 - (bbox1[2] - bbox1[0]) // 2 - bbox1[0], top_y - bbox1[1]),
+        line1, font=font, fill=WHITE,
+    )
+    # Line 2.
+    draw.text(
+        (width // 2 - (bbox2[2] - bbox2[0]) // 2 - bbox2[0],
+         top_y + th + line_gap - bbox2[1]),
+        line2, font=font, fill=WHITE,
+    )
+
+
+def _marquee_paint_divider(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, cy: int) -> None:
+    """Decorative double-rule dividing the time chrome from the quote body.
+
+    Two parallel horizontal lines — a thicker yellow upper rule and a
+    thin red lower rule — with a small filled red diamond centred
+    between them. Reads as a vintage proscenium / poster divider.
+    """
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    x_left = 80
+    x_right = width - 80
+    draw.line((x_left, cy - 4, x_right, cy - 4), fill=YELLOW, width=2)
+    draw.line((x_left, cy + 4, x_right, cy + 4), fill=RED, width=1)
+    # Centred red diamond between the rules.
+    cx = width // 2
+    draw.polygon([(cx, cy - 5), (cx + 5, cy), (cx, cy + 5), (cx - 5, cy)], fill=RED)
+
+
+def _marquee_paint_body(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Quote body in white Cardo Italic with a red matched-phrase accent.
+
+    Centred line-by-line within ``rect``. Uses ``fit_quote`` so the
+    quote shrinks to fit when dense; standard Spectra-6 white-on-black
+    text contrast keeps it legible against the facade ground.
+    """
+    WHITE = SPECTRA6["white"]
+    RED = SPECTRA6["red"]
+    x0, y0, x1, y1 = rect
+    width = x1 - x0
+    height = y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw,
+        display_quote,
+        matched,
+        width,
+        height,
+        font_max=30,
+        font_min=18,
+        line_height_mult=1.22,
+        theme="marquee",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        line_w = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            line_w += bbox[2] - bbox[0]
+        x = x0 + max(0, (width - line_w) // 2)
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            fill = RED if is_bold else WHITE
+            draw.text((x, chunk_y), chunk, font=font, fill=fill)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _marquee_paint_credits(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    width: int,
+    y_top: int,
+) -> None:
+    """WRITTEN BY [AUTHOR] credit chrome.
+
+    Yellow Antonio Bold "WRITTEN BY" label + white Cardo Italic
+    author name. Centred on the canvas. Earlier revisions used the
+    canonical movie-poster credit ``STARRING`` here, but the author
+    didn't perform in the book — they wrote it — so the literary
+    context wants the more accurate verb. The marquee chrome
+    continues to lean on the movie-palace vocabulary
+    (NOW SHOWING / ONE NIGHT ONLY) everywhere else, but the credit
+    line is the one place where the literary register has to win.
+    """
+    YELLOW = SPECTRA6["yellow"]
+    WHITE = SPECTRA6["white"]
+    author = (quote_row.get("author") or "").strip()
+    if not author:
+        return
+    cx = width // 2
+    label_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=14)
+    name_font = load_font(theme_font_candidates("marquee", "quote_regular"), size=20)
+    label = "WRITTEN BY"
+    label_bbox = draw.textbbox((0, 0), label, font=label_font)
+    label_w = label_bbox[2] - label_bbox[0]
+    name_bbox = draw.textbbox((0, 0), author, font=name_font)
+    name_w = name_bbox[2] - name_bbox[0]
+    gap = 14
+    total_w = label_w + gap + name_w
+    line_x = cx - total_w // 2
+    draw.text((line_x - label_bbox[0], y_top - label_bbox[1]), label, font=label_font, fill=YELLOW)
+    draw.text(
+        (line_x + label_w + gap - name_bbox[0], y_top - name_bbox[1] - 2),
+        author, font=name_font, fill=WHITE,
+    )
+
+
+def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """1930s movie-palace marquee.
+
+    Black ground; alternating yellow/red bulb-light border around the
+    perimeter (with small white highlight pixels on each bulb so they
+    read as lit glass); a small "NOW SHOWING" chrome tagline at the
+    top; the book title as the big chunky Bungee Shade feature-title
+    chrome below (uppercased, auto-sized and wrapped to 2 lines for
+    long titles); literary quote below in white Cardo Italic with a
+    red matched-phrase accent; WRITTEN BY [AUTHOR] credit chrome at
+    the bottom in yellow + white; "ONE NIGHT ONLY" tagline above the
+    bottom bulbs.
+
+    ``time_str`` is intentionally never rendered as digital chrome —
+    the quote's matched phrase ("half past two", "nine o'clock", etc.)
+    carries the time signal, and surfacing a parallel digital HH:MM
+    would defeat the whole point of a quote-based fuzzy clock. The
+    parameter is retained because the custom-render dispatch signature
+    is shared with the other frame painters (astrarium / tarot / vinyl
+    / diags); keeping the signature uniform is more valuable than
+    micro-optimising it away.
+    """
+    del time_str  # see docstring; deliberately unused.
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    _marquee_paint_facade(image)
+    draw = ImageDraw.Draw(image)
+    _marquee_paint_bulb_border(image, draw, width, height)
+
+    # Top "NOW SHOWING" tagline, just below the top bulb row.
+    _marquee_paint_label_band(image, draw, width, y_top=40, text="—  NOW SHOWING  —", size=14)
+
+    # Big chrome — the book title as the feature display.
+    _marquee_paint_feature_title(image, draw, width, quote_row, cy=112)
+
+    # Decorative double-rule dividing the title from the quote body.
+    _marquee_paint_divider(image, draw, width, cy=180)
+
+    # Literary quote body — centred between the divider and the credits.
+    body_rect = (60, 200, width - 60, 360)
+    _marquee_paint_body(image, draw, quote_row, body_rect)
+
+    # Credits chrome — WRITTEN BY [AUTHOR] only (title moved to the top).
+    _marquee_paint_credits(image, draw, quote_row, width, y_top=384)
+
+    # "ONE NIGHT ONLY" tagline just above the bottom bulb row.
+    _marquee_paint_label_band(image, draw, width, y_top=448, text="—  ONE NIGHT ONLY  —", size=12)
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+# ─── tarot (major-arcana card) ───────────────────────────────────────────────
+
+def _tarot_paint_vellum(image: Image.Image) -> None:
+    """Sparse R+G sepia foxing-stipple over a warm Y+W cream ground.
+
+    Two-layer aged-paper recipe:
+
+    1. Cream Y+W base — same 1-in-8 yellow Bayer wash as
+       ``_astrarium_paint_cream_wash``. Gives the page a warm
+       parchment tone before any foxing lands.
+    2. Sparse R+G foxing — one red OR one green pixel per 4×4 Bayer
+       tile at cell value 0 (1-in-16 ≈ 6% density), with the
+       red-vs-green choice driven by tile-coordinate parity so the
+       foxing scatter looks random at panel distance rather than
+       grid-aligned. Adjacent R + G dots blend into the rust-brown
+       sepia tone real archival paper develops as the lignin
+       oxidises — the same chromatic-aging recipe ``newsprint``
+       uses for its foxing layer, but at half the density and
+       layered over cream rather than over a darker halftone.
+
+    Reads as older, archival ritual-document card stock — distinct
+    from the cleaner gold-cream Y+W register the manuscript-themed
+    themes (illuminated / herbarium / mucha / astrarium) use.
+    """
+    px = image.load()
+    w, h = image.size
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    GREEN = SPECTRA6["green"]
+    for y in range(h):
+        row = BAYER_4x4[y % 4]
+        for x in range(w):
+            if px[x, y] != WHITE:
+                continue
+            cell = row[x % 4]
+            if cell < 2:
+                # Layer 1: cream Y+W base — 2-in-16 yellow wash.
+                px[x, y] = YELLOW
+            elif cell == 4 and (((x // 4) + (y // 4)) & 1):
+                # Layer 2a: sparse red foxing dot (1-in-32, parity-half).
+                px[x, y] = RED
+            elif cell == 5 and not (((x // 4) + (y // 4)) & 1):
+                # Layer 2b: sparse green foxing dot (1-in-32, opposite parity).
+                px[x, y] = GREEN
+
+
+_TAROT_ROMAN_NUMERALS = {
+    1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
+    7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII",
+}
+
+
+def _tarot_paint_doubled_border(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+) -> None:
+    """Outer 3-px red rule + 2-px gap + inner 1-px black rule."""
+    RED = SPECTRA6["red"]
+    BLACK = SPECTRA6["black"]
+    x0, y0, x1, y1 = rect
+    # Outer red rule (3 px thick).
+    for offset in range(3):
+        draw.rectangle((x0 + offset, y0 + offset, x1 - offset, y1 - offset), outline=RED)
+    # Inner black rule, 5 px inset (3 px outer + 2 px gap).
+    draw.rectangle((x0 + 5, y0 + 5, x1 - 5, y1 - 5), outline=BLACK)
+
+
+def _tarot_paint_corner_numerals(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int], hour_int: int,
+) -> None:
+    """Small Roman numerals in all four corners (bottom corners rotated 180°).
+
+    Playing-card convention: the rank glyph sits in every corner so the
+    hour reads regardless of orientation. Each numeral is rendered to a
+    small ``L``-mode mask, optionally rotated 180° for the bottom
+    corners, then painted into the card via a black solid fill — works
+    around PIL's lack of native ``draw.text(rotation=...)``.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    x0, y0, x1, y1 = rect
+    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    font = load_font(theme_font_candidates("tarot", "ornament"), size=18)
+    # Render the glyph to a tight mask we can paint+rotate as a unit.
+    glyph_bbox = draw.textbbox((0, 0), numeral, font=font)
+    gw = glyph_bbox[2] - glyph_bbox[0]
+    gh = glyph_bbox[3] - glyph_bbox[1]
+    pad = 2
+    tile_w = gw + 2 * pad
+    tile_h = gh + 2 * pad
+    mask = Image.new("L", (tile_w, tile_h), 0)
+    ImageDraw.Draw(mask).text((pad - glyph_bbox[0], pad - glyph_bbox[1]), numeral, font=font, fill=255)
+
+    inset = 14
+    upright_positions = [
+        (x0 + inset, y0 + inset),               # top-left
+        (x1 - inset - tile_w, y0 + inset),      # top-right
+    ]
+    rotated_positions = [
+        (x0 + inset, y1 - inset - tile_h),      # bottom-left
+        (x1 - inset - tile_w, y1 - inset - tile_h),  # bottom-right
+    ]
+    # Upright corners: paint via the mask directly.
+    for (px_x, px_y) in upright_positions:
+        ink = Image.new("RGB", (tile_w, tile_h), BLACK)
+        image.paste(ink, (px_x, px_y), mask)
+    # Rotated corners: rotate the mask 180° before pasting.
+    rotated_mask = mask.rotate(180)
+    for (px_x, px_y) in rotated_positions:
+        ink = Image.new("RGB", (tile_w, tile_h), BLACK)
+        image.paste(ink, (px_x, px_y), rotated_mask)
+    # Tiny red dot underneath each upright numeral (and above each rotated
+    # one) as a "suit pip" — distinguishes the IH rank glyph from a real
+    # playing card without competing with the central illustration.
+    pip_r = 2
+    for (px_x, px_y) in upright_positions:
+        dot_cx = px_x + tile_w // 2
+        dot_cy = px_y + tile_h + 3
+        draw.ellipse((dot_cx - pip_r, dot_cy - pip_r, dot_cx + pip_r, dot_cy + pip_r), fill=RED)
+    for (px_x, px_y) in rotated_positions:
+        dot_cx = px_x + tile_w // 2
+        dot_cy = px_y - 3
+        draw.ellipse((dot_cx - pip_r, dot_cy - pip_r, dot_cx + pip_r, dot_cy + pip_r), fill=RED)
+
+
+def _tarot_paint_pentagram(
+    draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float, color: tuple,
+) -> None:
+    """Single five-point star as a 10-vertex polygon (alternating r_out/r_in)."""
+    points: list[tuple[float, float]] = []
+    for i in range(10):
+        # Start at the top point (270°), alternate outer/inner radius.
+        angle = -math.pi / 2 + i * math.pi / 5
+        radius = r if i % 2 == 0 else r * 0.4
+        points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    draw.polygon(points, fill=color)
+
+
+def _tarot_paint_roman_numeral(
+    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int, cx: int, y_top: int,
+) -> None:
+    """Roman numeral hour in Cinzel Decorative Black 36, solid black."""
+    BLACK = SPECTRA6["black"]
+    font = load_font(theme_font_candidates("tarot", "ornament"), size=36)
+    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    bbox = draw.textbbox((0, 0), numeral, font=font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), numeral, font=font, fill=BLACK)
+
+
+def _tarot_paint_card_name(
+    image: Image.Image, draw: ImageDraw.ImageDraw, name: str, cx: int, y_top: int,
+) -> None:
+    """Card name (matched-phrase) in Tyrian purple, Cinzel Decorative Bold."""
+    RED = SPECTRA6["red"]
+    BLUE = SPECTRA6["blue"]
+    font = load_font(theme_font_candidates("tarot", "quote_bold"), size=22)
+    text = (name or "").upper().strip()
+    if not text:
+        return
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    # Re-anchor so left edge of the bbox lands at the intended start.
+    draw_text_dithered(
+        image,
+        (cx - w // 2 - bbox[0], y_top - bbox[1]),
+        text,
+        font=font,
+        dark=RED,
+        light=BLUE,
+        light_density=0.5,
+    )
+
+
+def _tarot_emblem_magician(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Magician (I): tall staff held aloft, four suit symbols on a small
+    altar table, infinity lemniscate above the head — the canonical
+    Rider-Waite Magician composition compressed into a ~180×180 box.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # The vertical staff (held aloft, dominant axis).
+    draw.line((cx, cy - 90, cx, cy + 50), fill=BLACK, width=4)
+    # Staff cap dots (one above, one below the figure's "hand").
+    draw.ellipse((cx - 10, cy - 100, cx + 10, cy - 80), fill=RED)
+    draw.ellipse((cx - 10, cy + 42, cx + 10, cy + 62), fill=RED)
+    # Infinity lemniscate floating above the figure (Rider-Waite Magician
+    # has this hovering over the head — represents eternity / mastery).
+    draw.arc((cx - 36, cy - 76, cx,    cy - 50), start=0,   end=360, fill=BLACK, width=2)
+    draw.arc((cx,      cy - 76, cx + 36, cy - 50), start=0, end=360, fill=BLACK, width=2)
+    # Small altar table beneath the figure carrying the four suit symbols
+    # (cup / wand / sword / pentacle — the elemental tools of the trade).
+    altar_y = cy + 64
+    altar_x0, altar_x1 = cx - 70, cx + 70
+    draw.rectangle((altar_x0, altar_y, altar_x1, altar_y + 6), fill=BLACK)
+    # Suit pip 1: cup (left). U-shape outline.
+    sx = altar_x0 + 18
+    draw.arc((sx - 10, altar_y - 18, sx + 10, altar_y + 2), 0, 180, fill=RED, width=2)
+    draw.line((sx - 10, altar_y - 8, sx - 10, altar_y - 18), fill=RED, width=2)
+    draw.line((sx + 10, altar_y - 8, sx + 10, altar_y - 18), fill=RED, width=2)
+    # Suit pip 2: wand (centre-left). Short vertical stroke.
+    sx = altar_x0 + 50
+    draw.line((sx, altar_y - 22, sx, altar_y - 2), fill=BLACK, width=3)
+    draw.ellipse((sx - 4, altar_y - 26, sx + 4, altar_y - 18), fill=RED)
+    # Suit pip 3: sword (centre-right). Vertical line + crossguard.
+    sx = altar_x1 - 50
+    draw.line((sx, altar_y - 22, sx, altar_y - 2), fill=BLACK, width=2)
+    draw.line((sx - 6, altar_y - 16, sx + 6, altar_y - 16), fill=BLACK, width=2)
+    # Suit pip 4: pentacle (right). Small red 5-point star.
+    sx = altar_x1 - 16
+    _tarot_paint_pentagram(draw, sx, altar_y - 12, 9, RED)
+
+
+def _tarot_emblem_hermit(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Hermit (IX): hooded silhouette with raised lantern + diagonal staff,
+    six-point star inside the lantern — Rider-Waite Hermit on his
+    mountain at ~180×180 scale.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Hooded silhouette body — a stylised triangle for the robe with a
+    # smaller triangle on top for the hood.
+    robe = [
+        (cx - 32, cy + 80),  # left foot
+        (cx - 16, cy + 8),   # left shoulder
+        (cx - 10, cy - 20),  # neck (left side of hood)
+        (cx + 14, cy - 20),  # neck (right side of hood)
+        (cx + 20, cy + 8),   # right shoulder
+        (cx + 36, cy + 80),  # right foot
+    ]
+    draw.polygon(robe, fill=BLACK)
+    # Hood: pointed peak above the head.
+    hood = [
+        (cx - 14, cy - 18),
+        (cx + 2, cy - 50),
+        (cx + 18, cy - 18),
+    ]
+    draw.polygon(hood, fill=BLACK)
+    # Diagonal staff in the right hand — extends from shoulder down to
+    # the ground at the right of the figure.
+    draw.line((cx + 18, cy + 4, cx + 60, cy + 90), fill=BLACK, width=4)
+    # Raised lantern at the left — the Hermit's iconic lamp, held aloft
+    # above the left shoulder.
+    lx0, ly0, lx1, ly1 = cx - 60, cy - 50, cx - 28, cy - 14
+    draw.rectangle((lx0, ly0, lx1, ly1), outline=BLACK, width=3)
+    # Lantern panes — two vertical bars dividing the front face into 3.
+    third = (lx1 - lx0) // 3
+    draw.line((lx0 + third, ly0 + 2, lx0 + third, ly1 - 2), fill=BLACK, width=1)
+    draw.line((lx0 + 2 * third, ly0 + 2, lx0 + 2 * third, ly1 - 2), fill=BLACK, width=1)
+    # Lantern bail (handle).
+    bail_cx = (lx0 + lx1) // 2
+    draw.line((bail_cx, ly0, bail_cx, ly0 - 10), fill=BLACK, width=2)
+    draw.arc((lx0 + 2, ly0 - 14, lx1 - 2, ly0 - 4), 0, 180, fill=BLACK, width=2)
+    # Holding-arm line from lantern bail up to figure's hand.
+    draw.line((bail_cx, ly0 - 10, cx - 10, cy - 14), fill=BLACK, width=2)
+    # Flame inside the lantern — large red 12-point star fills the pane.
+    fx, fy = bail_cx, (ly0 + ly1) // 2
+    flame_pts: list[tuple[float, float]] = []
+    for i in range(24):
+        angle = -math.pi / 2 + i * math.pi / 12
+        r = 12 if i % 2 == 0 else 5
+        flame_pts.append((fx + r * math.cos(angle), fy + r * math.sin(angle)))
+    draw.polygon(flame_pts, fill=RED)
+
+
+def _tarot_emblem_wheel(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Wheel of Fortune (X): two concentric rims with engraved spokes, a
+    red filled hub at the centre, and four cardinal alchemical sigils
+    at the rim — the Rider-Waite Wheel turned into a 180-px medallion.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    r_outer = 88
+    r_mid = 70
+    r_inner = 40
+    r_hub = 16
+    # Outer rim.
+    draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), outline=BLACK, width=4)
+    # Mid rim (inscribed band).
+    draw.ellipse((cx - r_mid, cy - r_mid, cx + r_mid, cy + r_mid), outline=BLACK, width=2)
+    # Inner rim.
+    draw.ellipse((cx - r_inner, cy - r_inner, cx + r_inner, cy + r_inner), outline=BLACK, width=2)
+    # Eight spokes from inner rim to mid rim — the wheel's structural axles.
+    for i in range(8):
+        angle = i * math.pi / 4
+        x1 = cx + r_inner * math.cos(angle)
+        y1 = cy + r_inner * math.sin(angle)
+        x2 = cx + r_mid * math.cos(angle)
+        y2 = cy + r_mid * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=2)
+    # Red filled hub at the centre.
+    draw.ellipse((cx - r_hub, cy - r_hub, cx + r_hub, cy + r_hub), fill=RED)
+    # Cardinal sigil glyphs in the inscribed band (between mid and outer
+    # rims). The four alchemical / elemental marks at N/E/S/W positions.
+    sigil_r = (r_outer + r_mid) // 2
+    sigil_font = load_font(theme_font_candidates("tarot", "ornament"), size=14)
+    for angle_deg, glyph in ((-90, "T"), (0, "A"), (90, "R"), (180, "O")):
+        angle = math.radians(angle_deg)
+        sx = cx + sigil_r * math.cos(angle)
+        sy = cy + sigil_r * math.sin(angle)
+        bbox = draw.textbbox((0, 0), glyph, font=sigil_font)
+        gw = bbox[2] - bbox[0]
+        gh = bbox[3] - bbox[1]
+        draw.text((sx - gw // 2 - bbox[0], sy - gh // 2 - bbox[1]), glyph, font=sigil_font, fill=BLACK)
+    # Short radial tick marks along the outer rim every 30° — engraver's
+    # divisions, evoking the Wheel-of-Fortune's twelve houses.
+    for i in range(12):
+        angle = i * math.pi / 6
+        x1 = cx + (r_outer - 6) * math.cos(angle)
+        y1 = cy + (r_outer - 6) * math.sin(angle)
+        x2 = cx + r_outer * math.cos(angle)
+        y2 = cy + r_outer * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=1)
+
+
+def _tarot_emblem_default(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Generic red pentagram with a small inscribed circle and surrounding
+    radial dashes — placeholder for the 9 unmapped hours. Reads as a
+    real ritual sigil rather than a flat stick-figure star.
+    """
+    RED = SPECTRA6["red"]
+    BLACK = SPECTRA6["black"]
+    # Inscribed circle behind the star.
+    draw.ellipse((cx - 90, cy - 90, cx + 90, cy + 90), outline=BLACK, width=2)
+    draw.ellipse((cx - 72, cy - 72, cx + 72, cy + 72), outline=BLACK, width=1)
+    # Big pentagram.
+    _tarot_paint_pentagram(draw, cx, cy, 70, RED)
+    # Twelve radial dashes around the outer ring — clock-face ticks.
+    for i in range(12):
+        angle = i * math.pi / 6
+        x1 = cx + 96 * math.cos(angle)
+        y1 = cy + 96 * math.sin(angle)
+        x2 = cx + 104 * math.cos(angle)
+        y2 = cy + 104 * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=1)
+
+
+def _tarot_emblem_priestess(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """High Priestess (II): two pillars (B / J) flanking a crescent moon.
+
+    Rider-Waite Priestess sits between the Temple of Solomon's pillars
+    Boaz (black, left) and Jachin (white, right); her crown bears a
+    crescent moon, and a smaller moon rests at her feet. The compact
+    silhouette here captures both pillars + the lunar emblem between.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Two pillars, left+right, height ~140.
+    draw.rectangle((cx - 70, cy - 70, cx - 50, cy + 70), outline=BLACK, width=3)
+    draw.rectangle((cx + 50, cy - 70, cx + 70, cy + 70), outline=BLACK, width=3)
+    # Pillar capitals (cap blocks at the top of each).
+    draw.rectangle((cx - 76, cy - 80, cx - 44, cy - 70), fill=BLACK)
+    draw.rectangle((cx + 44, cy - 80, cx + 76, cy - 70), fill=BLACK)
+    # "B" / "J" letters carved on the pillars.
+    pillar_font = load_font(theme_font_candidates("tarot", "ornament"), size=18)
+    for label, anchor_cx in (("B", cx - 60), ("J", cx + 60)):
+        bbox = draw.textbbox((0, 0), label, font=pillar_font)
+        gw = bbox[2] - bbox[0]
+        gh = bbox[3] - bbox[1]
+        draw.text(
+            (anchor_cx - gw // 2 - bbox[0], cy - gh // 2 - bbox[1]),
+            label, font=pillar_font, fill=BLACK,
+        )
+    # Crescent moon between the pillars, near the top — a circle minus
+    # an offset overlay circle is the canonical crescent silhouette.
+    moon_cx, moon_cy, moon_r = cx, cy - 50, 18
+    draw.ellipse((moon_cx - moon_r, moon_cy - moon_r, moon_cx + moon_r, moon_cy + moon_r), fill=BLACK)
+    # Knock out the right portion to create the crescent.
+    knock_cx = moon_cx + 8
+    draw.ellipse((knock_cx - moon_r, moon_cy - moon_r, knock_cx + moon_r, moon_cy + moon_r), fill=SPECTRA6["white"])
+    # Scroll / TORA tablet at the priestess's lap (centred between pillars).
+    scroll_cx, scroll_cy = cx, cy + 8
+    draw.rectangle((scroll_cx - 16, scroll_cy - 12, scroll_cx + 16, scroll_cy + 12), outline=BLACK, width=2)
+    # Three horizontal "text" hairlines on the scroll.
+    for dy in (-5, 0, 5):
+        draw.line((scroll_cx - 12, scroll_cy + dy, scroll_cx + 12, scroll_cy + dy), fill=BLACK, width=1)
+    # Small red lunar dot at her feet — the moon she stands on.
+    draw.ellipse((cx - 6, cy + 60, cx + 6, cy + 72), fill=RED)
+
+
+def _tarot_emblem_empress(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Empress (III): crowned figure on a throne with wheat at her feet.
+
+    Compact silhouette: trapezoidal throne + a 12-star crown arc above
+    the head + a wheat-sheaf fan beneath the throne. The 12 stars are
+    the Empress's iconic ``corona stellarum duodecim`` (12-star crown,
+    Revelation 12 — also the crown of the Virgin Mary).
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Throne (trapezoidal, wider at the base).
+    throne = [
+        (cx - 60, cy + 60),
+        (cx - 40, cy - 20),
+        (cx + 40, cy - 20),
+        (cx + 60, cy + 60),
+    ]
+    draw.polygon(throne, outline=BLACK, width=3)
+    # Head (circle at top of throne back).
+    draw.ellipse((cx - 14, cy - 50, cx + 14, cy - 22), outline=BLACK, width=3)
+    # 12-star crown — arc of small red star dots above the head.
+    crown_r = 30
+    for i in range(12):
+        # Half-circle arc from angle 200° to 340° (~140° sweep above the head).
+        angle = math.radians(200 + i * (140 / 11))
+        sx = cx + crown_r * math.cos(angle)
+        sy = cy - 36 + crown_r * math.sin(angle)
+        draw.ellipse((sx - 2, sy - 2, sx + 2, sy + 2), fill=RED)
+    # Heart-shield with Venus symbol on the empress's chest — simplified
+    # to a small red filled heart silhouette at chest height.
+    draw.polygon([
+        (cx, cy + 12),
+        (cx - 10, cy - 2),
+        (cx - 6, cy - 10),
+        (cx, cy - 4),
+        (cx + 6, cy - 10),
+        (cx + 10, cy - 2),
+    ], fill=RED)
+    # Wheat sheaf fan beneath the throne — short black lines radiating
+    # from a centre point.
+    wheat_cy = cy + 78
+    for i in range(7):
+        angle = math.radians(250 + i * 10)
+        x2 = cx + 26 * math.cos(angle)
+        y2 = wheat_cy + 26 * math.sin(angle)
+        draw.line((cx, wheat_cy, x2, y2), fill=BLACK, width=2)
+        # Wheat-head terminal dot.
+        draw.ellipse((x2 - 2, y2 - 2, x2 + 2, y2 + 2), fill=BLACK)
+
+
+def _tarot_emblem_emperor(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Emperor (IV): stone throne with ram-head finials + ankh scepter.
+
+    Rider-Waite Emperor's throne is carved with four ram heads (Aries,
+    his ruling sign); he holds the ankh (life) in his right hand and
+    an orb (dominion) in his left. The compact silhouette here marks
+    the throne's two upper finials as ram horns and shows the ankh
+    centred over the chest.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Throne (rectangular base + back).
+    draw.rectangle((cx - 56, cy - 30, cx + 56, cy + 80), outline=BLACK, width=3)
+    # Two ram-head finials at the top corners of the throne — spiral
+    # horns rendered as small curved arc clusters.
+    for finial_cx in (cx - 56, cx + 56):
+        # Stylised horn: two concentric arcs forming a spiral.
+        draw.arc((finial_cx - 14, cy - 50, finial_cx + 14, cy - 22), 0, 360, fill=BLACK, width=3)
+        draw.arc((finial_cx - 8, cy - 44, finial_cx + 8, cy - 28), 0, 360, fill=BLACK, width=2)
+    # Crowned head silhouette centred on the throne back.
+    draw.ellipse((cx - 14, cy - 18, cx + 14, cy + 10), outline=BLACK, width=3)
+    # Spiked crown above the head — three triangular points.
+    for tip_x in (cx - 10, cx, cx + 10):
+        draw.polygon([(tip_x - 4, cy - 18), (tip_x, cy - 28), (tip_x + 4, cy - 18)], fill=BLACK)
+    # Ankh scepter held in the right hand — circle on top of a cross.
+    ankh_cx, ankh_cy = cx + 38, cy + 30
+    draw.ellipse((ankh_cx - 6, ankh_cy - 14, ankh_cx + 6, ankh_cy - 2), outline=RED, width=2)
+    draw.line((ankh_cx, ankh_cy - 2, ankh_cx, ankh_cy + 20), fill=RED, width=2)
+    draw.line((ankh_cx - 8, ankh_cy + 6, ankh_cx + 8, ankh_cy + 6), fill=RED, width=2)
+    # Orb in the left hand — small filled red circle.
+    draw.ellipse((cx - 42, cy + 22, cx - 30, cy + 34), fill=RED)
+
+
+def _tarot_emblem_hierophant(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Hierophant (V): triple-tiered papal tiara + crossed keys.
+
+    Rider-Waite Hierophant wears the three-tier ``triregnum`` (papal
+    crown) and holds three crossed keys at his feet. The compact
+    silhouette here shows the stacked-trapezoid crown above the head
+    + crossed-keys below as the two anchoring motifs.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Head silhouette.
+    draw.ellipse((cx - 16, cy - 30, cx + 16, cy + 6), outline=BLACK, width=3)
+    # Triple tiara — three stacked trapezoids of decreasing width.
+    for i, (top_w, bot_w, top_y) in enumerate([
+        (28, 36, cy - 50),  # bottom tier
+        (22, 28, cy - 70),  # middle tier
+        (16, 22, cy - 88),  # top tier
+    ]):
+        bot_y = top_y + 14
+        draw.polygon([
+            (cx - bot_w // 2, bot_y),
+            (cx - top_w // 2, top_y),
+            (cx + top_w // 2, top_y),
+            (cx + bot_w // 2, bot_y),
+        ], fill=BLACK)
+    # Small cross on top of the highest tier.
+    draw.line((cx, cy - 88, cx, cy - 100), fill=BLACK, width=2)
+    draw.line((cx - 4, cy - 96, cx + 4, cy - 96), fill=BLACK, width=2)
+    # Vestment trapezoid below the head (suggests the figure's robe).
+    draw.polygon([
+        (cx - 18, cy + 6),
+        (cx + 18, cy + 6),
+        (cx + 42, cy + 60),
+        (cx - 42, cy + 60),
+    ], outline=BLACK, width=3)
+    # Crossed keys at his feet — two diagonal red lines with bow-handles.
+    draw.line((cx - 30, cy + 90, cx + 30, cy + 60), fill=RED, width=3)
+    draw.line((cx + 30, cy + 90, cx - 30, cy + 60), fill=RED, width=3)
+    # Bow handles at the upper ends.
+    draw.ellipse((cx + 24, cy + 54, cx + 38, cy + 68), outline=RED, width=2)
+    draw.ellipse((cx - 38, cy + 54, cx - 24, cy + 68), outline=RED, width=2)
+
+
+def _tarot_emblem_lovers(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Lovers (VI): two intertwined hearts beneath a hovering cherub.
+
+    Rider-Waite Lovers shows a man + woman beneath the angel Raphael
+    against a backdrop of the Tree of Knowledge (right) and Tree of
+    Life (left). The compact silhouette here distils that to the two
+    intertwined hearts (union) under a small winged-figure (the angel)
+    flanked by two stylised tree silhouettes.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Sun behind the angel — a small filled red disc.
+    draw.ellipse((cx - 14, cy - 90, cx + 14, cy - 62), fill=RED)
+    # Sun rays — 8 short red radials.
+    for i in range(8):
+        angle = i * math.pi / 4
+        x1 = cx + 18 * math.cos(angle)
+        y1 = cy - 76 + 18 * math.sin(angle)
+        x2 = cx + 26 * math.cos(angle)
+        y2 = cy - 76 + 26 * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=RED, width=2)
+    # Angel silhouette — small head + spread wings beneath the sun.
+    draw.ellipse((cx - 8, cy - 52, cx + 8, cy - 36), outline=BLACK, width=2)
+    # Wings: two stylised arcs sweeping outward.
+    draw.arc((cx - 36, cy - 50, cx, cy - 30), 270, 90, fill=BLACK, width=3)
+    draw.arc((cx, cy - 50, cx + 36, cy - 30), 90, 270, fill=BLACK, width=3)
+    # Two intertwined hearts at the centre — overlapping heart silhouettes,
+    # left red-outline and right black-outline so they read as a couple.
+    def heart(draw_, cx_, cy_, scale, fill_, outline_):
+        # Polygon approximation of a heart shape.
+        pts = []
+        for t in range(0, 360, 6):
+            theta = math.radians(t)
+            r = scale * (1 - math.sin(theta))
+            x = cx_ + r * math.cos(theta) * 1.0
+            y = cy_ + r * math.sin(theta) * 0.9 - scale * 0.4
+            pts.append((x, y))
+        if fill_:
+            draw_.polygon(pts, fill=fill_)
+        if outline_:
+            for i in range(len(pts)):
+                draw_.line((pts[i], pts[(i + 1) % len(pts)]), fill=outline_, width=2)
+    heart(draw, cx - 14, cy + 16, 22, RED, None)
+    heart(draw, cx + 14, cy + 16, 22, None, BLACK)
+    # Two stylised tree silhouettes flanking the hearts.
+    for tree_cx in (cx - 60, cx + 60):
+        # Trunk.
+        draw.line((tree_cx, cy + 70, tree_cx, cy + 30), fill=BLACK, width=3)
+        # Canopy — small filled black circle.
+        draw.ellipse((tree_cx - 14, cy + 14, tree_cx + 14, cy + 36), outline=BLACK, width=2)
+
+
+def _tarot_emblem_chariot(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Chariot (VII): canopied chariot box on two wheels.
+
+    Rider-Waite Chariot shows the charioteer in a starry blue canopy
+    drawn by a pair of sphinxes (black + white). The compact silhouette
+    here distils that to the chariot box (rectangular cab + canopy with
+    four star-spotted columns) on two wheels.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Two wheels at the base.
+    for wheel_cx in (cx - 50, cx + 50):
+        draw.ellipse((wheel_cx - 18, cy + 50, wheel_cx + 18, cy + 86), outline=BLACK, width=3)
+        # 4-spoke wheel.
+        draw.line((wheel_cx, cy + 50, wheel_cx, cy + 86), fill=BLACK, width=2)
+        draw.line((wheel_cx - 18, cy + 68, wheel_cx + 18, cy + 68), fill=BLACK, width=2)
+        # Red hub.
+        draw.ellipse((wheel_cx - 4, cy + 64, wheel_cx + 4, cy + 72), fill=RED)
+    # Chariot box (cab) — solid rectangle resting on the wheel axles.
+    draw.rectangle((cx - 56, cy + 10, cx + 56, cy + 56), outline=BLACK, width=3)
+    # Starry canopy above — four columns and a roof.
+    # Roof.
+    draw.line((cx - 60, cy - 30, cx + 60, cy - 30), fill=BLACK, width=3)
+    # Four columns dropping from the roof to the box top.
+    for col_x in (cx - 50, cx - 18, cx + 18, cx + 50):
+        draw.line((col_x, cy - 30, col_x, cy + 10), fill=BLACK, width=2)
+    # Red star centred above the canopy peak.
+    _tarot_paint_pentagram(draw, cx, cy - 50, 12, RED)
+    # Charioteer's head peeking above the cab.
+    draw.ellipse((cx - 10, cy - 8, cx + 10, cy + 12), outline=BLACK, width=2)
+    # Crown points on the head.
+    for tip_x in (cx - 6, cx, cx + 6):
+        draw.polygon([(tip_x - 3, cy - 8), (tip_x, cy - 14), (tip_x + 3, cy - 8)], fill=BLACK)
+
+
+def _tarot_emblem_strength(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Strength (VIII): lion's head crowned by an infinity lemniscate.
+
+    Rider-Waite Strength shows a woman gently closing a lion's jaws,
+    with the infinity symbol hovering above her head. The compact
+    silhouette here distils that to the lion's head with a flowing
+    mane (the iconic "she-and-the-beast" pairing) and the lemniscate
+    floating above as the symbol of eternal will.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Infinity lemniscate at the top — two overlapping circles.
+    draw.arc((cx - 44, cy - 100, cx, cy - 70), 0, 360, fill=BLACK, width=3)
+    draw.arc((cx, cy - 100, cx + 44, cy - 70), 0, 360, fill=BLACK, width=3)
+    # Lion's mane — many short black lines radiating outward from the head.
+    head_cx, head_cy, head_r = cx, cy + 10, 36
+    for i in range(28):
+        angle = 2 * math.pi * i / 28
+        # Vary the mane length slightly so it looks furry.
+        r_out = head_r + (14 if i % 2 == 0 else 22)
+        x1 = head_cx + head_r * math.cos(angle)
+        y1 = head_cy + head_r * math.sin(angle)
+        x2 = head_cx + r_out * math.cos(angle)
+        y2 = head_cy + r_out * math.sin(angle)
+        draw.line((x1, y1, x2, y2), fill=BLACK, width=2)
+    # Lion's face — filled black circle with red eye dots and a stylised mouth.
+    draw.ellipse((head_cx - head_r, head_cy - head_r, head_cx + head_r, head_cy + head_r), fill=BLACK)
+    # Eyes.
+    draw.ellipse((head_cx - 14, head_cy - 8, head_cx - 6, head_cy), fill=RED)
+    draw.ellipse((head_cx + 6, head_cy - 8, head_cx + 14, head_cy), fill=RED)
+    # Mouth — small red curve.
+    draw.arc((head_cx - 10, head_cy + 4, head_cx + 10, head_cy + 20), 0, 180, fill=RED, width=2)
+    # Two small fang triangles in the mouth.
+    draw.polygon([(head_cx - 4, head_cy + 14), (head_cx - 2, head_cy + 20), (head_cx, head_cy + 14)], fill=SPECTRA6["white"])
+    draw.polygon([(head_cx, head_cy + 14), (head_cx + 2, head_cy + 20), (head_cx + 4, head_cy + 14)], fill=SPECTRA6["white"])
+
+
+def _tarot_emblem_justice(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Justice (XI): crowned figure with raised sword + balanced scales.
+
+    Rider-Waite Justice sits between two pillars, sword raised in her
+    right hand, scales held aloft in her left. The compact silhouette
+    here distils that to the vertical sword + horizontal scale-beam
+    + two hanging pans, with a small crown above as the figure's
+    silhouette anchor.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Crown silhouette at the top (three-spike crown).
+    for tip_x in (cx - 14, cx, cx + 14):
+        draw.polygon([(tip_x - 5, cy - 70), (tip_x, cy - 90), (tip_x + 5, cy - 70)], fill=BLACK)
+    # Crown base.
+    draw.rectangle((cx - 20, cy - 70, cx + 20, cy - 60), fill=BLACK)
+    # Vertical sword — long blade pointing up, crossguard near the base.
+    draw.line((cx, cy - 60, cx, cy + 40), fill=BLACK, width=4)
+    # Crossguard (horizontal bar near top).
+    draw.line((cx - 16, cy - 50, cx + 16, cy - 50), fill=BLACK, width=3)
+    # Pommel (red circle below crossguard).
+    draw.ellipse((cx - 5, cy + 40, cx + 5, cy + 50), fill=RED)
+    # Scales — horizontal beam across the figure's chest.
+    beam_y = cy + 12
+    draw.line((cx - 60, beam_y, cx + 60, beam_y), fill=BLACK, width=2)
+    # Chains hanging from each end of the beam down to the pan.
+    for pan_cx in (cx - 50, cx + 50):
+        draw.line((pan_cx, beam_y, pan_cx, beam_y + 20), fill=BLACK, width=2)
+        # Pan: shallow trapezoid.
+        draw.polygon([
+            (pan_cx - 14, beam_y + 20),
+            (pan_cx + 14, beam_y + 20),
+            (pan_cx + 10, beam_y + 30),
+            (pan_cx - 10, beam_y + 30),
+        ], fill=BLACK)
+    # Central pivot point on the beam — small red diamond.
+    draw.polygon([
+        (cx, beam_y - 4),
+        (cx + 4, beam_y),
+        (cx, beam_y + 4),
+        (cx - 4, beam_y),
+    ], fill=RED)
+
+
+def _tarot_emblem_world(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """World (XII): dancing figure within a laurel wreath, four corner creatures.
+
+    Rider-Waite World shows the cosmic dancer inside an oval laurel
+    wreath, with the four creatures of Ezekiel (bull, lion, eagle,
+    angel) at each corner — the same four creatures that anchor the
+    Wheel of Fortune. The compact silhouette here distils that to the
+    wreath silhouette + a centred dancing figure + four small creature
+    glyphs at the corners.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Laurel wreath — oval of small leaf shapes around a central oval.
+    wreath_a, wreath_b = 60, 80  # semi-major / semi-minor axes
+    n_leaves = 24
+    for i in range(n_leaves):
+        angle = 2 * math.pi * i / n_leaves
+        ox = cx + wreath_a * math.cos(angle)
+        oy = cy + wreath_b * math.sin(angle)
+        # Leaf: small ellipse oriented tangent to the wreath.
+        leaf_a, leaf_b = 8, 4
+        # Polygon-approximated rotated ellipse (PIL has no rotate-ellipse).
+        leaf_pts = []
+        for j in range(8):
+            la = 2 * math.pi * j / 8
+            lx = leaf_a * math.cos(la)
+            ly = leaf_b * math.sin(la)
+            # Rotate by the wreath-tangent angle (perpendicular to radial).
+            tangent = angle + math.pi / 2
+            rx = lx * math.cos(tangent) - ly * math.sin(tangent)
+            ry = lx * math.sin(tangent) + ly * math.cos(tangent)
+            leaf_pts.append((ox + rx, oy + ry))
+        draw.polygon(leaf_pts, fill=BLACK)
+    # Dancing figure inside the wreath — stick figure with bent legs.
+    # Head.
+    draw.ellipse((cx - 8, cy - 36, cx + 8, cy - 20), fill=BLACK)
+    # Torso.
+    draw.line((cx, cy - 20, cx, cy + 10), fill=BLACK, width=4)
+    # Arms (one raised, one out).
+    draw.line((cx, cy - 12, cx - 20, cy - 26), fill=BLACK, width=3)
+    draw.line((cx, cy - 12, cx + 20, cy + 6), fill=BLACK, width=3)
+    # Legs (one straight, one bent — dancing pose).
+    draw.line((cx, cy + 10, cx - 14, cy + 40), fill=BLACK, width=3)
+    draw.line((cx, cy + 10, cx + 14, cy + 30), fill=BLACK, width=3)
+    draw.line((cx + 14, cy + 30, cx + 6, cy + 44), fill=BLACK, width=3)
+    # Wreath ribbons — two red bow-knots at top and bottom where the wreath ties.
+    draw.ellipse((cx - 6, cy - 86, cx + 6, cy - 74), fill=RED)
+    draw.ellipse((cx - 6, cy + 74, cx + 6, cy + 86), fill=RED)
+    # Four corner creatures — tiny red filled triangles + black "creature" glyph.
+    # Top-left bull, top-right eagle, bottom-left lion, bottom-right angel.
+    creature_r = 6
+    for (corner_cx, corner_cy, glyph) in [
+        (cx - 90, cy - 80, "♉"),  # bull → fall back to plain triangle if missing
+        (cx + 90, cy - 80, "♅"),  # eagle
+        (cx - 90, cy + 80, "♌"),  # lion
+        (cx + 90, cy + 80, "♍"),  # angel
+    ]:
+        # Small red star to anchor the corner.
+        _tarot_paint_pentagram(draw, corner_cx, corner_cy, creature_r, RED)
+
+
+_TAROT_EMBLEMS = {
+    1: _tarot_emblem_magician,
+    2: _tarot_emblem_priestess,
+    3: _tarot_emblem_empress,
+    4: _tarot_emblem_emperor,
+    5: _tarot_emblem_hierophant,
+    6: _tarot_emblem_lovers,
+    7: _tarot_emblem_chariot,
+    8: _tarot_emblem_strength,
+    9: _tarot_emblem_hermit,
+    10: _tarot_emblem_wheel,
+    11: _tarot_emblem_justice,
+    12: _tarot_emblem_world,
+}
+
+
+def _tarot_paint_emblem(
+    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int, cx: int, cy: int,
+) -> None:
+    """Dispatch the hour-mapped emblem painter."""
+    painter = _TAROT_EMBLEMS.get(hour_int, _tarot_emblem_default)
+    painter(draw, cx, cy)
+
+
+def _tarot_paint_body_panel(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Knock out a clean cream "interpretation panel" beneath the emblem.
+
+    The sepia foxing-stipple from ``_tarot_paint_vellum`` is gorgeous as
+    a card-stock texture but breaks up small-glyph silhouettes badly —
+    EB Garamond's hairline serifs land on top of stray red/green dots,
+    and the matched-phrase Tyrian-purple dither gets visually muddled
+    against the foxing's red flecks. This helper overpaints the body
+    region with a clean cream wash (Y+W at 1-in-8, no R+G dots) so the
+    quote sits on legible vellum rather than the heavier card-stock
+    texture. Adds a thin red frame around the panel so the knockout
+    reads as a deliberate "interpretation cartouche" rather than a
+    rendering bug — same border family as the card's doubled outer
+    rule.
+    """
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    x0, y0, x1, y1 = rect
+    # Step 1: solid white wipe — clears any foxing dots within the panel.
+    draw.rectangle((x0, y0, x1, y1), fill=WHITE)
+    # Step 2: lay down a fresh cream Y+W wash inside the panel so it
+    # still tonally matches the surrounding vellum (just without the
+    # heavier R+G foxing).
+    px = image.load()
+    for y in range(y0, y1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1):
+            if row[x % 4] < 2:
+                px[x, y] = YELLOW
+    # Step 3: thin red rule framing the panel, anchoring it as a
+    # deliberate cartouche.
+    draw.rectangle((x0, y0, x1, y1), outline=RED, width=1)
+
+
+def _tarot_paint_body(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Quote body fitted into ``rect`` with matched-phrase Tyrian purple.
+
+    The caller is expected to have already knocked out a clean cream
+    panel under ``rect`` via ``_tarot_paint_body_panel`` so the body
+    text and matched-phrase dither sit on legible ground rather than
+    on the heavier R+G foxing of the surrounding card stock.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    BLUE = SPECTRA6["blue"]
+    x0, y0, x1, y1 = rect
+    width = x1 - x0
+    height = y1 - y0
+    # Inset slightly from the panel edge so glyphs don't kiss the red rule.
+    pad = 8
+    width -= 2 * pad
+    height -= 2 * pad
+    x0 += pad
+    y0 += pad
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw,
+        display_quote,
+        matched,
+        width,
+        height,
+        font_max=26,
+        font_min=15,
+        line_height_mult=1.24,
+        theme="tarot",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        # Trim leading/trailing whitespace tokens.
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        # Centre the line horizontally.
+        line_width = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            line_width += bbox[2] - bbox[0]
+        x = x0 + max(0, (width - line_width) // 2)
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            if is_bold:
+                draw_text_dithered(
+                    image, (x, chunk_y), chunk, font=font,
+                    dark=RED, light=BLUE, light_density=0.5,
+                )
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _tarot_paint_attribution(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    cx: int,
+    y_top: int,
+) -> None:
+    """Author · title in Cinzel Decorative Regular 12, solid black, centred."""
+    BLACK = SPECTRA6["black"]
+    font = load_font(theme_font_candidates("tarot", "ornament"), size=12)
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = " · ".join(parts)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    # Truncate if too wide (card-inner is ~480 px).
+    max_w = 470
+    if w > max_w:
+        # Shorten title side first.
+        while parts and w > max_w:
+            if len(parts[-1]) > 6:
+                parts[-1] = parts[-1][:-3] + "…"
+            else:
+                parts.pop()
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
+
+
+def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Single centred tarot card.
+
+    Cream-washed vellum ground, doubled red+black rubricated border, red
+    corner pentagrams, Roman-numeral hour, matched-phrase card name in
+    Tyrian purple, hour-mapped emblem at centre, EB Garamond quote body
+    (with Tyrian purple matched-phrase substitution), centred author ·
+    title attribution.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    _tarot_paint_vellum(image)
+    draw = ImageDraw.Draw(image)
+
+    # Card rect: centred 520 × 440. Width 800 → x∈[140, 660]; height 480 → y∈[20, 460].
+    card_w, card_h = 520, 440
+    cx = width // 2
+    x0 = (width - card_w) // 2
+    y0 = (height - card_h) // 2
+    x1 = x0 + card_w
+    y1 = y0 + card_h
+    card_rect = (x0, y0, x1, y1)
+    _tarot_paint_doubled_border(image, draw, card_rect)
+
+    # Hour numeral.
+    try:
+        hour24 = int(time_str.split(":", 1)[0])
+    except (ValueError, AttributeError):
+        hour24 = 0
+    hour_int = hour24 % 12 or 12
+    # Playing-card-style numerals in all four corners (bottom corners
+    # rotated 180° for the playing-card orientation convention).
+    _tarot_paint_corner_numerals(image, draw, card_rect, hour_int)
+    _tarot_paint_roman_numeral(image, draw, hour_int, cx, y0 + 16)
+
+    # Card name (matched phrase).
+    name = quote_row.get("matched_text") or ""
+    _tarot_paint_card_name(image, draw, name, cx, y0 + 58)
+
+    # Emblem at centre — the dominant illustration. Bigger emblems
+    # (~140–200 px tall depending on hour) anchor the visual centre.
+    # Centre is pushed below the card name + a 10 px breathing gap so
+    # the tallest emblems (Magician's staff reaches ~100 px above
+    # centre) clear the name band.
+    _tarot_paint_emblem(image, draw, hour_int, cx, y0 + 200)
+
+    # Body interpretation cartouche — knock out a clean cream panel
+    # under the body so the quote text + matched-phrase dither sit on
+    # legible ground rather than on the heavier R+G foxing of the
+    # surrounding card stock. The panel runs slightly wider than the
+    # body rect inset would suggest because the red frame is the visual
+    # anchor of the cartouche.
+    body_rect = (x0 + 14, y0 + 304, x1 - 14, y0 + 406)
+    _tarot_paint_body_panel(image, draw, body_rect)
+    _tarot_paint_body(image, draw, quote_row, body_rect)
+
+    # Attribution at the bottom.
+    _tarot_paint_attribution(image, draw, quote_row, cx, y1 - 24)
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+# ─── vinyl (turntable + record label) ────────────────────────────────────────
+
+_VINYL_DISK_CX = 200
+_VINYL_DISK_CY = 240
+_VINYL_DISK_R = 200
+_VINYL_LABEL_R = 80
+
+
+def _vinyl_paint_wear_speckle(image: Image.Image, seed: int) -> None:
+    """Sparse 1-in-32 black speckle on the sleeve, daily-seeded for variation.
+
+    Only flips pixels that are currently the cream-wash colour (white or
+    yellow from the Bayer wash); doesn't touch the black vinyl disk or
+    any non-sleeve graphic.
+    """
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    rng = random.Random(seed)
+    px = image.load()
+    w, h = image.size
+    # Only on the right half (sleeve region — x >= 400).
+    for y in range(0, h, 2):
+        for x in range(400, w, 2):
+            if rng.random() < 1 / 32 and px[x, y] in (WHITE, YELLOW):
+                px[x, y] = BLACK
+
+
+def _vinyl_paint_disk(
+    image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int, r_outer: int, r_label: int,
+) -> None:
+    """Solid black disk + densely-packed groove band + dead-wax + label + spindle.
+
+    Three concentric pressing zones modelled after a real 12-inch LP:
+
+    1. Dead-wax / run-out (``r_label`` → ``r_label + 12``): smooth
+       black ring between the inner groove and the label, where the
+       record holds the run-out groove and the matrix etching. Drawn
+       implicitly by NOT painting any groove rings in this band.
+    2. Programme band (``r_label + 12`` → ``r_outer - 10``): the
+       music-bearing groove area, painted as ~33 fine 1-px white
+       hairline ellipses spaced every 3 px. At panel viewing distance
+       these blur into a textured silvery band — the iconic
+       "pressed vinyl" silhouette. Earlier revisions used only 3-4
+       hairlines spaced 28 px apart; those read as decorative rings
+       rather than as actual grooves, so the disk looked toy-like.
+    3. Lead-in groove (``r_outer - 6`` → ``r_outer - 3``): a slightly
+       heavier 2-px white ring near the very rim, where a real LP's
+       tonearm first contacts the record.
+    """
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    # Outer disk.
+    draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), fill=BLACK)
+    # Programme band — dense 1-px groove hairlines every 3 px.
+    for r in range(r_label + 12, r_outer - 10, 3):
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=WHITE, width=1)
+    # Lead-in groove — slightly heavier ring just inside the rim.
+    lead_in_r = r_outer - 4
+    draw.ellipse(
+        (cx - lead_in_r, cy - lead_in_r, cx + lead_in_r, cy + lead_in_r),
+        outline=WHITE, width=2,
+    )
+    # NOTE: the label fill + spindle are intentionally NOT painted here;
+    # ``_vinyl_paint_label`` paints them so the label sits on top of the
+    # tonearm in the render order, covering any part of the arm that
+    # crosses behind the spindle.
+
+
+def _vinyl_paint_label(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    r_label: int,
+    matched_text: str,
+    bucket: str,
+) -> None:
+    """White-on-red label for a literary-audiobook LP.
+
+    Visually identical to a 1950s/60s music-LP label, but the chrome
+    text is reframed for the audiobook-recording register that real
+    spoken-word labels — Caedmon Records, Spoken Arts, Listening
+    Library — used to press literary readings to vinyl. The disk and
+    sleeve are mechanically identical to a music LP; only the
+    typographic chrome distinguishes the format.
+
+    Composition top to bottom:
+
+    * Outer black ring border (3 px inset from the label edge) — the
+      anchoring rule every LP-jacket label has, separating the printed
+      label area from the dead-wax beyond.
+    * "SPOKEN WORD" mark in small white caps along the top of the
+      label arc — the spoken-word equivalent of the music-LP "STEREO"
+      mark, declaring the format-of-pressing.
+    * Matched-phrase snippet (truncated to 18 chars + ellipsis) as
+      the "passage title", in Cormorant Bold.
+    * Thin white hairline divider.
+    * "IDLE HOURS" brand name in Cormorant Bold 14pt.
+    * "READ ALOUD" sub-title — the audiobook-LP equivalent of a music
+      LP's volume number, anchoring the format.
+    * Catalog number in Space Mono Bold ("IH-H11-15" etc).
+    * Current calendar year at the bottom of the label arc, small.
+
+    A real LP label has dozens of typographic elements; this stack
+    picks the four or five most iconic ones (format mark, brand,
+    catalog, year) and keeps everything else off so the label still
+    reads at the 80-px-radius scale.
+    """
+    WHITE = SPECTRA6["white"]
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    # Label red fill — painted here (not in ``_vinyl_paint_disk``) so the
+    # label sits on top of the tonearm in the render order and covers any
+    # part of the arm that crosses behind it.
+    draw.ellipse((cx - r_label, cy - r_label, cx + r_label, cy + r_label), fill=RED)
+    # Outer black ring border — 2 px thick, inset 4 px from the label edge.
+    ring_r = r_label - 4
+    draw.ellipse((cx - ring_r, cy - ring_r, cx + ring_r, cy + ring_r), outline=BLACK, width=2)
+    # SPOKEN WORD mark at the top of the label arc — the audiobook-
+    # label equivalent of a music LP's STEREO format mark.
+    format_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
+    format_text = "· SPOKEN WORD ·"
+    bbox = draw.textbbox((0, 0), format_text, font=format_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy - 60 - bbox[1]), format_text, font=format_font, fill=WHITE)
+    # Matched phrase (truncated) — the "track title".
+    matched_font = load_font(theme_font_candidates("vinyl", "quote_bold"), size=11)
+    snippet = (matched_text or "").strip()
+    if len(snippet) > 18:
+        snippet = snippet[:17] + "…"
+    if snippet:
+        bbox = draw.textbbox((0, 0), snippet, font=matched_font)
+        w = bbox[2] - bbox[0]
+        draw.text((cx - w // 2 - bbox[0], cy - 38 - bbox[1]), snippet, font=matched_font, fill=WHITE)
+    # Hairline under matched phrase.
+    draw.line((cx - r_label + 18, cy - 22, cx + r_label - 18, cy - 22), fill=WHITE, width=1)
+    # IDLE HOURS line.
+    title_font = load_font(theme_font_candidates("vinyl", "quote_bold"), size=14)
+    title_text = "IDLE HOURS"
+    bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy - 18 - bbox[1]), title_text, font=title_font, fill=WHITE)
+    # READ ALOUD subtitle — the audiobook-LP equivalent of a music
+    # LP's "VOLUME I" / "SIDE A" anchoring line.
+    sub_font = load_font(theme_font_candidates("vinyl", "quote_regular"), size=11)
+    sub_text = "READ ALOUD"
+    bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy + 8 - bbox[1]), sub_text, font=sub_font, fill=WHITE)
+    # Catalog number (mono).
+    cat_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=9)
+    cat_text = _vinyl_catalog_number(bucket)
+    bbox = draw.textbbox((0, 0), cat_text, font=cat_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy + 28 - bbox[1]), cat_text, font=cat_font, fill=WHITE)
+    # Current year at the bottom arc of the label.
+    year_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
+    year_text = f"© {datetime.date.today().year}"
+    bbox = draw.textbbox((0, 0), year_text, font=year_font)
+    w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], cy + 50 - bbox[1]), year_text, font=year_font, fill=WHITE)
+    # Spindle hole at the dead centre — painted last so it sits on top
+    # of any text or graphic that landed within 4 px of centre.
+    draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=WHITE)
+
+
+_VINYL_TONEARM_PIVOT = (388, 70)
+
+
+def _vinyl_paint_tonearm(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    r_outer: int,
+    minute: int,
+) -> None:
+    """Pivoted tonearm with cartridge headshell and counterweight.
+
+    The tonearm pivots from a fixed point at the upper-right of the
+    turntable plate (``_VINYL_TONEARM_PIVOT``, off the disk itself).
+    The cartridge headshell at the front of the arm contacts the disk
+    at the current-minute rim position (minute 0 = top, sweeping
+    clockwise — same convention as the earlier straight-stylus
+    rendition). A counterweight cylinder sits behind the pivot,
+    visually balancing the cartridge end.
+
+    Earlier revisions painted just a straight red line from rim to
+    label centre, which read as a diagram of the stylus path rather
+    than as a real tonearm. The pivot-plus-counterweight-plus-
+    cartridge silhouette is the canonical "this is a turntable"
+    visual that every consumer LP-deck has worn into collective
+    memory; without it the disk reads as a generic vinyl drawing
+    rather than as a playing record.
+
+    Geometry is allowed to be non-physical for some minute angles
+    (a real swinging arm only sweeps a ~40° arc, not 360°); the
+    cartridge always lands on the rim at the current-minute angle
+    even when that would require a comically-stretched arm. At
+    panel viewing distance casual readers see "arm pointing at the
+    current minute" and the metaphor lands; analysing the geometry
+    isn't the point.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    pivot_x, pivot_y = _VINYL_TONEARM_PIVOT
+    # Cartridge tip position on the disk rim at the current-minute angle.
+    angle_deg = (minute / 60.0) * 360.0 - 90.0
+    rim_angle = math.radians(angle_deg)
+    tip_x = cx + r_outer * math.cos(rim_angle)
+    tip_y = cy + r_outer * math.sin(rim_angle)
+    # Unit vector from cartridge tip back to pivot.
+    dx = pivot_x - tip_x
+    dy = pivot_y - tip_y
+    arm_length = math.hypot(dx, dy)
+    if arm_length < 1:
+        return
+    ux, uy = dx / arm_length, dy / arm_length
+    # Counterweight sits behind the pivot — extend the arm 36 px past
+    # the pivot in the away-from-cartridge direction.
+    cw_distance = 36
+    cw_x = pivot_x + ux * cw_distance
+    cw_y = pivot_y + uy * cw_distance
+    # Main arm: black line from cartridge end of the arm to the
+    # counterweight end (drawn through the pivot, all one stroke so
+    # the arm reads as a single rigid object).
+    draw.line((tip_x + ux * 6, tip_y + uy * 6, cw_x, cw_y), fill=BLACK, width=4)
+    # Pivot mount: small black filled circle marking the pivot point.
+    draw.ellipse((pivot_x - 8, pivot_y - 8, pivot_x + 8, pivot_y + 8), fill=BLACK)
+    # Inner pivot dot in red (mimics the pivot's coloured cap on
+    # vintage decks — also visually rhymes with the red label).
+    draw.ellipse((pivot_x - 3, pivot_y - 3, pivot_x + 3, pivot_y + 3), fill=RED)
+    # Counterweight cylinder at the back of the arm.
+    cw_r = 9
+    draw.ellipse((cw_x - cw_r, cw_y - cw_r, cw_x + cw_r, cw_y + cw_r), fill=BLACK)
+    # Counterweight outline ring in red — adds visual weight without
+    # making the back end disappear into the chassis-distant sleeve.
+    draw.ellipse((cw_x - cw_r, cw_y - cw_r, cw_x + cw_r, cw_y + cw_r), outline=RED, width=1)
+    # Cartridge headshell at the tip — a small black quadrilateral
+    # oriented roughly perpendicular to the arm, with a red stylus pin
+    # underneath touching the groove. The headshell is rendered as a
+    # 4-point polygon (a rotated rectangle approximation) so it can
+    # follow the arm angle without PIL needing a rotate-rectangle
+    # primitive.
+    perp_x, perp_y = -uy, ux
+    head_long = 12   # along the arm axis
+    head_wide = 8    # perpendicular to the arm axis
+    # Cartridge body centre is just behind the contact tip.
+    body_cx = tip_x + ux * (head_long * 0.4)
+    body_cy = tip_y + uy * (head_long * 0.4)
+    head_pts = [
+        (body_cx + ux * head_long / 2 + perp_x * head_wide / 2,
+         body_cy + uy * head_long / 2 + perp_y * head_wide / 2),
+        (body_cx + ux * head_long / 2 - perp_x * head_wide / 2,
+         body_cy + uy * head_long / 2 - perp_y * head_wide / 2),
+        (body_cx - ux * head_long / 2 - perp_x * head_wide / 2,
+         body_cy - uy * head_long / 2 - perp_y * head_wide / 2),
+        (body_cx - ux * head_long / 2 + perp_x * head_wide / 2,
+         body_cy - uy * head_long / 2 + perp_y * head_wide / 2),
+    ]
+    draw.polygon(head_pts, fill=BLACK)
+    # Stylus pin contact point — small filled red dot exactly on the
+    # rim of the disk at the current-minute angle.
+    draw.ellipse((tip_x - 3, tip_y - 3, tip_x + 3, tip_y + 3), fill=RED)
+
+
+def _vinyl_paint_33rpm_badge(
+    image: Image.Image, draw: ImageDraw.ImageDraw, x_right: int, y_top: int,
+) -> None:
+    """Small red rect with white '33 RPM' Space Mono Bold, top-right corner.
+
+    Earlier revisions used the unicode glyph "33⅓" (U+2153 VULGAR
+    FRACTION ONE THIRD), but Space Mono Bold doesn't carry that
+    codepoint and the badge rendered as tofu. ASCII "33 RPM" is the
+    canonical fallback every record-jacket designer reaches for when
+    the fractional ⅓ isn't available in their typeface.
+    """
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+    rect = (x_right - 64, y_top, x_right, y_top + 24)
+    draw.rectangle(rect, fill=RED)
+    font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=12)
+    text = "33 RPM"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    h = bbox[3] - bbox[1]
+    rect_cx = (rect[0] + rect[2]) // 2
+    rect_cy = (rect[1] + rect[3]) // 2
+    draw.text((rect_cx - w // 2 - bbox[0], rect_cy - h // 2 - bbox[1]), text, font=font, fill=WHITE)
+
+
+def _vinyl_paint_track_heading(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    x_left: int,
+    y_top: int,
+) -> None:
+    """Small red "READING" heading above the quote body.
+
+    The audiobook-LP equivalent of a music LP's "TRACK ONE" liner-
+    note section marker — Caedmon Records sleeves used "READING",
+    "PASSAGE", or "EXCERPT" to introduce each spoken-word selection
+    on the jacket back. Antonio Bold small caps reads as functional
+    liner-note chrome at this size.
+    """
+    RED = SPECTRA6["red"]
+    font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=13)
+    text = "—  READING  —"
+    draw.text((x_left, y_top), text, font=font, fill=RED)
+
+
+def _vinyl_paint_catalog_bar(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    bucket: str,
+    x_left: int,
+    x_right: int,
+    y_top: int,
+) -> None:
+    """Bottom-of-sleeve catalog info bar: brand · catalog · year.
+
+    Justified across the available width, set in small italic
+    Cardo-or-Cormorant — the typographic register real LP back
+    covers use for the legal / catalog small-print band at the
+    bottom of the jacket. The catalog number repeats what's on
+    the label centre (just like real records repeat their cat
+    number on both the label and the jacket).
+    """
+    BLACK = SPECTRA6["black"]
+    font = load_font([CARDO_ITALIC, *META_FONT_CANDIDATES], size=11)
+    year = datetime.date.today().year
+    cat = _vinyl_catalog_number(bucket)
+    left_text = "IDLE HOURS LITERARY RECORDINGS"
+    right_text = f"CAT NO. {cat}  ·  © {year}"
+    draw.text((x_left, y_top), left_text, font=font, fill=BLACK)
+    bbox = draw.textbbox((0, 0), right_text, font=font)
+    w = bbox[2] - bbox[0]
+    draw.text((x_right - w - bbox[0], y_top - bbox[1]), right_text, font=font, fill=BLACK)
+    # Thin horizontal black rule just above the catalog text for the
+    # "back-of-jacket" reading effect.
+    rule_y = y_top - 6
+    draw.line((x_left, rule_y, x_right, rule_y), fill=BLACK, width=1)
+
+
+def _vinyl_paint_quote_body(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Quote body on the sleeve with tangerine matched-phrase substitution."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    YELLOW = SPECTRA6["yellow"]
+    x0, y0, x1, y1 = rect
+    width = x1 - x0
+    height = y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw,
+        display_quote,
+        matched,
+        width,
+        height,
+        font_max=32,
+        font_min=18,
+        line_height_mult=1.22,
+        theme="vinyl",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        x = x0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            if is_bold:
+                # Tangerine R+Y 5/8:3/8, same recipe astrarium uses.
+                draw_text_dithered(
+                    image, (x, chunk_y), chunk, font=font,
+                    dark=RED, light=YELLOW, light_density=0.375,
+                )
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _vinyl_paint_attribution(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    quote_row: dict,
+    x_right: int,
+    y_top: int,
+) -> None:
+    """Right-aligned author + ' · ' + title at the bottom of the sleeve."""
+    BLACK = SPECTRA6["black"]
+    font = load_font([EBGARAMOND_BOLD, *META_FONT_BOLD_CANDIDATES], size=12)
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = " · ".join(parts)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    # Truncate if too wide for the sleeve column (~360 px).
+    max_w = 360
+    if w > max_w:
+        while parts and w > max_w:
+            if len(parts[-1]) > 6:
+                parts[-1] = parts[-1][:-3] + "…"
+            else:
+                parts.pop()
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            w = bbox[2] - bbox[0]
+    draw.text((x_right - w - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
+
+
+def _vinyl_catalog_number(bucket: str) -> str:
+    """Derive an album-style catalog number from a fuzzy bucket.
+
+    e.g. ``"h2_half_past"`` → ``"IH-H2-30"``. Falls back to ``"IH-?"`` for
+    malformed inputs so callers never raise.
+    """
+    if not bucket or "_" not in bucket:
+        return "IH-?"
+    hour_part, _, state = bucket.partition("_")
+    minute = DEFAULT_BUCKET_MINUTES.get(state)
+    if minute is None:
+        return f"IH-{hour_part.upper()}-?"
+    return f"IH-{hour_part.upper()}-{minute:02d}"
+
+
+def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Turntable + literary-audiobook LP back-cover.
+
+    Same chassis a music LP would have, with the chrome text reframed
+    for the spoken-word / literary-audiobook register that real labels
+    like Caedmon Records and Spoken Arts pressed in the 1950s and 60s
+    — those discs carried Dylan Thomas, T. S. Eliot, Auden et al.
+    reading their own work, looked mechanically identical to music
+    LPs (33 RPM, grooved, jacketed, library-distributed), and are the
+    historical bridge between a vinyl visual and a literary corpus.
+
+    Left half: a black vinyl LP (radius 200, centred at (200, 240))
+    with densely-packed concentric grooves, a heavier lead-in groove
+    at the rim, a smooth dead-wax ring just outside the red label, and
+    a pivoted black tonearm whose cartridge headshell contacts the
+    disk at the current-minute rim position (pivot at the upper-right
+    of the turntable, counterweight at the back). The red label
+    carries an outer black ring border + SPOKEN WORD format mark, the
+    matched-phrase passage title, IDLE HOURS / READ ALOUD brand
+    stack, Space Mono catalog number, and a © year stamp.
+
+    Right half: cream-washed "back-of-jacket" liner-notes panel with
+    a small red "— READING —" heading, the literary quote in Cormorant
+    Garamond + tangerine matched-phrase substitution, a bottom catalog
+    bar (IDLE HOURS LITERARY RECORDINGS · CAT NO. · © year) and the
+    author/title attribution. Includes the 33 RPM badge in the top-right.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    # Sleeve cream wash full-canvas — the disk will overpaint the left half.
+    _astrarium_paint_cream_wash(image)
+    # Daily-seeded wear marks on the sleeve (right half only).
+    today = datetime.date.today()
+    speckle_seed = int(today.strftime("%Y%m%d"))
+    _vinyl_paint_wear_speckle(image, speckle_seed)
+
+    draw = ImageDraw.Draw(image)
+
+    # Render order on the turntable side: disk body (black + grooves
+    # only, no label/spindle) → tonearm (line may cross over the inner
+    # disk and label area) → label (red fill + outer ring + STEREO +
+    # brand + spindle, paints on top of the arm so the label sits
+    # over the arm without the arm cutting through the text).
+    _vinyl_paint_disk(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, _VINYL_LABEL_R)
+    bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
+    matched = quote_row.get("matched_text") or ""
+    try:
+        minute = int(time_str.split(":", 1)[1])
+    except (ValueError, IndexError):
+        minute = 0
+    _vinyl_paint_tonearm(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, minute)
+    _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
+
+    # Right-half liner-notes chrome.
+    sleeve_x_left, sleeve_x_right = 420, width - 20
+    # 33 RPM badge in the sleeve's top-right.
+    _vinyl_paint_33rpm_badge(image, draw, x_right=sleeve_x_right, y_top=20)
+    # TRACK ONE heading at the top of the liner-notes column.
+    _vinyl_paint_track_heading(image, draw, x_left=sleeve_x_left, y_top=24)
+    # Quote body on the sleeve.
+    body_rect = (sleeve_x_left, 60, sleeve_x_right, 390)
+    _vinyl_paint_quote_body(image, draw, quote_row, body_rect)
+    # Author + title attribution (right-aligned).
+    _vinyl_paint_attribution(image, draw, quote_row, x_right=sleeve_x_right, y_top=412)
+    # Bottom catalog bar — the LP back-cover small-print band.
+    _vinyl_paint_catalog_bar(image, draw, bucket, x_left=sleeve_x_left,
+                             x_right=sleeve_x_right, y_top=450)
+
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -9768,6 +11727,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_diags_frame(time_str, quote_row, width, height)
     if theme == "astrarium":
         return render_astrarium_frame(time_str, quote_row, width, height)
+    if theme == "marquee":
+        return render_marquee_frame(time_str, quote_row, width, height)
+    if theme == "tarot":
+        return render_tarot_frame(time_str, quote_row, width, height)
+    if theme == "vinyl":
+        return render_vinyl_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
