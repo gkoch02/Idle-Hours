@@ -11108,19 +11108,70 @@ def _tarot_paint_emblem(
     painter(draw, cx, cy)
 
 
+def _tarot_paint_body_panel(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    rect: tuple[int, int, int, int],
+) -> None:
+    """Knock out a clean cream "interpretation panel" beneath the emblem.
+
+    The sepia foxing-stipple from ``_tarot_paint_vellum`` is gorgeous as
+    a card-stock texture but breaks up small-glyph silhouettes badly —
+    EB Garamond's hairline serifs land on top of stray red/green dots,
+    and the matched-phrase Tyrian-purple dither gets visually muddled
+    against the foxing's red flecks. This helper overpaints the body
+    region with a clean cream wash (Y+W at 1-in-8, no R+G dots) so the
+    quote sits on legible vellum rather than the heavier card-stock
+    texture. Adds a thin red frame around the panel so the knockout
+    reads as a deliberate "interpretation cartouche" rather than a
+    rendering bug — same border family as the card's doubled outer
+    rule.
+    """
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    RED = SPECTRA6["red"]
+    x0, y0, x1, y1 = rect
+    # Step 1: solid white wipe — clears any foxing dots within the panel.
+    draw.rectangle((x0, y0, x1, y1), fill=WHITE)
+    # Step 2: lay down a fresh cream Y+W wash inside the panel so it
+    # still tonally matches the surrounding vellum (just without the
+    # heavier R+G foxing).
+    px = image.load()
+    for y in range(y0, y1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1):
+            if row[x % 4] < 2:
+                px[x, y] = YELLOW
+    # Step 3: thin red rule framing the panel, anchoring it as a
+    # deliberate cartouche.
+    draw.rectangle((x0, y0, x1, y1), outline=RED, width=1)
+
+
 def _tarot_paint_body(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
     quote_row: dict,
     rect: tuple[int, int, int, int],
 ) -> None:
-    """Quote body fitted into ``rect`` with matched-phrase Tyrian purple."""
+    """Quote body fitted into ``rect`` with matched-phrase Tyrian purple.
+
+    The caller is expected to have already knocked out a clean cream
+    panel under ``rect`` via ``_tarot_paint_body_panel`` so the body
+    text and matched-phrase dither sit on legible ground rather than
+    on the heavier R+G foxing of the surrounding card stock.
+    """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
     BLUE = SPECTRA6["blue"]
     x0, y0, x1, y1 = rect
     width = x1 - x0
     height = y1 - y0
+    # Inset slightly from the panel edge so glyphs don't kiss the red rule.
+    pad = 8
+    width -= 2 * pad
+    height -= 2 * pad
+    x0 += pad
+    y0 += pad
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     matched = quote_row.get("matched_text") or ""
 
@@ -11130,9 +11181,9 @@ def _tarot_paint_body(
         matched,
         width,
         height,
-        font_max=22,
-        font_min=14,
-        line_height_mult=1.28,
+        font_max=26,
+        font_min=15,
+        line_height_mult=1.24,
         theme="tarot",
     )
     quote_block_height = len(wrapped_quote) * line_height
@@ -11248,8 +11299,14 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     # centre) clear the name band.
     _tarot_paint_emblem(image, draw, hour_int, cx, y0 + 200)
 
-    # Body — sits below the emblem in the lower third of the card.
-    body_rect = (x0 + 20, y0 + 310, x1 - 20, y0 + 400)
+    # Body interpretation cartouche — knock out a clean cream panel
+    # under the body so the quote text + matched-phrase dither sit on
+    # legible ground rather than on the heavier R+G foxing of the
+    # surrounding card stock. The panel runs slightly wider than the
+    # body rect inset would suggest because the red frame is the visual
+    # anchor of the cartouche.
+    body_rect = (x0 + 14, y0 + 304, x1 - 14, y0 + 406)
+    _tarot_paint_body_panel(image, draw, body_rect)
     _tarot_paint_body(image, draw, quote_row, body_rect)
 
     # Attribution at the bottom.
