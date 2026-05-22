@@ -82,6 +82,7 @@ THEME_ORDER: tuple[str, ...] = (
     "marquee",
     "tarot",
     "vinyl",
+    "cartograph",
     "diags",
 )
 THEMES = {
@@ -916,6 +917,50 @@ THEMES = {
         "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
+    # Hand-drawn antique cartographer's chart. White-paper ground
+    # warmed by a cream Y+W Bayer Layer-0 wash + a sparse R+G sepia
+    # foxing scatter that reads as the lignin-oxidation rust-brown
+    # real archival paper develops — the same two-pass aged-paper
+    # recipe ``newsprint`` and ``tarot`` use, here layered over
+    # cream rather than over a darker halftone. ``draw_cartograph_
+    # border`` then paints two diagonal-corner coastline silhouettes
+    # in R+G sepia (period chart-engraver ink), a 32-px R+Y tangerine
+    # compass rose at the bottom-left, a small black sea-serpent
+    # margin doodle ("here be dragons") in the right margin, three
+    # hand-lettered italic Latin place labels in sepia, and threads
+    # ``clear_rect`` through to knock the body-text region back to
+    # a clean cream-washed cartouche (rounded rect with a doubled
+    # red+black rubricated rule and small registration-cross corner
+    # accents — the same clear_rect-knockout pattern ``kanagawa`` and
+    # ``blueprint`` use). Body in IM Fell English Italic (the period-
+    # accurate cartographic-italic register 17th-century mapmakers
+    # used for place names and chart legends — promoting the
+    # ornament-only face ``herbarium`` uses for its Latin specimen
+    # tag to a primary body face is a fresh silhouette in the
+    # rotation); the matched-phrase role picks IM Fell *Regular*
+    # (upright Roman) so differentiation arrives via colour (red) +
+    # roman/italic split rather than weight alone — the same
+    # bichrome-ribbon trick comic / dispatch / atomic / saloon /
+    # placard already use. Sits visually distinct from the other
+    # navigation-adjacent themes (``firmament`` celestial-atlas,
+    # ``astrarium`` instrument dashboard) — cartograph completes the
+    # terrestrial-map sibling of the navigation trio.
+    "cartograph": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        # Solid red accent — the matched phrase reads as the warm
+        # vermillion ink real cartographers used for call-out labels
+        # and the cardinal-direction letters on a compass rose. The
+        # body-vs-accent contrast is body-italic-black vs upright-
+        # roman-red, so the chromatic accent is doing only half the
+        # differentiation work — the typographic split carries the rest.
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
@@ -2209,6 +2254,40 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             (CORMORANT_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Cartograph — IM Fell English chain in italic for the body, with
+    # the matched-phrase role switched to upright Roman. The "place
+    # name in upright + body prose in italic" pair is the canonical
+    # cartographic convention — real 17th-century mapmakers set body
+    # legends in italic and place-name labels in upright Roman, the
+    # mirror of how a modern atlas uses italic for ocean names and
+    # upright for cities. Same Oxford-press silhouette ``alchemy`` /
+    # ``grimoire`` / ``herbarium`` already pull from; promoting italic
+    # to the primary body face (vs herbarium's italic-as-bold pair) is
+    # a fresh silhouette in the rotation. The ornament slot reuses
+    # Regular so the oversized opening / closing quote marks land on
+    # the same upright Roman the matched phrase uses — consistent with
+    # the chart-label register. Falls back through DejaVu Serif Italic
+    # (the closest in-rotation italic-serif fallback) before degrading
+    # to the Playfair chain so a missing IM Fell install lands on at
+    # least a slanted serif silhouette rather than dropping a
+    # cartographic theme onto an upright transitional serif.
+    "cartograph": {
+        "quote_regular": [
+            IMFELLENGLISH_ITALIC,
+            IMFELLENGLISH_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            IMFELLENGLISH_REGULAR,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            IMFELLENGLISH_REGULAR,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -8450,6 +8529,529 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
                 pixels[x, y] = white_ink if (x + y) & 1 else blue_ink
 
 
+# Module-level seeds for ``draw_cartograph_border``'s deterministic
+# placement loops. Same render produces the same chart every time so a
+# golden-image regression test can pin the bit-for-bit output, and
+# adjacent renders (same row, same theme, different time) share one
+# stable map silhouette rather than reshuffling every minute. The
+# specific values are arbitrary — picked so the foxing scatter, the
+# coastline wobble, and the place-name jitter all hash to distinct
+# patterns that don't visibly correlate.
+_CARTOGRAPH_FOXING_SEED = 0xCA70
+_CARTOGRAPH_COAST_TL_SEED = 0xC0A571
+_CARTOGRAPH_COAST_BR_SEED = 0xC0A5B7
+
+
+# Three evocative Latin chart-labels — sit in the open-sea cream
+# regions between the painted coastlines / compass rose / serpent, NOT
+# inside the coastline silhouettes (the coastlines are stippled R+G
+# sepia, and a same-recipe label rendered inside would vanish into
+# the stipple). ``cx_frac`` / ``cy_frac`` are canvas-relative so the
+# labels stay at proportional anchor points across preview sizes.
+# Italic IM Fell English picks up the cartographic register a real
+# 17th-century chart uses for ocean / island names.
+#
+# Positions chosen to clear:
+#   * the body-text clear_rect (typically (104..696, 116..360) with
+#     cartograph's pad of 22/12/12 on a 800×480 canvas),
+#   * the y=14-29 debug-mode banner band on the top right,
+#   * the TL coastline bbox (0,0)..(176, 96),
+#   * the BR coastline bbox (624, 384)..(799, 479),
+#   * the compass rose bbox at (40..104, 372..436),
+#   * the sea-serpent doodle bbox at ~(706..774, 252..276).
+_CARTOGRAPH_PLACE_NAMES = (
+    # Top sea, centred. y_frac=0.10 puts the label centre at y≈48 —
+    # below the y=14-29 debug-banner band (~19 px clearance) AND above
+    # the cartouche top edge across all layouts (the dense layout
+    # forces block_top=72 → cartouche_top = 72 - 12 = 60, so a 17-px
+    # label centred at y=48 stays clear; for hero / standard layouts
+    # the cartouche top sits at y≥116 so the gap is even larger). The
+    # canonical place a real chart writes its ocean name.
+    ("Mare Incognitum", 0.50, 0.10),
+    # Top-right sea. Same y_frac as Mare Incognitum for the same
+    # cartouche-clearance reason, separated horizontally so the two
+    # top labels don't overlap. The 0.84 x-fraction (cx≈672) puts the
+    # centred label's right edge at ~709 — clear of the canvas right
+    # margin (10 px to the edge of the perimeter). Left edge at ~636
+    # is clear of Mare Incognitum's right edge at ~497.
+    ("Insula Aurea", 0.84, 0.10),
+    # Bottom sea, between the BL compass rose and the BR coastline.
+    # y_frac=0.86 puts the label centre at y≈413 — below the dense
+    # layout's cartouche bottom edge (~y=400 measured empirically;
+    # the larger quote block pushes block_bottom lower) and above the
+    # debug-mode bottom strip (y≈454-466). For hero / standard layouts
+    # the cartouche bottom sits at y≈373 so the gap is more generous.
+    # The 13-px clearance below the dense cartouche is intentionally
+    # tight — moving the label any lower would start kissing the
+    # debug strip in debug mode and reading as overlapping rather
+    # than as a deliberate margin label.
+    ("Terra Nova", 0.48, 0.86),
+)
+
+
+def _draw_cartograph_compass_rose(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    ink_sentinel,
+) -> tuple[int, int, int, int]:
+    """Paint an 8-point compass rose centred on ``(cx, cy)``.
+
+    Four long cardinal triangles (N / E / S / W, 28 px) and four
+    shorter ordinal triangles (NE / NW / SE / SW, 14 px) fan out from
+    a small filled pivot circle. Every ray is painted in the
+    ``ink_sentinel`` ink so the caller's bbox post-pass can flip a
+    fraction of those pixels to the secondary ink — in the cartograph
+    branch that's the documented R+Y 5/8:3/8 tangerine recipe
+    (``deco`` / ``atomic`` / ``astrarium`` / ``vinyl``), giving the
+    rose a warm vermillion glow against the cream-washed ground rather
+    than the fire-engine red the rays paint in.
+
+    Returns ``(x0, y0, x1, y1)`` — the bbox the caller iterates for the
+    post-pass, padded by 2 px so a sub-pixel rasteriser draw can't leave
+    sentinel pixels outside the iteration window.
+    """
+    cardinal_len = 32
+    ordinal_len = 18
+    # Order: 4 cardinals first, then 4 ordinals. ``base_half`` is the
+    # half-width of the triangle base at the pivot — cardinals get a
+    # wider base (5 px → 10 px diameter) so they read as the dominant
+    # spikes; ordinals get a narrower base (3 px → 6 px diameter) so
+    # they read as the 8-point rose silhouette rather than as a star
+    # with 8 equal arms.
+    spikes = (
+        (0, cardinal_len, 5),    # N
+        (90, cardinal_len, 5),   # E
+        (180, cardinal_len, 5),  # S
+        (270, cardinal_len, 5),  # W
+        (45, ordinal_len, 3),    # NE
+        (135, ordinal_len, 3),   # SE
+        (225, ordinal_len, 3),   # SW
+        (315, ordinal_len, 3),   # NW
+    )
+    for angle_deg, length, base_half in spikes:
+        angle = math.radians(angle_deg)
+        # Tip — angle 0° is "up" (north), measured clockwise so the
+        # cardinal triangles point N / E / S / W in screen space.
+        tx = cx + round(length * math.sin(angle))
+        ty = cy - round(length * math.cos(angle))
+        # Base corners perpendicular to the spike axis.
+        perp = math.radians(angle_deg + 90)
+        bx0 = cx + round(base_half * math.sin(perp))
+        by0 = cy - round(base_half * math.cos(perp))
+        bx1 = cx - round(base_half * math.sin(perp))
+        by1 = cy + round(base_half * math.cos(perp))
+        draw.polygon([(tx, ty), (bx0, by0), (bx1, by1)], fill=ink_sentinel)
+    # Centre pivot — small filled circle anchoring the rays. Same ink
+    # so the post-pass treats it identically.
+    draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), fill=ink_sentinel)
+    pad = 2
+    return (cx - cardinal_len - pad, cy - cardinal_len - pad,
+            cx + cardinal_len + pad, cy + cardinal_len + pad)
+
+
+def _draw_cartograph_sea_serpent(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    ink,
+) -> None:
+    """Paint a small "here be dragons" sea-serpent silhouette as a
+    three-hump polyline (~50 px wide × 12 px tall).
+
+    Period margin doodles were always inked in solid ink (no stippling
+    — chart-engravers had no halftone), so this paints directly in
+    ``ink`` with no post-pass. The serpent's head is a small filled
+    triangle at the left end; the body wobbles through three humps and
+    tapers to a short tail at the right. Three humps is the canonical
+    silhouette every "here be dragons" sea monster in the
+    16th-/17th-century cartographic margin tradition uses — fewer
+    reads as a single wave, more reads as a centipede.
+    """
+    # Wavy polyline through three humps.
+    pts = [
+        (cx - 24, cy + 4),
+        (cx - 19, cy - 2),
+        (cx - 14, cy + 4),
+        (cx - 8, cy - 4),
+        (cx - 2, cy + 4),
+        (cx + 4, cy - 5),
+        (cx + 10, cy + 4),
+        (cx + 18, cy + 2),
+    ]
+    for i in range(len(pts) - 1):
+        draw.line((pts[i], pts[i + 1]), fill=ink, width=2)
+    # Head — small filled triangle at the left end suggesting an open
+    # snout. Sized to match the 2 px body weight.
+    head_pts = [
+        (cx - 24, cy + 4),
+        (cx - 30, cy + 2),
+        (cx - 28, cy + 7),
+    ]
+    draw.polygon(head_pts, fill=ink)
+
+
+def _draw_cartograph_coastline(
+    draw: ImageDraw.ImageDraw,
+    corner: tuple[int, int],
+    extent: tuple[int, int],
+    ink_sentinel,
+    seed: int,
+) -> tuple[int, int, int, int]:
+    """Paint an irregular coastline silhouette as a filled polygon
+    anchored at ``corner`` and extending toward ``extent``.
+
+    ``corner`` is the canvas corner the land sits in (e.g. ``(0, 0)``
+    for top-left); ``extent`` is the far point on the diagonal the
+    coastline sweeps toward (e.g. ``(180, 100)`` for a coastline that
+    fills the TL corner out to roughly 180 px across by 100 px down).
+    The polygon's "land" edge is a 14-point polyline whose vertices
+    wobble deterministically per ``seed`` — same approach
+    ``_build_fillmore_blob`` uses for its corner blobs but anchored to
+    a corner rather than centred on a point, so the result is a
+    coastline silhouette rather than a free-form island.
+
+    Painted in ``ink_sentinel`` so the caller's bbox post-pass can flip
+    half the pixels to green per ``(x + y) & 1`` parity → R+G sepia
+    (the documented two-ink recipe ``newsprint`` / ``tarot`` / ``saloon``
+    / ``placard`` / ``dispatch`` use for aged-paper foxing), matching
+    the warm rust-brown a real chart-engraver's ink develops over
+    centuries of light exposure rather than the fire-engine red the
+    polygon paints in.
+
+    Returns ``(x0, y0, x1, y1)`` — the bbox for the post-pass.
+    """
+    rng = random.Random(seed)
+    corner_x, corner_y = corner
+    extent_x, extent_y = extent
+    # Direction signs — used to scale wobble so the coastline jitters
+    # toward the corner's outside (away from the body) rather than
+    # toward the centre.
+    sign_x = 1 if extent_x >= corner_x else -1
+    sign_y = 1 if extent_y >= corner_y else -1
+    n_pts = 14
+    pts: list[tuple[int, int]] = []
+    for i in range(1, n_pts + 1):
+        t = i / n_pts
+        # Base position along the diagonal arc (sin curve flattens the
+        # mid-section so the coastline doesn't read as a straight diagonal).
+        bx = corner_x + round((extent_x - corner_x) * t)
+        by = corner_y + round((extent_y - corner_y) * (1.0 - (1.0 - t) ** 1.8))
+        # Per-vertex deterministic wobble in the canvas-axis directions.
+        wobble_x = round((rng.random() - 0.5) * 28) * sign_x
+        wobble_y = round((rng.random() - 0.5) * 22) * sign_y
+        pts.append((bx + wobble_x, by + wobble_y))
+    # Close back along the corner edges so PIL fills the land region.
+    # Walk along the y-axis edge first, then the x-axis edge, so the
+    # polygon hugs the corner rather than skipping diagonally across it.
+    pts.insert(0, (corner_x, extent_y))
+    pts.append((extent_x, corner_y))
+    pts.append((corner_x, corner_y))
+    draw.polygon(pts, fill=ink_sentinel)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+
+
+def draw_cartograph_border(
+    image: Image.Image,
+    colors: dict,
+    clear_rect: tuple[int, int, int, int] | None = None,
+) -> None:
+    """Paint a hand-drawn antique cartographer's chart frame.
+
+    Eight layers, painted in Z-order so each successive layer overpaints
+    the previous:
+
+    * **Layer 0 — cream Y+W Bayer wash.** Sparse 1-in-8 yellow-on-white
+      stipple (``BAYER_4x4[y%4][x%4] < 2``) over every ``page_bg``
+      pixel. Same recipe ``illuminated`` / ``dispatch`` / ``herbarium``
+      / ``mucha`` / ``astrarium`` use for their cream parchment
+      grounds; warms the panel's flat white to the vellum tone real
+      archival chart paper carries.
+
+    * **Layer 1 — sepia foxing scatter.** ~120 deterministic single-
+      pixel dots (seeded from :data:`_CARTOGRAPH_FOXING_SEED`) painted
+      across the cream-washed ground, half in red and half in green
+      (split by tile-coordinate parity). At panel viewing distance the
+      eye averages adjacent R+G dots into the rust-brown that lignin
+      oxidation produces in aged paper — the same two-ink recipe
+      ``newsprint`` and ``tarot`` use for their foxing layers, layered
+      here over the Y+W cream wash rather than over a darker halftone.
+
+    * **Layer 2 — two diagonal-corner coastlines.** Irregular polygon
+      silhouettes anchored at the top-left and bottom-right corners,
+      filled in R+G sepia via a sentinel-paint-then-bbox-post-pass
+      pattern. The wobble seeds (:data:`_CARTOGRAPH_COAST_TL_SEED` /
+      :data:`_CARTOGRAPH_COAST_BR_SEED`) keep the silhouettes stable
+      across renders so the same chart geometry recurs at every
+      bucket change — the cartograph theme reads as one specific
+      hand-drawn chart, not a fresh procedural map per minute.
+
+    * **Layer 3 — compass rose (bottom-left).** Eight-point rose
+      (four long cardinal triangles, four shorter ordinal triangles,
+      central pivot circle) painted via R+Y 5/8:3/8 tangerine
+      (sentinel-paint-then-bbox-post-pass at ``BAYER_4x4 < 6``) — the
+      documented luminance-biased recipe ``deco`` / ``atomic`` /
+      ``astrarium`` / ``vinyl`` use. Reads as warm vermillion ink
+      against the cream ground rather than the harsher fire-engine
+      red the rays paint in.
+
+    * **Layer 4 — sea-serpent doodle (right margin, mid-page).** A
+      small three-hump silhouette in solid black ink — period
+      cartographers always inked their margin "here be dragons"
+      doodles solid (no halftone available at engraver scale), so
+      this layer skips the chromatic-mix register the rest of the
+      composition occupies.
+
+    * **Layer 5 — three Latin place names.** Italic IM Fell English
+      labels in sepia (R+G post-pass, same recipe as the coastlines),
+      anchored at fixed canvas-relative positions along the
+      coastlines and across the open-sea margin. Positions held on
+      :data:`_CARTOGRAPH_PLACE_NAMES`. Falls back through the
+      META_FONT_CANDIDATES chain when IM Fell isn't installed so the
+      labels always render, just on a different italic face.
+
+    * **Layer 6 — cartouche knockout.** When ``clear_rect`` is
+      provided by ``render()``, reset the body-text rect to a clean
+      cream-washed rounded rectangle so the IM Fell italic body sits
+      on quiet vellum rather than on top of foxing / coastlines.
+      Knockout is sequenced: rounded white fill (radius 10) → fresh
+      Y+W cream wash → thin red rubricated outer rule → thin black
+      inner rule. The two-ink rule echoes the doubled rubricated frame
+      ``illuminated`` and ``tarot`` use, here scaled inward as a
+      contained cartouche rather than as a page frame.
+
+    * **Layer 7 — registration-cross corner ornaments.** Small black
+      ``+`` marks at the four corners of the cartouche (anchored to
+      the inset rule, not the canvas) — the alignment ticks a chart-
+      engraver used to register their plates between print runs. Adds
+      the "this is a printed plate" reading the surrounding decoration
+      sets up.
+
+    When ``clear_rect`` is None (direct-call test path,
+    ``render_static_message`` for the goodnight frame, and
+    ``render_source_card`` for the button-C overlay), Layers 6 / 7 are
+    skipped; the cream wash + foxing + coastlines + rose + serpent +
+    labels still paint, so the cartograph identity survives the
+    fall-through paths.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    cream_light = SPECTRA6["yellow"]
+    red_ink = SPECTRA6["red"]
+    green_ink = SPECTRA6["green"]
+    yellow_ink = SPECTRA6["yellow"]
+    black_ink = SPECTRA6["black"]
+    white_ink = SPECTRA6["white"]
+
+    pixels = image.load()
+
+    # ------------------------------------------------------------------
+    # Layer 0 — cream Y+W Bayer wash on page_bg pixels. Threshold < 1
+    # = 1 cell per 4×4 tile = ~6.25% yellow density. Lighter than the
+    # 12.5% density ``illuminated`` / ``dispatch`` / ``herbarium`` use
+    # because the cartograph composition adds a second R+G sepia
+    # foxing layer on top (Layer 1) — a denser cream + denser foxing
+    # would over-warm the ground and compete with the body text at
+    # panel viewing distance. The 6.25% density matches the perceived
+    # cream tone of ``kanagawa``'s off-grid 4-in-64 (~6%) panel knockout.
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 1:
+                    pixels[x, y] = cream_light
+
+    # ------------------------------------------------------------------
+    # Layer 1 — sepia foxing scatter. Deterministic positions seeded so
+    # the same dots land in the same place every render; split by
+    # parity so adjacent dots average to R+G rust-brown at panel
+    # distance rather than reading as red+green individually.
+    if page_bg is not None:
+        rng = random.Random(_CARTOGRAPH_FOXING_SEED)
+        n_dots = 120
+        for _ in range(n_dots):
+            fx = rng.randint(2, width - 3)
+            fy = rng.randint(2, height - 3)
+            # Only paint dots over current ground (cream_light or white)
+            # so the foxing reads as on the paper, not over later layers.
+            current = pixels[fx, fy]
+            if current not in (cream_light, white_ink):
+                continue
+            # Parity split: tile-coordinate (fx + fy) & 1 picks R or G,
+            # so each adjacent dot pair lands on opposite inks → R+G
+            # averaging in the eye = sepia. Without the parity split
+            # the eye would see distinct red and green specks.
+            pixels[fx, fy] = red_ink if (fx + fy) & 1 else green_ink
+
+    # ------------------------------------------------------------------
+    # Layer 2 — two diagonal-corner coastlines. Paint as red sentinel,
+    # then post-pass to sepia (R+G) by flipping half the painted red
+    # pixels to green per (x+y)&1 parity inside each bbox.
+    tl_bbox = _draw_cartograph_coastline(
+        draw,
+        corner=(0, 0),
+        extent=(round(width * 0.20), round(height * 0.18)),
+        ink_sentinel=red_ink,
+        seed=_CARTOGRAPH_COAST_TL_SEED,
+    )
+    br_bbox = _draw_cartograph_coastline(
+        draw,
+        corner=(width - 1, height - 1),
+        extent=(round(width * 0.80), round(height * 0.82)),
+        ink_sentinel=red_ink,
+        seed=_CARTOGRAPH_COAST_BR_SEED,
+    )
+    # Combined post-pass — flip half of the painted red pixels (inside
+    # either bbox) to green for sepia. Iterate the union once rather
+    # than per-bbox so we don't double-iterate a hypothetical overlap
+    # region (the TL/BR corners can't actually overlap at the chosen
+    # extents, but the union pattern is the safer general form).
+    for bx0, by0, bx1, by1 in (tl_bbox, br_bbox):
+        bx0 = max(0, bx0)
+        by0 = max(0, by0)
+        bx1 = min(width - 1, bx1)
+        by1 = min(height - 1, by1)
+        for py in range(by0, by1 + 1):
+            for px in range(bx0, bx1 + 1):
+                if pixels[px, py] == red_ink and (px + py) & 1:
+                    pixels[px, py] = green_ink
+
+    # ------------------------------------------------------------------
+    # Layer 3 — compass rose (bottom-left). Anchor at (cx=72, cy=height-78)
+    # — well clear of the body block (clear_rect.bottom < height - 14
+    # with cartograph's pad of 14 below) and clear of the BR coastline
+    # silhouette. cardinal_len=28 means the rose extends 28 px in each
+    # direction from the centre, so the topmost ray reaches y=height-106
+    # and the leftmost reaches x=44 — both safely inside the canvas.
+    rose_cx = 72
+    rose_cy = height - 80
+    rose_bbox = _draw_cartograph_compass_rose(draw, rose_cx, rose_cy, ink_sentinel=red_ink)
+    # Tangerine post-pass: same recipe as ``draw_deco_border``'s final
+    # pass — flip painted red pixels to yellow per ``BAYER_4x4 < 6/16``
+    # so the eye averages R+Y 5/8:3/8 into warm tangerine.
+    bx0, by0, bx1, by1 = rose_bbox
+    bx0 = max(0, bx0)
+    by0 = max(0, by0)
+    bx1 = min(width - 1, bx1)
+    by1 = min(height - 1, by1)
+    for py in range(by0, by1 + 1):
+        row = BAYER_4x4[py & 3]
+        for px in range(bx0, bx1 + 1):
+            if pixels[px, py] == red_ink and row[px & 3] < 6:
+                pixels[px, py] = yellow_ink
+
+    # ------------------------------------------------------------------
+    # Layer 4 — sea-serpent doodle. Anchored in the bottom-mid sea at
+    # ~(width*0.69, height*0.84). The right-margin (x>cartouche_x1)
+    # band turned out to be too narrow across all layouts — the dense
+    # layout's max_width=680 pushes the cartouche right edge to ~762,
+    # leaving only 37 px of clear sea to the canvas edge, not enough
+    # for the serpent's 50 px width. The bottom-mid sea sits between
+    # the bottom-centred "Terra Nova" label (x=350-417, y=423-434)
+    # and the BR coastline (starts ~x=640 at y=384), giving a stable
+    # ~50×20 px clear zone across hero / standard / dense layouts
+    # (the cartouche bottom edge sits at y≈360-380 depending on
+    # quote length, and the serpent's y=403-415 stays cleanly below it).
+    _draw_cartograph_sea_serpent(draw, round(width * 0.69), round(height * 0.84), ink=black_ink)
+
+    # ------------------------------------------------------------------
+    # Layer 5 — three Latin place names in italic IM Fell sepia.
+    # Painted in red sentinel first, then bbox-post-passed to sepia per
+    # the same (x+y)&1 parity rule the coastlines use. Falls back
+    # through the META_FONT chain when IM Fell isn't installed.
+    label_font_candidates = [
+        IMFELLENGLISH_ITALIC,
+        IMFELLENGLISH_REGULAR,
+        "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+        *META_FONT_CANDIDATES,
+    ]
+    label_font = load_font(label_font_candidates, size=15)
+    for label_text, cx_frac, cy_frac in _CARTOGRAPH_PLACE_NAMES:
+        lx = round(width * cx_frac)
+        ly = round(height * cy_frac)
+        bbox = draw.textbbox((lx, ly), label_text, font=label_font)
+        # Translate so (lx, ly) is the label's centre — small labels at
+        # canvas-fractional positions read better centred than left-
+        # anchored, especially the centre-of-ocean "Mare Incognitum".
+        draw_x = lx - (bbox[2] - bbox[0]) // 2
+        draw_y = ly - (bbox[3] - bbox[1]) // 2
+        draw.text((draw_x, draw_y), label_text, font=label_font, fill=red_ink)
+        # Post-pass: flip half the painted red label pixels to green
+        # for R+G sepia. Pad the bbox by 1 px so font hinting jitter
+        # doesn't leave stray sentinel pixels outside the iteration
+        # window.
+        lbbox = draw.textbbox((draw_x, draw_y), label_text, font=label_font)
+        lx0 = max(0, lbbox[0] - 1)
+        ly0 = max(0, lbbox[1] - 1)
+        lx1 = min(width - 1, lbbox[2] + 1)
+        ly1 = min(height - 1, lbbox[3] + 1)
+        for py in range(ly0, ly1 + 1):
+            for px in range(lx0, lx1 + 1):
+                if pixels[px, py] == red_ink and (px + py) & 1:
+                    pixels[px, py] = green_ink
+
+    # ------------------------------------------------------------------
+    # Layers 6 & 7 — cartouche knockout + registration corners. Only
+    # paint when render() threaded clear_rect through.
+    if clear_rect is None or page_bg is None:
+        return
+    cx0, cy0, cx1, cy1 = clear_rect
+    cx0 = max(0, cx0)
+    cy0 = max(0, cy0)
+    cx1 = min(width - 1, cx1)
+    cy1 = min(height - 1, cy1)
+    # Skip the knockout entirely if the clamped rect collapsed — same
+    # guard kanagawa's clear_rect path uses.
+    if cx1 <= cx0 or cy1 <= cy0:
+        return
+
+    # Rounded white fill — radius 10 reads as a hand-pressed paper card
+    # (chart-engraver's working sheet) without going so soft that it
+    # competes with the surrounding angular coastlines.
+    cartouche_radius = 10
+    draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=cartouche_radius, fill=white_ink)
+    # Fresh cream wash over the now-white knockout. Same 6.25% Y+W
+    # Bayer recipe Layer 0 uses (threshold < 1), but iterated only
+    # inside the cartouche bounds since Layer 0 already covered the
+    # rest of the page.
+    for py in range(cy0, cy1 + 1):
+        row = BAYER_4x4[py & 3]
+        for px in range(cx0, cx1 + 1):
+            if pixels[px, py] == white_ink and row[px & 3] < 1:
+                pixels[px, py] = cream_light
+
+    # Doubled rubricated rule — thin red outer + 2 px gap + thin black
+    # inner. Echoes ``illuminated`` and ``tarot``'s doubled red+black
+    # rule, here contained inside the cartouche rather than around the
+    # whole canvas.
+    draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=cartouche_radius, outline=red_ink, width=1)
+    inner_inset = 3
+    if cx1 - cx0 > inner_inset * 2 and cy1 - cy0 > inner_inset * 2:
+        draw.rounded_rectangle(
+            (cx0 + inner_inset, cy0 + inner_inset, cx1 - inner_inset, cy1 - inner_inset),
+            radius=max(2, cartouche_radius - inner_inset),
+            outline=black_ink,
+            width=1,
+        )
+
+    # Layer 7 — four registration-cross ornaments at the inner-rule
+    # corners. Tiny ``+`` marks (3 px arms) read as the plate-alignment
+    # ticks a chart engraver used between print runs.
+    tick_arm = 3
+    tick_inset = inner_inset + 6  # past the inner rule + small breathing
+    for tcx, tcy in (
+        (cx0 + tick_inset, cy0 + tick_inset),
+        (cx1 - tick_inset, cy0 + tick_inset),
+        (cx0 + tick_inset, cy1 - tick_inset),
+        (cx1 - tick_inset, cy1 - tick_inset),
+    ):
+        draw.line((tcx - tick_arm, tcy, tcx + tick_arm, tcy), fill=black_ink, width=1)
+        draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -8483,6 +9085,7 @@ _BORDER_PAINTERS = {
     "fillmore": draw_fillmore_border,
     "firmament": draw_firmament_border,
     "kanagawa": draw_kanagawa_border,
+    "cartograph": draw_cartograph_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -11844,15 +12447,24 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         y_probe += line_height
 
     clear_rect = None
-    if theme in ("blueprint", "kanagawa") and quote_line_boxes:
-        # Kanagawa gets a wider horizontal pad so the seigaiha tile
-        # pattern doesn't graze the right edge of the lowest line
-        # (which is usually shorter than max_width); the per-tile
-        # 28 px radius means even a tile centred 16 px past the text
-        # bbox would leave a visible scale-crescent slice.
-        clear_pad_x = 14 if theme == "kanagawa" else 2
-        clear_pad_top = 6 if theme == "kanagawa" else 2
-        clear_pad_bottom = 6 if theme == "kanagawa" else 2
+    # Per-theme clear-rect padding (x, top, bottom). Themes that thread
+    # clear_rect through their border painter need a wider pad so the
+    # surrounding decoration doesn't graze the body text — kanagawa
+    # uses 14/6/6 so its seigaiha tile-band crescents don't slice into
+    # the body; cartograph uses 22/12/12 so the doubled rubricated rule
+    # of the cartouche + the small registration-cross corner ticks sit
+    # inside the pad rather than clipping into the first / last text
+    # lines. blueprint stays at the original 2/2/2 — its decoration is
+    # a graph-paper grid that paints fresh inside the clear_rect, so
+    # the pad just guards against a 1 px stroke kissing the glyph
+    # bounds.
+    _CLEAR_RECT_PADS = {
+        "blueprint": (2, 2, 2),
+        "kanagawa": (14, 6, 6),
+        "cartograph": (22, 12, 12),
+    }
+    if theme in _CLEAR_RECT_PADS and quote_line_boxes:
+        clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
         clear_top = max(0, quote_line_boxes[0][1] - clear_pad_top)
         clear_bottom = min(height - 1, block_bottom + clear_pad_bottom)
         clear_rect = (
@@ -11876,6 +12488,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # rect — once the rect is reset to page_bg, the body text
         # paints cleanly on top.
         draw_kanagawa_border(image, colors, clear_rect=clear_rect)
+    elif theme == "cartograph":
+        # Same single-call dispatch as kanagawa — cartograph paints all
+        # eight map layers in one pass, knocking out the body-text rect
+        # to a clean cream-washed rounded cartouche at the end.
+        draw_cartograph_border(image, colors, clear_rect=clear_rect)
     else:
         _paint_theme_border(image, theme, colors)
 

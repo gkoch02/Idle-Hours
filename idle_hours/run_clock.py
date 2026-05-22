@@ -189,6 +189,7 @@ def parse_args() -> argparse.Namespace:
         "marquee",
         "tarot",
         "vinyl",
+        "cartograph",
         "diags",
     ]
     parser.add_argument(

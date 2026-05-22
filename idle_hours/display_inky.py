@@ -242,6 +242,22 @@ THEME_SATURATION: dict[str, float] = {
     # uses the same recipe ``astrarium`` does and reads correctly at
     # this saturation.
     "vinyl": 0.5,
+    # Cartograph / antique cartographer's chart — cream Y+W Bayer-
+    # washed white ground with sparse R+G sepia foxing, two
+    # diagonal-corner R+G sepia coastlines, an R+Y tangerine compass
+    # rose, a solid-black sea-serpent margin doodle, three Latin
+    # place-name labels in sepia, and a doubled red+black rubricated
+    # cartouche knockout around the body text. Same chromatic-on-
+    # light profile as ``default`` / ``deco`` / ``astrarium`` /
+    # ``herbarium`` / ``tarot`` — the gentler 0.5 tier preserves the
+    # cream-foxed parchment register and keeps the synthesised
+    # sepia / tangerine tones reading as period inks rather than
+    # over-saturating into vivid crayon spots that would compete
+    # with the body text. Pushing higher would shift the foxing
+    # scatter toward distinct red+green specks instead of averaging
+    # into rust-brown, breaking the aged-paper illusion the layer
+    # builds.
+    "cartograph": 0.5,
 }
 
 
