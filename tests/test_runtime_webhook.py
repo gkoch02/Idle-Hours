@@ -287,6 +287,22 @@ class TestUrlSchemeValidation:
         runtime_webhook.configure("   ")
         assert capsys.readouterr().err == ""
 
+    def test_urlparse_value_error_disables_url(self, capsys, monkeypatch):
+        """``urlparse`` itself can raise ``ValueError`` on certain
+        pathological inputs. The ``configure`` guard must catch it, log,
+        and disable the webhook — not let the exception propagate up
+        into ``run_clock.main`` and abort startup."""
+        import urllib.parse
+
+        def boom(_url):
+            raise ValueError("simulated urlparse blowup")
+
+        monkeypatch.setattr(urllib.parse, "urlparse", boom)
+        runtime_webhook.configure("http://example.test/hook")
+        url, _ = runtime_webhook.get_config()
+        assert url == ""
+        assert "ignoring malformed URL" in capsys.readouterr().err
+
 
 class TestConcurrencyCap:
     """A fault storm must not pile up unbounded daemon threads."""

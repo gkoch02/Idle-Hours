@@ -1020,6 +1020,46 @@ class TestRuntimeStatePersistence:
         entries = [json.loads(line) for line in daily.read_text(encoding="utf-8").splitlines() if line.strip()]
         assert any(e.get("mode") == "state_validation" for e in entries)
 
+    def test_load_parse_error_swallows_telemetry_write_failure(self, tmp_path, monkeypatch):
+        """If the side-write to telemetry itself raises, the load must still
+        return {} (worst case the operator just doesn't see the drift entry)
+        — the appliance must never refuse to boot because the telemetry
+        sidecar is wedged."""
+        state_path = tmp_path / "state.json"
+        state_path.write_text("{broken json", encoding="utf-8")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("telemetry path locked")
+
+        from idle_hours import runtime_telemetry
+        monkeypatch.setattr(runtime_telemetry, "append_telemetry", boom)
+        assert run_clock.load_runtime_state(str(state_path), telemetry_path="ignored") == {}
+
+    def test_load_non_object_json_swallows_telemetry_write_failure(self, tmp_path, monkeypatch):
+        """Same fail-open guarantee for the not-a-dict branch."""
+        state_path = tmp_path / "state.json"
+        state_path.write_text("42", encoding="utf-8")
+
+        from idle_hours import runtime_telemetry
+        monkeypatch.setattr(runtime_telemetry, "append_telemetry",
+                            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("nope")))
+        assert run_clock.load_runtime_state(str(state_path), telemetry_path="ignored") == {}
+
+    def test_validation_swallows_telemetry_write_failure(self, tmp_path, monkeypatch):
+        """The per-field validator's telemetry side-write at the bottom of
+        ``_validate_state_payload`` is also best-effort. Drift must still be
+        cleaned out of the returned dict even if telemetry is broken."""
+        state_path = tmp_path / "state.json"
+        # ``manual_theme=42`` is a type-mismatch — _validate_state_payload drops
+        # it and tries to telemetrise the issues list.
+        state_path.write_text('{"manual_theme": 42}', encoding="utf-8")
+
+        from idle_hours import runtime_telemetry
+        monkeypatch.setattr(runtime_telemetry, "append_telemetry",
+                            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("nope")))
+        result = run_clock.load_runtime_state(str(state_path), telemetry_path="ignored")
+        assert "manual_theme" not in result  # dropped despite telemetry failure
+
     def test_runtime_state_seeds_from_persisted(self):
         s = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark", "manual_quiet": True})
         assert s.manual_theme == "dark"
@@ -2288,6 +2328,66 @@ class TestStartupImage:
         # Static PNG copy path must NOT have run for "auto".
         assert display_calls == []
 
+    def test_startup_image_auto_render_failure_is_swallowed(self, tmp_path, monkeypatch, capsys):
+        """A failed startup goodnight render must log and continue into the
+        main loop, not abort boot. Without this the appliance refuses to
+        boot on any transient Pillow / font failure during cold-start."""
+        argv = [
+            "run_clock.py",
+            "--startup-image", "auto",
+            "--theme", "scholar",
+            "--output", str(tmp_path / "out.png"),
+            "--buttons-off",
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "", "--quiet-off",
+            "--interval-seconds", "1",
+        ]
+        loop_reached = []
+
+        def fake_render(*a, **kw):
+            if kw.get("bucket") is None:  # startup goodnight path passes bucket=None
+                raise RuntimeError("simulated startup render failure")
+            loop_reached.append(True)
+
+        monkeypatch.setattr(run_clock, "render_now", fake_render)
+        monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
+        with patch("sys.argv", argv), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("s", 1, "q", "m")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:34"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_half_past"):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert "startup image render failed" in capsys.readouterr().err
+        # Boot continued past the failure into the main loop.
+        assert loop_reached
+
+    def test_startup_image_static_display_failure_is_swallowed(self, tmp_path, monkeypatch, capsys):
+        """The static-PNG copy branch (``--startup-image <path>``) must keep
+        the same fail-open guarantee as the ``auto`` branch."""
+        startup = tmp_path / "startup.png"
+        startup.write_bytes(b"\x89PNG\r\n\x1a\n")  # contents irrelevant; the display step is mocked
+        argv = [
+            "run_clock.py",
+            "--startup-image", str(startup),
+            "--output", str(tmp_path / "out.png"),
+            "--buttons-off",
+            "--history-path", "", "--telemetry-path", "",
+            "--state-path", "", "--quiet-off",
+            "--interval-seconds", "1",
+        ]
+
+        def boom(*a, **kw):
+            raise RuntimeError("inky disconnected during startup push")
+
+        monkeypatch.setattr(run_clock, "_display_quiet_image", boom)
+        monkeypatch.setattr(run_clock, "_loop_sleep", lambda _s, _sec: (_ for _ in ()).throw(KeyboardInterrupt))
+        with patch("sys.argv", argv), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("s", 1, "q", "m")):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        assert "startup image display failed" in capsys.readouterr().err
+
 
 class TestQuietGoodnightOnTheFly:
     """``--quiet-image auto`` paints the goodnight frame in the active theme
@@ -2370,6 +2470,26 @@ class TestQuietGoodnightOnTheFly:
             enter_quiet(args, state, "22:00")
         assert mock_display.called
         assert mock_render.called is False
+
+    def test_enter_quiet_swallows_render_failure(self, tmp_path, capsys):
+        """A failed quiet-hours render must log + telemetrise, NOT crash the
+        loop. The appliance has to survive a transient Inky disconnect at the
+        moment quiet hours start — otherwise an unattended bedroom panel
+        ends its day with a hung loop instead of the goodnight frame."""
+        args = self._args(tmp_path, quiet_image="auto")
+        state = run_clock.RuntimeState("auto")
+        captured = []
+        with patch("idle_hours.run_clock.render_now",
+                   side_effect=RuntimeError("inky bus wedged")) as mock_render, \
+             patch("idle_hours.run_clock.append_telemetry",
+                   side_effect=lambda *a, **kw: captured.append(a[1])):
+            from idle_hours.runtime_quiet import enter_quiet
+            # Must NOT raise.
+            enter_quiet(args, state, "22:00")
+        assert mock_render.called
+        assert "quiet-hours display failed" in capsys.readouterr().err
+        # ``mode="quiet"`` error entry was written so idle_hours_health surfaces it.
+        assert any(entry.get("mode") == "quiet" and "error" in entry for entry in captured)
 
 
 class TestButtonRenderGate:
@@ -2497,6 +2617,32 @@ class TestPruneTelemetry:
         removed = run_clock.prune_telemetry(str(base), retain_days=1, today=dt.date(2026, 4, 20))
         assert removed == 0
         assert other.exists()
+
+    def test_invalid_date_in_suffix_is_skipped(self, tmp_path):
+        # ``_TELEMETRY_DATE_RE`` accepts any 8 digits, so a file like
+        # ``telemetry-20269999.jsonl`` passes the regex but fails
+        # ``strptime`` (month 99). Closes the strptime-ValueError continue
+        # branch in ``prune_telemetry``.
+        base = tmp_path / "telemetry.jsonl"
+        bogus = base.parent / "telemetry-20269999.jsonl"
+        bogus.write_text("")
+        removed = run_clock.prune_telemetry(str(base), retain_days=1, today=dt.date(2026, 4, 20))
+        assert removed == 0
+        assert bogus.exists()
+
+    def test_outer_oserror_swallowed(self, tmp_path, monkeypatch, capsys):
+        # Force ``Path.glob`` to raise so the outer ``except OSError`` branch
+        # runs. Without this test the swallow-and-log handler at
+        # ``prune_telemetry`` body's tail is dead code under coverage.
+        base = tmp_path / "telemetry.jsonl"
+
+        def boom(self, _pattern):
+            raise OSError("simulated unreadable directory")
+
+        monkeypatch.setattr("pathlib.Path.glob", boom)
+        removed = run_clock.prune_telemetry(str(base), retain_days=1, today=dt.date(2026, 4, 20))
+        assert removed == 0
+        assert "telemetry prune failed" in capsys.readouterr().err
 
 
 class TestInstallSignalHandlers:
