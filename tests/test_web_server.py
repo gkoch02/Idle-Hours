@@ -1865,7 +1865,12 @@ class TestApiPreview:
         }
         with patch("idle_hours.pick_quote.select_quote", return_value=fake_row):
             for boundary in ("00:00", "23:59"):
-                status, _body = _get(server, f"/api/preview?theme=default&time={boundary}")
+                # Small width/height keeps each real PIL render well under the
+                # 3 s ``_client`` timeout — at 800×480 with coverage tracing
+                # on a contended CI runner, a single render can exceed it and
+                # flake the assertion. Matches the size ``test_preview_returns_png``
+                # already uses for the same reason.
+                status, _body = _get(server, f"/api/preview?theme=default&time={boundary}&width=400&height=240")
                 assert status == 200, f"{boundary} should be accepted"
 
     def test_preview_swallows_picker_failure(self, v2_server):

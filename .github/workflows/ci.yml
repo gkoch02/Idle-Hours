@@ -73,7 +73,13 @@ jobs:
         if: matrix.python-version == '3.12'
         env:
           COVERAGE_CORE: sysmon
-        run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=idle_hours --cov-report=term-missing --cov-report=xml
+        # ``--cov-branch`` measures both arms of every ``if`` so a refactor that
+        # silently skips one branch (e.g. an ``except Exception`` that was once
+        # reachable, now dead) shows up as a coverage drop. ``--cov-fail-under``
+        # locks today's combined line+branch number so a regression below that
+        # floor blocks the merge — without this gate, coverage.xml is uploaded
+        # as an artifact but nothing acts on it.
+        run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=idle_hours --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=95
 
       - name: End-to-end --once smoke (verifies rendered PNG decodes)
         # One Python version is enough — the existing test job already exercises
