@@ -2441,6 +2441,78 @@ class TestCartographBorder:
         img = rq.render("04:30", row, 800, 480, mode="production", theme="cartograph")
         assert img.size == (800, 480)
 
+    def test_cartograph_graticule_paints_dotted_sepia_grid(self):
+        """The graticule paints alternating R/G pixels at every
+        graticule line (every 80 px vertically and horizontally).
+        Sample a horizontal slice at y=80 (the first parallel) and
+        confirm both red and green pixels appear in the dotted line
+        pattern. Single biggest "this is a chart" signal so a
+        regression that drops the graticule layer entirely must fail
+        loudly here."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        # Parallel at y=80 — sample along it (skip x positions that
+        # cross the cartouche to avoid the knockout's cream wash).
+        red_count = green_count = 0
+        for px in range(20, 80):
+            for py in (79, 80, 81):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif pix == rq.SPECTRA6["green"]:
+                    green_count += 1
+        assert red_count >= 3, f"graticule painted too few red dots ({red_count})"
+        assert green_count >= 3, f"graticule painted too few green dots ({green_count})"
+
+    def test_cartograph_rhumb_lines_radiate_from_compass(self):
+        """Rhumb lines paint dotted sepia rays from the compass rose
+        centre (72, height-80=400) outward at 45° increments. The NE
+        ray exits the cartouche-knockout top edge (~y=116 for the
+        hero layout) at offset ~402 px along the ray and continues
+        outward to its endpoint near (460, 12). Sample at offset
+        420-460 (above the cartouche, in the top sea) where the
+        dotted rhumb pattern should leave sepia pixels."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        red_count = green_count = 0
+        for offset in range(420, 460):
+            # Move along the NE diagonal: dx = +offset/sqrt(2), dy = -offset/sqrt(2)
+            px = 72 + int(offset * 0.707)
+            py = 400 - int(offset * 0.707)
+            for dpx in range(-1, 2):
+                for dpy in range(-1, 2):
+                    if not (0 <= px + dpx < 800 and 0 <= py + dpy < 480):
+                        continue
+                    pix = img.getpixel((px + dpx, py + dpy))
+                    if pix == rq.SPECTRA6["red"]:
+                        red_count += 1
+                    elif pix == rq.SPECTRA6["green"]:
+                        green_count += 1
+        assert red_count + green_count >= 4, (
+            f"rhumb line NE ray painted too few sepia pixels "
+            f"(red={red_count}, green={green_count})"
+        )
+
+    def test_cartograph_islands_paint_in_open_sea(self):
+        """Three small islands paint in the open-sea regions. Sample
+        the bottom-left island position (240, 408) and confirm both
+        red and green pixels are present in a 30×30 box around it —
+        the same R+G parity post-pass the coastlines use."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        # Island 2: cx_frac=0.30, cy_frac=0.85 → (240, 408)
+        red_count = green_count = 0
+        for py in range(393, 425):
+            for px in range(220, 260):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif pix == rq.SPECTRA6["green"]:
+                    green_count += 1
+        # Expect both inks present — island silhouette + R+G parity
+        # post-pass guarantees roughly equal counts of each.
+        assert red_count >= 30, f"island painted too few red pixels ({red_count})"
+        assert green_count >= 30, (
+            f"island R+G post-pass under-fired ({green_count} green pixels)"
+        )
+
     def test_cartograph_renders_at_tiny_preview_size(self):
         """The web curator UI's ``/api/preview`` endpoint clamps to a
         floor of 80x60 px. Confirm cartograph survives that clamp

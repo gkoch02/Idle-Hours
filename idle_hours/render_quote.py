@@ -2127,13 +2127,25 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Astrarium — Cormorant Garamond for the body, same humanist
-    # high-contrast serif ``mucha`` already pulls from. Reads as the
-    # editorial / mid-century-modern register the astronomical-clock
-    # mockup uses, where the serif body sits next to a hairline-ruled
-    # dashboard layout. Variable font with named instances; Regular for
-    # the body, Bold for the matched-phrase tangerine, Bold again in
-    # the ornament slot for the oversized opening / closing quote marks
+    # Astrarium — EB Garamond for the body. The earlier revision used
+    # Cormorant Garamond (the same high-contrast humanist serif
+    # ``mucha`` already pulls from), but Cormorant's hairlines are
+    # too fine for the Spectra 6 panel at the body's 18-38pt fit-range
+    # — Cormorant's thinnest strokes can drop below 1 px at the
+    # panel's pixel grid and disappear into the cream Bayer-washed
+    # ground, leaving the body text reading as broken / half-rendered
+    # at panel viewing distance. EB Garamond (Renaissance humanist
+    # old-style, already bundled for ``illuminated`` / ``gothic`` /
+    # ``tarot``) has even, moderate-contrast strokes that survive the
+    # panel's pixel grid intact while keeping the period editorial
+    # register the astronomical-clock mockup wants. Playfair Display
+    # (the default body face) would also work but it would erase the
+    # typographic differentiation from default/dark; Cardo (firmament's
+    # body) would overlap with the navigation-trio sister theme. EB
+    # Garamond keeps astrarium typographically distinct from both
+    # while picking up an eInk-robust silhouette. Variable font sister
+    # (Bold variant) carries the matched-phrase tangerine and the
+    # ornament slot for the oversized opening / closing quote marks
     # painted alongside the dial. Sans labels for the dashboard chrome
     # (header strip, datum-panel keys, dial scale numerals) are loaded
     # directly from ``META_FONT_BOLD_CANDIDATES`` inside
@@ -2142,15 +2154,15 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     # uses for its status labels.
     "astrarium": {
         "quote_regular": [
-            (CORMORANT_VARIABLE, "Regular"),
+            EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
-            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -8589,6 +8601,283 @@ _CARTOGRAPH_PLACE_NAMES = (
 )
 
 
+# Three small islands scattered across the open-sea regions — adds the
+# "this chart is populated" visual cue that distinguishes a real map
+# from an abstract decorated page. Positions chosen to sit in the
+# margin sea zones between cartouche / coastlines / compass / serpent
+# / labels, deterministically seeded so the same islands recur every
+# render. Each entry is ``(cx_frac, cy_frac, scale_w, scale_h, seed)``
+# — the polygon's silhouette is a small 8-point wobbled blob anchored
+# on the (cx_frac × width, cy_frac × height) centre.
+_CARTOGRAPH_ISLANDS = (
+    # Top sea, between the TL coastline and the "Mare Incognitum" label.
+    (0.32, 0.16, 16, 10, 0xC0A511),
+    # Bottom sea, between the BL compass rose and the "Terra Nova"
+    # label — sits where a real chart's "Insulae Minores" cluster
+    # would go to balance the larger BR landmass diagonally.
+    (0.30, 0.85, 20, 12, 0xC0A522),
+    # Bottom sea, between "Terra Nova" and the sea serpent — paired
+    # with the diagonal island above so the BL→TR navigation axis has
+    # two stepping stones a viewer's eye can read along.
+    (0.62, 0.85, 14, 9, 0xC0A533),
+)
+
+
+# Graticule spacing — meridians and parallels every 80 px. On a
+# 800×480 canvas that gives 9 vertical meridians (x = 80..720) and 5
+# horizontal parallels (y = 80..400), forming a 9×5 lattice over the
+# whole chart. 80 px matches the canvas aspect ratio (10:6 grid cells)
+# without making the grid so dense it competes with body text. The
+# graticule is sparse-dotted (paint every 3rd pixel along each line)
+# so it reads as a faint reference grid rather than as a solid frame.
+_CARTOGRAPH_GRATICULE_SPACING = 80
+_CARTOGRAPH_GRATICULE_DOT_PERIOD = 3
+
+
+def _paint_cartograph_dotted_sepia_line(
+    pixels,
+    width: int,
+    height: int,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    dot_period: int,
+    ground_ink_a,
+    ground_ink_b,
+    red_ink,
+    green_ink,
+) -> None:
+    """Paint a dotted sepia line from ``(x0, y0)`` to ``(x1, y1)``.
+
+    The dots are painted directly in alternating R/G per pixel
+    (``(px + py) & 1`` parity) so the line reads as sepia at panel
+    viewing distance without needing a separate post-pass — same
+    in-place R/G alternation Layer 1's foxing scatter uses. Only
+    pixels currently equal to ``ground_ink_a`` (white) or
+    ``ground_ink_b`` (cream yellow) get painted; pixels already
+    painted by an earlier layer (e.g. cream wash dots, foxing
+    speckles already in R or G, the coastlines painted later — though
+    line painting happens before coastlines in the layer order) are
+    skipped so the sepia line reads as ON the parchment, never
+    overpainting earlier ground texture.
+
+    ``dot_period`` controls density: 1 = solid line, 2 = every other
+    pixel painted, 3 = every third pixel, etc. The graticule uses
+    period 3 (sparse dotted, ~33% density) and rhumb lines use period
+    2 (denser dotted, ~50% density) so rhumbs read as more dominant
+    than the background graticule grid.
+    """
+    length = max(1, int(round(math.hypot(x1 - x0, y1 - y0))))
+    for i in range(0, length + 1, dot_period):
+        t = i / length
+        px = round(x0 + (x1 - x0) * t)
+        py = round(y0 + (y1 - y0) * t)
+        if not (0 <= px < width and 0 <= py < height):
+            continue
+        current = pixels[px, py]
+        if current not in (ground_ink_a, ground_ink_b):
+            continue
+        # Parity inverted vs. the coastline / island / label post-passes
+        # below: graticule and rhumb-line reds land at ``(px+py)&1 == 0``,
+        # NOT 1. The coastline/island/label post-passes flip parity-1
+        # reds to green to synthesise the R+G sepia — if the graticule
+        # painted reds at parity 1 too, every graticule red pixel inside
+        # any coastline-or-island bbox would get clobbered to green,
+        # leaving only the graticule's greens visible there and breaking
+        # the R+G alternation. Inverting the parity here keeps the
+        # graticule's reds at parity 0 where the post-pass condition
+        # (parity 1 AND red) is false by construction.
+        pixels[px, py] = green_ink if (px + py) & 1 else red_ink
+
+
+def _draw_cartograph_graticule(
+    pixels,
+    width: int,
+    height: int,
+    ground_white,
+    ground_cream,
+    red_ink,
+    green_ink,
+) -> None:
+    """Paint a faint sepia latitude / longitude graticule across the
+    chart.
+
+    Real 17th-century charts always carried a graticule — the
+    reference grid of parallels (horizontal lines of latitude) and
+    meridians (vertical lines of longitude) that turn an illustrated
+    page into a navigable map. Without one, decorative coastlines and
+    a compass rose still read as "stylised page decoration" rather
+    than as "actual chart"; with one, the whole composition snaps
+    into focus.
+
+    Layout: vertical meridians at ``x = 80, 160, ..., 720`` (every
+    ``_CARTOGRAPH_GRATICULE_SPACING`` = 80 px) plus horizontal
+    parallels at ``y = 80, 160, ..., 400`` — a 9×5 lattice on the
+    800×480 panel. Each line is painted as a sparse dotted sepia
+    stipple (every 3rd pixel, R/G alternating by parity for the same
+    in-place sepia recipe Layer 1's foxing uses) so the graticule
+    reads as a faint reference grid that the eye picks up as
+    structure without competing with the body-text glyphs above
+    every parallel and meridian. Small 3 px tick marks at the canvas
+    edges every 80 px reinforce the "this is a measured grid"
+    reading.
+
+    Only pixels currently equal to the cream-washed ground get
+    painted, so the graticule layers cleanly under everything painted
+    later (coastlines, compass rose, sea serpent, place name labels,
+    cartouche knockout). The cartouche knockout later resets the
+    body-text rect to a fresh cream wash, erasing the graticule
+    inside the cartouche — exactly the same behaviour a real chart
+    has when a passage scroll is laid over part of the map.
+    """
+    spacing = _CARTOGRAPH_GRATICULE_SPACING
+    dot_period = _CARTOGRAPH_GRATICULE_DOT_PERIOD
+    # Vertical meridians
+    for x in range(spacing, width, spacing):
+        _paint_cartograph_dotted_sepia_line(
+            pixels, width, height, x, 0, x, height - 1,
+            dot_period, ground_white, ground_cream, red_ink, green_ink,
+        )
+    # Horizontal parallels
+    for y in range(spacing, height, spacing):
+        _paint_cartograph_dotted_sepia_line(
+            pixels, width, height, 0, y, width - 1, y,
+            dot_period, ground_white, ground_cream, red_ink, green_ink,
+        )
+    # Edge tick marks — small 3 px stubs at every graticule
+    # intersection with the canvas edge, painted solid sepia (R/G
+    # alternating by parity, inverted to keep reds at parity 0 for
+    # the same coastline-post-pass-safety reason ``_paint_cartograph_
+    # dotted_sepia_line`` uses). Reads as the degree-mark tick a real
+    # chart has at its frame edges, reinforcing the measured-grid
+    # signal. Skip the canvas-corner ticks (x=0,y=0 etc.) since
+    # they'd overlap the canvas perimeter painting.
+    tick_len = 3
+    for x in range(spacing, width, spacing):
+        for offset in range(tick_len):
+            # Top edge
+            if 0 <= offset < height and pixels[x, offset] in (ground_white, ground_cream):
+                pixels[x, offset] = green_ink if (x + offset) & 1 else red_ink
+            # Bottom edge
+            py = height - 1 - offset
+            if 0 <= py < height and pixels[x, py] in (ground_white, ground_cream):
+                pixels[x, py] = green_ink if (x + py) & 1 else red_ink
+    for y in range(spacing, height, spacing):
+        for offset in range(tick_len):
+            # Left edge
+            if 0 <= offset < width and pixels[offset, y] in (ground_white, ground_cream):
+                pixels[offset, y] = green_ink if (offset + y) & 1 else red_ink
+            # Right edge
+            px = width - 1 - offset
+            if 0 <= px < width and pixels[px, y] in (ground_white, ground_cream):
+                pixels[px, y] = green_ink if (px + y) & 1 else red_ink
+
+
+def _draw_cartograph_rhumb_lines(
+    pixels,
+    width: int,
+    height: int,
+    cx: int,
+    cy: int,
+    ground_white,
+    ground_cream,
+    red_ink,
+    green_ink,
+) -> None:
+    """Paint eight rhumb lines radiating from the compass rose centre.
+
+    Rhumb lines (loxodromes) are the canonical nautical-chart
+    decoration: thin lines extending from a compass rose's centre
+    outward to mark the eight principal bearings — N / NE / E / SE /
+    S / SW / W / NW. A real portolan chart often carried multiple
+    interlocking rose networks, but a single rose with eight rays is
+    the iconic "this is a navigation chart" signature.
+
+    Each ray extends from ``(cx, cy)`` outward at 45° increments
+    until it hits the canvas edge (minus a 12 px breathing gap so
+    the rays don't kiss the perimeter). Painted as denser dotted
+    sepia (period 2 = ~50% density) so the rays read as a more
+    dominant decoration than the background graticule (period 3 =
+    ~33% density) — visual hierarchy: the compass and its rhumbs
+    are a focal feature, the graticule is reference structure.
+
+    R/G parity painting is the same in-place sepia recipe the
+    graticule uses; only cream-washed ground pixels get painted, so
+    the rays layer cleanly under coastlines / labels / cartouche
+    painted later.
+    """
+    edge_pad = 12
+    for angle_deg in (0, 45, 90, 135, 180, 225, 270, 315):
+        angle = math.radians(angle_deg)
+        dx = math.sin(angle)
+        dy = -math.cos(angle)  # 0° = up
+        # Find the closer edge in each axis (or skip if dx/dy is 0).
+        t_x = float("inf")
+        t_y = float("inf")
+        if dx > 0:
+            t_x = (width - edge_pad - cx) / dx
+        elif dx < 0:
+            t_x = (edge_pad - cx) / dx
+        if dy > 0:
+            t_y = (height - edge_pad - cy) / dy
+        elif dy < 0:
+            t_y = (edge_pad - cy) / dy
+        t = min(t_x, t_y)
+        if t == float("inf") or t <= 0:
+            continue
+        ex = round(cx + dx * t)
+        ey = round(cy + dy * t)
+        _paint_cartograph_dotted_sepia_line(
+            pixels, width, height, cx, cy, ex, ey,
+            dot_period=2, ground_ink_a=ground_white, ground_ink_b=ground_cream,
+            red_ink=red_ink, green_ink=green_ink,
+        )
+
+
+def _draw_cartograph_island(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    scale_w: int,
+    scale_h: int,
+    ink_sentinel,
+    seed: int,
+) -> tuple[int, int, int, int]:
+    """Paint a small wobbled-polygon island silhouette centred on
+    ``(cx, cy)``.
+
+    The island is an 8-vertex polygon whose radii wobble
+    deterministically per ``seed``, scaled by ``scale_w`` /
+    ``scale_h`` (horizontal / vertical half-axes in pixels). Same
+    polyline-approximation pattern ``_build_fillmore_blob`` uses for
+    its corner blobs and ``_draw_cartograph_coastline`` uses for the
+    diagonal-corner coastlines, but here scaled down to read as a
+    small island rather than a continent. Painted in
+    ``ink_sentinel`` (red) so the caller's bbox post-pass can flip
+    half the pixels to green per ``(px + py) & 1`` parity → R+G
+    sepia, matching the coastlines' recipe.
+
+    Returns the bbox for the post-pass.
+    """
+    rng = random.Random(seed)
+    n_pts = 8
+    pts: list[tuple[int, int]] = []
+    for i in range(n_pts):
+        angle = (i / n_pts) * 2 * math.pi
+        # Wobble factor 0.7..1.3 — gentler than the coastline wobble
+        # so small islands read as compact landmasses rather than
+        # straggly archipelagos.
+        wobble = 0.7 + rng.random() * 0.6
+        x = cx + round(scale_w * wobble * math.cos(angle))
+        y = cy + round(scale_h * wobble * math.sin(angle))
+        pts.append((x, y))
+    draw.polygon(pts, fill=ink_sentinel)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+
+
 def _draw_cartograph_compass_rose(
     draw: ImageDraw.ImageDraw,
     cx: int,
@@ -8760,17 +9049,34 @@ def draw_cartograph_border(
 ) -> None:
     """Paint a hand-drawn antique cartographer's chart frame.
 
-    Eight layers, painted in Z-order so each successive layer overpaints
-    the previous:
+    Eleven layers, painted in Z-order so each successive layer
+    overpaints the previous:
 
-    * **Layer 0 — cream Y+W Bayer wash.** Sparse 1-in-8 yellow-on-white
-      stipple (``BAYER_4x4[y%4][x%4] < 2``) over every ``page_bg``
-      pixel. Same recipe ``illuminated`` / ``dispatch`` / ``herbarium``
-      / ``mucha`` / ``astrarium`` use for their cream parchment
-      grounds; warms the panel's flat white to the vellum tone real
-      archival chart paper carries.
+    * **Layer 0 — cream Y+W Bayer wash.** Sparse 1-in-16 yellow-on-
+      white stipple (``BAYER_4x4[y%4][x%4] < 1``) over every
+      ``page_bg`` pixel. Same recipe ``illuminated`` / ``dispatch`` /
+      ``herbarium`` / ``mucha`` / ``astrarium`` use for their cream
+      parchment grounds; warms the panel's flat white to the vellum
+      tone real archival chart paper carries.
 
-    * **Layer 1 — sepia foxing scatter.** ~120 deterministic single-
+    * **Layer 1 — sepia graticule.** A 9×5 lattice of dotted sepia
+      meridians (verticals every 80 px from x=80..720) and parallels
+      (horizontals every 80 px from y=80..400) painted as alternating
+      R/G pixels at period-3 density (every 3rd pixel along each
+      line). Plus small 3-px tick stubs at the canvas edges where
+      each line meets the perimeter — the canonical "degree marker"
+      every measured chart carries at its frame. The single biggest
+      "this is a chart" visual cue: parallels and meridians are what
+      turn an illustrated page into a navigable map.
+
+    * **Layer 2 — sepia rhumb lines.** Eight thin sepia rays
+      radiating from the compass-rose centre (BL) at every 45° to
+      the canvas edges, painted at period-2 density (denser than the
+      graticule so the rose's loxodrome network reads as a focal
+      feature rather than as more reference grid). The canonical
+      portolan-chart marking that signals navigational use.
+
+    * **Layer 3 — sepia foxing scatter.** ~120 deterministic single-
       pixel dots (seeded from :data:`_CARTOGRAPH_FOXING_SEED`) painted
       across the cream-washed ground, half in red and half in green
       (split by tile-coordinate parity). At panel viewing distance the
@@ -8779,7 +9085,7 @@ def draw_cartograph_border(
       ``newsprint`` and ``tarot`` use for their foxing layers, layered
       here over the Y+W cream wash rather than over a darker halftone.
 
-    * **Layer 2 — two diagonal-corner coastlines.** Irregular polygon
+    * **Layer 4 — two diagonal-corner coastlines.** Irregular polygon
       silhouettes anchored at the top-left and bottom-right corners,
       filled in R+G sepia via a sentinel-paint-then-bbox-post-pass
       pattern. The wobble seeds (:data:`_CARTOGRAPH_COAST_TL_SEED` /
@@ -8788,23 +9094,31 @@ def draw_cartograph_border(
       bucket change — the cartograph theme reads as one specific
       hand-drawn chart, not a fresh procedural map per minute.
 
-    * **Layer 3 — compass rose (bottom-left).** Eight-point rose
+    * **Layer 5 — three scattered islands.** Small 8-vertex wobbled-
+      polygon island silhouettes scattered across the open-sea
+      margins (positions held on :data:`_CARTOGRAPH_ISLANDS`), each
+      painted in R+G sepia via the same sentinel-and-post-pass
+      pattern the coastlines use. Adds the "this chart is
+      populated" reading — real maps always carry minor islands
+      between the major landmasses to navigate around.
+
+    * **Layer 6 — compass rose (bottom-left).** Eight-point rose
       (four long cardinal triangles, four shorter ordinal triangles,
       central pivot circle) painted via R+Y 5/8:3/8 tangerine
       (sentinel-paint-then-bbox-post-pass at ``BAYER_4x4 < 6``) — the
       documented luminance-biased recipe ``deco`` / ``atomic`` /
       ``astrarium`` / ``vinyl`` use. Reads as warm vermillion ink
       against the cream ground rather than the harsher fire-engine
-      red the rays paint in.
+      red the rays paint in. Painted AFTER the rhumb lines so the
+      rose silhouette sits on top of the rays at the centre.
 
-    * **Layer 4 — sea-serpent doodle (right margin, mid-page).** A
-      small three-hump silhouette in solid black ink — period
-      cartographers always inked their margin "here be dragons"
-      doodles solid (no halftone available at engraver scale), so
-      this layer skips the chromatic-mix register the rest of the
-      composition occupies.
+    * **Layer 7 — sea-serpent doodle (bottom-mid).** A small three-
+      hump silhouette in solid black ink — period cartographers
+      always inked their margin "here be dragons" doodles solid (no
+      halftone available at engraver scale), so this layer skips the
+      chromatic-mix register the rest of the composition occupies.
 
-    * **Layer 5 — three Latin place names.** Italic IM Fell English
+    * **Layer 8 — three Latin place names.** Italic IM Fell English
       labels in sepia (R+G post-pass, same recipe as the coastlines),
       anchored at fixed canvas-relative positions along the
       coastlines and across the open-sea margin. Positions held on
@@ -8812,29 +9126,32 @@ def draw_cartograph_border(
       META_FONT_CANDIDATES chain when IM Fell isn't installed so the
       labels always render, just on a different italic face.
 
-    * **Layer 6 — cartouche knockout.** When ``clear_rect`` is
+    * **Layer 9 — cartouche knockout.** When ``clear_rect`` is
       provided by ``render()``, reset the body-text rect to a clean
       cream-washed rounded rectangle so the IM Fell italic body sits
-      on quiet vellum rather than on top of foxing / coastlines.
-      Knockout is sequenced: rounded white fill (radius 10) → fresh
-      Y+W cream wash → thin red rubricated outer rule → thin black
-      inner rule. The two-ink rule echoes the doubled rubricated frame
-      ``illuminated`` and ``tarot`` use, here scaled inward as a
-      contained cartouche rather than as a page frame.
+      on quiet vellum rather than on top of graticule / foxing /
+      coastlines. Knockout is sequenced: rounded white fill
+      (radius 10) → fresh Y+W cream wash → thin red rubricated outer
+      rule → thin black inner rule. The two-ink rule echoes the
+      doubled rubricated frame ``illuminated`` and ``tarot`` use,
+      here scaled inward as a contained cartouche rather than as a
+      page frame. The graticule and rhumb lines painted in earlier
+      layers are CLEANLY ERASED inside the cartouche — exactly the
+      same behaviour a real chart has when a passage scroll is laid
+      over part of the map.
 
-    * **Layer 7 — registration-cross corner ornaments.** Small black
-      ``+`` marks at the four corners of the cartouche (anchored to
-      the inset rule, not the canvas) — the alignment ticks a chart-
-      engraver used to register their plates between print runs. Adds
-      the "this is a printed plate" reading the surrounding decoration
-      sets up.
+    * **Layer 10 — registration-cross corner ornaments.** Small
+      black ``+`` marks at the four corners of the cartouche
+      (anchored to the inset rule, not the canvas) — the alignment
+      ticks a chart-engraver used to register their plates between
+      print runs. Adds the "this is a printed plate" reading the
+      surrounding decoration sets up.
 
     When ``clear_rect`` is None (direct-call test path,
     ``render_static_message`` for the goodnight frame, and
-    ``render_source_card`` for the button-C overlay), Layers 6 / 7 are
-    skipped; the cream wash + foxing + coastlines + rose + serpent +
-    labels still paint, so the cartograph identity survives the
-    fall-through paths.
+    ``render_source_card`` for the button-C overlay), Layers 9 / 10
+    are skipped; all the map layers still paint, so the cartograph
+    identity survives the fall-through paths.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -8865,7 +9182,33 @@ def draw_cartograph_border(
                     pixels[x, y] = cream_light
 
     # ------------------------------------------------------------------
-    # Layer 1 — sepia foxing scatter. Deterministic positions seeded so
+    # Layer 1 — sepia graticule (latitude / longitude grid). The single
+    # biggest "this is a chart" visual cue — turns the decorated page
+    # into a measured map. Paints sparse-dotted R/G alternating
+    # sepia, only over cream-washed ground pixels, so it lays cleanly
+    # under everything painted later.
+    _draw_cartograph_graticule(
+        pixels, width, height,
+        ground_white=white_ink, ground_cream=cream_light,
+        red_ink=red_ink, green_ink=green_ink,
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 2 — sepia rhumb lines from the compass-rose centre. Eight
+    # rays at every 45° extending to the canvas edges, denser than
+    # the graticule (every other pixel vs every third) so the
+    # navigation network reads as a focal feature against the
+    # background grid.
+    rose_cx = 72
+    rose_cy = height - 80
+    _draw_cartograph_rhumb_lines(
+        pixels, width, height, rose_cx, rose_cy,
+        ground_white=white_ink, ground_cream=cream_light,
+        red_ink=red_ink, green_ink=green_ink,
+    )
+
+    # ------------------------------------------------------------------
+    # Layer 3 — sepia foxing scatter. Deterministic positions seeded so
     # the same dots land in the same place every render; split by
     # parity so adjacent dots average to R+G rust-brown at panel
     # distance rather than reading as red+green individually.
@@ -8877,17 +9220,22 @@ def draw_cartograph_border(
             fy = rng.randint(2, height - 3)
             # Only paint dots over current ground (cream_light or white)
             # so the foxing reads as on the paper, not over later layers.
+            # Graticule + rhumb pixels (already R or G) are skipped.
             current = pixels[fx, fy]
             if current not in (cream_light, white_ink):
                 continue
             # Parity split: tile-coordinate (fx + fy) & 1 picks R or G,
             # so each adjacent dot pair lands on opposite inks → R+G
             # averaging in the eye = sepia. Without the parity split
-            # the eye would see distinct red and green specks.
-            pixels[fx, fy] = red_ink if (fx + fy) & 1 else green_ink
+            # the eye would see distinct red and green specks. Parity
+            # inverted vs. the coastline / island / label post-passes
+            # below so foxing reds (parity 0) survive the post-pass —
+            # see ``_paint_cartograph_dotted_sepia_line`` for the same
+            # reasoning applied to the graticule + rhumb lines.
+            pixels[fx, fy] = green_ink if (fx + fy) & 1 else red_ink
 
     # ------------------------------------------------------------------
-    # Layer 2 — two diagonal-corner coastlines. Paint as red sentinel,
+    # Layer 4 — two diagonal-corner coastlines. Paint as red sentinel,
     # then post-pass to sepia (R+G) by flipping half the painted red
     # pixels to green per (x+y)&1 parity inside each bbox.
     tl_bbox = _draw_cartograph_coastline(
@@ -8920,18 +9268,43 @@ def draw_cartograph_border(
                     pixels[px, py] = green_ink
 
     # ------------------------------------------------------------------
-    # Layer 3 — compass rose (bottom-left). Anchor at (cx=72, cy=height-78)
-    # — well clear of the body block (clear_rect.bottom < height - 14
-    # with cartograph's pad of 14 below) and clear of the BR coastline
-    # silhouette. cardinal_len=28 means the rose extends 28 px in each
-    # direction from the centre, so the topmost ray reaches y=height-106
-    # and the leftmost reaches x=44 — both safely inside the canvas.
-    rose_cx = 72
-    rose_cy = height - 80
+    # Layer 5 — three scattered islands in the open-sea margins.
+    # Paint each as a red-sentinel polygon, then bbox-post-pass to
+    # R+G sepia per ``(px + py) & 1`` parity (same recipe as the
+    # coastlines). Positions held on :data:`_CARTOGRAPH_ISLANDS`.
+    island_bboxes: list[tuple[int, int, int, int]] = []
+    for cx_frac, cy_frac, scale_w, scale_h, seed in _CARTOGRAPH_ISLANDS:
+        island_cx = round(width * cx_frac)
+        island_cy = round(height * cy_frac)
+        island_bboxes.append(_draw_cartograph_island(
+            draw, island_cx, island_cy, scale_w, scale_h, red_ink, seed,
+        ))
+    for bx0, by0, bx1, by1 in island_bboxes:
+        bx0 = max(0, bx0)
+        by0 = max(0, by0)
+        bx1 = min(width - 1, bx1)
+        by1 = min(height - 1, by1)
+        for py in range(by0, by1 + 1):
+            for px in range(bx0, bx1 + 1):
+                if pixels[px, py] == red_ink and (px + py) & 1:
+                    pixels[px, py] = green_ink
+
+    # ------------------------------------------------------------------
+    # Layer 6 — compass rose (bottom-left). Anchor matches the rhumb-
+    # line emission centre painted in Layer 2 (rose_cx=72, rose_cy=
+    # height-80) so the rays read as emanating from the rose. The
+    # rose silhouette paints on TOP of the rays so the centre pivot
+    # appears solid rather than crossed by the radiating lines.
+    # cardinal_len=32 means the rose extends 32 px in each direction
+    # from the centre.
     rose_bbox = _draw_cartograph_compass_rose(draw, rose_cx, rose_cy, ink_sentinel=red_ink)
     # Tangerine post-pass: same recipe as ``draw_deco_border``'s final
     # pass — flip painted red pixels to yellow per ``BAYER_4x4 < 6/16``
-    # so the eye averages R+Y 5/8:3/8 into warm tangerine.
+    # so the eye averages R+Y 5/8:3/8 into warm tangerine. Bounded to
+    # the rose bbox so the rhumb-line red sentinels OUTSIDE the rose
+    # (already converted to sepia in Layer 2 by per-pixel R/G
+    # painting) and the coastline/island/foxing red sentinels (in
+    # other bboxes) stay untouched.
     bx0, by0, bx1, by1 = rose_bbox
     bx0 = max(0, bx0)
     by0 = max(0, by0)
@@ -8944,7 +9317,7 @@ def draw_cartograph_border(
                 pixels[px, py] = yellow_ink
 
     # ------------------------------------------------------------------
-    # Layer 4 — sea-serpent doodle. Anchored in the bottom-mid sea at
+    # Layer 7 — sea-serpent doodle. Anchored in the bottom-mid sea at
     # ~(width*0.69, height*0.84). The right-margin (x>cartouche_x1)
     # band turned out to be too narrow across all layouts — the dense
     # layout's max_width=680 pushes the cartouche right edge to ~762,
@@ -8958,7 +9331,7 @@ def draw_cartograph_border(
     _draw_cartograph_sea_serpent(draw, round(width * 0.69), round(height * 0.84), ink=black_ink)
 
     # ------------------------------------------------------------------
-    # Layer 5 — three Latin place names in italic IM Fell sepia.
+    # Layer 8 — three Latin place names in italic IM Fell sepia.
     # Painted in red sentinel first, then bbox-post-passed to sepia per
     # the same (x+y)&1 parity rule the coastlines use. Falls back
     # through the META_FONT chain when IM Fell isn't installed.
@@ -8994,7 +9367,7 @@ def draw_cartograph_border(
                     pixels[px, py] = green_ink
 
     # ------------------------------------------------------------------
-    # Layers 6 & 7 — cartouche knockout + registration corners. Only
+    # Layers 9 & 10 — cartouche knockout + registration corners. Only
     # paint when render() threaded clear_rect through.
     if clear_rect is None or page_bg is None:
         return
@@ -9037,7 +9410,7 @@ def draw_cartograph_border(
             width=1,
         )
 
-    # Layer 7 — four registration-cross ornaments at the inner-rule
+    # Layer 10 — four registration-cross ornaments at the inner-rule
     # corners. Tiny ``+`` marks (3 px arms) read as the plate-alignment
     # ticks a chart engraver used between print runs.
     tick_arm = 3
