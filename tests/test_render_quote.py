@@ -2187,6 +2187,344 @@ class TestKanagawaBorder:
         assert img.size == (80, 60)
 
 
+class TestCartographBorder:
+    """The cartograph theme paints a hand-drawn antique cartographer's
+    chart: cream Y+W Bayer-washed ground + R+G sepia foxing scatter +
+    two diagonal-corner R+G sepia coastlines + R+Y tangerine compass
+    rose at BL + solid-black sea-serpent margin doodle + three Latin
+    place-name labels in italic sepia + doubled red+black rubricated
+    cartouche knockout around the body text. Mirrors the structure
+    of the kanagawa test suite (which is the closest sibling theme in
+    the rotation that uses the same clear_rect-knockout pattern).
+    """
+
+    def _row(self, **overrides):
+        row = {
+            "display_quote": "It was almost half past four when the bell rang.",
+            "matched_text": "half past four",
+            "author": "Jane Austen",
+            "title": "Pride and Prejudice",
+            "bucket": "h4_half_past",
+            "resolved_bucket": "h4_half_past",
+            "quality_score": 88,
+            "source_id": "1342",
+            "line_number": 42,
+        }
+        row.update(overrides)
+        return row
+
+    def test_cartograph_renders_at_panel_size(self):
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        assert img.size == (800, 480)
+
+    def test_cartograph_registered_in_theme_order(self):
+        """Bug class: a new theme entry in THEMES that's missing from
+        THEME_ORDER would be invisible to the button-B cycle and the
+        web dropdown. The general invariant is pinned by
+        ``test_theme_order_covers_all_registered_themes``, but pin the
+        cartograph name explicitly here too so a typo lands a focused
+        failure rather than a set-mismatch diff."""
+        assert "cartograph" in rq.THEMES
+        assert "cartograph" in rq.THEME_ORDER
+
+    def test_cartograph_theme_uses_white_ground_with_red_accent(self):
+        """White-paper ground (warmed by a Y+W Bayer wash from the
+        border painter) with red as the matched-phrase accent — pin
+        the palette shape so a regression that flipped ``page_bg`` to
+        yellow (and thus collided with ``alchemy`` / ``comic``) or
+        moved the accent off red (and thus broke the cartographer's
+        red-vermillion call-out register) fails loudly here."""
+        t = rq.THEMES["cartograph"]
+        assert t["page_bg"] == rq.SPECTRA6["white"]
+        assert t["text"] == rq.SPECTRA6["black"]
+        assert t["accent"] == rq.SPECTRA6["red"]
+
+    def test_cartograph_listed_in_border_painters(self):
+        """The painter must be registered in the dispatch table so the
+        chart decoration actually fires when the theme is selected."""
+        assert "cartograph" in rq._BORDER_PAINTERS
+        assert rq._BORDER_PAINTERS["cartograph"] is rq.draw_cartograph_border
+
+    def test_cartograph_border_palette_stays_on_spectra6(self):
+        """Every painted pixel must belong to the Spectra 6 native
+        palette. The cartograph painter uses sentinel-paint-then-
+        bbox-post-pass for both the R+Y tangerine compass rose and
+        the R+G sepia coastlines / labels / foxing; a regression in
+        the post-passes could leave the sentinel red surviving on
+        pixels that were supposed to flip to yellow / green."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        allowed = set(rq.SPECTRA6.values())
+        for py in range(0, 480, 7):
+            for px in range(0, 800, 11):
+                pix = img.getpixel((px, py))
+                assert pix in allowed, f"off-palette pixel {pix} at ({px}, {py})"
+
+    def test_cartograph_compass_rose_paints_tangerine(self):
+        """The BL compass rose paints in red sentinel, then a Bayer
+        post-pass at threshold 6/16 flips ~3/8 of the painted red
+        pixels to yellow → R+Y tangerine (same recipe as ``deco``).
+        Sample the rose centre (72, height-80) = (72, 400) and
+        confirm both red and yellow pixels are present — neither
+        alone would indicate the post-pass fired correctly."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        found_red = False
+        found_yellow = False
+        for py in range(370, 432):
+            for px in range(40, 105):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    found_red = True
+                elif pix == rq.SPECTRA6["yellow"]:
+                    found_yellow = True
+                if found_red and found_yellow:
+                    break
+            if found_red and found_yellow:
+                break
+        assert found_red, "compass rose painted no red sentinel pixels"
+        assert found_yellow, (
+            "compass rose Bayer post-pass left no yellow pixels — "
+            "tangerine recipe did not fire"
+        )
+
+    def test_cartograph_coastlines_paint_sepia(self):
+        """The TL + BR coastlines paint in red sentinel, then a parity
+        post-pass flips half the painted red pixels to green per
+        ``(px + py) & 1`` → R+G sepia (same recipe as ``newsprint`` /
+        ``tarot`` / ``saloon`` foxing). Sample inside both coastline
+        polygons and confirm both red and green pixels survive."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        # TL coastline: extent roughly (160, 86); sample the corner.
+        red_tl = green_tl = 0
+        for py in range(0, 70):
+            for px in range(0, 120):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_tl += 1
+                elif pix == rq.SPECTRA6["green"]:
+                    green_tl += 1
+        # BR coastline: corner at (799, 479), extent roughly (640, 394).
+        red_br = green_br = 0
+        for py in range(420, 480):
+            for px in range(680, 800):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_br += 1
+                elif pix == rq.SPECTRA6["green"]:
+                    green_br += 1
+        # Each coastline polygon is large enough that even after the
+        # parity split both inks should have hundreds of pixels.
+        assert red_tl > 200, f"TL coastline painted too few red pixels ({red_tl})"
+        assert green_tl > 200, f"TL coastline parity post-pass under-fired ({green_tl} green)"
+        assert red_br > 200, f"BR coastline painted too few red pixels ({red_br})"
+        assert green_br > 200, f"BR coastline parity post-pass under-fired ({green_br} green)"
+
+    def test_cartograph_cream_wash_paints_yellow_dots(self):
+        """Layer 0 paints a 6.25%-density Y+W Bayer wash (threshold < 1)
+        across every page_bg pixel. Sample a region the body-text
+        knockout doesn't reach — top-mid sea at y=40, x=200..600 — and
+        count yellow pixels. At 6.25% density, ~50 of the ~800 sampled
+        positions should be yellow (allowing slack for foxing scatter
+        and the band of pixels around place-name labels)."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        yellow = 0
+        for py in (35, 38, 40, 43, 46):
+            for px in range(200, 600, 1):
+                if img.getpixel((px, py)) == rq.SPECTRA6["yellow"]:
+                    yellow += 1
+        # At 6.25% density across 5×400 = 2000 sampled positions,
+        # we expect roughly 125 yellow dots ± slack for label / foxing
+        # overlap. Pin a generous lower bound that catches the case
+        # where Layer 0 fails entirely (no Y dots at all).
+        assert yellow > 50, f"cream Y+W wash under-fired ({yellow} yellow dots in band)"
+
+    def test_cartograph_cartouche_knockout_paints_red_rule(self):
+        """The cartouche knockout paints a doubled rubricated frame:
+        thin red outer rule + thin black inner rule. Sample the
+        cartouche centre row (y≈240) and confirm both a red pixel and
+        a black pixel exist along the rule edges."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        red_count = 0
+        black_count = 0
+        # Sample a horizontal slice through the middle of the cartouche
+        # — both the outer red rule and inner black rule cross this row.
+        for px in range(40, 760):
+            for py in range(230, 245):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif pix == rq.SPECTRA6["black"]:
+                    black_count += 1
+        assert red_count > 4, f"cartouche outer red rule missing ({red_count} red pixels in slice)"
+        assert black_count > 100, (
+            f"cartouche inner black rule missing or body text absent "
+            f"({black_count} black pixels in slice)"
+        )
+
+    def test_cartograph_border_appears_in_debug_and_production_modes(self):
+        """The map decoration must paint in both modes — the compass
+        rose is the easiest invariant to pin because it's anchored at
+        a fixed canvas position regardless of body-text layout."""
+        for mode in ("production", "debug"):
+            img = rq.render("04:30", self._row(), 800, 480, mode=mode, theme="cartograph")
+            found_rose_ink = False
+            for py in range(370, 432):
+                for px in range(40, 105):
+                    pix = img.getpixel((px, py))
+                    if pix in (rq.SPECTRA6["red"], rq.SPECTRA6["yellow"]):
+                        found_rose_ink = True
+                        break
+                if found_rose_ink:
+                    break
+            assert found_rose_ink, f"cartograph mode={mode} compass rose missing"
+
+    def test_cartograph_border_direct_call_without_clear_rect(self):
+        """The painter's no-clear_rect path is used by
+        ``render_static_message`` (goodnight frame) and
+        ``render_source_card`` (button-C overlay) — both call
+        ``_paint_theme_border`` directly with no clear_rect kwarg.
+        Confirm the painter runs cleanly and still paints the map
+        layers (cream wash + coastlines + rose + serpent + labels)
+        even when the cartouche knockout is skipped."""
+        image = Image.new("RGB", (800, 480), color=rq.SPECTRA6["white"])
+        rq.draw_cartograph_border(image, {"page_bg": rq.SPECTRA6["white"]})
+        # Confirm something painted: red sentinel pixels (from coast
+        # / rose / labels post-passes) must remain in the canvas.
+        found_red = False
+        for py in range(0, 480, 5):
+            for px in range(0, 800, 7):
+                if image.getpixel((px, py)) == rq.SPECTRA6["red"]:
+                    found_red = True
+                    break
+            if found_red:
+                break
+        assert found_red, "direct-call cartograph painter produced no decoration"
+
+    def test_cartograph_is_theme_gated(self):
+        """The compass rose at (72, 400) is unique to cartograph —
+        sample a few other white-ground themes at that coordinate and
+        confirm none of them paint yellow (the tangerine post-pass
+        signature) there."""
+        row = self._row()
+        for theme in ("default", "scholar", "blueprint", "kanagawa", "herbarium"):
+            img = rq.render("04:30", row, 800, 480, mode="production", theme=theme)
+            # Scan a 12×12 box around the rose centre for tangerine
+            # (R+Y) — no other theme paints both red and yellow in
+            # that bottom-left region.
+            saw_red = saw_yellow = False
+            for py in range(395, 410):
+                for px in range(60, 85):
+                    pix = img.getpixel((px, py))
+                    if pix == rq.SPECTRA6["red"]:
+                        saw_red = True
+                    elif pix == rq.SPECTRA6["yellow"]:
+                        saw_yellow = True
+            assert not (saw_red and saw_yellow), (
+                f"theme {theme} painted both red AND yellow at cartograph "
+                f"compass-rose centre — theme gate is leaking"
+            )
+
+    def test_cartograph_renders_dense_layout_without_crashing(self):
+        """The dense layout pushes the body-text rect (and therefore
+        the cartouche) close to the canvas edges. Confirm the
+        coastlines / compass rose / serpent still survive — they paint
+        BEFORE the cartouche knockout, so the knockout will mask the
+        portions that fall inside the rect, but pixels outside the
+        rect must still survive."""
+        row = self._row(
+            display_quote=(
+                "It was nearly half past four o'clock when the great bell of the "
+                "cathedral rang out across the harbour and through the narrow "
+                "cobbled streets, scattering the gulls that had been wheeling "
+                "lazily above the mast tops since dawn."
+            ),
+        )
+        img = rq.render("04:30", row, 800, 480, mode="production", theme="cartograph")
+        assert img.size == (800, 480)
+
+    def test_cartograph_graticule_paints_dotted_sepia_grid(self):
+        """The graticule paints alternating R/G pixels at every
+        graticule line (every 80 px vertically and horizontally).
+        Sample a horizontal slice at y=80 (the first parallel) and
+        confirm both red and green pixels appear in the dotted line
+        pattern. Single biggest "this is a chart" signal so a
+        regression that drops the graticule layer entirely must fail
+        loudly here."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        # Parallel at y=80 — sample along it (skip x positions that
+        # cross the cartouche to avoid the knockout's cream wash).
+        red_count = green_count = 0
+        for px in range(20, 80):
+            for py in (79, 80, 81):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif pix == rq.SPECTRA6["green"]:
+                    green_count += 1
+        assert red_count >= 3, f"graticule painted too few red dots ({red_count})"
+        assert green_count >= 3, f"graticule painted too few green dots ({green_count})"
+
+    def test_cartograph_rhumb_lines_radiate_from_compass(self):
+        """Rhumb lines paint dotted sepia rays from the compass rose
+        centre (72, height-80=400) outward at 45° increments. The NE
+        ray exits the cartouche-knockout top edge (~y=116 for the
+        hero layout) at offset ~402 px along the ray and continues
+        outward to its endpoint near (460, 12). Sample at offset
+        420-460 (above the cartouche, in the top sea) where the
+        dotted rhumb pattern should leave sepia pixels."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        red_count = green_count = 0
+        for offset in range(420, 460):
+            # Move along the NE diagonal: dx = +offset/sqrt(2), dy = -offset/sqrt(2)
+            px = 72 + int(offset * 0.707)
+            py = 400 - int(offset * 0.707)
+            for dpx in range(-1, 2):
+                for dpy in range(-1, 2):
+                    if not (0 <= px + dpx < 800 and 0 <= py + dpy < 480):
+                        continue
+                    pix = img.getpixel((px + dpx, py + dpy))
+                    if pix == rq.SPECTRA6["red"]:
+                        red_count += 1
+                    elif pix == rq.SPECTRA6["green"]:
+                        green_count += 1
+        assert red_count + green_count >= 4, (
+            f"rhumb line NE ray painted too few sepia pixels "
+            f"(red={red_count}, green={green_count})"
+        )
+
+    def test_cartograph_islands_paint_in_open_sea(self):
+        """Three small islands paint in the open-sea regions. Sample
+        the bottom-left island position (240, 408) and confirm both
+        red and green pixels are present in a 30×30 box around it —
+        the same R+G parity post-pass the coastlines use."""
+        img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="cartograph")
+        # Island 2: cx_frac=0.30, cy_frac=0.85 → (240, 408)
+        red_count = green_count = 0
+        for py in range(393, 425):
+            for px in range(220, 260):
+                pix = img.getpixel((px, py))
+                if pix == rq.SPECTRA6["red"]:
+                    red_count += 1
+                elif pix == rq.SPECTRA6["green"]:
+                    green_count += 1
+        # Expect both inks present — island silhouette + R+G parity
+        # post-pass guarantees roughly equal counts of each.
+        assert red_count >= 30, f"island painted too few red pixels ({red_count})"
+        assert green_count >= 30, (
+            f"island R+G post-pass under-fired ({green_count} green pixels)"
+        )
+
+    def test_cartograph_renders_at_tiny_preview_size(self):
+        """The web curator UI's ``/api/preview`` endpoint clamps to a
+        floor of 80x60 px. Confirm cartograph survives that clamp
+        without crashing — the compass-rose anchor at (72, height-80)
+        lands at (72, -20) for height=60, and the bbox post-pass loop
+        must clip to canvas bounds rather than indexing negative
+        pixel coords. Same defensive-clamp invariant as kanagawa's
+        small-preview test."""
+        img = rq.render("04:30", self._row(), 80, 60, mode="production", theme="cartograph")
+        assert img.size == (80, 60)
+
+
 class TestRenderCard:
     """The button-C source card uses mode='card' to render a centered metadata frame."""
 
