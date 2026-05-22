@@ -80,7 +80,6 @@ THEME_ORDER: tuple[str, ...] = (
     "astrarium",
     "kanagawa",
     "marquee",
-    "tarot",
     "vinyl",
     "cartograph",
     "diags",
