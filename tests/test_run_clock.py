@@ -3154,26 +3154,30 @@ class TestActionThemeCycle:
         return argparse.Namespace(**defaults)
 
     def test_cycle_walks_theme_order_end_to_end(self, tmp_path):
-        """N presses from ``THEME_ORDER[0]`` visit every registered theme
-        exactly once and wrap back to the head. Covers the full cycle plus
-        the wrap edge case and guarantees nothing silently drops."""
-        from idle_hours import render_quote as rq
+        """N presses from the cycle head visit every cycled theme exactly once
+        and wrap back to the head. Covers the full cycle plus the wrap edge
+        case and guarantees nothing silently drops. Iterates ``theme_cycle()``
+        rather than ``THEME_ORDER`` so opt-in-only themes in
+        ``CYCLE_EXCLUDED_THEMES`` (which stay registered but are skipped by
+        button-B / web dropdown) don't fail the wrap assertion."""
+        from idle_hours.theme_names import theme_cycle
+        cycle = theme_cycle()
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.last_effective_theme = rq.THEME_ORDER[0]
+        state.last_effective_theme = cycle[0]
         with patch("idle_hours.run_clock._render_unlocked"), \
              patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
             visited = []
-            for _ in range(len(rq.THEME_ORDER)):
+            for _ in range(len(cycle)):
                 result = run_clock.action_theme(args, state, label="web")
                 assert result["ok"] is True
                 visited.append(result["theme"])
                 # commit_render_result would normally advance last_effective_theme;
                 # emulate that here so the next tick's "current" reads correctly.
                 state.last_effective_theme = result["theme"]
-        # Every theme is visited once and the final press wraps back to the head.
-        assert set(visited) == set(rq.THEME_ORDER)
-        assert visited[-1] == rq.THEME_ORDER[0]
+        # Every cycled theme is visited once and the final press wraps to the head.
+        assert set(visited) == set(cycle)
+        assert visited[-1] == cycle[0]
 
     def test_explicit_target_jumps_directly(self, tmp_path):
         """Web dropdown sends ``target="nightvision"`` and lands there in one

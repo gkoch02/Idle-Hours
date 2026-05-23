@@ -256,21 +256,25 @@ class TestActionThemeToggleArithmetic:
     """Not a concurrency test — locks in the cycle arithmetic so a
     regression in ``_next_theme`` (wrong modulus, off-by-one) surfaces
     immediately. Covers the full-loop wrap: N presses from the head of
-    THEME_ORDER revisit the head exactly."""
+    the cycle revisit the head exactly. Iterates ``theme_cycle()`` rather
+    than ``THEME_ORDER`` so ``CYCLE_EXCLUDED_THEMES`` entries (skipped by
+    rotation but kept in the registration tuple) don't fail the wrap
+    assertion."""
 
     def test_n_sequential_presses_return_to_head_of_cycle(self, tmp_path):
-        from idle_hours import render_quote as rq
+        from idle_hours.theme_names import theme_cycle
+        cycle = theme_cycle()
         args = _args(tmp_path)
         state = run_clock.RuntimeState("default")
-        state.last_effective_theme = rq.THEME_ORDER[0]
+        state.last_effective_theme = cycle[0]
 
         with patch("idle_hours.run_clock.render_now"), \
              patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
              patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
-            for _ in range(len(rq.THEME_ORDER)):
+            for _ in range(len(cycle)):
                 result = run_clock.action_theme(args, state, label="test")
                 assert result["ok"] is True
 
-        # After exactly len(THEME_ORDER) presses the cycle completes one loop
-        # and lands back where it started.
-        assert state.manual_theme == rq.THEME_ORDER[0]
+        # After exactly len(cycle) presses the cycle completes one loop and
+        # lands back where it started.
+        assert state.manual_theme == cycle[0]
