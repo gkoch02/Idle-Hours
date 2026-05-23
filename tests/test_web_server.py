@@ -492,7 +492,7 @@ class TestReadEndpoints:
         cycle list, the CLI ``theme_arg``, and either the manual override
         or the auto-resolved effective theme. Pin the shape so the UI
         doesn't silently break when a new field is added or renamed."""
-        from idle_hours import render_quote as rq
+        from idle_hours.theme_names import theme_cycle
         server, state, _args = live_server
         with state.lock:
             state.manual_theme = "scholar"
@@ -500,7 +500,10 @@ class TestReadEndpoints:
         status, body = _get(server, "/api/themes")
         assert status == 200
         data = _json_body(body)
-        assert data["themes"] == list(rq.THEME_ORDER)
+        # /api/themes returns theme_cycle() (THEME_ORDER minus CYCLE_EXCLUDED_THEMES),
+        # not the raw registration tuple — opt-in-only themes are deliberately absent
+        # from the dropdown.
+        assert data["themes"] == list(theme_cycle())
         assert data["manual_theme"] == "scholar"
         assert data["effective"] == "scholar"
         assert "theme_arg" in data

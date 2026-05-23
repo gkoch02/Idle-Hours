@@ -80,10 +80,17 @@ THEME_ORDER: tuple[str, ...] = (
     "astrarium",
     "kanagawa",
     "marquee",
+    "tarot",
     "vinyl",
     "cartograph",
     "diags",
 )
+# Themes registered in THEMES but deliberately excluded from the button-B / web
+# dropdown / auto / random rotation. Reachable only via explicit `--theme NAME`.
+# Mirrors RANDOM_EXCLUDED_THEMES (which only filters --theme random) but applies
+# to every rotation path. Keep entries here when the theme code is worth
+# preserving for opt-in but the visual isn't ready for unattended rotation.
+CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"tarot"})
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],

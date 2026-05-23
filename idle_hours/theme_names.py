@@ -44,10 +44,15 @@ def theme_cycle() -> tuple[str, ...]:
     """Curated order for button-B / web-dropdown theme advancement.
 
     Pulled from ``render_quote.THEME_ORDER`` (an explicit tuple, distinct from
-    ``THEMES.keys()`` — the registered names without an ordering guarantee).
+    ``THEMES.keys()`` — the registered names without an ordering guarantee),
+    minus ``render_quote.CYCLE_EXCLUDED_THEMES`` so a theme can stay registered
+    (and reachable via explicit ``--theme NAME``) while being skipped by every
+    rotation path. The registration invariant ``set(THEME_ORDER) ==
+    set(THEMES.keys())`` is preserved by keeping excluded themes in the tuple
+    and filtering here.
     """
     try:
-        from idle_hours.render_quote import THEME_ORDER
+        from idle_hours.render_quote import CYCLE_EXCLUDED_THEMES, THEME_ORDER
     except Exception:
         return _FALLBACK
-    return tuple(THEME_ORDER)
+    return tuple(name for name in THEME_ORDER if name not in CYCLE_EXCLUDED_THEMES)
