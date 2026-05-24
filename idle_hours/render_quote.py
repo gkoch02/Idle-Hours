@@ -1149,16 +1149,15 @@ MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regul
 RIGHTEOUS_REGULAR = str(BASE_DIR / "fonts/righteous/Righteous-Regular.ttf")
 # Iceland — Cyreal (OFL). Geometric techno / retro-futurism display
 # face with chunky verticals and angled cuts, very Atari-arcade /
-# sci-fi-splash register. Single weight (Regular only). Used by the
-# ``glacier`` theme as the body face. Unlike the other single-weight
-# display themes (Righteous / Bangers / Atomic Age / Bungee Shade etc.)
-# the matched-phrase slot in ``glacier`` does *not* re-use Iceland —
-# the cool-palette accent (teal G+B 5/8:3/8) sits too close in hue to
-# the body's solid blue for color alone to differentiate, so the
-# matched phrase routes through Space Mono Bold for silhouette
-# (monospace-vs-proportional) contrast instead. Falls back through
-# heavy sans before the Playfair serif chain so a missing install stays
-# in the display-face lane.
+# sci-fi-splash register. Single weight (Regular only); the matched-
+# phrase slot in ``glacier`` re-uses the file and gets a synthesised
+# Bold via the ``stroke_width=1`` faux-bold pass in ``_draw_text_body``
+# layered on top of the teal G+B 5/8:3/8 stipple — the cool-palette
+# accent alone sits too close in hue to the body's solid blue at panel
+# distance, so weight contrast picks up the differentiation a true
+# Bold cut would carry. Falls back through heavy sans before the
+# Playfair serif chain so a missing install stays in the display-face
+# lane.
 ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
 # Playwrite GB J Guides — TypeTogether / Veronika Burian / José Scaglione
 # (OFL). The British primary-school joined-cursive handwriting model
@@ -1974,24 +1973,20 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "glacier": {
-        # Body: Iceland (Cyreal, OFL) — geometric techno / retro-futurism
-        # display face. Matched phrase: Space Mono Bold (the same monospace
-        # face ``nightvision`` uses for its body) — chosen for *silhouette*
-        # contrast rather than weight contrast against the body, because the
-        # cool-palette accent (teal G+B 5/8:3/8) sits too close in hue to
-        # the body's solid blue at panel viewing distance to carry the
-        # differentiation alone. The mono-vs-proportional split lifts the
-        # matched phrase off the body the way a true second weight would on
-        # a one-axis variable font: every other in-rotation glacier glyph
-        # is wider and proportionally-spaced, the matched phrase is
-        # narrower and fixed-pitched, and the change in rhythm is visible
-        # at a glance. Picks a register that still fits glacier's cold
-        # sci-fi vibe — Space Mono reads as "frozen instrument readout"
-        # against Iceland's display chrome rather than as a font swap from
-        # a different theme. Falls back through Iceland Regular (so a
-        # missing Space Mono still lands on the original-font behaviour)
-        # then the heavy-sans / DejaVu / Liberation / Noto Sans Bold chain
-        # before degrading to the Playfair serif chain.
+        # Iceland (Cyreal, OFL) — geometric techno / retro-futurism display
+        # face, single-weight (Regular only). The matched-phrase slot also
+        # reuses Iceland Regular, but ``_draw_text_body`` paints it with a
+        # ``stroke_width=1`` faux-bold pass on top of the teal G+B 5/8:3/8
+        # stipple — Iceland doesn't ship a Bold companion, so the stroke
+        # synthesises one, lifting the matched phrase off the body via
+        # weight rather than via a second typeface. The cool-palette
+        # accent alone (teal G+B 5/8:3/8) sits too close in hue to the
+        # body's solid blue at panel viewing distance to carry the
+        # differentiation; faux bold restores the weight contrast a true
+        # Bold cut would provide without leaving the single-weight
+        # display-face register glacier wants. Same heavy-sans fallback
+        # chain as before so a missing-Iceland install still lands on a
+        # heavy display silhouette.
         "quote_regular": [
             ICELAND_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -2000,10 +1995,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            SPACEMONO_BOLD,
             ICELAND_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
@@ -2699,7 +2691,14 @@ def tokenize_quote(text: str, match_text: str) -> list[tuple[str, bool]]:
     ]
 
 
-def wrap_styled_text(draw, segments, regular_font, bold_font, max_width):
+def wrap_styled_text(draw, segments, regular_font, bold_font, max_width, bold_stroke: int = 0):
+    """Wrap a tokenised styled segment list into rendered lines.
+
+    ``bold_stroke`` is the synthesised faux-bold stroke width applied to
+    bold tokens (see ``_BOLD_STROKE_BY_THEME``). Bold tokens are measured
+    with this stroke so the wrap decisions match what the renderer
+    actually paints; spaces stay at their natural advance regardless.
+    """
     lines = []
     current = []
     current_width = 0
@@ -2711,10 +2710,11 @@ def wrap_styled_text(draw, segments, regular_font, bold_font, max_width):
 
     for text, is_bold in segments:
         font = bold_font if is_bold else regular_font
+        stroke = bold_stroke if is_bold else 0
         parts = text.split(" ")
         for i, part in enumerate(parts):
             if part:
-                bbox = draw.textbbox((0, 0), part, font=font)
+                bbox = draw.textbbox((0, 0), part, font=font, stroke_width=stroke)
                 token_width = bbox[2] - bbox[0]
                 if current and current_width + token_width > max_width:
                     lines.append(current)
@@ -2764,17 +2764,18 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
     segments = tokenize_quote(text, match_text)
     regular_candidates = theme_font_candidates(theme, "quote_regular")
     bold_candidates = theme_font_candidates(theme, "quote_bold")
+    bold_stroke = _bold_stroke_for_theme(theme)
     for size in range(font_max, font_min - 1, -2):
         regular_font = load_font(regular_candidates, size=size)
         bold_font = load_font(bold_candidates, size=size)
-        wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
+        wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width, bold_stroke=bold_stroke)
         line_height = int(size * line_height_mult)
         total_height = len(wrapped) * line_height
         if total_height <= max_height:
             return regular_font, bold_font, wrapped, line_height, size
     regular_font = load_font(regular_candidates, size=font_min)
     bold_font = load_font(bold_candidates, size=font_min)
-    wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width)
+    wrapped = wrap_styled_text(draw, segments, regular_font, bold_font, max_width, bold_stroke=bold_stroke)
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult), font_min
 
 
@@ -2884,7 +2885,7 @@ def _paint_ornament_mark(image, xy, text, font, theme: str, colors: dict, patter
     )
 
 
-def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_offset=(0, 0), light_density: float = 0.5):
+def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_offset=(0, 0), light_density: float = 0.5, stroke_width: int = 0):
     """Paint ``text`` as a ``dark``/``light`` Bayer stipple, like
     ``draw_faux_gray_text`` but iterates only over the text's bounding box.
 
@@ -2931,22 +2932,33 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     glyph silhouette was effectively binary at ~50% coverage; the ≥128
     threshold reproduces that silhouette here so the dithered path
     doesn't visibly thicken small text.
+
+    ``stroke_width`` is forwarded to the mask draw, giving a synthesised
+    "faux bold" — Pillow's ``ImageDraw.text(..., stroke_width=N)`` outlines
+    each glyph in the fill colour, effectively thickening the silhouette.
+    Used by ``glacier`` (1 px) to lift its Iceland matched phrase off the
+    Iceland body via weight contrast, since Iceland ships only Regular and
+    the cool-palette teal accent can't carry the differentiation on hue
+    alone. The bbox is pre-padded by ``stroke_width`` so the thickened
+    glyph rim never clips against the dither region; the per-pixel stipple
+    loop then reads the bolder mask transparently.
     """
     draw = ImageDraw.Draw(image)
-    bbox = draw.textbbox(xy, text, font=font)
+    bbox = draw.textbbox(xy, text, font=font, stroke_width=stroke_width)
     x0, y0, x1, y1 = bbox
     # Pad by a pixel for glyph stems that sit on the bbox edge, then clamp.
-    x0 = max(0, x0 - 1)
-    y0 = max(0, y0 - 1)
-    x1 = min(image.width, x1 + 1)
-    y1 = min(image.height, y1 + 1)
+    pad = 1 + stroke_width
+    x0 = max(0, x0 - pad)
+    y0 = max(0, y0 - pad)
+    x1 = min(image.width, x1 + pad)
+    y1 = min(image.height, y1 + pad)
     if x1 <= x0 or y1 <= y0:
         return
     region_w = x1 - x0
     region_h = y1 - y0
     mask = Image.new("L", (region_w, region_h), 0)
     mask_draw = ImageDraw.Draw(mask)
-    mask_draw.text((xy[0] - x0, xy[1] - y0), text, font=font, fill=255)
+    mask_draw.text((xy[0] - x0, xy[1] - y0), text, font=font, fill=255, stroke_width=stroke_width, stroke_fill=255)
     px = image.load()
     mx = mask.load()
     ox, oy = pattern_offset
@@ -3108,7 +3120,16 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # because it read as a muddy mid-tone; the 3/8 blue stipple
         # keeps the recipe out of that "flat saturated green" failure
         # mode while still pulling cleanly off the body blue.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"], light_density=0.375)
+        #
+        # Plus a ``stroke_width=1`` faux-bold pass: Iceland ships only
+        # Regular, so the matched phrase would otherwise read at the
+        # same weight as the body and the cool-palette hue stride alone
+        # doesn't carry the differentiation at panel viewing distance.
+        # The synthesised stroke thickens the glyph silhouette before
+        # the teal stipple paints, so the matched phrase reads as
+        # "heavier weight" against the body — the canonical print
+        # convention for emphasis without leaving the body face.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"], light_density=0.375, stroke_width=_bold_stroke_for_theme(theme))
     elif theme == "risograph" and fill == SPECTRA6["blue"]:
         # Matched phrase shifts to violet/purple (R+B 1:1) — the AUTHENTIC
         # riso double-pass overprint. Real risograph prints with red on
@@ -9606,6 +9627,33 @@ _DEBUG_LABEL_RIGHT_INSET = {
 _THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire", "gothic"})
 
 
+# Per-theme synthesised "faux bold" for the matched phrase, threaded into
+# both the layout measurement (``wrap_styled_text`` / ``render``'s per-
+# line width loops) and the drawing seam (``_draw_text_body`` →
+# ``draw_text_dithered``). Pillow's ``stroke_width=N`` outlines each
+# glyph in the fill colour, thickening the silhouette by ~N px on each
+# side — a synthesised weight bump for fonts that ship a single weight
+# but need their matched phrase to read heavier than the body.
+#
+# ``glacier``: Iceland ships only Regular and its cool-palette teal
+# accent (G+B 5/8:3/8) sits too close in hue to the body's solid blue
+# at panel viewing distance to carry the differentiation alone. A 1 px
+# stroke restores the weight contrast a true Bold cut would provide.
+#
+# Any theme absent from this map uses ``stroke_width=0`` (no faux bold).
+# Threading the value through measurement and drawing in lock-step keeps
+# the wrap / justification widths consistent with what actually paints;
+# a discrepancy here surfaces as lines that overrun ``max_width`` by a
+# few pixels on the matched-phrase end, or as inter-word gaps that don't
+# match the rendered silhouette.
+_BOLD_STROKE_BY_THEME: dict[str, int] = {"glacier": 1}
+
+
+def _bold_stroke_for_theme(theme: str) -> int:
+    """Return the per-theme matched-phrase faux-bold stroke width."""
+    return _BOLD_STROKE_BY_THEME.get(theme, 0)
+
+
 def _justify_distribution(space_is_bold: list[bool], slack: int, rigid_match: bool) -> list[int]:
     """Return the per-space slack contribution for a justified line.
 
@@ -12773,6 +12821,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         layout["line_height_mult"],
         theme=theme,
     )
+    bold_stroke = _bold_stroke_for_theme(theme)
     quote_block_height = len(wrapped_quote) * line_height
     author_size = max(13, int(chosen_size * 0.52))
     source_size = max(13, int(chosen_size * 0.47))
@@ -12814,7 +12863,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         current_width = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
+            stroke = bold_stroke if is_bold else 0
+            bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             current_width += bbox[2] - bbox[0]
 
         space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
@@ -12834,7 +12884,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             if line_left is None and chunk.strip():
                 line_left = line_x
             font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
+            stroke = bold_stroke if is_bold else 0
+            bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             line_x += bbox[2] - bbox[0]
             if chunk.strip():
                 line_right = line_x
@@ -12931,7 +12982,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         current_width = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
+            stroke = bold_stroke if is_bold else 0
+            bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             current_width += bbox[2] - bbox[0]
 
         # Themes in ``_THEMES_RIGID_MATCH_SPACING`` exclude the
@@ -12968,8 +13020,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             font = quote_font_bold if is_bold else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
             chunk_y = y + (body_ascent - _font_ascent(font))
+            stroke = bold_stroke if is_bold else 0
             _draw_text_body(image, draw, (x, chunk_y), chunk, font=font, fill=fill, theme=theme)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
+            bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             x += bbox[2] - bbox[0]
             if distribute and chunk == " ":
                 x += distribute[space_idx]
