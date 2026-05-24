@@ -57,29 +57,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # Coverage runs only on the newest interpreter:
-      #   * Python 3.12 + COVERAGE_CORE=sysmon uses sys.monitoring (PEP 669),
-      #     reducing tracer overhead from ~100s to effectively zero on this
-      #     suite — coverage runs are now indistinguishable from plain runs.
-      #   * Running it on 3.11 too added ~110s for an artifact that's
-      #     functionally identical to the 3.12 one.
-      # The 3.11 leg keeps a plain pytest invocation as a regression tripwire
-      # for the older interpreter; the 3.12 leg owns coverage + the artifact.
+      # Both interpreter legs run plain pytest so the matrix finishes at the
+      # same speed. Coverage + the --cov-fail-under gate live in the separate
+      # ``coverage`` job below — branch coverage (added so a dead ``except``
+      # branch shows up as a drop) has measurable sysmon overhead and was
+      # serialising the 3.12 leg behind ~2-3 extra minutes of tracer work.
       - name: Run tests
-        if: matrix.python-version != '3.12'
         run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py
-
-      - name: Run tests with coverage
-        if: matrix.python-version == '3.12'
-        env:
-          COVERAGE_CORE: sysmon
-        # ``--cov-branch`` measures both arms of every ``if`` so a refactor that
-        # silently skips one branch (e.g. an ``except Exception`` that was once
-        # reachable, now dead) shows up as a coverage drop. ``--cov-fail-under``
-        # locks today's combined line+branch number so a regression below that
-        # floor blocks the merge — without this gate, coverage.xml is uploaded
-        # as an artifact but nothing acts on it.
-        run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=idle_hours --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=95
 
       - name: End-to-end --once smoke (verifies rendered PNG decodes)
         # One Python version is enough — the existing test job already exercises
@@ -95,11 +79,42 @@ jobs:
             --mode production
           python -c "from PIL import Image; im = Image.open('output/current.png'); im.verify(); im.close(); print('PNG OK')"
 
+  coverage:
+    # Coverage runs in its own job so the ``test`` matrix isn't gated on tracer
+    # overhead. ``--cov-branch`` measures both arms of every ``if`` so a refactor
+    # that silently skips one branch (e.g. an ``except Exception`` that was once
+    # reachable, now dead) shows up as a coverage drop. ``--cov-fail-under``
+    # locks today's combined line+branch number so a regression below that
+    # floor blocks the merge — without this gate, coverage.xml is uploaded
+    # as an artifact but nothing acts on it. Python 3.12 + COVERAGE_CORE=sysmon
+    # uses sys.monitoring (PEP 669) for the lightest available tracer.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests with coverage
+        env:
+          COVERAGE_CORE: sysmon
+        run: pytest -n auto --dist loadscope --ignore=tests/test_render_golden.py --cov=idle_hours --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=95
+
       - name: Upload coverage report
-        if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.python-version }}
+          name: coverage-3.12
           path: coverage.xml
           if-no-files-found: error
 
