@@ -12863,7 +12863,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         current_width = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
-            stroke = bold_stroke if is_bold else 0
+            # Match ``wrap_styled_text``: stroke only widens non-space
+            # tokens; inter-word spaces stay at their natural advance so
+            # the rendered line width here matches the wrap decision.
+            stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             current_width += bbox[2] - bbox[0]
 
@@ -12884,7 +12887,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             if line_left is None and chunk.strip():
                 line_left = line_x
             font = quote_font_bold if is_bold else quote_font
-            stroke = bold_stroke if is_bold else 0
+            stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             line_x += bbox[2] - bbox[0]
             if chunk.strip():
@@ -12982,7 +12985,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         current_width = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
-            stroke = bold_stroke if is_bold else 0
+            # See the layout pass above: spaces stay at natural advance.
+            stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             current_width += bbox[2] - bbox[0]
 
@@ -13020,7 +13024,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             font = quote_font_bold if is_bold else quote_font
             fill = colors["accent"] if is_bold else colors["text"]
             chunk_y = y + (body_ascent - _font_ascent(font))
-            stroke = bold_stroke if is_bold else 0
+            # See the layout pass above: spaces stay at natural advance.
+            stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             _draw_text_body(image, draw, (x, chunk_y), chunk, font=font, fill=fill, theme=theme)
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
             x += bbox[2] - bbox[0]
