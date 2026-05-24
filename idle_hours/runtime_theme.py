@@ -60,10 +60,8 @@ def _auto_theme_kwargs(args) -> dict[str, str]:
 # for operator-driven calibration (button B / web dropdown only) — a random
 # pick that lands on it would replace the quote unexpectedly with a swatch /
 # host-info screen, which is not what an operator running ``--theme random``
-# is asking for. ``vinyl`` is similarly opt-in only — its turntable + sleeve
-# composition is a deliberate operator-choice frame rather than a random-
-# rotation entry. Manual selection still works for every entry in this set.
-RANDOM_EXCLUDED_THEMES: frozenset[str] = frozenset({"diags", "vinyl"})
+# is asking for. Manual selection still works for every entry in this set.
+RANDOM_EXCLUDED_THEMES: frozenset[str] = frozenset({"diags"})
 
 
 def random_theme_pool() -> tuple[str, ...]:

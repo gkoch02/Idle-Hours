@@ -90,7 +90,7 @@ THEME_ORDER: tuple[str, ...] = (
 # Mirrors RANDOM_EXCLUDED_THEMES (which only filters --theme random) but applies
 # to every rotation path. Keep entries here when the theme code is worth
 # preserving for opt-in but the visual isn't ready for unattended rotation.
-CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"tarot"})
+CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"tarot", "vinyl"})
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
