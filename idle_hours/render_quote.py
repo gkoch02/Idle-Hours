@@ -1149,11 +1149,16 @@ MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regul
 RIGHTEOUS_REGULAR = str(BASE_DIR / "fonts/righteous/Righteous-Regular.ttf")
 # Iceland — Cyreal (OFL). Geometric techno / retro-futurism display
 # face with chunky verticals and angled cuts, very Atari-arcade /
-# sci-fi-splash register. Same single-weight discipline as Righteous:
-# the matched-phrase slot in ``glacier`` re-uses the file and gains
-# differentiation from the green accent. Falls back through heavy sans
-# before the Playfair serif chain so a missing install stays in the
-# display-face lane.
+# sci-fi-splash register. Single weight (Regular only). Used by the
+# ``glacier`` theme as the body face. Unlike the other single-weight
+# display themes (Righteous / Bangers / Atomic Age / Bungee Shade etc.)
+# the matched-phrase slot in ``glacier`` does *not* re-use Iceland —
+# the cool-palette accent (teal G+B 5/8:3/8) sits too close in hue to
+# the body's solid blue for color alone to differentiate, so the
+# matched phrase routes through Space Mono Bold for silhouette
+# (monospace-vs-proportional) contrast instead. Falls back through
+# heavy sans before the Playfair serif chain so a missing install stays
+# in the display-face lane.
 ICELAND_REGULAR = str(BASE_DIR / "fonts/iceland/Iceland-Regular.ttf")
 # Playwrite GB J Guides — TypeTogether / Veronika Burian / José Scaglione
 # (OFL). The British primary-school joined-cursive handwriting model
@@ -1178,7 +1183,7 @@ PLAYWRITE_GB_J_GUIDES_REGULAR = str(BASE_DIR / "fonts/playwrite-gb-j-guides/Play
 # (Regular only); the matched-phrase role in ``placard`` reuses
 # Regular and gains differentiation from the red accent alone —
 # same trick comic / dispatch / atomic / marker / saloon / deco /
-# glacier / chalkboard already use. Fallback chain ends at heavy
+# chalkboard already use. Fallback chain ends at heavy
 # sans (DejaVu / Liberation / Noto Sans Bold) before degrading to
 # the Playfair serif chain, so a missing install lands on a
 # chunky display silhouette rather than dropping the placard theme
@@ -1190,7 +1195,7 @@ PATRICK_HAND_SC_REGULAR = str(BASE_DIR / "fonts/patrick-hand-sc/PatrickHandSC-Re
 # Single-weight (Regular only); the matched-phrase role in
 # ``chanbara`` reuses Regular and gains differentiation from the
 # red sun-disc accent alone — same trick comic / dispatch / atomic /
-# marker / saloon / deco / glacier / chalkboard / placard already
+# marker / saloon / deco / chalkboard / placard already
 # use. Fallback chain ends at heavy DejaVu / Liberation / Noto Sans
 # Bold before degrading to the Playfair serif chain, so a missing
 # install lands on a heavy display silhouette rather than dropping
@@ -1250,7 +1255,7 @@ BERKSHIRE_SWASH_REGULAR = str(BASE_DIR / "fonts/berkshire-swash/BerkshireSwash-R
 # ink-on-paper tradition. Single weight (Regular only); the
 # matched-phrase role re-uses Regular and gains differentiation
 # from the red accent colour alone, same trick comic / dispatch /
-# atomic / marker / saloon / deco / glacier / chalkboard / placard /
+# atomic / marker / saloon / deco / chalkboard / placard /
 # chanbara already use. Sits visually distinct from chanbara's
 # Shojumaru (dramatic samurai-cinema brush, single weight, all
 # caps) so both Japanese-flavoured themes stay differentiable in
@@ -1263,7 +1268,7 @@ YUJI_BOKU_REGULAR = str(BASE_DIR / "fonts/yuji-boku/YujiBoku-Regular.ttf")
 # (Regular only), so the matched-phrase role in ``fillmore`` re-uses
 # the same file and gains differentiation through the blue accent
 # colour alone — same trick comic / dispatch / atomic / marker /
-# saloon / deco / glacier / chalkboard / placard / chanbara already
+# saloon / deco / chalkboard / placard / chanbara already
 # use. Falls back through Bangers / Atomic Age (the closest in-rotation
 # display-face siblings) and heavy DejaVu / Liberation / Noto Sans
 # Bold before degrading to the Playfair serif chain, so a missing
@@ -1943,7 +1948,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # (Regular only); a true "Bold guide letter" doesn't exist in the
         # family. Matched-phrase role reuses Regular and gains differentiation
         # from the yellow chalk-stick accent alone — same trick comic /
-        # dispatch / atomic / marker / saloon / deco / glacier already use.
+        # dispatch / atomic / marker / saloon / deco already use.
         # Fallback chain prefers italic faces (DejaVu Sans Italic, Liberation
         # Sans Italic) before degrading to the Playfair chain so a missing
         # install lands on at least a slanted silhouette rather than dropping
@@ -1969,10 +1974,24 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "glacier": {
-        # Iceland (Cyreal, OFL) — geometric techno / retro-futurism display
-        # face. Same single-weight discipline as Righteous / Bangers / Atomic
-        # Age: matched phrase reuses Regular and gains differentiation from
-        # the green accent. Same heavy-sans fallback chain.
+        # Body: Iceland (Cyreal, OFL) — geometric techno / retro-futurism
+        # display face. Matched phrase: Space Mono Bold (the same monospace
+        # face ``nightvision`` uses for its body) — chosen for *silhouette*
+        # contrast rather than weight contrast against the body, because the
+        # cool-palette accent (teal G+B 5/8:3/8) sits too close in hue to
+        # the body's solid blue at panel viewing distance to carry the
+        # differentiation alone. The mono-vs-proportional split lifts the
+        # matched phrase off the body the way a true second weight would on
+        # a one-axis variable font: every other in-rotation glacier glyph
+        # is wider and proportionally-spaced, the matched phrase is
+        # narrower and fixed-pitched, and the change in rhythm is visible
+        # at a glance. Picks a register that still fits glacier's cold
+        # sci-fi vibe — Space Mono reads as "frozen instrument readout"
+        # against Iceland's display chrome rather than as a font swap from
+        # a different theme. Falls back through Iceland Regular (so a
+        # missing Space Mono still lands on the original-font behaviour)
+        # then the heavy-sans / DejaVu / Liberation / Noto Sans Bold chain
+        # before degrading to the Playfair serif chain.
         "quote_regular": [
             ICELAND_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1981,7 +2000,10 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
+            SPACEMONO_BOLD,
             ICELAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
@@ -2031,7 +2053,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # the matched-phrase role re-uses Regular and gains
         # differentiation through the blue accent colour alone (same
         # trick comic / dispatch / atomic / marker / saloon / deco /
-        # glacier / chalkboard / placard / chanbara use). Falls back
+        # chalkboard / placard / chanbara use). Falls back
         # through Bangers (the closest in-rotation display-face
         # sibling) and Atomic Age before heavy DejaVu / Liberation /
         # Noto Sans Bold, so a missing-Bungee install still lands on
@@ -2180,7 +2202,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # only (Regular); the matched-phrase role re-uses Regular
         # and gains differentiation from the red accent colour alone
         # — the same trick comic / dispatch / atomic / marker /
-        # saloon / deco / glacier / chalkboard / placard / chanbara
+        # saloon / deco / chalkboard / placard / chanbara
         # use for their single-weight display faces.
         #
         # Fallback chain favours humanist serifs (Cormorant Garamond
