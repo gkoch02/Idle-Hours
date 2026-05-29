@@ -13020,7 +13020,12 @@ def _vitrail_paint_glass_panes(image: Image.Image, panes: list) -> None:
 _VITRAIL_SHIMMER = [(0.40, 90, 0.42), (0.66, 52, 0.27)]
 
 
-def _vitrail_paint_shimmer(image: Image.Image, field: tuple[int, int, int, int]) -> None:
+def _vitrail_paint_shimmer(
+    image: Image.Image,
+    field: tuple[int, int, int, int],
+    region: tuple[int, int, int, int] | None = None,
+    clip: tuple[int, int, int] | None = None,
+) -> None:
     """Sweep diagonal specular sheen bands across the filled glass.
 
     Lifts the local glass colour toward white along a couple of diagonal
@@ -13028,22 +13033,40 @@ def _vitrail_paint_shimmer(image: Image.Image, field: tuple[int, int, int, int])
     centreline and tapers to zero at its edges), so the panes read as a glossy
     reflective surface. Only pixels that already carry glass colour are touched
     — black came / background and pure-white pixels are skipped — and the pass
-    runs before the came / rose / cartouche so those paint cleanly over it.
-    Deterministic: a pure function of pixel position."""
+    runs before the came / cartouche so those paint cleanly over it.
+    Deterministic: a pure function of pixel position.
+
+    The band positions are always derived from ``field`` (the whole window
+    opening) so a given streak lands on the same diagonal everywhere. ``region``
+    restricts which pixels are visited (used to re-apply the *same* streaks to
+    the rose-window glass after it's painted, so its sheen stays continuous
+    with the surrounding panes); ``clip`` = ``(cx, cy, r)`` further limits the
+    pass to a disc (the rose medallion)."""
     WHITE = SPECTRA6["white"]
     BLACK = SPECTRA6["black"]
-    x0, y0, x1, y1 = field
-    t_min = x0 - y1
-    span = (x1 - y0) - t_min
+    fx0, fy0, fx1, fy1 = field
+    t_min = fx0 - fy1
+    span = (fx1 - fy0) - t_min
     if span <= 0:
         return
     bands = [(t_min + frac * span, hw, peak) for frac, hw, peak in _VITRAIL_SHIMMER]
+    rx0, ry0, rx1, ry1 = region if region is not None else field
+    rx0 = max(0, rx0)
+    ry0 = max(0, ry0)
+    rx1 = min(image.size[0], rx1)
+    ry1 = min(image.size[1], ry1)
+    cx = cy = cr2 = None
+    if clip is not None:
+        cx, cy, cr = clip
+        cr2 = cr * cr
     px = image.load()
-    for y in range(y0, y1):
+    for y in range(ry0, ry1):
         brow = BAYER_4x4[y % 4]
-        for x in range(x0, x1):
+        for x in range(rx0, rx1):
             cur = px[x, y]
             if cur == BLACK or cur == WHITE:
+                continue
+            if cr2 is not None and (x - cx) * (x - cx) + (y - cy) * (y - cy) > cr2:
                 continue
             t = x - y
             best = 0.0
@@ -13293,6 +13316,16 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
         hour24 = 0
     hour_int = hour24 % 12 or 12
     _vitrail_paint_rose_window(image, draw, hour_int)
+    # Re-apply the same diagonal sheen to the rose-window glass (painted after
+    # the field-wide pass) so its petals catch the light continuously with the
+    # surrounding panes; clipped to the medallion disc.
+    rr = _VITRAIL_ROSE_R
+    _vitrail_paint_shimmer(
+        image, field,
+        region=(_VITRAIL_ROSE_CX - rr, _VITRAIL_ROSE_CY - rr,
+                _VITRAIL_ROSE_CX + rr, _VITRAIL_ROSE_CY + rr),
+        clip=(_VITRAIL_ROSE_CX, _VITRAIL_ROSE_CY, rr),
+    )
     cart = _VITRAIL_CARTOUCHE
     _vitrail_paint_quote_cartouche(image, draw, cart)
     _vitrail_paint_quote_body(image, draw, quote_row, (cart[0], cart[1], cart[2], cart[3] - 24))
