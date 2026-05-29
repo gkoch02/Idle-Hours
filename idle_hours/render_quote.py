@@ -12858,7 +12858,8 @@ _VITRAIL_ROSE_R = 74
 _VITRAIL_ARCH_SPRING_Y = 150  # where the pointed-arch spandrels meet the sides
 _VITRAIL_GRID_COLS = 6
 _VITRAIL_GRID_ROWS = 5
-_VITRAIL_CAME_INNER = 3       # came thickness between adjacent glass shapes
+_VITRAIL_CAME_INNER = 3       # black core thickness of the came between glass shapes
+_VITRAIL_CAME_BEVEL = 2       # highlight/shadow offset that fakes the rounded raised-lead 3D profile
 # Irregular-tessellation controls. A fixed seed keeps every render of the
 # window byte-identical (golden / dedup determinism); the jitter nudges the
 # interior lattice vertices off the grid and the split probability decides how
@@ -13026,17 +13027,51 @@ def _vitrail_paint_arch_spandrels(
 def _vitrail_paint_lead_came(
     draw: ImageDraw.ImageDraw, panes: list, field: tuple[int, int, int, int],
 ) -> None:
-    """Trace black lead came along every glass-shape boundary, then lay the
-    heavy outer window frame on top. Stroking each shape's closed outline draws
-    came along every leaded seam (shared edges painted twice, harmlessly), so
-    the irregular tessellation reads as individually-leaded lights."""
+    """Trace lead came along every glass-shape boundary as a *beveled* raised
+    bar, then lay the heavy outer window frame on top.
+
+    Real lead came is a rounded H-profile bar that sits proud of the glass and
+    catches light. To fake that depth on a flat 6-ink panel each seam is drawn
+    in three offset passes (light modelled as coming from the upper-left):
+
+      1. a WHITE specular highlight offset up-left — the lit top of the bar;
+      2. a BLACK drop shadow offset down-right — the shadow the raised bar
+         casts onto the recessed glass below it;
+      3. the BLACK core on the true path, drawn last so it reads as the bar
+         itself between the highlight and the shadow.
+
+    Stroking each shape's closed outline draws came along every leaded seam
+    (shared edges painted twice, harmlessly)."""
     BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    core = _VITRAIL_CAME_INNER
+    b = _VITRAIL_CAME_BEVEL
     for polygon, _ in panes:
-        draw.line([*polygon, polygon[0]], fill=BLACK, width=_VITRAIL_CAME_INNER, joint="curve")
+        closed = [*polygon, polygon[0]]
+        hi = [(x - b, y - b) for x, y in closed]
+        sh = [(x + b, y + b) for x, y in closed]
+        draw.line(hi, fill=WHITE, width=core, joint="curve")
+        draw.line(sh, fill=BLACK, width=core, joint="curve")
+        draw.line(closed, fill=BLACK, width=core, joint="curve")
+    _vitrail_paint_outer_frame(draw, field)
+
+
+def _vitrail_paint_outer_frame(draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int]) -> None:
+    """Heavy beveled stone surround around the whole window. The inner edge of
+    the opening is lit on its top-left lip (white) and shadowed on its
+    bottom-right lip (the frame core stays black), so the masonry reads as a
+    thick raised border the glass is recessed behind rather than a flat rule."""
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
     came = _VITRAIL_CAME_W
     x0, y0, x1, y1 = field
     for o in range(came):
         draw.rectangle((x0 + o, y0 + o, x1 - o, y1 - o), outline=BLACK)
+    # Lit top + left lip of the opening (light from upper-left), shadowed
+    # bottom + right lip stays black so the frame reads as raised stone.
+    ix0, iy0, ix1, iy1 = x0 + came, y0 + came, x1 - came, y1 - came
+    draw.line((ix0, iy0, ix1, iy0), fill=WHITE, width=1)
+    draw.line((ix0, iy0, ix0, iy1), fill=WHITE, width=1)
 
 
 def _vitrail_paint_rose_window(
@@ -13082,7 +13117,11 @@ def _vitrail_paint_quote_cartouche(
 
     A solid white wipe (not a wash) clears every jewel-tone stipple under the
     body region so the dark text and the violet matched-phrase dither sit on
-    fully legible ground rather than fighting the colored glass behind."""
+    fully legible ground rather than fighting the colored glass behind. The
+    surrounding lead frame is beveled to match the panes — a lit white lip on
+    the outer top-left, a black shadow lip on the outer bottom-right — so the
+    clear glass reads as recessed behind a raised lead frame rather than
+    bordered by a flat rule."""
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
     x0, y0, x1, y1 = rect
@@ -13090,6 +13129,10 @@ def _vitrail_paint_quote_cartouche(
     came = _VITRAIL_CAME_W
     for o in range(came):
         draw.rectangle((x0 - o, y0 - o, x1 + o, y1 + o), outline=BLACK)
+    # Bevel: lit top-left outer lip, shadowed bottom-right outer lip.
+    ox0, oy0, ox1, oy1 = x0 - came, y0 - came, x1 + came, y1 + came
+    draw.line((ox0, oy0, ox1, oy0), fill=WHITE, width=1)
+    draw.line((ox0, oy0, ox0, oy1), fill=WHITE, width=1)
 
 
 def _vitrail_paint_quote_body(
