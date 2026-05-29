@@ -12858,6 +12858,15 @@ _VITRAIL_ROSE_R = 74
 _VITRAIL_ARCH_SPRING_Y = 150  # where the pointed-arch spandrels meet the sides
 _VITRAIL_GRID_COLS = 6
 _VITRAIL_GRID_ROWS = 5
+_VITRAIL_CAME_INNER = 3       # came thickness between adjacent glass shapes
+# Irregular-tessellation controls. A fixed seed keeps every render of the
+# window byte-identical (golden / dedup determinism); the jitter nudges the
+# interior lattice vertices off the grid and the split probability decides how
+# many cells break into two triangular shards — together they turn the regular
+# grid into a hand-leaded mosaic of varied quadrilaterals and triangles.
+_VITRAIL_SEED = 0x711A55
+_VITRAIL_JITTER = 0.30
+_VITRAIL_SPLIT_PROB = 0.5
 # Clear white-glass cartouche the literary quote is knocked out onto so the
 # dark body text stays legible over the busy colored field. Fixed for the
 # 800×480 panel, like the other custom-render frames' coordinates.
@@ -12868,11 +12877,11 @@ _VITRAIL_CARTOUCHE = (150, 200, 650, 392)
 # native inks plus the 2-/3-ink Bayer-stipple recipes from
 # spectra6_color_recipes.md) so the window carries every "glass colour" a real
 # cathedral light would. Each entry is a fill spec consumed by
-# _vitrail_fill_pane:
+# _vitrail_pane_ink / _vitrail_fill_polygon:
 #   ("solid", ink)                  → a native Spectra-6 ink
-#   ("2", dark, light, density)     → 2-ink stipple via _fill_swatch_stipple
-#   ("3", a, b, c, dens_a, dens_b)  → 3-ink Bayer partition via
-#                                     _fill_swatch_stipple_3way
+#   ("2", dark, light, density)     → 2-ink stipple (mirrors _fill_swatch_stipple)
+#   ("3", a, b, c, dens_a, dens_b)  → 3-ink Bayer partition (mirrors
+#                                     _fill_swatch_stipple_3way)
 _VITRAIL_GLASS: list[tuple] = [
     ("solid", SPECTRA6["red"]),                                  # ruby
     ("solid", SPECTRA6["blue"]),                                 # sapphire
@@ -12892,38 +12901,113 @@ _VITRAIL_GLASS: list[tuple] = [
 ]
 
 
-def _vitrail_fill_pane(
-    image: Image.Image, draw: ImageDraw.ImageDraw,
-    rect: tuple[int, int, int, int], spec: tuple,
-) -> None:
-    """Fill one leaded-glass pane with its jewel tone per the fill spec."""
+def _vitrail_pane_ink(x: int, y: int, spec: tuple) -> tuple[int, int, int]:
+    """Return the on-palette ink for pixel (x, y) within a pane, per the fill
+    spec — solid, 2-ink stipple, or 3-ink Bayer partition. The stipple maths
+    mirror _fill_swatch_stipple / _fill_swatch_stipple_3way exactly (absolute
+    x/y so the Bayer phase stays continuous across adjacent panes), so the
+    irregular polygon panes carry the same documented recipes the rectangular
+    swatch fills do."""
     kind = spec[0]
     if kind == "solid":
-        draw.rectangle(rect, fill=spec[1])
-    elif kind == "2":
-        _fill_swatch_stipple(image, rect, spec[1], spec[2], spec[3])
-    else:  # "3"
-        _fill_swatch_stipple_3way(image, rect, spec[1], spec[2], spec[3], spec[4], spec[5])
+        return spec[1]
+    if kind == "2":
+        _, dark, light, density = spec
+        if density <= 0.25:
+            return light if (x % 2 == 0 and y % 2 == 0) else dark
+        if density >= 0.5:
+            return dark if (x + y) % 2 == 0 else light
+        return light if BAYER_4x4[y % 4][x % 4] < round(density * 16) else dark
+    # "3" — 3-ink Bayer partition.
+    _, ink_a, ink_b, ink_c, density_a, density_b = spec
+    cell = BAYER_4x4[y % 4][x % 4]
+    if cell < round(density_a * 16):
+        return ink_a
+    if cell < round((density_a + density_b) * 16):
+        return ink_b
+    return ink_c
 
 
-def _vitrail_paint_glass_panes(
-    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
-) -> None:
-    """Subdivide the window opening into a fixed lead-came grid and fill each
-    pane with a deterministic jewel tone. The per-row +2 shear staggers the
-    palette so vertically-adjacent panes never share a hue — the irregular
-    rhythm real leaded windows carry."""
+def _vitrail_fill_polygon(image: Image.Image, polygon: list, spec: tuple) -> None:
+    """Fill an arbitrary (irregular quadrilateral or triangular) glass shape
+    with its jewel tone, clipped to the polygon via a 1-bit mask so the stipple
+    only lands inside the leaded shape and never bleeds into a neighbour."""
+    xs = [int(p[0]) for p in polygon]
+    ys = [int(p[1]) for p in polygon]
+    w, h = image.size
+    x0 = max(0, min(xs))
+    y0 = max(0, min(ys))
+    x1 = min(w, max(xs) + 1)
+    y1 = min(h, max(ys) + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    mask = Image.new("1", (x1 - x0, y1 - y0), 0)
+    ImageDraw.Draw(mask).polygon([(int(px) - x0, int(py) - y0) for px, py in polygon], fill=1)
+    mpx = mask.load()
+    ipx = image.load()
+    for yy in range(y1 - y0):
+        ay = y0 + yy
+        for xx in range(x1 - x0):
+            if mpx[xx, yy]:
+                ipx[x0 + xx, ay] = _vitrail_pane_ink(x0 + xx, ay, spec)
+
+
+def _vitrail_build_panes(field: tuple[int, int, int, int]) -> list[tuple[list, tuple]]:
+    """Deterministically tessellate the window opening into irregular leaded
+    glass shapes.
+
+    A jittered lattice (border vertices pinned to the frame so the field tiles
+    cleanly to its edges, interior vertices nudged off-grid by a seeded RNG)
+    yields irregular quadrilaterals; roughly half the cells are then split
+    along one diagonal into two triangular shards with different jewel tones,
+    so the field reads as a hand-leaded mosaic of varied shapes rather than a
+    regular grid. The per-row +2 palette shear keeps vertically-adjacent
+    shapes from sharing a hue. Seeded with a fixed constant so every render of
+    the window is byte-identical (golden / panel-dedup determinism)."""
     x0, y0, x1, y1 = field
     cols, rows = _VITRAIL_GRID_COLS, _VITRAIL_GRID_ROWS
+    rng = random.Random(_VITRAIL_SEED)
+    cw = (x1 - x0) / cols
+    ch = (y1 - y0) / rows
+    jx = cw * _VITRAIL_JITTER
+    jy = ch * _VITRAIL_JITTER
+    pts: dict[tuple[int, int], tuple[float, float]] = {}
+    for r in range(rows + 1):
+        for c in range(cols + 1):
+            px = x0 + c * cw
+            py = y0 + r * ch
+            if 0 < c < cols:
+                px += rng.uniform(-jx, jx)
+            if 0 < r < rows:
+                py += rng.uniform(-jy, jy)
+            pts[(r, c)] = (px, py)
     n = len(_VITRAIL_GLASS)
+    panes: list[tuple[list, tuple]] = []
     for r in range(rows):
-        py0 = y0 + (y1 - y0) * r // rows
-        py1 = y0 + (y1 - y0) * (r + 1) // rows
         for c in range(cols):
-            px0 = x0 + (x1 - x0) * c // cols
-            px1 = x0 + (x1 - x0) * (c + 1) // cols
+            tl = pts[(r, c)]
+            tr = pts[(r, c + 1)]
+            br = pts[(r + 1, c + 1)]
+            bl = pts[(r + 1, c)]
             idx = (r * cols + c + r * 2) % n
-            _vitrail_fill_pane(image, draw, (px0, py0, px1, py1), _VITRAIL_GLASS[idx])
+            if rng.random() < _VITRAIL_SPLIT_PROB:
+                # Split into two triangular shards on one of the two diagonals.
+                alt = _VITRAIL_GLASS[(idx + 7) % n]
+                if rng.random() < 0.5:
+                    panes.append(([tl, tr, br], _VITRAIL_GLASS[idx]))
+                    panes.append(([tl, br, bl], alt))
+                else:
+                    panes.append(([tl, tr, bl], _VITRAIL_GLASS[idx]))
+                    panes.append(([tr, br, bl], alt))
+            else:
+                panes.append(([tl, tr, br, bl], _VITRAIL_GLASS[idx]))
+    return panes
+
+
+def _vitrail_paint_glass_panes(image: Image.Image, panes: list) -> None:
+    """Fill every leaded glass shape with its jewel tone."""
+    for polygon, spec in panes:
+        _vitrail_fill_polygon(image, polygon, spec)
 
 
 def _vitrail_paint_arch_spandrels(
@@ -12940,22 +13024,19 @@ def _vitrail_paint_arch_spandrels(
 
 
 def _vitrail_paint_lead_came(
-    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
+    draw: ImageDraw.ImageDraw, panes: list, field: tuple[int, int, int, int],
 ) -> None:
-    """Draw the black lead came: the heavy outer window frame plus the
-    inter-pane grid lines matching _vitrail_paint_glass_panes' subdivision."""
+    """Trace black lead came along every glass-shape boundary, then lay the
+    heavy outer window frame on top. Stroking each shape's closed outline draws
+    came along every leaded seam (shared edges painted twice, harmlessly), so
+    the irregular tessellation reads as individually-leaded lights."""
     BLACK = SPECTRA6["black"]
+    for polygon, _ in panes:
+        draw.line([*polygon, polygon[0]], fill=BLACK, width=_VITRAIL_CAME_INNER, joint="curve")
     came = _VITRAIL_CAME_W
     x0, y0, x1, y1 = field
     for o in range(came):
         draw.rectangle((x0 + o, y0 + o, x1 - o, y1 - o), outline=BLACK)
-    cols, rows = _VITRAIL_GRID_COLS, _VITRAIL_GRID_ROWS
-    for c in range(1, cols):
-        gx = x0 + (x1 - x0) * c // cols
-        draw.line((gx, y0, gx, y1), fill=BLACK, width=came - 2)
-    for r in range(1, rows):
-        gy = y0 + (y1 - y0) * r // rows
-        draw.line((x0, gy, x1, gy), fill=BLACK, width=came - 2)
 
 
 def _vitrail_paint_rose_window(
@@ -13108,12 +13189,14 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
     image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
     draw = ImageDraw.Draw(image)
     field = (_VITRAIL_SURROUND, _VITRAIL_SURROUND, width - _VITRAIL_SURROUND, height - _VITRAIL_SURROUND)
-    # Paint order: panes → arch spandrels → came grid → rose (on top of the
-    # top panes) → cartouche white knockout (erases any came crossing it) →
+    # Paint order: fill glass shapes → lead came along every seam → arch
+    # spandrels (black stone over the top corners) → rose (on top of the top
+    # shapes) → cartouche white knockout (erases any came/glass crossing it) →
     # cartouche frame + quote body + attribution.
-    _vitrail_paint_glass_panes(image, draw, field)
+    panes = _vitrail_build_panes(field)
+    _vitrail_paint_glass_panes(image, panes)
+    _vitrail_paint_lead_came(draw, panes, field)
     _vitrail_paint_arch_spandrels(image, draw, field)
-    _vitrail_paint_lead_came(image, draw, field)
     try:
         hour24 = int(time_str.split(":", 1)[0])
     except (ValueError, AttributeError):
