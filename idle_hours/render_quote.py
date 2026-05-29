@@ -2336,12 +2336,20 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     # install still lands on a medieval display silhouette rather than the
     # Playfair default.
     "vitrail": {
+        # Body (and the cartouche-foot attribution + matched phrase, which
+        # share these chains) render in Liberation Serif — a clean, even-weight
+        # serif that stays crisp at the 15-30px cartouche sizes after
+        # snap_image_to_palette. Falls back through the default Playfair /
+        # DejaVu / Noto serif chains so a missing Liberation install still
+        # lands on a serif silhouette rather than the bitmap fallback.
         "quote_regular": [
-            EBGARAMOND_REGULAR,
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_REGULAR_CANDIDATES,
         ],
         "quote_bold": [
-            EBGARAMOND_BOLD,
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
@@ -13264,12 +13272,12 @@ def _vitrail_paint_quote_body(
 def _vitrail_paint_attribution(
     image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, cx: int, y_top: int,
 ) -> None:
-    """Author · title in the EB Garamond body face, solid black, centred.
+    """Author · title in the Liberation Serif body face, solid black, centred.
 
-    Uses the legible humanist-serif body chain rather than the Uncial Antiqua
-    ornament chain the rose-window numeral uses: the uncial face's open
-    letterforms (notably ``n``) shatter into ambiguous strokes at byline sizes
-    after ``snap_image_to_palette``, the same hairline-at-small-size failure
+    Uses the legible body serif chain rather than the Uncial Antiqua ornament
+    chain the rose-window numeral uses: the uncial face's open letterforms
+    (notably ``n``) shatter into ambiguous strokes at byline sizes after
+    ``snap_image_to_palette``, the same hairline-at-small-size failure
     documented for astrarium (Cormorant) and tarot (EB Garamond foxing). The
     body serif keeps the period register while staying readable at 15px."""
     BLACK = SPECTRA6["black"]
