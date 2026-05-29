@@ -168,9 +168,13 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
-Ten themes ship today (`default`, `dark`, `scholar`, `newsprint`, `nightvision`,
-`blueprint`, `illuminated`, `bauhaus`, `risograph`, `comic`). Adding an
-eleventh means wiring it into all of:
+Thirty-seven themes ship today (`default`, `dark`, `swiss`, `scholar`,
+`newsprint`, `nightvision`, `blueprint`, `illuminated`, … through the
+custom-render frames `astrarium`, `marquee`, `tarot`, `vinyl`, `vitrail`, and
+the `diags` calibration panel — see the `THEME_ORDER` tuple for the canonical
+list). Some are simple palette + font swaps on the shared literary layout;
+others (the custom-render frames) own their whole composition. Adding another
+means wiring it into all of:
 
 - `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
 - `render_quote.THEME_ORDER` — append; this is what button B cycles through
