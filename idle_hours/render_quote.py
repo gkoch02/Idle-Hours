@@ -13264,9 +13264,16 @@ def _vitrail_paint_quote_body(
 def _vitrail_paint_attribution(
     image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, cx: int, y_top: int,
 ) -> None:
-    """Author · title in the ecclesiastical ornament face, solid black, centred."""
+    """Author · title in the EB Garamond body face, solid black, centred.
+
+    Uses the legible humanist-serif body chain rather than the Uncial Antiqua
+    ornament chain the rose-window numeral uses: the uncial face's open
+    letterforms (notably ``n``) shatter into ambiguous strokes at byline sizes
+    after ``snap_image_to_palette``, the same hairline-at-small-size failure
+    documented for astrarium (Cormorant) and tarot (EB Garamond foxing). The
+    body serif keeps the period register while staying readable at 15px."""
     BLACK = SPECTRA6["black"]
-    font = load_font(theme_font_candidates("vitrail", "ornament"), size=13)
+    font = load_font(theme_font_candidates("vitrail", "quote_regular"), size=15)
     author = quote_row.get("author") or ""
     title = quote_row.get("title") or fallback_title(quote_row)
     parts = [p for p in (author, title) if p]
