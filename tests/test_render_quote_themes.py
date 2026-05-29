@@ -23,7 +23,7 @@ from idle_hours import render_quote as rq
 
 from .conftest import make_row
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -301,3 +301,69 @@ class TestVinylFrame:
         rq._vinyl_paint_wear_speckle(img_a, seed=20260101)
         rq._vinyl_paint_wear_speckle(img_b, seed=20261231)
         assert list(img_a.getdata()) != list(img_b.getdata())
+
+
+class TestVitrailFrame:
+    """Gothic stained-glass cathedral window — leaded jewel-tone panes,
+    rose-window Roman numeral, and a clear white-glass quote cartouche."""
+
+    def test_uses_full_spectra6_palette(self):
+        """The leaded glass deliberately exercises every native ink (the
+        whole point — "take full advantage of the hardware"). A real
+        render should surface all six Spectra-6 colours via the solid
+        panes + jewel-tone stipples."""
+        img = rq.render("14:30", make_row(), 800, 480, theme="vitrail")
+        used = set(img.getdata())
+        assert used == set(rq.SPECTRA6.values()), f"expected all six inks, got {used}"
+
+    def test_quote_cartouche_is_clear_white(self):
+        """The quote sits on a solid white-glass knockout so the body text
+        stays legible over the colored field. The top-left interior corner
+        of the cartouche (just inside the came frame, above the centred
+        text block) should be bare white."""
+        img = rq.render("14:30", make_row(), 800, 480, theme="vitrail")
+        x0, y0, _, _ = rq._VITRAIL_CARTOUCHE
+        # A few px inside the frame, near the top edge where the centred
+        # quote block does not reach.
+        assert img.getpixel((x0 + 8, y0 + 6)) == rq.SPECTRA6["white"]
+
+    def test_rose_window_carries_numeral(self):
+        """The rose-window hub paints the Roman-numeral hour in black on a
+        clear white hub. Sample the hub region and assert both the white
+        hub ground and black numeral ink are present."""
+        img = rq.render("03:00", make_row(), 800, 480, theme="vitrail")
+        cx, cy = rq._VITRAIL_ROSE_CX, rq._VITRAIL_ROSE_CY
+        hub_pixels = {
+            img.getpixel((x, y))
+            for x in range(cx - 24, cx + 24, 2)
+            for y in range(cy - 14, cy + 14, 2)
+        }
+        assert rq.SPECTRA6["white"] in hub_pixels, "rose hub should be clear white glass"
+        assert rq.SPECTRA6["black"] in hub_pixels, "rose hub should carry a black numeral"
+
+    def test_no_digital_time_chrome(self):
+        """Like the other custom frames, vitrail never surfaces the digital
+        HH:MM — the matched phrase and the rose-window Roman numeral carry
+        the time. Soft check: a quote that can't mention the time still
+        renders cleanly and on-palette for an arbitrary minute."""
+        row = make_row(display_quote="A quiet hour with no clock in it.", matched_text="")
+        img = rq.render("14:37", row, 800, 480, theme="vitrail")
+        assert img.size == (800, 480)
+        assert set(img.getdata()).issubset(set(rq.SPECTRA6.values()))
+
+    def test_every_hour_renders_on_palette(self):
+        """All twelve numeral mappings (and the 00→XII rollover) render
+        without raising and stay on-palette."""
+        palette = set(rq.SPECTRA6.values())
+        for hh in range(24):
+            img = rq.render(f"{hh:02d}:15", make_row(), 800, 480, theme="vitrail")
+            assert img.size == (800, 480)
+            assert set(img.getdata()).issubset(palette), f"off-palette at hour {hh}"
+
+    def test_is_deterministic(self):
+        """No RNG in the vitrail path — re-rendering the same time must be
+        byte-identical (golden tests + panel dedup depend on this)."""
+        row = make_row()
+        a = list(rq.render("14:30", row, 800, 480, theme="vitrail").getdata())
+        b = list(rq.render("14:30", row, 800, 480, theme="vitrail").getdata())
+        assert a == b
