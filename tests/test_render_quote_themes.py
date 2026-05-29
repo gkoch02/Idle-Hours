@@ -332,7 +332,8 @@ class TestVitrailFrame:
         clear white hub. Sample the hub region and assert both the white
         hub ground and black numeral ink are present."""
         img = rq.render("03:00", make_row(), 800, 480, theme="vitrail")
-        cx, cy = rq._VITRAIL_ROSE_CX, rq._VITRAIL_ROSE_CY
+        # Rose centre x is always width//2; y is the 800×480 reference constant.
+        cx, cy = 800 // 2, rq._VITRAIL_ROSE_CY
         hub_pixels = {
             img.getpixel((x, y))
             for x in range(cx - 24, cx + 24, 2)
@@ -350,6 +351,29 @@ class TestVitrailFrame:
         img = rq.render("14:37", row, 800, 480, theme="vitrail")
         assert img.size == (800, 480)
         assert set(img.getdata()).issubset(set(rq.SPECTRA6.values()))
+
+    def test_composes_at_non_native_resolution(self):
+        """The rose / arch / cartouche geometry is derived from the canvas
+        size (the module constants are the 800×480 reference), so the frame
+        must compose cleanly and stay on-palette at an arbitrary size rather
+        than spilling off a hardcoded layout."""
+        for w, h in ((1024, 600), (640, 384)):
+            img = rq.render("08:00", make_row(), w, h, theme="vitrail")
+            assert img.size == (w, h)
+            assert set(img.getdata()).issubset(set(rq.SPECTRA6.values()))
+
+    def test_render_is_deterministic(self):
+        """The seeded tessellation + pure-function geometry must produce a
+        byte-identical frame on re-render (panel-dedup / golden contract)."""
+        import io
+
+        def png(_):
+            img = rq.render("08:00", make_row(), 800, 480, theme="vitrail", mode="production")
+            buf = io.BytesIO()
+            img.save(buf, "PNG")
+            return buf.getvalue()
+
+        assert png(1) == png(2)
 
     def test_every_hour_renders_on_palette(self):
         """All twelve numeral mappings (and the 00→XII rollover) render

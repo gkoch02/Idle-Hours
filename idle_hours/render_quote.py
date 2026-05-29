@@ -12858,11 +12858,13 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
 # ─── vitrail (Gothic stained-glass cathedral window) ─────────────────────────
 
+# Geometry below is the 800×480 reference; render_vitrail_frame scales the
+# rose / arch / cartouche positions by (width/800, height/480) so the frame
+# composes at any resolution and reproduces these exact values at native size.
 _VITRAIL_SURROUND = 16        # black stone masonry inset from the canvas edge
 _VITRAIL_CAME_W = 5           # lead-came line thickness
-_VITRAIL_ROSE_CX = 400        # rose-window medallion centre (top centre)
-_VITRAIL_ROSE_CY = 96
-_VITRAIL_ROSE_R = 74
+_VITRAIL_ROSE_CY = 96         # rose-window medallion centre y (cx is always width//2)
+_VITRAIL_ROSE_R = 74          # rose-window medallion radius
 _VITRAIL_ARCH_SPRING_Y = 150  # where the pointed-arch spandrels meet the sides
 _VITRAIL_GRID_COLS = 6
 _VITRAIL_GRID_ROWS = 5
@@ -12875,11 +12877,23 @@ _VITRAIL_CAME_BEVEL = 2       # highlight/shadow offset that fakes the rounded r
 # grid into a hand-leaded mosaic of varied quadrilaterals and triangles.
 _VITRAIL_SEED = 0x711A55
 _VITRAIL_JITTER = 0.30
-_VITRAIL_SPLIT_PROB = 0.5
+# Per-row split probability ramp: the top row sits behind the rose window, so
+# keeping it calm (few shards) avoids slivers crowding the medallion; the
+# bottom rows split heavily to break up otherwise-oversized flat panes.
+_VITRAIL_SPLIT_PROB_TOP = 0.18
+_VITRAIL_SPLIT_PROB_BOTTOM = 0.82
 # Clear white-glass cartouche the literary quote is knocked out onto so the
 # dark body text stays legible over the busy colored field. Fixed for the
 # 800×480 panel, like the other custom-render frames' coordinates.
 _VITRAIL_CARTOUCHE = (150, 200, 650, 392)
+# Pointed-gable rise above the cartouche's top edge, echoing the window's own
+# lancet arch (and the straight-sided spandrel arch in
+# _vitrail_paint_arch_spandrels) so the quote panel reads as a light set into
+# the tracery rather than a plain rectangle pasted over it. Kept shallow so the
+# apex (at y0 − rise) clears the rose-window disc above it — the rose's painted
+# after the panes but before the cartouche, so an over-tall gable would erase
+# its lower petals.
+_VITRAIL_CARTOUCHE_ARCH = 20
 
 # Deterministic jewel-tone cycle for the leaded glass panes. Together these
 # entries exercise the FULL documented Spectra-6 synthesised palette (the
@@ -12961,18 +12975,27 @@ def _vitrail_fill_polygon(image: Image.Image, polygon: list, spec: tuple) -> Non
                 ipx[x0 + xx, ay] = _vitrail_pane_ink(x0 + xx, ay, spec)
 
 
-def _vitrail_build_panes(field: tuple[int, int, int, int]) -> list[tuple[list, tuple]]:
+def _vitrail_build_panes(
+    field: tuple[int, int, int, int], rose: tuple[float, float, float],
+) -> list[tuple[list, tuple]]:
     """Deterministically tessellate the window opening into irregular leaded
     glass shapes.
 
     A jittered lattice (border vertices pinned to the frame so the field tiles
     cleanly to its edges, interior vertices nudged off-grid by a seeded RNG)
-    yields irregular quadrilaterals; roughly half the cells are then split
-    along one diagonal into two triangular shards with different jewel tones,
-    so the field reads as a hand-leaded mosaic of varied shapes rather than a
-    regular grid. The per-row +2 palette shear keeps vertically-adjacent
-    shapes from sharing a hue. Seeded with a fixed constant so every render of
-    the window is byte-identical (golden / panel-dedup determinism)."""
+    yields irregular quadrilaterals; cells are then split along one diagonal
+    into two triangular shards with different jewel tones, so the field reads as
+    a hand-leaded mosaic of varied shapes rather than a regular grid. The
+    per-row +2 palette shear keeps vertically-adjacent shapes from sharing a
+    hue. Seeded with a fixed constant so every render of the window is
+    byte-identical (golden / panel-dedup determinism).
+
+    The split probability ramps from calm at the top to busy at the bottom: the
+    top row sits behind the rose window, so keeping it as large quiet quads
+    avoids a tangle of slivers around the medallion, while the heavier splitting
+    lower down breaks up what would otherwise read as a few oversized flat
+    panes. Cells whose centroid falls within the rose disc are never split for
+    the same reason — the medallion should sit on calm glass."""
     x0, y0, x1, y1 = field
     cols, rows = _VITRAIL_GRID_COLS, _VITRAIL_GRID_ROWS
     rng = random.Random(_VITRAIL_SEED)
@@ -12980,6 +13003,8 @@ def _vitrail_build_panes(field: tuple[int, int, int, int]) -> list[tuple[list, t
     ch = (y1 - y0) / rows
     jx = cw * _VITRAIL_JITTER
     jy = ch * _VITRAIL_JITTER
+    rose_cx, rose_cy, rose_r = rose
+    rose_keep_out = (rose_r + ch) ** 2
     pts: dict[tuple[int, int], tuple[float, float]] = {}
     for r in range(rows + 1):
         for c in range(cols + 1):
@@ -12993,13 +13018,18 @@ def _vitrail_build_panes(field: tuple[int, int, int, int]) -> list[tuple[list, t
     n = len(_VITRAIL_GLASS)
     panes: list[tuple[list, tuple]] = []
     for r in range(rows):
+        row_frac = r / (rows - 1) if rows > 1 else 0.0
+        split_prob = _VITRAIL_SPLIT_PROB_TOP + (_VITRAIL_SPLIT_PROB_BOTTOM - _VITRAIL_SPLIT_PROB_TOP) * row_frac
         for c in range(cols):
             tl = pts[(r, c)]
             tr = pts[(r, c + 1)]
             br = pts[(r + 1, c + 1)]
             bl = pts[(r + 1, c)]
             idx = (r * cols + c + r * 2) % n
-            if rng.random() < _VITRAIL_SPLIT_PROB:
+            cell_cx = (tl[0] + tr[0] + br[0] + bl[0]) / 4
+            cell_cy = (tl[1] + tr[1] + br[1] + bl[1]) / 4
+            under_rose = (cell_cx - rose_cx) ** 2 + (cell_cy - rose_cy) ** 2 < rose_keep_out
+            if not under_rose and rng.random() < split_prob:
                 # Split into two triangular shards on one of the two diagonals.
                 alt = _VITRAIL_GLASS[(idx + 7) % n]
                 if rng.random() < 0.5:
@@ -13025,7 +13055,7 @@ def _vitrail_paint_glass_panes(image: Image.Image, panes: list) -> None:
 # coordinate (lines of constant x − y run top-left → bottom-right, the classic
 # glass-glint direction with light from the upper-left). White is stippled into
 # the glass with density tapering linearly to zero at each band's edge.
-_VITRAIL_SHIMMER = [(0.40, 90, 0.42), (0.66, 52, 0.27)]
+_VITRAIL_SHIMMER = [(0.37, 120, 0.62), (0.63, 66, 0.40)]
 
 
 def _vitrail_paint_shimmer(
@@ -13089,7 +13119,7 @@ def _vitrail_paint_shimmer(
 
 
 def _vitrail_paint_arch_spandrels(
-    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
+    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int], spring_y: int,
 ) -> None:
     """Carve a pointed (lancet) arch into the top of the colored field by
     filling the two top-corner spandrel triangles with black stone, so the
@@ -13097,8 +13127,8 @@ def _vitrail_paint_arch_spandrels(
     BLACK = SPECTRA6["black"]
     x0, y0, x1, _ = field
     apex = ((x0 + x1) // 2, y0)
-    draw.polygon([(x0, y0), apex, (x0, _VITRAIL_ARCH_SPRING_Y)], fill=BLACK)
-    draw.polygon([apex, (x1, y0), (x1, _VITRAIL_ARCH_SPRING_Y)], fill=BLACK)
+    draw.polygon([(x0, y0), apex, (x0, spring_y)], fill=BLACK)
+    draw.polygon([apex, (x1, y0), (x1, spring_y)], fill=BLACK)
 
 
 def _vitrail_paint_lead_came(
@@ -13153,14 +13183,15 @@ def _vitrail_paint_outer_frame(draw: ImageDraw.ImageDraw, field: tuple[int, int,
 
 def _vitrail_paint_rose_window(
     image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int,
+    cx: int, cy: int, R: int, came: int,
 ) -> None:
     """Top-centre rose-window medallion: a stone-ringed glass disc divided
-    into twelve jewel-tone petal wedges by radial came, with the Roman-numeral
-    hour set in the ecclesiastical ornament face at the hub."""
+    into twelve jewel-tone petal wedges by radial came, ringed by a band of
+    small clear-glass foil roundels (the tracery a real rose window carries),
+    with the Roman-numeral hour set in the ecclesiastical ornament face at the
+    hub."""
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
-    cx, cy, R = _VITRAIL_ROSE_CX, _VITRAIL_ROSE_CY, _VITRAIL_ROSE_R
-    came = _VITRAIL_CAME_W
     # Stone ring + clear glass disc base.
     draw.ellipse((cx - R - came, cy - R - came, cx + R + came, cy + R + came), fill=BLACK)
     draw.ellipse((cx - R, cy - R, cx + R, cy + R), fill=WHITE)
@@ -13178,38 +13209,110 @@ def _vitrail_paint_rose_window(
         ey = cy + R * math.sin(ang)
         draw.line((cx, cy, ex, ey), fill=BLACK, width=came - 2)
     draw.ellipse((cx - R, cy - R, cx + R, cy + R), outline=BLACK, width=came - 2)
+    # Tracery: a concentric came ring splits the petals into an inner and outer
+    # tier, and a band of twelve small clear-glass foil roundels (one centred on
+    # each outer petal) reads as the ring of leaded lights a real rose window
+    # carries — turning the medallion from a flat pie chart into architectural
+    # tracery.
+    ring_r = R * 0.60
+    draw.ellipse((cx - ring_r, cy - ring_r, cx + ring_r, cy + ring_r), outline=BLACK, width=came - 2)
+    foil_band = R * 0.80
+    foil_r = max(3, round(R * 0.10))
+    for k in range(petals):
+        ang = math.radians((k + 0.5) * 360 / petals)
+        fx = cx + foil_band * math.cos(ang)
+        fy = cy + foil_band * math.sin(ang)
+        draw.ellipse((fx - foil_r - 1, fy - foil_r - 1, fx + foil_r + 1, fy + foil_r + 1), fill=BLACK)
+        draw.ellipse((fx - foil_r, fy - foil_r, fx + foil_r, fy + foil_r), fill=WHITE)
     # Central hub carrying the numeral, knocked out clear.
-    hub = 28
+    hub = max(10, round(R * 0.38))
     draw.ellipse((cx - hub - 2, cy - hub - 2, cx + hub + 2, cy + hub + 2), fill=BLACK)
     draw.ellipse((cx - hub, cy - hub, cx + hub, cy + hub), fill=WHITE)
-    font = load_font(theme_font_candidates("vitrail", "ornament"), size=30)
     numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    # Shrink the ornament face from 30pt until the numeral fits inside the hub
+    # disc — wide numerals ("VIII", "XII", "VII") overflow the 28px-radius
+    # circle at a fixed size, so fit width+height against the inscribed box
+    # (the clear glass leaves a ~3px margin off the came ring).
+    fit = hub - 3
+    font_candidates = theme_font_candidates("vitrail", "ornament")
+    font = load_font(font_candidates, size=30)
+    for size in range(30, 11, -2):
+        font = load_font(font_candidates, size=size)
+        left, top, right, bottom = draw.textbbox((0, 0), numeral, font=font)
+        if (right - left) <= fit * 2 and (bottom - top) <= fit * 2:
+            break
     draw.text((cx, cy), numeral, font=font, fill=BLACK, anchor="mm")
 
 
+def _vitrail_cartouche_top_points(x0: int, y0: int, x1: int, rise: int) -> list[tuple[int, int]]:
+    """Polyline tracing the cartouche's pointed-arch top from the left top
+    corner (x0, y0) up to the central apex (xc, y0 − rise) and down to the
+    right top corner (x1, y0).
+
+    The vertical layout only leaves room for a shallow total rise (the rose
+    window sits just above), and a straight full-width gable that shallow reads
+    nearly flat. Easing each half by ``u ** p`` (p > 1) keeps the shoulders low
+    and concentrates the rise into a sharp central spire, so the panel reads as
+    a Gothic lancet point rather than a faint bevel."""
+    xc = (x0 + x1) / 2.0
+    half = xc - x0
+    p = 1.8
+    n = 24
+    pts: list[tuple[float, float]] = []
+    for i in range(n + 1):                       # left half: x0 → apex
+        u = i / n
+        pts.append((x0 + u * half, y0 - rise * (u ** p)))
+    for i in range(1, n + 1):                    # right half: apex → x1
+        u = i / n
+        pts.append((xc + u * half, y0 - rise * ((1.0 - u) ** p)))
+    return [(int(round(px)), int(round(py))) for px, py in pts]
+
+
 def _vitrail_paint_quote_cartouche(
-    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int], arch_rise: int,
 ) -> None:
     """Knock out a clear white-glass panel for the quote and frame it in came.
 
     A solid white wipe (not a wash) clears every jewel-tone stipple under the
     body region so the dark text and the violet matched-phrase dither sit on
     fully legible ground rather than fighting the colored glass behind. The
-    surrounding lead frame is beveled to match the panes — a lit white lip on
-    the outer top-left, a black shadow lip on the outer bottom-right — so the
-    clear glass reads as recessed behind a raised lead frame rather than
-    bordered by a flat rule."""
+    panel is topped by a pointed arch (apex at y0 − arch rise) so it echoes the
+    window's lancet tracery instead of reading as a plain rectangle. The
+    surrounding lead frame follows that arched outline and is beveled to match
+    the panes — a lit white lip on the lit top-left edges, a black shadow lip on
+    the shadowed bottom-right edges — so the clear glass reads as recessed
+    behind a raised lead frame rather than bordered by a flat rule. A thin
+    violet rule (adjacent red + blue 1px lines that average to violet at panel
+    distance — the same R+B tone the matched phrase uses) is laid just inside
+    the came so the clear panel reads as set *into* coloured glass rather than
+    floating on top."""
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
+    RED = SPECTRA6["red"]
+    BLUE = SPECTRA6["blue"]
     x0, y0, x1, y1 = rect
-    draw.rectangle((x0, y0, x1, y1), fill=WHITE)
     came = _VITRAIL_CAME_W
-    for o in range(came):
-        draw.rectangle((x0 - o, y0 - o, x1 + o, y1 + o), outline=BLACK)
-    # Bevel: lit top-left outer lip, shadowed bottom-right outer lip.
-    ox0, oy0, ox1, oy1 = x0 - came, y0 - came, x1 + came, y1 + came
-    draw.line((ox0, oy0, ox1, oy0), fill=WHITE, width=1)
-    draw.line((ox0, oy0, ox0, oy1), fill=WHITE, width=1)
+    top = _vitrail_cartouche_top_points(x0, y0, x1, arch_rise)
+    # White knockout: arched top + rectangular body, as one polygon.
+    draw.polygon(top + [(x1, y1), (x0, y1)], fill=WHITE)
+    # Came frame following the full arched outline (bottom-left → left wall →
+    # arched top → right wall → bottom), stroked thick with curved joins so the
+    # apex stays clean.
+    outline = [(x0, y1)] + top + [(x1, y1), (x0, y1)]
+    draw.line(outline, fill=BLACK, width=came, joint="curve")
+    # Bevel: lit white lip along the lit top-left edges (left wall + left half of
+    # the arch up to the apex), shadowed black lip along the bottom-right.
+    apex_idx = len(top) // 2
+    draw.line([(x0, y1), (x0, y0)] + top[: apex_idx + 1], fill=WHITE, width=1)
+    draw.line(top[apex_idx:] + [(x1, y1), (x0, y1)], fill=BLACK, width=1)
+    # Violet inner rule: two concentric 1px outlines a pixel apart (red then
+    # blue) trace the arched panel just inside the came, reading as a single
+    # violet glass edging at panel distance. Kept well clear of the centred text
+    # block by the body region's padding.
+    for inset, ink in ((3, RED), (4, BLUE)):
+        itop = _vitrail_cartouche_top_points(x0 + inset, y0 + inset, x1 - inset, max(0, arch_rise - inset))
+        draw.line(itop + [(x1 - inset, y1 - inset), (x0 + inset, y1 - inset), (x0 + inset, y0 + inset)],
+                  fill=ink, width=1, joint="curve")
 
 
 def _vitrail_paint_quote_body(
@@ -13316,35 +13419,46 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
     image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
     draw = ImageDraw.Draw(image)
     field = (_VITRAIL_SURROUND, _VITRAIL_SURROUND, width - _VITRAIL_SURROUND, height - _VITRAIL_SURROUND)
+    # Derive the medallion / arch / cartouche geometry from the canvas size so
+    # the frame composes at any resolution. The module constants are the
+    # 800×480 reference, and scaling by (width/800, height/480) reproduces them
+    # exactly at the panel's native size — so determinism and the committed
+    # visual output are unchanged there.
+    sx, sy = width / 800.0, height / 480.0
+    rose_cx = width // 2
+    rose_cy = round(_VITRAIL_ROSE_CY * sy)
+    rose_r = round(_VITRAIL_ROSE_R * sy)
+    came = _VITRAIL_CAME_W
+    spring_y = round(_VITRAIL_ARCH_SPRING_Y * sy)
+    cx0, cy0, cx1, cy1 = _VITRAIL_CARTOUCHE
+    cart = (round(cx0 * sx), round(cy0 * sy), round(cx1 * sx), round(cy1 * sy))
+    arch_rise = round(_VITRAIL_CARTOUCHE_ARCH * sy)
     # Paint order: fill glass shapes → lead came along every seam → arch
     # spandrels (black stone over the top corners) → rose (on top of the top
     # shapes) → cartouche white knockout (erases any came/glass crossing it) →
     # cartouche frame + quote body + attribution.
-    panes = _vitrail_build_panes(field)
+    panes = _vitrail_build_panes(field, (rose_cx, rose_cy, rose_r))
     _vitrail_paint_glass_panes(image, panes)
     _vitrail_paint_shimmer(image, field)
     _vitrail_paint_lead_came(draw, panes, field)
-    _vitrail_paint_arch_spandrels(image, draw, field)
+    _vitrail_paint_arch_spandrels(image, draw, field, spring_y)
     try:
         hour24 = int(time_str.split(":", 1)[0])
     except (ValueError, AttributeError):
         hour24 = 0
     hour_int = hour24 % 12 or 12
-    _vitrail_paint_rose_window(image, draw, hour_int)
+    _vitrail_paint_rose_window(image, draw, hour_int, rose_cx, rose_cy, rose_r, came)
     # Re-apply the same diagonal sheen to the rose-window glass (painted after
     # the field-wide pass) so its petals catch the light continuously with the
     # surrounding panes; clipped to the medallion disc.
-    rr = _VITRAIL_ROSE_R
     _vitrail_paint_shimmer(
         image, field,
-        region=(_VITRAIL_ROSE_CX - rr, _VITRAIL_ROSE_CY - rr,
-                _VITRAIL_ROSE_CX + rr, _VITRAIL_ROSE_CY + rr),
-        clip=(_VITRAIL_ROSE_CX, _VITRAIL_ROSE_CY, rr),
+        region=(rose_cx - rose_r, rose_cy - rose_r, rose_cx + rose_r, rose_cy + rose_r),
+        clip=(rose_cx, rose_cy, rose_r),
     )
-    cart = _VITRAIL_CARTOUCHE
-    _vitrail_paint_quote_cartouche(image, draw, cart)
-    _vitrail_paint_quote_body(image, draw, quote_row, (cart[0], cart[1], cart[2], cart[3] - 24))
-    _vitrail_paint_attribution(image, draw, quote_row, (cart[0] + cart[2]) // 2, cart[3] - 20)
+    _vitrail_paint_quote_cartouche(image, draw, cart, arch_rise)
+    _vitrail_paint_quote_body(image, draw, quote_row, (cart[0], cart[1], cart[2], cart[3] - round(24 * sy)))
+    _vitrail_paint_attribution(image, draw, quote_row, (cart[0] + cart[2]) // 2, cart[3] - round(20 * sy))
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
