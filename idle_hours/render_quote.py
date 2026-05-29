@@ -13182,8 +13182,19 @@ def _vitrail_paint_rose_window(
     hub = 28
     draw.ellipse((cx - hub - 2, cy - hub - 2, cx + hub + 2, cy + hub + 2), fill=BLACK)
     draw.ellipse((cx - hub, cy - hub, cx + hub, cy + hub), fill=WHITE)
-    font = load_font(theme_font_candidates("vitrail", "ornament"), size=30)
     numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    # Shrink the ornament face from 30pt until the numeral fits inside the hub
+    # disc — wide numerals ("VIII", "XII", "VII") overflow the 28px-radius
+    # circle at a fixed size, so fit width+height against the inscribed box
+    # (the clear glass leaves a ~3px margin off the came ring).
+    fit = hub - 3
+    font_candidates = theme_font_candidates("vitrail", "ornament")
+    font = load_font(font_candidates, size=30)
+    for size in range(30, 11, -2):
+        font = load_font(font_candidates, size=size)
+        left, top, right, bottom = draw.textbbox((0, 0), numeral, font=font)
+        if (right - left) <= fit * 2 and (bottom - top) <= fit * 2:
+            break
     draw.text((cx, cy), numeral, font=font, fill=BLACK, anchor="mm")
 
 
