@@ -13011,6 +13011,52 @@ def _vitrail_paint_glass_panes(image: Image.Image, panes: list) -> None:
         _vitrail_fill_polygon(image, polygon, spec)
 
 
+# Diagonal specular "sheen" bands swept across the glass so the panes read as a
+# glossy reflective surface catching light, not flat colour fields. Each entry
+# is (centre_fraction, half_width_px, peak_density) in the t = x − y diagonal
+# coordinate (lines of constant x − y run top-left → bottom-right, the classic
+# glass-glint direction with light from the upper-left). White is stippled into
+# the glass with density tapering linearly to zero at each band's edge.
+_VITRAIL_SHIMMER = [(0.40, 90, 0.42), (0.66, 52, 0.27)]
+
+
+def _vitrail_paint_shimmer(image: Image.Image, field: tuple[int, int, int, int]) -> None:
+    """Sweep diagonal specular sheen bands across the filled glass.
+
+    Lifts the local glass colour toward white along a couple of diagonal
+    streaks (white stippled in at a Bayer density that peaks at each band's
+    centreline and tapers to zero at its edges), so the panes read as a glossy
+    reflective surface. Only pixels that already carry glass colour are touched
+    — black came / background and pure-white pixels are skipped — and the pass
+    runs before the came / rose / cartouche so those paint cleanly over it.
+    Deterministic: a pure function of pixel position."""
+    WHITE = SPECTRA6["white"]
+    BLACK = SPECTRA6["black"]
+    x0, y0, x1, y1 = field
+    t_min = x0 - y1
+    span = (x1 - y0) - t_min
+    if span <= 0:
+        return
+    bands = [(t_min + frac * span, hw, peak) for frac, hw, peak in _VITRAIL_SHIMMER]
+    px = image.load()
+    for y in range(y0, y1):
+        brow = BAYER_4x4[y % 4]
+        for x in range(x0, x1):
+            cur = px[x, y]
+            if cur == BLACK or cur == WHITE:
+                continue
+            t = x - y
+            best = 0.0
+            for centre, hw, peak in bands:
+                d = abs(t - centre)
+                if d < hw:
+                    dens = peak * (1.0 - d / hw)
+                    if dens > best:
+                        best = dens
+            if best > 0.0 and brow[x % 4] < round(best * 16):
+                px[x, y] = WHITE
+
+
 def _vitrail_paint_arch_spandrels(
     image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
 ) -> None:
@@ -13238,6 +13284,7 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
     # cartouche frame + quote body + attribution.
     panes = _vitrail_build_panes(field)
     _vitrail_paint_glass_panes(image, panes)
+    _vitrail_paint_shimmer(image, field)
     _vitrail_paint_lead_came(draw, panes, field)
     _vitrail_paint_arch_spandrels(image, draw, field)
     try:
