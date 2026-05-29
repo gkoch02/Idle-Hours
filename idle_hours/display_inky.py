@@ -258,6 +258,17 @@ THEME_SATURATION: dict[str, float] = {
     # into rust-brown, breaking the aged-paper illusion the layer
     # builds.
     "cartograph": 0.5,
+    # Vitrail / Gothic stained-glass cathedral window. Although the
+    # literary quote sits on a clear white-glass cartouche, the dominant
+    # visual mass is heavily-saturated colored glass (solid red / blue /
+    # yellow / green panes plus the jewel-tone Bayer stipples and the
+    # twelve-petal rose window) covering nearly the whole canvas. Like
+    # ``marquee`` / ``comic`` / ``atomic`` / ``blueprint`` and the other
+    # saturated / colored-ground themes, the 0.7 tier keeps those jewel
+    # tones punchy at panel viewing distance instead of desaturating them
+    # toward muddy mid-tones. The white cartouche has no chroma to scale,
+    # so the higher tier costs nothing there.
+    "vitrail": 0.7,
 }
 
 

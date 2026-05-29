@@ -299,6 +299,7 @@ Thirty-three themes ship built-in, all constrained to the Spectra 6 panel palett
 | `marquee`     | <img src="idle_hours/assets/previews/marquee.png" width="240" alt="marquee theme preview">         | black       | white | red    | Cardo Italic + Bungee Shade | 1930s movie-palace marquee (custom layout) |
 | `tarot`       | <img src="idle_hours/assets/previews/tarot.png" width="240" alt="tarot theme preview">             | cream/white | black | Tyrian purple | EB Garamond + Cinzel Decorative | Major-arcana card (custom layout) |
 | `vinyl`       | <img src="idle_hours/assets/previews/vinyl.png" width="240" alt="vinyl theme preview">             | cream/white | black | tangerine | Cormorant Garamond | Turntable + literary-audiobook LP (custom layout) |
+| `vitrail`     | <img src="idle_hours/assets/previews/vitrail.png" width="240" alt="vitrail theme preview">         | jewel glass | black | violet | EB Garamond + Uncial Antiqua | Gothic stained-glass window (custom layout, full palette) |
 | `cartograph`  | <img src="idle_hours/assets/previews/cartograph.png" width="240" alt="cartograph theme preview">   | cream/white | black | red    | IM Fell English Italic | Antique cartographer's chart |
 | `diags`       | <img src="idle_hours/assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
 

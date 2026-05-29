@@ -82,6 +82,7 @@ THEME_ORDER: tuple[str, ...] = (
     "marquee",
     "tarot",
     "vinyl",
+    "vitrail",
     "cartograph",
     "diags",
 )
@@ -925,6 +926,32 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
+    # Gothic stained-glass cathedral window. Custom-render theme —
+    # render() dispatches to render_vitrail_frame, which paints a tall
+    # lancet window: a black lead-came tracery grid dividing the canvas
+    # into jewel-toned glass panes that exercise the FULL synthesised
+    # palette (ruby / sapphire / emerald / gold solid inks plus amber,
+    # royal purple, teal, plum, lavender, sky-blue, olive, rose, mint,
+    # navy and forest Bayer stipples — every documented Spectra-6 recipe
+    # a window's leaded lights would carry), a rose-window medallion with
+    # the Roman-numeral hour, and the literary quote glowing in a clear
+    # white-glass central cartouche knocked out of the colored field so
+    # the body text stays legible. The matched time phrase renders in
+    # violet-glass R+B purple. The palette below is only consumed by the
+    # fall-through paths (render_static_message for goodnight,
+    # render_source_card for the button-C overlay) — the frame itself
+    # hardcodes SPECTRA6 inks — so it's a clean white/black ground with a
+    # blue (violet-glass) accent.
+    "vitrail": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["black"],
+    },
     # Hand-drawn antique cartographer's chart. White-paper ground
     # warmed by a cream Y+W Bayer Layer-0 wash + a sparse R+G sepia
     # foxing scatter that reads as the lignin-oxidation rust-brown
@@ -1137,6 +1164,16 @@ IMFELLENGLISH_ITALIC = str(BASE_DIR / "fonts/im-fell-english/IMFellEnglish-Itali
 # whose sharply-pointed strokes read as a ritual scribe's hand.
 # Matched-phrase + ornament face for the ``alchemy`` theme.
 MEDIEVALSHARP_REGULAR = str(BASE_DIR / "fonts/medieval-sharp/MedievalSharp-Regular.ttf")
+# Uncial Antiqua — Astigmatic / Brian J. Bonislawsky (OFL). A single-weight
+# ecclesiastical uncial display face modelled on the rounded majuscule hands
+# of early-medieval Insular and Carolingian manuscripts. Carries the
+# cathedral / illuminated register the ``vitrail`` stained-glass theme wants
+# for its rose-window Roman numeral and oversized quote marks. Single-weight,
+# so the matched-phrase / ornament slots reuse Regular and earn differentiation
+# from the violet-glass accent colour alone. Falls back through the bundled
+# MedievalSharp → UnifrakturMaguntia "ritual hand" chain so a missing install
+# still lands on a medieval display silhouette rather than a clean modern serif.
+UNCIALANTIQUA_REGULAR = str(BASE_DIR / "fonts/uncial-antiqua/UncialAntiqua-Regular.ttf")
 # Righteous — Astigmatic / Brian J. Bonislawsky (OFL). 1930s geometric
 # art-deco display sans with friendly rounded terminals on a strict
 # geometric skeleton. Single-weight (Regular only), so the matched-phrase
@@ -2286,6 +2323,31 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             (CORMORANT_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Vitrail — EB Garamond body (legible humanist serif for the dense
+    # quote on the clear-glass cartouche, same body face tarot uses) with
+    # the ornament slot preferring Uncial Antiqua for the ecclesiastical
+    # rose-window numeral. The matched-phrase role reuses EB Garamond Bold
+    # and earns differentiation from the violet-glass R+B accent colour.
+    # The ornament chain falls back through the bundled MedievalSharp →
+    # UnifrakturMaguntia "ritual hand" faces so a missing Uncial Antiqua
+    # install still lands on a medieval display silhouette rather than the
+    # Playfair default.
+    "vitrail": {
+        "quote_regular": [
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            UNCIALANTIQUA_REGULAR,
+            MEDIEVALSHARP_REGULAR,
+            UNIFRAKTUR_BOOK,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -12786,6 +12848,285 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── vitrail (Gothic stained-glass cathedral window) ─────────────────────────
+
+_VITRAIL_SURROUND = 16        # black stone masonry inset from the canvas edge
+_VITRAIL_CAME_W = 5           # lead-came line thickness
+_VITRAIL_ROSE_CX = 400        # rose-window medallion centre (top centre)
+_VITRAIL_ROSE_CY = 96
+_VITRAIL_ROSE_R = 74
+_VITRAIL_ARCH_SPRING_Y = 150  # where the pointed-arch spandrels meet the sides
+_VITRAIL_GRID_COLS = 6
+_VITRAIL_GRID_ROWS = 5
+# Clear white-glass cartouche the literary quote is knocked out onto so the
+# dark body text stays legible over the busy colored field. Fixed for the
+# 800×480 panel, like the other custom-render frames' coordinates.
+_VITRAIL_CARTOUCHE = (150, 200, 650, 392)
+
+# Deterministic jewel-tone cycle for the leaded glass panes. Together these
+# entries exercise the FULL documented Spectra-6 synthesised palette (the
+# native inks plus the 2-/3-ink Bayer-stipple recipes from
+# spectra6_color_recipes.md) so the window carries every "glass colour" a real
+# cathedral light would. Each entry is a fill spec consumed by
+# _vitrail_fill_pane:
+#   ("solid", ink)                  → a native Spectra-6 ink
+#   ("2", dark, light, density)     → 2-ink stipple via _fill_swatch_stipple
+#   ("3", a, b, c, dens_a, dens_b)  → 3-ink Bayer partition via
+#                                     _fill_swatch_stipple_3way
+_VITRAIL_GLASS: list[tuple] = [
+    ("solid", SPECTRA6["red"]),                                  # ruby
+    ("solid", SPECTRA6["blue"]),                                 # sapphire
+    ("2", SPECTRA6["red"], SPECTRA6["yellow"], 0.375),           # amber / gold
+    ("solid", SPECTRA6["green"]),                                # emerald
+    ("2", SPECTRA6["red"], SPECTRA6["blue"], 0.5),               # royal purple
+    ("solid", SPECTRA6["yellow"]),                               # solid gold
+    ("2", SPECTRA6["green"], SPECTRA6["blue"], 0.375),           # teal
+    ("3", SPECTRA6["red"], SPECTRA6["blue"], SPECTRA6["black"], 0.34, 0.33),   # plum
+    ("2", SPECTRA6["red"], SPECTRA6["white"], 0.5),              # rose / coral
+    ("2", SPECTRA6["blue"], SPECTRA6["black"], 0.5),             # navy
+    ("2", SPECTRA6["yellow"], SPECTRA6["green"], 0.5),           # olive
+    ("3", SPECTRA6["red"], SPECTRA6["blue"], SPECTRA6["white"], 0.34, 0.33),   # lavender
+    ("2", SPECTRA6["blue"], SPECTRA6["white"], 0.5),             # sky blue
+    ("2", SPECTRA6["green"], SPECTRA6["black"], 0.5),            # forest
+    ("2", SPECTRA6["green"], SPECTRA6["white"], 0.5),            # mint
+]
+
+
+def _vitrail_fill_pane(
+    image: Image.Image, draw: ImageDraw.ImageDraw,
+    rect: tuple[int, int, int, int], spec: tuple,
+) -> None:
+    """Fill one leaded-glass pane with its jewel tone per the fill spec."""
+    kind = spec[0]
+    if kind == "solid":
+        draw.rectangle(rect, fill=spec[1])
+    elif kind == "2":
+        _fill_swatch_stipple(image, rect, spec[1], spec[2], spec[3])
+    else:  # "3"
+        _fill_swatch_stipple_3way(image, rect, spec[1], spec[2], spec[3], spec[4], spec[5])
+
+
+def _vitrail_paint_glass_panes(
+    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
+) -> None:
+    """Subdivide the window opening into a fixed lead-came grid and fill each
+    pane with a deterministic jewel tone. The per-row +2 shear staggers the
+    palette so vertically-adjacent panes never share a hue — the irregular
+    rhythm real leaded windows carry."""
+    x0, y0, x1, y1 = field
+    cols, rows = _VITRAIL_GRID_COLS, _VITRAIL_GRID_ROWS
+    n = len(_VITRAIL_GLASS)
+    for r in range(rows):
+        py0 = y0 + (y1 - y0) * r // rows
+        py1 = y0 + (y1 - y0) * (r + 1) // rows
+        for c in range(cols):
+            px0 = x0 + (x1 - x0) * c // cols
+            px1 = x0 + (x1 - x0) * (c + 1) // cols
+            idx = (r * cols + c + r * 2) % n
+            _vitrail_fill_pane(image, draw, (px0, py0, px1, py1), _VITRAIL_GLASS[idx])
+
+
+def _vitrail_paint_arch_spandrels(
+    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
+) -> None:
+    """Carve a pointed (lancet) arch into the top of the colored field by
+    filling the two top-corner spandrel triangles with black stone, so the
+    glass reads as a Gothic arch rather than a plain rectangle."""
+    BLACK = SPECTRA6["black"]
+    x0, y0, x1, _ = field
+    apex = ((x0 + x1) // 2, y0)
+    draw.polygon([(x0, y0), apex, (x0, _VITRAIL_ARCH_SPRING_Y)], fill=BLACK)
+    draw.polygon([apex, (x1, y0), (x1, _VITRAIL_ARCH_SPRING_Y)], fill=BLACK)
+
+
+def _vitrail_paint_lead_came(
+    image: Image.Image, draw: ImageDraw.ImageDraw, field: tuple[int, int, int, int],
+) -> None:
+    """Draw the black lead came: the heavy outer window frame plus the
+    inter-pane grid lines matching _vitrail_paint_glass_panes' subdivision."""
+    BLACK = SPECTRA6["black"]
+    came = _VITRAIL_CAME_W
+    x0, y0, x1, y1 = field
+    for o in range(came):
+        draw.rectangle((x0 + o, y0 + o, x1 - o, y1 - o), outline=BLACK)
+    cols, rows = _VITRAIL_GRID_COLS, _VITRAIL_GRID_ROWS
+    for c in range(1, cols):
+        gx = x0 + (x1 - x0) * c // cols
+        draw.line((gx, y0, gx, y1), fill=BLACK, width=came - 2)
+    for r in range(1, rows):
+        gy = y0 + (y1 - y0) * r // rows
+        draw.line((x0, gy, x1, gy), fill=BLACK, width=came - 2)
+
+
+def _vitrail_paint_rose_window(
+    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int,
+) -> None:
+    """Top-centre rose-window medallion: a stone-ringed glass disc divided
+    into twelve jewel-tone petal wedges by radial came, with the Roman-numeral
+    hour set in the ecclesiastical ornament face at the hub."""
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    cx, cy, R = _VITRAIL_ROSE_CX, _VITRAIL_ROSE_CY, _VITRAIL_ROSE_R
+    came = _VITRAIL_CAME_W
+    # Stone ring + clear glass disc base.
+    draw.ellipse((cx - R - came, cy - R - came, cx + R + came, cy + R + came), fill=BLACK)
+    draw.ellipse((cx - R, cy - R, cx + R, cy + R), fill=WHITE)
+    # Twelve petal wedges cycling the four saturated inks.
+    petals = 12
+    wedge_inks = [SPECTRA6["red"], SPECTRA6["blue"], SPECTRA6["yellow"], SPECTRA6["green"]]
+    for k in range(petals):
+        start = k * 360 / petals
+        end = (k + 1) * 360 / petals
+        draw.pieslice((cx - R, cy - R, cx + R, cy + R), start, end, fill=wedge_inks[k % len(wedge_inks)])
+    # Radial came between petals + a concentric rim ring.
+    for k in range(petals):
+        ang = math.radians(k * 360 / petals)
+        ex = cx + R * math.cos(ang)
+        ey = cy + R * math.sin(ang)
+        draw.line((cx, cy, ex, ey), fill=BLACK, width=came - 2)
+    draw.ellipse((cx - R, cy - R, cx + R, cy + R), outline=BLACK, width=came - 2)
+    # Central hub carrying the numeral, knocked out clear.
+    hub = 28
+    draw.ellipse((cx - hub - 2, cy - hub - 2, cx + hub + 2, cy + hub + 2), fill=BLACK)
+    draw.ellipse((cx - hub, cy - hub, cx + hub, cy + hub), fill=WHITE)
+    font = load_font(theme_font_candidates("vitrail", "ornament"), size=30)
+    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
+    draw.text((cx, cy), numeral, font=font, fill=BLACK, anchor="mm")
+
+
+def _vitrail_paint_quote_cartouche(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+) -> None:
+    """Knock out a clear white-glass panel for the quote and frame it in came.
+
+    A solid white wipe (not a wash) clears every jewel-tone stipple under the
+    body region so the dark text and the violet matched-phrase dither sit on
+    fully legible ground rather than fighting the colored glass behind."""
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    x0, y0, x1, y1 = rect
+    draw.rectangle((x0, y0, x1, y1), fill=WHITE)
+    came = _VITRAIL_CAME_W
+    for o in range(came):
+        draw.rectangle((x0 - o, y0 - o, x1 + o, y1 + o), outline=BLACK)
+
+
+def _vitrail_paint_quote_body(
+    image: Image.Image, draw: ImageDraw.ImageDraw,
+    quote_row: dict, rect: tuple[int, int, int, int],
+) -> None:
+    """Quote body fitted into the cartouche, matched phrase in violet glass.
+
+    Mirrors _tarot_paint_body: centred block, per-line horizontal centring,
+    regular chunks in solid black, the matched time phrase stippled in R+B
+    purple (the canonical violet-glass tone) via draw_text_dithered."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    BLUE = SPECTRA6["blue"]
+    x0, y0, x1, y1 = rect
+    pad = 14
+    x0 += pad
+    y0 += pad
+    width = (x1 - pad) - x0
+    height = (y1 - pad) - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw, display_quote, matched, width, height,
+        font_max=30, font_min=15, line_height_mult=1.22, theme="vitrail",
+    )
+    quote_block_height = len(wrapped_quote) * line_height
+    block_top = y0 + max(0, (height - quote_block_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    y = block_top
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        line_width = 0
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            line_width += bbox[2] - bbox[0]
+        x = x0 + max(0, (width - line_width) // 2)
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            if is_bold:
+                draw_text_dithered(
+                    image, (x, chunk_y), chunk, font=font,
+                    dark=RED, light=BLUE, light_density=0.5,
+                )
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _vitrail_paint_attribution(
+    image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, cx: int, y_top: int,
+) -> None:
+    """Author · title in the ecclesiastical ornament face, solid black, centred."""
+    BLACK = SPECTRA6["black"]
+    font = load_font(theme_font_candidates("vitrail", "ornament"), size=13)
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = " · ".join(parts)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    max_w = 460
+    if w > max_w:
+        while parts and w > max_w:
+            if len(parts[-1]) > 6:
+                parts[-1] = parts[-1][:-3] + "…"
+            else:
+                parts.pop()
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            w = bbox[2] - bbox[0]
+    draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
+
+
+def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Gothic stained-glass cathedral window.
+
+    A tall lancet window whose black lead-came tracery divides the canvas into
+    jewel-toned glass panes spanning the full synthesised Spectra-6 palette, a
+    rose-window medallion carrying the Roman-numeral hour, and the literary
+    quote glowing in a clear white-glass central cartouche (matched time phrase
+    in violet glass). The digital HH:MM is never surfaced as plain digits — the
+    quote's matched phrase and the rose-window numeral carry the time.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    field = (_VITRAIL_SURROUND, _VITRAIL_SURROUND, width - _VITRAIL_SURROUND, height - _VITRAIL_SURROUND)
+    # Paint order: panes → arch spandrels → came grid → rose (on top of the
+    # top panes) → cartouche white knockout (erases any came crossing it) →
+    # cartouche frame + quote body + attribution.
+    _vitrail_paint_glass_panes(image, draw, field)
+    _vitrail_paint_arch_spandrels(image, draw, field)
+    _vitrail_paint_lead_came(image, draw, field)
+    try:
+        hour24 = int(time_str.split(":", 1)[0])
+    except (ValueError, AttributeError):
+        hour24 = 0
+    hour_int = hour24 % 12 or 12
+    _vitrail_paint_rose_window(image, draw, hour_int)
+    cart = _VITRAIL_CARTOUCHE
+    _vitrail_paint_quote_cartouche(image, draw, cart)
+    _vitrail_paint_quote_body(image, draw, quote_row, (cart[0], cart[1], cart[2], cart[3] - 24))
+    _vitrail_paint_attribution(image, draw, quote_row, (cart[0] + cart[2]) // 2, cart[3] - 20)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -12799,6 +13140,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_tarot_frame(time_str, quote_row, width, height)
     if theme == "vinyl":
         return render_vinyl_frame(time_str, quote_row, width, height)
+    if theme == "vitrail":
+        return render_vitrail_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
