@@ -12880,6 +12880,14 @@ _VITRAIL_SPLIT_PROB = 0.5
 # dark body text stays legible over the busy colored field. Fixed for the
 # 800×480 panel, like the other custom-render frames' coordinates.
 _VITRAIL_CARTOUCHE = (150, 200, 650, 392)
+# Pointed-gable rise above the cartouche's top edge, echoing the window's own
+# lancet arch (and the straight-sided spandrel arch in
+# _vitrail_paint_arch_spandrels) so the quote panel reads as a light set into
+# the tracery rather than a plain rectangle pasted over it. Kept shallow so the
+# apex (at y0 − rise) clears the rose-window disc above it — the rose's painted
+# after the panes but before the cartouche, so an over-tall gable would erase
+# its lower petals.
+_VITRAIL_CARTOUCHE_ARCH = 20
 
 # Deterministic jewel-tone cycle for the leaded glass panes. Together these
 # entries exercise the FULL documented Spectra-6 synthesised palette (the
@@ -13025,7 +13033,7 @@ def _vitrail_paint_glass_panes(image: Image.Image, panes: list) -> None:
 # coordinate (lines of constant x − y run top-left → bottom-right, the classic
 # glass-glint direction with light from the upper-left). White is stippled into
 # the glass with density tapering linearly to zero at each band's edge.
-_VITRAIL_SHIMMER = [(0.40, 90, 0.42), (0.66, 52, 0.27)]
+_VITRAIL_SHIMMER = [(0.37, 120, 0.62), (0.63, 66, 0.40)]
 
 
 def _vitrail_paint_shimmer(
@@ -13198,6 +13206,30 @@ def _vitrail_paint_rose_window(
     draw.text((cx, cy), numeral, font=font, fill=BLACK, anchor="mm")
 
 
+def _vitrail_cartouche_top_points(x0: int, y0: int, x1: int, rise: int) -> list[tuple[int, int]]:
+    """Polyline tracing the cartouche's pointed-arch top from the left top
+    corner (x0, y0) up to the central apex (xc, y0 − rise) and down to the
+    right top corner (x1, y0).
+
+    The vertical layout only leaves room for a shallow total rise (the rose
+    window sits just above), and a straight full-width gable that shallow reads
+    nearly flat. Easing each half by ``u ** p`` (p > 1) keeps the shoulders low
+    and concentrates the rise into a sharp central spire, so the panel reads as
+    a Gothic lancet point rather than a faint bevel."""
+    xc = (x0 + x1) / 2.0
+    half = xc - x0
+    p = 1.8
+    n = 24
+    pts: list[tuple[float, float]] = []
+    for i in range(n + 1):                       # left half: x0 → apex
+        u = i / n
+        pts.append((x0 + u * half, y0 - rise * (u ** p)))
+    for i in range(1, n + 1):                    # right half: apex → x1
+        u = i / n
+        pts.append((xc + u * half, y0 - rise * ((1.0 - u) ** p)))
+    return [(int(round(px)), int(round(py))) for px, py in pts]
+
+
 def _vitrail_paint_quote_cartouche(
     image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
 ) -> None:
@@ -13206,21 +13238,29 @@ def _vitrail_paint_quote_cartouche(
     A solid white wipe (not a wash) clears every jewel-tone stipple under the
     body region so the dark text and the violet matched-phrase dither sit on
     fully legible ground rather than fighting the colored glass behind. The
-    surrounding lead frame is beveled to match the panes — a lit white lip on
-    the outer top-left, a black shadow lip on the outer bottom-right — so the
-    clear glass reads as recessed behind a raised lead frame rather than
-    bordered by a flat rule."""
+    panel is topped by a pointed arch (apex at y0 − arch rise) so it echoes the
+    window's lancet tracery instead of reading as a plain rectangle. The
+    surrounding lead frame follows that arched outline and is beveled to match
+    the panes — a lit white lip on the lit top-left edges, a black shadow lip on
+    the shadowed bottom-right edges — so the clear glass reads as recessed
+    behind a raised lead frame rather than bordered by a flat rule."""
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
     x0, y0, x1, y1 = rect
-    draw.rectangle((x0, y0, x1, y1), fill=WHITE)
     came = _VITRAIL_CAME_W
-    for o in range(came):
-        draw.rectangle((x0 - o, y0 - o, x1 + o, y1 + o), outline=BLACK)
-    # Bevel: lit top-left outer lip, shadowed bottom-right outer lip.
-    ox0, oy0, ox1, oy1 = x0 - came, y0 - came, x1 + came, y1 + came
-    draw.line((ox0, oy0, ox1, oy0), fill=WHITE, width=1)
-    draw.line((ox0, oy0, ox0, oy1), fill=WHITE, width=1)
+    top = _vitrail_cartouche_top_points(x0, y0, x1, _VITRAIL_CARTOUCHE_ARCH)
+    # White knockout: arched top + rectangular body, as one polygon.
+    draw.polygon(top + [(x1, y1), (x0, y1)], fill=WHITE)
+    # Came frame following the full arched outline (bottom-left → left wall →
+    # arched top → right wall → bottom), stroked thick with curved joins so the
+    # apex stays clean.
+    outline = [(x0, y1)] + top + [(x1, y1), (x0, y1)]
+    draw.line(outline, fill=BLACK, width=came, joint="curve")
+    # Bevel: lit white lip along the lit top-left edges (left wall + left half of
+    # the arch up to the apex), shadowed black lip along the bottom-right.
+    apex_idx = len(top) // 2
+    draw.line([(x0, y1), (x0, y0)] + top[: apex_idx + 1], fill=WHITE, width=1)
+    draw.line(top[apex_idx:] + [(x1, y1), (x0, y1)], fill=BLACK, width=1)
 
 
 def _vitrail_paint_quote_body(
