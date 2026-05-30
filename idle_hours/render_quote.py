@@ -3400,6 +3400,55 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
         fill=ornament_color,
     )
 
+    # Concentric outline ring around the two corner circles — the layered
+    # "target" geometry of a Kandinsky concentric-circle study. Drawn in
+    # the structural frame colour at radius corner_size/2 + 6, so the
+    # visible quarter-arc (the rest clips off-canvas) reads as a compass
+    # sweep echoing the corner disc. Stays clear of the sampled circle
+    # centres — the rings are pure outline well outside the filled discs.
+    half = corner_size // 2
+    ring_pad = 6
+    for ccx, ccy in (
+        (corner_margin + half, corner_margin + half),
+        (width - corner_margin - half, height - corner_margin - half),
+    ):
+        draw.ellipse(
+            (ccx - half - ring_pad, ccy - half - ring_pad,
+             ccx + half + ring_pad, ccy + half + ring_pad),
+            outline=frame_color,
+            width=1,
+        )
+
+    # Off-centre primary semicircles bulging inward from the top and
+    # bottom frames — the playful punctuation of a Bauhaus poster edge.
+    # Deliberately set away from the frame midpoints (x=0.68w / 0.32w,
+    # never x=width//2) so the composition stays asymmetric and the
+    # sampled top/bottom frame-midpoint pixels keep their frame colour.
+    semi_r = 14
+    top_sx = int(width * 0.68)
+    draw.pieslice(
+        (top_sx - semi_r, frame_inset - semi_r, top_sx + semi_r, frame_inset + semi_r),
+        start=0, end=180, fill=accent_color,
+    )
+    bot_sx = int(width * 0.32)
+    bot_y = height - 1 - frame_inset
+    draw.pieslice(
+        (bot_sx - semi_r, bot_y - semi_r, bot_sx + semi_r, bot_y + semi_r),
+        start=180, end=360, fill=yellow_primary,
+    )
+
+    # Two floating primary elements drifting in the otherwise-empty side
+    # margins (x≈32 / width-32, well clear of the dense-layout text column
+    # at x 60–740) — a small red square on the left and a small blue disc
+    # on the right, echoing the corner shapes' forms. Vertically offset
+    # from the side-frame midpoints (y=0.34h / 0.66h, never y=height//2)
+    # so the sampled left/right frame-midpoint pixels stay frame-coloured.
+    sq = 12
+    lx, ly = 32, int(height * 0.34)
+    draw.rectangle((lx - sq // 2, ly - sq // 2, lx + sq // 2, ly + sq // 2), fill=ornament_color)
+    rcx, rcy = width - 32, int(height * 0.66)
+    draw.ellipse((rcx - 6, rcy - 6, rcx + 6, rcy + 6), fill=accent_color)
+
 
 def draw_risograph_border(image: Image.Image, colors: dict) -> None:
     """Paint a lively risograph-inspired print frame.
@@ -3492,10 +3541,22 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
     """Paint a restrained academic-journal margin treatment.
 
-    Scholar gets subtle editorial structure rather than loud decoration:
-    a double blue frame, two inner column rules, and a few sparse red
-    reference marks at the outer margins. It should feel like a curated
-    critical edition, not a page that has been attacked by graduate students.
+    Scholar gets subtle editorial structure rather than loud decoration,
+    the vocabulary of a hand-set critical edition:
+
+    * a **double blue frame** (outer + inner rule);
+    * **printer's corner brackets** — short L-ticks tucked just inside
+      the inner frame's four corners, the way a carefully composed page
+      registers its type area;
+    * a centred **asterism** (the three-dot ``⁂`` section break) at the
+      head and a centred **folio ornament** (a short rule pierced by a
+      small red lozenge) at the foot — the traditional academic dingbats;
+    * thin **margin ruling lines** down both sides that turn the three
+      footnote reference numbers from floating marks into proper hanging
+      marginalia, each tagged with a small red tick.
+
+    Everything stays blue + red so the page still reads as a curated
+    journal offprint, not one attacked by graduate students.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -3514,12 +3575,66 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
+    # Printer's corner brackets — short right-angle ticks set a few px
+    # inside the inner frame at each corner. Reads as the registration
+    # marks of a well-composed type area.
+    bracket_inset = inner_inset + 6
+    bracket_arm = 14
+    left = bracket_inset
+    right = width - 1 - bracket_inset
+    top = bracket_inset
+    bottom = height - 1 - bracket_inset
+    for cx, cy, hx, vy in (
+        (left, top, +1, +1),
+        (right, top, -1, +1),
+        (left, bottom, +1, -1),
+        (right, bottom, -1, -1),
+    ):
+        draw.line([(cx, cy), (cx + hx * bracket_arm, cy)], fill=body, width=1)
+        draw.line([(cx, cy), (cx, cy + vy * bracket_arm)], fill=body, width=1)
+
+    # Side margin ruling lines — define the marginalia columns the
+    # footnote numbers hang in. x=40 / width-40 stay clear of the widest
+    # (dense, max_width=680 → text left edge 60) quote column.
+    rule_x_left = 40
+    rule_x_right = width - 1 - 40
+    rule_top = inner_inset + 22
+    rule_bottom = height - 1 - inner_inset - 22
+    for rx in (rule_x_left, rule_x_right):
+        draw.line([(rx, rule_top), (rx, rule_bottom)], fill=body, width=1)
+
+    # Hanging footnote reference marks in the ruled margins, each with a
+    # small red tick on the outer side so the number reads as an
+    # editorial annotation rather than stray ink.
     marker_font = load_font(META_FONT_BOLD_CANDIDATES, size=14)
     for label, y in [("1", 104), ("2", height // 2 - 8), ("3", height - 118)]:
         bbox = draw.textbbox((0, 0), label, font=marker_font)
         xoff = (bbox[2] - bbox[0]) // 2
         draw_text(draw, (52 - xoff, y), label, font=marker_font, fill=accent)
         draw_text(draw, (width - 52 - xoff, y), label, font=marker_font, fill=accent)
+        draw.line([(rule_x_left, y + 8), (rule_x_left + 5, y + 8)], fill=accent, width=1)
+        draw.line([(rule_x_right - 5, y + 8), (rule_x_right, y + 8)], fill=accent, width=1)
+
+    # Head asterism (⁂) — three small red lozenges in a triangle, the
+    # classic typographic section break, centred above the type area.
+    acx = width // 2
+    acy = 42
+    lz = 3  # lozenge half-size
+    for px, py in ((acx, acy - 4), (acx - 7, acy + 5), (acx + 7, acy + 5)):
+        draw.polygon(
+            [(px, py - lz), (px + lz, py), (px, py + lz), (px - lz, py)],
+            fill=accent,
+        )
+
+    # Foot folio ornament — a short centred blue rule pierced by a small
+    # red lozenge, the page-foot dingbat of a printed offprint.
+    fy = height - 40
+    draw.line([(acx - 34, fy), (acx - 8, fy)], fill=body, width=1)
+    draw.line([(acx + 8, fy), (acx + 34, fy)], fill=body, width=1)
+    draw.polygon(
+        [(acx, fy - 4), (acx + 4, fy), (acx, fy + 4), (acx - 4, fy)],
+        fill=accent,
+    )
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
@@ -4292,12 +4407,43 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
-    # Frost-crystal clusters at the four corners. Each cluster paints
-    # three triangular shards fanning out *along* the two adjacent edges
-    # from the corner. Shard 1 is short, on the horizontal axis; shard
-    # 2 is short, on the vertical axis; shard 3 is the longest, on the
-    # 45° diagonal — tipped in the accent colour for aurora-on-ice
-    # contrast.
+    # Frost-edge wash — a sparse sky-blue frost gathering at the top and
+    # bottom margins of the pane. The density tapers from the frame edge
+    # inward (a gradient Bayer threshold), so the ground reads as ice
+    # creeping across a window rather than a flat sheet. Bands are kept
+    # to the ≤44 px clear margin above/below the type area (text never
+    # starts before y=72) and inside the frame, and only flip *white*
+    # ground pixels to blue, so the result is a pale frosted speckle that
+    # leaves the blue body text fully legible. Skipped on non-white
+    # grounds (the unit-test sentinel render) since there is nothing to
+    # frost.
+    pixels = image.load()
+    band_depth = 44
+    inner_l = outer_inset + 1
+    inner_r = width - 1 - outer_inset
+    white = SPECTRA6["white"]
+    for band_top, grad_dir in ((outer_inset + 1, +1), (height - 1 - outer_inset - band_depth, -1)):
+        for row in range(band_depth):
+            y = band_top + row
+            if y < 0 or y >= height:
+                continue
+            # Distance from the frame edge (0 at edge → band_depth at inner lip).
+            edge_dist = row if grad_dir > 0 else band_depth - 1 - row
+            # Peak ~5/16 frost at the edge, fading linearly to bare.
+            thresh = max(0, 5 - (edge_dist * 5) // band_depth)
+            if thresh <= 0:
+                continue
+            for x in range(inner_l, inner_r):
+                if BAYER_4x4[y % 4][x % 4] < thresh and pixels[x, y] == white:
+                    pixels[x, y] = body_color
+
+    # Frost-crystal clusters at the four corners. Each cluster fans a
+    # spray of shards out *into* the page from the corner: three slim
+    # blue splinters (horizontal, vertical, and an intermediate one) plus
+    # the longest diagonal splinter tipped in the accent colour for
+    # aurora-on-ice contrast, with two tiny dendrite barbs branching off
+    # it the way real hoar-frost grows feathered side-arms. A small blue
+    # hub dot anchors the spray at the corner.
     corner_anchors = [
         # (anchor_x, anchor_y, dx, dy) — inner-frame corner plus the
         # unit-vector pair pointing into the page.
@@ -4307,49 +4453,65 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
         (width - 3 - outer_inset, height - 3 - outer_inset, -1, -1),       # bottom-right
     ]
     short_arm = 9
-    long_arm = 14
+    mid_arm = 12
+    long_arm = 16
     base_half = 3  # half-width of each shard's base near the corner
     for ax, ay, dx, dy in corner_anchors:
         # Horizontal shard — tip along the top/bottom edge.
         tip_h = (ax + dx * short_arm, ay)
-        base_h_a = (ax, ay - base_half * dy)
-        base_h_b = (ax, ay + base_half * dy)
-        draw.polygon([tip_h, base_h_a, base_h_b], fill=body_color)
+        draw.polygon([tip_h, (ax, ay - base_half * dy), (ax, ay + base_half * dy)], fill=body_color)
         # Vertical shard — tip along the left/right edge.
         tip_v = (ax, ay + dy * short_arm)
-        base_v_a = (ax - base_half * dx, ay)
-        base_v_b = (ax + base_half * dx, ay)
-        draw.polygon([tip_v, base_v_a, base_v_b], fill=body_color)
+        draw.polygon([tip_v, (ax - base_half * dx, ay), (ax + base_half * dx, ay)], fill=body_color)
+        # Two intermediate blue shards filling the 45° fan, slightly
+        # offset toward each edge so the spray reads as a crystalline
+        # spread rather than a single line.
+        tip_m1 = (ax + dx * mid_arm, ay + dy * (mid_arm // 2))
+        draw.polygon([tip_m1, (ax + dx * base_half, ay), (ax, ay + dy * base_half)], fill=body_color)
+        tip_m2 = (ax + dx * (mid_arm // 2), ay + dy * mid_arm)
+        draw.polygon([tip_m2, (ax, ay + dy * base_half), (ax + dx * base_half, ay)], fill=body_color)
         # Diagonal shard — the longest, tipped in accent for aurora.
         tip_d = (ax + dx * long_arm, ay + dy * long_arm)
-        base_d_a = (ax + dx * base_half, ay - dy * base_half)
-        base_d_b = (ax - dx * base_half, ay + dy * base_half)
-        draw.polygon([tip_d, base_d_a, base_d_b], fill=accent_color)
+        draw.polygon(
+            [tip_d, (ax + dx * base_half, ay - dy * base_half), (ax - dx * base_half, ay + dy * base_half)],
+            fill=accent_color,
+        )
+        # Dendrite barbs feathering off the diagonal shard (accent, so
+        # the sky-blue post-pass below lifts them with the main spine).
+        mid_d = (ax + dx * (long_arm - 5), ay + dy * (long_arm - 5))
+        draw.line([mid_d, (mid_d[0] + dx * 4, mid_d[1])], fill=accent_color, width=1)
+        draw.line([mid_d, (mid_d[0], mid_d[1] + dy * 4)], fill=accent_color, width=1)
+        # Hub dot.
+        draw.ellipse([ax - 1, ay - 1, ax + 1, ay + 1], fill=body_color)
 
-    # Mid-edge snowflake ticks. Four-armed star: a filled diamond plus
-    # a hairline cross through it. Painted in body colour so the
-    # ornament reads as an architectural rivet rather than a feature
-    # accent.
-    star_r = 6
+    # Mid-edge snowflake ticks — six-armed frost stars (three crossing
+    # spokes at 0°/60°/120° with a small forked barb at each spoke tip)
+    # plus a filled blue hub diamond. Painted in body colour so the
+    # ornament reads as architectural frost rather than a feature accent.
+    star_r = 7
     midpoints = [
-        (width // 2, outer_inset),            # top
+        (width // 2, outer_inset),               # top
         (width // 2, height - 1 - outer_inset),  # bottom
-        (outer_inset, height // 2),           # left
+        (outer_inset, height // 2),              # left
         (width - 1 - outer_inset, height // 2),  # right
     ]
     diamond_r = 3
+    # Unit directions for three spokes (and their negatives → six arms).
+    spokes = [(1.0, 0.0), (0.5, 0.866), (-0.5, 0.866)]
     for mx, my in midpoints:
         draw.polygon(
-            [
-                (mx, my - diamond_r),
-                (mx + diamond_r, my),
-                (mx, my + diamond_r),
-                (mx - diamond_r, my),
-            ],
+            [(mx, my - diamond_r), (mx + diamond_r, my), (mx, my + diamond_r), (mx - diamond_r, my)],
             fill=body_color,
         )
-        draw.line([(mx - star_r, my), (mx + star_r, my)], fill=body_color, width=1)
-        draw.line([(mx, my - star_r), (mx, my + star_r)], fill=body_color, width=1)
+        for ux, uy in spokes:
+            ex, ey = mx + ux * star_r, my + uy * star_r
+            nx, ny = mx - ux * star_r, my - uy * star_r
+            draw.line([(nx, ny), (ex, ey)], fill=body_color, width=1)
+            # Forked barbs at both tips.
+            for tip_x, tip_y, sgn in ((ex, ey, -1), (nx, ny, +1)):
+                bx, by = tip_x + sgn * ux * 3, tip_y + sgn * uy * 3
+                draw.line([(tip_x, tip_y), (bx - uy * 2, by + ux * 2)], fill=body_color, width=1)
+                draw.line([(tip_x, tip_y), (bx + uy * 2, by - ux * 2)], fill=body_color, width=1)
 
     # Aurora-on-ice post-pass: flip ~50% of the diagonal shard's green
     # pixels to white on a 1×1 checkerboard inside each corner cluster's
@@ -4549,6 +4711,12 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
       panel distance into coral pink (R+W 1:1 — weathered hand-painted
       red, since the exposed corners of a sandwich-board sign would
       be the first thing to fade in the rain).
+    * **Sign-painter header + footer dividers** — a short centred black
+      rule carrying a small coral diamond (weathered via the same R+W
+      checkerboard the tacks use), the hand-lettered ornament that tops
+      and tails an A-frame menu board. Header at y≈34 (clear of the text
+      block at y≥72); footer centred (clear of the bottom-left
+      attribution column).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -4631,6 +4799,31 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
         for y in range(y0, y1 + 1):
             for x in range(x0, x1 + 1):
                 if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = SPECTRA6["white"]
+
+    # Sign-painter header + footer dividers — a short centred black rule
+    # carrying a small coral diamond, the hand-lettered ornament that
+    # tops and tails an A-frame menu board. Header at y≈34 (clear of the
+    # text block at y≥72); footer centred (clear of the bottom-left
+    # attribution column). Black rules + a red diamond that the coral
+    # post-pass below weathers to match the corner tacks.
+    ink = colors["text"]
+    div_cx = width // 2
+    head_y = inner_inset + 16
+    foot_y = height - 1 - inner_inset - 16
+    new_red_centres = []
+    for dy in (head_y, foot_y):
+        draw.line([(div_cx - 80, dy), (div_cx - 10, dy)], fill=ink, width=1)
+        draw.line([(div_cx + 10, dy), (div_cx + 80, dy)], fill=ink, width=1)
+        draw.polygon([(div_cx, dy - 4), (div_cx + 4, dy), (div_cx, dy + 4), (div_cx - 4, dy)], fill=accent_color)
+        new_red_centres.append((div_cx, dy))
+
+    # Coral post-pass on the new divider diamonds (R+W checkerboard, the
+    # same weathered-coral recipe the corner tacks use).
+    for cx, cy in new_red_centres:
+        for y in range(cy - 5, cy + 6):
+            for x in range(cx - 6, cx + 7):
+                if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = SPECTRA6["white"]
 
 
@@ -6088,6 +6281,13 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
       by a narrow band of white space. The signature border of
       19th-century newspaper typography — no corner accents, no
       coloured ornament, nothing but weighted ink.
+    * **Broadsheet typographic furniture.** A masthead nameplate rule
+      (a thick+thin Scotch pair near the top) with two short column-rule
+      ticks descending from it, a short centred folio rule at the foot,
+      and a small filled-black printer's-diamond dingbat on each rule.
+      All in ink (black) only so the no-chromatic-accent identity holds;
+      every position clears the text block (the quote never starts before
+      y=72).
     """
     width, height = image.size
     page_bg = colors.get("page_bg")
@@ -6134,6 +6334,33 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
         outline=ink,
         width=1,
     )
+
+    # Broadsheet typographic furniture — all in ink (black) only, so the
+    # no-chromatic-accent identity holds (the rust foxing lives on the
+    # paper, not the typography). Every position clears the text block
+    # (the quote never starts before y=72).
+    rule_l = inner_inset + 6
+    rule_r = width - 1 - inner_inset - 6
+    # Masthead nameplate rule — a thick+thin Scotch pair spanning the
+    # inner frame near the top (y≈38), the separator under a broadsheet's
+    # nameplate.
+    mast_y = inner_inset + 20
+    draw.line([(rule_l, mast_y), (rule_r, mast_y)], fill=ink, width=2)
+    draw.line([(rule_l, mast_y + 5), (rule_r, mast_y + 5)], fill=ink, width=1)
+    # Two short column-rule ticks descending from the masthead — the
+    # vertical hairlines that separate broadsheet columns, started just
+    # below the nameplate and stopped above the text (y≤68 < 72).
+    for col_x in (width // 3, 2 * width // 3):
+        draw.line([(col_x, mast_y + 10), (col_x, mast_y + 30)], fill=ink, width=1)
+    # Folio rule at the foot — a short centred rule (clear of the
+    # bottom-left attribution column), the page-foot fold line of a sheet.
+    folio_y = height - 1 - inner_inset - 20
+    folio_cx = width // 2
+    draw.line([(folio_cx - 90, folio_y), (folio_cx + 90, folio_y)], fill=ink, width=1)
+    # Printer's dingbat — a small filled black diamond centred on both
+    # the masthead and the folio rules.
+    for dcx, dy in ((width // 2, mast_y + 5), (folio_cx, folio_y)):
+        draw.polygon([(dcx, dy - 4), (dcx + 4, dy), (dcx, dy + 4), (dcx - 4, dy)], fill=ink)
 
 
 def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
@@ -6216,7 +6443,22 @@ _COMIC_STRIPE_PALETTE = (
 
 
 def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
-    """Paint retro 70s-style 45° racing stripes into the bottom-right corner.
+    """Paint a comic-book panel: Ben-Day halftone corner, racing-stripe
+    chevron, and a heavy black panel gutter.
+
+    Three motifs that read unmistakably as a comic page at a glance:
+
+    * **Ben-Day halftone dots** — an evenly-gridded field of small red
+      dots filling the top-left corner as a right-triangle (the iconic
+      Lichtenstein / four-colour-print texture), diagonally balancing the
+      bottom-right stripes. The dot grid starts ≥22 px in from both edges
+      so the immediate corner — and the ``(15, 15)`` pixel the theme-gating
+      test samples — stays clean yellow page_bg, reading as the print
+      gutter inside the panel border.
+    * **Racing-stripe chevron** (below) — the original motif, untouched.
+    * **Heavy black panel border** — a thick rectangle just inside the
+      canvas edge, the bold gutter line every comic panel is framed by.
+      Painted last so it sits over both the dots and the stripes.
 
     Parallel diagonal bands cycling through the four non-yellow palette
     accents (blue / green / red / black) sweep down-and-right at 45°,
@@ -6250,6 +6492,32 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     through.
     """
     width, height = image.size
+
+    # Ben-Day halftone dots — a gridded red dot field masked to a top-left
+    # right-triangle, diagonally counterweighting the bottom-right stripe
+    # chevron. The grid is inset ≥22 px from both edges so the panel-gutter
+    # corner (and the sampled (15, 15) pixel) stays clean yellow ground;
+    # the hypotenuse (cx + cy ≤ tri_legs) keeps the field a triangle that
+    # mirrors the stripe corner. Dots are red (``colors["accent"]``) on the
+    # yellow page_bg — the classic two-colour comic print register.
+    dot_draw = ImageDraw.Draw(image)
+    # Default to the comic palette (red dots / black gutter) so the direct
+    # ``draw_comic_corner_stripes(img, {"page_bg": ...})`` unit-test calls —
+    # which pass only the page_bg — still render the full panel.
+    dot_color = colors.get("accent", SPECTRA6["red"])
+    dot_r = 3
+    dot_step = 16
+    dot_inset = 26
+    tri_legs = 150
+    cy = dot_inset
+    while cy <= tri_legs:
+        cx = dot_inset
+        while cx <= tri_legs:
+            if cx + cy <= tri_legs:
+                dot_draw.ellipse((cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r), fill=dot_color)
+            cx += dot_step
+        cy += dot_step
+
     qx = width // 2
     qy = height // 2
     qw = width - qx
@@ -6308,6 +6576,21 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     md.polygon([(qw - qh, qh), (qw, 0), (qw, qh)], fill=255)
 
     image.paste(quadrant, (qx, qy), mask=mask)
+
+    # Heavy black comic-panel border — the bold gutter line that frames
+    # every comic panel. Painted last so it sits cleanly over both the
+    # Ben-Day dots and the stripe chevron. Inset 2 / width 4 hugs the
+    # canvas edge (the stroke occupies x/y 2–5), so it clears every gating
+    # test's comic sample point — (6,16), (12,12), (400,11), (15,15),
+    # (20,20), (36,56), all at ≥6 px from the relevant edge — and leaves
+    # the quote column untouched.
+    border_draw = ImageDraw.Draw(image)
+    panel_inset = 2
+    border_draw.rectangle(
+        (panel_inset, panel_inset, width - 1 - panel_inset, height - 1 - panel_inset),
+        outline=colors.get("text", SPECTRA6["black"]),
+        width=4,
+    )
 
 
 # Deterministic stone-grain speckle layout for ``draw_roman_border``. Same
@@ -9646,10 +9929,11 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # width-50. The ring's top vertex sits at y=15
                         # (well inside the label's y=14-29 band), so
                         # the horizontal inset is what does the work.
-    "glacier": 34,      # past the TR frost-crystal cluster. The diagonal
-                        # shard (long_arm=14) reaches roughly to
-                        # x=width-3-outer_inset+1-14 = width-30 with the
-                        # accent-tipped point, plus a 4px breathing gap.
+    "glacier": 37,      # past the TR frost-crystal cluster. The diagonal
+                        # shard (long_arm=16) reaches roughly to
+                        # x=width-3-outer_inset+1-16 = width-32 with the
+                        # accent-tipped point (and a dendrite barb a touch
+                        # further), plus a ~4px breathing gap.
                         # ``deco`` is intentionally absent — its stepped
                         # corner reaches x ≤ width-14 (well outside the
                         # default debug-label edge at SIDE_MARGIN) and
