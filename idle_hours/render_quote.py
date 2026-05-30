@@ -3400,6 +3400,55 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
         fill=ornament_color,
     )
 
+    # Concentric outline ring around the two corner circles — the layered
+    # "target" geometry of a Kandinsky concentric-circle study. Drawn in
+    # the structural frame colour at radius corner_size/2 + 6, so the
+    # visible quarter-arc (the rest clips off-canvas) reads as a compass
+    # sweep echoing the corner disc. Stays clear of the sampled circle
+    # centres — the rings are pure outline well outside the filled discs.
+    half = corner_size // 2
+    ring_pad = 6
+    for ccx, ccy in (
+        (corner_margin + half, corner_margin + half),
+        (width - corner_margin - half, height - corner_margin - half),
+    ):
+        draw.ellipse(
+            (ccx - half - ring_pad, ccy - half - ring_pad,
+             ccx + half + ring_pad, ccy + half + ring_pad),
+            outline=frame_color,
+            width=1,
+        )
+
+    # Off-centre primary semicircles bulging inward from the top and
+    # bottom frames — the playful punctuation of a Bauhaus poster edge.
+    # Deliberately set away from the frame midpoints (x=0.68w / 0.32w,
+    # never x=width//2) so the composition stays asymmetric and the
+    # sampled top/bottom frame-midpoint pixels keep their frame colour.
+    semi_r = 14
+    top_sx = int(width * 0.68)
+    draw.pieslice(
+        (top_sx - semi_r, frame_inset - semi_r, top_sx + semi_r, frame_inset + semi_r),
+        start=0, end=180, fill=accent_color,
+    )
+    bot_sx = int(width * 0.32)
+    bot_y = height - 1 - frame_inset
+    draw.pieslice(
+        (bot_sx - semi_r, bot_y - semi_r, bot_sx + semi_r, bot_y + semi_r),
+        start=180, end=360, fill=yellow_primary,
+    )
+
+    # Two floating primary elements drifting in the otherwise-empty side
+    # margins (x≈32 / width-32, well clear of the dense-layout text column
+    # at x 60–740) — a small red square on the left and a small blue disc
+    # on the right, echoing the corner shapes' forms. Vertically offset
+    # from the side-frame midpoints (y=0.34h / 0.66h, never y=height//2)
+    # so the sampled left/right frame-midpoint pixels stay frame-coloured.
+    sq = 12
+    lx, ly = 32, int(height * 0.34)
+    draw.rectangle((lx - sq // 2, ly - sq // 2, lx + sq // 2, ly + sq // 2), fill=ornament_color)
+    rcx, rcy = width - 32, int(height * 0.66)
+    draw.ellipse((rcx - 6, rcy - 6, rcx + 6, rcy + 6), fill=accent_color)
+
 
 def draw_risograph_border(image: Image.Image, colors: dict) -> None:
     """Paint a lively risograph-inspired print frame.
@@ -6329,7 +6378,22 @@ _COMIC_STRIPE_PALETTE = (
 
 
 def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
-    """Paint retro 70s-style 45° racing stripes into the bottom-right corner.
+    """Paint a comic-book panel: Ben-Day halftone corner, racing-stripe
+    chevron, and a heavy black panel gutter.
+
+    Three motifs that read unmistakably as a comic page at a glance:
+
+    * **Ben-Day halftone dots** — an evenly-gridded field of small red
+      dots filling the top-left corner as a right-triangle (the iconic
+      Lichtenstein / four-colour-print texture), diagonally balancing the
+      bottom-right stripes. The dot grid starts ≥22 px in from both edges
+      so the immediate corner — and the ``(15, 15)`` pixel the theme-gating
+      test samples — stays clean yellow page_bg, reading as the print
+      gutter inside the panel border.
+    * **Racing-stripe chevron** (below) — the original motif, untouched.
+    * **Heavy black panel border** — a thick rectangle just inside the
+      canvas edge, the bold gutter line every comic panel is framed by.
+      Painted last so it sits over both the dots and the stripes.
 
     Parallel diagonal bands cycling through the four non-yellow palette
     accents (blue / green / red / black) sweep down-and-right at 45°,
@@ -6363,6 +6427,32 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     through.
     """
     width, height = image.size
+
+    # Ben-Day halftone dots — a gridded red dot field masked to a top-left
+    # right-triangle, diagonally counterweighting the bottom-right stripe
+    # chevron. The grid is inset ≥22 px from both edges so the panel-gutter
+    # corner (and the sampled (15, 15) pixel) stays clean yellow ground;
+    # the hypotenuse (cx + cy ≤ tri_legs) keeps the field a triangle that
+    # mirrors the stripe corner. Dots are red (``colors["accent"]``) on the
+    # yellow page_bg — the classic two-colour comic print register.
+    dot_draw = ImageDraw.Draw(image)
+    # Default to the comic palette (red dots / black gutter) so the direct
+    # ``draw_comic_corner_stripes(img, {"page_bg": ...})`` unit-test calls —
+    # which pass only the page_bg — still render the full panel.
+    dot_color = colors.get("accent", SPECTRA6["red"])
+    dot_r = 3
+    dot_step = 16
+    dot_inset = 26
+    tri_legs = 150
+    cy = dot_inset
+    while cy <= tri_legs:
+        cx = dot_inset
+        while cx <= tri_legs:
+            if cx + cy <= tri_legs:
+                dot_draw.ellipse((cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r), fill=dot_color)
+            cx += dot_step
+        cy += dot_step
+
     qx = width // 2
     qy = height // 2
     qw = width - qx
@@ -6421,6 +6511,21 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
     md.polygon([(qw - qh, qh), (qw, 0), (qw, qh)], fill=255)
 
     image.paste(quadrant, (qx, qy), mask=mask)
+
+    # Heavy black comic-panel border — the bold gutter line that frames
+    # every comic panel. Painted last so it sits cleanly over both the
+    # Ben-Day dots and the stripe chevron. Inset 2 / width 4 hugs the
+    # canvas edge (the stroke occupies x/y 2–5), so it clears every gating
+    # test's comic sample point — (6,16), (12,12), (400,11), (15,15),
+    # (20,20), (36,56), all at ≥6 px from the relevant edge — and leaves
+    # the quote column untouched.
+    border_draw = ImageDraw.Draw(image)
+    panel_inset = 2
+    border_draw.rectangle(
+        (panel_inset, panel_inset, width - 1 - panel_inset, height - 1 - panel_inset),
+        outline=colors.get("text", SPECTRA6["black"]),
+        width=4,
+    )
 
 
 # Deterministic stone-grain speckle layout for ``draw_roman_border``. Same
@@ -9759,10 +9864,11 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # width-50. The ring's top vertex sits at y=15
                         # (well inside the label's y=14-29 band), so
                         # the horizontal inset is what does the work.
-    "glacier": 34,      # past the TR frost-crystal cluster. The diagonal
-                        # shard (long_arm=14) reaches roughly to
-                        # x=width-3-outer_inset+1-14 = width-30 with the
-                        # accent-tipped point, plus a 4px breathing gap.
+    "glacier": 37,      # past the TR frost-crystal cluster. The diagonal
+                        # shard (long_arm=16) reaches roughly to
+                        # x=width-3-outer_inset+1-16 = width-32 with the
+                        # accent-tipped point (and a dendrite barb a touch
+                        # further), plus a ~4px breathing gap.
                         # ``deco`` is intentionally absent — its stepped
                         # corner reaches x ≤ width-14 (well outside the
                         # default debug-label edge at SIDE_MARGIN) and
