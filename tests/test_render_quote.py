@@ -3472,3 +3472,52 @@ class TestDrawTextDithered:
                         f"placard post-pass flipped a non-checkerboard pixel "
                         f"at ({x}, {y})"
                     )
+
+
+def test_nightvision_border_paints_hud_bearing_ruler():
+    """The upleveled nightvision border adds a bottom-margin bearing-scale
+    ruler (green ticks) with a yellow centre caret."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_nightvision_border(img, rq.THEMES["nightvision"])
+    px = img.load()
+    green = rq.SPECTRA6["green"]
+    accent = rq.THEMES["nightvision"]["accent"]
+    ruler_band = {px[x, y] for x in range(130, 670) for y in range(456, 466)}
+    assert green in ruler_band, "bottom bearing-scale ruler ticks missing"
+    caret_band = {px[x, y] for x in range(394, 407) for y in range(446, 455)}
+    assert accent in caret_band, "centre index caret missing"
+
+
+def test_nightvision_ruler_clears_debug_banner_band():
+    """The new HUD furniture is bottom-weighted so the y=14-29 debug-banner
+    band stays free of it (why nightvision needs no _DEBUG_LABEL_RIGHT_INSET)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_nightvision_border(img, rq.THEMES["nightvision"])
+    px = img.load()
+    accent = rq.THEMES["nightvision"]["accent"]
+    banner_band = {px[x, y] for x in range(130, 670) for y in range(14, 30)}
+    assert accent not in banner_band, "new accent furniture intrudes on banner band"
+
+
+def test_herbarium_border_paints_second_fern_specimen():
+    """The upleveled herbarium border mounts a second pressed-fern specimen
+    in the top-left margin (olive = green/yellow stipple)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_herbarium_border(img, rq.THEMES["herbarium"])
+    px = img.load()
+    green = rq.SPECTRA6["green"]
+    yellow = rq.SPECTRA6["yellow"]
+    fern = {px[x, y] for x in range(42, 67) for y in range(34, 109)}
+    assert green in fern and yellow in fern, "TL fern specimen olive stipple missing"
+
+
+def test_herbarium_border_paints_leaf_mounting_tape():
+    """Off-white gummed mounting-tape strips pin the main BR leaf's midrib."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_herbarium_border(img, rq.THEMES["herbarium"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    leaf_cx = 800 - 1 - 38 - 84 // 2
+    leaf_cy = 480 - 1 - 38 - 42 // 2
+    assert px[leaf_cx, leaf_cy - 18] == white
+    assert px[leaf_cx, leaf_cy + 16] == white

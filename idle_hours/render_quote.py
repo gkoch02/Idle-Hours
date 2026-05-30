@@ -6432,6 +6432,37 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     draw_text(draw, (24, height - 34), 'GAIN AUTO', font=meta_font, fill=accent)
     draw_text(draw, (width - 122, 40), 'AZ 041  EL 17', font=meta_font, fill=accent)
 
+    # HUD bearing-scale ruler along the bottom inner margin — graduated
+    # green ticks with a taller mark every fourth division and a yellow
+    # centre caret, reading as the heading/distance tape of a weapons
+    # readout. Kept in the clear bottom margin (between the corner
+    # brackets, below GAIN AUTO) so it never crowds the quote body and
+    # stays well clear of the y=14-29 debug-banner band up top.
+    scale_y = bottom_y - 3
+    scale_l = margin + 110
+    scale_r = right_x - 110
+    for i, sx in enumerate(range(scale_l, scale_r + 1, 22)):
+        notch = 8 if i % 4 == 0 else 4
+        draw.line((sx, scale_y, sx, scale_y - notch), fill=body, width=1)
+    # Centre index caret — a small downward yellow triangle over the tape.
+    draw.polygon(
+        [(cx, scale_y - 10), (cx - 4, scale_y - 16), (cx + 4, scale_y - 16)],
+        fill=accent,
+    )
+
+    # Rangefinder ladder notches stepping inward along the two bottom
+    # corner brackets' vertical arms — the measurement gradations etched
+    # beside a real reticle. Bottom-weighted so they stay clear of the
+    # debug-banner band the top brackets share.
+    for arm_x, arm_dir in ((margin, +1), (right_x, -1)):
+        for step in (8, 14, 20):
+            ny = bottom_y - step
+            draw.line(
+                (arm_x + arm_dir * (thickness + 1), ny, arm_x + arm_dir * (thickness + 5), ny),
+                fill=body,
+                width=1,
+            )
+
 
 
 _COMIC_STRIPE_PALETTE = (
@@ -7638,6 +7669,10 @@ def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
     tx = label_x0 + (label_w - text_w) // 2
     ty = label_y0 + (label_h - text_h) // 2 - bbox[1]
     draw.text((tx, ty), label_text, font=label_font, fill=ink)
+    # A faint writing rule under the tag so the box reads as a real
+    # specimen label (collector / locality / date form) rather than an
+    # empty outlined rectangle.
+    draw.line((label_x0 + 8, label_y1 - 6, label_x1 - 8, label_y1 - 6), fill=ink, width=1)
 
     # Four pinhole dots at the inner corners of the engraver's rule.
     pinhole_offset = 3
@@ -7651,6 +7686,32 @@ def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
         draw.ellipse(
             (cx - pinhole_radius, cy - pinhole_radius, cx + pinhole_radius, cy + pinhole_radius),
             fill=ink,
+        )
+
+    # Second specimen — a small pressed fern frond hugging the top-left
+    # margin, diagonally counterweighting the bottom-right leaf (real
+    # sheets often mount more than one cutting). Same olive sentinel +
+    # ``(x+y) & 1`` post-pass recipe as the main leaf.
+    fern_x = 54
+    fern_top = 34
+    fern_bot = 108
+    draw.line((fern_x, fern_top, fern_x, fern_bot), fill=olive_sentinel, width=2)
+    for fy in range(fern_top + 8, fern_bot, 11):
+        span = max(4, (fern_bot - fy) // 6)  # leaflets taper toward the tip
+        draw.line((fern_x, fy, fern_x - 10, fy - span), fill=olive_sentinel, width=1)
+        draw.line((fern_x, fy, fern_x + 10, fy - span), fill=olive_sentinel, width=1)
+    for py in range(fern_top - 2, fern_bot + 2):
+        for px in range(fern_x - 12, fern_x + 12):
+            if 0 <= px < width and 0 <= py < height and pixels[px, py] == olive_sentinel and (px + py) & 1:
+                pixels[px, py] = olive_other
+
+    # Gummed mounting-tape strips pinning the main leaf's midrib to the
+    # sheet — the off-white linen hinges that hold a real specimen flat.
+    for ty_strip in (leaf_cy - 18, leaf_cy + 16):
+        draw.rectangle(
+            (leaf_cx - 22, ty_strip - 3, leaf_cx + 22, ty_strip + 3),
+            fill=SPECTRA6["white"],
+            outline=ink,
         )
 
 
