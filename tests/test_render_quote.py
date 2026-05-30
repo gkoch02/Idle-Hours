@@ -3521,3 +3521,61 @@ def test_herbarium_border_paints_leaf_mounting_tape():
     leaf_cy = 480 - 1 - 38 - 42 // 2
     assert px[leaf_cx, leaf_cy - 18] == white
     assert px[leaf_cx, leaf_cy + 16] == white
+
+
+def test_blueprint_border_paints_top_dimension_line():
+    """The upleveled blueprint border adds a top-margin overall-width
+    dimension callout (red rule + arrowheads + measurement figure)."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    dim_red = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == red)
+    assert dim_red > 100, "top dimension line / arrowheads / figure missing"
+
+
+def test_blueprint_border_paints_scale_bar():
+    """The upleveled blueprint border adds a bottom-right graduated
+    SCALE 1:1 legend bar in the drafting-ink (white) colour."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    bar_x = 800 - 1 - 16 - 12 - 80
+    bar_y = 480 - 1 - 16 - 18
+    assert px[bar_x + 2, bar_y + 3] == white, "scale-bar first filled cell missing"
+
+
+def test_blueprint_callouts_clear_debug_banner_band():
+    """The dimension line sits at y=40 — below the y=14-29 debug banner — so
+    blueprint still needs no _DEBUG_LABEL_RIGHT_INSET adjustment for them."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    banner = sum(1 for x in range(600, 690) for y in range(14, 30) if px[x, y] == red)
+    # The TR crosshair is at the frame corner (x~width-16), left of x=600,
+    # so the banner sample band should carry no callout red.
+    assert banner == 0, "blueprint callout intrudes on the debug-banner band"
+
+
+def test_chalkboard_border_paints_handwriting_guide():
+    """The upleveled chalkboard border adds a top-left handwriting
+    practice-guide rule (solid top + dashed mid + solid baseline)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_chalkboard_border(img, rq.THEMES["chalkboard"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    assert px[42, 34] == white, "guide top rule missing"
+    assert px[42, 58] == white, "guide baseline rule missing"
+
+
+def test_chalkboard_border_paints_gold_star():
+    """The upleveled chalkboard border adds a yellow gold-star sticker
+    beside the green teacher's check-mark."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_chalkboard_border(img, rq.THEMES["chalkboard"])
+    px = img.load()
+    yellow = rq.SPECTRA6["yellow"]
+    star = sum(1 for x in range(700, 740) for y in range(38, 58) if px[x, y] == yellow)
+    assert star > 20, "gold-star sticker missing"

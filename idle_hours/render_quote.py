@@ -3734,6 +3734,56 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
         draw.line((cx - arm, cy, cx + arm, cy), fill=mark_color, width=1)
         draw.line((cx, cy - arm, cx, cy + arm), fill=mark_color, width=1)
 
+    # --- Drafting callouts: the annotation furniture every real engineering
+    # sheet carries. Both are kept in the clear margins so the quote (which
+    # never starts before y=72, and whose attribution hangs bottom-left)
+    # overpaints nothing — so no _DEBUG_LABEL_RIGHT_INSET change is needed
+    # (the dimension line is centred at y=40, below the y=14-29 banner band;
+    # the scale bar hugs the bottom-right, clear of the attribution column).
+    callout_font = load_font(META_FONT_CANDIDATES, size=12)
+
+    # Top overall-width dimension line: extension ticks at each end, a
+    # horizontal rule broken in the centre for the measurement figure, and
+    # inward arrowheads — the canonical "overall width" callout. Rule +
+    # ticks in the drafting-ink body colour; arrowheads + figure in the
+    # accent (registration) ink so they read as a measurement annotation.
+    dim_y = 40
+    dim_l = 120
+    dim_r = width - 1 - 120
+    mid = width // 2
+    figure = str(width)  # "800" at the panel's reference width
+    fb = draw.textbbox((0, 0), figure, font=callout_font)
+    fw = fb[2] - fb[0]
+    gap = fw // 2 + 8
+    draw.line((dim_l, dim_y - 8, dim_l, dim_y + 8), fill=border_color, width=1)
+    draw.line((dim_r, dim_y - 8, dim_r, dim_y + 8), fill=border_color, width=1)
+    draw.line((dim_l, dim_y, mid - gap, dim_y), fill=border_color, width=1)
+    draw.line((mid + gap, dim_y, dim_r, dim_y), fill=border_color, width=1)
+    for ax, adir in ((dim_l, 1), (dim_r, -1)):
+        draw.polygon(
+            [(ax, dim_y), (ax + adir * 6, dim_y - 3), (ax + adir * 6, dim_y + 3)],
+            fill=mark_color,
+        )
+    draw.text((mid - fw // 2, dim_y - (fb[3] - fb[1]) // 2 - fb[1]), figure, font=callout_font, fill=mark_color)
+
+    # Bottom-right graduated scale bar: five 16 px cells alternating
+    # filled / outline in the drafting-ink colour, with a "SCALE 1:1"
+    # label above — the legend bar of a drawing. Tucked into the corner
+    # inside the frame, clear of the bottom-right registration crosshair
+    # and the bottom-left attribution.
+    bar_cells = 5
+    cell_w = 16
+    bar_w = bar_cells * cell_w
+    bar_x = width - 1 - frame_inset - 12 - bar_w
+    bar_y = height - 1 - frame_inset - 18
+    for i in range(bar_cells):
+        x0 = bar_x + i * cell_w
+        if i % 2 == 0:
+            draw.rectangle((x0, bar_y, x0 + cell_w, bar_y + 6), fill=border_color)
+        else:
+            draw.rectangle((x0, bar_y, x0 + cell_w, bar_y + 6), outline=border_color, width=1)
+    draw.text((bar_x, bar_y - 16), "SCALE 1:1", font=callout_font, fill=border_color)
+
 
 def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
     """Paint a manuscript-style border: cream-washed vellum + double
@@ -4673,6 +4723,39 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
             for x in range(x0, x1 + 1):
                 if (x + y) & 1 == 0 and pixels[x, y] == smudge_red:
                     pixels[x, y] = SPECTRA6["white"]
+    # Handwriting practice-guide rule in the top-left margin — the
+    # solid-top / dashed-midline / solid-baseline ruling schoolchildren
+    # write between. The defining gesture of the Playwrite GB J Guides
+    # face this theme uses (the UK primary-school joined-cursive model
+    # *with* the dotted practice letters), drawn in white chalk. Kept in
+    # the clear top margin (y≈34-58, above the y≥72 text block) and at the
+    # left (clear of the right-aligned debug banner), so it never crowds
+    # the quote.
+    guide_x0 = inner_inset + 12
+    guide_x1 = guide_x0 + 210
+    guide_top = 34
+    guide_mid = 46
+    guide_base = 58
+    draw.line((guide_x0, guide_top, guide_x1, guide_top), fill=frame_color, width=1)
+    draw.line((guide_x0, guide_base, guide_x1, guide_base), fill=frame_color, width=1)
+    for dash_x in range(guide_x0, guide_x1, 12):  # dashed midline
+        draw.line((dash_x, guide_mid, dash_x + 6, guide_mid), fill=frame_color, width=1)
+
+    # Gold-star "well done" sticker just left of the teacher's check —
+    # completing the graded gesture (tick + star). A small five-point star
+    # in the accent (yellow chalk), sitting in the same below-the-banner
+    # band as the check (y≈50) so chalkboard still needs no
+    # _DEBUG_LABEL_RIGHT_INSET entry.
+    star_cx = tick_elbow_x - 40
+    star_cy = tick_elbow_y - 4
+    star_r = 9
+    star_pts = []
+    for k in range(10):
+        ang = -math.pi / 2 + k * math.pi / 5
+        rr = star_r if k % 2 == 0 else star_r * 0.42
+        star_pts.append((star_cx + rr * math.cos(ang), star_cy + rr * math.sin(ang)))
+    draw.polygon(star_pts, fill=accent_color)
+
     # Yellow accent kept in the local namespace so a future palette
     # tweak in ``THEMES["chalkboard"]`` (e.g. swapping yellow chalk for
     # a different colour) keeps the cross-reference live.
