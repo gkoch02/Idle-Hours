@@ -4711,6 +4711,12 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
       panel distance into coral pink (R+W 1:1 — weathered hand-painted
       red, since the exposed corners of a sandwich-board sign would
       be the first thing to fade in the rain).
+    * **Sign-painter header + footer dividers** — a short centred black
+      rule carrying a small coral diamond (weathered via the same R+W
+      checkerboard the tacks use), the hand-lettered ornament that tops
+      and tails an A-frame menu board. Header at y≈34 (clear of the text
+      block at y≥72); footer centred (clear of the bottom-left
+      attribution column).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -4793,6 +4799,31 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
         for y in range(y0, y1 + 1):
             for x in range(x0, x1 + 1):
                 if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = SPECTRA6["white"]
+
+    # Sign-painter header + footer dividers — a short centred black rule
+    # carrying a small coral diamond, the hand-lettered ornament that
+    # tops and tails an A-frame menu board. Header at y≈34 (clear of the
+    # text block at y≥72); footer centred (clear of the bottom-left
+    # attribution column). Black rules + a red diamond that the coral
+    # post-pass below weathers to match the corner tacks.
+    ink = colors["text"]
+    div_cx = width // 2
+    head_y = inner_inset + 16
+    foot_y = height - 1 - inner_inset - 16
+    new_red_centres = []
+    for dy in (head_y, foot_y):
+        draw.line([(div_cx - 80, dy), (div_cx - 10, dy)], fill=ink, width=1)
+        draw.line([(div_cx + 10, dy), (div_cx + 80, dy)], fill=ink, width=1)
+        draw.polygon([(div_cx, dy - 4), (div_cx + 4, dy), (div_cx, dy + 4), (div_cx - 4, dy)], fill=accent_color)
+        new_red_centres.append((div_cx, dy))
+
+    # Coral post-pass on the new divider diamonds (R+W checkerboard, the
+    # same weathered-coral recipe the corner tacks use).
+    for cx, cy in new_red_centres:
+        for y in range(cy - 5, cy + 6):
+            for x in range(cx - 6, cx + 7):
+                if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = SPECTRA6["white"]
 
 
@@ -6250,6 +6281,13 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
       by a narrow band of white space. The signature border of
       19th-century newspaper typography — no corner accents, no
       coloured ornament, nothing but weighted ink.
+    * **Broadsheet typographic furniture.** A masthead nameplate rule
+      (a thick+thin Scotch pair near the top) with two short column-rule
+      ticks descending from it, a short centred folio rule at the foot,
+      and a small filled-black printer's-diamond dingbat on each rule.
+      All in ink (black) only so the no-chromatic-accent identity holds;
+      every position clears the text block (the quote never starts before
+      y=72).
     """
     width, height = image.size
     page_bg = colors.get("page_bg")
@@ -6296,6 +6334,33 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
         outline=ink,
         width=1,
     )
+
+    # Broadsheet typographic furniture — all in ink (black) only, so the
+    # no-chromatic-accent identity holds (the rust foxing lives on the
+    # paper, not the typography). Every position clears the text block
+    # (the quote never starts before y=72).
+    rule_l = inner_inset + 6
+    rule_r = width - 1 - inner_inset - 6
+    # Masthead nameplate rule — a thick+thin Scotch pair spanning the
+    # inner frame near the top (y≈38), the separator under a broadsheet's
+    # nameplate.
+    mast_y = inner_inset + 20
+    draw.line([(rule_l, mast_y), (rule_r, mast_y)], fill=ink, width=2)
+    draw.line([(rule_l, mast_y + 5), (rule_r, mast_y + 5)], fill=ink, width=1)
+    # Two short column-rule ticks descending from the masthead — the
+    # vertical hairlines that separate broadsheet columns, started just
+    # below the nameplate and stopped above the text (y≤68 < 72).
+    for col_x in (width // 3, 2 * width // 3):
+        draw.line([(col_x, mast_y + 10), (col_x, mast_y + 30)], fill=ink, width=1)
+    # Folio rule at the foot — a short centred rule (clear of the
+    # bottom-left attribution column), the page-foot fold line of a sheet.
+    folio_y = height - 1 - inner_inset - 20
+    folio_cx = width // 2
+    draw.line([(folio_cx - 90, folio_y), (folio_cx + 90, folio_y)], fill=ink, width=1)
+    # Printer's dingbat — a small filled black diamond centred on both
+    # the masthead and the folio rules.
+    for dcx, dy in ((width // 2, mast_y + 5), (folio_cx, folio_y)):
+        draw.polygon([(dcx, dy - 4), (dcx + 4, dy), (dcx, dy + 4), (dcx - 4, dy)], fill=ink)
 
 
 def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
