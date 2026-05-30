@@ -3525,13 +3525,18 @@ def test_herbarium_border_paints_leaf_mounting_tape():
 
 def test_blueprint_border_paints_top_dimension_line():
     """The upleveled blueprint border adds a top-margin overall-width
-    dimension callout (red rule + arrowheads + measurement figure)."""
+    dimension callout. The rule + extension ticks are in the white drafting
+    ink; the inward arrowheads and the centred measurement figure are in the
+    red registration ink — so both inks appear in the dimension band."""
     img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
     rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
     px = img.load()
     red = rq.SPECTRA6["red"]
+    white = rq.SPECTRA6["white"]
     dim_red = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == red)
-    assert dim_red > 100, "top dimension line / arrowheads / figure missing"
+    dim_white = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == white)
+    assert dim_red > 30, "dimension arrowheads / figure (red) missing"
+    assert dim_white > 100, "dimension rule / extension ticks (white) missing"
 
 
 def test_blueprint_border_paints_scale_bar():
