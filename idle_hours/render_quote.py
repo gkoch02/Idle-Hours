@@ -3492,10 +3492,22 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
     """Paint a restrained academic-journal margin treatment.
 
-    Scholar gets subtle editorial structure rather than loud decoration:
-    a double blue frame, two inner column rules, and a few sparse red
-    reference marks at the outer margins. It should feel like a curated
-    critical edition, not a page that has been attacked by graduate students.
+    Scholar gets subtle editorial structure rather than loud decoration,
+    the vocabulary of a hand-set critical edition:
+
+    * a **double blue frame** (outer + inner rule);
+    * **printer's corner brackets** — short L-ticks tucked just inside
+      the inner frame's four corners, the way a carefully composed page
+      registers its type area;
+    * a centred **asterism** (the three-dot ``⁂`` section break) at the
+      head and a centred **folio ornament** (a short rule pierced by a
+      small red lozenge) at the foot — the traditional academic dingbats;
+    * thin **margin ruling lines** down both sides that turn the three
+      footnote reference numbers from floating marks into proper hanging
+      marginalia, each tagged with a small red tick.
+
+    Everything stays blue + red so the page still reads as a curated
+    journal offprint, not one attacked by graduate students.
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -3514,12 +3526,66 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
+    # Printer's corner brackets — short right-angle ticks set a few px
+    # inside the inner frame at each corner. Reads as the registration
+    # marks of a well-composed type area.
+    bracket_inset = inner_inset + 6
+    bracket_arm = 14
+    left = bracket_inset
+    right = width - 1 - bracket_inset
+    top = bracket_inset
+    bottom = height - 1 - bracket_inset
+    for cx, cy, hx, vy in (
+        (left, top, +1, +1),
+        (right, top, -1, +1),
+        (left, bottom, +1, -1),
+        (right, bottom, -1, -1),
+    ):
+        draw.line([(cx, cy), (cx + hx * bracket_arm, cy)], fill=body, width=1)
+        draw.line([(cx, cy), (cx, cy + vy * bracket_arm)], fill=body, width=1)
+
+    # Side margin ruling lines — define the marginalia columns the
+    # footnote numbers hang in. x=40 / width-40 stay clear of the widest
+    # (dense, max_width=680 → text left edge 60) quote column.
+    rule_x_left = 40
+    rule_x_right = width - 1 - 40
+    rule_top = inner_inset + 22
+    rule_bottom = height - 1 - inner_inset - 22
+    for rx in (rule_x_left, rule_x_right):
+        draw.line([(rx, rule_top), (rx, rule_bottom)], fill=body, width=1)
+
+    # Hanging footnote reference marks in the ruled margins, each with a
+    # small red tick on the outer side so the number reads as an
+    # editorial annotation rather than stray ink.
     marker_font = load_font(META_FONT_BOLD_CANDIDATES, size=14)
     for label, y in [("1", 104), ("2", height // 2 - 8), ("3", height - 118)]:
         bbox = draw.textbbox((0, 0), label, font=marker_font)
         xoff = (bbox[2] - bbox[0]) // 2
         draw_text(draw, (52 - xoff, y), label, font=marker_font, fill=accent)
         draw_text(draw, (width - 52 - xoff, y), label, font=marker_font, fill=accent)
+        draw.line([(rule_x_left, y + 8), (rule_x_left + 5, y + 8)], fill=accent, width=1)
+        draw.line([(rule_x_right - 5, y + 8), (rule_x_right, y + 8)], fill=accent, width=1)
+
+    # Head asterism (⁂) — three small red lozenges in a triangle, the
+    # classic typographic section break, centred above the type area.
+    acx = width // 2
+    acy = 42
+    lz = 3  # lozenge half-size
+    for px, py in ((acx, acy - 4), (acx - 7, acy + 5), (acx + 7, acy + 5)):
+        draw.polygon(
+            [(px, py - lz), (px + lz, py), (px, py + lz), (px - lz, py)],
+            fill=accent,
+        )
+
+    # Foot folio ornament — a short centred blue rule pierced by a small
+    # red lozenge, the page-foot dingbat of a printed offprint.
+    fy = height - 40
+    draw.line([(acx - 34, fy), (acx - 8, fy)], fill=body, width=1)
+    draw.line([(acx + 8, fy), (acx + 34, fy)], fill=body, width=1)
+    draw.polygon(
+        [(acx, fy - 4), (acx + 4, fy), (acx, fy + 4), (acx - 4, fy)],
+        fill=accent,
+    )
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
@@ -4292,12 +4358,43 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
         width=1,
     )
 
-    # Frost-crystal clusters at the four corners. Each cluster paints
-    # three triangular shards fanning out *along* the two adjacent edges
-    # from the corner. Shard 1 is short, on the horizontal axis; shard
-    # 2 is short, on the vertical axis; shard 3 is the longest, on the
-    # 45° diagonal — tipped in the accent colour for aurora-on-ice
-    # contrast.
+    # Frost-edge wash — a sparse sky-blue frost gathering at the top and
+    # bottom margins of the pane. The density tapers from the frame edge
+    # inward (a gradient Bayer threshold), so the ground reads as ice
+    # creeping across a window rather than a flat sheet. Bands are kept
+    # to the ≤44 px clear margin above/below the type area (text never
+    # starts before y=72) and inside the frame, and only flip *white*
+    # ground pixels to blue, so the result is a pale frosted speckle that
+    # leaves the blue body text fully legible. Skipped on non-white
+    # grounds (the unit-test sentinel render) since there is nothing to
+    # frost.
+    pixels = image.load()
+    band_depth = 44
+    inner_l = outer_inset + 1
+    inner_r = width - 1 - outer_inset
+    white = SPECTRA6["white"]
+    for band_top, grad_dir in ((outer_inset + 1, +1), (height - 1 - outer_inset - band_depth, -1)):
+        for row in range(band_depth):
+            y = band_top + row
+            if y < 0 or y >= height:
+                continue
+            # Distance from the frame edge (0 at edge → band_depth at inner lip).
+            edge_dist = row if grad_dir > 0 else band_depth - 1 - row
+            # Peak ~5/16 frost at the edge, fading linearly to bare.
+            thresh = max(0, 5 - (edge_dist * 5) // band_depth)
+            if thresh <= 0:
+                continue
+            for x in range(inner_l, inner_r):
+                if BAYER_4x4[y % 4][x % 4] < thresh and pixels[x, y] == white:
+                    pixels[x, y] = body_color
+
+    # Frost-crystal clusters at the four corners. Each cluster fans a
+    # spray of shards out *into* the page from the corner: three slim
+    # blue splinters (horizontal, vertical, and an intermediate one) plus
+    # the longest diagonal splinter tipped in the accent colour for
+    # aurora-on-ice contrast, with two tiny dendrite barbs branching off
+    # it the way real hoar-frost grows feathered side-arms. A small blue
+    # hub dot anchors the spray at the corner.
     corner_anchors = [
         # (anchor_x, anchor_y, dx, dy) — inner-frame corner plus the
         # unit-vector pair pointing into the page.
@@ -4307,49 +4404,65 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
         (width - 3 - outer_inset, height - 3 - outer_inset, -1, -1),       # bottom-right
     ]
     short_arm = 9
-    long_arm = 14
+    mid_arm = 12
+    long_arm = 16
     base_half = 3  # half-width of each shard's base near the corner
     for ax, ay, dx, dy in corner_anchors:
         # Horizontal shard — tip along the top/bottom edge.
         tip_h = (ax + dx * short_arm, ay)
-        base_h_a = (ax, ay - base_half * dy)
-        base_h_b = (ax, ay + base_half * dy)
-        draw.polygon([tip_h, base_h_a, base_h_b], fill=body_color)
+        draw.polygon([tip_h, (ax, ay - base_half * dy), (ax, ay + base_half * dy)], fill=body_color)
         # Vertical shard — tip along the left/right edge.
         tip_v = (ax, ay + dy * short_arm)
-        base_v_a = (ax - base_half * dx, ay)
-        base_v_b = (ax + base_half * dx, ay)
-        draw.polygon([tip_v, base_v_a, base_v_b], fill=body_color)
+        draw.polygon([tip_v, (ax - base_half * dx, ay), (ax + base_half * dx, ay)], fill=body_color)
+        # Two intermediate blue shards filling the 45° fan, slightly
+        # offset toward each edge so the spray reads as a crystalline
+        # spread rather than a single line.
+        tip_m1 = (ax + dx * mid_arm, ay + dy * (mid_arm // 2))
+        draw.polygon([tip_m1, (ax + dx * base_half, ay), (ax, ay + dy * base_half)], fill=body_color)
+        tip_m2 = (ax + dx * (mid_arm // 2), ay + dy * mid_arm)
+        draw.polygon([tip_m2, (ax, ay + dy * base_half), (ax + dx * base_half, ay)], fill=body_color)
         # Diagonal shard — the longest, tipped in accent for aurora.
         tip_d = (ax + dx * long_arm, ay + dy * long_arm)
-        base_d_a = (ax + dx * base_half, ay - dy * base_half)
-        base_d_b = (ax - dx * base_half, ay + dy * base_half)
-        draw.polygon([tip_d, base_d_a, base_d_b], fill=accent_color)
+        draw.polygon(
+            [tip_d, (ax + dx * base_half, ay - dy * base_half), (ax - dx * base_half, ay + dy * base_half)],
+            fill=accent_color,
+        )
+        # Dendrite barbs feathering off the diagonal shard (accent, so
+        # the sky-blue post-pass below lifts them with the main spine).
+        mid_d = (ax + dx * (long_arm - 5), ay + dy * (long_arm - 5))
+        draw.line([mid_d, (mid_d[0] + dx * 4, mid_d[1])], fill=accent_color, width=1)
+        draw.line([mid_d, (mid_d[0], mid_d[1] + dy * 4)], fill=accent_color, width=1)
+        # Hub dot.
+        draw.ellipse([ax - 1, ay - 1, ax + 1, ay + 1], fill=body_color)
 
-    # Mid-edge snowflake ticks. Four-armed star: a filled diamond plus
-    # a hairline cross through it. Painted in body colour so the
-    # ornament reads as an architectural rivet rather than a feature
-    # accent.
-    star_r = 6
+    # Mid-edge snowflake ticks — six-armed frost stars (three crossing
+    # spokes at 0°/60°/120° with a small forked barb at each spoke tip)
+    # plus a filled blue hub diamond. Painted in body colour so the
+    # ornament reads as architectural frost rather than a feature accent.
+    star_r = 7
     midpoints = [
-        (width // 2, outer_inset),            # top
+        (width // 2, outer_inset),               # top
         (width // 2, height - 1 - outer_inset),  # bottom
-        (outer_inset, height // 2),           # left
+        (outer_inset, height // 2),              # left
         (width - 1 - outer_inset, height // 2),  # right
     ]
     diamond_r = 3
+    # Unit directions for three spokes (and their negatives → six arms).
+    spokes = [(1.0, 0.0), (0.5, 0.866), (-0.5, 0.866)]
     for mx, my in midpoints:
         draw.polygon(
-            [
-                (mx, my - diamond_r),
-                (mx + diamond_r, my),
-                (mx, my + diamond_r),
-                (mx - diamond_r, my),
-            ],
+            [(mx, my - diamond_r), (mx + diamond_r, my), (mx, my + diamond_r), (mx - diamond_r, my)],
             fill=body_color,
         )
-        draw.line([(mx - star_r, my), (mx + star_r, my)], fill=body_color, width=1)
-        draw.line([(mx, my - star_r), (mx, my + star_r)], fill=body_color, width=1)
+        for ux, uy in spokes:
+            ex, ey = mx + ux * star_r, my + uy * star_r
+            nx, ny = mx - ux * star_r, my - uy * star_r
+            draw.line([(nx, ny), (ex, ey)], fill=body_color, width=1)
+            # Forked barbs at both tips.
+            for tip_x, tip_y, sgn in ((ex, ey, -1), (nx, ny, +1)):
+                bx, by = tip_x + sgn * ux * 3, tip_y + sgn * uy * 3
+                draw.line([(tip_x, tip_y), (bx - uy * 2, by + ux * 2)], fill=body_color, width=1)
+                draw.line([(tip_x, tip_y), (bx + uy * 2, by - ux * 2)], fill=body_color, width=1)
 
     # Aurora-on-ice post-pass: flip ~50% of the diagonal shard's green
     # pixels to white on a 1×1 checkerboard inside each corner cluster's
