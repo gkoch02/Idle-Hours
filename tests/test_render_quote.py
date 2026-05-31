@@ -3678,10 +3678,13 @@ def test_risograph_border_paints_registration_colour_bar():
     px = img.load()
     red = rq.SPECTRA6["red"]
     blue = rq.SPECTRA6["blue"]
-    bar_red = sum(1 for x in range(337, 360) for y in range(22, 35) if px[x, y] == red)
-    bar_blue = sum(1 for x in range(363, 386) for y in range(22, 35) if px[x, y] == blue)
+    bar_red = sum(1 for x in range(337, 360) for y in range(24, 33) if px[x, y] == red)
+    bar_blue = sum(1 for x in range(363, 386) for y in range(24, 33) if px[x, y] == blue)
     assert bar_red > 100, "registration-bar red swatch missing"
     assert bar_blue > 100, "registration-bar blue swatch missing"
+    # The bar must clear y=22, the coordinate the illuminated cross-gating
+    # test samples to prove no other theme paints centre-top there.
+    assert px[400, 22] == (255, 255, 255), "registration bar must clear y=22"
 
 
 def test_risograph_registration_bar_lavender_swatch_is_red_and_blue():
@@ -3694,7 +3697,7 @@ def test_risograph_registration_bar_lavender_swatch_is_red_and_blue():
     blue = rq.SPECTRA6["blue"]
     black = rq.SPECTRA6["black"]
     lav_x0 = 337 + 2 * 26
-    region = [px[x, y] for x in range(lav_x0, lav_x0 + 23) for y in range(22, 35)]
+    region = [px[x, y] for x in range(lav_x0, lav_x0 + 23) for y in range(24, 33)]
     assert region.count(red) > 30, "lavender swatch red component missing"
     assert region.count(blue) > 30, "lavender swatch blue component missing"
     assert black not in region, "lavender swatch must not introduce black ink"

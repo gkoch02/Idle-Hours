@@ -3542,18 +3542,21 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
     # ink density and plate alignment. Five small swatches: red, blue,
     # then a lavender overprint swatch (the R+B+W 3-way recipe the corner
     # registration crosses use — the authentic "where two plates wash
-    # together" tone), then red and blue again. Centred horizontally so
-    # it clears the body block (which never starts before the inner frame
-    # at y=34) and sits above it; preserves the no-black-ink invariant
+    # together" tone), then red and blue again. Centred horizontally and
+    # tucked into the clear band between the shifted-accent frame's top
+    # rule (y=23-24) and the inner rule (y=34), so it clears the 1px gap
+    # at y=22 that the illuminated cross-gating test samples at (400, 22)
+    # — and sits well above the body block (which never starts before
+    # the inner frame at y=34). Preserves the no-black-ink invariant
     # (every swatch is red / blue / white only). The lavender swatch is
     # painted in a sentinel and bbox-post-passed like the crosses.
     swatch_w = 22
-    swatch_h = 12
+    swatch_h = 8
     swatch_gap = 4
     bar_kinds = ("red", "blue", "lavender", "red", "blue")
     bar_total = len(bar_kinds) * swatch_w + (len(bar_kinds) - 1) * swatch_gap
     bar_x0 = (width - bar_total) // 2
-    bar_y = outer + 2
+    bar_y = 24
     lavender_bboxes: list[tuple[int, int, int, int]] = []
     for i, kind in enumerate(bar_kinds):
         sx0 = bar_x0 + i * (swatch_w + swatch_gap)
