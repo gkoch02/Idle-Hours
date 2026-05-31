@@ -3742,3 +3742,41 @@ def test_saloon_border_paints_side_drop_pendants():
     right = sum(1 for x in range(779, 796) for y in range(248, 290) if px[x, y] == red)
     assert left > 40, "left drop-pendant chain missing"
     assert right > 40, "right drop-pendant chain missing"
+
+
+def test_comic_border_paints_action_starburst():
+    """The upleveled comic border adds a red action-starburst in the empty
+    top-right corner (red fill + black ink spikes), completing the
+    three-corner composition."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["yellow"])
+    rq.draw_comic_corner_stripes(img, rq.THEMES["comic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    black = rq.SPECTRA6["black"]
+    burst_red = sum(1 for x in range(700, 775) for y in range(28, 98) if px[x, y] == red)
+    burst_black = sum(1 for x in range(700, 775) for y in range(28, 98) if px[x, y] == black)
+    assert burst_red > 500, "action starburst red fill missing"
+    assert burst_black > 100, "action starburst black ink spikes missing"
+
+
+def test_comic_starburst_clears_cross_theme_gating_samples():
+    """The new top-right starburst must not intrude on the corner-gutter
+    sample points the cross-theme gating tests rely on."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["yellow"])
+    rq.draw_comic_corner_stripes(img, rq.THEMES["comic"])
+    px = img.load()
+    yellow = rq.SPECTRA6["yellow"]
+    for pt in ((15, 15), (12, 12), (400, 11), (20, 20)):
+        assert px[pt] == yellow, f"comic starburst intrudes on gating sample {pt}"
+
+
+def test_chanbara_border_paints_brush_tick_column():
+    """The upleveled chanbara border adds a vertical brush-tick signature
+    column in the empty left margin (maroon = red+black, so red survives on
+    the odd-parity half of the post-pass)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_chanbara_border(img, rq.THEMES["chanbara"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    col_red = sum(1 for x in range(20, 57) for y in range(188, 283) if px[x, y] == red)
+    assert col_red > 40, "brush-tick signature column missing"

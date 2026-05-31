@@ -5148,6 +5148,32 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         width=2,
     )
 
+    # Vertical brush-tick column in the empty left margin — the hanging
+    # signature / date column a kabuki or samurai-cinema poster runs down
+    # the side of the artist's seal. Five short horizontal sumi strokes of
+    # varied length (a real hand-inked run of marks is uneven), painted in
+    # red as a sentinel and maroon-post-passed to share the chop's aged-ink
+    # tonal register. Pinned to x≈14-40, y≈196-280 — the tall clear band on
+    # the far left below the oversized opening quote-mark (which occupies
+    # y≈20-140) and above the bottom rising-sun arc (which only reaches the
+    # bottom-right quadrant). Well left of the body block, which on the
+    # widest dense layout starts at x≥60.
+    tick_cx = chop_left + chop_w // 2
+    tick_specs = ((196, 11), (212, 9), (228, 12), (244, 8), (260, 10))
+    for ty, half in tick_specs:
+        draw.line([(tick_cx - half, ty), (tick_cx + half, ty)], fill=sentinel_red, width=2)
+    # A couple of small ink-spatter flecks trailing off the lowest ticks,
+    # for the hand-inked sumi-e feel — single filled dots, same sentinel.
+    for fx, fy in ((tick_cx + 15, 266), (tick_cx - 13, 272), (tick_cx + 6, 278)):
+        draw.ellipse((fx - 1, fy - 1, fx + 1, fy + 1), fill=sentinel_red)
+    # Maroon post-pass over the brush-tick column bbox (x±18, y 188-282).
+    col_x0 = max(0, tick_cx - 18)
+    col_x1 = min(width - 1, tick_cx + 18)
+    for py in range(188, 283):
+        for px in range(col_x0, col_x1 + 1):
+            if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = maroon_dark
+
 
 def _lcars_paint_lavender_block(pixels, left: int, top: int, right: int, bot: int,
                                 sentinel) -> None:
@@ -6948,6 +6974,34 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
         outline=colors.get("text", SPECTRA6["black"]),
         width=4,
     )
+
+    # Action starburst in the empty top-right corner — the jagged
+    # explosion-burst silhouette every comic page stamps a "POW!" / "ZAP!"
+    # into. Diagonally counterweights the top-left Ben-Day dot field and
+    # the bottom-right racing stripes, completing the three-corner comic-
+    # page composition (the TR was the one empty corner). A 16-point star
+    # polygon (alternating outer / inner radii) filled red with a heavy
+    # black outline — the classic two-colour comic register (red fill,
+    # black ink), pulling only from the comic palette (accent / text).
+    # Centred at (width-70, 70): the burst's leftmost spike reaches
+    # x≈width-115 and its lowest y≈115, so it clears the body block (the
+    # quote never starts before y=72 and the widest dense layout ends at
+    # x≤740) and sits cleanly inside the heavy panel border.
+    burst_color = colors.get("accent", SPECTRA6["red"])
+    burst_ink = colors.get("text", SPECTRA6["black"])
+    burst_cx, burst_cy = width - 68, 62
+    outer_r, inner_r = 40, 20
+    points = 12
+    burst_pts = []
+    for i in range(points * 2):
+        ang = -math.pi / 2 + i * math.pi / points
+        rr = outer_r if i % 2 == 0 else inner_r
+        burst_pts.append((burst_cx + rr * math.cos(ang), burst_cy + rr * math.sin(ang)))
+    border_draw.polygon(burst_pts, fill=burst_color, outline=burst_ink)
+    # Re-stroke the spikes heavier so the outline reads at panel distance.
+    for i in range(0, points * 2, 2):
+        sx, sy = burst_pts[i]
+        border_draw.line((burst_cx, burst_cy, sx, sy), fill=burst_ink, width=1)
 
 
 # Deterministic stone-grain speckle layout for ``draw_roman_border``. Same
