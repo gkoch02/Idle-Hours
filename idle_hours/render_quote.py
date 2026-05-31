@@ -9133,9 +9133,11 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
 
     blob_rng = _random_blob.Random(_FIRMAMENT_STAR_SEED ^ 0x42)
 
-    def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0) -> list[tuple[float, float]]:
+    def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0,
+                    angle: float = 0.0) -> tuple[list[tuple[float, float]], float, float, float, float]:
         n = 32
         points = []
+        ca, sa = math.cos(angle), math.sin(angle)
         for i in range(n):
             t = 2.0 * math.pi * i / n
             # Per-vertex radial wobble in [0.65, 1.15] * base_r so the
@@ -9145,46 +9147,67 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
             r = base_r * (0.65 + 0.40 * blob_rng.random()) * (
                 0.85 + 0.30 * blob_rng.random()
             )
-            points.append((cx + r * math.cos(t) * aspect, cy + r * math.sin(t)))
-        return points
+            # Build the blob along its own (long, short) axes then rotate
+            # by ``angle`` so the band lies on a diagonal — the canonical
+            # slanted arm of the Milky Way as classical atlases drew it,
+            # rather than an axis-aligned ellipse that reads as a blot.
+            lx = r * math.cos(t) * aspect
+            ly = r * math.sin(t)
+            points.append((cx + lx * ca - ly * sa, cy + lx * sa + ly * ca))
+        # Return the rotated centre/axis frame too, so the scatter pass
+        # can compute a radial density falloff in the blob's own space
+        # (dense core fading to sparse edge — a real star cloud, not a
+        # uniform confetti fill).
+        return points, cx, cy, base_r * aspect, base_r
 
-    # Top blob — drifts above the moon, shorter and shallower than
-    # before so the band reads as a wispy nebula rather than a solid
-    # cloud. Sits between Cassiopeia (TL) and Lyra (TR), threading
-    # below the ecliptic arc.
-    top_blob = _build_blob(width / 2 + 30, 52, 36, aspect=2.2)
-    # Bottom blob — narrower, mirrored opposite-diagonal.
-    bottom_blob = _build_blob(width / 2 - 60, height - 30, 32, aspect=2.4)
+    # Top blob — drifts above the moon, a shallow diagonal band tilted
+    # down-to-the-right. Sits between Cassiopeia (TL) and Lyra (TR),
+    # threading below the ecliptic arc.
+    top_blob = _build_blob(width / 2 + 30, 52, 34, aspect=2.2, angle=0.18)
+    # Bottom blob — mirrored, tilted the opposite diagonal.
+    bottom_blob = _build_blob(width / 2 - 60, height - 30, 30, aspect=2.4, angle=-0.20)
 
-    for poly in (top_blob, bottom_blob):
+    for poly, bcx, bcy, blob_rx, blob_ry in (top_blob, bottom_blob):
         draw.polygon(poly, fill=milky_sentinel)
         xs = [p[0] for p in poly]
         ys = [p[1] for p in poly]
         x0, x1 = max(0, int(min(xs))), min(width, int(max(xs)) + 1)
         y0, y1 = max(0, int(min(ys))), min(height, int(max(ys)) + 1)
+        inv_rx = 1.0 / max(1.0, blob_rx)
+        inv_ry = 1.0 / max(1.0, blob_ry)
         for y in range(y0, y1):
             for x in range(x0, x1):
                 if pixels[x, y] != milky_sentinel:
                     continue
-                # Deterministic per-position hash → very sparse paint:
-                # 1/40 chance yellow pin-star, 1/30 chance red dust,
-                # 1/30 chance blue dust. Total ~9% painted; remaining
-                # ~91% reverts to the navy ground. At panel viewing
-                # distance the eye averages this to a faint cloudy
-                # haze with embedded pin-stars — what 17th-century
-                # atlas engravers stippled when they drew the
-                # Milky Way's diffuse trail.
+                # Deterministic per-position hash → sparse paint, but the
+                # *density* now falls off from the blob centre outward so
+                # the band reads as a concentrated star cloud fading into
+                # the navy rather than a uniform confetti rectangle.
+                # ``edge`` is the normalised radial distance (0 at centre,
+                # ~1 at the silhouette edge); we widen the "revert to
+                # ground" bucket as ``edge`` grows.
+                ndx = (x - bcx) * inv_rx
+                ndy = (y - bcy) * inv_ry
+                edge = ndx * ndx + ndy * ndy
                 star_hash = (x * 73856093) ^ (y * 19349663)
                 bucket = star_hash % 120
-                if bucket < 3:
-                    pixels[x, y] = yellow_ink   # 3/120 = 1/40 star
-                elif bucket < 7:
-                    pixels[x, y] = red_ink      # 4/120 ≈ 1/30 warm dust
-                elif bucket < 11:
-                    pixels[x, y] = blue_ink     # 4/120 ≈ 1/30 cool dust
+                # Core (edge<0.35): full ~9% paint. Mid: thinned. Rim
+                # (edge>0.85): only the brightest 1/40 pin-stars survive,
+                # everything else reverts to ground so the cloud feathers.
+                if edge < 0.35:
+                    keep = bucket < 11
+                elif edge < 0.85:
+                    keep = bucket < 6
                 else:
-                    # Revert to navy ground (Layer 0 parity).
+                    keep = bucket < 3
+                if not keep:
                     pixels[x, y] = blue_ink if (x + y) & 1 else black_ink
+                elif bucket < 3:
+                    pixels[x, y] = yellow_ink   # pin-star (survives to the rim)
+                elif bucket < 7:
+                    pixels[x, y] = red_ink      # warm nebular dust
+                else:
+                    pixels[x, y] = blue_ink     # cool nebular dust
 
     # ---- Layer 2: Star field ----
     for sx, sy, mag in _build_firmament_stars(width, height):
@@ -9936,17 +9959,28 @@ def _draw_cartograph_coastline(
     # toward the centre.
     sign_x = 1 if extent_x >= corner_x else -1
     sign_y = 1 if extent_y >= corner_y else -1
-    n_pts = 14
+    n_pts = 26
     pts: list[tuple[int, int]] = []
+    # Two-octave coastline wobble: a slow swell carves the broad bays /
+    # headlands, a fast jitter adds the fractal nibble of a real engraved
+    # shoreline. The previous single ±28/±22 octave over a 176 px span
+    # read as a near-straight hypotenuse (a triangle, not land); doubling
+    # the vertex count and layering a deep slow swell on top gives the
+    # silhouette genuine inlets and capes.
+    slow_phase = rng.random() * math.tau
+    slow_freq = 2.0 + rng.random() * 1.5
     for i in range(1, n_pts + 1):
         t = i / n_pts
-        # Base position along the diagonal arc (sin curve flattens the
+        # Base position along the diagonal arc (power curve flattens the
         # mid-section so the coastline doesn't read as a straight diagonal).
         bx = corner_x + round((extent_x - corner_x) * t)
         by = corner_y + round((extent_y - corner_y) * (1.0 - (1.0 - t) ** 1.8))
-        # Per-vertex deterministic wobble in the canvas-axis directions.
-        wobble_x = round((rng.random() - 0.5) * 28) * sign_x
-        wobble_y = round((rng.random() - 0.5) * 22) * sign_y
+        # Slow swell (broad bays/headlands) + fast jitter (fractal nibble),
+        # both pushing toward the corner's outside so the land hugs the
+        # corner and the ragged edge faces the open sea.
+        swell = math.sin(slow_phase + t * slow_freq * math.tau)
+        wobble_x = round((swell * 22 + (rng.random() - 0.5) * 26)) * sign_x
+        wobble_y = round((swell * 18 + (rng.random() - 0.5) * 20)) * sign_y
         pts.append((bx + wobble_x, by + wobble_y))
     # Close back along the corner edges so PIL fills the land region.
     # Walk along the y-axis edge first, then the x-axis edge, so the
@@ -13450,6 +13484,50 @@ def _vinyl_paint_track_heading(
     draw.text((x_left, y_top), text, font=font, fill=RED)
 
 
+def _vinyl_paint_spec_line(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    bucket: str,
+    x_left: int,
+    x_right: int,
+    y_top: int,
+) -> None:
+    """Liner-note spec strip just under the READING heading.
+
+    Real spoken-word LP backs (Caedmon, Spoken Arts) ran a small
+    technical line beneath each selection heading — side, speed,
+    channel, and the matter-of-fact "running time" of the reading.
+    Fills the gap between the heading and the vertically-centred quote
+    body that otherwise read as dead cream. Set in the same Space Mono
+    "engineered" register the catalog number uses, with a thin black
+    hairline above it echoing the bottom catalog bar's rule so the two
+    chrome strips bracket the quote symmetrically. The running time is
+    derived deterministically from the fuzzy bucket (a stable per-quote
+    figure — not a real measurement, the same way the catalog number
+    is synthesised) so a given quote always renders the same strip.
+    """
+    BLACK = SPECTRA6["black"]
+    font = load_font([SPACEMONO_BOLD, *META_FONT_CANDIDATES], size=10)
+    # Deterministic "running time" 1:00–8:59 from the bucket. ``hash()`` is
+    # process-salted (PYTHONHASHSEED), which would make the strip differ
+    # between renders of the same quote and break the golden-image / dedup
+    # byte-exact contract; derive a STABLE digit sum from the bucket string
+    # instead so a given quote always yields the same running time.
+    h = sum(ord(c) for c in bucket)
+    mins = 1 + (h % 8)
+    secs = (h * 7) % 60
+    # ASCII "33 RPM" — Space Mono has no U+2153 (⅓) glyph and would tofu,
+    # the same reason the 33 RPM badge dropped the fraction.
+    left_text = "SIDE ONE  ·  33 RPM  ·  MONO"
+    right_text = f"RUNNING TIME {mins}:{secs:02d}"
+    rule_y = y_top - 4
+    draw.line((x_left, rule_y, x_right, rule_y), fill=BLACK, width=1)
+    draw.text((x_left, y_top), left_text, font=font, fill=BLACK)
+    bbox = draw.textbbox((0, 0), right_text, font=font)
+    w = bbox[2] - bbox[0]
+    draw.text((x_right - w - bbox[0], y_top - bbox[1]), right_text, font=font, fill=BLACK)
+
+
 def _vinyl_paint_catalog_bar(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -13644,8 +13722,12 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _vinyl_paint_33rpm_badge(image, draw, x_right=sleeve_x_right, y_top=20)
     # TRACK ONE heading at the top of the liner-notes column.
     _vinyl_paint_track_heading(image, draw, x_left=sleeve_x_left, y_top=24)
-    # Quote body on the sleeve.
-    body_rect = (sleeve_x_left, 60, sleeve_x_right, 390)
+    # Liner-note spec strip (side · speed · channel · running time) just
+    # below the heading — fills the dead cream between heading and quote.
+    _vinyl_paint_spec_line(image, draw, bucket, x_left=sleeve_x_left,
+                           x_right=sleeve_x_right, y_top=48)
+    # Quote body on the sleeve (top nudged down to clear the spec strip).
+    body_rect = (sleeve_x_left, 74, sleeve_x_right, 390)
     _vinyl_paint_quote_body(image, draw, quote_row, body_rect)
     # Author + title attribution (right-aligned).
     _vinyl_paint_attribution(image, draw, quote_row, x_right=sleeve_x_right, y_top=412)
