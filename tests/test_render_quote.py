@@ -3781,3 +3781,46 @@ def test_grimoire_border_paints_tria_prima_triads():
     bot_l = sum(1 for x in range(330, 352) for y in range(440, 462) if px[x, y] == red)
     assert top_l > 20, "top tria-prima triad missing"
     assert bot_l > 20, "bottom tria-prima triad missing"
+
+
+def test_mucha_border_paints_tip_blossoms():
+    """The upleveled mucha border adds a five-petal tangerine blossom at each
+    of the two existing vine tips (TL + BR), preserving the deliberate
+    diagonal asymmetry (only the already-ornamented corners gain them)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_mucha_border(img, rq.THEMES["mucha"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    yellow = rq.SPECTRA6["yellow"]
+
+    def tangerine(cx, cy, r0=16):
+        rr = sum(1 for x in range(cx - r0, cx + r0) for y in range(cy - r0, cy + r0) if px[x, y] == red)
+        yy = sum(1 for x in range(cx - r0, cx + r0) for y in range(cy - r0, cy + r0) if px[x, y] == yellow)
+        return rr, yy
+
+    tl_r, tl_y = tangerine(78, 160)
+    br_r, br_y = tangerine(760, 330)
+    # Both tips carry a tangerine (R+Y) blossom: red AND yellow present.
+    assert tl_r > 20 and tl_y > 20, "top-left vine-tip blossom missing"
+    assert br_r > 10 and br_y > 20, "bottom-right vine-tip blossom missing"
+
+
+def test_placard_border_paints_side_margin_tags():
+    """The upleveled placard border adds hanging price-tag ornaments (short
+    rule + weathered-coral diamond) at the left/right mid-edges."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_placard_border(img, rq.THEMES["placard"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    white = rq.SPECTRA6["white"]
+
+    def coral(cx, cy):
+        rr = sum(1 for x in range(cx - 8, cx + 9) for y in range(cy - 8, cy + 9) if px[x, y] == red)
+        ww = sum(1 for x in range(cx - 8, cx + 9) for y in range(cy - 8, cy + 9) if px[x, y] == white)
+        return rr, ww
+
+    l_r, l_w = coral(28, 240)
+    r_r, r_w = coral(771, 240)
+    # Each tag diamond is the R+W weathered-coral recipe: both inks present.
+    assert l_r > 10 and l_w > 10, "left side-margin tag missing"
+    assert r_r > 10 and r_w > 10, "right side-margin tag missing"

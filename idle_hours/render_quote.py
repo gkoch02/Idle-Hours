@@ -5057,6 +5057,31 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
                 if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = SPECTRA6["white"]
 
+    # Side-margin hanging price-tag ornaments — a short vertical black rule
+    # dropping inward from each left/right mid-edge of the inner frame,
+    # terminating in a small coral diamond "ticket", the hand-lettered
+    # tag a sandwich-board menu hangs in its side margin. Echoes the
+    # header/footer divider vocabulary (black rule + weathered-coral
+    # diamond) into the otherwise-empty side margins. Pinned to
+    # x≈inner_inset+10 / width-inner_inset-10, well clear of the body
+    # block (the widest dense layout starts at x≥60).
+    side_tag_centres = []
+    cy_mid = height // 2
+    for edge_x, hdir in ((inner_inset + 10, 1), (width - 1 - inner_inset - 10, -1)):
+        # Short vertical rule from above the diamond down to it.
+        draw.line([(edge_x, cy_mid - 20), (edge_x, cy_mid - 5)], fill=ink, width=1)
+        draw.polygon(
+            [(edge_x, cy_mid - 5), (edge_x + 5, cy_mid), (edge_x, cy_mid + 5), (edge_x - 5, cy_mid)],
+            fill=accent_color,
+        )
+        side_tag_centres.append((edge_x, cy_mid))
+    # Coral post-pass on the side-tag diamonds (same R+W recipe).
+    for cx, cy in side_tag_centres:
+        for y in range(cy - 6, cy + 7):
+            for x in range(cx - 7, cx + 8):
+                if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = SPECTRA6["white"]
+
 
 def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     """Paint a samurai-cinema title-card surround: large off-canvas
@@ -8325,17 +8350,43 @@ def draw_mucha_border(image: Image.Image, colors: dict) -> None:
         else:
             tip_x = bx0 + 7
             tip_y = by0 + 7
-        radius = 6
-        for py in range(max(0, tip_y - radius), min(height - 1, tip_y + radius) + 1):
+        # Five-petal blossom at the stem tip — the flowering terminal of a
+        # Mucha vine. Paint five small petal ellipses radiating from the
+        # tip in the berry sentinel (red) so they're swept up by the same
+        # tangerine post-pass below as the central berry, reading as a
+        # warm flower head against the cream ground. The petals enlarge
+        # the flowering tip without breaking the deliberate TL/BR-only
+        # asymmetry (only the two already-ornamented corners gain them).
+        petal_r = 4
+        petal_dist = 7
+        for k in range(5):
+            ang = -math.pi / 2 + k * (2 * math.pi / 5)
+            px_c = tip_x + round(petal_dist * math.cos(ang))
+            py_c = tip_y + round(petal_dist * math.sin(ang))
+            draw.ellipse(
+                (px_c - petal_r, py_c - petal_r, px_c + petal_r, py_c + petal_r),
+                fill=berry_sentinel,
+            )
+        core_radius = 6   # central berry — repaint unconditionally (as before)
+        halo_radius = 14  # petal ring — repaint only the sentinel petals
+        core_sq = core_radius * core_radius
+        halo_sq = halo_radius * halo_radius
+        for py in range(max(0, tip_y - halo_radius), min(height - 1, tip_y + halo_radius) + 1):
             row = BAYER_4x4[py & 3]
-            for px in range(max(0, tip_x - radius), min(width - 1, tip_x + radius) + 1):
+            for px in range(max(0, tip_x - halo_radius), min(width - 1, tip_x + halo_radius) + 1):
                 dx = px - tip_x
                 dy = py - tip_y
-                if dx * dx + dy * dy > radius * radius:
-                    continue
-                # Inside the berry: repaint either red (5/8) or yellow (3/8)
-                # via threshold 6/16 of the shared Bayer matrix.
-                pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
+                d_sq = dx * dx + dy * dy
+                if d_sq <= core_sq:
+                    # Central berry: repaint the whole disc (overwriting the
+                    # stem post-pass's blacks) red (5/8) or yellow (3/8) via
+                    # threshold 6/16 → tangerine, exactly as before.
+                    pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
+                elif d_sq <= halo_sq and pixels[px, py] == berry_sentinel:
+                    # Petal ring: only flip the painted petal pixels, leaving
+                    # the cream ground between petals untouched so the
+                    # blossom reads as five distinct petals, not a solid disc.
+                    pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
 
 
 _KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int, int, int], ...] = (
