@@ -3715,3 +3715,30 @@ def test_atomic_border_paints_boomerang():
     boom_yellow = sum(1 for x in range(360, 440) for y in range(428, 456) if px[x, y] == yellow)
     assert boom_red > 80, "boomerang red component missing"
     assert boom_yellow > 50, "boomerang tangerine (yellow) component missing"
+
+
+def test_deco_border_paints_mid_edge_chevrons():
+    """The upleveled deco border adds nested stepped chevrons at the left and
+    right mid-edges, picked up by the tangerine (R+Y) dither pass."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_deco_border(img, rq.THEMES["deco"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    yellow = rq.SPECTRA6["yellow"]
+    left = sum(1 for x in range(20, 45) for y in range(220, 261) if px[x, y] in (red, yellow))
+    right = sum(1 for x in range(755, 780) for y in range(220, 261) if px[x, y] in (red, yellow))
+    assert left > 20, "left mid-edge chevron missing"
+    assert right > 20, "right mid-edge chevron missing"
+
+
+def test_saloon_border_paints_side_drop_pendants():
+    """The upleveled saloon border hangs a drop-pendant diamond chain inward
+    from each left/right mid-edge diamond (solid red)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_saloon_border(img, rq.THEMES["saloon"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    left = sum(1 for x in range(4, 21) for y in range(248, 290) if px[x, y] == red)
+    right = sum(1 for x in range(779, 796) for y in range(248, 290) if px[x, y] == red)
+    assert left > 40, "left drop-pendant chain missing"
+    assert right > 40, "right drop-pendant chain missing"

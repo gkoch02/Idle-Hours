@@ -4487,6 +4487,24 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
             width=1,
         )
 
+    # Mid-edge stepped-chevron ornaments. Three nested chevrons pointing
+    # inward at the left and right mid-edges — the stepped-zigzag motif
+    # that echoes the skyscraper-step corners and fills the otherwise-
+    # empty side margins of the doubled frame. Painted in the accent
+    # colour *before* the tangerine dither pass below, so they pick up
+    # the same red→orange treatment as the corners and rising-sun fan.
+    # Anchored just inside the inner frame at the vertical midpoint, with
+    # the chevron opening toward the page centre; each nested chevron is
+    # 5 px further in and 4 px taller so the trio reads as a stepped fan.
+    mid_y = height // 2
+    for edge_x, dir_in in ((inner_inset + 1, +1), (width - 2 - inner_inset, -1)):
+        for step in (0, 1, 2):
+            ax = edge_x + dir_in * step * 5
+            arm = 6 + step * 4
+            # Two arms meeting at a point on the frame side, opening inward.
+            draw.line([(ax, mid_y - arm), (ax + dir_in * arm, mid_y)], fill=accent_color, width=1)
+            draw.line([(ax, mid_y + arm), (ax + dir_in * arm, mid_y)], fill=accent_color, width=1)
+
     # Final pass: synthesise orange by flipping ~3/8 of the painted
     # red pixels to yellow on the shared 4×4 Bayer matrix. See the
     # docstring for the rationale; threshold (6) and phase match
@@ -6511,6 +6529,38 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
             ],
             fill=accent,
         )
+
+    # ------------------------------------------------------------------
+    # Layer 6: Side-margin drop-pendant diamond chains. The left/right
+    # mid-edge diamonds (above) sit alone in the tall, otherwise-empty
+    # side margins between the top and bottom banner bands. Hang a short
+    # chain of two diminishing diamonds inward from each, joined by a
+    # thin connecting tick — the "drop pendant" terminal a broadside
+    # printer ran down from a margin ornament. Strictly inside the inner
+    # frame and clear of the body block (the quote's widest dense layout
+    # starts at x≥60 / ends at x≤740, and these sit at x≈18 / x≈782), so
+    # they never touch the text. Painted in red to match the mid-edge
+    # diamonds; left at solid red (not sepia) so the pendant reads as a
+    # deliberate printed ornament rather than aged foxing.
+    pendant_sizes = (5, 3)
+    pendant_gap = 7
+    for edge_x in (outer_inset, width - 1 - outer_inset):
+        cy = height // 2
+        offset = mid_diamond + pendant_gap
+        for size in pendant_sizes:
+            dcy = cy + offset
+            draw.line((edge_x, dcy - offset + mid_diamond, edge_x, dcy - size), fill=accent, width=1)
+            draw.polygon(
+                [
+                    (edge_x, dcy - size),
+                    (edge_x + size, dcy),
+                    (edge_x, dcy + size),
+                    (edge_x - size, dcy),
+                ],
+                fill=accent,
+            )
+            offset += size + pendant_gap
+
     # Fall-through to silence the "unused bg" — kept in the signature
     # so a future palette extension (e.g. cream foxing on a tinted
     # ground) has the field already wired.
