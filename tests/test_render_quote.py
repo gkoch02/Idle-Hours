@@ -3631,3 +3631,39 @@ def test_illuminated_border_paints_foot_line_filler():
     foot_blue = sum(1 for x in range(345, 456) for y in range(445, 458) if px[x, y] == blue)
     assert foot_red > 40, "foot line-filler rule / centre lozenge missing"
     assert foot_blue > 10, "foot line-filler flanking blue lozenges missing"
+
+
+def test_gothic_border_paints_head_trefoil():
+    """The upleveled gothic border adds a red trefoil finial centred in the
+    top margin (solid rubric red so it reads on the black ground)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_gothic_border(img, rq.THEMES["gothic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    head_red = sum(1 for x in range(385, 416) for y in range(26, 52) if px[x, y] == red)
+    assert head_red > 80, "head trefoil finial missing"
+
+
+def test_gothic_border_paints_foot_trefoil():
+    """The upleveled gothic border adds a red trefoil finial centred in the
+    bottom margin, mirroring the head finial."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_gothic_border(img, rq.THEMES["gothic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    foot_red = sum(1 for x in range(385, 416) for y in range(430, 456) if px[x, y] == red)
+    assert foot_red > 80, "foot trefoil finial missing"
+
+
+def test_marker_border_paints_twinkle_sparkles():
+    """The upleveled marker border adds doodle 'twinkle' sparkles in the top
+    (red) and bottom (blue) centre margins."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_marker_border(img, rq.THEMES["marker"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    top_red = sum(1 for x in range(320, 352) for y in range(18, 35) if px[x, y] == red)
+    bot_blue = sum(1 for x in range(448, 480) for y in range(447, 464) if px[x, y] == blue)
+    assert top_red > 20, "top twinkle sparkle (red) missing"
+    assert bot_blue > 20, "bottom twinkle sparkle (blue) missing"

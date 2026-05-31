@@ -4043,6 +4043,40 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
                 if (px + py) & 1 == 0 and pixels[px, py] == sentinel_yellow:
                     pixels[px, py] = cream_light
 
+    # Head + foot trefoil finials — a three-lobed clover (the canonical
+    # Gothic trefoil of cathedral tracery and chapter-heading ornaments),
+    # centred in the top and bottom margins to tie the head/foot of the
+    # page back to the four corner quatrefoils. Painted in solid rubric
+    # red (not the corners' maroon recipe): maroon is red+black, which on
+    # the black ground here would nearly vanish, whereas solid red carries
+    # gothic's candlelit-rubric register and reads clearly on the open
+    # field. Each lobe gets a small white centre dot for silhouette
+    # legibility, the same gesture the corner quatrefoils use. Centred
+    # horizontally so the top finial clears the right-aligned DEBUG MODE
+    # banner and the foot finial clears the bottom-left attribution; both
+    # sit just inside the inner frame.
+    trefoil_r = 5
+    trefoil_spread = 8
+    for base_cx, base_cy, point_up in (
+        (width // 2, inner_inset + 13, True),
+        (width // 2, height - 1 - inner_inset - 13, False),
+    ):
+        vy = -1 if point_up else 1
+        lobes = (
+            (0, vy * trefoil_spread),               # apex lobe
+            (-trefoil_spread, -vy * 2),             # lower-left lobe
+            (trefoil_spread, -vy * 2),              # lower-right lobe
+        )
+        for dx, dy in lobes:
+            lx, ly = base_cx + dx, base_cy + dy
+            draw.ellipse(
+                (lx - trefoil_r, ly - trefoil_r, lx + trefoil_r, ly + trefoil_r),
+                fill=accent,
+            )
+            draw.ellipse((lx - 1, ly - 1, lx + 1, ly + 1), fill=body)
+        # Short stem joining the lobes at the trefoil centre.
+        draw.ellipse((base_cx - 2, base_cy - 2, base_cx + 2, base_cy + 2), fill=accent)
+
 
 def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
     """Solar ☉ — outline circle with a filled centre dot. The
@@ -6051,6 +6085,27 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
             for px in range(bx0, bx1 + 1):
                 if (px + py) & 1 == 0 and pixels[px, py] == dark_ink:
                     pixels[px, py] = light_ink
+
+    # Doodle "twinkle" sparkles in the top + bottom centre margins — the
+    # little four-point stars a kid scatters around a fridge drawing. A
+    # tapered four-point star (long cardinal rays + short diagonal nubs)
+    # in a marker ink, with one tiny companion dot offset beside it. Top
+    # sparkle in red, bottom in blue — pulling two of the palette inks
+    # into the otherwise-empty head/foot margins to balance the corner
+    # asterisks. Both centred horizontally: the top sparkle clears the
+    # right-aligned DEBUG MODE banner (it sits at x=width//2-70) and the
+    # bottom clears the attribution column, so no _DEBUG_LABEL_RIGHT_INSET
+    # change beyond marker's existing TR-asterisk entry.
+    def _twinkle(tx: int, ty: int, ink: tuple[int, int, int]) -> None:
+        draw.line((tx, ty - 7, tx, ty + 7), fill=ink, width=2)
+        draw.line((tx - 7, ty, tx + 7, ty), fill=ink, width=2)
+        for ddx, ddy in ((-3, -3), (3, -3), (-3, 3), (3, 3)):
+            draw.point((tx + ddx, ty + ddy), fill=ink)
+        # Tiny companion sparkle.
+        draw.line((tx + 14, ty - 4, tx + 14, ty + 1), fill=ink, width=1)
+        draw.line((tx + 12, ty - 2, tx + 17, ty - 2), fill=ink, width=1)
+    _twinkle(width // 2 - 70, 26, SPECTRA6["red"])
+    _twinkle(width // 2 + 60, height - 1 - 24, SPECTRA6["blue"])
 
 
 # Deterministic foxing-speckle layout for ``draw_saloon_border``.
