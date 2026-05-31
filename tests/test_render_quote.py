@@ -3584,3 +3584,50 @@ def test_chalkboard_border_paints_gold_star():
     yellow = rq.SPECTRA6["yellow"]
     star = sum(1 for x in range(700, 740) for y in range(38, 58) if px[x, y] == yellow)
     assert star > 20, "gold-star sticker missing"
+
+
+def test_dispatch_border_paints_filing_punch_holes():
+    """The upleveled dispatch border adds two binder-punch ring outlines
+    centred in the top margin (black ink, below the debug-banner band)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_dispatch_border(img, rq.THEMES["dispatch"])
+    px = img.load()
+    black = rq.SPECTRA6["black"]
+    ring_black = sum(1 for x in range(347, 362) for y in range(33, 48) if px[x, y] == black)
+    assert ring_black > 15, "top filing punch-hole rings missing"
+
+
+def test_dispatch_border_paints_file_copy_footer():
+    """The upleveled dispatch border adds a typed '— FILE COPY —' footer
+    centred in the bottom margin."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_dispatch_border(img, rq.THEMES["dispatch"])
+    px = img.load()
+    black = rq.SPECTRA6["black"]
+    footer_black = sum(1 for x in range(330, 470) for y in range(445, 465) if px[x, y] == black)
+    assert footer_black > 15, "FILE COPY footer text missing"
+
+
+def test_illuminated_border_paints_head_asterism():
+    """The upleveled illuminated border adds a rubricated head asterism
+    (red lozenges) centred in the top margin."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_illuminated_border(img, rq.THEMES["illuminated"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    head_red = sum(1 for x in range(385, 416) for y in range(33, 52) if px[x, y] == red)
+    assert head_red > 40, "head asterism lozenges missing"
+
+
+def test_illuminated_border_paints_foot_line_filler():
+    """The upleveled illuminated border adds a foot line-filler — a red
+    rule + central red lozenge flanked by blue lozenges."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_illuminated_border(img, rq.THEMES["illuminated"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    foot_red = sum(1 for x in range(355, 446) for y in range(445, 458) if px[x, y] == red)
+    foot_blue = sum(1 for x in range(345, 456) for y in range(445, 458) if px[x, y] == blue)
+    assert foot_red > 40, "foot line-filler rule / centre lozenge missing"
+    assert foot_blue > 10, "foot line-filler flanking blue lozenges missing"

@@ -3893,6 +3893,36 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
                 fill=accent,
             )
 
+    # Head ornament: three rubricated lozenges in the canonical "⁂"
+    # section-break triangle, centred in the top margin — the rubricator's
+    # mark that opens a manuscript page. Red lozenges with a small blue
+    # dot at each centre (rubric + lapis, the two-ink vocabulary of the
+    # scriptorium). Sits at y≈42, below the y=14-29 debug-banner band and
+    # above the text block (which never starts before y=72).
+    hcx = width // 2
+    hy = 42
+    lz = 4  # lozenge half-size
+    for px, py in ((hcx, hy - 5), (hcx - 11, hy + 5), (hcx + 11, hy + 5)):
+        draw.polygon(
+            [(px, py - lz), (px + lz, py), (px, py + lz), (px - lz, py)],
+            fill=body,
+        )
+        draw.point((px, py), fill=accent)
+
+    # Foot line-filler: a centred red rule flanked by two small blue
+    # lozenges and pierced by a central red lozenge — the decorative
+    # "line filler" medieval scribes ran to the end of a short final
+    # line. Centred so it clears the bottom-left attribution column.
+    fy = height - 1 - outer_inset - 14
+    draw.line((hcx - 44, fy, hcx - 8, fy), fill=body, width=1)
+    draw.line((hcx + 8, fy, hcx + 44, fy), fill=body, width=1)
+    draw.polygon([(hcx, fy - lz), (hcx + lz, fy), (hcx, fy + lz), (hcx - lz, fy)], fill=body)
+    for fx in (hcx - 50, hcx + 50):
+        draw.polygon(
+            [(fx, fy - 3), (fx + 3, fy), (fx, fy + 3), (fx - 3, fy)],
+            fill=accent,
+        )
+
 
 def draw_gothic_border(image: Image.Image, colors: dict) -> None:
     """Paint a Gothic-tracery border: double rule + maroon quatrefoils + cream mid-edge diamonds.
@@ -5664,6 +5694,35 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
         for px in range(stamp_x0, stamp_x1 + 1):
             if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
                 pixels[px, py] = maroon_dark
+
+    # Two-hole filing punch centred in the top margin — the binder-punch
+    # holes office paper is filed by. Two thin black ring outlines (the
+    # punched edge) at y≈40, below the y=14-29 debug-banner band and above
+    # the text block (which never starts before y=72), centred so they
+    # clear both side perforation columns and the top-right rubber stamp.
+    punch_y = 40
+    punch_r = 7
+    punch_gap = 46
+    cx0 = width // 2
+    for hole_cx in (cx0 - punch_gap, cx0 + punch_gap):
+        draw.ellipse(
+            (hole_cx - punch_r, punch_y - punch_r, hole_cx + punch_r, punch_y + punch_r),
+            outline=ink,
+            width=1,
+        )
+
+    # Typed "— FILE COPY —" footer centred in the bottom margin, in the
+    # theme's own typewriter face — the carbon-duplicate stamp every
+    # dossier page carries. Centred horizontally so it clears the
+    # bottom-left attribution column; sits at y≈height-30, inside the
+    # frame and below the quote block.
+    footer_font = load_font(theme_font_candidates("dispatch", "quote_regular"), size=14)
+    footer_text = "— FILE COPY —"
+    fb = draw.textbbox((0, 0), footer_text, font=footer_font)
+    fw = fb[2] - fb[0]
+    footer_y = height - 1 - frame_inset - 18
+    draw.text((cx0 - fw // 2 - fb[0], footer_y), footer_text, font=footer_font, fill=ink)
+
     # ``accent`` is the dispatch theme's red slot; kept bound for future
     # palette extensions even though the sentinel-paint-then-bbox-
     # post-pass approach above doesn't read from it directly.
