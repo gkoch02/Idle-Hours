@@ -3667,3 +3667,48 @@ def test_marker_border_paints_twinkle_sparkles():
     bot_blue = sum(1 for x in range(448, 480) for y in range(447, 464) if px[x, y] == blue)
     assert top_red > 20, "top twinkle sparkle (red) missing"
     assert bot_blue > 20, "bottom twinkle sparkle (blue) missing"
+
+
+def test_risograph_border_paints_registration_colour_bar():
+    """The upleveled risograph border adds a top-centre colour-registration
+    bar of red / blue / lavender-overprint / red / blue swatches — no black
+    ink (the riso theme's invariant)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_risograph_border(img, rq.THEMES["risograph"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    bar_red = sum(1 for x in range(337, 360) for y in range(22, 35) if px[x, y] == red)
+    bar_blue = sum(1 for x in range(363, 386) for y in range(22, 35) if px[x, y] == blue)
+    assert bar_red > 100, "registration-bar red swatch missing"
+    assert bar_blue > 100, "registration-bar blue swatch missing"
+
+
+def test_risograph_registration_bar_lavender_swatch_is_red_and_blue():
+    """The middle overprint swatch is the R+B+W lavender 3-way recipe, so it
+    carries both red and blue pixels (and no black, per the riso invariant)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_risograph_border(img, rq.THEMES["risograph"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    black = rq.SPECTRA6["black"]
+    lav_x0 = 337 + 2 * 26
+    region = [px[x, y] for x in range(lav_x0, lav_x0 + 23) for y in range(22, 35)]
+    assert region.count(red) > 30, "lavender swatch red component missing"
+    assert region.count(blue) > 30, "lavender swatch blue component missing"
+    assert black not in region, "lavender swatch must not introduce black ink"
+
+
+def test_atomic_border_paints_boomerang():
+    """The upleveled atomic border adds a tangerine (R+Y) boomerang centred
+    in the bottom margin."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
+    rq.draw_atomic_border(img, rq.THEMES["atomic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    yellow = rq.SPECTRA6["yellow"]
+    boom_red = sum(1 for x in range(360, 440) for y in range(428, 456) if px[x, y] == red)
+    boom_yellow = sum(1 for x in range(360, 440) for y in range(428, 456) if px[x, y] == yellow)
+    assert boom_red > 80, "boomerang red component missing"
+    assert boom_yellow > 50, "boomerang tangerine (yellow) component missing"

@@ -3537,6 +3537,48 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
                     else:
                         pixels[px, py] = ink_white
 
+    # Colour-registration bar centred in the top margin — the strip of
+    # solid ink swatches a print shop runs at the sheet edge to check
+    # ink density and plate alignment. Five small swatches: red, blue,
+    # then a lavender overprint swatch (the R+B+W 3-way recipe the corner
+    # registration crosses use — the authentic "where two plates wash
+    # together" tone), then red and blue again. Centred horizontally so
+    # it clears the body block (which never starts before the inner frame
+    # at y=34) and sits above it; preserves the no-black-ink invariant
+    # (every swatch is red / blue / white only). The lavender swatch is
+    # painted in a sentinel and bbox-post-passed like the crosses.
+    swatch_w = 22
+    swatch_h = 12
+    swatch_gap = 4
+    bar_kinds = ("red", "blue", "lavender", "red", "blue")
+    bar_total = len(bar_kinds) * swatch_w + (len(bar_kinds) - 1) * swatch_gap
+    bar_x0 = (width - bar_total) // 2
+    bar_y = outer + 2
+    lavender_bboxes: list[tuple[int, int, int, int]] = []
+    for i, kind in enumerate(bar_kinds):
+        sx0 = bar_x0 + i * (swatch_w + swatch_gap)
+        sx1 = sx0 + swatch_w
+        sy1 = bar_y + swatch_h
+        if kind == "red":
+            draw.rectangle((sx0, bar_y, sx1, sy1), fill=ink_red)
+        elif kind == "blue":
+            draw.rectangle((sx0, bar_y, sx1, sy1), fill=ink_blue)
+        else:  # lavender overprint swatch
+            draw.rectangle((sx0, bar_y, sx1, sy1), fill=lavender_sentinel)
+            lavender_bboxes.append((sx0, bar_y, sx1, sy1))
+    for x0, y0, x1, y1 in lavender_bboxes:
+        for py in range(y0, y1 + 1):
+            row = BAYER_4x4[py & 3]
+            for px in range(x0, x1 + 1):
+                if pixels[px, py] == lavender_sentinel:
+                    cell = row[px & 3]
+                    if cell < 5:
+                        pixels[px, py] = ink_red
+                    elif cell < 10:
+                        pixels[px, py] = ink_blue
+                    else:
+                        pixels[px, py] = ink_white
+
 
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
     """Paint a restrained academic-journal margin treatment.
@@ -5910,6 +5952,40 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
             for x in range(x0, x1 + 1):
                 if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
                     pixels[x, y] = flip_yellow
+
+    # Atomic "boomerang" centred in the bottom margin — the iconic
+    # Googie / Formica kidney-boomerang the era stamped on diner tables,
+    # bowling-alley carpet, and motel signs. Drawn as a chevron-shaped
+    # filled polygon (two tapered wings meeting at a rounded elbow), with
+    # a small orbiting-electron dot drifting off one tip. Painted in red
+    # as a sentinel and then a bbox post-pass Bayer-flips ~3/8 of the red
+    # to yellow at threshold 6/16 — the same documented R+Y tangerine
+    # recipe the mid-edge starburst rays use — so the boomerang reads as
+    # the warm atomic-spark orange of period advertising rather than the
+    # harsh fire-engine red of the atom orbits. Centred horizontally
+    # (clear of the bottom-left attribution) and sits at y≈height-40,
+    # below the quote block (block_top ≥ 72 leaves the bottom margin free).
+    boom_cx = width // 2
+    boom_cy = height - 40
+    boomerang = [
+        (boom_cx - 38, boom_cy - 6),   # left tip (top edge)
+        (boom_cx - 6, boom_cy + 6),    # elbow inner
+        (boom_cx + 38, boom_cy - 6),   # right tip (top edge)
+        (boom_cx + 30, boom_cy + 2),   # right tip (bottom edge)
+        (boom_cx, boom_cy + 13),       # elbow outer
+        (boom_cx - 30, boom_cy + 2),   # left tip (bottom edge)
+    ]
+    draw.polygon(boomerang, fill=sentinel_red)
+    # Orbiting-electron dot off the right tip.
+    draw.ellipse((boom_cx + 44, boom_cy - 10, boom_cx + 50, boom_cy - 4), fill=sentinel_red)
+    bx0 = max(0, boom_cx - 50)
+    by0 = max(0, boom_cy - 12)
+    bx1 = min(width - 1, boom_cx + 52)
+    by1 = min(height - 1, boom_cy + 15)
+    for y in range(by0, by1 + 1):
+        for x in range(bx0, bx1 + 1):
+            if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = flip_yellow
 
 
 # Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded at
