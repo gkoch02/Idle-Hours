@@ -3754,3 +3754,30 @@ def test_chanbara_border_paints_brush_tick_column():
     red = rq.SPECTRA6["red"]
     col_red = sum(1 for x in range(20, 57) for y in range(188, 283) if px[x, y] == red)
     assert col_red > 40, "brush-tick signature column missing"
+
+
+def test_roman_border_paints_corner_stops():
+    """The upleveled roman border adds small red carved corner 'stops' (right
+    triangles) tucked into each inner-channel corner."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_roman_border(img, rq.THEMES["roman"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    tl = sum(1 for x in range(38, 50) for y in range(22, 34) if px[x, y] == red)
+    br = sum(1 for x in range(750, 762) for y in range(446, 458) if px[x, y] == red)
+    assert tl > 20, "top-left corner stop missing"
+    assert br > 20, "bottom-right corner stop missing"
+
+
+def test_grimoire_border_paints_tria_prima_triads():
+    """The upleveled grimoire border adds tria-prima triad dots flanking the
+    Sun (top) and Moon (bottom) sigils, in the previously-empty interior
+    bands."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_grimoire_border(img, rq.THEMES["grimoire"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    top_l = sum(1 for x in range(330, 352) for y in range(18, 40) if px[x, y] == red)
+    bot_l = sum(1 for x in range(330, 352) for y in range(440, 462) if px[x, y] == red)
+    assert top_l > 20, "top tria-prima triad missing"
+    assert bot_l > 20, "bottom tria-prima triad missing"

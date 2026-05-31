@@ -4352,6 +4352,27 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
                     if row[px & 3] < threshold and pixels[px, py] == dark_ink:
                         pixels[px, py] = light_ink
 
+    # "Tria prima" triad dots flanking the Sun (top) and Moon (bottom)
+    # mid-edge sigils — the three-dot ``∴`` mark of alchemical / Masonic
+    # ritual notation (salt · sulfur · mercury), the smallest occult
+    # glyph that reads as deliberate ritual annotation. A small upward /
+    # downward triangle of three red dots is painted on each side of the
+    # Sun and Moon, filling the empty top / bottom interior bands
+    # (y≈18-40 / y≈440-462, between the corner pentagrams and the centre
+    # sigils — verified clear of the body block, which never starts
+    # before y=72 and ends by y≈410). Solid rubric red so they read on
+    # the open black field, matching the pentagram / sigil ink.
+    triad_r = 2
+    triad_spread = 6
+    for cy, point_up in ((outer_inset + 14, True), (height - 1 - outer_inset - 14, False)):
+        vy = -1 if point_up else 1
+        for cx in (width // 2 - 60, width // 2 + 60):
+            apex = (cx, cy + vy * triad_spread)
+            base_l = (cx - triad_spread, cy - vy * triad_spread // 2)
+            base_r = (cx + triad_spread, cy - vy * triad_spread // 2)
+            for dx, dy in (apex, base_l, base_r):
+                draw.ellipse((dx - triad_r, dy - triad_r, dx + triad_r, dy + triad_r), fill=accent)
+
 
 def draw_deco_border(image: Image.Image, colors: dict) -> None:
     """Paint an art-deco poster frame: doubled hairline rule + stepped
@@ -7301,6 +7322,37 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
         (laurel_cx - 2, laurel_band_y - 4, laurel_cx + 2, laurel_band_y),
         fill=accent,
     )
+
+    # ------------------------------------------------------------------
+    # Layer 7: Carved corner "stops" on the inscribed face. A small red
+    # right-triangle tucked into each inner-channel corner, pointing
+    # inward along the diagonal — the carved corner terminal Roman
+    # stonemasons cut where two channel rules meet, the lapidary
+    # equivalent of a printer's corner bracket. Painted in rubrum to
+    # pick up the SPQR / interpunct / berry red vocabulary. Each
+    # triangle's legs are short (10 px) and hug the channel corner, so
+    # they sit in the corner gutter clear of the body text (the quote's
+    # widest dense layout spans roughly x60-740, y72-410, while these
+    # sit at the channel corners ≈(38,22)/(761,457)).
+    chan_l = rect_left + channel_inset
+    chan_r = rect_right - channel_inset
+    chan_t = rect_top + channel_inset
+    chan_b = rect_bot - channel_inset
+    stop_leg = 10
+    for corner_x, corner_y, hdir, vdir in (
+        (chan_l, chan_t, 1, 1),    # TL
+        (chan_r, chan_t, -1, 1),   # TR
+        (chan_l, chan_b, 1, -1),   # BL
+        (chan_r, chan_b, -1, -1),  # BR
+    ):
+        draw.polygon(
+            [
+                (corner_x, corner_y),
+                (corner_x + hdir * stop_leg, corner_y),
+                (corner_x, corner_y + vdir * stop_leg),
+            ],
+            fill=accent,
+        )
 
 
 def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
