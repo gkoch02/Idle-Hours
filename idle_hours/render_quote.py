@@ -9982,6 +9982,10 @@ def _draw_cartograph_coastline(
         wobble_x = round((swell * 22 + (rng.random() - 0.5) * 26)) * sign_x
         wobble_y = round((swell * 18 + (rng.random() - 0.5) * 20)) * sign_y
         pts.append((bx + wobble_x, by + wobble_y))
+    # The wobbly coast edge, before we append the corner-closure points —
+    # the contour lines below interpolate these vertices toward the
+    # interior "summit" so the form-lines echo the real shoreline shape.
+    coast_edge = list(pts)
     # Close back along the corner edges so PIL fills the land region.
     # Walk along the y-axis edge first, then the x-axis edge, so the
     # polygon hugs the corner rather than skipping diagonally across it.
@@ -9989,6 +9993,50 @@ def _draw_cartograph_coastline(
     pts.append((extent_x, corner_y))
     pts.append((corner_x, corner_y))
     draw.polygon(pts, fill=ink_sentinel)
+
+    # Interior topographic form-lines — nested contour rings shrinking
+    # toward an inland "summit" near the corner, the contour engraving an
+    # antique chart used to show a landmass has relief rather than reading
+    # as a flat ink blot. The rings echo the shoreline's broad shape but
+    # are SMOOTHED first (a couple of neighbour-averaging passes) so they
+    # read as clean engraved form-lines rather than inheriting the coast's
+    # fractal jitter at shrunk scale (which looked like scribble). Drawn
+    # in BLACK (not the red sentinel) so the caller's red→green sepia
+    # post-pass leaves them as crisp lines over the sepia land fill. The
+    # summit sits a short way in from the corner along the diagonal so the
+    # rings nest concentrically toward high ground.
+    smooth_edge = list(coast_edge)
+    for _ in range(2):
+        smoothed: list[tuple[float, float]] = []
+        m = len(smooth_edge)
+        for j in range(m):
+            ax, ay = smooth_edge[(j - 1) % m]
+            bx2, by2 = smooth_edge[j]
+            cx2, cy2 = smooth_edge[(j + 1) % m]
+            smoothed.append(((ax + 2 * bx2 + cx2) / 4.0, (ay + 2 * by2 + cy2) / 4.0))
+        smooth_edge = smoothed
+    summit_x = corner_x + sign_x * round(abs(extent_x - corner_x) * 0.30)
+    summit_y = corner_y + sign_y * round(abs(extent_y - corner_y) * 0.30)
+    contour_ink = SPECTRA6["black"]
+    # Four evenly-spaced rings give a denser, more legibly "topographic"
+    # nest than three; they span from just inside the coast (0.80) to
+    # close to the summit (0.20).
+    for factor in (0.80, 0.60, 0.40, 0.20):
+        ring = [
+            (round(summit_x + (px - summit_x) * factor),
+             round(summit_y + (py - summit_y) * factor))
+            for px, py in smooth_edge
+        ]
+        # Open polyline so the contour reads as a hand-drawn form-line
+        # that fades near the coast-meets-axis ends rather than a closed
+        # loop sitting awkwardly on the corner edges.
+        draw.line(ring, fill=contour_ink, width=1)
+    # A small filled summit dot marks the high point (a spot-height mark).
+    draw.ellipse(
+        (summit_x - 1, summit_y - 1, summit_x + 1, summit_y + 1),
+        fill=contour_ink,
+    )
+
     xs = [p[0] for p in pts]
     ys = [p[1] for p in pts]
     return (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
