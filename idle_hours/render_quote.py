@@ -3537,6 +3537,51 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
                     else:
                         pixels[px, py] = ink_white
 
+    # Colour-registration bar centred in the top margin — the strip of
+    # solid ink swatches a print shop runs at the sheet edge to check
+    # ink density and plate alignment. Five small swatches: red, blue,
+    # then a lavender overprint swatch (the R+B+W 3-way recipe the corner
+    # registration crosses use — the authentic "where two plates wash
+    # together" tone), then red and blue again. Centred horizontally and
+    # tucked into the clear band between the shifted-accent frame's top
+    # rule (y=23-24) and the inner rule (y=34), so it clears the 1px gap
+    # at y=22 that the illuminated cross-gating test samples at (400, 22)
+    # — and sits well above the body block (which never starts before
+    # the inner frame at y=34). Preserves the no-black-ink invariant
+    # (every swatch is red / blue / white only). The lavender swatch is
+    # painted in a sentinel and bbox-post-passed like the crosses.
+    swatch_w = 22
+    swatch_h = 8
+    swatch_gap = 4
+    bar_kinds = ("red", "blue", "lavender", "red", "blue")
+    bar_total = len(bar_kinds) * swatch_w + (len(bar_kinds) - 1) * swatch_gap
+    bar_x0 = (width - bar_total) // 2
+    bar_y = 24
+    lavender_bboxes: list[tuple[int, int, int, int]] = []
+    for i, kind in enumerate(bar_kinds):
+        sx0 = bar_x0 + i * (swatch_w + swatch_gap)
+        sx1 = sx0 + swatch_w
+        sy1 = bar_y + swatch_h
+        if kind == "red":
+            draw.rectangle((sx0, bar_y, sx1, sy1), fill=ink_red)
+        elif kind == "blue":
+            draw.rectangle((sx0, bar_y, sx1, sy1), fill=ink_blue)
+        else:  # lavender overprint swatch
+            draw.rectangle((sx0, bar_y, sx1, sy1), fill=lavender_sentinel)
+            lavender_bboxes.append((sx0, bar_y, sx1, sy1))
+    for x0, y0, x1, y1 in lavender_bboxes:
+        for py in range(y0, y1 + 1):
+            row = BAYER_4x4[py & 3]
+            for px in range(x0, x1 + 1):
+                if pixels[px, py] == lavender_sentinel:
+                    cell = row[px & 3]
+                    if cell < 5:
+                        pixels[px, py] = ink_red
+                    elif cell < 10:
+                        pixels[px, py] = ink_blue
+                    else:
+                        pixels[px, py] = ink_white
+
 
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
     """Paint a restrained academic-journal margin treatment.
@@ -3734,6 +3779,56 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
         draw.line((cx - arm, cy, cx + arm, cy), fill=mark_color, width=1)
         draw.line((cx, cy - arm, cx, cy + arm), fill=mark_color, width=1)
 
+    # --- Drafting callouts: the annotation furniture every real engineering
+    # sheet carries. Both are kept in the clear margins so the quote (which
+    # never starts before y=72, and whose attribution hangs bottom-left)
+    # overpaints nothing — so no _DEBUG_LABEL_RIGHT_INSET change is needed
+    # (the dimension line is centred at y=40, below the y=14-29 banner band;
+    # the scale bar hugs the bottom-right, clear of the attribution column).
+    callout_font = load_font(META_FONT_CANDIDATES, size=12)
+
+    # Top overall-width dimension line: extension ticks at each end, a
+    # horizontal rule broken in the centre for the measurement figure, and
+    # inward arrowheads — the canonical "overall width" callout. Rule +
+    # ticks in the drafting-ink body colour; arrowheads + figure in the
+    # accent (registration) ink so they read as a measurement annotation.
+    dim_y = 40
+    dim_l = 120
+    dim_r = width - 1 - 120
+    mid = width // 2
+    figure = str(width)  # "800" at the panel's reference width
+    fb = draw.textbbox((0, 0), figure, font=callout_font)
+    fw = fb[2] - fb[0]
+    gap = fw // 2 + 8
+    draw.line((dim_l, dim_y - 8, dim_l, dim_y + 8), fill=border_color, width=1)
+    draw.line((dim_r, dim_y - 8, dim_r, dim_y + 8), fill=border_color, width=1)
+    draw.line((dim_l, dim_y, mid - gap, dim_y), fill=border_color, width=1)
+    draw.line((mid + gap, dim_y, dim_r, dim_y), fill=border_color, width=1)
+    for ax, adir in ((dim_l, 1), (dim_r, -1)):
+        draw.polygon(
+            [(ax, dim_y), (ax + adir * 6, dim_y - 3), (ax + adir * 6, dim_y + 3)],
+            fill=mark_color,
+        )
+    draw.text((mid - fw // 2, dim_y - (fb[3] - fb[1]) // 2 - fb[1]), figure, font=callout_font, fill=mark_color)
+
+    # Bottom-right graduated scale bar: five 16 px cells alternating
+    # filled / outline in the drafting-ink colour, with a "SCALE 1:1"
+    # label above — the legend bar of a drawing. Tucked into the corner
+    # inside the frame, clear of the bottom-right registration crosshair
+    # and the bottom-left attribution.
+    bar_cells = 5
+    cell_w = 16
+    bar_w = bar_cells * cell_w
+    bar_x = width - 1 - frame_inset - 12 - bar_w
+    bar_y = height - 1 - frame_inset - 18
+    for i in range(bar_cells):
+        x0 = bar_x + i * cell_w
+        if i % 2 == 0:
+            draw.rectangle((x0, bar_y, x0 + cell_w, bar_y + 6), fill=border_color)
+        else:
+            draw.rectangle((x0, bar_y, x0 + cell_w, bar_y + 6), outline=border_color, width=1)
+    draw.text((bar_x, bar_y - 16), "SCALE 1:1", font=callout_font, fill=border_color)
+
 
 def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
     """Paint a manuscript-style border: cream-washed vellum + double
@@ -3842,6 +3937,36 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
                 (cx - jewel_radius, cy - jewel_radius, cx + jewel_radius, cy + jewel_radius),
                 fill=accent,
             )
+
+    # Head ornament: three rubricated lozenges in the canonical "⁂"
+    # section-break triangle, centred in the top margin — the rubricator's
+    # mark that opens a manuscript page. Red lozenges with a small blue
+    # dot at each centre (rubric + lapis, the two-ink vocabulary of the
+    # scriptorium). Sits at y≈42, below the y=14-29 debug-banner band and
+    # above the text block (which never starts before y=72).
+    hcx = width // 2
+    hy = 42
+    lz = 4  # lozenge half-size
+    for px, py in ((hcx, hy - 5), (hcx - 11, hy + 5), (hcx + 11, hy + 5)):
+        draw.polygon(
+            [(px, py - lz), (px + lz, py), (px, py + lz), (px - lz, py)],
+            fill=body,
+        )
+        draw.point((px, py), fill=accent)
+
+    # Foot line-filler: a centred red rule flanked by two small blue
+    # lozenges and pierced by a central red lozenge — the decorative
+    # "line filler" medieval scribes ran to the end of a short final
+    # line. Centred so it clears the bottom-left attribution column.
+    fy = height - 1 - outer_inset - 14
+    draw.line((hcx - 44, fy, hcx - 8, fy), fill=body, width=1)
+    draw.line((hcx + 8, fy, hcx + 44, fy), fill=body, width=1)
+    draw.polygon([(hcx, fy - lz), (hcx + lz, fy), (hcx, fy + lz), (hcx - lz, fy)], fill=body)
+    for fx in (hcx - 50, hcx + 50):
+        draw.polygon(
+            [(fx, fy - 3), (fx + 3, fy), (fx, fy + 3), (fx - 3, fy)],
+            fill=accent,
+        )
 
 
 def draw_gothic_border(image: Image.Image, colors: dict) -> None:
@@ -3962,6 +4087,40 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
             for px in range(x0, x1 + 1):
                 if (px + py) & 1 == 0 and pixels[px, py] == sentinel_yellow:
                     pixels[px, py] = cream_light
+
+    # Head + foot trefoil finials — a three-lobed clover (the canonical
+    # Gothic trefoil of cathedral tracery and chapter-heading ornaments),
+    # centred in the top and bottom margins to tie the head/foot of the
+    # page back to the four corner quatrefoils. Painted in solid rubric
+    # red (not the corners' maroon recipe): maroon is red+black, which on
+    # the black ground here would nearly vanish, whereas solid red carries
+    # gothic's candlelit-rubric register and reads clearly on the open
+    # field. Each lobe gets a small white centre dot for silhouette
+    # legibility, the same gesture the corner quatrefoils use. Centred
+    # horizontally so the top finial clears the right-aligned DEBUG MODE
+    # banner and the foot finial clears the bottom-left attribution; both
+    # sit just inside the inner frame.
+    trefoil_r = 5
+    trefoil_spread = 8
+    for base_cx, base_cy, point_up in (
+        (width // 2, inner_inset + 13, True),
+        (width // 2, height - 1 - inner_inset - 13, False),
+    ):
+        vy = -1 if point_up else 1
+        lobes = (
+            (0, vy * trefoil_spread),               # apex lobe
+            (-trefoil_spread, -vy * 2),             # lower-left lobe
+            (trefoil_spread, -vy * 2),              # lower-right lobe
+        )
+        for dx, dy in lobes:
+            lx, ly = base_cx + dx, base_cy + dy
+            draw.ellipse(
+                (lx - trefoil_r, ly - trefoil_r, lx + trefoil_r, ly + trefoil_r),
+                fill=accent,
+            )
+            draw.ellipse((lx - 1, ly - 1, lx + 1, ly + 1), fill=body)
+        # Short stem joining the lobes at the trefoil centre.
+        draw.ellipse((base_cx - 2, base_cy - 2, base_cx + 2, base_cy + 2), fill=accent)
 
 
 def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
@@ -4193,6 +4352,27 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
                     if row[px & 3] < threshold and pixels[px, py] == dark_ink:
                         pixels[px, py] = light_ink
 
+    # "Tria prima" triad dots flanking the Sun (top) and Moon (bottom)
+    # mid-edge sigils — the three-dot ``∴`` mark of alchemical / Masonic
+    # ritual notation (salt · sulfur · mercury), the smallest occult
+    # glyph that reads as deliberate ritual annotation. A small upward /
+    # downward triangle of three red dots is painted on each side of the
+    # Sun and Moon, filling the empty top / bottom interior bands
+    # (y≈18-40 / y≈440-462, between the corner pentagrams and the centre
+    # sigils — verified clear of the body block, which never starts
+    # before y=72 and ends by y≈410). Solid rubric red so they read on
+    # the open black field, matching the pentagram / sigil ink.
+    triad_r = 2
+    triad_spread = 6
+    for cy, point_up in ((outer_inset + 14, True), (height - 1 - outer_inset - 14, False)):
+        vy = -1 if point_up else 1
+        for cx in (width // 2 - 60, width // 2 + 60):
+            apex = (cx, cy + vy * triad_spread)
+            base_l = (cx - triad_spread, cy - vy * triad_spread // 2)
+            base_r = (cx + triad_spread, cy - vy * triad_spread // 2)
+            for dx, dy in (apex, base_l, base_r):
+                draw.ellipse((dx - triad_r, dy - triad_r, dx + triad_r, dy + triad_r), fill=accent)
+
 
 def draw_deco_border(image: Image.Image, colors: dict) -> None:
     """Paint an art-deco poster frame: doubled hairline rule + stepped
@@ -4327,6 +4507,24 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
             fill=accent_color,
             width=1,
         )
+
+    # Mid-edge stepped-chevron ornaments. Three nested chevrons pointing
+    # inward at the left and right mid-edges — the stepped-zigzag motif
+    # that echoes the skyscraper-step corners and fills the otherwise-
+    # empty side margins of the doubled frame. Painted in the accent
+    # colour *before* the tangerine dither pass below, so they pick up
+    # the same red→orange treatment as the corners and rising-sun fan.
+    # Anchored just inside the inner frame at the vertical midpoint, with
+    # the chevron opening toward the page centre; each nested chevron is
+    # 5 px further in and 4 px taller so the trio reads as a stepped fan.
+    mid_y = height // 2
+    for edge_x, dir_in in ((inner_inset + 1, +1), (width - 2 - inner_inset, -1)):
+        for step in (0, 1, 2):
+            ax = edge_x + dir_in * step * 5
+            arm = 6 + step * 4
+            # Two arms meeting at a point on the frame side, opening inward.
+            draw.line([(ax, mid_y - arm), (ax + dir_in * arm, mid_y)], fill=accent_color, width=1)
+            draw.line([(ax, mid_y + arm), (ax + dir_in * arm, mid_y)], fill=accent_color, width=1)
 
     # Final pass: synthesise orange by flipping ~3/8 of the painted
     # red pixels to yellow on the shared 4×4 Bayer matrix. See the
@@ -4673,6 +4871,39 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
             for x in range(x0, x1 + 1):
                 if (x + y) & 1 == 0 and pixels[x, y] == smudge_red:
                     pixels[x, y] = SPECTRA6["white"]
+    # Handwriting practice-guide rule in the top-left margin — the
+    # solid-top / dashed-midline / solid-baseline ruling schoolchildren
+    # write between. The defining gesture of the Playwrite GB J Guides
+    # face this theme uses (the UK primary-school joined-cursive model
+    # *with* the dotted practice letters), drawn in white chalk. Kept in
+    # the clear top margin (y≈34-58, above the y≥72 text block) and at the
+    # left (clear of the right-aligned debug banner), so it never crowds
+    # the quote.
+    guide_x0 = inner_inset + 12
+    guide_x1 = guide_x0 + 210
+    guide_top = 34
+    guide_mid = 46
+    guide_base = 58
+    draw.line((guide_x0, guide_top, guide_x1, guide_top), fill=frame_color, width=1)
+    draw.line((guide_x0, guide_base, guide_x1, guide_base), fill=frame_color, width=1)
+    for dash_x in range(guide_x0, guide_x1, 12):  # dashed midline
+        draw.line((dash_x, guide_mid, dash_x + 6, guide_mid), fill=frame_color, width=1)
+
+    # Gold-star "well done" sticker just left of the teacher's check —
+    # completing the graded gesture (tick + star). A small five-point star
+    # in the accent (yellow chalk), sitting in the same below-the-banner
+    # band as the check (y≈50) so chalkboard still needs no
+    # _DEBUG_LABEL_RIGHT_INSET entry.
+    star_cx = tick_elbow_x - 40
+    star_cy = tick_elbow_y - 4
+    star_r = 9
+    star_pts = []
+    for k in range(10):
+        ang = -math.pi / 2 + k * math.pi / 5
+        rr = star_r if k % 2 == 0 else star_r * 0.42
+        star_pts.append((star_cx + rr * math.cos(ang), star_cy + rr * math.sin(ang)))
+    draw.polygon(star_pts, fill=accent_color)
+
     # Yellow accent kept in the local namespace so a future palette
     # tweak in ``THEMES["chalkboard"]`` (e.g. swapping yellow chalk for
     # a different colour) keeps the cross-reference live.
@@ -4826,6 +5057,31 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
                 if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = SPECTRA6["white"]
 
+    # Side-margin hanging price-tag ornaments — a short vertical black rule
+    # dropping inward from each left/right mid-edge of the inner frame,
+    # terminating in a small coral diamond "ticket", the hand-lettered
+    # tag a sandwich-board menu hangs in its side margin. Echoes the
+    # header/footer divider vocabulary (black rule + weathered-coral
+    # diamond) into the otherwise-empty side margins. Pinned to
+    # x≈inner_inset+10 / width-inner_inset-10, well clear of the body
+    # block (the widest dense layout starts at x≥60).
+    side_tag_centres = []
+    cy_mid = height // 2
+    for edge_x, hdir in ((inner_inset + 10, 1), (width - 1 - inner_inset - 10, -1)):
+        # Short vertical rule from above the diamond down to it.
+        draw.line([(edge_x, cy_mid - 20), (edge_x, cy_mid - 5)], fill=ink, width=1)
+        draw.polygon(
+            [(edge_x, cy_mid - 5), (edge_x + 5, cy_mid), (edge_x, cy_mid + 5), (edge_x - 5, cy_mid)],
+            fill=accent_color,
+        )
+        side_tag_centres.append((edge_x, cy_mid))
+    # Coral post-pass on the side-tag diamonds (same R+W recipe).
+    for cx, cy in side_tag_centres:
+        for y in range(cy - 6, cy + 7):
+            for x in range(cx - 7, cx + 8):
+                if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
+                    pixels[x, y] = SPECTRA6["white"]
+
 
 def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     """Paint a samurai-cinema title-card surround: large off-canvas
@@ -4937,6 +5193,32 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         fill=light_color,
         width=2,
     )
+
+    # Vertical brush-tick column in the empty left margin — the hanging
+    # signature / date column a kabuki or samurai-cinema poster runs down
+    # the side of the artist's seal. Five short horizontal sumi strokes of
+    # varied length (a real hand-inked run of marks is uneven), painted in
+    # red as a sentinel and maroon-post-passed to share the chop's aged-ink
+    # tonal register. Pinned to x≈14-40, y≈196-280 — the tall clear band on
+    # the far left below the oversized opening quote-mark (which occupies
+    # y≈20-140) and above the bottom rising-sun arc (which only reaches the
+    # bottom-right quadrant). Well left of the body block, which on the
+    # widest dense layout starts at x≥60.
+    tick_cx = chop_left + chop_w // 2
+    tick_specs = ((196, 11), (212, 9), (228, 12), (244, 8), (260, 10))
+    for ty, half in tick_specs:
+        draw.line([(tick_cx - half, ty), (tick_cx + half, ty)], fill=sentinel_red, width=2)
+    # A couple of small ink-spatter flecks trailing off the lowest ticks,
+    # for the hand-inked sumi-e feel — single filled dots, same sentinel.
+    for fx, fy in ((tick_cx + 15, 266), (tick_cx - 13, 272), (tick_cx + 6, 278)):
+        draw.ellipse((fx - 1, fy - 1, fx + 1, fy + 1), fill=sentinel_red)
+    # Maroon post-pass over the brush-tick column bbox (x±18, y 188-282).
+    col_x0 = max(0, tick_cx - 18)
+    col_x1 = min(width - 1, tick_cx + 18)
+    for py in range(188, 283):
+        for px in range(col_x0, col_x1 + 1):
+            if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
+                pixels[px, py] = maroon_dark
 
 
 def _lcars_paint_lavender_block(pixels, left: int, top: int, right: int, bot: int,
@@ -5581,6 +5863,35 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
         for px in range(stamp_x0, stamp_x1 + 1):
             if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
                 pixels[px, py] = maroon_dark
+
+    # Two-hole filing punch centred in the top margin — the binder-punch
+    # holes office paper is filed by. Two thin black ring outlines (the
+    # punched edge) at y≈40, below the y=14-29 debug-banner band and above
+    # the text block (which never starts before y=72), centred so they
+    # clear both side perforation columns and the top-right rubber stamp.
+    punch_y = 40
+    punch_r = 7
+    punch_gap = 46
+    cx0 = width // 2
+    for hole_cx in (cx0 - punch_gap, cx0 + punch_gap):
+        draw.ellipse(
+            (hole_cx - punch_r, punch_y - punch_r, hole_cx + punch_r, punch_y + punch_r),
+            outline=ink,
+            width=1,
+        )
+
+    # Typed "— FILE COPY —" footer centred in the bottom margin, in the
+    # theme's own typewriter face — the carbon-duplicate stamp every
+    # dossier page carries. Centred horizontally so it clears the
+    # bottom-left attribution column; sits at y≈height-30, inside the
+    # frame and below the quote block.
+    footer_font = load_font(theme_font_candidates("dispatch", "quote_regular"), size=14)
+    footer_text = "— FILE COPY —"
+    fb = draw.textbbox((0, 0), footer_text, font=footer_font)
+    fw = fb[2] - fb[0]
+    footer_y = height - 1 - frame_inset - 18
+    draw.text((cx0 - fw // 2 - fb[0], footer_y), footer_text, font=footer_font, fill=ink)
+
     # ``accent`` is the dispatch theme's red slot; kept bound for future
     # palette extensions even though the sentinel-paint-then-bbox-
     # post-pass approach above doesn't read from it directly.
@@ -5734,6 +6045,40 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
             for x in range(x0, x1 + 1):
                 if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
                     pixels[x, y] = flip_yellow
+
+    # Atomic "boomerang" centred in the bottom margin — the iconic
+    # Googie / Formica kidney-boomerang the era stamped on diner tables,
+    # bowling-alley carpet, and motel signs. Drawn as a chevron-shaped
+    # filled polygon (two tapered wings meeting at a rounded elbow), with
+    # a small orbiting-electron dot drifting off one tip. Painted in red
+    # as a sentinel and then a bbox post-pass Bayer-flips ~3/8 of the red
+    # to yellow at threshold 6/16 — the same documented R+Y tangerine
+    # recipe the mid-edge starburst rays use — so the boomerang reads as
+    # the warm atomic-spark orange of period advertising rather than the
+    # harsh fire-engine red of the atom orbits. Centred horizontally
+    # (clear of the bottom-left attribution) and sits at y≈height-40,
+    # below the quote block (block_top ≥ 72 leaves the bottom margin free).
+    boom_cx = width // 2
+    boom_cy = height - 40
+    boomerang = [
+        (boom_cx - 38, boom_cy - 6),   # left tip (top edge)
+        (boom_cx - 6, boom_cy + 6),    # elbow inner
+        (boom_cx + 38, boom_cy - 6),   # right tip (top edge)
+        (boom_cx + 30, boom_cy + 2),   # right tip (bottom edge)
+        (boom_cx, boom_cy + 13),       # elbow outer
+        (boom_cx - 30, boom_cy + 2),   # left tip (bottom edge)
+    ]
+    draw.polygon(boomerang, fill=sentinel_red)
+    # Orbiting-electron dot off the right tip.
+    draw.ellipse((boom_cx + 44, boom_cy - 10, boom_cx + 50, boom_cy - 4), fill=sentinel_red)
+    bx0 = max(0, boom_cx - 50)
+    by0 = max(0, boom_cy - 12)
+    bx1 = min(width - 1, boom_cx + 52)
+    by1 = min(height - 1, boom_cy + 15)
+    for y in range(by0, by1 + 1):
+        for x in range(bx0, bx1 + 1):
+            if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
+                pixels[x, y] = flip_yellow
 
 
 # Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded at
@@ -5909,6 +6254,27 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
             for px in range(bx0, bx1 + 1):
                 if (px + py) & 1 == 0 and pixels[px, py] == dark_ink:
                     pixels[px, py] = light_ink
+
+    # Doodle "twinkle" sparkles in the top + bottom centre margins — the
+    # little four-point stars a kid scatters around a fridge drawing. A
+    # tapered four-point star (long cardinal rays + short diagonal nubs)
+    # in a marker ink, with one tiny companion dot offset beside it. Top
+    # sparkle in red, bottom in blue — pulling two of the palette inks
+    # into the otherwise-empty head/foot margins to balance the corner
+    # asterisks. Both centred horizontally: the top sparkle clears the
+    # right-aligned DEBUG MODE banner (it sits at x=width//2-70) and the
+    # bottom clears the attribution column, so no _DEBUG_LABEL_RIGHT_INSET
+    # change beyond marker's existing TR-asterisk entry.
+    def _twinkle(tx: int, ty: int, ink: tuple[int, int, int]) -> None:
+        draw.line((tx, ty - 7, tx, ty + 7), fill=ink, width=2)
+        draw.line((tx - 7, ty, tx + 7, ty), fill=ink, width=2)
+        for ddx, ddy in ((-3, -3), (3, -3), (-3, 3), (3, 3)):
+            draw.point((tx + ddx, ty + ddy), fill=ink)
+        # Tiny companion sparkle.
+        draw.line((tx + 14, ty - 4, tx + 14, ty + 1), fill=ink, width=1)
+        draw.line((tx + 12, ty - 2, tx + 17, ty - 2), fill=ink, width=1)
+    _twinkle(width // 2 - 70, 26, SPECTRA6["red"])
+    _twinkle(width // 2 + 60, height - 1 - 24, SPECTRA6["blue"])
 
 
 # Deterministic foxing-speckle layout for ``draw_saloon_border``.
@@ -6235,6 +6601,38 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
             ],
             fill=accent,
         )
+
+    # ------------------------------------------------------------------
+    # Layer 6: Side-margin drop-pendant diamond chains. The left/right
+    # mid-edge diamonds (above) sit alone in the tall, otherwise-empty
+    # side margins between the top and bottom banner bands. Hang a short
+    # chain of two diminishing diamonds inward from each, joined by a
+    # thin connecting tick — the "drop pendant" terminal a broadside
+    # printer ran down from a margin ornament. Strictly inside the inner
+    # frame and clear of the body block (the quote's widest dense layout
+    # starts at x≥60 / ends at x≤740, and these sit at x≈18 / x≈782), so
+    # they never touch the text. Painted in red to match the mid-edge
+    # diamonds; left at solid red (not sepia) so the pendant reads as a
+    # deliberate printed ornament rather than aged foxing.
+    pendant_sizes = (5, 3)
+    pendant_gap = 7
+    for edge_x in (outer_inset, width - 1 - outer_inset):
+        cy = height // 2
+        offset = mid_diamond + pendant_gap
+        for size in pendant_sizes:
+            dcy = cy + offset
+            draw.line((edge_x, dcy - offset + mid_diamond, edge_x, dcy - size), fill=accent, width=1)
+            draw.polygon(
+                [
+                    (edge_x, dcy - size),
+                    (edge_x + size, dcy),
+                    (edge_x, dcy + size),
+                    (edge_x - size, dcy),
+                ],
+                fill=accent,
+            )
+            offset += size + pendant_gap
+
     # Fall-through to silence the "unused bg" — kept in the signature
     # so a future palette extension (e.g. cream foxing on a tinted
     # ground) has the field already wired.
@@ -6431,6 +6829,37 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     draw_text(draw, (24, 20), 'SIG 92%', font=meta_font, fill=accent)
     draw_text(draw, (24, height - 34), 'GAIN AUTO', font=meta_font, fill=accent)
     draw_text(draw, (width - 122, 40), 'AZ 041  EL 17', font=meta_font, fill=accent)
+
+    # HUD bearing-scale ruler along the bottom inner margin — graduated
+    # green ticks with a taller mark every fourth division and a yellow
+    # centre caret, reading as the heading/distance tape of a weapons
+    # readout. Kept in the clear bottom margin (between the corner
+    # brackets, below GAIN AUTO) so it never crowds the quote body and
+    # stays well clear of the y=14-29 debug-banner band up top.
+    scale_y = bottom_y - 3
+    scale_l = margin + 110
+    scale_r = right_x - 110
+    for i, sx in enumerate(range(scale_l, scale_r + 1, 22)):
+        notch = 8 if i % 4 == 0 else 4
+        draw.line((sx, scale_y, sx, scale_y - notch), fill=body, width=1)
+    # Centre index caret — a small downward yellow triangle over the tape.
+    draw.polygon(
+        [(cx, scale_y - 10), (cx - 4, scale_y - 16), (cx + 4, scale_y - 16)],
+        fill=accent,
+    )
+
+    # Rangefinder ladder notches stepping inward along the two bottom
+    # corner brackets' vertical arms — the measurement gradations etched
+    # beside a real reticle. Bottom-weighted so they stay clear of the
+    # debug-banner band the top brackets share.
+    for arm_x, arm_dir in ((margin, +1), (right_x, -1)):
+        for step in (8, 14, 20):
+            ny = bottom_y - step
+            draw.line(
+                (arm_x + arm_dir * (thickness + 1), ny, arm_x + arm_dir * (thickness + 5), ny),
+                fill=body,
+                width=1,
+            )
 
 
 
@@ -6918,6 +7347,37 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
         (laurel_cx - 2, laurel_band_y - 4, laurel_cx + 2, laurel_band_y),
         fill=accent,
     )
+
+    # ------------------------------------------------------------------
+    # Layer 7: Carved corner "stops" on the inscribed face. A small red
+    # right-triangle tucked into each inner-channel corner, pointing
+    # inward along the diagonal — the carved corner terminal Roman
+    # stonemasons cut where two channel rules meet, the lapidary
+    # equivalent of a printer's corner bracket. Painted in rubrum to
+    # pick up the SPQR / interpunct / berry red vocabulary. Each
+    # triangle's legs are short (10 px) and hug the channel corner, so
+    # they sit in the corner gutter clear of the body text (the quote's
+    # widest dense layout spans roughly x60-740, y72-410, while these
+    # sit at the channel corners ≈(38,22)/(761,457)).
+    chan_l = rect_left + channel_inset
+    chan_r = rect_right - channel_inset
+    chan_t = rect_top + channel_inset
+    chan_b = rect_bot - channel_inset
+    stop_leg = 10
+    for corner_x, corner_y, hdir, vdir in (
+        (chan_l, chan_t, 1, 1),    # TL
+        (chan_r, chan_t, -1, 1),   # TR
+        (chan_l, chan_b, 1, -1),   # BL
+        (chan_r, chan_b, -1, -1),  # BR
+    ):
+        draw.polygon(
+            [
+                (corner_x, corner_y),
+                (corner_x + hdir * stop_leg, corner_y),
+                (corner_x, corner_y + vdir * stop_leg),
+            ],
+            fill=accent,
+        )
 
 
 def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
@@ -7638,6 +8098,10 @@ def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
     tx = label_x0 + (label_w - text_w) // 2
     ty = label_y0 + (label_h - text_h) // 2 - bbox[1]
     draw.text((tx, ty), label_text, font=label_font, fill=ink)
+    # A faint writing rule under the tag so the box reads as a real
+    # specimen label (collector / locality / date form) rather than an
+    # empty outlined rectangle.
+    draw.line((label_x0 + 8, label_y1 - 6, label_x1 - 8, label_y1 - 6), fill=ink, width=1)
 
     # Four pinhole dots at the inner corners of the engraver's rule.
     pinhole_offset = 3
@@ -7651,6 +8115,32 @@ def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
         draw.ellipse(
             (cx - pinhole_radius, cy - pinhole_radius, cx + pinhole_radius, cy + pinhole_radius),
             fill=ink,
+        )
+
+    # Second specimen — a small pressed fern frond hugging the top-left
+    # margin, diagonally counterweighting the bottom-right leaf (real
+    # sheets often mount more than one cutting). Same olive sentinel +
+    # ``(x+y) & 1`` post-pass recipe as the main leaf.
+    fern_x = 54
+    fern_top = 34
+    fern_bot = 108
+    draw.line((fern_x, fern_top, fern_x, fern_bot), fill=olive_sentinel, width=2)
+    for fy in range(fern_top + 8, fern_bot, 11):
+        span = max(4, (fern_bot - fy) // 6)  # leaflets taper toward the tip
+        draw.line((fern_x, fy, fern_x - 10, fy - span), fill=olive_sentinel, width=1)
+        draw.line((fern_x, fy, fern_x + 10, fy - span), fill=olive_sentinel, width=1)
+    for py in range(fern_top - 2, fern_bot + 2):
+        for px in range(fern_x - 12, fern_x + 12):
+            if 0 <= px < width and 0 <= py < height and pixels[px, py] == olive_sentinel and (px + py) & 1:
+                pixels[px, py] = olive_other
+
+    # Gummed mounting-tape strips pinning the main leaf's midrib to the
+    # sheet — the off-white linen hinges that hold a real specimen flat.
+    for ty_strip in (leaf_cy - 18, leaf_cy + 16):
+        draw.rectangle(
+            (leaf_cx - 22, ty_strip - 3, leaf_cx + 22, ty_strip + 3),
+            fill=SPECTRA6["white"],
+            outline=ink,
         )
 
 
@@ -7860,17 +8350,43 @@ def draw_mucha_border(image: Image.Image, colors: dict) -> None:
         else:
             tip_x = bx0 + 7
             tip_y = by0 + 7
-        radius = 6
-        for py in range(max(0, tip_y - radius), min(height - 1, tip_y + radius) + 1):
+        # Five-petal blossom at the stem tip — the flowering terminal of a
+        # Mucha vine. Paint five small petal ellipses radiating from the
+        # tip in the berry sentinel (red) so they're swept up by the same
+        # tangerine post-pass below as the central berry, reading as a
+        # warm flower head against the cream ground. The petals enlarge
+        # the flowering tip without breaking the deliberate TL/BR-only
+        # asymmetry (only the two already-ornamented corners gain them).
+        petal_r = 4
+        petal_dist = 7
+        for k in range(5):
+            ang = -math.pi / 2 + k * (2 * math.pi / 5)
+            px_c = tip_x + round(petal_dist * math.cos(ang))
+            py_c = tip_y + round(petal_dist * math.sin(ang))
+            draw.ellipse(
+                (px_c - petal_r, py_c - petal_r, px_c + petal_r, py_c + petal_r),
+                fill=berry_sentinel,
+            )
+        core_radius = 6   # central berry — repaint unconditionally (as before)
+        halo_radius = 14  # petal ring — repaint only the sentinel petals
+        core_sq = core_radius * core_radius
+        halo_sq = halo_radius * halo_radius
+        for py in range(max(0, tip_y - halo_radius), min(height - 1, tip_y + halo_radius) + 1):
             row = BAYER_4x4[py & 3]
-            for px in range(max(0, tip_x - radius), min(width - 1, tip_x + radius) + 1):
+            for px in range(max(0, tip_x - halo_radius), min(width - 1, tip_x + halo_radius) + 1):
                 dx = px - tip_x
                 dy = py - tip_y
-                if dx * dx + dy * dy > radius * radius:
-                    continue
-                # Inside the berry: repaint either red (5/8) or yellow (3/8)
-                # via threshold 6/16 of the shared Bayer matrix.
-                pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
+                d_sq = dx * dx + dy * dy
+                if d_sq <= core_sq:
+                    # Central berry: repaint the whole disc (overwriting the
+                    # stem post-pass's blacks) red (5/8) or yellow (3/8) via
+                    # threshold 6/16 → tangerine, exactly as before.
+                    pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
+                elif d_sq <= halo_sq and pixels[px, py] == berry_sentinel:
+                    # Petal ring: only flip the painted petal pixels, leaving
+                    # the cream ground between petals untouched so the
+                    # blossom reads as five distinct petals, not a solid disc.
+                    pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
 
 
 _KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int, int, int], ...] = (
@@ -8617,9 +9133,11 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
 
     blob_rng = _random_blob.Random(_FIRMAMENT_STAR_SEED ^ 0x42)
 
-    def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0) -> list[tuple[float, float]]:
+    def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0,
+                    angle: float = 0.0) -> tuple[list[tuple[float, float]], float, float, float, float]:
         n = 32
         points = []
+        ca, sa = math.cos(angle), math.sin(angle)
         for i in range(n):
             t = 2.0 * math.pi * i / n
             # Per-vertex radial wobble in [0.65, 1.15] * base_r so the
@@ -8629,46 +9147,67 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
             r = base_r * (0.65 + 0.40 * blob_rng.random()) * (
                 0.85 + 0.30 * blob_rng.random()
             )
-            points.append((cx + r * math.cos(t) * aspect, cy + r * math.sin(t)))
-        return points
+            # Build the blob along its own (long, short) axes then rotate
+            # by ``angle`` so the band lies on a diagonal — the canonical
+            # slanted arm of the Milky Way as classical atlases drew it,
+            # rather than an axis-aligned ellipse that reads as a blot.
+            lx = r * math.cos(t) * aspect
+            ly = r * math.sin(t)
+            points.append((cx + lx * ca - ly * sa, cy + lx * sa + ly * ca))
+        # Return the rotated centre/axis frame too, so the scatter pass
+        # can compute a radial density falloff in the blob's own space
+        # (dense core fading to sparse edge — a real star cloud, not a
+        # uniform confetti fill).
+        return points, cx, cy, base_r * aspect, base_r
 
-    # Top blob — drifts above the moon, shorter and shallower than
-    # before so the band reads as a wispy nebula rather than a solid
-    # cloud. Sits between Cassiopeia (TL) and Lyra (TR), threading
-    # below the ecliptic arc.
-    top_blob = _build_blob(width / 2 + 30, 52, 36, aspect=2.2)
-    # Bottom blob — narrower, mirrored opposite-diagonal.
-    bottom_blob = _build_blob(width / 2 - 60, height - 30, 32, aspect=2.4)
+    # Top blob — drifts above the moon, a shallow diagonal band tilted
+    # down-to-the-right. Sits between Cassiopeia (TL) and Lyra (TR),
+    # threading below the ecliptic arc.
+    top_blob = _build_blob(width / 2 + 30, 52, 34, aspect=2.2, angle=0.18)
+    # Bottom blob — mirrored, tilted the opposite diagonal.
+    bottom_blob = _build_blob(width / 2 - 60, height - 30, 30, aspect=2.4, angle=-0.20)
 
-    for poly in (top_blob, bottom_blob):
+    for poly, bcx, bcy, blob_rx, blob_ry in (top_blob, bottom_blob):
         draw.polygon(poly, fill=milky_sentinel)
         xs = [p[0] for p in poly]
         ys = [p[1] for p in poly]
         x0, x1 = max(0, int(min(xs))), min(width, int(max(xs)) + 1)
         y0, y1 = max(0, int(min(ys))), min(height, int(max(ys)) + 1)
+        inv_rx = 1.0 / max(1.0, blob_rx)
+        inv_ry = 1.0 / max(1.0, blob_ry)
         for y in range(y0, y1):
             for x in range(x0, x1):
                 if pixels[x, y] != milky_sentinel:
                     continue
-                # Deterministic per-position hash → very sparse paint:
-                # 1/40 chance yellow pin-star, 1/30 chance red dust,
-                # 1/30 chance blue dust. Total ~9% painted; remaining
-                # ~91% reverts to the navy ground. At panel viewing
-                # distance the eye averages this to a faint cloudy
-                # haze with embedded pin-stars — what 17th-century
-                # atlas engravers stippled when they drew the
-                # Milky Way's diffuse trail.
+                # Deterministic per-position hash → sparse paint, but the
+                # *density* now falls off from the blob centre outward so
+                # the band reads as a concentrated star cloud fading into
+                # the navy rather than a uniform confetti rectangle.
+                # ``edge`` is the normalised radial distance (0 at centre,
+                # ~1 at the silhouette edge); we widen the "revert to
+                # ground" bucket as ``edge`` grows.
+                ndx = (x - bcx) * inv_rx
+                ndy = (y - bcy) * inv_ry
+                edge = ndx * ndx + ndy * ndy
                 star_hash = (x * 73856093) ^ (y * 19349663)
                 bucket = star_hash % 120
-                if bucket < 3:
-                    pixels[x, y] = yellow_ink   # 3/120 = 1/40 star
-                elif bucket < 7:
-                    pixels[x, y] = red_ink      # 4/120 ≈ 1/30 warm dust
-                elif bucket < 11:
-                    pixels[x, y] = blue_ink     # 4/120 ≈ 1/30 cool dust
+                # Core (edge<0.35): full ~9% paint. Mid: thinned. Rim
+                # (edge>0.85): only the brightest 1/40 pin-stars survive,
+                # everything else reverts to ground so the cloud feathers.
+                if edge < 0.35:
+                    keep = bucket < 11
+                elif edge < 0.85:
+                    keep = bucket < 6
                 else:
-                    # Revert to navy ground (Layer 0 parity).
+                    keep = bucket < 3
+                if not keep:
                     pixels[x, y] = blue_ink if (x + y) & 1 else black_ink
+                elif bucket < 3:
+                    pixels[x, y] = yellow_ink   # pin-star (survives to the rim)
+                elif bucket < 7:
+                    pixels[x, y] = red_ink      # warm nebular dust
+                else:
+                    pixels[x, y] = blue_ink     # cool nebular dust
 
     # ---- Layer 2: Star field ----
     for sx, sy, mag in _build_firmament_stars(width, height):
@@ -9382,6 +9921,141 @@ def _draw_cartograph_sea_serpent(
     draw.polygon(head_pts, fill=ink)
 
 
+def _point_in_polygon(x: float, y: float, poly: list[tuple[int, int]]) -> bool:
+    """Even-odd ray-cast point-in-polygon test (treats ``poly`` as closed)."""
+    inside = False
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if (yi > y) != (yj > y):
+            x_cross = xi + (y - yi) * (xj - xi) / (yj - yi) if yj != yi else xi
+            if x < x_cross:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _draw_cartograph_contours(
+    draw: ImageDraw.ImageDraw,
+    land_poly: list[tuple[int, int]],
+    bbox: tuple[int, int, int, int],
+    ink,
+    seed: int,
+) -> None:
+    """Trace topographic iso-line contours over a synthetic height field,
+    clipped to ``land_poly``, the way a real chart hatches terrain relief.
+
+    A small set of Gaussian "hills" and "basins" (deterministic per
+    ``seed``) is summed into a height field across the land's bounding
+    box; marching-squares then traces line segments wherever the field
+    crosses each of several evenly-spaced elevation thresholds. The result
+    is the wavy, multi-peak nested-loop contour texture of a real
+    topographic map rather than concentric copies of the coastline. Cells
+    whose centre falls outside the land polygon are skipped, so the
+    contours stay inside the sepia landmass.
+    """
+    x0, y0, x1, y1 = bbox
+    x0 = max(0, int(x0))
+    y0 = max(0, int(y0))
+    x1 = int(x1)
+    y1 = int(y1)
+    w = x1 - x0
+    h = y1 - y0
+    if w < 8 or h < 8:
+        return
+
+    rng = random.Random(seed)
+    # 3–4 Gaussian features (hills positive, basins negative) placed inside
+    # the bbox. Their spread scales with the land size so the contour
+    # spacing looks consistent regardless of which corner / extent.
+    span = max(w, h)
+    n_features = rng.randint(3, 4)
+    features = []
+    for _ in range(n_features):
+        fx = x0 + rng.uniform(0.15, 0.85) * w
+        fy = y0 + rng.uniform(0.15, 0.85) * h
+        amp = rng.uniform(0.6, 1.0) * (1 if rng.random() < 0.65 else -1)
+        sigma = rng.uniform(0.18, 0.34) * span
+        features.append((fx, fy, amp, 2.0 * sigma * sigma))
+
+    def height(px: float, py: float) -> float:
+        total = 0.0
+        for fx, fy, amp, two_sig_sq in features:
+            dx = px - fx
+            dy = py - fy
+            total += amp * math.exp(-(dx * dx + dy * dy) / two_sig_sq)
+        return total
+
+    # Sample the field on a coarse grid (step ~5 px — fine enough for smooth
+    # iso-lines, coarse enough to stay cheap in pure Python).
+    step = 5
+    gx = list(range(x0, x1 + step, step))
+    gy = list(range(y0, y1 + step, step))
+    grid = [[height(px, py) for px in gx] for py in gy]
+    lo = min(min(row) for row in grid)
+    hi = max(max(row) for row in grid)
+    if hi - lo < 1e-6:
+        return
+    # Six evenly-spaced iso-levels across the field's range (skip the
+    # extremes, which would trace tiny specks at the very peaks/pits).
+    levels = [lo + (hi - lo) * f for f in (0.18, 0.32, 0.46, 0.60, 0.74, 0.88)]
+
+    def interp(pa, va, pb, vb, lvl):
+        # Linear crossing point between grid nodes pa (val va) and pb (vb).
+        if abs(vb - va) < 1e-9:
+            return pa
+        t = (lvl - va) / (vb - va)
+        return (pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t)
+
+    for lvl in levels:
+        for iy in range(len(gy) - 1):
+            for ix in range(len(gx) - 1):
+                # Cell corners (TL, TR, BR, BL) with field values.
+                tlp = (gx[ix], gy[iy])
+                tlv = grid[iy][ix]
+                trp = (gx[ix + 1], gy[iy])
+                trv = grid[iy][ix + 1]
+                brp = (gx[ix + 1], gy[iy + 1])
+                brv = grid[iy + 1][ix + 1]
+                blp = (gx[ix], gy[iy + 1])
+                blv = grid[iy + 1][ix]
+                # Skip cells whose centre isn't on land.
+                ccx = (gx[ix] + gx[ix + 1]) / 2.0
+                ccy = (gy[iy] + gy[iy + 1]) / 2.0
+                if not _point_in_polygon(ccx, ccy, land_poly):
+                    continue
+                code = (
+                    (1 if tlv > lvl else 0)
+                    | (2 if trv > lvl else 0)
+                    | (4 if brv > lvl else 0)
+                    | (8 if blv > lvl else 0)
+                )
+                if code == 0 or code == 15:
+                    continue
+                # Crossing points on each edge (top, right, bottom, left).
+                top = interp(tlp, tlv, trp, trv, lvl)
+                right = interp(trp, trv, brp, brv, lvl)
+                bottom = interp(blp, blv, brp, brv, lvl)
+                left = interp(tlp, tlv, blp, blv, lvl)
+                # Marching-squares segment table (ambiguous saddles 5/10
+                # split into two segments).
+                segs = {
+                    1: [(left, top)], 2: [(top, right)], 3: [(left, right)],
+                    4: [(right, bottom)], 5: [(left, top), (right, bottom)],
+                    6: [(top, bottom)], 7: [(left, bottom)], 8: [(left, bottom)],
+                    9: [(top, bottom)], 10: [(left, bottom), (top, right)],
+                    11: [(right, bottom)], 12: [(left, right)], 13: [(top, right)],
+                    14: [(left, top)],
+                }.get(code, [])
+                for a, b in segs:
+                    draw.line(
+                        (round(a[0]), round(a[1]), round(b[0]), round(b[1])),
+                        fill=ink, width=1,
+                    )
+
+
 def _draw_cartograph_coastline(
     draw: ImageDraw.ImageDraw,
     corner: tuple[int, int],
@@ -9420,17 +10094,28 @@ def _draw_cartograph_coastline(
     # toward the centre.
     sign_x = 1 if extent_x >= corner_x else -1
     sign_y = 1 if extent_y >= corner_y else -1
-    n_pts = 14
+    n_pts = 26
     pts: list[tuple[int, int]] = []
+    # Two-octave coastline wobble: a slow swell carves the broad bays /
+    # headlands, a fast jitter adds the fractal nibble of a real engraved
+    # shoreline. The previous single ±28/±22 octave over a 176 px span
+    # read as a near-straight hypotenuse (a triangle, not land); doubling
+    # the vertex count and layering a deep slow swell on top gives the
+    # silhouette genuine inlets and capes.
+    slow_phase = rng.random() * math.tau
+    slow_freq = 2.0 + rng.random() * 1.5
     for i in range(1, n_pts + 1):
         t = i / n_pts
-        # Base position along the diagonal arc (sin curve flattens the
+        # Base position along the diagonal arc (power curve flattens the
         # mid-section so the coastline doesn't read as a straight diagonal).
         bx = corner_x + round((extent_x - corner_x) * t)
         by = corner_y + round((extent_y - corner_y) * (1.0 - (1.0 - t) ** 1.8))
-        # Per-vertex deterministic wobble in the canvas-axis directions.
-        wobble_x = round((rng.random() - 0.5) * 28) * sign_x
-        wobble_y = round((rng.random() - 0.5) * 22) * sign_y
+        # Slow swell (broad bays/headlands) + fast jitter (fractal nibble),
+        # both pushing toward the corner's outside so the land hugs the
+        # corner and the ragged edge faces the open sea.
+        swell = math.sin(slow_phase + t * slow_freq * math.tau)
+        wobble_x = round((swell * 22 + (rng.random() - 0.5) * 26)) * sign_x
+        wobble_y = round((swell * 18 + (rng.random() - 0.5) * 20)) * sign_y
         pts.append((bx + wobble_x, by + wobble_y))
     # Close back along the corner edges so PIL fills the land region.
     # Walk along the y-axis edge first, then the x-axis edge, so the
@@ -9439,9 +10124,23 @@ def _draw_cartograph_coastline(
     pts.append((extent_x, corner_y))
     pts.append((corner_x, corner_y))
     draw.polygon(pts, fill=ink_sentinel)
+
     xs = [p[0] for p in pts]
     ys = [p[1] for p in pts]
-    return (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+    bbox = (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+
+    # Interior topographic form-lines — real terrain relief, traced as
+    # marching-squares iso-lines over a synthetic height field (a handful
+    # of Gaussian hills + basins) clipped to the land silhouette. This is
+    # the only approach that reproduces the wavy, multi-peak nested
+    # contours of a real topographic chart; the earlier coast-arc offset /
+    # scale tries could only ever make shrunken copies of one shoreline,
+    # which bunched into a band and left the interior flat. Drawn in BLACK
+    # (not the red sentinel) so the caller's red→green sepia post-pass
+    # leaves them as crisp engraved relief lines over the sepia land fill.
+    _draw_cartograph_contours(draw, pts, bbox, SPECTRA6["black"], seed ^ 0x5EA1)
+
+    return bbox
 
 
 def draw_cartograph_border(
@@ -12934,6 +13633,50 @@ def _vinyl_paint_track_heading(
     draw.text((x_left, y_top), text, font=font, fill=RED)
 
 
+def _vinyl_paint_spec_line(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    bucket: str,
+    x_left: int,
+    x_right: int,
+    y_top: int,
+) -> None:
+    """Liner-note spec strip just under the READING heading.
+
+    Real spoken-word LP backs (Caedmon, Spoken Arts) ran a small
+    technical line beneath each selection heading — side, speed,
+    channel, and the matter-of-fact "running time" of the reading.
+    Fills the gap between the heading and the vertically-centred quote
+    body that otherwise read as dead cream. Set in the same Space Mono
+    "engineered" register the catalog number uses, with a thin black
+    hairline above it echoing the bottom catalog bar's rule so the two
+    chrome strips bracket the quote symmetrically. The running time is
+    derived deterministically from the fuzzy bucket (a stable per-quote
+    figure — not a real measurement, the same way the catalog number
+    is synthesised) so a given quote always renders the same strip.
+    """
+    BLACK = SPECTRA6["black"]
+    font = load_font([SPACEMONO_BOLD, *META_FONT_CANDIDATES], size=10)
+    # Deterministic "running time" 1:00–8:59 from the bucket. ``hash()`` is
+    # process-salted (PYTHONHASHSEED), which would make the strip differ
+    # between renders of the same quote and break the golden-image / dedup
+    # byte-exact contract; derive a STABLE digit sum from the bucket string
+    # instead so a given quote always yields the same running time.
+    h = sum(ord(c) for c in bucket)
+    mins = 1 + (h % 8)
+    secs = (h * 7) % 60
+    # ASCII "33 RPM" — Space Mono has no U+2153 (⅓) glyph and would tofu,
+    # the same reason the 33 RPM badge dropped the fraction.
+    left_text = "SIDE ONE  ·  33 RPM  ·  MONO"
+    right_text = f"RUNNING TIME {mins}:{secs:02d}"
+    rule_y = y_top - 4
+    draw.line((x_left, rule_y, x_right, rule_y), fill=BLACK, width=1)
+    draw.text((x_left, y_top), left_text, font=font, fill=BLACK)
+    bbox = draw.textbbox((0, 0), right_text, font=font)
+    w = bbox[2] - bbox[0]
+    draw.text((x_right - w - bbox[0], y_top - bbox[1]), right_text, font=font, fill=BLACK)
+
+
 def _vinyl_paint_catalog_bar(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -13128,8 +13871,12 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _vinyl_paint_33rpm_badge(image, draw, x_right=sleeve_x_right, y_top=20)
     # TRACK ONE heading at the top of the liner-notes column.
     _vinyl_paint_track_heading(image, draw, x_left=sleeve_x_left, y_top=24)
-    # Quote body on the sleeve.
-    body_rect = (sleeve_x_left, 60, sleeve_x_right, 390)
+    # Liner-note spec strip (side · speed · channel · running time) just
+    # below the heading — fills the dead cream between heading and quote.
+    _vinyl_paint_spec_line(image, draw, bucket, x_left=sleeve_x_left,
+                           x_right=sleeve_x_right, y_top=48)
+    # Quote body on the sleeve (top nudged down to clear the spec strip).
+    body_rect = (sleeve_x_left, 74, sleeve_x_right, 390)
     _vinyl_paint_quote_body(image, draw, quote_row, body_rect)
     # Author + title attribution (right-aligned).
     _vinyl_paint_attribution(image, draw, quote_row, x_right=sleeve_x_right, y_top=412)

@@ -3472,3 +3472,403 @@ class TestDrawTextDithered:
                         f"placard post-pass flipped a non-checkerboard pixel "
                         f"at ({x}, {y})"
                     )
+
+
+def test_nightvision_border_paints_hud_bearing_ruler():
+    """The upleveled nightvision border adds a bottom-margin bearing-scale
+    ruler (green ticks) with a yellow centre caret."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_nightvision_border(img, rq.THEMES["nightvision"])
+    px = img.load()
+    green = rq.SPECTRA6["green"]
+    accent = rq.THEMES["nightvision"]["accent"]
+    ruler_band = {px[x, y] for x in range(130, 670) for y in range(456, 466)}
+    assert green in ruler_band, "bottom bearing-scale ruler ticks missing"
+    caret_band = {px[x, y] for x in range(394, 407) for y in range(446, 455)}
+    assert accent in caret_band, "centre index caret missing"
+
+
+def test_nightvision_ruler_clears_debug_banner_band():
+    """The new HUD furniture is bottom-weighted so the y=14-29 debug-banner
+    band stays free of it (why nightvision needs no _DEBUG_LABEL_RIGHT_INSET)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_nightvision_border(img, rq.THEMES["nightvision"])
+    px = img.load()
+    accent = rq.THEMES["nightvision"]["accent"]
+    banner_band = {px[x, y] for x in range(130, 670) for y in range(14, 30)}
+    assert accent not in banner_band, "new accent furniture intrudes on banner band"
+
+
+def test_herbarium_border_paints_second_fern_specimen():
+    """The upleveled herbarium border mounts a second pressed-fern specimen
+    in the top-left margin (olive = green/yellow stipple)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_herbarium_border(img, rq.THEMES["herbarium"])
+    px = img.load()
+    green = rq.SPECTRA6["green"]
+    yellow = rq.SPECTRA6["yellow"]
+    fern = {px[x, y] for x in range(42, 67) for y in range(34, 109)}
+    assert green in fern and yellow in fern, "TL fern specimen olive stipple missing"
+
+
+def test_herbarium_border_paints_leaf_mounting_tape():
+    """Off-white gummed mounting-tape strips pin the main BR leaf's midrib."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_herbarium_border(img, rq.THEMES["herbarium"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    leaf_cx = 800 - 1 - 38 - 84 // 2
+    leaf_cy = 480 - 1 - 38 - 42 // 2
+    assert px[leaf_cx, leaf_cy - 18] == white
+    assert px[leaf_cx, leaf_cy + 16] == white
+
+
+def test_blueprint_border_paints_top_dimension_line():
+    """The upleveled blueprint border adds a top-margin overall-width
+    dimension callout. The rule + extension ticks are in the white drafting
+    ink; the inward arrowheads and the centred measurement figure are in the
+    red registration ink — so both inks appear in the dimension band."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    white = rq.SPECTRA6["white"]
+    dim_red = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == red)
+    dim_white = sum(1 for x in range(110, 690) for y in range(36, 45) if px[x, y] == white)
+    assert dim_red > 30, "dimension arrowheads / figure (red) missing"
+    assert dim_white > 100, "dimension rule / extension ticks (white) missing"
+
+
+def test_blueprint_border_paints_scale_bar():
+    """The upleveled blueprint border adds a bottom-right graduated
+    SCALE 1:1 legend bar in the drafting-ink (white) colour."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    bar_x = 800 - 1 - 16 - 12 - 80
+    bar_y = 480 - 1 - 16 - 18
+    assert px[bar_x + 2, bar_y + 3] == white, "scale-bar first filled cell missing"
+
+
+def test_blueprint_callouts_clear_debug_banner_band():
+    """The dimension line sits at y=40 — below the y=14-29 debug banner — so
+    blueprint still needs no _DEBUG_LABEL_RIGHT_INSET adjustment for them."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+    rq.draw_blueprint_border(img, rq.THEMES["blueprint"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    banner = sum(1 for x in range(600, 690) for y in range(14, 30) if px[x, y] == red)
+    # The TR crosshair is at the frame corner (x~width-16), left of x=600,
+    # so the banner sample band should carry no callout red.
+    assert banner == 0, "blueprint callout intrudes on the debug-banner band"
+
+
+def test_chalkboard_border_paints_handwriting_guide():
+    """The upleveled chalkboard border adds a top-left handwriting
+    practice-guide rule (solid top + dashed mid + solid baseline)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_chalkboard_border(img, rq.THEMES["chalkboard"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    assert px[42, 34] == white, "guide top rule missing"
+    assert px[42, 58] == white, "guide baseline rule missing"
+
+
+def test_chalkboard_border_paints_gold_star():
+    """The upleveled chalkboard border adds a yellow gold-star sticker
+    beside the green teacher's check-mark."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_chalkboard_border(img, rq.THEMES["chalkboard"])
+    px = img.load()
+    yellow = rq.SPECTRA6["yellow"]
+    star = sum(1 for x in range(700, 740) for y in range(38, 58) if px[x, y] == yellow)
+    assert star > 20, "gold-star sticker missing"
+
+
+def test_dispatch_border_paints_filing_punch_holes():
+    """The upleveled dispatch border adds two binder-punch ring outlines
+    centred in the top margin (black ink, below the debug-banner band)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_dispatch_border(img, rq.THEMES["dispatch"])
+    px = img.load()
+    black = rq.SPECTRA6["black"]
+    ring_black = sum(1 for x in range(347, 362) for y in range(33, 48) if px[x, y] == black)
+    assert ring_black > 15, "top filing punch-hole rings missing"
+
+
+def test_dispatch_border_paints_file_copy_footer():
+    """The upleveled dispatch border adds a typed '— FILE COPY —' footer
+    centred in the bottom margin."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_dispatch_border(img, rq.THEMES["dispatch"])
+    px = img.load()
+    black = rq.SPECTRA6["black"]
+    footer_black = sum(1 for x in range(330, 470) for y in range(445, 465) if px[x, y] == black)
+    assert footer_black > 15, "FILE COPY footer text missing"
+
+
+def test_illuminated_border_paints_head_asterism():
+    """The upleveled illuminated border adds a rubricated head asterism
+    (red lozenges) centred in the top margin."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_illuminated_border(img, rq.THEMES["illuminated"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    head_red = sum(1 for x in range(385, 416) for y in range(33, 52) if px[x, y] == red)
+    assert head_red > 40, "head asterism lozenges missing"
+
+
+def test_illuminated_border_paints_foot_line_filler():
+    """The upleveled illuminated border adds a foot line-filler — a red
+    rule + central red lozenge flanked by blue lozenges."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_illuminated_border(img, rq.THEMES["illuminated"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    foot_red = sum(1 for x in range(355, 446) for y in range(445, 458) if px[x, y] == red)
+    foot_blue = sum(1 for x in range(345, 456) for y in range(445, 458) if px[x, y] == blue)
+    assert foot_red > 40, "foot line-filler rule / centre lozenge missing"
+    assert foot_blue > 10, "foot line-filler flanking blue lozenges missing"
+
+
+def test_gothic_border_paints_head_trefoil():
+    """The upleveled gothic border adds a red trefoil finial centred in the
+    top margin (solid rubric red so it reads on the black ground)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_gothic_border(img, rq.THEMES["gothic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    head_red = sum(1 for x in range(385, 416) for y in range(26, 52) if px[x, y] == red)
+    assert head_red > 80, "head trefoil finial missing"
+
+
+def test_gothic_border_paints_foot_trefoil():
+    """The upleveled gothic border adds a red trefoil finial centred in the
+    bottom margin, mirroring the head finial."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_gothic_border(img, rq.THEMES["gothic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    foot_red = sum(1 for x in range(385, 416) for y in range(430, 456) if px[x, y] == red)
+    assert foot_red > 80, "foot trefoil finial missing"
+
+
+def test_marker_border_paints_twinkle_sparkles():
+    """The upleveled marker border adds doodle 'twinkle' sparkles in the top
+    (red) and bottom (blue) centre margins."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_marker_border(img, rq.THEMES["marker"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    top_red = sum(1 for x in range(320, 352) for y in range(18, 35) if px[x, y] == red)
+    bot_blue = sum(1 for x in range(448, 480) for y in range(447, 464) if px[x, y] == blue)
+    assert top_red > 20, "top twinkle sparkle (red) missing"
+    assert bot_blue > 20, "bottom twinkle sparkle (blue) missing"
+
+
+def test_risograph_border_paints_registration_colour_bar():
+    """The upleveled risograph border adds a top-centre colour-registration
+    bar of red / blue / lavender-overprint / red / blue swatches — no black
+    ink (the riso theme's invariant)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_risograph_border(img, rq.THEMES["risograph"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    bar_red = sum(1 for x in range(337, 360) for y in range(24, 33) if px[x, y] == red)
+    bar_blue = sum(1 for x in range(363, 386) for y in range(24, 33) if px[x, y] == blue)
+    assert bar_red > 100, "registration-bar red swatch missing"
+    assert bar_blue > 100, "registration-bar blue swatch missing"
+    # The bar must clear y=22, the coordinate the illuminated cross-gating
+    # test samples to prove no other theme paints centre-top there.
+    assert px[400, 22] == (255, 255, 255), "registration bar must clear y=22"
+
+
+def test_risograph_registration_bar_lavender_swatch_is_red_and_blue():
+    """The middle overprint swatch is the R+B+W lavender 3-way recipe, so it
+    carries both red and blue pixels (and no black, per the riso invariant)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_risograph_border(img, rq.THEMES["risograph"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    blue = rq.SPECTRA6["blue"]
+    black = rq.SPECTRA6["black"]
+    lav_x0 = 337 + 2 * 26
+    region = [px[x, y] for x in range(lav_x0, lav_x0 + 23) for y in range(24, 33)]
+    assert region.count(red) > 30, "lavender swatch red component missing"
+    assert region.count(blue) > 30, "lavender swatch blue component missing"
+    assert black not in region, "lavender swatch must not introduce black ink"
+
+
+def test_atomic_border_paints_boomerang():
+    """The upleveled atomic border adds a tangerine (R+Y) boomerang centred
+    in the bottom margin."""
+    img = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
+    rq.draw_atomic_border(img, rq.THEMES["atomic"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    yellow = rq.SPECTRA6["yellow"]
+    boom_red = sum(1 for x in range(360, 440) for y in range(428, 456) if px[x, y] == red)
+    boom_yellow = sum(1 for x in range(360, 440) for y in range(428, 456) if px[x, y] == yellow)
+    assert boom_red > 80, "boomerang red component missing"
+    assert boom_yellow > 50, "boomerang tangerine (yellow) component missing"
+
+
+def test_deco_border_paints_mid_edge_chevrons():
+    """The upleveled deco border adds nested stepped chevrons at the left and
+    right mid-edges, picked up by the tangerine (R+Y) dither pass."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_deco_border(img, rq.THEMES["deco"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    yellow = rq.SPECTRA6["yellow"]
+    left = sum(1 for x in range(20, 45) for y in range(220, 261) if px[x, y] in (red, yellow))
+    right = sum(1 for x in range(755, 780) for y in range(220, 261) if px[x, y] in (red, yellow))
+    assert left > 20, "left mid-edge chevron missing"
+    assert right > 20, "right mid-edge chevron missing"
+
+
+def test_saloon_border_paints_side_drop_pendants():
+    """The upleveled saloon border hangs a drop-pendant diamond chain inward
+    from each left/right mid-edge diamond (solid red)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_saloon_border(img, rq.THEMES["saloon"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    left = sum(1 for x in range(4, 21) for y in range(248, 290) if px[x, y] == red)
+    right = sum(1 for x in range(779, 796) for y in range(248, 290) if px[x, y] == red)
+    assert left > 40, "left drop-pendant chain missing"
+    assert right > 40, "right drop-pendant chain missing"
+
+
+def test_chanbara_border_paints_brush_tick_column():
+    """The upleveled chanbara border adds a vertical brush-tick signature
+    column in the empty left margin (maroon = red+black, so red survives on
+    the odd-parity half of the post-pass)."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_chanbara_border(img, rq.THEMES["chanbara"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    col_red = sum(1 for x in range(20, 57) for y in range(188, 283) if px[x, y] == red)
+    assert col_red > 40, "brush-tick signature column missing"
+
+
+def test_roman_border_paints_corner_stops():
+    """The upleveled roman border adds small red carved corner 'stops' (right
+    triangles) tucked into each inner-channel corner."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_roman_border(img, rq.THEMES["roman"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    tl = sum(1 for x in range(38, 50) for y in range(22, 34) if px[x, y] == red)
+    br = sum(1 for x in range(750, 762) for y in range(446, 458) if px[x, y] == red)
+    assert tl > 20, "top-left corner stop missing"
+    assert br > 20, "bottom-right corner stop missing"
+
+
+def test_grimoire_border_paints_tria_prima_triads():
+    """The upleveled grimoire border adds tria-prima triad dots flanking the
+    Sun (top) and Moon (bottom) sigils, in the previously-empty interior
+    bands."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_grimoire_border(img, rq.THEMES["grimoire"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    top_l = sum(1 for x in range(330, 352) for y in range(18, 40) if px[x, y] == red)
+    bot_l = sum(1 for x in range(330, 352) for y in range(440, 462) if px[x, y] == red)
+    assert top_l > 20, "top tria-prima triad missing"
+    assert bot_l > 20, "bottom tria-prima triad missing"
+
+
+def test_mucha_border_paints_tip_blossoms():
+    """The upleveled mucha border adds a five-petal tangerine blossom at each
+    of the two existing vine tips (TL + BR), preserving the deliberate
+    diagonal asymmetry (only the already-ornamented corners gain them)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_mucha_border(img, rq.THEMES["mucha"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    yellow = rq.SPECTRA6["yellow"]
+
+    def tangerine(cx, cy, r0=16):
+        rr = sum(1 for x in range(cx - r0, cx + r0) for y in range(cy - r0, cy + r0) if px[x, y] == red)
+        yy = sum(1 for x in range(cx - r0, cx + r0) for y in range(cy - r0, cy + r0) if px[x, y] == yellow)
+        return rr, yy
+
+    tl_r, tl_y = tangerine(78, 160)
+    br_r, br_y = tangerine(760, 330)
+    # Both tips carry a tangerine (R+Y) blossom: red AND yellow present.
+    assert tl_r > 20 and tl_y > 20, "top-left vine-tip blossom missing"
+    assert br_r > 10 and br_y > 20, "bottom-right vine-tip blossom missing"
+
+
+def test_placard_border_paints_side_margin_tags():
+    """The upleveled placard border adds hanging price-tag ornaments (short
+    rule + weathered-coral diamond) at the left/right mid-edges."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_placard_border(img, rq.THEMES["placard"])
+    px = img.load()
+    red = rq.SPECTRA6["red"]
+    white = rq.SPECTRA6["white"]
+
+    def coral(cx, cy):
+        rr = sum(1 for x in range(cx - 8, cx + 9) for y in range(cy - 8, cy + 9) if px[x, y] == red)
+        ww = sum(1 for x in range(cx - 8, cx + 9) for y in range(cy - 8, cy + 9) if px[x, y] == white)
+        return rr, ww
+
+    l_r, l_w = coral(28, 240)
+    r_r, r_w = coral(771, 240)
+    # Each tag diamond is the R+W weathered-coral recipe: both inks present.
+    assert l_r > 10 and l_w > 10, "left side-margin tag missing"
+    assert r_r > 10 and r_w > 10, "right side-margin tag missing"
+
+
+def test_vinyl_frame_paints_spec_line():
+    """The upleveled vinyl liner panel adds a spec strip (SIDE ONE · 33 RPM ·
+    MONO · RUNNING TIME) below the READING heading, filling the dead cream
+    between heading and quote body."""
+    row = {
+        "display_quote": "It was at ten o'clock today that the first of all Time Machines began.",
+        "matched_text": "ten o'clock", "author": "H. G. Wells", "title": "The Time Machine",
+        "source_id": "35", "line_number": 1, "quality_score": 90,
+        "bucket": "h10_exact", "resolved_bucket": "h10_exact", "used_fallback": False,
+    }
+    img = rq.render("10:00", row, 800, 480, mode="production", theme="vinyl").convert("RGB")
+    px = img.load()
+    black = rq.SPECTRA6["black"]
+    # The spec strip (hairline rule + Space Mono text) sits at y≈46-60 in the
+    # right-half liner panel (x≥420).
+    spec_black = sum(1 for x in range(420, 780) for y in range(46, 60) if px[x, y] == black)
+    assert spec_black > 100, "vinyl spec strip missing"
+
+
+def test_vinyl_spec_line_is_deterministic():
+    """The spec strip's running time must derive from a STABLE bucket digest,
+    not process-salted hash(), or renders of the same quote would differ and
+    break the byte-exact golden / dedup contract."""
+    row = {
+        "display_quote": "It was at ten o'clock today.",
+        "matched_text": "ten o'clock", "author": "A", "title": "B",
+        "source_id": "1", "line_number": 1, "quality_score": 90,
+        "bucket": "h10_exact", "resolved_bucket": "h10_exact", "used_fallback": False,
+    }
+    a = rq.render("10:00", row, 800, 480, mode="production", theme="vinyl").convert("RGB").tobytes()
+    b = rq.render("10:00", row, 800, 480, mode="production", theme="vinyl").convert("RGB").tobytes()
+    assert a == b, "vinyl frame not byte-deterministic across renders"
+
+
+def test_firmament_milky_way_is_deterministic():
+    """The reshaped Milky Way star clouds must stay byte-identical across
+    renders (no RNG-state leak) so the golden suite and panel dedup hold."""
+    row = {
+        "display_quote": "It was at ten o'clock today.",
+        "matched_text": "ten o'clock", "author": "A", "title": "B",
+        "source_id": "1", "line_number": 1, "quality_score": 90,
+        "bucket": "h10_exact", "resolved_bucket": "h10_exact", "used_fallback": False,
+    }
+    a = rq.render("10:00", row, 800, 480, mode="production", theme="firmament").convert("RGB").tobytes()
+    b = rq.render("10:00", row, 800, 480, mode="production", theme="firmament").convert("RGB").tobytes()
+    assert a == b, "firmament frame not byte-deterministic across renders"
