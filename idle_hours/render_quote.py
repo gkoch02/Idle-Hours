@@ -6975,34 +6975,6 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
         width=4,
     )
 
-    # Action starburst in the empty top-right corner — the jagged
-    # explosion-burst silhouette every comic page stamps a "POW!" / "ZAP!"
-    # into. Diagonally counterweights the top-left Ben-Day dot field and
-    # the bottom-right racing stripes, completing the three-corner comic-
-    # page composition (the TR was the one empty corner). A 16-point star
-    # polygon (alternating outer / inner radii) filled red with a heavy
-    # black outline — the classic two-colour comic register (red fill,
-    # black ink), pulling only from the comic palette (accent / text).
-    # Centred at (width-70, 70): the burst's leftmost spike reaches
-    # x≈width-115 and its lowest y≈115, so it clears the body block (the
-    # quote never starts before y=72 and the widest dense layout ends at
-    # x≤740) and sits cleanly inside the heavy panel border.
-    burst_color = colors.get("accent", SPECTRA6["red"])
-    burst_ink = colors.get("text", SPECTRA6["black"])
-    burst_cx, burst_cy = width - 68, 62
-    outer_r, inner_r = 40, 20
-    points = 12
-    burst_pts = []
-    for i in range(points * 2):
-        ang = -math.pi / 2 + i * math.pi / points
-        rr = outer_r if i % 2 == 0 else inner_r
-        burst_pts.append((burst_cx + rr * math.cos(ang), burst_cy + rr * math.sin(ang)))
-    border_draw.polygon(burst_pts, fill=burst_color, outline=burst_ink)
-    # Re-stroke the spikes heavier so the outline reads at panel distance.
-    for i in range(0, points * 2, 2):
-        sx, sy = burst_pts[i]
-        border_draw.line((burst_cx, burst_cy, sx, sy), fill=burst_ink, width=1)
-
 
 # Deterministic stone-grain speckle layout for ``draw_roman_border``. Same
 # pre-compute-once-at-module-scope pattern as ``_SALOON_FOXING`` (see that
