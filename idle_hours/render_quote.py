@@ -9921,15 +9921,8 @@ def _draw_cartograph_sea_serpent(
     draw.polygon(head_pts, fill=ink)
 
 
-def _point_in_polygon(x: int, y: int, poly: list[tuple[int, int]]) -> bool:
-    """Even-odd ray-cast point-in-polygon test.
-
-    Used by ``_draw_cartograph_coastline`` to clip interior contour
-    form-lines to the land silhouette so an offset contour that overshoots
-    the corner apex into open sea isn't painted. Pure-integer crossing
-    count; ``poly`` is the closed land polygon (the function treats it as
-    implicitly closed).
-    """
+def _point_in_polygon(x: float, y: float, poly: list[tuple[int, int]]) -> bool:
+    """Even-odd ray-cast point-in-polygon test (treats ``poly`` as closed)."""
     inside = False
     n = len(poly)
     j = n - 1
@@ -9942,6 +9935,125 @@ def _point_in_polygon(x: int, y: int, poly: list[tuple[int, int]]) -> bool:
                 inside = not inside
         j = i
     return inside
+
+
+def _draw_cartograph_contours(
+    draw: ImageDraw.ImageDraw,
+    land_poly: list[tuple[int, int]],
+    bbox: tuple[int, int, int, int],
+    ink,
+    seed: int,
+) -> None:
+    """Trace topographic iso-line contours over a synthetic height field,
+    clipped to ``land_poly``, the way a real chart hatches terrain relief.
+
+    A small set of Gaussian "hills" and "basins" (deterministic per
+    ``seed``) is summed into a height field across the land's bounding
+    box; marching-squares then traces line segments wherever the field
+    crosses each of several evenly-spaced elevation thresholds. The result
+    is the wavy, multi-peak nested-loop contour texture of a real
+    topographic map rather than concentric copies of the coastline. Cells
+    whose centre falls outside the land polygon are skipped, so the
+    contours stay inside the sepia landmass.
+    """
+    x0, y0, x1, y1 = bbox
+    x0 = max(0, int(x0))
+    y0 = max(0, int(y0))
+    x1 = int(x1)
+    y1 = int(y1)
+    w = x1 - x0
+    h = y1 - y0
+    if w < 8 or h < 8:
+        return
+
+    rng = random.Random(seed)
+    # 3–4 Gaussian features (hills positive, basins negative) placed inside
+    # the bbox. Their spread scales with the land size so the contour
+    # spacing looks consistent regardless of which corner / extent.
+    span = max(w, h)
+    n_features = rng.randint(3, 4)
+    features = []
+    for _ in range(n_features):
+        fx = x0 + rng.uniform(0.15, 0.85) * w
+        fy = y0 + rng.uniform(0.15, 0.85) * h
+        amp = rng.uniform(0.6, 1.0) * (1 if rng.random() < 0.65 else -1)
+        sigma = rng.uniform(0.18, 0.34) * span
+        features.append((fx, fy, amp, 2.0 * sigma * sigma))
+
+    def height(px: float, py: float) -> float:
+        total = 0.0
+        for fx, fy, amp, two_sig_sq in features:
+            dx = px - fx
+            dy = py - fy
+            total += amp * math.exp(-(dx * dx + dy * dy) / two_sig_sq)
+        return total
+
+    # Sample the field on a coarse grid (step ~5 px — fine enough for smooth
+    # iso-lines, coarse enough to stay cheap in pure Python).
+    step = 5
+    gx = list(range(x0, x1 + step, step))
+    gy = list(range(y0, y1 + step, step))
+    grid = [[height(px, py) for px in gx] for py in gy]
+    lo = min(min(row) for row in grid)
+    hi = max(max(row) for row in grid)
+    if hi - lo < 1e-6:
+        return
+    # Six evenly-spaced iso-levels across the field's range (skip the
+    # extremes, which would trace tiny specks at the very peaks/pits).
+    levels = [lo + (hi - lo) * f for f in (0.18, 0.32, 0.46, 0.60, 0.74, 0.88)]
+
+    def interp(pa, va, pb, vb, lvl):
+        # Linear crossing point between grid nodes pa (val va) and pb (vb).
+        if abs(vb - va) < 1e-9:
+            return pa
+        t = (lvl - va) / (vb - va)
+        return (pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t)
+
+    for lvl in levels:
+        for iy in range(len(gy) - 1):
+            for ix in range(len(gx) - 1):
+                # Cell corners (TL, TR, BR, BL) with field values.
+                tlp = (gx[ix], gy[iy])
+                tlv = grid[iy][ix]
+                trp = (gx[ix + 1], gy[iy])
+                trv = grid[iy][ix + 1]
+                brp = (gx[ix + 1], gy[iy + 1])
+                brv = grid[iy + 1][ix + 1]
+                blp = (gx[ix], gy[iy + 1])
+                blv = grid[iy + 1][ix]
+                # Skip cells whose centre isn't on land.
+                ccx = (gx[ix] + gx[ix + 1]) / 2.0
+                ccy = (gy[iy] + gy[iy + 1]) / 2.0
+                if not _point_in_polygon(ccx, ccy, land_poly):
+                    continue
+                code = (
+                    (1 if tlv > lvl else 0)
+                    | (2 if trv > lvl else 0)
+                    | (4 if brv > lvl else 0)
+                    | (8 if blv > lvl else 0)
+                )
+                if code == 0 or code == 15:
+                    continue
+                # Crossing points on each edge (top, right, bottom, left).
+                top = interp(tlp, tlv, trp, trv, lvl)
+                right = interp(trp, trv, brp, brv, lvl)
+                bottom = interp(blp, blv, brp, brv, lvl)
+                left = interp(tlp, tlv, blp, blv, lvl)
+                # Marching-squares segment table (ambiguous saddles 5/10
+                # split into two segments).
+                segs = {
+                    1: [(left, top)], 2: [(top, right)], 3: [(left, right)],
+                    4: [(right, bottom)], 5: [(left, top), (right, bottom)],
+                    6: [(top, bottom)], 7: [(left, bottom)], 8: [(left, bottom)],
+                    9: [(top, bottom)], 10: [(left, bottom), (top, right)],
+                    11: [(right, bottom)], 12: [(left, right)], 13: [(top, right)],
+                    14: [(left, top)],
+                }.get(code, [])
+                for a, b in segs:
+                    draw.line(
+                        (round(a[0]), round(a[1]), round(b[0]), round(b[1])),
+                        fill=ink, width=1,
+                    )
 
 
 def _draw_cartograph_coastline(
@@ -10005,10 +10117,6 @@ def _draw_cartograph_coastline(
         wobble_x = round((swell * 22 + (rng.random() - 0.5) * 26)) * sign_x
         wobble_y = round((swell * 18 + (rng.random() - 0.5) * 20)) * sign_y
         pts.append((bx + wobble_x, by + wobble_y))
-    # The wobbly coast edge, before we append the corner-closure points —
-    # the contour lines below interpolate these vertices toward the
-    # interior "summit" so the form-lines echo the real shoreline shape.
-    coast_edge = list(pts)
     # Close back along the corner edges so PIL fills the land region.
     # Walk along the y-axis edge first, then the x-axis edge, so the
     # polygon hugs the corner rather than skipping diagonally across it.
@@ -10017,54 +10125,22 @@ def _draw_cartograph_coastline(
     pts.append((corner_x, corner_y))
     draw.polygon(pts, fill=ink_sentinel)
 
-    # Interior topographic form-lines — contour lines drawn as inland
-    # OFFSET copies of the coastline, the contour engraving an antique
-    # chart used to show a landmass has relief rather than reading as a
-    # flat ink blot. Rather than interpolating the coast arc toward a
-    # single summit (which bunches the rings together at the arc's narrow
-    # ends), each contour is the smoothed coast edge TRANSLATED toward the
-    # corner by a fixed pixel step — so the form-lines run parallel to the
-    # shoreline at constant spacing, exactly the way real topographic
-    # contours hug a coast. The smoothing (two neighbour-averaging passes)
-    # keeps them clean engraved lines rather than inheriting the coast's
-    # fractal jitter. Drawn in BLACK (not the red sentinel) so the
-    # caller's red→green sepia post-pass leaves them as crisp relief lines
-    # over the sepia land fill.
-    smooth_edge = list(coast_edge)
-    for _ in range(2):
-        smoothed: list[tuple[float, float]] = []
-        m = len(smooth_edge)
-        for j in range(m):
-            ax, ay = smooth_edge[(j - 1) % m]
-            bx2, by2 = smooth_edge[j]
-            cx2, cy2 = smooth_edge[(j + 1) % m]
-            smoothed.append(((ax + 2 * bx2 + cx2) / 4.0, (ay + 2 * by2 + cy2) / 4.0))
-        smooth_edge = smoothed
-    contour_ink = SPECTRA6["black"]
-    # Five contours stepping inland from just inside the coast (12 px) to
-    # deep toward the corner (60 px). Translating by ``-sign * step`` moves
-    # each point toward the corner the land sits in. Only the segments
-    # that stay inside the land polygon read as relief; segments that
-    # would fall in the sea/off-corner are clipped to the land fill below.
-    land_poly = pts
-    for step in (12, 24, 36, 48, 60):
-        ring = [(px - sign_x * step, py - sign_y * step) for px, py in smooth_edge]
-        # Clip each contour to the land: only paint a segment when BOTH
-        # endpoints sit on a sepia-land pixel (the red sentinel fill), so
-        # an offset that overshoots past the corner apex into open sea
-        # isn't drawn. Walk the polyline pairwise.
-        for a, b in zip(ring, ring[1:]):
-            ax, ay = int(round(a[0])), int(round(a[1]))
-            bxp, byp = int(round(b[0])), int(round(b[1]))
-            if not _point_in_polygon(ax, ay, land_poly):
-                continue
-            if not _point_in_polygon(bxp, byp, land_poly):
-                continue
-            draw.line((ax, ay, bxp, byp), fill=contour_ink, width=1)
-
     xs = [p[0] for p in pts]
     ys = [p[1] for p in pts]
-    return (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+    bbox = (min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+
+    # Interior topographic form-lines — real terrain relief, traced as
+    # marching-squares iso-lines over a synthetic height field (a handful
+    # of Gaussian hills + basins) clipped to the land silhouette. This is
+    # the only approach that reproduces the wavy, multi-peak nested
+    # contours of a real topographic chart; the earlier coast-arc offset /
+    # scale tries could only ever make shrunken copies of one shoreline,
+    # which bunched into a band and left the interior flat. Drawn in BLACK
+    # (not the red sentinel) so the caller's red→green sepia post-pass
+    # leaves them as crisp engraved relief lines over the sepia land fill.
+    _draw_cartograph_contours(draw, pts, bbox, SPECTRA6["black"], seed ^ 0x5EA1)
+
+    return bbox
 
 
 def draw_cartograph_border(
