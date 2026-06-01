@@ -352,6 +352,8 @@ The core abstraction. Each of 12 hours is divided into 12 minute-state buckets (
 
 Use `--strict` for production runs to reduce false positives (excludes `daypart` and `digital` matches). `--skip-fetch-errors` keeps batch runs alive when a Gutenberg download 404s.
 
+**Known limitation — `digital` matcher drops in-prose times (issue #159, closed won't-fix).** The `digital` pattern's trailing lookahead `(?!\s+[A-Z][a-z])` runs under `re.IGNORECASE`, where `[A-Z]` / `[a-z]` both match any letter — so the lookahead rejects essentially every digital time followed by a word (`"14:30 in the afternoon"` → dropped; only punctuation-trailed times like `"9:15."` survive). **No production impact:** `--strict` excludes the `digital` match type entirely, so the committed corpus / baked DB were never built from digital matches. Left unfixed deliberately — the defect lives in a code path nobody exercises in production, and a fix would require a non-strict re-mine. If the matcher is ever revived for non-strict use, the fix is: (1) scope the trailing-capital lookahead case-sensitively, `(?!\s+(?-i:[A-Z][a-z]))` (valid under `requires-python >= 3.11`), so it only guards Title-Case headings; (2) extend the existing post-match reference guard at `gutenberg_time_miner.py` (`context_probe` → `\b(?:chapter|psalm|verse|book|epistle)\b`) with `section|canto|hymn` plus a leading-only, period-anchored guard for `No.`/`p.`/`pp.` — but **not** bare `no` (it would reject the common word). Note the `context_probe` guard already rejects chapter/psalm/verse independently of the lookahead, so the scoped-flag fix alone does not break the scripture-rejection tests in `tests/test_miner_match_types.py`.
+
 ### JSONL Record Schema
 
 Fields accumulate as rows flow through the pipeline:
