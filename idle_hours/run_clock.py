@@ -721,17 +721,20 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
     """
     if state.theme_arg != "random" or state.manual_theme is not None:
         return None
-    quote_changed = (
-        (quote_id is not None and quote_id != state.last_random_quote_id)
-        or state.current_random_theme is None
-    )
-    if not quote_changed:
-        return None
+    # The gate check and the bag drain must happen atomically: the main loop and
+    # a concurrent button-A / web skip both call this, and a lock-free gate read
+    # would let two threads pass for the same quote_id and double-drain the bag,
+    # breaking the documented 1:1 bag-draw-to-displayed-theme invariant.
     with state.lock:
-        bag = list(state.random_theme_bag)
-        just_played = state.current_random_theme
-    new_theme, new_bag = pick_next_random_theme(bag, just_played=just_played)
-    with state.lock:
+        quote_changed = (
+            (quote_id is not None and quote_id != state.last_random_quote_id)
+            or state.current_random_theme is None
+        )
+        if not quote_changed:
+            return None
+        new_theme, new_bag = pick_next_random_theme(
+            list(state.random_theme_bag), just_played=state.current_random_theme
+        )
         state.current_random_theme = new_theme
         state.random_theme_bag = new_bag
         state.last_random_quote_id = quote_id

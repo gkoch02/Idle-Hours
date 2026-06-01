@@ -367,6 +367,22 @@ class TestIterCandidates:
         candidates = list(gtm.iter_candidates(Path("test.txt"), None, text, 220, max_per_file=2))
         assert len(candidates) == 2
 
+    def test_max_per_file_counts_after_exclusion(self):
+        # Excluded match types (here daypart) must NOT consume the per-file
+        # budget — otherwise a --strict run could spend the whole cap on rows it
+        # then discards and yield far fewer usable candidates than requested.
+        text = (
+            "It was morning. It was dusk. It was evening. "
+            "She woke at one o'clock. By two o'clock she left. By three o'clock all was still."
+        )
+        candidates = list(gtm.iter_candidates(
+            Path("test.txt"), None, text, 220, max_per_file=2,
+            excluded_match_types={"daypart"},
+        ))
+        assert len(candidates) == 2
+        # Both kept rows are real clock matches, not the leading daypart hits.
+        assert all(c.match_type != "daypart" for c in candidates)
+
 
 # ---------------------------------------------------------------------------
 # text_files_from_inputs

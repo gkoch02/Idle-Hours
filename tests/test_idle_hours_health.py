@@ -93,6 +93,19 @@ class TestSummarise:
         assert summary["render_count"] == 0
         assert summary["render_p50_ms"] is None
 
+    def test_bool_render_ms_not_counted_as_render(self):
+        # bool is an int subclass; a corrupt {"render_ms": true} entry must not
+        # be counted as a render-with-latency-1, which would skew both the count
+        # and the percentiles.
+        entries = [
+            {"render_ms": 100, "display_ms": 50},
+            {"render_ms": True},   # corrupt — must be ignored
+            {"display_ms": False},  # corrupt — must be ignored
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["render_count"] == 1
+        assert summary["render_p50_ms"] == 100
+
 
 class TestMain:
     def test_missing_log_exits_nonzero(self, tmp_path, capsys):

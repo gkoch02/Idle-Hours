@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from idle_hours import atomic_io
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -91,10 +92,9 @@ def main() -> int:
         row["author"] = author
         rows.append(row)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    atomic_io.atomic_write_lines(
+        output_path, (json.dumps(row, ensure_ascii=False) for row in rows)
+    )
 
     enriched = sum(1 for row in rows if row.get("title") or row.get("author"))
     print(f"Wrote {len(rows)} attributed rows to {output_path}")

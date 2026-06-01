@@ -1656,6 +1656,25 @@ class TestButtonHandlers:
         assert mock_append.call_args_list[1][0][1:] == ("src-new", 7)
         assert mock_render.called
 
+    def test_skip_does_not_double_append_when_pick_unchanged(self, tmp_path):
+        """Sparse bucket: the next pick is the same row we just banned. The ban
+        append must still happen, but the post-render append must be suppressed
+        so the ledger doesn't carry a duplicate (which un-skip's single-entry
+        removal would leave half-deleted, stranding the quote in the filter)."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("src-x", 9, "q", "mt")
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src-x", 9, "q", "mt")), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
+             patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["A"]()
+        # Only the ban append fires; the duplicate post-render append is skipped.
+        assert mock_append.call_count == 1
+        assert mock_append.call_args_list[0][0][1:] == ("src-x", 9)
+
     def test_toggle_theme_handler_flips_and_persists(self, tmp_path):
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")

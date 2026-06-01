@@ -339,6 +339,14 @@ def validate_content_overrides_payload(payload: object) -> dict:
             elif field in {"hour", "minute", "quality_score"}:
                 if isinstance(fval, bool) or not isinstance(fval, int):
                     raise ValueError(f"override {key!r}.{field} must be an int")
+                # Range-check so an out-of-bounds value can't silently re-derive
+                # a bogus bucket at bake time (e.g. minute=99 → bucket_for_time
+                # "HH:99" KeyErrors and the row gets dropped with no feedback).
+                bounds = {"hour": (0, 23), "minute": (0, 59), "quality_score": (0, 100)}[field]
+                if not bounds[0] <= fval <= bounds[1]:
+                    raise ValueError(
+                        f"override {key!r}.{field} must be in [{bounds[0]}, {bounds[1]}]"
+                    )
         cleaned[key] = dict(value)
     return cleaned
 
@@ -916,19 +924,27 @@ class CuratorHandler(BaseHTTPRequestHandler):
 
     def _api_overrides_get(self) -> None:
         ctx = self._ctx()
-        if not ctx.overrides_path.exists():
-            payload = {
-                "ban_source_ids": [],
-                "boost_source_ids": [],
-                "preferred_buckets": {},
-                "ban_quote_keys": [],
-            }
-        else:
-            payload = json.loads(ctx.overrides_path.read_text(encoding="utf-8"))
-            # Surface ban_quote_keys to the UI even on legacy files that
-            # pre-date it, so the editor doesn't have to special-case the
-            # missing key.
-            payload.setdefault("ban_quote_keys", [])
+        defaults = {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
+        payload = defaults
+        if ctx.overrides_path.exists():
+            # Fail open on a corrupt / hand-truncated / non-object file rather
+            # than 500-ing the whole overrides editor: a bad save should still
+            # let the operator see (and overwrite) the defaults.
+            try:
+                loaded = json.loads(ctx.overrides_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                loaded = None
+            if isinstance(loaded, dict):
+                # Surface ban_quote_keys to the UI even on legacy files that
+                # pre-date it, so the editor doesn't have to special-case the
+                # missing key.
+                loaded.setdefault("ban_quote_keys", [])
+                payload = loaded
         self._json(HTTPStatus.OK, payload)
 
     def _api_content_overrides_get(self) -> None:

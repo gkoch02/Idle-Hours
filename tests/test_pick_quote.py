@@ -873,6 +873,16 @@ class TestMinuteDistancePenalty:
         # bucket is a non-standard state name so DEFAULT_BUCKET_MINUTES returns None
         assert pq.minute_distance_penalty(row, "h3_nonsense", None) == 99
 
+    def test_malformed_requested_time_falls_back_to_bucket(self):
+        # Operator-supplied junk (no colon / non-numeric minute) reaches here via
+        # the web /api/bucket?time= path and must degrade to the bucket default
+        # rather than crashing scoring with IndexError/ValueError.
+        assert pq.parse_requested_minute("h3_quarter_past", "garbage") == 15
+        assert pq.parse_requested_minute("h3_quarter_past", "03:xx") == 15
+        row = {"normalized_time": "03:15"}
+        # No crash; distance computed against the bucket-default minute (15).
+        assert pq.minute_distance_penalty(row, "h3_quarter_past", "garbage") == 0
+
     def test_exact_distance_zero(self):
         row = {"normalized_time": "03:15"}
         assert pq.minute_distance_penalty(row, "h3_quarter_past", "03:15") == 0
