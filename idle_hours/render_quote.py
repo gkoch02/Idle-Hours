@@ -14868,57 +14868,133 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
 # carries the time. ("chrono" = time; the SNES Square-JRPG era is also the
 # Chrono Trigger era, so the name doubles as the literary-clock tie.)
 
-# 22×29 portrait face — a head-and-shoulders anime hero the way a 16-bit
-# cutscene frames the speaker beside the dialogue. Green hair (Terra-from-FF6
-# register, and the otherwise-idle green ink earns a use here) with a yellow
-# shine streak and a centre fringe, white skin, separated brows + big eyes with
-# blue irises and white catch-lights, a small red mouth, and a red collar with
-# a V-notch. Black outline throughout; '.' is transparent so the blue portrait
-# window shows through. Scaled ×4 (88×116 px) inside the portrait sub-window.
-_CHRONO_FACE = (
-    ".......KKKKKKKK.......",
-    ".....KKGGGGGGGGKK.....",
-    "....KGGYYGGGGGGGGK....",
-    "...KGGGYGGGGGGGGGGK...",
-    "..KGGGGGGGGGGGGGGGGK..",
-    "..KGGGGGGGGGGGGGGGGK..",
-    ".KGGGWWWWWGGWWWWWGGGK.",
-    ".KGGWWWWWWGGWWWWWWGGK.",
-    ".KGGWWWWWWWWWWWWWWGGK.",
-    ".KGWWWWWWWWWWWWWWWWGK.",
-    ".KGWWWKKWWWWWWKKWWWGK.",
-    ".KGWWWWWWWWWWWWWWWWGK.",
-    ".KGWWKKKKWWWWKKKKWWGK.",
-    ".KGWWKWBKWWWWKWBKWWGK.",
-    ".KGWWKBBKWWWWKBBKWWGK.",
-    ".KGWWKKKKWWWWKKKKWWGK.",
-    ".KGWWWWWWWKKWWWWWWWGK.",
-    ".KGWWWWWWWWWWWWWWWWGK.",
-    ".KGWWWWWWRRRRWWWWWWGK.",
-    ".KGWWWWWWWWWWWWWWWWGK.",
-    ".KGGWWWWWWWWWWWWWWGGK.",
-    ".KGGGWWWWWWWWWWWWGGGK.",
-    "..KGGGWWWWWWWWWWGGGK..",
-    "...KKGGWWWWWWWWGGKK...",
-    ".....KKWWWWWWWWKK.....",
-    "......KWWWWWWWWK......",
-    "....KKKRRRRRRRRKKK....",
-    "..KKRRRRRRKKRRRRRRKK..",
-    ".KRRRRRRRRKKRRRRRRRRK.",
-)
-_CHRONO_FACE_PALETTE = {
-    "K": SPECTRA6["black"],
-    "G": SPECTRA6["green"],
-    "Y": SPECTRA6["yellow"],
-    "W": SPECTRA6["white"],
-    "B": SPECTRA6["blue"],
-    "R": SPECTRA6["red"],
+# Portrait face — a shaded 16-bit anime hero the way an FF6 / Chrono Trigger
+# cutscene frames the speaker beside the dialogue. It is *not* a flat
+# one-ink-per-pixel sprite (that reads as 8-bit, which is questline's job);
+# instead each material carries a multi-tone shading ramp synthesised from the
+# six inks via per-pixel dithering — skin highlight→mid→shadow, hair
+# highlight→mid→shadow — so the head reads as a rounded, lit volume. The face
+# is sculpted with vector shapes at a low logical resolution (see
+# `_chrono_build_face`), drawn into a tone-indexed 'L' image, then upscaled and
+# mapped to its dithered Spectra-6 tones at panel resolution.
+#
+# Tone index → fill rule. "solid" = one ink; "mix2"/"mix3" = ordered-Bayer
+# dithers (the same recipes documented in spectra6_color_recipes.md): peach
+# skin (R+Y+W), tan/maroon skin shadow (R+Y / R+K), mint/green/forest hair
+# (G+W / G / G+K), sky-blue iris highlight (B+W), maroon lip shadow (R+K).
+_CHRONO_FACE_TONES = {
+    1: ("solid", SPECTRA6["black"]),
+    2: ("mix3", SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"], 0.22, 0.30),  # skin highlight
+    3: ("mix3", SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"], 0.40, 0.38),  # skin mid (peach)
+    4: ("mix2", SPECTRA6["red"], SPECTRA6["yellow"], 0.40),                           # skin shadow (tan)
+    5: ("mix2", SPECTRA6["red"], SPECTRA6["black"], 0.5),                             # skin deep (maroon)
+    6: ("mix2", SPECTRA6["green"], SPECTRA6["white"], 0.5),                           # hair highlight (mint)
+    7: ("solid", SPECTRA6["green"]),                                                  # hair mid
+    8: ("mix2", SPECTRA6["green"], SPECTRA6["black"], 0.5),                           # hair shadow (forest)
+    9: ("solid", SPECTRA6["white"]),                                                  # sclera / catch-light
+    10: ("solid", SPECTRA6["blue"]),                                                  # iris
+    11: ("mix2", SPECTRA6["blue"], SPECTRA6["white"], 0.5),                           # iris highlight (sky)
+    12: ("solid", SPECTRA6["red"]),                                                   # lips
+    13: ("mix2", SPECTRA6["red"], SPECTRA6["black"], 0.5),                            # lip shadow (maroon)
 }
+_CHRONO_FACE_SIZE = (58, 70)  # logical pixels before upscale
+_CHRONO_FACE_SCALE = 2        # → 116×140 px on the panel
 
 _CHRONO_SKY_BOTTOM = 296
 _CHRONO_WINDOW = (28, 296, 772, 458)
-_CHRONO_PORTRAIT = (40, 234, 168, 378)
-_CHRONO_FACE_SCALE = 4
+_CHRONO_PORTRAIT = (32, 222, 180, 394)
+
+
+def _chrono_tone_color(idx: int, x: int, y: int):
+    """Resolve a face tone index to its Spectra-6 (possibly dithered) colour."""
+    rule = _CHRONO_FACE_TONES[idx]
+    kind = rule[0]
+    if kind == "solid":
+        return rule[1]
+    if kind == "mix2":
+        _, dark, light, density = rule
+        return light if BAYER_4x4[y % 4][x % 4] < round(density * 16) else dark
+    _, ink_a, ink_b, ink_c, da, db = rule
+    cell = BAYER_4x4[y % 4][x % 4]
+    return ink_a if cell < round(da * 16) else (ink_b if cell < round((da + db) * 16) else ink_c)
+
+
+def _chrono_build_face() -> Image.Image:
+    """Sculpt the head as a tone-indexed ('L') logical image (light upper-left).
+
+    A shaded sphere for the skin (shadow base → mid offset up-left → highlight),
+    layered hair (shadow/mid/highlight dome + side locks), anime eyes (sclera,
+    iris, iris highlight, pupil, catch-light, lash, brow), a small shaded mouth,
+    and a tidy three-lock fringe. The caller upscales and dither-maps the tones.
+    """
+    lw, lh = _CHRONO_FACE_SIZE
+    img = Image.new("L", (lw, lh), 0)
+    d = ImageDraw.Draw(img)
+    K = 1
+    # Hair back: shaded dome + side locks.
+    d.ellipse((6, 2, 52, 40), fill=8, outline=K)
+    d.ellipse((5, 1, 48, 36), fill=7)
+    d.ellipse((9, 3, 32, 24), fill=6)
+    d.polygon([(6, 20), (3, 48), (13, 52), (15, 22)], fill=8, outline=K)
+    d.polygon([(8, 22), (7, 45), (12, 48), (13, 24)], fill=7)
+    d.polygon([(52, 20), (55, 48), (45, 52), (43, 22)], fill=8, outline=K)
+    # Face: shaded sphere (shadow base → mid up-left → highlight up-left).
+    d.ellipse((11, 16, 47, 60), fill=4, outline=K)
+    d.ellipse((10, 14, 43, 55), fill=3)
+    d.ellipse((14, 18, 33, 41), fill=2)
+    d.chord((15, 34, 43, 58), 25, 150, fill=4)  # under-chin shadow
+    # Nose: a soft shadow + two nostril marks.
+    d.line((29, 35, 28, 44), fill=4, width=1)
+    d.point((27, 45), fill=5)
+    d.point((31, 45), fill=5)
+    # Eyes.
+    for ex in (22, 36):
+        d.ellipse((ex - 5, 32, ex + 5, 41), fill=9, outline=K)  # sclera
+        d.ellipse((ex - 4, 32, ex + 4, 41), fill=10)            # iris
+        d.ellipse((ex - 4, 32, ex + 1, 37), fill=11)            # iris highlight
+        d.ellipse((ex - 2, 35, ex + 2, 40), fill=1)             # pupil
+        d.rectangle((ex - 2, 33, ex - 1, 34), fill=9)           # catch-light
+        d.line((ex - 5, 31, ex + 5, 31), fill=K, width=2)       # upper lash
+        d.line((ex - 5, 30, ex - 6, 32), fill=K, width=1)       # outer corner
+        d.line((ex - 6, 26, ex + 4, 25), fill=K, width=2)       # brow
+    # Mouth.
+    d.ellipse((25, 47, 33, 52), fill=12, outline=K)
+    d.chord((25, 49, 33, 53), 0, 180, fill=13)
+    # Fringe: three clean bang-locks with shadowed right edges + a dome shine.
+    d.polygon([(11, 13), (25, 13), (18, 27)], fill=7, outline=K)
+    d.polygon([(23, 12), (37, 12), (30, 28)], fill=7, outline=K)
+    d.polygon([(35, 13), (49, 14), (41, 26)], fill=7, outline=K)
+    d.line((24, 14, 18, 26), fill=8, width=1)
+    d.line((36, 13, 30, 27), fill=8, width=1)
+    d.line((11, 6, 22, 4), fill=6, width=2)
+    return img
+
+
+def _chrono_paint_face(image: Image.Image, ox: int, oy: int) -> None:
+    """Upscale the logical face and paint it at (ox, oy), dither-mapping tones.
+
+    The dither is sampled at absolute panel coordinates so the synthesised
+    skin/hair tones share a continuous Bayer phase with the rest of the frame.
+    """
+    big = _chrono_build_face().resize(
+        (_CHRONO_FACE_SIZE[0] * _CHRONO_FACE_SCALE, _CHRONO_FACE_SIZE[1] * _CHRONO_FACE_SCALE),
+        Image.NEAREST,
+    )
+    bw, bh = big.size
+    src = big.load()
+    dst = image.load()
+    width, height = image.size
+    for y in range(bh):
+        gy = oy + y
+        if gy < 0 or gy >= height:
+            continue
+        for x in range(bw):
+            idx = src[x, y]
+            if not idx:
+                continue
+            gx = ox + x
+            if 0 <= gx < width:
+                dst[gx, gy] = _chrono_tone_color(idx, gx, gy)
 _CHRONO_STAR_SEED = 0xC470
 
 
@@ -15044,21 +15120,11 @@ def _chrono_paint_portrait(image: Image.Image, draw: ImageDraw.ImageDraw) -> Non
     rect = _CHRONO_PORTRAIT
     _chrono_window_fill(image, rect, radius=14)
     _chrono_window_border(draw, rect, radius=14)
-    scale = _CHRONO_FACE_SCALE
-    sprite_w = len(_CHRONO_FACE[0]) * scale
-    sprite_h = len(_CHRONO_FACE) * scale
+    face_w = _CHRONO_FACE_SIZE[0] * _CHRONO_FACE_SCALE
+    face_h = _CHRONO_FACE_SIZE[1] * _CHRONO_FACE_SCALE
     cx = (rect[0] + rect[2]) // 2
     cy = (rect[1] + rect[3]) // 2
-    x0 = cx - sprite_w // 2
-    y0 = cy - sprite_h // 2
-    for ry, row in enumerate(_CHRONO_FACE):
-        for rx, ch in enumerate(row):
-            color = _CHRONO_FACE_PALETTE.get(ch)
-            if color is None:
-                continue
-            pxx = x0 + rx * scale
-            pyy = y0 + ry * scale
-            draw.rectangle((pxx, pyy, pxx + scale - 1, pyy + scale - 1), fill=color)
+    _chrono_paint_face(image, cx - face_w // 2, cy - face_h // 2)
 
 
 def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, rect: tuple[int, int, int, int]) -> None:
