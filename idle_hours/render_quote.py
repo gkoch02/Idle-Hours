@@ -15027,7 +15027,13 @@ def _chrono_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
     WHITE = SPECTRA6["white"]
     px = image.load()
     bottom = _CHRONO_SKY_BOTTOM
-    for y in range(bottom):
+    # Clip the raw PixelAccess writes to the image height: `bottom` stays the
+    # design anchor for the gradient ramp, but the panel can be rendered shorter
+    # than 296 px (the /api/preview thumbnail path allows heights down to ~60),
+    # and px[x, y] raises IndexError once y >= image.height. Mirrors the bounds
+    # clipping the other PixelAccess stipple helpers (e.g. _fill_swatch_stipple)
+    # already do.
+    for y in range(min(bottom, image.size[1])):
         if y < 130:
             # Zenith → mid: navy fading to pure blue (black density 0.42 → 0).
             d = 0.42 * (1 - y / 130)

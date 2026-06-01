@@ -2637,6 +2637,38 @@ class TestRenderStaticMessage:
         img.close()
 
 
+class TestPreviewSizeRendering:
+    """The pixel-RPG frames (``questline`` / ``chrono``) must render without
+    raising at small preview/thumbnail sizes, not just the panel's native
+    800×480.
+
+    The curator UI's ``/api/preview`` endpoint renders a theme at operator-
+    chosen dimensions down to ~60 px. ``chrono``'s gradient-sky loop wrote
+    through ``PixelAccess`` (``px[x, y]``) with the hard-coded ``y < 296`` sky
+    height, raising ``IndexError`` once the image was shorter than that and
+    turning a preview request into a 500. This fences the two custom frames
+    added alongside it. (Several pre-existing themes — chanbara / tarot /
+    blueprint / risograph — share the same latent small-size fragility; that's
+    a separate, out-of-scope fix, so they are deliberately not asserted here.)"""
+
+    def _row(self):
+        return {
+            "display_quote": "It was about half past two when the clock struck.",
+            "matched_text": "half past two",
+            "author": "Edith Wharton",
+            "title": "The House of Mirth",
+        }
+
+    @pytest.mark.parametrize("theme", ["questline", "chrono"])
+    @pytest.mark.parametrize("size", [(240, 144), (120, 60)])
+    def test_renders_at_small_preview_sizes(self, theme, size):
+        width, height = size
+        img = rq.render("14:30", self._row(), width, height, mode="production", theme=theme)
+        assert img.size == (width, height)
+        palette = set(rq.SPECTRA6.values())
+        assert set(img.convert("RGB").getdata()).issubset(palette)
+
+
 class TestMainAtomicSave:
     """``render_quote.main`` must never leave ``output/current.png`` truncated."""
 
