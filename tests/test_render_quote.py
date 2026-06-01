@@ -2637,6 +2637,39 @@ class TestRenderStaticMessage:
         img.close()
 
 
+class TestPreviewSizeRendering:
+    """Every theme must render without raising at the small preview/thumbnail
+    sizes the curator UI's ``/api/preview`` endpoint serves.
+
+    ``/api/preview`` clamps requests to width 80..800, height 60..480 and
+    renders any registered theme there. Frames with fixed 800×480 coordinates
+    used to crash a preview into a 500 two ways: raw ``PixelAccess`` writes
+    (``px[x, y]``) past the smaller image bounds (``IndexError``), and
+    ``draw.rectangle`` boxes that invert (``x1 < x0`` / ``y1 < y0``) once a
+    fixed inset exceeds the canvas (``ValueError``). This sweeps every theme at
+    the clamp's minimum corner plus a typical thumbnail to fence both."""
+
+    def _row(self):
+        return {
+            "display_quote": "It was about half past two when the clock struck and the afternoon slipped away.",
+            "matched_text": "half past two",
+            "author": "Edith Wharton",
+            "title": "The House of Mirth",
+        }
+
+    # The /api/preview clamp range (web_server.PREVIEW_MIN/MAX_*): the minimum
+    # corner is the worst case for fixed-coordinate frames; 240×144 is a typical
+    # thumbnail-grid request.
+    @pytest.mark.parametrize("theme", sorted(rq.THEMES))
+    @pytest.mark.parametrize("size", [(80, 60), (240, 144)])
+    def test_renders_at_small_preview_sizes(self, theme, size):
+        width, height = size
+        img = rq.render("14:30", self._row(), width, height, mode="production", theme=theme)
+        assert img.size == (width, height)
+        palette = set(rq.SPECTRA6.values())
+        assert set(img.convert("RGB").getdata()).issubset(palette)
+
+
 class TestMainAtomicSave:
     """``render_quote.main`` must never leave ``output/current.png`` truncated."""
 

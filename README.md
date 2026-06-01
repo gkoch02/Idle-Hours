@@ -119,7 +119,7 @@ The full pipeline order is documented in [Build pipeline notes](#build-pipeline-
 
 - `tests/` - automated tests (one module per script, plus golden fixtures under `tests/golden/`)
 - `output/` - generated output and analysis artifacts, not canonical runtime source
-- `idle_hours/fonts/` - bundled OFL typefaces used by the renderer (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers — one per theme)
+- `idle_hours/fonts/` - bundled OFL typefaces used by the renderer (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Press Start 2P, Pixelify Sans, … — one per theme)
 - `ops/idle-hours.service.example` - example systemd service for Pi deployment
 - `docs/pi_setup_inky_impression.md` - Pi setup notes
 - `scripts/bootstrap_pi_inky.sh` - helper bootstrap script for Pi setup
@@ -261,7 +261,7 @@ idle-hours run --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Thirty-seven themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme pairs its palette with a dedicated typeface. Previews use a fixed quote so palette + typography are the only variables; production renders adapt layout to the picked line.
+Thirty-nine themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme pairs its palette with a dedicated typeface. Previews use a fixed quote so palette + typography are the only variables; production renders adapt layout to the picked line.
 
 | `--theme`     | Preview | Page bg | Body  | Accent | Typeface             | Feel                          |
 |---------------|---------|---------|-------|--------|----------------------|-------------------------------|
@@ -301,6 +301,8 @@ Thirty-seven themes ship built-in, all constrained to the Spectra 6 panel palett
 | `vinyl`       | <img src="idle_hours/assets/previews/vinyl.png" width="240" alt="vinyl theme preview">             | cream/white | black | tangerine | Cormorant Garamond | Turntable + literary-audiobook LP (custom layout) |
 | `vitrail`     | <img src="idle_hours/assets/previews/vitrail.png" width="240" alt="vitrail theme preview">         | jewel glass | black | violet | EB Garamond + Uncial Antiqua | Gothic stained-glass window (custom layout, full palette) |
 | `cartograph`  | <img src="idle_hours/assets/previews/cartograph.png" width="240" alt="cartograph theme preview">   | cream/white | black | red    | IM Fell English Italic | Antique cartographer's chart |
+| `questline`   | <img src="idle_hours/assets/previews/questline.png" width="240" alt="questline theme preview">     | black       | white | yellow | Press Start 2P (pixel) | 8-bit RPG dialogue box (custom layout) |
+| `chrono`      | <img src="idle_hours/assets/previews/chrono.png" width="240" alt="chrono theme preview">           | twilight blue | white | yellow | Pixelify Sans (pixel sans) | 16-bit SNES JRPG cutscene (FF6 era, custom layout) |
 | `diags`       | <img src="idle_hours/assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
 
 `diags` replaces the literary frame with a status panel — big clock + picker metrics (bucket / layout / quality / source / matched phrase), a `HOST` / `IP` / `UPTIME` strip, the Spectra 6 native palette, and the synthesised 2-ink stipple recipes documented in [`CLAUDE.md`](CLAUDE.md). Useful for on-panel colour calibration ("does `mint` actually read as green at viewing distance?") and for confirming the picker chose what you'd expect. It is **excluded from `--theme random`** (a random pick replacing the literary frame with a swatch screen would be surprising); manual selection via button B / web dropdown still works.
@@ -464,7 +466,7 @@ A modal overlay appears on the very first visit to a fresh appliance: pick a the
 - Live preview of `output/current.png`, the picked quote text, attribution (`source_id` + `line_number`), and the matched time phrase the renderer bolded.
 - Five buttons that mirror the physical Inky panel (`A · Skip`, `A-hold · Un-skip`, `B · Cycle theme`, `C · Re-render`, `D · Quiet / wake`) plus a theme dropdown that jumps directly to any registered theme.
 - **Ban this quote** button (v2): adds the current `(source_id, line_number)` to `ban_quote_keys` in the selection overrides sidecar so the picker never returns this exact row again — the rest of the source still works normally.
-- Theme thumbnail grid: side-by-side previews of all thirty-seven registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
+- Theme thumbnail grid: side-by-side previews of all thirty-nine registered themes, rendered against the current quote so you can compare typography + palette before committing. Click a tile to apply it.
 
 #### Tab: Curate
 
