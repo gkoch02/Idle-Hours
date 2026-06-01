@@ -15177,13 +15177,13 @@ def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
         name = name[:-1]
     nb = draw.textbbox((0, 0), name, font=name_font)
     draw.text((x0 - nb[0], y0 - nb[1]), name, font=name_font, fill=WHITE)
-    body_top = y0 + (nb[3] - nb[1]) + 12
+    body_top = y0 + (nb[3] - nb[1]) + 8
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     matched = quote_row.get("matched_text") or ""
     quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
         draw, display_quote, matched, box_w, y1 - body_top,
-        font_max=46, font_min=14, line_height_mult=1.32, theme="chrono",
+        font_max=54, font_min=14, line_height_mult=1.32, theme="chrono",
     )
     body_ascent = _font_ascent(quote_font)
     y = body_top
@@ -15226,7 +15226,7 @@ def _chrono_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
     bbox = draw.textbbox((0, 0), text, font=font)
     cx = (_CHRONO_WINDOW[0] + _CHRONO_WINDOW[2]) // 2 + 50  # nudge clear of the portrait
     fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
-    fy = _CHRONO_WINDOW[3] - 24 - bbox[1]
+    fy = _CHRONO_WINDOW[3] - 18 - bbox[1]
     # White (smaller than the body so it still reads as secondary) — a sky-blue
     # B+W dither was tried here but averaged too close to the blue window fill
     # to stay legible at the footer point size.
@@ -15249,7 +15249,7 @@ def render_chrono_frame(time_str: str, quote_row: dict, width: int, height: int)
     _chrono_paint_portrait(image, draw)
     # Dialogue text sits right of the portrait, inside the window.
     px1 = _CHRONO_PORTRAIT[2]
-    _chrono_paint_dialogue(image, draw, quote_row, (px1 + 22, _CHRONO_WINDOW[1] + 22, _CHRONO_WINDOW[2] - 30, _CHRONO_WINDOW[3] - 34))
+    _chrono_paint_dialogue(image, draw, quote_row, (px1 + 16, _CHRONO_WINDOW[1] + 14, _CHRONO_WINDOW[2] - 24, _CHRONO_WINDOW[3] - 30))
     _chrono_paint_arrow(draw)
     _chrono_paint_footer(image, draw, quote_row)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
