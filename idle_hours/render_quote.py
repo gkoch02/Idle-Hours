@@ -2866,11 +2866,19 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
     mask = Image.new("L", image.size, 0)
     mask_draw = ImageDraw.Draw(mask)
     mask_draw.text(xy, text, font=font, fill=255)
+    # Only the glyph region is non-zero; bounding the scan to it (like
+    # draw_text_dithered) keeps cost proportional to the inked area instead
+    # of re-reading all 800×480 pixels per call. Pixels outside the bbox are
+    # zero and were never written, so output is byte-identical.
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    x0, y0, x1, y1 = bbox
     px = image.load()
     mx = mask.load()
     ox, oy = pattern_offset
-    for y in range(image.height):
-        for x in range(image.width):
+    for y in range(y0, y1):
+        for x in range(x0, x1):
             if mx[x, y]:
                 px[x, y] = dark if ((x + ox) + (y + oy)) % 2 == 0 else light
 
@@ -2902,13 +2910,18 @@ def draw_faux_3way_text(
     mask = Image.new("L", image.size, 0)
     mask_draw = ImageDraw.Draw(mask)
     mask_draw.text(xy, text, font=font, fill=255)
+    # Bound the scan to the inked glyph region (see draw_faux_gray_text).
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    bx0, by0, bx1, by1 = bbox
     px = image.load()
     mx = mask.load()
     ox, oy = pattern_offset
     threshold_a = round(density_a * 16)
     threshold_b = round((density_a + density_b) * 16)
-    for y in range(image.height):
-        for x in range(image.width):
+    for y in range(by0, by1):
+        for x in range(bx0, bx1):
             if mx[x, y]:
                 tile = BAYER_4x4[(y + oy) % 4][(x + ox) % 4]
                 if tile < threshold_a:
@@ -10727,13 +10740,21 @@ def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]
     snapped = Image.new("RGB", image.size)
     src = image.load()
     dst = snapped.load()
+    # Rendered frames carry only a handful of distinct colours (the palette is
+    # small and theme post-passes already land on-palette), so memoise the
+    # nearest-colour lookup per unique source pixel instead of running the
+    # min()-over-6 distance search 384k times. Byte-identical output.
+    cache: dict = {}
     for y in range(image.height):
         for x in range(image.width):
             pixel = src[x, y]
-            nearest = min(
-                palette,
-                key=lambda c: (pixel[0] - c[0]) ** 2 + (pixel[1] - c[1]) ** 2 + (pixel[2] - c[2]) ** 2,
-            )
+            nearest = cache.get(pixel)
+            if nearest is None:
+                nearest = min(
+                    palette,
+                    key=lambda c: (pixel[0] - c[0]) ** 2 + (pixel[1] - c[1]) ** 2 + (pixel[2] - c[2]) ** 2,
+                )
+                cache[pixel] = nearest
             dst[x, y] = nearest
     return snapped
 

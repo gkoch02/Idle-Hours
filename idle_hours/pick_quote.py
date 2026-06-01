@@ -618,16 +618,24 @@ def pick_best(
         # fall back to the full candidate list so a sparse bucket still renders.
         fresh = [row for row in candidates if _row_history_key(row) not in recent] if recent else candidates
         pool = fresh or candidates
-        pool.sort(key=lambda row: score_row(row, candidate_bucket, overrides, requested_time, source_counts))
-        top_score = score_row(pool[0], candidate_bucket, overrides, requested_time, source_counts)
-        top = [row for row in pool if score_row(row, candidate_bucket, overrides, requested_time, source_counts) == top_score]
+        # score_row is pure, so compute each candidate's score once and derive
+        # the sort, the top-score filter, and the ranked view from it rather
+        # than re-scoring 3-4× per row on this per-tick path. A stable sort over
+        # the precomputed keys preserves pool order, so the seeded choice below
+        # stays byte-identical to the prior repeated-score_row implementation.
+        scored = sorted(
+            (
+                (score_row(row, candidate_bucket, overrides, requested_time, source_counts), row)
+                for row in pool
+            ),
+            key=lambda sr: sr[0],
+        )
+        top_score = scored[0][0]
+        top = [row for score, row in scored if score == top_score]
         rng = random.Random(seed)
         chosen = rng.choice(top)
         if return_ranked:
-            ranked = [
-                {"row": row, "score": score_row(row, candidate_bucket, overrides, requested_time, source_counts)}
-                for row in pool
-            ]
+            ranked = [{"row": row, "score": score} for score, row in scored]
             return chosen, candidate_bucket, ranked
         return chosen, candidate_bucket
     raise SystemExit(f"No candidates found for bucket {bucket} or nearby buckets above quality {min_quality}")
