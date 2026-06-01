@@ -275,6 +275,11 @@ THEME_SATURATION: dict[str, float] = {
     # 0.7 tier to stay crisp against the saturated blue/green field rather
     # than washing out toward mid-tones at panel viewing distance.
     "questline": 0.7,
+    # Chrono / 16-bit SNES JRPG. Gradient twilight-blue sky and a translucent
+    # navy→blue dialogue window dominate the canvas; the white body, yellow
+    # matched-phrase accent, and the synthesised gradient tones all need the
+    # dark-ground 0.7 tier to stay punchy against the saturated blue field.
+    "chrono": 0.7,
 }
 
 

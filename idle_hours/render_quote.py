@@ -85,6 +85,7 @@ THEME_ORDER: tuple[str, ...] = (
     "vitrail",
     "cartograph",
     "questline",
+    "chrono",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1016,6 +1017,24 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # 16-bit SNES JRPG (Final Fantasy VI / Chrono Trigger era). Not a literary
+    # frame — render() dispatches the chrono theme to render_chrono_frame: an
+    # atmospheric gradient twilight sky with stars, a moon and a distant
+    # mountain horizon, the iconic translucent-blue gradient dialogue window
+    # with a rounded beveled border, a character *portrait* sub-window, and
+    # the quote as on-screen dialogue (matched phrase in yellow Pixelify Sans
+    # Bold). Blue ground; white body; yellow accent. The palette is consulted
+    # by the goodnight / source-card fall-through paths.
+    "chrono": {
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1358,6 +1377,19 @@ CARDO_ITALIC = str(BASE_DIR / "fonts/cardo/Cardo-Italic.ttf")
 # Playfair chain so a missing install lands on a legible sans rather than
 # the bitmap default — there is no other pixel face bundled to fall to.
 PRESSSTART2P_REGULAR = str(BASE_DIR / "fonts/press-start-2p/PressStart2P-Regular.ttf")
+# Pixelify Sans — eifetx / The Pixelify Sans Project Authors (OFL). A *clean*
+# proportional pixel sans (not a fixed 8×8 grid like Press Start 2P) modelled
+# on the refined 16-bit-era game typography of SNES JRPGs — finer letterforms,
+# lowercase with proper descenders, and a real weight axis (Regular / Medium /
+# SemiBold / Bold). Used by the ``chrono`` theme as the deliberate step up in
+# typographic fidelity from ``questline``'s chunky 8-bit Press Start 2P: the
+# matched-phrase role pins the **Bold** variation instance, so chrono earns
+# weight differentiation on top of the yellow accent colour (unlike the
+# single-weight pixel/display faces). Variable font; Regular / Bold instances
+# are pinned by name via load_font's set_variation_by_name (same mechanism as
+# Inter / Jost / Rubik / Antonio). Falls back through DejaVu / Liberation /
+# Noto Sans before the Playfair chain.
+PIXELIFYSANS_VARIABLE = str(BASE_DIR / "fonts/pixelify-sans/PixelifySans-Variable.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2458,6 +2490,35 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             PRESSSTART2P_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Pixelify Sans — a clean proportional pixel sans with a real weight axis,
+    # the refined 16-bit-era counterpart to questline's chunky Press Start 2P.
+    # The matched-phrase role pins the Bold variation instance, so chrono gets
+    # weight differentiation on top of the yellow accent (unlike the
+    # single-weight pixel faces). Falls back through DejaVu / Liberation / Noto
+    # Sans before the Playfair chain.
+    "chrono": {
+        "quote_regular": [
+            (PIXELIFYSANS_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (PIXELIFYSANS_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (PIXELIFYSANS_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -14793,6 +14854,291 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── chrono (16-bit SNES JRPG dialogue) ──────────────────────────────────────
+#
+# The 16-bit counterpart to questline's 8-bit scene — Final Fantasy VI /
+# Chrono Trigger era. The visual step up reads as "SNES, not NES" through three
+# things 8-bit hardware couldn't do: gradient-shaded backgrounds (an
+# atmospheric twilight sky fading toward a hazy horizon), the iconic
+# translucent-blue gradient dialogue window with a rounded, beveled border, and
+# a character portrait sub-window beside the text. The finer multi-weight
+# Pixelify Sans (vs questline's chunky single-weight Press Start 2P) gives the
+# matched phrase a real Bold weight on top of the yellow accent. As with
+# questline / marquee, the digital HH:MM is never surfaced — the matched phrase
+# carries the time. ("chrono" = time; the SNES Square-JRPG era is also the
+# Chrono Trigger era, so the name doubles as the literary-clock tie.)
+
+# 16×16 portrait face: black outline, blond (yellow) hair, white skin, blue
+# eyes, red mouth — more detailed than questline's 8×10 full-body sprite, the
+# "character portrait" a 16-bit cutscene shows beside the dialogue.
+_CHRONO_FACE = (
+    "....KKKKKKKK....",
+    "..KKYYYYYYYYKK..",
+    ".KYYYYYYYYYYYYK.",
+    ".KYYWWWWWWWWYYK.",
+    ".KYWWWWWWWWWWYK.",
+    ".KWWWWWWWWWWWWK.",
+    ".KWWBBWWWWBBWWK.",
+    ".KWWBBWWWWBBWWK.",
+    ".KWWWWWWWWWWWWK.",
+    ".KWWWWWWWWWWWWK.",
+    ".KWWWWRRRRWWWWK.",
+    ".KWWWWWWWWWWWWK.",
+    ".KKWWWWWWWWWWKK.",
+    "..KKWWWWWWWWKK..",
+    "...KKWWWWWWKK...",
+    "....KKKKKKKK....",
+)
+_CHRONO_FACE_PALETTE = {
+    "K": SPECTRA6["black"],
+    "Y": SPECTRA6["yellow"],
+    "W": SPECTRA6["white"],
+    "B": SPECTRA6["blue"],
+    "R": SPECTRA6["red"],
+}
+
+_CHRONO_SKY_BOTTOM = 296
+_CHRONO_WINDOW = (28, 296, 772, 458)
+_CHRONO_PORTRAIT = (44, 250, 158, 364)
+_CHRONO_STAR_SEED = 0xC470
+
+
+def _chrono_fill_poly(image: Image.Image, points, dark, light, density: float) -> None:
+    """Fill a polygon with a Bayer two-ink stipple (for navy mountain silhouettes)."""
+    w, h = image.size
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).polygon(points, fill=255)
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    x0, y0, x1, y1 = bbox
+    px = image.load()
+    mx = mask.load()
+    threshold = round(density * 16)
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if mx[x, y]:
+                px[x, y] = light if BAYER_4x4[y % 4][x % 4] < threshold else dark
+
+
+def _chrono_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Gradient twilight sky: deep navy at the zenith fading to a hazy horizon,
+    with deterministic stars, a pale moon, and a two-range mountain silhouette.
+
+    The vertical gradient is the signature 16-bit move — a per-row Bayer
+    density ramp synthesises a continuous blue→navy→sky-blue tone the flat
+    8-bit bands of questline can't. Black-dither density falls from the top
+    (night zenith) to mid-sky; white-dither density then rises toward the
+    horizon (atmospheric haze).
+    """
+    width = image.size[0]
+    BLUE = SPECTRA6["blue"]
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    px = image.load()
+    bottom = _CHRONO_SKY_BOTTOM
+    for y in range(bottom):
+        if y < 130:
+            # Zenith → mid: navy fading to pure blue (black density 0.42 → 0).
+            d = 0.42 * (1 - y / 130)
+            light, dark = BLACK, BLUE
+        else:
+            # Mid → horizon: pure blue gaining a haze of white (0 → 0.38).
+            d = 0.38 * ((y - 130) / (bottom - 130))
+            light, dark = WHITE, BLUE
+        threshold = round(d * 16)
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            px[x, y] = light if row[x % 4] < threshold else dark
+    # Stars — deterministic white specks in the upper sky, clear of the moon.
+    rng = random.Random(_CHRONO_STAR_SEED)
+    moon_cx, moon_cy, moon_r = 648, 72, 30
+    for _ in range(70):
+        sx = rng.randint(6, width - 6)
+        sy = rng.randint(8, 150)
+        if (sx - moon_cx) ** 2 + (sy - moon_cy) ** 2 < (moon_r + 14) ** 2:
+            continue
+        draw.point((sx, sy), fill=WHITE)
+        if rng.random() < 0.22:  # a few brighter 2×2 stars
+            draw.rectangle((sx, sy, sx + 1, sy + 1), fill=WHITE)
+    # Distant mountain ranges (back lighter, front navy) for parallax depth.
+    draw.polygon(
+        [(0, bottom), (0, 210), (150, 250), (320, 196), (520, 244), (700, 200), (width, 238), (width, bottom)],
+        fill=BLUE,
+    )
+    _chrono_fill_poly(
+        image,
+        [(0, bottom), (0, 262), (180, 224), (360, 270), (560, 226), (760, 268), (width, 240), (width, bottom)],
+        dark=BLUE, light=BLACK, density=0.5,
+    )
+    # Pale moon with a couple of faint navy craters.
+    draw.ellipse((moon_cx - moon_r, moon_cy - moon_r, moon_cx + moon_r, moon_cy + moon_r), fill=WHITE)
+    for (cx, cy, cr) in ((moon_cx - 8, moon_cy - 6, 5), (moon_cx + 9, moon_cy + 7, 4), (moon_cx + 2, moon_cy - 11, 3)):
+        _fill_swatch_stipple(image, (cx - cr, cy - cr, cx + cr, cy + cr), dark=WHITE, light=BLUE, light_density=0.5)
+
+
+def _chrono_window_fill(image: Image.Image, rect: tuple[int, int, int, int], radius: int) -> None:
+    """Translucent-blue gradient window fill, clipped to a rounded rectangle.
+
+    Painted on a private tile (top navy → bottom blue with a faint sky-blue
+    sheen) and pasted through a rounded-rectangle mask, so the corners read as
+    the soft rounded FF-window silhouette rather than a hard rectangle.
+    """
+    x0, y0, x1, y1 = rect
+    w, h = x1 - x0, y1 - y0
+    BLUE = SPECTRA6["blue"]
+    BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
+    tile = Image.new("RGB", (w, h), BLUE)
+    tpx = tile.load()
+    for j in range(h):
+        frac = j / max(1, h - 1)
+        if frac < 0.5:
+            d = 0.5 * (1 - frac / 0.5)  # navy top → blue mid
+            light, dark = BLACK, BLUE
+        else:
+            d = 0.16 * ((frac - 0.5) / 0.5)  # faint sky-blue sheen toward the foot
+            light, dark = WHITE, BLUE
+        threshold = round(d * 16)
+        row = BAYER_4x4[j % 4]
+        for i in range(w):
+            tpx[i, j] = light if row[i % 4] < threshold else dark
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=255)
+    image.paste(tile, (x0, y0), mask)
+
+
+def _chrono_window_border(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int], radius: int) -> None:
+    """White rounded double border with small yellow corner accents (FF window)."""
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    x0, y0, x1, y1 = rect
+    draw.rounded_rectangle(rect, radius=radius, outline=WHITE, width=3)
+    draw.rounded_rectangle((x0 + 6, y0 + 6, x1 - 6, y1 - 6), radius=max(2, radius - 4), outline=WHITE, width=1)
+    # Small yellow accent ticks just inside each corner.
+    for (cx, cy) in ((x0 + 12, y0 + 12), (x1 - 13, y0 + 12), (x0 + 12, y1 - 13), (x1 - 13, y1 - 13)):
+        draw.rectangle((cx, cy, cx + 2, cy + 2), fill=YELLOW)
+
+
+def _chrono_paint_portrait(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Character-portrait sub-window (a smaller FF window) with the shaded face."""
+    rect = _CHRONO_PORTRAIT
+    _chrono_window_fill(image, rect, radius=12)
+    _chrono_window_border(draw, rect, radius=12)
+    scale = 5
+    sprite_w = len(_CHRONO_FACE[0]) * scale
+    sprite_h = len(_CHRONO_FACE) * scale
+    cx = (rect[0] + rect[2]) // 2
+    cy = (rect[1] + rect[3]) // 2
+    x0 = cx - sprite_w // 2
+    y0 = cy - sprite_h // 2
+    for ry, row in enumerate(_CHRONO_FACE):
+        for rx, ch in enumerate(row):
+            color = _CHRONO_FACE_PALETTE.get(ch)
+            if color is None:
+                continue
+            pxx = x0 + rx * scale
+            pyy = y0 + ry * scale
+            draw.rectangle((pxx, pyy, pxx + scale - 1, pyy + scale - 1), fill=color)
+
+
+def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, rect: tuple[int, int, int, int]) -> None:
+    """Speaker-name header + the quote as left-aligned dialogue.
+
+    Author name (uppercased, truncated) as a white Pixelify Sans Bold header
+    line, then the quote body below with the matched time-phrase in yellow
+    Pixelify Sans Bold — a real weight step, not just a recolour.
+    """
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    x0, y0, x1, y1 = rect
+    box_w = x1 - x0
+    # Speaker-name header.
+    author = (quote_row.get("author") or "").strip()
+    name = (author or "NARRATOR").upper()
+    name_font = load_font(theme_font_candidates("chrono", "quote_bold"), size=17)
+    while name and draw.textlength(name, font=name_font) > box_w:
+        name = name[:-1]
+    nb = draw.textbbox((0, 0), name, font=name_font)
+    draw.text((x0 - nb[0], y0 - nb[1]), name, font=name_font, fill=WHITE)
+    body_top = y0 + (nb[3] - nb[1]) + 12
+
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw, display_quote, matched, box_w, y1 - body_top,
+        font_max=22, font_min=12, line_height_mult=1.32, theme="chrono",
+    )
+    body_ascent = _font_ascent(quote_font)
+    y = body_top
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        x = x0
+        for chunk, is_bold in line[start:end]:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            draw.text((x, chunk_y), chunk, font=font, fill=YELLOW if is_bold else WHITE)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _chrono_paint_arrow(draw: ImageDraw.ImageDraw) -> None:
+    """Cyan-tinted ▼ continue arrow in the window's bottom-right."""
+    YELLOW = SPECTRA6["yellow"]
+    x1, y1 = _CHRONO_WINDOW[2], _CHRONO_WINDOW[3]
+    cx, cy = x1 - 30, y1 - 24
+    draw.polygon([(cx - 8, cy - 6), (cx + 8, cy - 6), (cx, cy + 7)], fill=YELLOW)
+
+
+def _chrono_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """'— from {Title} —' in sky-blue along the window's bottom inner margin."""
+    title = (quote_row.get("title") or "").strip()
+    if not title:
+        return
+    text = f"— from {title} —"
+    font = load_font(theme_font_candidates("chrono", "quote_regular"), size=12)
+    max_w = (_CHRONO_WINDOW[2] - _CHRONO_WINDOW[0]) - 140
+    while text and draw.textlength(text, font=font) > max_w:
+        title = title[:-1]
+        text = f"— from {title.rstrip()}… —"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    cx = (_CHRONO_WINDOW[0] + _CHRONO_WINDOW[2]) // 2 + 50  # nudge clear of the portrait
+    fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
+    fy = _CHRONO_WINDOW[3] - 24 - bbox[1]
+    # White (smaller than the body so it still reads as secondary) — a sky-blue
+    # B+W dither was tried here but averaged too close to the blue window fill
+    # to stay legible at the footer point size.
+    draw.text((fx, fy), text, font=font, fill=SPECTRA6["white"])
+
+
+def render_chrono_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """16-bit SNES JRPG dialogue scene (see the module section comment above).
+
+    ``time_str`` is deliberately unused — the matched phrase carries the time,
+    and a parallel digital HH:MM would defeat the fuzzy-clock premise. Retained
+    for dispatch-signature uniformity with the other frame painters.
+    """
+    del time_str  # see docstring; deliberately unused.
+    image = Image.new("RGB", (width, height), color=SPECTRA6["blue"])
+    draw = ImageDraw.Draw(image)
+    _chrono_paint_sky(image, draw)
+    _chrono_window_fill(image, _CHRONO_WINDOW, radius=18)
+    _chrono_window_border(draw, _CHRONO_WINDOW, radius=18)
+    _chrono_paint_portrait(image, draw)
+    # Dialogue text sits right of the portrait, inside the window.
+    px1 = _CHRONO_PORTRAIT[2]
+    _chrono_paint_dialogue(image, draw, quote_row, (px1 + 22, _CHRONO_WINDOW[1] + 22, _CHRONO_WINDOW[2] - 30, _CHRONO_WINDOW[3] - 34))
+    _chrono_paint_arrow(draw)
+    _chrono_paint_footer(image, draw, quote_row)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -14810,6 +15156,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_vitrail_frame(time_str, quote_row, width, height)
     if theme == "questline":
         return render_questline_frame(time_str, quote_row, width, height)
+    if theme == "chrono":
+        return render_chrono_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
