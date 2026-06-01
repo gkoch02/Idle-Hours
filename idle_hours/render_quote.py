@@ -14676,11 +14676,12 @@ _QUESTLINE_SPRITE_PALETTE = {
     "Y": SPECTRA6["yellow"],
 }
 
-# Vertical bands of the scene (y, 800×480 canvas). The sky/hills fill the top;
-# the dialogue box owns the bottom ~45%.
-_QUESTLINE_SKY_BOTTOM = 200
-_QUESTLINE_HILL_BOTTOM = 256
-_QUESTLINE_BOX = (22, 262, 778, 470)  # x0, y0, x1, y1
+# Vertical bands of the scene (y, 800×480 canvas). The sky/hills are kept
+# compact up top so the dialogue box can own the taller lower ~50% — more room
+# for a larger, more legible font.
+_QUESTLINE_SKY_BOTTOM = 168
+_QUESTLINE_HILL_BOTTOM = 224
+_QUESTLINE_BOX = (22, 230, 778, 470)  # x0, y0, x1, y1
 
 
 def _questline_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
@@ -14804,7 +14805,7 @@ def _questline_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quo
     matched = quote_row.get("matched_text") or ""
     quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
         draw, display_quote, matched, box_w, box_h,
-        font_max=15, font_min=8, line_height_mult=1.6, theme="questline",
+        font_max=18, font_min=10, line_height_mult=1.6, theme="questline",
     )
     body_ascent = _font_ascent(quote_font)
     y = y0
@@ -14918,8 +14919,8 @@ _CHRONO_ART_TONES = {
 _CHRONO_ART_SIZE = (56, 72)  # logical pixels before upscale
 _CHRONO_ART_SCALE = 2        # → 112×144 px on the panel
 
-_CHRONO_SKY_BOTTOM = 296
-_CHRONO_WINDOW = (28, 296, 772, 458)
+_CHRONO_SKY_BOTTOM = 256
+_CHRONO_WINDOW = (28, 256, 772, 458)
 _CHRONO_PORTRAIT = (32, 222, 180, 394)
 
 
@@ -15081,13 +15082,19 @@ def _chrono_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
         if rng.random() < 0.22:  # a few brighter 2×2 stars
             draw.rectangle((sx, sy, sx + 1, sy + 1), fill=WHITE)
     # Distant mountain ranges (back lighter, front navy) for parallax depth.
+    # Peaks are expressed as offsets above ``bottom`` (the horizon) so the
+    # ranges scale correctly when the sky is shortened to make room for a
+    # taller dialogue window — at bottom=296 these reduce to the original
+    # absolute coordinates.
     draw.polygon(
-        [(0, bottom), (0, 210), (150, 250), (320, 196), (520, 244), (700, 200), (width, 238), (width, bottom)],
+        [(0, bottom), (0, bottom - 86), (150, bottom - 46), (320, bottom - 100),
+         (520, bottom - 52), (700, bottom - 96), (width, bottom - 58), (width, bottom)],
         fill=BLUE,
     )
     _chrono_fill_poly(
         image,
-        [(0, bottom), (0, 262), (180, 224), (360, 270), (560, 226), (760, 268), (width, 240), (width, bottom)],
+        [(0, bottom), (0, bottom - 34), (180, bottom - 72), (360, bottom - 26),
+         (560, bottom - 70), (760, bottom - 28), (width, bottom - 56), (width, bottom)],
         dark=BLUE, light=BLACK, density=0.5,
     )
     # Pale moon with a couple of faint navy craters.
@@ -15165,7 +15172,7 @@ def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
     # Speaker-name header.
     author = (quote_row.get("author") or "").strip()
     name = (author or "NARRATOR").upper()
-    name_font = load_font(theme_font_candidates("chrono", "quote_bold"), size=17)
+    name_font = load_font(theme_font_candidates("chrono", "quote_bold"), size=19)
     while name and draw.textlength(name, font=name_font) > box_w:
         name = name[:-1]
     nb = draw.textbbox((0, 0), name, font=name_font)
@@ -15176,7 +15183,7 @@ def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
     matched = quote_row.get("matched_text") or ""
     quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
         draw, display_quote, matched, box_w, y1 - body_top,
-        font_max=22, font_min=12, line_height_mult=1.32, theme="chrono",
+        font_max=27, font_min=14, line_height_mult=1.32, theme="chrono",
     )
     body_ascent = _font_ascent(quote_font)
     y = body_top
