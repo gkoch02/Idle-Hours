@@ -14805,7 +14805,7 @@ def _questline_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quo
     matched = quote_row.get("matched_text") or ""
     quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
         draw, display_quote, matched, box_w, box_h,
-        font_max=18, font_min=10, line_height_mult=1.6, theme="questline",
+        font_max=40, font_min=10, line_height_mult=1.6, theme="questline",
     )
     body_ascent = _font_ascent(quote_font)
     y = y0
@@ -15183,7 +15183,7 @@ def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
     matched = quote_row.get("matched_text") or ""
     quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
         draw, display_quote, matched, box_w, y1 - body_top,
-        font_max=27, font_min=14, line_height_mult=1.32, theme="chrono",
+        font_max=46, font_min=14, line_height_mult=1.32, theme="chrono",
     )
     body_ascent = _font_ascent(quote_font)
     y = body_top
