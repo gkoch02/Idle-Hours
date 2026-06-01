@@ -3615,9 +3615,14 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
     inner = 34
     dx, dy = 5, 3
 
-    draw.rectangle((outer + dx, outer + dy, width - 1 - outer + dx, height - 1 - outer + dy), outline=accent, width=2)
-    draw.rectangle((outer, outer, width - 1 - outer, height - 1 - outer), outline=base, width=2)
-    draw.rectangle((inner, inner, width - 1 - inner, height - 1 - inner), outline=shadow, width=1)
+    # Skip any frame rule that would invert (y1 < y0) on a small preview canvas:
+    # the curator /api/preview path renders below the native 800×480, and an
+    # inverted box raises ValueError in PIL's draw_rectangle.
+    if width > 2 * outer and height > 2 * outer:
+        draw.rectangle((outer + dx, outer + dy, width - 1 - outer + dx, height - 1 - outer + dy), outline=accent, width=2)
+        draw.rectangle((outer, outer, width - 1 - outer, height - 1 - outer), outline=base, width=2)
+    if width > 2 * inner and height > 2 * inner:
+        draw.rectangle((inner, inner, width - 1 - inner, height - 1 - inner), outline=shadow, width=1)
 
     # Chunky print bars.
     draw.rectangle((42, 54, 74, 170), fill=accent)
@@ -3706,9 +3711,9 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
             draw.rectangle((sx0, bar_y, sx1, sy1), fill=lavender_sentinel)
             lavender_bboxes.append((sx0, bar_y, sx1, sy1))
     for x0, y0, x1, y1 in lavender_bboxes:
-        for py in range(y0, y1 + 1):
+        for py in range(max(0, y0), min(height, y1 + 1)):
             row = BAYER_4x4[py & 3]
-            for px in range(x0, x1 + 1):
+            for px in range(max(0, x0), min(width, x1 + 1)):
                 if pixels[px, py] == lavender_sentinel:
                     cell = row[px & 3]
                     if cell < 5:
@@ -5312,9 +5317,10 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     )
 
     # Maroon post-pass on the chop seal's bbox — same R+K recipe as
-    # the disc rim, so the two ornaments share a tonal register.
-    for py in range(chop_top, chop_bottom + 1):
-        for px in range(chop_left, chop_right + 1):
+    # the disc rim, so the two ornaments share a tonal register. Clipped to
+    # the image bounds for small preview canvases (see the brush-tick column).
+    for py in range(chop_top, min(chop_bottom + 1, height)):
+        for px in range(chop_left, min(chop_right + 1, width)):
             if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
                 pixels[px, py] = maroon_dark
 
@@ -5351,7 +5357,7 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     # Maroon post-pass over the brush-tick column bbox (x±18, y 188-282).
     col_x0 = max(0, tick_cx - 18)
     col_x1 = min(width - 1, tick_cx + 18)
-    for py in range(188, 283):
+    for py in range(188, min(283, height)):
         for px in range(col_x0, col_x1 + 1):
             if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
                 pixels[px, py] = maroon_dark
@@ -6501,6 +6507,15 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
     ink = colors["text"]       # black
     accent = colors["accent"]  # red (foxing, ornaments, fleuron wings)
     bg = colors["page_bg"]
+
+    # The banner / frame rules inset 40 px from each side; at a canvas narrower
+    # than that (the /api/preview thumbnail min width is 80) `width - 1 - 40`
+    # falls below the left inset and PIL raises ValueError on the inverted
+    # rectangle. The decoration is meaningless at thumbnail width anyway, so
+    # skip it rather than guard every individual rule. (Vertical fills stay
+    # ordered at any height, so only width gates this.)
+    if width <= 80:
+        return
 
     # ------------------------------------------------------------------
     # Layer 1: Foxing speckles. ``_SALOON_FOXING`` is pre-computed for
@@ -11401,6 +11416,10 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
     def _paint_synth_row(row_top: int, entries: list, painter) -> None:
         n = len(entries)
         row_w = (avail_w - (n - 1) * sw2_gap) // n
+        if row_w <= 0:
+            # Canvas too narrow for the swatch grid (small /api/preview
+            # thumbnail) — skip rather than feed PIL an inverted rectangle.
+            return
         for col_idx, entry in enumerate(entries):
             x0 = PAD_X + col_idx * (row_w + sw2_gap)
             x1 = x0 + row_w
@@ -13267,9 +13286,13 @@ def _tarot_paint_body_panel(
     # still tonally matches the surrounding vellum (just without the
     # heavier R+G foxing).
     px = image.load()
-    for y in range(y0, y1):
+    # Clip the raw PixelAccess writes to the image bounds: the card layout uses
+    # fixed 800×480 coordinates, but the curator /api/preview path renders at
+    # smaller sizes where px[x, y] would raise IndexError past the edge.
+    w, h = image.size
+    for y in range(max(0, y0), min(h, y1)):
         row = BAYER_4x4[y % 4]
-        for x in range(x0, x1):
+        for x in range(max(0, x0), min(w, x1)):
             if row[x % 4] < 2:
                 px[x, y] = YELLOW
     # Step 3: thin red rule framing the panel, anchoring it as a
@@ -15373,6 +15396,13 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             min(width - 1, quote_right_edge + clear_pad_x),
             clear_bottom,
         )
+        # Drop a degenerate rect (x1 < x0 or y1 < y0): on a small preview canvas
+        # the fixed-margin text layout can land partly off-screen, inverting the
+        # box, which would raise ValueError in the downstream knockout / border
+        # painters. None means "no body-region knockout", which the blueprint /
+        # kanagawa / cartograph branches below already handle.
+        if clear_rect[2] < clear_rect[0] or clear_rect[3] < clear_rect[1]:
+            clear_rect = None
 
     if theme == "blueprint":
         _paint_theme_border(image, theme, colors)
