@@ -269,6 +269,12 @@ THEME_SATURATION: dict[str, float] = {
     # toward muddy mid-tones. The white cartouche has no chroma to scale,
     # so the higher tier costs nothing there.
     "vitrail": 0.7,
+    # Questline / pixel RPG dialogue. Black night-sky ground with a
+    # sky-blue/green pixel scene and a navy (blue+black) dialogue box; the
+    # white body text and yellow matched-phrase accent need the dark-ground
+    # 0.7 tier to stay crisp against the saturated blue/green field rather
+    # than washing out toward mid-tones at panel viewing distance.
+    "questline": 0.7,
 }
 
 

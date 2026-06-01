@@ -84,6 +84,7 @@ THEME_ORDER: tuple[str, ...] = (
     "vinyl",
     "vitrail",
     "cartograph",
+    "questline",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -996,6 +997,25 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Pixel RPG dialogue. Not a literary-layout frame — render() dispatches
+    # the questline theme to render_questline_frame, which paints an 8/16-bit
+    # JRPG scene: a dithered pixel sky, a small sprite, and a bordered
+    # dialogue box carrying the quote as on-screen NPC speech (matched phrase
+    # in yellow), the author as the speaker nameplate, and the book title as a
+    # footer. Black night-sky ground; white body text; yellow matched-phrase
+    # accent (the classic "highlighted keyword" tint of RPG dialogue). The
+    # palette is consulted by fit_quote / _draw_text_body inside the frame and
+    # by the goodnight / source-card fall-through paths.
+    "questline": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1325,6 +1345,19 @@ BUNGEE_SHADE_REGULAR = str(BASE_DIR / "fonts/bungee-shade/BungeeShade-Regular.tt
 CARDO_REGULAR = str(BASE_DIR / "fonts/cardo/Cardo-Regular.ttf")
 CARDO_BOLD = str(BASE_DIR / "fonts/cardo/Cardo-Bold.ttf")
 CARDO_ITALIC = str(BASE_DIR / "fonts/cardo/Cardo-Italic.ttf")
+# Press Start 2P — CodeMan38 / cody@zone38.net (OFL). A pixel / bitmap
+# display face modelled on the 1980s Namco arcade typeface: a fixed 8×8
+# grid scaled up, every glyph a chunky monospace cell with no descenders
+# (PIL reports ascent=size, descent=0). Used as the *only* face of the
+# ``questline`` theme — the 8/16-bit JRPG dialogue-box look lives entirely
+# in this letterform, so it carries the body, the matched-phrase accent,
+# and the chrome (speaker nameplate / footer) alike. Single weight; the
+# matched-phrase "bold" role reuses Regular and earns its differentiation
+# from the yellow accent colour alone (same discipline as comic / dispatch
+# / atomic). Falls back through DejaVu / Liberation / Noto Sans before the
+# Playfair chain so a missing install lands on a legible sans rather than
+# the bitmap default — there is no other pixel face bundled to fall to.
+PRESSSTART2P_REGULAR = str(BASE_DIR / "fonts/press-start-2p/PressStart2P-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2400,6 +2433,35 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     # (transitional serif) so the fall-through paths (goodnight,
     # source card) also look visibly different rather than aliasing
     # default.
+    # Press Start 2P everywhere — body, matched-phrase accent, and the
+    # nameplate / footer chrome. Single weight, so quote_bold reuses Regular
+    # and the matched phrase differentiates through the yellow accent alone
+    # (comic / dispatch / atomic discipline). Falls back through DejaVu /
+    # Liberation / Noto Sans before the Playfair chain since no other pixel
+    # face is bundled — a missing install should land on a legible sans.
+    "questline": {
+        "quote_regular": [
+            PRESSSTART2P_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            PRESSSTART2P_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PRESSSTART2P_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     "diags": {
         "quote_regular": [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -14494,6 +14556,243 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── questline (pixel RPG dialogue) ──────────────────────────────────────────
+#
+# An 8/16-bit JRPG presents the picked quote as on-screen NPC dialogue. The
+# whole composition is built from chunky pixels: a dithered sky over green
+# hills, a little hero sprite, a yellow sun and white pixel clouds, and a
+# bordered dialogue box carrying the quote as speech — the author becomes the
+# speaker on the nameplate, the matched time-phrase glows yellow like a
+# highlighted keyword, a static ▼ "continue" arrow sits in the corner, and the
+# book title runs along the bottom. As with `marquee`, the digital HH:MM is
+# never surfaced — the matched phrase in the dialogue carries the time, which
+# is the whole point of a quote-based fuzzy clock.
+
+# 8-wide × 10-tall pixel hero: red cap, white face, blue tunic, black boots.
+# Painted as scale×scale blocks; '.' is transparent. Reads as a caped little
+# adventurer at panel distance — the "speaker" standing beside the dialogue box.
+_QUESTLINE_HERO = (
+    "..KKKK..",
+    ".KRRRRK.",
+    ".KWWWWK.",
+    ".KWKKWK.",
+    ".KWWWWK.",
+    ".WBBBBW.",
+    ".WBBBBW.",
+    ".KBBBBK.",
+    ".KB..BK.",
+    ".KK..KK.",
+)
+_QUESTLINE_SPRITE_PALETTE = {
+    "K": SPECTRA6["black"],
+    "W": SPECTRA6["white"],
+    "R": SPECTRA6["red"],
+    "B": SPECTRA6["blue"],
+    "G": SPECTRA6["green"],
+    "Y": SPECTRA6["yellow"],
+}
+
+# Vertical bands of the scene (y, 800×480 canvas). The sky/hills fill the top;
+# the dialogue box owns the bottom ~45%.
+_QUESTLINE_SKY_BOTTOM = 200
+_QUESTLINE_HILL_BOTTOM = 256
+_QUESTLINE_BOX = (22, 262, 778, 470)  # x0, y0, x1, y1
+
+
+def _questline_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Sky-blue (B+W) wash over green hills, with a yellow sun + white clouds.
+
+    The sky uses the documented sky-blue 1×1 checkerboard (blue + white)
+    so the upper band reads as a soft daytime sky rather than the flat
+    saturated blue the panel produces solid; the hills are solid green with
+    a forest-green (G+K) lower lip for a little depth. Sun and clouds pull
+    the remaining native inks (yellow, white) onto the page so the scene
+    exercises the full Spectra-6 palette before the box even lands.
+    """
+    width = image.size[0]
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    GREEN = SPECTRA6["green"]
+    BLACK = SPECTRA6["black"]
+    BLUE = SPECTRA6["blue"]
+    # Sky: sky-blue B+W checkerboard.
+    _fill_swatch_stipple(image, (0, 0, width, _QUESTLINE_SKY_BOTTOM), dark=BLUE, light=WHITE, light_density=0.5)
+    # Hills: solid green, with a forest-green (G+K) lower strip for depth.
+    draw.rectangle((0, _QUESTLINE_SKY_BOTTOM, width, _QUESTLINE_HILL_BOTTOM), fill=GREEN)
+    _fill_swatch_stipple(
+        image, (0, _QUESTLINE_HILL_BOTTOM - 10, width, _QUESTLINE_HILL_BOTTOM),
+        dark=GREEN, light=BLACK, light_density=0.5,
+    )
+    # Sun: yellow disc top-right with eight short rays.
+    sun_cx, sun_cy, sun_r = 690, 72, 34
+    for k in range(8):
+        ang = math.radians(k * 45)
+        x0 = sun_cx + int(math.cos(ang) * (sun_r + 6))
+        y0 = sun_cy + int(math.sin(ang) * (sun_r + 6))
+        x1 = sun_cx + int(math.cos(ang) * (sun_r + 18))
+        y1 = sun_cy + int(math.sin(ang) * (sun_r + 18))
+        draw.line((x0, y0, x1, y1), fill=YELLOW, width=4)
+    draw.ellipse((sun_cx - sun_r, sun_cy - sun_r, sun_cx + sun_r, sun_cy + sun_r), fill=YELLOW)
+    # Two white pixel clouds (clusters of overlapping discs).
+    for (cx, cy, s) in ((150, 60, 1.0), (340, 110, 0.8)):
+        for (dx, dy, r) in ((-28, 6, 16), (-8, -6, 22), (16, 2, 18), (34, 8, 14)):
+            draw.ellipse(
+                (cx + int(dx * s) - int(r * s), cy + int(dy * s) - int(r * s),
+                 cx + int(dx * s) + int(r * s), cy + int(dy * s) + int(r * s)),
+                fill=WHITE,
+            )
+
+
+def _questline_paint_sprite(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The hero sprite standing on the hills, right of the dialogue nameplate."""
+    scale = 7
+    sprite_h = len(_QUESTLINE_HERO) * scale
+    x0 = 656
+    y0 = _QUESTLINE_HILL_BOTTOM - sprite_h  # feet rest on the hill line
+    for ry, row in enumerate(_QUESTLINE_HERO):
+        for rx, ch in enumerate(row):
+            color = _QUESTLINE_SPRITE_PALETTE.get(ch)
+            if color is None:
+                continue
+            px = x0 + rx * scale
+            py = y0 + ry * scale
+            draw.rectangle((px, py, px + scale - 1, py + scale - 1), fill=color)
+
+
+def _questline_paint_box(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Navy dialogue box with a white double pixel frame (square corners)."""
+    x0, y0, x1, y1 = _QUESTLINE_BOX
+    WHITE = SPECTRA6["white"]
+    BLUE = SPECTRA6["blue"]
+    BLACK = SPECTRA6["black"]
+    # Navy fill (blue + black checkerboard) — deep dialogue-box blue.
+    _fill_swatch_stipple(image, (x0, y0, x1 + 1, y1 + 1), dark=BLUE, light=BLACK, light_density=0.5)
+    # White outer frame, 4 px thick.
+    for i in range(4):
+        draw.rectangle((x0 + i, y0 + i, x1 - i, y1 - i), outline=WHITE)
+    # White inner rule, inset to leave a navy gap → classic double border.
+    draw.rectangle((x0 + 10, y0 + 10, x1 - 10, y1 - 10), outline=WHITE)
+    draw.rectangle((x0 + 11, y0 + 10, x1 - 11, y1 - 10), outline=WHITE)
+
+
+def _questline_paint_nameplate(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Speaker nameplate tab straddling the box top-left: the author's name.
+
+    Mirrors the RPG convention of a small framed name box above the dialogue.
+    Falls back to "NARRATOR" when the row has no author (a bare-text quote
+    still gets a speaker), and truncates long names so the tab stays clear of
+    the hero sprite on the right.
+    """
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    BLUE = SPECTRA6["blue"]
+    BLACK = SPECTRA6["black"]
+    author = (quote_row.get("author") or "").strip()
+    name = (author or "NARRATOR").upper()
+    if len(name) > 22:
+        name = name[:21] + "…"
+    font = load_font(theme_font_candidates("questline", "quote_bold"), size=11)
+    bbox = draw.textbbox((0, 0), name, font=font)
+    text_w = bbox[2] - bbox[0]
+    pad_x, pad_y = 12, 7
+    box_x0, box_y0 = _QUESTLINE_BOX[0] + 18, _QUESTLINE_BOX[1] - 26
+    plate = (box_x0, box_y0, box_x0 + text_w + pad_x * 2, box_y0 + (bbox[3] - bbox[1]) + pad_y * 2)
+    _fill_swatch_stipple(image, (plate[0], plate[1], plate[2] + 1, plate[3] + 1), dark=BLUE, light=BLACK, light_density=0.5)
+    for i in range(3):
+        draw.rectangle((plate[0] + i, plate[1] + i, plate[2] - i, plate[3] - i), outline=WHITE)
+    draw.text((plate[0] + pad_x - bbox[0], plate[1] + pad_y - bbox[1]), name, font=font, fill=YELLOW)
+
+
+def _questline_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, rect: tuple[int, int, int, int]) -> None:
+    """The quote as left-aligned NPC speech: white body, yellow matched phrase.
+
+    Uses the shared ``fit_quote`` / ``wrap_styled_text`` pipeline so a dense
+    quote shrinks to fit the box. Left-aligned (not centred) so it reads as
+    dialogue. Press Start 2P reports descent 0, so a generous line-height
+    multiplier supplies the inter-line gap the bitmap cell omits.
+    """
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    x0, y0, x1, y1 = rect
+    box_w = x1 - x0
+    box_h = y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped_quote, line_height, _ = fit_quote(
+        draw, display_quote, matched, box_w, box_h,
+        font_max=15, font_min=8, line_height_mult=1.6, theme="questline",
+    )
+    body_ascent = _font_ascent(quote_font)
+    y = y0
+    for line in wrapped_quote:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        x = x0
+        for chunk, is_bold in line[start:end]:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (body_ascent - _font_ascent(font))
+            draw.text((x, chunk_y), chunk, font=font, fill=YELLOW if is_bold else WHITE)
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            x += bbox[2] - bbox[0]
+        y += line_height
+
+
+def _questline_paint_arrow(draw: ImageDraw.ImageDraw) -> None:
+    """Static ▼ 'press to continue' arrow in the box's bottom-right corner."""
+    WHITE = SPECTRA6["white"]
+    x1, y1 = _QUESTLINE_BOX[2], _QUESTLINE_BOX[3]
+    cx, cy = x1 - 30, y1 - 26
+    draw.polygon([(cx - 9, cy - 6), (cx + 9, cy - 6), (cx, cy + 8)], fill=WHITE)
+
+
+def _questline_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """'— from {Title} —' along the box's bottom inner margin, centred."""
+    WHITE = SPECTRA6["white"]
+    title = (quote_row.get("title") or "").strip()
+    if not title:
+        return
+    text = f"— from {title} —"
+    font = load_font(theme_font_candidates("questline", "quote_regular"), size=8)
+    # Keep the footer clear of the continue arrow on the right.
+    max_w = (_QUESTLINE_BOX[2] - _QUESTLINE_BOX[0]) - 120
+    while text and draw.textlength(text, font=font) > max_w:
+        title = title[:-1]
+        text = f"— from {title.rstrip()}… —"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    cx = (_QUESTLINE_BOX[0] + _QUESTLINE_BOX[2]) // 2
+    fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
+    fy = _QUESTLINE_BOX[3] - 22 - bbox[1]
+    draw.text((fx, fy), text, font=font, fill=WHITE)
+
+
+def render_questline_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Pixel RPG dialogue scene (see the module section comment above).
+
+    ``time_str`` is intentionally unused — the matched phrase in the dialogue
+    carries the time, and surfacing a parallel digital HH:MM would defeat the
+    fuzzy-clock premise. The parameter is retained for dispatch-signature
+    uniformity with the other custom-render frame painters.
+    """
+    del time_str  # see docstring; deliberately unused.
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    _questline_paint_sky(image, draw)
+    _questline_paint_sprite(image, draw)
+    _questline_paint_box(image, draw)
+    _questline_paint_nameplate(image, draw, quote_row)
+    # Body text rect: inside the double frame, clear of the nameplate (top) and
+    # the footer / continue arrow (bottom).
+    bx0, by0, bx1, by1 = _QUESTLINE_BOX
+    _questline_paint_dialogue(image, draw, quote_row, (bx0 + 34, by0 + 28, bx1 - 34, by1 - 40))
+    _questline_paint_arrow(draw)
+    _questline_paint_footer(image, draw, quote_row)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -14509,6 +14808,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_vinyl_frame(time_str, quote_row, width, height)
     if theme == "vitrail":
         return render_vitrail_frame(time_str, quote_row, width, height)
+    if theme == "questline":
+        return render_questline_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
