@@ -7571,9 +7571,8 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     """Paint a full transmutation-circle ritual diagram on the panel:
     rectangular ritual boundary + four corner pentagrams + big
     inscribed transmutation circle (double ring + incantation
-    tick-band + inscribed pentagram + inner pentagon + vertex
-    sub-circles) + the four classical-element glyphs at the outer
-    corners of the inner figure.
+    tick-band + inscribed pentagram + inner pentagon) + the four
+    classical-element glyphs at the outer corners of the inner figure.
 
     Four layers, painted bottom-to-top so each upper layer sits
     cleanly on the ones below:
@@ -7597,9 +7596,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
        a large pentagram inscribed in the inner ring, the natural
        inner pentagon connecting the five inner intersection points
        of that pentagram (the "operative chamber" the body quote
-       occupies), and five small filled sub-dots at the pentagram's
-       outer vertices marking the cardinal/elemental anchor points.
-       The body quote overlays the entire figure; the inscribed
+       occupies). The body quote overlays the entire figure; the inscribed
        lines are deliberately hairline-thin (width 1) so the black
        serif text dominates and the magic circle reads as a backdrop
        through which the operative phrase is being declared.
@@ -7818,23 +7815,6 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         for i in range(5)
     ]
     draw.polygon(inner_pentagon_vertices, outline=hermetic_color, width=1)
-
-    # 3e. Vertex sub-circles — small filled RED dots at each of the
-    # five outer pentagram vertices, marking the cardinal /
-    # elemental anchor points of the circle (where, in a real
-    # grimoire, the operator places the candles or sigil-stones
-    # representing the five elements: spirit at top, water +
-    # earth at the lower diagonals, fire + air at the upper
-    # diagonals). Painted in red to tie back to the rectangular
-    # boundary's colour vocabulary — these are the "external"
-    # / operative anchor points, not part of the inner Hermetic
-    # geometry.
-    sub_dot_r = 5
-    for vx, vy in inscribed_pent_vertices:
-        draw.ellipse(
-            (vx - sub_dot_r, vy - sub_dot_r, vx + sub_dot_r, vy + sub_dot_r),
-            fill=sigil_color,
-        )
 
     # ------------------------------------------------------------------
     # Layer 4: Four classical-element glyphs at the outer corners of
