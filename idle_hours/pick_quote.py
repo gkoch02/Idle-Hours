@@ -291,9 +291,17 @@ def is_banned(row: dict, overrides: dict) -> bool:
 
 def parse_requested_minute(bucket: str, requested_time: str | None) -> int | None:
     if requested_time:
-        minute = int(requested_time.split(":", 1)[1])
-        rounded_minute = ((minute + 2) // 5) * 5
-        return 0 if rounded_minute == 60 else rounded_minute
+        # Operator-supplied times reach here via the web /api/bucket?time= path,
+        # so a malformed string (no colon, non-numeric minute) must degrade to
+        # the bucket default rather than crashing scoring with IndexError/ValueError.
+        if ":" in requested_time:
+            try:
+                minute = int(requested_time.split(":", 1)[1])
+            except ValueError:
+                minute = None
+            if minute is not None:
+                rounded_minute = ((minute + 2) // 5) * 5
+                return 0 if rounded_minute == 60 else rounded_minute
     state = bucket.split("_", 1)[1]
     return DEFAULT_BUCKET_MINUTES.get(state)
 

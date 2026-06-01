@@ -445,9 +445,24 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
     )
 
 
-def iter_candidates(source_path: Path, source_id: str | None, text: str, context_chars: int, max_per_file: int) -> Iterator[Candidate]:
+def iter_candidates(
+    source_path: Path,
+    source_id: str | None,
+    text: str,
+    context_chars: int,
+    max_per_file: int,
+    excluded_match_types: set[str] | None = None,
+) -> Iterator[Candidate]:
+    # Apply the match-type exclusion (e.g. ``--strict`` dropping daypart/digital)
+    # here, BEFORE the ``max_per_file`` cap counts a candidate. Counting excluded
+    # matches toward the cap meant a ``--strict --max-per-file N`` run could spend
+    # the whole budget on leading ``digital`` matches that are then all discarded,
+    # yielding far fewer than N usable rows (sometimes zero).
+    excluded = excluded_match_types or set()
     yielded = 0
     for match_type, pattern in TIME_PATTERNS:
+        if match_type in excluded:
+            continue
         for match in pattern.finditer(text):
             candidate = candidate_from_match(str(source_path), source_id, text, match_type, match, context_chars)
             if candidate is None:
@@ -506,9 +521,10 @@ def mine(args: argparse.Namespace) -> list[Candidate]:
     candidates: list[Candidate] = []
     for path, source_id in files:
         text = path.read_text(encoding="utf-8", errors="replace")
-        for candidate in iter_candidates(path, source_id, text, args.context_chars, args.max_per_file):
-            if candidate.match_type in excluded_match_types:
-                continue
+        for candidate in iter_candidates(
+            path, source_id, text, args.context_chars, args.max_per_file,
+            excluded_match_types=excluded_match_types,
+        ):
             candidates.append(candidate)
             if args.max_total and len(candidates) >= args.max_total:
                 return candidates

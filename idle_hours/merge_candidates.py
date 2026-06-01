@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from idle_hours import atomic_io
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -114,10 +115,7 @@ def dedupe(records: Iterable[Record]) -> tuple[list[dict], dict]:
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    atomic_io.atomic_write_lines(path, (json.dumps(row, ensure_ascii=False) for row in rows))
 
 
 def main() -> int:
@@ -126,8 +124,7 @@ def main() -> int:
     output_path = Path(args.output).expanduser().resolve()
     summary_path = Path(args.summary).expanduser().resolve()
     write_jsonl(output_path, merged)
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_io.atomic_write_text(summary_path, json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
     print(f"Wrote {summary['deduped_rows']} deduped candidates to {output_path}")
     print(f"Removed {summary['duplicates_removed']} duplicates from {summary['input_rows']} input rows")
     print(f"Summary written to {summary_path}")

@@ -69,6 +69,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _is_int_metric(value) -> bool:
+    """True for a real integer latency value, excluding ``bool``.
+
+    ``bool`` is an ``int`` subclass, so a corrupt/hand-edited telemetry entry
+    like ``{"render_ms": true}`` would otherwise pass a bare ``isinstance(...,
+    int)`` check and be counted as a render with latency 1, skewing both the
+    render count and the percentile latencies.
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _percentile(sorted_values: list[int], p: float) -> int | None:
     """Linear-interpolation percentile over a sorted list. Returns None when empty."""
     if not sorted_values:
@@ -178,7 +189,7 @@ def summarise(entries: list[dict]) -> dict:
     # ``"backoff"`` (emitted by ``_record_render_failure`` without an error
     # field) as successful renders, which would let a wedged appliance
     # report healthy as long as it was tripping the backoff threshold.
-    renders = [e for e in non_heartbeats if isinstance(e.get("render_ms"), int)]
+    renders = [e for e in non_heartbeats if _is_int_metric(e.get("render_ms"))]
     # Exclude structured action / web / quiet markers from the generic
     # error tally even if they carry an ``error`` field — they have their
     # own dedicated counts below and a failed skip action doesn't mean the
@@ -190,7 +201,7 @@ def summarise(entries: list[dict]) -> dict:
     ]
     render_latencies = sorted(e["render_ms"] for e in renders)
     display_latencies = sorted(
-        e["display_ms"] for e in renders if isinstance(e.get("display_ms"), int)
+        e["display_ms"] for e in renders if _is_int_metric(e.get("display_ms"))
     )
     last_heartbeat_ts: str | None = None
     if heartbeats:

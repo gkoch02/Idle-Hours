@@ -583,6 +583,28 @@ class TestReadEndpoints:
         assert on_disk["boost_source_ids"] == ["1342"]
         assert on_disk["preferred_buckets"] == {"h3_exact": "141"}
 
+    def test_api_overrides_get_fails_open_on_corrupt_file(self, tmp_path, live_server):
+        # A hand-truncated / non-object overrides file must not 500 the whole
+        # editor — GET should fall open to the default schema so the operator
+        # can still see and overwrite it.
+        server, _, args = live_server
+        path = Path(args.overrides)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("[not, an, object")  # truncated, invalid JSON
+        status, body = _get(server, "/api/overrides")
+        assert status == 200
+        assert _json_body(body) == {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
+        # Valid JSON but a list (not an object) also fails open.
+        path.write_text("[1, 2, 3]")
+        status, body = _get(server, "/api/overrides")
+        assert status == 200
+        assert _json_body(body)["ban_quote_keys"] == []
+
     def test_api_history_limit(self, tmp_path, live_server):
         server, _, args = live_server
         path = Path(args.history_path)
@@ -1996,6 +2018,22 @@ class TestContentOverridesValidator:
         # hour must be an int (not bool)
         with pytest.raises(ValueError, match="must be an int"):
             web_server.validate_content_overrides_payload({"141:42": {"hour": True}})
+
+    def test_rejects_out_of_range_int_fields(self):
+        # An out-of-range minute would re-derive a bogus bucket at bake time and
+        # get silently dropped; reject it up front with a 400-worthy ValueError.
+        with pytest.raises(ValueError, match=r"\[0, 59\]"):
+            web_server.validate_content_overrides_payload({"141:42": {"minute": 99}})
+        with pytest.raises(ValueError, match=r"\[0, 23\]"):
+            web_server.validate_content_overrides_payload({"141:42": {"hour": 24}})
+        with pytest.raises(ValueError, match=r"\[0, 100\]"):
+            web_server.validate_content_overrides_payload({"141:42": {"quality_score": 101}})
+
+    def test_accepts_in_range_int_fields(self):
+        cleaned = web_server.validate_content_overrides_payload(
+            {"141:42": {"hour": 23, "minute": 0, "quality_score": 100}}
+        )
+        assert cleaned == {"141:42": {"hour": 23, "minute": 0, "quality_score": 100}}
 
 
 # ============================================================================

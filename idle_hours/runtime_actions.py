@@ -138,7 +138,11 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
             )
             run_clock._maybe_pick_random_theme(state, quote_id)
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
-            if quote_id is not None:
+            # Record the freshly-shown quote — unless it's the same row we just
+            # banned (a sparse bucket can fall back to the only candidate). A
+            # duplicate ledger entry would leave one copy behind after un-skip's
+            # single-entry removal, keeping the quote stuck in the history filter.
+            if quote_id is not None and (previous is None or quote_id[:2] != previous[:2]):
                 run_clock._append_history_after_render(state, history_path, quote_id)
             _emit_action(telemetry_path, "skip", label, ok=True)
             return {"ok": True, "new_quote_id": list(quote_id) if quote_id else None}
