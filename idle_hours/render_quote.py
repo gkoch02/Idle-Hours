@@ -14868,29 +14868,47 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
 # carries the time. ("chrono" = time; the SNES Square-JRPG era is also the
 # Chrono Trigger era, so the name doubles as the literary-clock tie.)
 
-# 16×16 portrait face: black outline, blond (yellow) hair, white skin, blue
-# eyes, red mouth — more detailed than questline's 8×10 full-body sprite, the
-# "character portrait" a 16-bit cutscene shows beside the dialogue.
+# 22×29 portrait face — a head-and-shoulders anime hero the way a 16-bit
+# cutscene frames the speaker beside the dialogue. Green hair (Terra-from-FF6
+# register, and the otherwise-idle green ink earns a use here) with a yellow
+# shine streak and a centre fringe, white skin, separated brows + big eyes with
+# blue irises and white catch-lights, a small red mouth, and a red collar with
+# a V-notch. Black outline throughout; '.' is transparent so the blue portrait
+# window shows through. Scaled ×4 (88×116 px) inside the portrait sub-window.
 _CHRONO_FACE = (
-    "....KKKKKKKK....",
-    "..KKYYYYYYYYKK..",
-    ".KYYYYYYYYYYYYK.",
-    ".KYYWWWWWWWWYYK.",
-    ".KYWWWWWWWWWWYK.",
-    ".KWWWWWWWWWWWWK.",
-    ".KWWBBWWWWBBWWK.",
-    ".KWWBBWWWWBBWWK.",
-    ".KWWWWWWWWWWWWK.",
-    ".KWWWWWWWWWWWWK.",
-    ".KWWWWRRRRWWWWK.",
-    ".KWWWWWWWWWWWWK.",
-    ".KKWWWWWWWWWWKK.",
-    "..KKWWWWWWWWKK..",
-    "...KKWWWWWWKK...",
-    "....KKKKKKKK....",
+    ".......KKKKKKKK.......",
+    ".....KKGGGGGGGGKK.....",
+    "....KGGYYGGGGGGGGK....",
+    "...KGGGYGGGGGGGGGGK...",
+    "..KGGGGGGGGGGGGGGGGK..",
+    "..KGGGGGGGGGGGGGGGGK..",
+    ".KGGGWWWWWGGWWWWWGGGK.",
+    ".KGGWWWWWWGGWWWWWWGGK.",
+    ".KGGWWWWWWWWWWWWWWGGK.",
+    ".KGWWWWWWWWWWWWWWWWGK.",
+    ".KGWWWKKWWWWWWKKWWWGK.",
+    ".KGWWWWWWWWWWWWWWWWGK.",
+    ".KGWWKKKKWWWWKKKKWWGK.",
+    ".KGWWKWBKWWWWKWBKWWGK.",
+    ".KGWWKBBKWWWWKBBKWWGK.",
+    ".KGWWKKKKWWWWKKKKWWGK.",
+    ".KGWWWWWWWKKWWWWWWWGK.",
+    ".KGWWWWWWWWWWWWWWWWGK.",
+    ".KGWWWWWWRRRRWWWWWWGK.",
+    ".KGWWWWWWWWWWWWWWWWGK.",
+    ".KGGWWWWWWWWWWWWWWGGK.",
+    ".KGGGWWWWWWWWWWWWGGGK.",
+    "..KGGGWWWWWWWWWWGGGK..",
+    "...KKGGWWWWWWWWGGKK...",
+    ".....KKWWWWWWWWKK.....",
+    "......KWWWWWWWWK......",
+    "....KKKRRRRRRRRKKK....",
+    "..KKRRRRRRKKRRRRRRKK..",
+    ".KRRRRRRRRKKRRRRRRRRK.",
 )
 _CHRONO_FACE_PALETTE = {
     "K": SPECTRA6["black"],
+    "G": SPECTRA6["green"],
     "Y": SPECTRA6["yellow"],
     "W": SPECTRA6["white"],
     "B": SPECTRA6["blue"],
@@ -14899,7 +14917,8 @@ _CHRONO_FACE_PALETTE = {
 
 _CHRONO_SKY_BOTTOM = 296
 _CHRONO_WINDOW = (28, 296, 772, 458)
-_CHRONO_PORTRAIT = (44, 250, 158, 364)
+_CHRONO_PORTRAIT = (40, 234, 168, 378)
+_CHRONO_FACE_SCALE = 4
 _CHRONO_STAR_SEED = 0xC470
 
 
@@ -15023,9 +15042,9 @@ def _chrono_window_border(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, 
 def _chrono_paint_portrait(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
     """Character-portrait sub-window (a smaller FF window) with the shaded face."""
     rect = _CHRONO_PORTRAIT
-    _chrono_window_fill(image, rect, radius=12)
-    _chrono_window_border(draw, rect, radius=12)
-    scale = 5
+    _chrono_window_fill(image, rect, radius=14)
+    _chrono_window_border(draw, rect, radius=14)
+    scale = _CHRONO_FACE_SCALE
     sprite_w = len(_CHRONO_FACE[0]) * scale
     sprite_h = len(_CHRONO_FACE) * scale
     cx = (rect[0] + rect[2]) // 2
