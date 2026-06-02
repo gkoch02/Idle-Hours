@@ -23,7 +23,7 @@ from idle_hours import render_quote as rq
 
 from .conftest import make_row
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -391,3 +391,68 @@ class TestVitrailFrame:
         a = list(rq.render("14:30", row, 800, 480, theme="vitrail").getdata())
         b = list(rq.render("14:30", row, 800, 480, theme="vitrail").getdata())
         assert a == b
+
+
+class TestOutrunFrame:
+    """Synthwave / Outrun — dusk gradient sky, sliced neon sun, perspective grid."""
+
+    def _palette(self):
+        return set(rq.SPECTRA6.values())
+
+    def test_is_deterministic(self):
+        """The star field is seeded and the rest of the composition is pure
+        geometry, so re-rendering the same time must be byte-identical (panel
+        dedup + any future golden fixture depend on it)."""
+        row = make_row()
+        a = list(rq.render("14:30", row, 800, 480, theme="outrun").getdata())
+        b = list(rq.render("14:30", row, 800, 480, theme="outrun").getdata())
+        assert a == b
+
+    def test_neon_grid_below_horizon(self):
+        """The perspective grid lays magenta (red/blue) verticals and cyan
+        (green/blue) horizontals over the dark ground, so both red and green
+        ink must appear below the horizon."""
+        img = rq.render("14:30", make_row(), 800, 480, theme="outrun")
+        px = img.load()
+        below = [px[x, y] for y in range(rq._OUTRUN_HORIZON + 2, 480) for x in range(0, 800, 3)]
+        assert rq.SPECTRA6["red"] in below, "missing magenta grid verticals"
+        assert rq.SPECTRA6["green"] in below, "missing cyan grid horizontals"
+
+    def test_sun_has_warm_crown(self):
+        """The sliced sun's crown carries a yellow→tangerine gradient, so
+        yellow ink must appear in the disc cap above the horizon."""
+        img = rq.render("14:30", make_row(), 800, 480, theme="outrun")
+        px = img.load()
+        cx = rq._OUTRUN_SUN_CENTER[0]
+        top = rq._OUTRUN_SUN_CENTER[1] - rq._OUTRUN_SUN_RADIUS
+        crown = [px[x, y] for y in range(top + 4, top + 34) for x in range(cx - 50, cx + 50)]
+        assert rq.SPECTRA6["yellow"] in crown, "sun crown should carry warm yellow ink"
+
+    def test_matched_phrase_is_cyan(self):
+        """The matched time-phrase is painted as a green+blue (cyan) stipple in
+        the upper sky, where no other element introduces green ink — so green
+        in the quote band is a positive signal the accent rendered."""
+        row = make_row(display_quote="It struck three o'clock sharp.", matched_text="three o'clock")
+        img = rq.render("03:00", row, 800, 480, theme="outrun")
+        px = img.load()
+        upper = [px[x, y] for y in range(38, 150) for x in range(0, 800, 2)]
+        assert rq.SPECTRA6["green"] in upper, "matched-phrase cyan stipple not found in the sky band"
+
+    def test_no_digital_time_chrome(self):
+        """Like the other custom frames, outrun never surfaces the digital
+        HH:MM — the matched phrase carries the time. Soft check: a quote with
+        no matched phrase still renders cleanly and on-palette for an
+        arbitrary minute."""
+        row = make_row(display_quote="A quiet hour with no clock in it.", matched_text="")
+        img = rq.render("14:37", row, 800, 480, theme="outrun")
+        assert img.size == (800, 480)
+        assert set(img.getdata()).issubset(self._palette())
+
+    def test_composes_at_non_native_resolution(self):
+        """The composition is anchored on the 800×480 reference constants but
+        every raw pixel write is bounds-clipped, so a shorter/larger canvas
+        must crop cleanly and stay on-palette rather than raising."""
+        for w, h in ((1024, 600), (320, 192)):
+            img = rq.render("08:00", make_row(), w, h, theme="outrun")
+            assert img.size == (w, h)
+            assert set(img.getdata()).issubset(self._palette()), f"off-palette at {w}x{h}"
