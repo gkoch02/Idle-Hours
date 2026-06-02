@@ -285,6 +285,13 @@ THEME_SATURATION: dict[str, float] = {
     # phrase all need the dark-ground 0.7 tier so the neon tones stay vivid
     # against the panel's anchored black rather than washing toward mid-tones.
     "outrun": 0.7,
+    # Circuit / printed circuit board. The flat-green ``page_bg`` is darkened
+    # to deep FR-4 soldermask (G+K 1:1 forest green) by the border painter's
+    # Layer 0, so it joins the dark / coloured-ground tier — the gold (yellow)
+    # copper traces + matched-phrase accent and the white silkscreen text need
+    # the 0.7 push to stay crisp against the saturated green board rather than
+    # washing toward mid-tones at panel viewing distance.
+    "circuit": 0.7,
     # Wax-sealed letter. A near-white aged-paper ground (faint 1-in-8
     # yellow cream wash) with black script body and a red wax seal.
     # Same chromatic-on-light profile as ``default`` / ``dispatch`` /

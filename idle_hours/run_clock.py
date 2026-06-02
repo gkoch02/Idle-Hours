@@ -194,6 +194,7 @@ def parse_args() -> argparse.Namespace:
         "questline",
         "chrono",
         "outrun",
+        "circuit",
         "letter",
         "diags",
     ]
