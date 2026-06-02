@@ -1043,7 +1043,7 @@ THEMES = {
     # retrowave half-sun on the horizon (warm yellow→tangerine→red→magenta
     # gradient sliced by widening horizontal slits), and a cyan/magenta neon
     # perspective grid receding to a central vanishing point. The literary
-    # quote floats in the dark upper sky in white Iceland with the matched
+    # quote floats in the dark upper sky in white Oxanium with the matched
     # time-phrase picked out in synthesised cyan (G+B); the author/title sit
     # below as a small Antonio credit line. Black ground; white body; the
     # palette here is consulted only by the goodnight / source-card
@@ -1413,6 +1413,7 @@ PRESSSTART2P_REGULAR = str(BASE_DIR / "fonts/press-start-2p/PressStart2P-Regular
 # Inter / Jost / Rubik / Antonio). Falls back through DejaVu / Liberation /
 # Noto Sans before the Playfair chain.
 PIXELIFYSANS_VARIABLE = str(BASE_DIR / "fonts/pixelify-sans/PixelifySans-Variable.ttf")
+OXANIUM_VARIABLE = str(BASE_DIR / "fonts/oxanium/Oxanium-Variable.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2546,20 +2547,25 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Iceland — a geometric retro-futurist techno display face, the most
-    # period-correct silhouette in the bundle for an 80s synthwave poster.
-    # Shared with ``glacier`` (which uses it as a cool icy display face); the
-    # two themes share the family but nothing else — glacier is a white-ground
-    # frost theme, outrun is a black-ground neon sunset, so the silhouette
-    # reuse reads as a different face in context. Single weight, so the
-    # matched-phrase role reuses Regular and earns its differentiation from the
-    # synthesised cyan accent alone (comic / glacier discipline). Falls back
-    # through DejaVu / Liberation / Noto Sans before the Playfair chain so a
-    # missing Iceland install lands on a clean geometric sans rather than the
-    # transitional-serif default.
+    # Oxanium (Sev Meyer, OFL) — a techno / cyberpunk display sans whose
+    # squared-off geometric terminals read as period-correct 1980s
+    # retro-future, the exact register an Outrun arcade marquee or a synthwave
+    # album sleeve uses. Chosen over the obvious Orbitron specifically because
+    # the literary clock has to stay legible across a room: Orbitron is the
+    # more famous synthwave face but is very wide, so a dense 200-char quote
+    # would shrink to an unreadable size, whereas Oxanium's narrower
+    # proportions hold long lines at a legible point size while keeping the
+    # neon-future silhouette. Variable font with a real Weight axis, so the
+    # matched-phrase ``quote_bold`` role pins the Bold instance for a genuine
+    # weight step on top of the synthesised cyan accent (rather than leaning on
+    # colour alone like the single-weight display faces). Distinct family from
+    # every other sans in the rotation (Inter / Archivo / Jost / Rubik /
+    # Antonio) so outrun reads as its own face. Falls back through DejaVu /
+    # Liberation / Noto Sans before the Playfair chain so a missing install
+    # lands on a clean sans rather than the transitional-serif default.
     "outrun": {
         "quote_regular": [
-            ICELAND_REGULAR,
+            (OXANIUM_VARIABLE, "Regular"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
@@ -2567,7 +2573,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            ICELAND_REGULAR,
+            (OXANIUM_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
@@ -2575,7 +2581,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
-            ICELAND_REGULAR,
+            (OXANIUM_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -15509,7 +15515,7 @@ def _outrun_paint_sun(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
 
 
 def _outrun_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """The literary quote in white Iceland, matched phrase in synthesised cyan.
+    """The literary quote in white Oxanium, matched phrase in synthesised cyan.
 
     Centred line-by-line in the dark upper sky. The matched time-phrase chunks
     are painted as a 50/50 green+blue Bayer stipple (cyan) via
