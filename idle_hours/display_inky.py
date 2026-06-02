@@ -280,6 +280,11 @@ THEME_SATURATION: dict[str, float] = {
     # matched-phrase accent, and the synthesised gradient tones all need the
     # dark-ground 0.7 tier to stay punchy against the saturated blue field.
     "chrono": 0.7,
+    # Outrun / synthwave. A black-ground neon sunset: the warm gradient sun,
+    # the cyan/magenta perspective grid, and the synthesised cyan matched
+    # phrase all need the dark-ground 0.7 tier so the neon tones stay vivid
+    # against the panel's anchored black rather than washing toward mid-tones.
+    "outrun": 0.7,
 }
 
 
