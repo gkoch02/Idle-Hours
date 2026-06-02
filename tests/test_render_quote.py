@@ -3689,6 +3689,51 @@ def test_gothic_border_paints_foot_trefoil():
     assert foot_red > 80, "foot trefoil finial missing"
 
 
+def test_grimdark_border_paints_aquila_and_skull():
+    """The grimdark border paints a gold Imperial Aquila centred in the top
+    margin and a bone-white memento-mori skull centred in the bottom margin."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_grimdark_border(img, rq.THEMES["grimdark"])
+    px = img.load()
+    gold = rq.SPECTRA6["yellow"]
+    bone = rq.SPECTRA6["white"]
+    # Aquila — gold pixels clustered around (cx=400, ay=40).
+    aquila_gold = sum(1 for x in range(360, 441) for y in range(26, 60) if px[x, y] == gold)
+    assert aquila_gold > 120, "Imperial Aquila missing from top margin"
+    # Skull — bone-white pixels clustered around (cx=400, sy=442).
+    skull_bone = sum(1 for x in range(386, 415) for y in range(426, 458) if px[x, y] == bone)
+    assert skull_bone > 80, "memento-mori skull missing from bottom margin"
+
+
+def test_grimdark_border_paints_doubled_gold_blood_trim():
+    """The grimdark trim is a thick gold outer rule + thin blood-red inner
+    rule — both inks present, unlike gothic's red+white doubled rule."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_grimdark_border(img, rq.THEMES["grimdark"])
+    px = img.load()
+    gold = rq.SPECTRA6["yellow"]
+    blood = rq.SPECTRA6["red"]
+    # Left-edge horizontal scan at y=120 (clear of the mid-edge blood stud
+    # at y=240) crosses the gold outer rule (~x=12-14) then the blood inner
+    # rule (~x=19).
+    row_inks = {px[x, 120] for x in range(10, 24)}
+    assert gold in row_inks, "gold outer trim missing"
+    assert blood in row_inks, "blood inner trim missing"
+
+
+def test_grimdark_matched_phrase_uses_forge_amber_recipe():
+    """The grimdark matched-phrase red is rerouted to forge-amber (R+Y 5:3
+    tangerine) in _draw_text_body, so a red-fill body paint produces both
+    red and yellow pixels rather than solid red."""
+    img = Image.new("RGB", (200, 60), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=40)
+    rq._draw_text_body(img, draw, (4, 4), "TWO", font=font, fill=rq.SPECTRA6["red"], theme="grimdark")
+    inks = set(img.convert("RGB").getdata())
+    assert rq.SPECTRA6["red"] in inks, "forge-amber should retain red pixels"
+    assert rq.SPECTRA6["yellow"] in inks, "forge-amber should introduce yellow pixels"
+
+
 def test_marker_border_paints_twinkle_sparkles():
     """The upleveled marker border adds doodle 'twinkle' sparkles in the top
     (red) and bottom (blue) centre margins."""
