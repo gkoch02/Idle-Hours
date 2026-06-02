@@ -88,6 +88,7 @@ THEME_ORDER: tuple[str, ...] = (
     "chrono",
     "outrun",
     "circuit",
+    "letter",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1080,6 +1081,34 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # Wax-sealed letter. A quote presented as intimate handwritten
+    # correspondence on a sheet of aged paper. White ``page_bg`` warmed
+    # to a faint cream/vellum by ``draw_letter_border``'s Layer 0
+    # 1-in-8 yellow Bayer wash (the documented Y+W cream recipe shared
+    # with ``dispatch`` / ``illuminated`` / ``herbarium`` / ``mucha``),
+    # black iron-gall ink for the flowing Dancing Script body, and
+    # sealing-wax red for the matched time phrase — the one passage the
+    # correspondent pressed harder on, echoing the lit-red highlight of
+    # the oxblood / maroon wax seal the border stamps into the
+    # bottom-right corner. The oversized
+    # opening quote mark renders in Pinyon Script copperplate via the
+    # faux-gray ornament path (ornament_dark=black / ornament_light=white
+    # → a delicate 50/50 half-density flourish, reading as a pale pen
+    # stroke rather than a heavy blot). Same white/black/red palette
+    # shape as ``default`` / ``dispatch`` / ``saloon`` but the script
+    # body + fold creases + wax seal give it a completely different
+    # silhouette. See THEME_FONTS for the Dancing Script + Pinyon Script
+    # pairing and the legibility rationale behind it.
+    "letter": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1436,6 +1465,38 @@ PRESSSTART2P_REGULAR = str(BASE_DIR / "fonts/press-start-2p/PressStart2P-Regular
 # Noto Sans before the Playfair chain.
 PIXELIFYSANS_VARIABLE = str(BASE_DIR / "fonts/pixelify-sans/PixelifySans-Variable.ttf")
 OXANIUM_VARIABLE = str(BASE_DIR / "fonts/oxanium/Oxanium-Variable.ttf")
+# Dancing Script — The Dancing Script Project Authors (OFL). A lively,
+# fluid pen-script with a real weight axis (wght 400..700, named Regular
+# / Medium / SemiBold / Bold instances). The body face of the ``letter``
+# theme — a wax-sealed handwritten letter. Pure copperplate (Pinyon
+# Script, below) is gorgeous but its hairline strokes shatter at body
+# sizes on a 4-bit eInk panel after ``snap_image_to_palette`` (the same
+# legibility caveat documented for the blackletter / uncial themes), so
+# the legible flowing hand carries the dense body text while Pinyon
+# carries the oversized ornament flourish — the same "legible body +
+# period display ornament" split ``illuminated`` uses (EB Garamond body
+# + UnifrakturMaguntia ornament). Dancing Script's medium, even stroke
+# weight survives the panel where a thin copperplate would vanish, and
+# its genuine Bold variation instance gives the matched time phrase a
+# real weight step on top of the sealing-wax red accent (pinned by name
+# via load_font's set_variation_by_name, same mechanism as Inter / Jost
+# / Rubik / Antonio / Oxanium). Falls back through DejaVu / Liberation
+# Sans *Italic* (a slanted silhouette, the closest system stand-in for a
+# hand) before the Playfair chain so a missing install lands on a
+# cursive-adjacent face rather than an upright serif — same fallback
+# discipline ``chalkboard`` uses for its Playwrite cursive.
+DANCINGSCRIPT_VARIABLE = str(BASE_DIR / "fonts/dancing-script/DancingScript-Variable.ttf")
+# Pinyon Script — The Pinyon Project Authors / Sorkin Type (OFL). A
+# formal English-roundhand copperplate, the canonical "elegant
+# correspondence" pen. Single weight; used ONLY in the ``letter``
+# ornament slot for the oversized opening / closing quotation marks,
+# where its swooping flourished strokes deliver the antique-letter
+# signature and legibility is irrelevant (the marks are decorative, not
+# reading matter). Kept off the body / matched-phrase chains on purpose
+# — at 18-24 px the hairlines break up after palette snap. Falls back
+# through Dancing Script Bold (the theme's own body face, so the marks
+# still read as a pen hand) before the shared ornament chain.
+PINYONSCRIPT_REGULAR = str(BASE_DIR / "fonts/pinyon-script/PinyonScript-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2627,6 +2688,41 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             (OXANIUM_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Wax-sealed letter. Dancing Script (a fluid pen-script with a real
+    # weight axis) carries the body and the matched phrase; Pinyon Script
+    # (formal copperplate) carries only the oversized ornament quote
+    # marks. The body deliberately uses the *legible* flowing hand rather
+    # than the copperplate because Pinyon's hairlines shatter at body
+    # sizes on the panel after palette snap — the same legible-body +
+    # period-display-ornament split ``illuminated`` uses (see the
+    # DANCINGSCRIPT_VARIABLE / PINYONSCRIPT_REGULAR docstrings). The
+    # matched-phrase Bold instance gives a genuine weight step on top of
+    # the sealing-wax red accent. Body falls back through DejaVu /
+    # Liberation Sans *Italic* (a slanted stand-in for a hand) before the
+    # Playfair chain; the Pinyon ornament falls back to Dancing Script
+    # Bold first so the marks stay a pen hand even if the copperplate is
+    # missing.
+    "letter": {
+        "quote_regular": [
+            (DANCINGSCRIPT_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (DANCINGSCRIPT_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PINYONSCRIPT_REGULAR,
+            (DANCINGSCRIPT_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -10764,6 +10860,354 @@ def draw_cartograph_border(
         draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
 
 
+# Fixed seed for the letter theme's aged-paper texture (foxing scatter +
+# crumple wrinkles), so re-renders of a given time stay byte-identical —
+# same fixed-seed invariant as ``_SALOON_FOXING`` / ``_FIRMAMENT_STAR_SEED``.
+_LETTER_PAPER_SEED = 0x1E77E2
+
+
+def draw_letter_border(image: Image.Image, colors: dict) -> None:
+    """Wax-sealed letter decoration: aged, lightly-crumpled paper ground +
+    fold/crumple creases + a pressed oxblood / maroon wax seal in the
+    bottom-right corner.
+
+    The composition deliberately stays in the margins so the standard
+    literary layout paints the flowing-script body text cleanly on top
+    (the border runs *before* the text, so the creases sit behind the
+    glyphs the way a real letter's folds do, and the centred quote block
+    never reaches the corner the seal occupies). Layers, painted bottom
+    to top:
+
+    * **Layer 0 — aged, lightly-crumpled paper.** Three stacked textures,
+      all native to the Spectra-6 palette (so ``snap_image_to_palette``
+      is a no-op and the script glyph edges stay crisp): (a) an **uneven
+      cream tan** — the documented Y+W yellow cream wash, but its density
+      is modulated by a cheap low-frequency mottle field (precomputed
+      per-row / per-column sine tables, no per-pixel trig) plus an
+      edge-weighted vignette, so the sheet tans more at the margins and
+      in soft patches the way real aged paper does rather than as a flat
+      tint; (b) **foxing** — a deterministic seeded scatter of small R+G
+      sepia age spots (the documented brown recipe), biased toward the
+      edges; and (c) **crumple creases** (below).
+    * **Crumple creases** — two horizontal fold creases at the thirds of
+      the page (the folds a letter picks up tucked into an envelope) plus
+      a handful of fainter short random-angle wrinkles (the creases a
+      re-opened sheet keeps). All sparse 1 px black stipple painted only
+      on bare paper / cream, so they read as soft pressed lines without
+      muddying the foxing; the body text overpaints them, exactly as ink
+      sits over a fold.
+    * **The wax seal** in the bottom-right corner — the hero graphic.
+      A pressed bead of dark **oxblood / maroon** sealing wax rendered as
+      a glossy dome lit from the upper-left: an irregular scalloped disc
+      (two summed sinusoids vary the rim radius so it reads as hand-
+      pressed wax, not a clean circle), shaded per-pixel via a Bayer ramp
+      anchored on maroon (R+K) — pure red survives only on the lit
+      shoulder, white dithers in for a coral gloss at the highlight, and
+      black density climbs past 50% toward the rim so the core shadow
+      deepens to near-black — plus a soft cast shadow stippled onto the
+      paper (offset down-right, fading at its edge) and a solid-white
+      specular hotspot, so the bead reads as a raised 3-D blob standing
+      proud of the page. A ring of small beads just inside the rim (each
+      shaded by its position on the dome — dark dot + a coral highlight
+      on its lit side), and a recessed **hourglass emblem** carved into
+      the centre — the time motif of the clock, each groove a maroon
+      stroke with a coral bevel on its far inner wall so it reads as
+      engraved into the wax. A couple of tiny maroon spatter flecks
+      beside the seal read as stray drips. The whole seal sits at
+      y≈height-78 / x≈width-72, clear of the centred attribution and the
+      y=14-29 debug-banner band (which is why ``letter`` needs no
+      ``_DEBUG_LABEL_RIGHT_INSET`` entry — its only graphic is
+      bottom-right).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    ink = colors["text"]
+    wax_red = colors["accent"]
+    maroon_dark = SPECTRA6["black"]
+    cream_light = SPECTRA6["yellow"]
+    pixels = image.load()
+
+    sepia_a = SPECTRA6["red"]
+    sepia_b = SPECTRA6["green"]
+    rng = random.Random(_LETTER_PAPER_SEED)
+
+    # ---- Layer 0: aged, lightly-crumpled paper ------------------------
+    # Three stacked textures turn the panel's flat white into an aged
+    # letter sheet, all native to the Spectra-6 palette (every output
+    # pixel is one of the six inks, so palette-snap is a no-op and the
+    # script glyphs that paint on top stay crisp). Deliberately subtle —
+    # the textures should read at arm's length as "old paper", not as a
+    # pattern competing with the handwriting:
+    #
+    #   (a) Uneven cream tan. The yellow cream-wash density is no longer
+    #       uniform — a gentle edge vignette (the sheet tans more at the
+    #       margins) plus a low-amplitude mottle (precomputed per-row /
+    #       per-column sine tables, no per-pixel trig) and a fine per-pixel
+    #       grain jitter, so the cream breaks up into an organic fibrous
+    #       tone instead of a flat tint. Centre ≈9% yellow, corners ≈14%.
+    #   (b) Foxing. A deterministic seeded scatter of small R+G sepia age
+    #       spots (the documented brown recipe — each spot is a ≥1-radius
+    #       cluster carrying both red and green pixels so it averages to
+    #       rust-brown at panel distance rather than reading as a lone
+    #       red/green speck), biased toward the edges where foxing
+    #       concentrates.
+    #   (c) Crumple creases — see below the wash.
+    if page_bg is not None:
+        col = [math.sin(x * 0.013) + 0.6 * math.sin(x * 0.031 + 1.7) for x in range(width)]
+        row_mottle = [math.sin(y * 0.015 + 0.5) + 0.6 * math.sin(y * 0.029 + 2.3) for y in range(height)]
+        half_w = max(1.0, width * 0.5)
+        half_h = max(1.0, height * 0.5)
+        for y in range(height):
+            brow = BAYER_4x4[y & 3]
+            ry = row_mottle[y]
+            edge_y = 1.0 - min(y, height - 1 - y) / half_h
+            for x in range(width):
+                if pixels[x, y] != page_bg:
+                    continue
+                edge_x = 1.0 - min(x, width - 1 - x) / half_w
+                edge = edge_x if edge_x > edge_y else edge_y
+                mottle = (col[x] + ry) * 0.5
+                grain = (((x * 131 + y * 57) % 17) - 8) / 8.0
+                density = 0.085 + 0.05 * (edge * edge) + 0.02 * mottle + 0.02 * grain
+                if brow[x & 3] < density * 16:
+                    pixels[x, y] = cream_light
+
+        # (b) Foxing: small brown spots, each a square red/green
+        # checkerboard block (2×2 or 3×3) so every spot carries a balanced
+        # red+green pair and averages to rust-brown — a circular mask
+        # would leave colour-imbalanced plus-shapes that read as lone
+        # green or red specks. Biased toward a random edge.
+        n_spots = max(10, (width * height) // 9000)
+        for _ in range(n_spots):
+            fx = int(rng.triangular(0, width - 1, rng.choice((0, width - 1))))
+            fy = int(rng.triangular(0, height - 1, rng.choice((0, height - 1))))
+            spot_w = rng.choice((2, 2, 3))
+            for dy in range(spot_w):
+                for dx in range(spot_w):
+                    px, py = fx + dx, fy + dy
+                    if 0 <= px < width and 0 <= py < height and pixels[px, py] in (page_bg, cream_light):
+                        pixels[px, py] = sepia_a if (px + py) & 1 else sepia_b
+
+    # ---- Crumple creases ----------------------------------------------
+    # Two primary fold creases at the thirds (the folds that put a letter
+    # in an envelope), rendered as a faint dotted black stipple, plus a
+    # few soft random-angle crumple wrinkles rendered *tonally* (a thin
+    # cream ridge with a white highlight relief on its lit side) rather
+    # than as black ink — so they read as the light catching a wrinkle
+    # in the sheet rather than as scratches. All painted only on bare
+    # paper / cream so they don't muddy the foxing; the body text
+    # overpaints them, exactly as ink sits over a fold.
+    paper_tones = (page_bg, cream_light)
+    margin = 26
+    crease_step = 4
+    for frac in (1, 2):
+        cy = (height * frac) // 3
+        if cy + 1 >= height:
+            continue
+        for x in range(margin, width - margin, crease_step):
+            if pixels[x, cy] in paper_tones:
+                pixels[x, cy] = ink
+            vx = x + crease_step // 2
+            if vx < width - margin and (x // crease_step) & 1 and pixels[vx, cy + 1] in paper_tones:
+                pixels[vx, cy + 1] = ink
+
+    # Soft tonal crumple wrinkles: a cream ridge + white highlight relief.
+    if page_bg is not None:
+        for _ in range(5):
+            wx = rng.randint(60, max(61, width - 60))
+            wy = rng.randint(50, max(51, height - 50))
+            angle = rng.uniform(0.0, math.pi)
+            length = rng.randint(50, 130)
+            dxu, dyu = math.cos(angle), math.sin(angle)
+            nxp, nyp = -dyu, dxu  # unit perpendicular → highlight side
+            for s in range(length):
+                px = int(wx + (s - length // 2) * dxu)
+                py = int(wy + (s - length // 2) * dyu)
+                if 0 <= px < width and 0 <= py < height and pixels[px, py] in paper_tones:
+                    pixels[px, py] = cream_light
+                hx, hy = int(px + nxp), int(py + nyp)
+                if 0 <= hx < width and 0 <= hy < height and pixels[hx, hy] in paper_tones:
+                    pixels[hx, hy] = page_bg
+
+    # ---- Wax seal (bottom-right) -------------------------------------
+    # Scale the seal to the canvas so small preview thumbnails still get a
+    # proportional (if tiny) seal instead of one that swamps or overflows.
+    base_r = max(10, min(40, int(min(width, height) * 0.085)))
+    scx = width - base_r - 32
+    scy = height - base_r - 38
+    if scx <= base_r or scy <= base_r:
+        # Canvas too small to seat a seal without it leaving the page;
+        # the cream wash + creases above already carry the theme.
+        return
+
+    # Depth model: the wax bead is a glossy dome lit from the upper-left.
+    # We render it with a four-tone ramp synthesised from the Spectra-6
+    # palette — white→coral highlight on the lit shoulder, solid red body,
+    # R+K maroon core-shadow on the lower-right and rim — plus a soft cast
+    # shadow on the paper and a specular hotspot, so it reads as a raised
+    # 3-D blob standing proud of the page rather than a flat sticker.
+    highlight_ink = SPECTRA6["white"]  # R+W coral at <100% density; pure gloss at 100%
+    light_dx, light_dy = -0.7071, -0.7071  # light from the upper-left
+
+    # (1) Soft cast shadow on the paper. A stippled disc offset down-right
+    # (away from the light), densest at its centre and fading to nothing at
+    # the rim, painted only on bare paper (page_bg / cream wash). Drawn
+    # first so the seal polygon overpaints the near, upper-left half — what
+    # survives is the crescent poking out on the lower-right, the shadow a
+    # raised object casts. ``page_bg is None`` guards the sentinel-render
+    # test path.
+    if page_bg is not None:
+        shadow_dx = max(3, base_r // 9)
+        shadow_dy = max(4, base_r // 7)
+        shx, shy = scx + shadow_dx, scy + shadow_dy
+        shadow_r = base_r * 1.06
+        sx0 = max(0, int(shx - shadow_r))
+        sy0 = max(0, int(shy - shadow_r))
+        sx1 = min(width - 1, int(shx + shadow_r))
+        sy1 = min(height - 1, int(shy + shadow_r))
+        for py in range(sy0, sy1 + 1):
+            for px in range(sx0, sx1 + 1):
+                if pixels[px, py] != page_bg and pixels[px, py] != cream_light:
+                    continue
+                d = math.hypot(px - shx, py - shy)
+                if d >= shadow_r:
+                    continue
+                density = 0.6 * (1.0 - d / shadow_r)
+                if BAYER_4x4[py & 3][px & 3] < density * 16:
+                    pixels[px, py] = maroon_dark
+
+    # (2) Irregular pressed-wax rim: sum of two sinusoids around the circle.
+    seal_pts = []
+    steps = 72
+    for i in range(steps):
+        theta = (i / steps) * 2 * math.pi
+        wobble = 1.0 + 0.05 * math.sin(theta * 5) + 0.035 * math.sin(theta * 8 + 1.3)
+        r = base_r * wobble
+        seal_pts.append((scx + r * math.cos(theta), scy + r * math.sin(theta)))
+    draw.polygon(seal_pts, fill=wax_red)
+
+    # Seal bbox for the per-pixel shading pass below.
+    rim = base_r + 4
+    bx0 = max(0, scx - rim)
+    by0 = max(0, scy - rim)
+    bx1 = min(width - 1, scx + rim)
+    by1 = min(height - 1, scy + rim)
+
+    # (3) Dome shading ramp — maroon-based oxblood wax. For every interior
+    # pixel, ``t`` is the shadow amount (0 = fully lit, 1 = deepest
+    # shadow): a directional term (dot of the surface offset with the
+    # light vector) plus a rim-darkening term that only bites on the
+    # shadow side, so the lit upper-left shoulder stays bright to the edge
+    # (rim light) while the lower-right curves into core shadow. ``t`` is
+    # then ordered-dithered via the shared 4×4 Bayer matrix into a
+    # continuous ramp anchored on **maroon** (the dominant body tone, R+K
+    # ~50/50): pure red survives only on the lit shoulder, white dithers
+    # in for a coral gloss at the very highlight, and black density climbs
+    # past 50% toward the rim so the core shadow deepens to near-black
+    # oxblood. The base ink stays ``wax_red`` (accent) between dithered
+    # pixels, so the dome reads as a dark sealing-wax oxblood rather than
+    # the fire-engine red of the previous revision.
+    for py in range(by0, by1 + 1):
+        for px in range(bx0, bx1 + 1):
+            if pixels[px, py] != wax_red:
+                continue
+            nx = (px - scx) / base_r
+            ny = (py - scy) / base_r
+            directional = nx * light_dx + ny * light_dy  # +lit … -shadow
+            r2 = nx * nx + ny * ny
+            t = 0.5 - 0.5 * max(-1.0, min(1.0, directional / 1.05))
+            if t > 0.5:  # shadow side: deepen toward the rim
+                t += 0.20 * max(0.0, r2 - 0.45)
+            else:        # lit side: only a whisper of edge falloff
+                t += 0.06 * max(0.0, r2 - 0.55)
+            t = max(0.0, min(1.0, t))
+            cell = BAYER_4x4[py & 3][px & 3]
+            if t < 0.25:
+                # Lit shoulder: white dithered into red for a coral gloss,
+                # brightest at the terminator-free highlight.
+                density = (0.25 - t) / 0.25 * 0.5
+                if cell < density * 16:
+                    pixels[px, py] = highlight_ink
+            else:
+                # Body → core shadow: black dithered into red. ~35% black
+                # just below the highlight (warm maroon-red), through ~50%
+                # at the dome's mid-tone (true maroon), up to ~90% at the
+                # rim (near-black oxblood).
+                density = min(0.9, 0.35 + (t - 0.25) * 0.733)
+                if cell < density * 16:
+                    pixels[px, py] = maroon_dark
+
+    # (4) Specular hotspot — a tiny solid-white gloss where the dome faces
+    # the light most directly. Sells the "wet wax" sheen that the dithered
+    # coral shoulder alone can't.
+    spec_x = scx + int(-0.42 * base_r)
+    spec_y = scy + int(-0.42 * base_r)
+    spec_r = max(1, base_r // 14)
+    draw.ellipse(
+        (spec_x - spec_r, spec_y - spec_r, spec_x + spec_r, spec_y + spec_r),
+        fill=highlight_ink,
+    )
+
+    # (5) Beaded rim: small dots just inside the edge — the beading a
+    # signet matrix presses into the wax. Each bead is shaded by its own
+    # position on the dome: maroon in the lower-right shadow, plain wax-red
+    # up top, every bead carrying a 1 px coral highlight on its lit
+    # (upper-left) side so the ring reads as raised beading catching the
+    # same light as the dome rather than a flat dotted circle.
+    bead_r = base_r * 0.82
+    n_beads = 18
+    for i in range(n_beads):
+        theta = (i / n_beads) * 2 * math.pi
+        bxp = scx + bead_r * math.cos(theta)
+        byp = scy + bead_r * math.sin(theta)
+        lit = (math.cos(theta) * light_dx + math.sin(theta) * light_dy) > 0
+        draw.ellipse((bxp - 1, byp - 1, bxp + 1, byp + 1), fill=maroon_dark)
+        if lit:
+            hx, hy = int(bxp + light_dx), int(byp + light_dy)
+            if bx0 <= hx <= bx1 and by0 <= hy <= by1:
+                pixels[hx, hy] = highlight_ink
+
+    # (6) Recessed hourglass emblem carved into the centre (the time
+    # motif). Each pressed groove is drawn as a maroon stroke with a 1 px
+    # coral highlight offset down-right onto its far inner wall — the wall
+    # the upper-left light reaches inside an intaglio impression — so the
+    # emblem reads as engraved into the wax rather than printed on top.
+    eh = base_r * 0.5   # half-height of the hourglass
+    ew = base_r * 0.32  # half-width at the flared ends
+    top_y = scy - eh
+    bot_y = scy + eh
+    upper = [(scx - ew, top_y), (scx + ew, top_y), (scx, scy)]
+    lower = [(scx - ew, bot_y), (scx + ew, bot_y), (scx, scy)]
+    cap_top = ((scx - ew - 1, top_y), (scx + ew + 1, top_y))
+    cap_bot = ((scx - ew - 1, bot_y), (scx + ew + 1, bot_y))
+    # Highlight pass first (offset +1,+1), then the maroon groove on top,
+    # leaving a coral sliver on the lower-right of every stroke.
+    for offset, colour in ((1, highlight_ink), (0, maroon_dark)):
+        draw.line([(x + offset, y + offset) for x, y in upper] + [(upper[0][0] + offset, upper[0][1] + offset)], fill=colour, width=2)
+        draw.line([(x + offset, y + offset) for x, y in lower] + [(lower[0][0] + offset, lower[0][1] + offset)], fill=colour, width=2)
+        draw.line((cap_top[0][0] + offset, cap_top[0][1] + offset, cap_top[1][0] + offset, cap_top[1][1] + offset), fill=colour, width=2)
+        draw.line((cap_bot[0][0] + offset, cap_bot[0][1] + offset, cap_bot[1][0] + offset, cap_bot[1][1] + offset), fill=colour, width=2)
+
+    # (7) A couple of stray wax flecks beside the seal — drip character,
+    # each with a 1 px maroon shadow so it sits on the page like the bead.
+    for fx, fy, fr in (
+        (scx - base_r - 6, scy + base_r - 4, 2),
+        (scx + base_r - 2, scy - base_r + 8, 1),
+    ):
+        if 0 <= fx - fr and fx + fr < width and 0 <= fy - fr and fy + fr < height:
+            sxp, syp = fx + 1, fy + 2
+            if page_bg is not None and 0 <= sxp < width and 0 <= syp < height:
+                if pixels[sxp, syp] in (page_bg, cream_light):
+                    pixels[sxp, syp] = maroon_dark
+            draw.ellipse((fx - fr, fy - fr, fx + fr, fy + fr), fill=wax_red)
+            # Tone the fleck toward oxblood so it matches the shaded seal.
+            for py in range(max(0, fy - fr), min(height - 1, fy + fr) + 1):
+                for px in range(max(0, fx - fr), min(width - 1, fx + fr) + 1):
+                    if pixels[px, py] == wax_red and (px + py) & 1:
+                        pixels[px, py] = maroon_dark
+
+
 # Deterministic copper-trace routes for ``draw_circuit_border``. Each entry is a
 # polyline of (x_frac, y_frac) waypoints in the unit square; the painter scales
 # them to the canvas and strokes them in gold (Spectra-6 yellow) with rounded
@@ -10980,6 +11424,7 @@ _BORDER_PAINTERS = {
     "kanagawa": draw_kanagawa_border,
     "cartograph": draw_cartograph_border,
     "circuit": draw_circuit_border,
+    "letter": draw_letter_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need

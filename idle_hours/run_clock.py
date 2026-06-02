@@ -195,6 +195,7 @@ def parse_args() -> argparse.Namespace:
         "chrono",
         "outrun",
         "circuit",
+        "letter",
         "diags",
     ]
     parser.add_argument(

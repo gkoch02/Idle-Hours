@@ -292,6 +292,14 @@ THEME_SATURATION: dict[str, float] = {
     # the 0.7 push to stay crisp against the saturated green board rather than
     # washing toward mid-tones at panel viewing distance.
     "circuit": 0.7,
+    # Wax-sealed letter. A near-white aged-paper ground (faint 1-in-8
+    # yellow cream wash) with black script body and a red wax seal.
+    # Same chromatic-on-light profile as ``default`` / ``dispatch`` /
+    # ``saloon`` — the gentler 0.5 tier keeps the sealing-wax red and the
+    # cream wash reading as warm period tones rather than over-saturating
+    # the seal into a fire-engine spot that would fight the quiet
+    # handwritten body.
+    "letter": 0.5,
 }
 
 
