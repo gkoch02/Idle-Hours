@@ -10901,7 +10901,43 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
         # the cream wash + creases above already carry the theme.
         return
 
-    # Irregular pressed-wax rim: sum of two sinusoids around the circle.
+    # Depth model: the wax bead is a glossy dome lit from the upper-left.
+    # We render it with a four-tone ramp synthesised from the Spectra-6
+    # palette — white→coral highlight on the lit shoulder, solid red body,
+    # R+K maroon core-shadow on the lower-right and rim — plus a soft cast
+    # shadow on the paper and a specular hotspot, so it reads as a raised
+    # 3-D blob standing proud of the page rather than a flat sticker.
+    highlight_ink = SPECTRA6["white"]  # R+W coral at <100% density; pure gloss at 100%
+    light_dx, light_dy = -0.7071, -0.7071  # light from the upper-left
+
+    # (1) Soft cast shadow on the paper. A stippled disc offset down-right
+    # (away from the light), densest at its centre and fading to nothing at
+    # the rim, painted only on bare paper (page_bg / cream wash). Drawn
+    # first so the seal polygon overpaints the near, upper-left half — what
+    # survives is the crescent poking out on the lower-right, the shadow a
+    # raised object casts. ``page_bg is None`` guards the sentinel-render
+    # test path.
+    if page_bg is not None:
+        shadow_dx = max(3, base_r // 9)
+        shadow_dy = max(4, base_r // 7)
+        shx, shy = scx + shadow_dx, scy + shadow_dy
+        shadow_r = base_r * 1.06
+        sx0 = max(0, int(shx - shadow_r))
+        sy0 = max(0, int(shy - shadow_r))
+        sx1 = min(width - 1, int(shx + shadow_r))
+        sy1 = min(height - 1, int(shy + shadow_r))
+        for py in range(sy0, sy1 + 1):
+            for px in range(sx0, sx1 + 1):
+                if pixels[px, py] != page_bg and pixels[px, py] != cream_light:
+                    continue
+                d = math.hypot(px - shx, py - shy)
+                if d >= shadow_r:
+                    continue
+                density = 0.6 * (1.0 - d / shadow_r)
+                if BAYER_4x4[py & 3][px & 3] < density * 16:
+                    pixels[px, py] = maroon_dark
+
+    # (2) Irregular pressed-wax rim: sum of two sinusoids around the circle.
     seal_pts = []
     steps = 72
     for i in range(steps):
@@ -10911,62 +10947,107 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
         seal_pts.append((scx + r * math.cos(theta), scy + r * math.sin(theta)))
     draw.polygon(seal_pts, fill=wax_red)
 
-    # Seal bbox for the post-passes below.
+    # Seal bbox for the per-pixel shading pass below.
     rim = base_r + 4
     bx0 = max(0, scx - rim)
     by0 = max(0, scy - rim)
     bx1 = min(width - 1, scx + rim)
     by1 = min(height - 1, scy + rim)
 
-    # Directional oxblood shadow: flip red→black on (x+y)&1 parity, but
-    # only on the lower-right hemisphere (toward the light from the upper
-    # left), so the bead reads as a lit dome rather than a flat disc.
+    # (3) Dome shading ramp. For every red pixel, ``t`` is the shadow
+    # amount (0 = fully lit, 1 = deepest shadow): a directional term
+    # (dot of the surface offset with the light vector) plus a rim-
+    # darkening term that only bites on the shadow side, so the lit
+    # upper-left shoulder stays bright to the edge (rim light) while the
+    # lower-right curves into core shadow. ``t`` is then ordered-dithered
+    # via the shared 4×4 Bayer matrix into coral highlight / solid red /
+    # maroon, the density ramping smoothly within each band.
     for py in range(by0, by1 + 1):
         for px in range(bx0, bx1 + 1):
             if pixels[px, py] != wax_red:
                 continue
-            if (px - scx) + (py - scy) > base_r * 0.35 and (px + py) & 1:
-                pixels[px, py] = maroon_dark
+            nx = (px - scx) / base_r
+            ny = (py - scy) / base_r
+            directional = nx * light_dx + ny * light_dy  # +lit … -shadow
+            r2 = nx * nx + ny * ny
+            t = 0.5 - 0.5 * max(-1.0, min(1.0, directional / 1.05))
+            if t > 0.5:  # shadow side: deepen toward the rim
+                t += 0.20 * max(0.0, r2 - 0.45)
+            else:        # lit side: only a whisper of edge falloff
+                t += 0.06 * max(0.0, r2 - 0.55)
+            t = max(0.0, min(1.0, t))
+            cell = BAYER_4x4[py & 3][px & 3]
+            if t < 0.24:
+                density = (0.24 - t) / 0.24 * 0.6
+                if cell < density * 16:
+                    pixels[px, py] = highlight_ink
+            elif t > 0.60:
+                density = (t - 0.60) / 0.40 * 0.85
+                if cell < density * 16:
+                    pixels[px, py] = maroon_dark
 
-    # Beaded rim: small maroon dots just inside the edge — the decorative
-    # beading a signet matrix presses into the wax.
+    # (4) Specular hotspot — a tiny solid-white gloss where the dome faces
+    # the light most directly. Sells the "wet wax" sheen that the dithered
+    # coral shoulder alone can't.
+    spec_x = scx + int(-0.42 * base_r)
+    spec_y = scy + int(-0.42 * base_r)
+    spec_r = max(1, base_r // 14)
+    draw.ellipse(
+        (spec_x - spec_r, spec_y - spec_r, spec_x + spec_r, spec_y + spec_r),
+        fill=highlight_ink,
+    )
+
+    # (5) Beaded rim: small dots just inside the edge — the beading a
+    # signet matrix presses into the wax. Each bead is shaded by its own
+    # position on the dome: maroon in the lower-right shadow, plain wax-red
+    # up top, every bead carrying a 1 px coral highlight on its lit
+    # (upper-left) side so the ring reads as raised beading catching the
+    # same light as the dome rather than a flat dotted circle.
     bead_r = base_r * 0.82
     n_beads = 18
     for i in range(n_beads):
         theta = (i / n_beads) * 2 * math.pi
         bxp = scx + bead_r * math.cos(theta)
         byp = scy + bead_r * math.sin(theta)
+        lit = (math.cos(theta) * light_dx + math.sin(theta) * light_dy) > 0
         draw.ellipse((bxp - 1, byp - 1, bxp + 1, byp + 1), fill=maroon_dark)
+        if lit:
+            hx, hy = int(bxp + light_dx), int(byp + light_dy)
+            if bx0 <= hx <= bx1 and by0 <= hy <= by1:
+                pixels[hx, hy] = highlight_ink
 
-    # Recessed hourglass emblem carved into the centre (the time motif).
+    # (6) Recessed hourglass emblem carved into the centre (the time
+    # motif). Each pressed groove is drawn as a maroon stroke with a 1 px
+    # coral highlight offset down-right onto its far inner wall — the wall
+    # the upper-left light reaches inside an intaglio impression — so the
+    # emblem reads as engraved into the wax rather than printed on top.
     eh = base_r * 0.5   # half-height of the hourglass
     ew = base_r * 0.32  # half-width at the flared ends
     top_y = scy - eh
     bot_y = scy + eh
-    # Two triangles meeting at the waist (scx, scy): an hourglass
-    # silhouette outline in maroon (the pressed groove).
-    upper = [
-        (scx - ew, top_y),
-        (scx + ew, top_y),
-        (scx, scy),
-    ]
-    lower = [
-        (scx - ew, bot_y),
-        (scx + ew, bot_y),
-        (scx, scy),
-    ]
-    draw.line(upper + [upper[0]], fill=maroon_dark, width=2)
-    draw.line(lower + [lower[0]], fill=maroon_dark, width=2)
-    # End caps (the hourglass frame's top and bottom rails).
-    draw.line((scx - ew - 1, top_y, scx + ew + 1, top_y), fill=maroon_dark, width=2)
-    draw.line((scx - ew - 1, bot_y, scx + ew + 1, bot_y), fill=maroon_dark, width=2)
+    upper = [(scx - ew, top_y), (scx + ew, top_y), (scx, scy)]
+    lower = [(scx - ew, bot_y), (scx + ew, bot_y), (scx, scy)]
+    cap_top = ((scx - ew - 1, top_y), (scx + ew + 1, top_y))
+    cap_bot = ((scx - ew - 1, bot_y), (scx + ew + 1, bot_y))
+    # Highlight pass first (offset +1,+1), then the maroon groove on top,
+    # leaving a coral sliver on the lower-right of every stroke.
+    for offset, colour in ((1, highlight_ink), (0, maroon_dark)):
+        draw.line([(x + offset, y + offset) for x, y in upper] + [(upper[0][0] + offset, upper[0][1] + offset)], fill=colour, width=2)
+        draw.line([(x + offset, y + offset) for x, y in lower] + [(lower[0][0] + offset, lower[0][1] + offset)], fill=colour, width=2)
+        draw.line((cap_top[0][0] + offset, cap_top[0][1] + offset, cap_top[1][0] + offset, cap_top[1][1] + offset), fill=colour, width=2)
+        draw.line((cap_bot[0][0] + offset, cap_bot[0][1] + offset, cap_bot[1][0] + offset, cap_bot[1][1] + offset), fill=colour, width=2)
 
-    # A couple of stray wax flecks beside the seal — drip character.
+    # (7) A couple of stray wax flecks beside the seal — drip character,
+    # each with a 1 px maroon shadow so it sits on the page like the bead.
     for fx, fy, fr in (
         (scx - base_r - 6, scy + base_r - 4, 2),
         (scx + base_r - 2, scy - base_r + 8, 1),
     ):
         if 0 <= fx - fr and fx + fr < width and 0 <= fy - fr and fy + fr < height:
+            sxp, syp = fx + 1, fy + 2
+            if page_bg is not None and 0 <= sxp < width and 0 <= syp < height:
+                if pixels[sxp, syp] in (page_bg, cream_light):
+                    pixels[sxp, syp] = maroon_dark
             draw.ellipse((fx - fr, fy - fr, fx + fr, fy + fr), fill=wax_red)
             # Tone the fleck toward oxblood so it matches the shaded seal.
             for py in range(max(0, fy - fr), min(height - 1, fy + fr) + 1):
