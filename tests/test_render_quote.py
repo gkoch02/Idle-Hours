@@ -801,6 +801,7 @@ class TestRender:
             "risograph",
             "comic",
             "firmament",
+            "outrun",
         ],
     )
     def test_render_new_themes_smoke(self, theme):
