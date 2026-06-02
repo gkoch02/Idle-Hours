@@ -802,6 +802,7 @@ class TestRender:
             "comic",
             "firmament",
             "outrun",
+            "letter",
         ],
     )
     def test_render_new_themes_smoke(self, theme):
@@ -2523,6 +2524,97 @@ class TestCartographBorder:
         pixel coords. Same defensive-clamp invariant as kanagawa's
         small-preview test."""
         img = rq.render("04:30", self._row(), 80, 60, mode="production", theme="cartograph")
+        assert img.size == (80, 60)
+
+
+class TestCircuitBorder:
+    """The circuit theme paints a printed-circuit-board composition: a
+    forest soldermask wash (G+K 1:1 over the flat-green ground) + gold
+    (Spectra-6 yellow) copper traces / pads / matched-phrase accent +
+    white silkscreen body text, designators, and a Y1 crystal + four
+    corner mounting holes + a clear_rect knockout that resets the body
+    region to clean board and frames it with a white silkscreen outline.
+    Mirrors the kanagawa / cartograph clear_rect-knockout test structure.
+    """
+
+    def _row(self, **overrides):
+        row = {
+            "display_quote": "It was about half past two in the afternoon when the clock chimed softly.",
+            "matched_text": "half past two",
+            "author": "Charles Dickens",
+            "title": "Great Expectations",
+            "bucket": "h2_half_past",
+            "resolved_bucket": "h2_half_past",
+            "quality_score": 88,
+            "source_id": "1400",
+            "line_number": 73,
+        }
+        row.update(overrides)
+        return row
+
+    def test_circuit_renders_at_panel_size(self):
+        img = rq.render("14:30", self._row(), 800, 480, mode="production", theme="circuit")
+        assert img.size == (800, 480)
+
+    def test_circuit_registered_everywhere(self):
+        """A new theme must appear in THEMES, THEME_ORDER, THEME_FONTS, and
+        the border-painter dispatch table or it's invisible / KeyErrors at
+        display time. The general invariants are pinned elsewhere; pin the
+        circuit name explicitly so a typo lands a focused failure."""
+        assert "circuit" in rq.THEMES
+        assert "circuit" in rq.THEME_ORDER
+        assert "circuit" in rq.THEME_FONTS
+        assert rq._BORDER_PAINTERS.get("circuit") is rq.draw_circuit_border
+
+    def test_circuit_theme_uses_green_ground_white_silk_gold_accent(self):
+        """Pin the PCB palette shape: flat-green ``page_bg`` (darkened to
+        forest soldermask by the painter's Layer 0), white silkscreen body,
+        gold (yellow) copper accent. A regression that moved the accent off
+        yellow would break the copper-trace colour story."""
+        t = rq.THEMES["circuit"]
+        assert t["page_bg"] == rq.SPECTRA6["green"]
+        assert t["text"] == rq.SPECTRA6["white"]
+        assert t["accent"] == rq.SPECTRA6["yellow"]
+
+    def test_circuit_border_palette_stays_on_spectra6(self):
+        img = rq.render("14:30", self._row(), 800, 480, mode="production", theme="circuit")
+        allowed = set(rq.SPECTRA6.values())
+        for py in range(0, 480, 7):
+            for px in range(0, 800, 11):
+                pix = img.getpixel((px, py))
+                assert pix in allowed, f"off-palette pixel {pix} at ({px}, {py})"
+
+    def test_circuit_layer0_is_forest_checkerboard(self):
+        """The soldermask wash must flip ~half the green ground to black on
+        the (x+y) checkerboard so the board reads as deep forest green
+        (G+K 1:1) — distinct from ``atomic``'s 1-in-4 mint wash. Both green
+        and black must be present in roughly balanced amounts; a regression
+        that skipped the wash would leave the board flat bright green
+        (almost no black) and inherit atomic's silhouette."""
+        img = rq.render("14:30", self._row(), 800, 480, mode="production", theme="circuit")
+        from collections import Counter
+        counts = Counter(img.getdata())
+        green = counts[rq.SPECTRA6["green"]]
+        black = counts[rq.SPECTRA6["black"]]
+        assert green > 50_000, "soldermask wash erased too much of the green ground"
+        assert black > 50_000, "soldermask wash did not flip enough green to black"
+        # Balanced checkerboard: neither ink dominates the other more than 2:1.
+        assert 0.5 < green / black < 2.0, f"forest wash unbalanced: green={green} black={black}"
+
+    def test_circuit_paints_gold_copper(self):
+        """Copper traces, pads, and the oversized quote marks paint in gold
+        (Spectra-6 yellow). A render with no yellow pixels would mean the
+        trace routing / pad / ornament layer silently dropped."""
+        img = rq.render("14:30", self._row(), 800, 480, mode="production", theme="circuit")
+        from collections import Counter
+        assert Counter(img.getdata())[rq.SPECTRA6["yellow"]] > 1_000
+
+    def test_circuit_small_preview_does_not_crash(self):
+        """The curator UI clamps preview renders down to 80x60; the
+        clear_rect knockout + corner-hole loops must clamp to canvas bounds
+        rather than indexing out-of-range pixels. Same defensive invariant
+        as kanagawa / cartograph small-preview tests."""
+        img = rq.render("14:30", self._row(), 80, 60, mode="production", theme="circuit")
         assert img.size == (80, 60)
 
 
