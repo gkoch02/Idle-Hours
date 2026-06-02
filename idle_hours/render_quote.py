@@ -1066,8 +1066,9 @@ THEMES = {
     # with ``dispatch`` / ``illuminated`` / ``herbarium`` / ``mucha``),
     # black iron-gall ink for the flowing Dancing Script body, and
     # sealing-wax red for the matched time phrase — the one passage the
-    # correspondent pressed harder on, tied tonally to the red wax seal
-    # the border stamps into the bottom-right corner. The oversized
+    # correspondent pressed harder on, echoing the lit-red highlight of
+    # the oxblood / maroon wax seal the border stamps into the
+    # bottom-right corner. The oversized
     # opening quote mark renders in Pinyon Script copperplate via the
     # faux-gray ornament path (ornament_dark=black / ornament_light=white
     # → a delicate 50/50 half-density flourish, reading as a pale pen
@@ -10815,9 +10816,16 @@ def draw_cartograph_border(
         draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
 
 
+# Fixed seed for the letter theme's aged-paper texture (foxing scatter +
+# crumple wrinkles), so re-renders of a given time stay byte-identical —
+# same fixed-seed invariant as ``_SALOON_FOXING`` / ``_FIRMAMENT_STAR_SEED``.
+_LETTER_PAPER_SEED = 0x1E77E2
+
+
 def draw_letter_border(image: Image.Image, colors: dict) -> None:
-    """Wax-sealed letter decoration: aged-paper ground + fold creases +
-    a pressed red wax seal in the bottom-right corner.
+    """Wax-sealed letter decoration: aged, lightly-crumpled paper ground +
+    fold/crumple creases + a pressed oxblood / maroon wax seal in the
+    bottom-right corner.
 
     The composition deliberately stays in the margins so the standard
     literary layout paints the flowing-script body text cleanly on top
@@ -10826,35 +10834,46 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     never reaches the corner the seal occupies). Layers, painted bottom
     to top:
 
-    * **Layer 0 — sparse 1-in-8 yellow-on-white Bayer cream wash.** The
-      documented Y+W cream recipe (same Bayer threshold ``dispatch`` /
-      ``illuminated`` / ``herbarium`` / ``mucha`` use): ~12.5% of the
-      white ``page_bg`` pixels flip to yellow, averaging at panel
-      distance into the faint cream/vellum of aged letter paper. Lives
-      natively on the Spectra-6 palette, so ``snap_image_to_palette`` is
-      a no-op and the script glyph edges stay crisp.
-    * **Two horizontal fold creases** at the thirds of the page — the
-      folds a letter picks up when tucked into an envelope. Drawn as a
-      faint 1 px black stipple (one dot every few pixels) so they read
-      as a soft pressed line rather than a hard rule, with a single
-      lighter "valley" dot row just below each crease for a hint of
-      depth. Text overpaints them, exactly as ink sits over a fold.
+    * **Layer 0 — aged, lightly-crumpled paper.** Three stacked textures,
+      all native to the Spectra-6 palette (so ``snap_image_to_palette``
+      is a no-op and the script glyph edges stay crisp): (a) an **uneven
+      cream tan** — the documented Y+W yellow cream wash, but its density
+      is modulated by a cheap low-frequency mottle field (precomputed
+      per-row / per-column sine tables, no per-pixel trig) plus an
+      edge-weighted vignette, so the sheet tans more at the margins and
+      in soft patches the way real aged paper does rather than as a flat
+      tint; (b) **foxing** — a deterministic seeded scatter of small R+G
+      sepia age spots (the documented brown recipe), biased toward the
+      edges; and (c) **crumple creases** (below).
+    * **Crumple creases** — two horizontal fold creases at the thirds of
+      the page (the folds a letter picks up tucked into an envelope) plus
+      a handful of fainter short random-angle wrinkles (the creases a
+      re-opened sheet keeps). All sparse 1 px black stipple painted only
+      on bare paper / cream, so they read as soft pressed lines without
+      muddying the foxing; the body text overpaints them, exactly as ink
+      sits over a fold.
     * **The wax seal** in the bottom-right corner — the hero graphic.
-      A pressed bead of sealing wax: an irregular scalloped red disc
+      A pressed bead of dark **oxblood / maroon** sealing wax rendered as
+      a glossy dome lit from the upper-left: an irregular scalloped disc
       (two summed sinusoids vary the rim radius so it reads as hand-
-      pressed wax, not a clean circle), a directional oxblood shadow on
-      its lower-right (the documented R+K 1:1 maroon recipe applied via
-      a bbox ``(x+y)&1`` post-pass, but only on the shadow-side pixels,
-      so the bead reads as a lit 3D dome rather than a flat dot), a ring
-      of small maroon beads just inside the rim (the decorative beading a
-      real seal matrix presses into the wax), and a recessed **hourglass
-      emblem** carved into the centre in maroon — the time motif of the
-      clock, embossed into the wax the way a signet stamps a monogram.
-      A couple of tiny maroon spatter flecks beside the seal read as
-      stray drips. The whole seal sits at y≈height-78 / x≈width-72,
-      clear of the centred attribution and the y=14-29 debug-banner band
-      (which is why ``letter`` needs no ``_DEBUG_LABEL_RIGHT_INSET``
-      entry — its only graphic is bottom-right).
+      pressed wax, not a clean circle), shaded per-pixel via a Bayer ramp
+      anchored on maroon (R+K) — pure red survives only on the lit
+      shoulder, white dithers in for a coral gloss at the highlight, and
+      black density climbs past 50% toward the rim so the core shadow
+      deepens to near-black — plus a soft cast shadow stippled onto the
+      paper (offset down-right, fading at its edge) and a solid-white
+      specular hotspot, so the bead reads as a raised 3-D blob standing
+      proud of the page. A ring of small beads just inside the rim (each
+      shaded by its position on the dome — dark dot + a coral highlight
+      on its lit side), and a recessed **hourglass emblem** carved into
+      the centre — the time motif of the clock, each groove a maroon
+      stroke with a coral bevel on its far inner wall so it reads as
+      engraved into the wax. A couple of tiny maroon spatter flecks
+      beside the seal read as stray drips. The whole seal sits at
+      y≈height-78 / x≈width-72, clear of the centred attribution and the
+      y=14-29 debug-banner band (which is why ``letter`` needs no
+      ``_DEBUG_LABEL_RIGHT_INSET`` entry — its only graphic is
+      bottom-right).
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
@@ -10865,17 +10884,77 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     cream_light = SPECTRA6["yellow"]
     pixels = image.load()
 
-    # Layer 0: sparse 1-in-8 yellow-on-white cream wash. Defence in depth:
-    # only pixels still matching page_bg are touched.
+    sepia_a = SPECTRA6["red"]
+    sepia_b = SPECTRA6["green"]
+    rng = random.Random(_LETTER_PAPER_SEED)
+
+    # ---- Layer 0: aged, lightly-crumpled paper ------------------------
+    # Three stacked textures turn the panel's flat white into an aged
+    # letter sheet, all native to the Spectra-6 palette (every output
+    # pixel is one of the six inks, so palette-snap is a no-op and the
+    # script glyphs that paint on top stay crisp). Deliberately subtle —
+    # the textures should read at arm's length as "old paper", not as a
+    # pattern competing with the handwriting:
+    #
+    #   (a) Uneven cream tan. The yellow cream-wash density is no longer
+    #       uniform — a gentle edge vignette (the sheet tans more at the
+    #       margins) plus a low-amplitude mottle (precomputed per-row /
+    #       per-column sine tables, no per-pixel trig) and a fine per-pixel
+    #       grain jitter, so the cream breaks up into an organic fibrous
+    #       tone instead of a flat tint. Centre ≈9% yellow, corners ≈14%.
+    #   (b) Foxing. A deterministic seeded scatter of small R+G sepia age
+    #       spots (the documented brown recipe — each spot is a ≥1-radius
+    #       cluster carrying both red and green pixels so it averages to
+    #       rust-brown at panel distance rather than reading as a lone
+    #       red/green speck), biased toward the edges where foxing
+    #       concentrates.
+    #   (c) Crumple creases — see below the wash.
     if page_bg is not None:
+        col = [math.sin(x * 0.013) + 0.6 * math.sin(x * 0.031 + 1.7) for x in range(width)]
+        row_mottle = [math.sin(y * 0.015 + 0.5) + 0.6 * math.sin(y * 0.029 + 2.3) for y in range(height)]
+        half_w = max(1.0, width * 0.5)
+        half_h = max(1.0, height * 0.5)
         for y in range(height):
-            row = BAYER_4x4[y & 3]
+            brow = BAYER_4x4[y & 3]
+            ry = row_mottle[y]
+            edge_y = 1.0 - min(y, height - 1 - y) / half_h
             for x in range(width):
-                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                if pixels[x, y] != page_bg:
+                    continue
+                edge_x = 1.0 - min(x, width - 1 - x) / half_w
+                edge = edge_x if edge_x > edge_y else edge_y
+                mottle = (col[x] + ry) * 0.5
+                grain = (((x * 131 + y * 57) % 17) - 8) / 8.0
+                density = 0.085 + 0.05 * (edge * edge) + 0.02 * mottle + 0.02 * grain
+                if brow[x & 3] < density * 16:
                     pixels[x, y] = cream_light
 
-    # Fold creases at the thirds. Faint dotted black line + a lighter
-    # valley row one pixel below. Sparse spacing keeps them subtle.
+        # (b) Foxing: small brown spots, each a square red/green
+        # checkerboard block (2×2 or 3×3) so every spot carries a balanced
+        # red+green pair and averages to rust-brown — a circular mask
+        # would leave colour-imbalanced plus-shapes that read as lone
+        # green or red specks. Biased toward a random edge.
+        n_spots = max(10, (width * height) // 9000)
+        for _ in range(n_spots):
+            fx = int(rng.triangular(0, width - 1, rng.choice((0, width - 1))))
+            fy = int(rng.triangular(0, height - 1, rng.choice((0, height - 1))))
+            spot_w = rng.choice((2, 2, 3))
+            for dy in range(spot_w):
+                for dx in range(spot_w):
+                    px, py = fx + dx, fy + dy
+                    if 0 <= px < width and 0 <= py < height and pixels[px, py] in (page_bg, cream_light):
+                        pixels[px, py] = sepia_a if (px + py) & 1 else sepia_b
+
+    # ---- Crumple creases ----------------------------------------------
+    # Two primary fold creases at the thirds (the folds that put a letter
+    # in an envelope), rendered as a faint dotted black stipple, plus a
+    # few soft random-angle crumple wrinkles rendered *tonally* (a thin
+    # cream ridge with a white highlight relief on its lit side) rather
+    # than as black ink — so they read as the light catching a wrinkle
+    # in the sheet rather than as scratches. All painted only on bare
+    # paper / cream so they don't muddy the foxing; the body text
+    # overpaints them, exactly as ink sits over a fold.
+    paper_tones = (page_bg, cream_light)
     margin = 26
     crease_step = 4
     for frac in (1, 2):
@@ -10883,12 +10962,29 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
         if cy + 1 >= height:
             continue
         for x in range(margin, width - margin, crease_step):
-            pixels[x, cy] = ink
-            # Valley dot half a step along, one row down — a sparser,
-            # offset second row reads as the soft shadow of the fold.
+            if pixels[x, cy] in paper_tones:
+                pixels[x, cy] = ink
             vx = x + crease_step // 2
-            if vx < width - margin and (x // crease_step) & 1:
+            if vx < width - margin and (x // crease_step) & 1 and pixels[vx, cy + 1] in paper_tones:
                 pixels[vx, cy + 1] = ink
+
+    # Soft tonal crumple wrinkles: a cream ridge + white highlight relief.
+    if page_bg is not None:
+        for _ in range(5):
+            wx = rng.randint(60, max(61, width - 60))
+            wy = rng.randint(50, max(51, height - 50))
+            angle = rng.uniform(0.0, math.pi)
+            length = rng.randint(50, 130)
+            dxu, dyu = math.cos(angle), math.sin(angle)
+            nxp, nyp = -dyu, dxu  # unit perpendicular → highlight side
+            for s in range(length):
+                px = int(wx + (s - length // 2) * dxu)
+                py = int(wy + (s - length // 2) * dyu)
+                if 0 <= px < width and 0 <= py < height and pixels[px, py] in paper_tones:
+                    pixels[px, py] = cream_light
+                hx, hy = int(px + nxp), int(py + nyp)
+                if 0 <= hx < width and 0 <= hy < height and pixels[hx, hy] in paper_tones:
+                    pixels[hx, hy] = page_bg
 
     # ---- Wax seal (bottom-right) -------------------------------------
     # Scale the seal to the canvas so small preview thumbnails still get a
@@ -10954,14 +11050,20 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     bx1 = min(width - 1, scx + rim)
     by1 = min(height - 1, scy + rim)
 
-    # (3) Dome shading ramp. For every red pixel, ``t`` is the shadow
-    # amount (0 = fully lit, 1 = deepest shadow): a directional term
-    # (dot of the surface offset with the light vector) plus a rim-
-    # darkening term that only bites on the shadow side, so the lit
-    # upper-left shoulder stays bright to the edge (rim light) while the
-    # lower-right curves into core shadow. ``t`` is then ordered-dithered
-    # via the shared 4×4 Bayer matrix into coral highlight / solid red /
-    # maroon, the density ramping smoothly within each band.
+    # (3) Dome shading ramp — maroon-based oxblood wax. For every interior
+    # pixel, ``t`` is the shadow amount (0 = fully lit, 1 = deepest
+    # shadow): a directional term (dot of the surface offset with the
+    # light vector) plus a rim-darkening term that only bites on the
+    # shadow side, so the lit upper-left shoulder stays bright to the edge
+    # (rim light) while the lower-right curves into core shadow. ``t`` is
+    # then ordered-dithered via the shared 4×4 Bayer matrix into a
+    # continuous ramp anchored on **maroon** (the dominant body tone, R+K
+    # ~50/50): pure red survives only on the lit shoulder, white dithers
+    # in for a coral gloss at the very highlight, and black density climbs
+    # past 50% toward the rim so the core shadow deepens to near-black
+    # oxblood. The base ink stays ``wax_red`` (accent) between dithered
+    # pixels, so the dome reads as a dark sealing-wax oxblood rather than
+    # the fire-engine red of the previous revision.
     for py in range(by0, by1 + 1):
         for px in range(bx0, bx1 + 1):
             if pixels[px, py] != wax_red:
@@ -10977,12 +11079,18 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
                 t += 0.06 * max(0.0, r2 - 0.55)
             t = max(0.0, min(1.0, t))
             cell = BAYER_4x4[py & 3][px & 3]
-            if t < 0.24:
-                density = (0.24 - t) / 0.24 * 0.6
+            if t < 0.25:
+                # Lit shoulder: white dithered into red for a coral gloss,
+                # brightest at the terminator-free highlight.
+                density = (0.25 - t) / 0.25 * 0.5
                 if cell < density * 16:
                     pixels[px, py] = highlight_ink
-            elif t > 0.60:
-                density = (t - 0.60) / 0.40 * 0.85
+            else:
+                # Body → core shadow: black dithered into red. ~35% black
+                # just below the highlight (warm maroon-red), through ~50%
+                # at the dome's mid-tone (true maroon), up to ~90% at the
+                # rim (near-black oxblood).
+                density = min(0.9, 0.35 + (t - 0.25) * 0.733)
                 if cell < density * 16:
                     pixels[px, py] = maroon_dark
 
