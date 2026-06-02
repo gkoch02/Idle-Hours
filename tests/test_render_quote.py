@@ -3734,6 +3734,25 @@ def test_grimdark_matched_phrase_uses_forge_amber_recipe():
     assert rq.SPECTRA6["yellow"] in inks, "forge-amber should introduce yellow pixels"
 
 
+def test_grimdark_border_paints_industrial_mottle():
+    """The grimdark Layer-0 mottle stipples sparse white into the black void
+    ground (synthesising dark gunmetal grey), but stays sparse enough to read
+    as a dark charcoal rather than a light field — and uses only black/white
+    so it never leaves the palette."""
+    img = Image.new("RGB", (800, 480), (0, 0, 0))
+    rq.draw_grimdark_border(img, rq.THEMES["grimdark"])
+    px = img.load()
+    white = rq.SPECTRA6["white"]
+    black = rq.SPECTRA6["black"]
+    # A background patch clear of ornaments and (border-only render) text.
+    patch = [(x, y) for x in range(140, 220) for y in range(120, 175)]
+    whites = sum(1 for x, y in patch if px[x, y] == white)
+    frac = whites / len(patch)
+    assert 0.02 < frac < 0.40, f"mottle density {frac:.3f} outside dark-grey range"
+    # Every patch pixel is either void or grey-ink — never an off-palette tone.
+    assert all(px[x, y] in (white, black) for x, y in patch)
+
+
 def test_marker_border_paints_twinkle_sparkles():
     """The upleveled marker border adds doodle 'twinkle' sparkles in the top
     (red) and bottom (blue) centre margins."""

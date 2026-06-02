@@ -10854,6 +10854,79 @@ def _grimdark_skull(draw, cx: int, cy: int, s: int, bone, void) -> None:
             draw.line((tx, cy + r(5), tx, cy + r(13)), fill=void, width=1)
 
 
+# Deterministic seed for grimdark's industrial gunmetal mottle so re-renders
+# of a given time stay byte-identical.
+_GRIMDARK_MOTTLE_SEED = 0x40_0B
+
+
+def _grimdark_paint_mottle(image: Image.Image, width: int, height: int) -> None:
+    """Layer-0 dark-grey industrial mottle over the black void ground.
+
+    Spectra 6 has no grey ink, so a dark gunmetal is synthesised by stippling
+    sparse *white* into the black ``page_bg``: at panel viewing distance the
+    eye integrates ~5-25%-white-on-black into charcoal / dark grey (the K+W
+    recipe — the inverse of the cream Y+W washes other themes paint, here on a
+    black ground). A faint ordered base gives the whole bulkhead a uniform
+    gunmetal tone; seeded irregular blotches then lighten (oxidised / scuffed
+    plate) or darken (grime / shadow) local patches so the ground reads as
+    weathered industrial metal rather than a flat halftone. Painted first, so
+    the trim / Aquila / cog-skull / text all paint cleanly on top. Only flips
+    pixels currently equal to the void, and every write is bounds-clipped, so
+    it stays on-palette and safe at thumbnail preview sizes.
+    """
+    pixels = image.load()
+    void = SPECTRA6["black"]
+    grey_ink = SPECTRA6["white"]
+
+    # Faint organic base: a hash-scatter of ~4.5% white (film-grain rather
+    # than an ordered Bayer grid, which would read as a regular dot-screen)
+    # so the ground reads as a uniform dark charcoal gunmetal. A second hash
+    # constant decorrelates this from the blotch scatter below.
+    base_thresh = round(0.045 * 65535)
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] != void:
+                continue
+            hb = ((x * 374761393) ^ (y * 668265263) ^ ((x + y) * 1274126177)) & 0xFFFF
+            if hb < base_thresh:
+                pixels[x, y] = grey_ink
+
+    # Irregular weathering blotches. Each is a soft disc whose extra stipple
+    # density falls off from a random peak at the centre to nothing at the
+    # rim; ~1/3 of them *erode* the base back to void (dark grime), the rest
+    # *add* white (scuffed/oxidised highlight). A cheap integer hash per pixel
+    # supplies the scatter so no per-pixel RNG object call is needed.
+    rng = random.Random(_GRIMDARK_MOTTLE_SEED)
+    blotches = max(6, (width * height) // 9000)
+    for _ in range(blotches):
+        bx = rng.randint(0, width - 1)
+        by = rng.randint(0, height - 1)
+        br = rng.randint(18, 58)
+        peak = rng.uniform(0.10, 0.24)
+        darken = rng.random() < 0.34
+        x0 = max(0, bx - br)
+        x1 = min(width - 1, bx + br)
+        y0 = max(0, by - br)
+        y1 = min(height - 1, by + br)
+        br2 = br * br
+        for y in range(y0, y1 + 1):
+            dy = y - by
+            for x in range(x0, x1 + 1):
+                dx = x - bx
+                d2 = dx * dx + dy * dy
+                if d2 > br2:
+                    continue
+                dens = peak * (1.0 - (d2 ** 0.5) / br)
+                h = ((x * 2654435761) ^ (y * 40503) ^ ((x * y) & 0xFFFF)) & 0xFFFF
+                if h / 65535.0 >= dens:
+                    continue
+                if darken:
+                    if pixels[x, y] == grey_ink:
+                        pixels[x, y] = void
+                elif pixels[x, y] == void:
+                    pixels[x, y] = grey_ink
+
+
 def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
     """Paint the Imperial Gothic frame: gold + blood doubled trim, an Aquila,
     a Mechanicus cog-skull, riveted bulkhead seams, and corner machinery.
@@ -10870,6 +10943,10 @@ def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
 
     Composition:
 
+    * **Layer-0 gunmetal mottle** — a synthesised dark-grey weathering of the
+      black ground (sparse white-on-black stipple + irregular blotches), so
+      the bulkhead reads as scuffed industrial metal rather than flat void.
+      See ``_grimdark_paint_mottle``.
     * **Doubled imperial trim** — a thick gold outer rule (Imperial gilt
       edging) + a thin blood-red inner rule, the polychrome banded frame of
       an ornate reliquary or a starship bulkhead hatch.
@@ -10901,6 +10978,10 @@ def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
     blood = SPECTRA6["red"]     # inner rule / rivet cores / studs
     bone = SPECTRA6["white"]    # skull
     void = SPECTRA6["black"]    # ground / skull recesses
+
+    # --- Layer 0: industrial gunmetal mottle over the black void, painted
+    # before everything so the trim / ornaments / quote text land on top.
+    _grimdark_paint_mottle(image, width, height)
 
     # --- Doubled imperial trim. ImageDraw rectangles clip, but an inverted
     # bbox (inset >= half-dimension) raises, so guard at tiny preview sizes.
