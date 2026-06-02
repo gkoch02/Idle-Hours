@@ -87,6 +87,7 @@ THEME_ORDER: tuple[str, ...] = (
     "questline",
     "chrono",
     "outrun",
+    "letter",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1058,6 +1059,33 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # Wax-sealed letter. A quote presented as intimate handwritten
+    # correspondence on a sheet of aged paper. White ``page_bg`` warmed
+    # to a faint cream/vellum by ``draw_letter_border``'s Layer 0
+    # 1-in-8 yellow Bayer wash (the documented Y+W cream recipe shared
+    # with ``dispatch`` / ``illuminated`` / ``herbarium`` / ``mucha``),
+    # black iron-gall ink for the flowing Dancing Script body, and
+    # sealing-wax red for the matched time phrase — the one passage the
+    # correspondent pressed harder on, tied tonally to the red wax seal
+    # the border stamps into the bottom-right corner. The oversized
+    # opening quote mark renders in Pinyon Script copperplate via the
+    # faux-gray ornament path (ornament_dark=black / ornament_light=white
+    # → a delicate 50/50 half-density flourish, reading as a pale pen
+    # stroke rather than a heavy blot). Same white/black/red palette
+    # shape as ``default`` / ``dispatch`` / ``saloon`` but the script
+    # body + fold creases + wax seal give it a completely different
+    # silhouette. See THEME_FONTS for the Dancing Script + Pinyon Script
+    # pairing and the legibility rationale behind it.
+    "letter": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1414,6 +1442,38 @@ PRESSSTART2P_REGULAR = str(BASE_DIR / "fonts/press-start-2p/PressStart2P-Regular
 # Noto Sans before the Playfair chain.
 PIXELIFYSANS_VARIABLE = str(BASE_DIR / "fonts/pixelify-sans/PixelifySans-Variable.ttf")
 OXANIUM_VARIABLE = str(BASE_DIR / "fonts/oxanium/Oxanium-Variable.ttf")
+# Dancing Script — The Dancing Script Project Authors (OFL). A lively,
+# fluid pen-script with a real weight axis (wght 400..700, named Regular
+# / Medium / SemiBold / Bold instances). The body face of the ``letter``
+# theme — a wax-sealed handwritten letter. Pure copperplate (Pinyon
+# Script, below) is gorgeous but its hairline strokes shatter at body
+# sizes on a 4-bit eInk panel after ``snap_image_to_palette`` (the same
+# legibility caveat documented for the blackletter / uncial themes), so
+# the legible flowing hand carries the dense body text while Pinyon
+# carries the oversized ornament flourish — the same "legible body +
+# period display ornament" split ``illuminated`` uses (EB Garamond body
+# + UnifrakturMaguntia ornament). Dancing Script's medium, even stroke
+# weight survives the panel where a thin copperplate would vanish, and
+# its genuine Bold variation instance gives the matched time phrase a
+# real weight step on top of the sealing-wax red accent (pinned by name
+# via load_font's set_variation_by_name, same mechanism as Inter / Jost
+# / Rubik / Antonio / Oxanium). Falls back through DejaVu / Liberation
+# Sans *Italic* (a slanted silhouette, the closest system stand-in for a
+# hand) before the Playfair chain so a missing install lands on a
+# cursive-adjacent face rather than an upright serif — same fallback
+# discipline ``chalkboard`` uses for its Playwrite cursive.
+DANCINGSCRIPT_VARIABLE = str(BASE_DIR / "fonts/dancing-script/DancingScript-Variable.ttf")
+# Pinyon Script — The Pinyon Project Authors / Sorkin Type (OFL). A
+# formal English-roundhand copperplate, the canonical "elegant
+# correspondence" pen. Single weight; used ONLY in the ``letter``
+# ornament slot for the oversized opening / closing quotation marks,
+# where its swooping flourished strokes deliver the antique-letter
+# signature and legibility is irrelevant (the marks are decorative, not
+# reading matter). Kept off the body / matched-phrase chains on purpose
+# — at 18-24 px the hairlines break up after palette snap. Falls back
+# through Dancing Script Bold (the theme's own body face, so the marks
+# still read as a pen hand) before the shared ornament chain.
+PINYONSCRIPT_REGULAR = str(BASE_DIR / "fonts/pinyon-script/PinyonScript-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2583,6 +2643,41 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             (OXANIUM_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Wax-sealed letter. Dancing Script (a fluid pen-script with a real
+    # weight axis) carries the body and the matched phrase; Pinyon Script
+    # (formal copperplate) carries only the oversized ornament quote
+    # marks. The body deliberately uses the *legible* flowing hand rather
+    # than the copperplate because Pinyon's hairlines shatter at body
+    # sizes on the panel after palette snap — the same legible-body +
+    # period-display-ornament split ``illuminated`` uses (see the
+    # DANCINGSCRIPT_VARIABLE / PINYONSCRIPT_REGULAR docstrings). The
+    # matched-phrase Bold instance gives a genuine weight step on top of
+    # the sealing-wax red accent. Body falls back through DejaVu /
+    # Liberation Sans *Italic* (a slanted stand-in for a hand) before the
+    # Playfair chain; the Pinyon ornament falls back to Dancing Script
+    # Bold first so the marks stay a pen hand even if the copperplate is
+    # missing.
+    "letter": {
+        "quote_regular": [
+            (DANCINGSCRIPT_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (DANCINGSCRIPT_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            PINYONSCRIPT_REGULAR,
+            (DANCINGSCRIPT_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -10720,6 +10815,166 @@ def draw_cartograph_border(
         draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
 
 
+def draw_letter_border(image: Image.Image, colors: dict) -> None:
+    """Wax-sealed letter decoration: aged-paper ground + fold creases +
+    a pressed red wax seal in the bottom-right corner.
+
+    The composition deliberately stays in the margins so the standard
+    literary layout paints the flowing-script body text cleanly on top
+    (the border runs *before* the text, so the creases sit behind the
+    glyphs the way a real letter's folds do, and the centred quote block
+    never reaches the corner the seal occupies). Layers, painted bottom
+    to top:
+
+    * **Layer 0 — sparse 1-in-8 yellow-on-white Bayer cream wash.** The
+      documented Y+W cream recipe (same Bayer threshold ``dispatch`` /
+      ``illuminated`` / ``herbarium`` / ``mucha`` use): ~12.5% of the
+      white ``page_bg`` pixels flip to yellow, averaging at panel
+      distance into the faint cream/vellum of aged letter paper. Lives
+      natively on the Spectra-6 palette, so ``snap_image_to_palette`` is
+      a no-op and the script glyph edges stay crisp.
+    * **Two horizontal fold creases** at the thirds of the page — the
+      folds a letter picks up when tucked into an envelope. Drawn as a
+      faint 1 px black stipple (one dot every few pixels) so they read
+      as a soft pressed line rather than a hard rule, with a single
+      lighter "valley" dot row just below each crease for a hint of
+      depth. Text overpaints them, exactly as ink sits over a fold.
+    * **The wax seal** in the bottom-right corner — the hero graphic.
+      A pressed bead of sealing wax: an irregular scalloped red disc
+      (two summed sinusoids vary the rim radius so it reads as hand-
+      pressed wax, not a clean circle), a directional oxblood shadow on
+      its lower-right (the documented R+K 1:1 maroon recipe applied via
+      a bbox ``(x+y)&1`` post-pass, but only on the shadow-side pixels,
+      so the bead reads as a lit 3D dome rather than a flat dot), a ring
+      of small maroon beads just inside the rim (the decorative beading a
+      real seal matrix presses into the wax), and a recessed **hourglass
+      emblem** carved into the centre in maroon — the time motif of the
+      clock, embossed into the wax the way a signet stamps a monogram.
+      A couple of tiny maroon spatter flecks beside the seal read as
+      stray drips. The whole seal sits at y≈height-78 / x≈width-72,
+      clear of the centred attribution and the y=14-29 debug-banner band
+      (which is why ``letter`` needs no ``_DEBUG_LABEL_RIGHT_INSET``
+      entry — its only graphic is bottom-right).
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    ink = colors["text"]
+    wax_red = colors["accent"]
+    maroon_dark = SPECTRA6["black"]
+    cream_light = SPECTRA6["yellow"]
+    pixels = image.load()
+
+    # Layer 0: sparse 1-in-8 yellow-on-white cream wash. Defence in depth:
+    # only pixels still matching page_bg are touched.
+    if page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 2:
+                    pixels[x, y] = cream_light
+
+    # Fold creases at the thirds. Faint dotted black line + a lighter
+    # valley row one pixel below. Sparse spacing keeps them subtle.
+    margin = 26
+    crease_step = 4
+    for frac in (1, 2):
+        cy = (height * frac) // 3
+        if cy + 1 >= height:
+            continue
+        for x in range(margin, width - margin, crease_step):
+            pixels[x, cy] = ink
+            # Valley dot half a step along, one row down — a sparser,
+            # offset second row reads as the soft shadow of the fold.
+            vx = x + crease_step // 2
+            if vx < width - margin and (x // crease_step) & 1:
+                pixels[vx, cy + 1] = ink
+
+    # ---- Wax seal (bottom-right) -------------------------------------
+    # Scale the seal to the canvas so small preview thumbnails still get a
+    # proportional (if tiny) seal instead of one that swamps or overflows.
+    base_r = max(10, min(40, int(min(width, height) * 0.085)))
+    scx = width - base_r - 32
+    scy = height - base_r - 38
+    if scx <= base_r or scy <= base_r:
+        # Canvas too small to seat a seal without it leaving the page;
+        # the cream wash + creases above already carry the theme.
+        return
+
+    # Irregular pressed-wax rim: sum of two sinusoids around the circle.
+    seal_pts = []
+    steps = 72
+    for i in range(steps):
+        theta = (i / steps) * 2 * math.pi
+        wobble = 1.0 + 0.05 * math.sin(theta * 5) + 0.035 * math.sin(theta * 8 + 1.3)
+        r = base_r * wobble
+        seal_pts.append((scx + r * math.cos(theta), scy + r * math.sin(theta)))
+    draw.polygon(seal_pts, fill=wax_red)
+
+    # Seal bbox for the post-passes below.
+    rim = base_r + 4
+    bx0 = max(0, scx - rim)
+    by0 = max(0, scy - rim)
+    bx1 = min(width - 1, scx + rim)
+    by1 = min(height - 1, scy + rim)
+
+    # Directional oxblood shadow: flip red→black on (x+y)&1 parity, but
+    # only on the lower-right hemisphere (toward the light from the upper
+    # left), so the bead reads as a lit dome rather than a flat disc.
+    for py in range(by0, by1 + 1):
+        for px in range(bx0, bx1 + 1):
+            if pixels[px, py] != wax_red:
+                continue
+            if (px - scx) + (py - scy) > base_r * 0.35 and (px + py) & 1:
+                pixels[px, py] = maroon_dark
+
+    # Beaded rim: small maroon dots just inside the edge — the decorative
+    # beading a signet matrix presses into the wax.
+    bead_r = base_r * 0.82
+    n_beads = 18
+    for i in range(n_beads):
+        theta = (i / n_beads) * 2 * math.pi
+        bxp = scx + bead_r * math.cos(theta)
+        byp = scy + bead_r * math.sin(theta)
+        draw.ellipse((bxp - 1, byp - 1, bxp + 1, byp + 1), fill=maroon_dark)
+
+    # Recessed hourglass emblem carved into the centre (the time motif).
+    eh = base_r * 0.5   # half-height of the hourglass
+    ew = base_r * 0.32  # half-width at the flared ends
+    top_y = scy - eh
+    bot_y = scy + eh
+    # Two triangles meeting at the waist (scx, scy): an hourglass
+    # silhouette outline in maroon (the pressed groove).
+    upper = [
+        (scx - ew, top_y),
+        (scx + ew, top_y),
+        (scx, scy),
+    ]
+    lower = [
+        (scx - ew, bot_y),
+        (scx + ew, bot_y),
+        (scx, scy),
+    ]
+    draw.line(upper + [upper[0]], fill=maroon_dark, width=2)
+    draw.line(lower + [lower[0]], fill=maroon_dark, width=2)
+    # End caps (the hourglass frame's top and bottom rails).
+    draw.line((scx - ew - 1, top_y, scx + ew + 1, top_y), fill=maroon_dark, width=2)
+    draw.line((scx - ew - 1, bot_y, scx + ew + 1, bot_y), fill=maroon_dark, width=2)
+
+    # A couple of stray wax flecks beside the seal — drip character.
+    for fx, fy, fr in (
+        (scx - base_r - 6, scy + base_r - 4, 2),
+        (scx + base_r - 2, scy - base_r + 8, 1),
+    ):
+        if 0 <= fx - fr and fx + fr < width and 0 <= fy - fr and fy + fr < height:
+            draw.ellipse((fx - fr, fy - fr, fx + fr, fy + fr), fill=wax_red)
+            # Tone the fleck toward oxblood so it matches the shaded seal.
+            for py in range(max(0, fy - fr), min(height - 1, fy + fr) + 1):
+                for px in range(max(0, fx - fr), min(width - 1, fx + fr) + 1):
+                    if pixels[px, py] == wax_red and (px + py) & 1:
+                        pixels[px, py] = maroon_dark
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -10754,6 +11009,7 @@ _BORDER_PAINTERS = {
     "firmament": draw_firmament_border,
     "kanagawa": draw_kanagawa_border,
     "cartograph": draw_cartograph_border,
+    "letter": draw_letter_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
