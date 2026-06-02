@@ -87,6 +87,7 @@ THEME_ORDER: tuple[str, ...] = (
     "questline",
     "chrono",
     "outrun",
+    "circuit",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -346,6 +347,27 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
+    },
+    # Printed circuit board (PCB). The literary clock etched onto the very
+    # board that drives the eInk panel. Spectra-6 flat green ground, but
+    # ``draw_circuit_border``'s Layer 0 flips half the green pixels to black
+    # on the (x+y) checkerboard so the soldermask reads as the deep
+    # bottle-green of FR-4 (G+K 1:1 forest green) — distinct from ``atomic``,
+    # whose Layer 0 lightens the same flat green toward mint. White
+    # silkscreen body text, gold (Spectra-6 yellow) copper traces / pads /
+    # matched-phrase accent, dark drilled centres. Space Mono carries the
+    # technical-silkscreen register. The oversized quote marks collapse onto
+    # solid gold (both ornament keys = yellow) so they read as copper against
+    # the dark board rather than dithering pale.
+    "circuit": {
+        "page_bg": SPECTRA6["green"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["yellow"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
     },
     # Permanent-marker fridge-doodle / sticky-note vibe. White paper, black
     # Sharpie body in the Permanent Marker hand, blue accent for the matched
@@ -1525,6 +1547,28 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "nightvision": {
+        "quote_regular": [
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Circuit shares nightvision's Space Mono chain — a technical monospace is
+    # exactly the silkscreen register a PCB's reference designators and board
+    # legend are set in. Same DejaVu Sans Mono system fallback before the
+    # Playfair degrade so a missing-Space-Mono install still lands on a
+    # monospace silhouette rather than a serif.
+    "circuit": {
         "quote_regular": [
             SPACEMONO_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
@@ -10720,6 +10764,187 @@ def draw_cartograph_border(
         draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
 
 
+# Deterministic copper-trace routes for ``draw_circuit_border``. Each entry is a
+# polyline of (x_frac, y_frac) waypoints in the unit square; the painter scales
+# them to the canvas and strokes them in gold (Spectra-6 yellow) with rounded
+# ``joint="curve"`` corners — the teardrop bends real PCB autorouters lay down.
+# They deliberately hug the perimeter margins (the body-text block sits centred
+# and is knocked out at the end via ``clear_rect``), so the routes read as nets
+# fanning out from the labelled component area in the middle of the board.
+# Coordinates stay clear of the y=14-29 DEBUG-banner band in the top-right.
+_CIRCUIT_TRACES: tuple[tuple[tuple[float, float], ...], ...] = (
+    # Top bus — left-to-right across the top margin with a centred jog.
+    ((0.06, 0.10), (0.40, 0.10), (0.46, 0.16)),
+    ((0.55, 0.16), (0.61, 0.10), (0.86, 0.10)),
+    # Left rail down the side margin with two right-angle branches inward.
+    ((0.05, 0.16), (0.05, 0.55), (0.12, 0.62)),
+    ((0.05, 0.34), (0.11, 0.34)),
+    # Right rail down the side margin.
+    ((0.95, 0.18), (0.95, 0.60), (0.88, 0.67)),
+    ((0.95, 0.42), (0.89, 0.42)),
+    # Bottom bus across the bottom margin with a 45° jog.
+    ((0.09, 0.90), (0.42, 0.90), (0.48, 0.84)),
+    ((0.58, 0.84), (0.64, 0.90), (0.92, 0.90)),
+    # Two short diagonal traces for visual variety.
+    ((0.15, 0.21), (0.21, 0.27), (0.21, 0.40)),
+    ((0.85, 0.24), (0.79, 0.30), (0.79, 0.45)),
+)
+# Silkscreen reference designators (text, x_frac, y_frac) painted in white near
+# the routed pads. The crystal "Y1" is drawn separately as a component outline
+# (the canonical reference for a quartz oscillator — the literal clock element
+# on a real board, a quiet nod to what this appliance is).
+_CIRCUIT_DESIGNATORS: tuple[tuple[str, float, float], ...] = (
+    ("R1", 0.40, 0.10),
+    ("R2", 0.61, 0.10),
+    ("C1", 0.05, 0.55),
+    ("C4", 0.95, 0.60),
+    ("U1", 0.21, 0.40),
+    ("D2", 0.79, 0.45),
+)
+
+
+def draw_circuit_border(
+    image: Image.Image,
+    colors: dict,
+    clear_rect: tuple[int, int, int, int] | None = None,
+) -> None:
+    """Paint a printed-circuit-board (PCB) composition around the quote.
+
+    The clock rendered as if etched onto the very board that drives the
+    eInk panel. Layers, deepest → shallowest:
+
+    * **Layer 0 — forest soldermask wash.** Flips half of the ``page_bg``
+      Spectra-6 green pixels to black on the ``(x + y) & 1`` checkerboard,
+      so the eye averages G+K 1:1 at panel distance into the deep
+      bottle-green of FR-4 soldermask (the documented forest-green recipe
+      ``herbarium`` / ``vitrail`` use). Idempotent — only flips *green*
+      pixels, so the (x+y)-even survivors are skipped on a second pass,
+      which matters because ``render`` calls every border painter twice
+      (once at image creation, once with ``clear_rect``). This deeper
+      green is what keeps ``circuit`` from reading like ``atomic``, whose
+      Layer 0 lightens the same flat green toward mint.
+    * **Copper traces** (gold / Spectra-6 yellow) routed from
+      ``_CIRCUIT_TRACES`` with rounded ``joint="curve"`` corners, hugging
+      the perimeter margins.
+    * **Plated pads** at every trace endpoint — a gold annular ring with a
+      dark drilled centre.
+    * **Mounting holes** in the four corners — a white silkscreen keep-out
+      ring around a dark drill. Inset 28 px from the edges; the top-right
+      hole overlaps the DEBUG-banner band, so ``circuit`` carries a
+      ``_DEBUG_LABEL_RIGHT_INSET`` entry that pushes the label left of it.
+    * **Y1 crystal** — a white component outline + two pads + label in the
+      bottom-left margin, the quartz oscillator that is the literal
+      timekeeping element on a real board.
+    * **Silkscreen reference designators** (white) beside the routed pads,
+      plus an ``IDLE HOURS · REV 2.0`` board legend in the bottom-right.
+
+    When ``clear_rect`` is provided (the standard ``render`` path, same as
+    ``kanagawa`` / ``cartograph``), the body region is reset to clean
+    forest soldermask — wiping any trace / pad / silk that routed across
+    it — and framed with a thin white silkscreen "component outline"
+    rounded rectangle plus a pin-1 square marker, so the quote reads as a
+    populated, labelled area of the board.
+    """
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    gold = colors.get("accent", SPECTRA6["yellow"])
+    silk = colors.get("text", SPECTRA6["white"])
+    green_ink = SPECTRA6["green"]
+    black_ink = SPECTRA6["black"]
+    pixels = image.load()
+    draw = ImageDraw.Draw(image)
+
+    # ------------------------------------------------------------------
+    # Layer 0 — forest soldermask wash (G+K 1:1 over the flat-green ground).
+    if page_bg == green_ink:
+        for y in range(height):
+            row_odd = y & 1
+            for x in range(width):
+                if ((x & 1) ^ row_odd) and pixels[x, y] == green_ink:
+                    pixels[x, y] = black_ink
+
+    trace_w = max(2, round(width / 320))
+    pad_r = max(3, round(width / 130))
+
+    def _pad(px: int, py: int, r_out: int = pad_r) -> None:
+        r_in = max(1, r_out - 3)
+        draw.ellipse((px - r_out, py - r_out, px + r_out, py + r_out), fill=gold)
+        draw.ellipse((px - r_in, py - r_in, px + r_in, py + r_in), fill=black_ink)
+
+    # ------------------------------------------------------------------
+    # Copper traces + pads at their endpoints.
+    for route in _CIRCUIT_TRACES:
+        pts = [(round(fx * width), round(fy * height)) for fx, fy in route]
+        if len(pts) >= 2:
+            draw.line(pts, fill=gold, width=trace_w, joint="curve")
+        for px, py in (pts[0], pts[-1]):
+            _pad(px, py)
+
+    # ------------------------------------------------------------------
+    # Corner mounting holes — white keep-out ring around a dark drill.
+    mount_inset = 28
+    mount_r = max(5, round(width / 62))
+    for mx, my in (
+        (mount_inset, mount_inset),
+        (width - 1 - mount_inset, mount_inset),
+        (mount_inset, height - 1 - mount_inset),
+        (width - 1 - mount_inset, height - 1 - mount_inset),
+    ):
+        draw.ellipse((mx - mount_r, my - mount_r, mx + mount_r, my + mount_r), outline=silk, width=2)
+        drill = max(2, mount_r - 4)
+        draw.ellipse((mx - drill, my - drill, mx + drill, my + drill), fill=black_ink)
+
+    # ------------------------------------------------------------------
+    # Silkscreen designators (white) beside the routed pads.
+    label_font = load_font([SPACEMONO_REGULAR, *META_FONT_CANDIDATES], size=max(9, round(width / 72)))
+    for text, fx, fy in _CIRCUIT_DESIGNATORS:
+        lx = round(fx * width) + pad_r + 3
+        ly = round(fy * height) - pad_r - 2
+        draw.text((lx, ly), text, font=label_font, fill=silk)
+
+    # ------------------------------------------------------------------
+    # Y1 quartz crystal in the bottom-left margin — component outline,
+    # two pads, and a label. The literal clock element on the board.
+    can_cx = round(0.22 * width)
+    can_cy = round(0.92 * height)
+    can_hw = max(12, round(width / 40))
+    can_hh = max(5, round(height / 64))
+    draw.rounded_rectangle(
+        (can_cx - can_hw, can_cy - can_hh, can_cx + can_hw, can_cy + can_hh),
+        radius=3, outline=silk, width=2,
+    )
+    _pad(can_cx - can_hw, can_cy + can_hh + 3, r_out=max(3, pad_r - 1))
+    _pad(can_cx + can_hw, can_cy + can_hh + 3, r_out=max(3, pad_r - 1))
+    draw.text((can_cx + can_hw + 6, can_cy - can_hh), "Y1", font=label_font, fill=silk)
+
+    # Board legend, bottom-right silkscreen.
+    legend = "IDLE HOURS · REV 2.0"
+    legend_bb = draw.textbbox((0, 0), legend, font=label_font)
+    legend_w = legend_bb[2] - legend_bb[0]
+    draw.text((width - mount_inset - legend_w, round(0.945 * height)), legend, font=label_font, fill=silk)
+
+    # ------------------------------------------------------------------
+    # Body-text knockout — clean forest board + white silkscreen outline.
+    if clear_rect is None or page_bg is None:
+        return
+    cx0, cy0, cx1, cy1 = clear_rect
+    cx0 = max(0, cx0)
+    cy0 = max(0, cy0)
+    cx1 = min(width - 1, cx1)
+    cy1 = min(height - 1, cy1)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return
+    # Reset to clean soldermask so the white quote text sits on a clear
+    # board section — wipe any trace / pad / designator that routed across.
+    for py in range(cy0, cy1 + 1):
+        row_odd = py & 1
+        for px in range(cx0, cx1 + 1):
+            pixels[px, py] = black_ink if ((px & 1) ^ row_odd) else green_ink
+    # Silkscreen "component outline" framing the populated area + pin-1 dot.
+    draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=6, outline=silk, width=1)
+    draw.rectangle((cx0 - 1, cy0 - 1, cx0 + 3, cy0 + 3), fill=silk)
+
+
 # Registry consumed by ``_paint_theme_border``. Mapping is intentionally sparse
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
@@ -10754,6 +10979,7 @@ _BORDER_PAINTERS = {
     "firmament": draw_firmament_border,
     "kanagawa": draw_kanagawa_border,
     "cartograph": draw_cartograph_border,
+    "circuit": draw_circuit_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -10853,6 +11079,13 @@ _DEBUG_LABEL_RIGHT_INSET = {
                         # swath is bounded at x ≤ width-100 (left of
                         # the default label right edge), so neither
                         # graphic touches the label bbox.
+    "circuit": 46,      # past the TR corner mounting hole. Centre at
+                        # (width-29, 28) with mount_r≈13 → leftmost pixel
+                        # of the white keep-out ring at x=width-42; plus a
+                        # 4 px breathing gap → label's right edge ends at
+                        # x ≤ width-46. The hole's top sits at y=15 (inside
+                        # the y=14-29 banner band), so the horizontal inset
+                        # is what keeps the ``DEBUG MODE`` glyphs clear.
 }
 
 # Themes whose matched-phrase (``quote_bold``) face has a distinctive
@@ -15753,6 +15986,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         "blueprint": (2, 2, 2),
         "kanagawa": (14, 6, 6),
         "cartograph": (22, 12, 12),
+        # circuit knocks the body region back to clean forest soldermask and
+        # frames it with a 1 px white silkscreen outline + a pin-1 corner dot;
+        # the 16/10/10 pad keeps that outline (and the dot just outside the
+        # top-left corner) clear of the first / last text lines.
+        "circuit": (16, 10, 10),
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
         clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
@@ -15791,6 +16029,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # eight map layers in one pass, knocking out the body-text rect
         # to a clean cream-washed rounded cartouche at the end.
         draw_cartograph_border(image, colors, clear_rect=clear_rect)
+    elif theme == "circuit":
+        # Same single-call dispatch as kanagawa / cartograph — the PCB
+        # painter routes copper / pads / silkscreen across the board, then
+        # knocks the body-text rect back to clean forest soldermask and
+        # frames it with a white silkscreen component outline.
+        draw_circuit_border(image, colors, clear_rect=clear_rect)
     else:
         _paint_theme_border(image, theme, colors)
 
