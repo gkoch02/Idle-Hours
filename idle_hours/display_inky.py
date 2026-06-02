@@ -285,6 +285,14 @@ THEME_SATURATION: dict[str, float] = {
     # phrase all need the dark-ground 0.7 tier so the neon tones stay vivid
     # against the panel's anchored black rather than washing toward mid-tones.
     "outrun": 0.7,
+    # Grimdark / Imperial Gothic — black void ground, bone-white body, gold
+    # (yellow) Aquila + imperial trim, blood-red inner rule, and a forge-amber
+    # (R+Y 5:3) matched phrase. Same dark-ground profile as ``dark`` /
+    # ``gothic`` / ``marquee`` / ``firmament`` — the 0.7 tier keeps the gold
+    # trim, the red accents, and the synthesised forge-amber glow confidently
+    # chromatic against the panel's anchored black rather than fading toward a
+    # dim mid-tone.
+    "grimdark": 0.7,
     # Circuit / printed circuit board. The flat-green ``page_bg`` is darkened
     # to deep FR-4 soldermask (G+K 1:1 forest green) by the border painter's
     # Layer 0, so it joins the dark / coloured-ground tier — the gold (yellow)

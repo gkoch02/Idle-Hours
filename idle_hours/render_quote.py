@@ -89,6 +89,7 @@ THEME_ORDER: tuple[str, ...] = (
     "outrun",
     "circuit",
     "letter",
+    "grimdark",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1079,6 +1080,27 @@ THEMES = {
         "accent": SPECTRA6["blue"],
         "ornament_dark": SPECTRA6["white"],
         "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # Grimdark / Imperial Gothic — "in the grim darkness of the far future."
+    # Black void ground, bone-white body, blood-red accent rerouted to a
+    # forge-amber (R+Y 5:3 tangerine) glow on the matched phrase so the
+    # time reads like molten metal / a hazard stripe against the bulkhead.
+    # The decorative ``draw_grimdark_border`` lays the rest of the militaristic-
+    # cathedral vocabulary on top: a doubled gold + blood imperial trim, an
+    # Imperial Aquila (double-headed eagle) in the top margin, a memento-mori
+    # skull in the bottom margin, industrial corner rivets, and mid-edge studs.
+    # Both ornament slots pin to gold so the oversized blackletter quote marks
+    # collapse to solid gilt (same trick ``gothic`` uses with red — on the
+    # black ground a white ornament_light half would wash the gilt to grey).
+    "grimdark": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["yellow"],
+        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
     # Wax-sealed letter. A quote presented as intimate handwritten
@@ -2691,6 +2713,44 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "grimdark": {
+        # Imperial Gothic = Roman + Gothic blackletter, the exact typographic
+        # blend of the 40K Imperium. The body uses Cinzel Decorative (the
+        # chiselled capitalis-monumentalis revival ``roman`` already pulls
+        # from) for the lapidary "stone-cut Imperial inscription" register;
+        # the oversized quote marks switch to UnifrakturMaguntia blackletter
+        # (the ``illuminated`` / ``gothic`` ornament face) for the cathedral
+        # flourish. This pairing keeps grimdark visually distinct from both
+        # sources: ``roman`` is Cinzel-everywhere on a white ground with no
+        # blackletter, and ``gothic`` is an EB-Garamond body with a Unifraktur
+        # matched phrase and a cathedral-tracery border — neither shares the
+        # Cinzel-body + Unifraktur-ornament + Aquila/skull/rivet silhouette.
+        # The matched phrase steps up one Cinzel weight (Regular → Bold) and
+        # earns its differentiation from the forge-amber accent reroute in
+        # ``_draw_text_body``; switching face mid-line would shatter the
+        # inscription illusion the way it would for ``roman``. Each chain ends
+        # at a heavy serif before the Playfair chain so a missing-Cinzel
+        # install lands on a high-contrast serif rather than a sans.
+        "quote_regular": [
+            CINZELDECORATIVE_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CINZELDECORATIVE_BOLD,
+            CINZELDECORATIVE_BLACK,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            UNIFRAKTUR_BOOK,
+            CINZELDECORATIVE_BLACK,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     # Wax-sealed letter. Dancing Script (a fluid pen-script with a real
     # weight axis) carries the body and the matched phrase; Pinyon Script
     # (formal copperplate) carries only the oversized ornament quote
@@ -3640,6 +3700,18 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # The body white passes through solid via the ``else`` branch
         # below; only the matched-phrase yellow accent hits this seam.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
+    elif theme == "grimdark" and fill == SPECTRA6["red"]:
+        # Forge-amber (R+Y 5/8:3/8 tangerine via the shared 4×4 Bayer
+        # threshold — the same recipe ``deco`` / ``atomic`` / ``astrarium``
+        # use). On the black bulkhead ground the matched time phrase reads
+        # as molten metal / a glowing hazard stripe, tying it to the gold
+        # Imperial trim and Aquila that ``draw_grimdark_border`` paints. A
+        # 50/50 R+Y here would read as washed-out amber because yellow
+        # out-luminates red; the 3/8 yellow bias drags the perceived hue
+        # back onto the warm-orange forge-glow the theme wants. The body /
+        # attribution white passes through solid via the ``else`` branch;
+        # only the matched-phrase red sentinel hits this seam.
+        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -10860,6 +10932,311 @@ def draw_cartograph_border(
         draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
 
 
+def _grimdark_cog(draw, cx: int, cy: int, radius: int, teeth_n: int, color, *,
+                  tooth_len: int = 4, tooth_w: int = 3, hub: int | None = None,
+                  hub_color=None) -> None:
+    """Draw an Adeptus-Mechanicus-style toothed cog/gear centred on (cx, cy).
+
+    A filled disc with ``teeth_n`` trapezoidal teeth radiating from the rim,
+    plus an optional hollow hub. Pure ``ImageDraw`` (polygons + ellipses) so
+    it clips silently at small preview sizes and stays on-palette. Used for
+    the bottom cog-skull's gear ring and the bulkhead-seam machinery nodes.
+    """
+    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color)
+    for i in range(teeth_n):
+        a = 2 * math.pi * i / teeth_n
+        ca, sa = math.cos(a), math.sin(a)
+        nx, ny = -sa, ca  # unit perpendicular, for the tooth's width
+        bx, by = cx + ca * (radius - 1), cy + sa * (radius - 1)
+        tx, ty = cx + ca * (radius + tooth_len), cy + sa * (radius + tooth_len)
+        draw.polygon(
+            [
+                (round(bx + nx * tooth_w), round(by + ny * tooth_w)),
+                (round(bx - nx * tooth_w), round(by - ny * tooth_w)),
+                (round(tx - nx * tooth_w), round(ty - ny * tooth_w)),
+                (round(tx + nx * tooth_w), round(ty + ny * tooth_w)),
+            ],
+            fill=color,
+        )
+    if hub is not None and hub > 0:
+        draw.ellipse(
+            (cx - hub, cy - hub, cx + hub, cy + hub),
+            fill=hub_color if hub_color is not None else SPECTRA6["black"],
+        )
+
+
+def _grimdark_skull(draw, cx: int, cy: int, s: int, bone, void) -> None:
+    """Draw a memento-mori skull of half-height ``s`` centred on (cx, cy).
+
+    Parametrised off the s=12 reference design so the same primitive serves
+    the big bottom cog-skull and the smaller flanking skulls. Cranium + jaw
+    in ``bone``; eye sockets, nasal cavity and (at larger sizes) tooth gaps
+    carved back to ``void``. ImageDraw-only, clip-safe, on-palette.
+    """
+    k = s / 12.0
+
+    def r(v: float) -> int:
+        return round(v * k)
+
+    # Cranium + jaw.
+    draw.ellipse((cx - r(12), cy - r(14), cx + r(12), cy + r(6)), fill=bone)
+    draw.polygon(
+        [(cx - r(8), cy + r(3)), (cx + r(8), cy + r(3)), (cx + r(5), cy + r(14)), (cx - r(5), cy + r(14))],
+        fill=bone,
+    )
+    # Eye sockets + nasal cavity carved to the void.
+    draw.ellipse((cx - r(9), cy - r(7), cx - r(2), cy + r(1)), fill=void)
+    draw.ellipse((cx + r(2), cy - r(7), cx + r(9), cy + r(1)), fill=void)
+    draw.polygon([(cx, cy - r(2)), (cx + r(2), cy + r(4)), (cx - r(2), cy + r(4))], fill=void)
+    # Tooth gaps only at larger sizes — at small s they muddy into the jaw.
+    if s >= 11:
+        for tx in (cx - r(4), cx, cx + r(4)):
+            draw.line((tx, cy + r(5), tx, cy + r(13)), fill=void, width=1)
+
+
+# Deterministic seed for grimdark's industrial gunmetal mottle so re-renders
+# of a given time stay byte-identical.
+_GRIMDARK_MOTTLE_SEED = 0x40_0B
+
+
+def _grimdark_paint_mottle(image: Image.Image, width: int, height: int) -> None:
+    """Layer-0 dark-grey industrial mottle over the black void ground.
+
+    Spectra 6 has no grey ink, so a dark gunmetal is synthesised by stippling
+    sparse *white* into the black ``page_bg``: at panel viewing distance the
+    eye integrates ~5-25%-white-on-black into charcoal / dark grey (the K+W
+    recipe — the inverse of the cream Y+W washes other themes paint, here on a
+    black ground). A faint ordered base gives the whole bulkhead a uniform
+    gunmetal tone; seeded irregular blotches then lighten (oxidised / scuffed
+    plate) or darken (grime / shadow) local patches so the ground reads as
+    weathered industrial metal rather than a flat halftone. Painted first, so
+    the trim / Aquila / cog-skull / text all paint cleanly on top. Only flips
+    pixels currently equal to the void, and every write is bounds-clipped, so
+    it stays on-palette and safe at thumbnail preview sizes.
+    """
+    pixels = image.load()
+    void = SPECTRA6["black"]
+    grey_ink = SPECTRA6["white"]
+
+    # Faint organic base: a hash-scatter of ~4.5% white (film-grain rather
+    # than an ordered Bayer grid, which would read as a regular dot-screen)
+    # so the ground reads as a uniform dark charcoal gunmetal. A second hash
+    # constant decorrelates this from the blotch scatter below.
+    base_thresh = round(0.045 * 65535)
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] != void:
+                continue
+            hb = ((x * 374761393) ^ (y * 668265263) ^ ((x + y) * 1274126177)) & 0xFFFF
+            if hb < base_thresh:
+                pixels[x, y] = grey_ink
+
+    # Irregular weathering blotches. Each is a soft disc whose extra stipple
+    # density falls off from a random peak at the centre to nothing at the
+    # rim; ~1/3 of them *erode* the base back to void (dark grime), the rest
+    # *add* white (scuffed/oxidised highlight). A cheap integer hash per pixel
+    # supplies the scatter so no per-pixel RNG object call is needed.
+    rng = random.Random(_GRIMDARK_MOTTLE_SEED)
+    blotches = max(6, (width * height) // 9000)
+    for _ in range(blotches):
+        bx = rng.randint(0, width - 1)
+        by = rng.randint(0, height - 1)
+        br = rng.randint(18, 58)
+        peak = rng.uniform(0.10, 0.24)
+        darken = rng.random() < 0.34
+        x0 = max(0, bx - br)
+        x1 = min(width - 1, bx + br)
+        y0 = max(0, by - br)
+        y1 = min(height - 1, by + br)
+        br2 = br * br
+        for y in range(y0, y1 + 1):
+            dy = y - by
+            for x in range(x0, x1 + 1):
+                dx = x - bx
+                d2 = dx * dx + dy * dy
+                if d2 > br2:
+                    continue
+                dens = peak * (1.0 - (d2 ** 0.5) / br)
+                h = ((x * 2654435761) ^ (y * 40503) ^ ((x * y) & 0xFFFF)) & 0xFFFF
+                if h / 65535.0 >= dens:
+                    continue
+                if darken:
+                    if pixels[x, y] == grey_ink:
+                        pixels[x, y] = void
+                elif pixels[x, y] == void:
+                    pixels[x, y] = grey_ink
+
+
+def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
+    """Paint the Imperial Gothic frame: gold + blood doubled trim, an Aquila,
+    a Mechanicus cog-skull, riveted bulkhead seams, and corner machinery.
+
+    Grimdark's visual identity is militaristic cathedral — the gothic-
+    industrial register of the 40K Imperium. Every element paints with solid
+    Spectra-6 inks (gold = yellow, blood = red, bone = white, void = black)
+    via ``ImageDraw`` primitives only, so the border stays on-palette and
+    silently clips at the small ``/api/preview`` thumbnail sizes rather than
+    indexing a raw ``PixelAccess`` past the canvas bounds (the failure mode
+    ``tests/test_render_quote.py::TestPreviewSizeRendering`` fences). The
+    forge-amber matched-phrase glow is synthesised separately in
+    ``_draw_text_body``; the border carries no stipple post-pass.
+
+    Composition:
+
+    * **Layer-0 gunmetal mottle** — a synthesised dark-grey weathering of the
+      black ground (sparse white-on-black stipple + irregular blotches), so
+      the bulkhead reads as scuffed industrial metal rather than flat void.
+      See ``_grimdark_paint_mottle``.
+    * **Doubled imperial trim** — a thick gold outer rule (Imperial gilt
+      edging) + a thin blood-red inner rule, the polychrome banded frame of
+      an ornate reliquary or a starship bulkhead hatch.
+    * **Imperial Aquila** — the double-headed eagle, the single most
+      recognisable Imperium device, centred in the top margin: a gold torso
+      diamond, twin outward-facing heads with beaks, and two swept wings
+      whose serrated lower edge reads as splayed flight feathers. Centred
+      horizontally so it clears the right-aligned ``DEBUG MODE`` banner (the
+      reason grimdark needs no ``_DEBUG_LABEL_RIGHT_INSET`` entry, same as
+      ``atomic`` / ``dispatch``).
+    * **Mechanicus cog-skull** — a bone-white skull set inside a gold toothed
+      cog/gear in the bottom margin, the literal icon of the Adeptus
+      Mechanicus (the Imperium's machine-priesthood): the gear ring shows
+      around the skull's rim, fusing the death iconography with the cult of
+      the Machine-God. Flanked by two smaller skulls (an ossuary row) so the
+      bottom margin reads as a reliquary shelf. Centred so it clears the
+      bottom-left attribution.
+    * **Riveted bulkhead seams** — a vertical column of small gold rivets down
+      each side rail with two embedded Mechanicus cog nodes per side, the
+      bolted-armour-plate / servitor-machinery texture of a starship corridor.
+    * **Corner rivets** — gold hex-bolt discs with a blood centre at the four
+      inner corners, the industrial fastenings of armour plate.
+    * **Mid-edge studs** — small blood diamonds riveted onto the gold side
+      rules at the vertical midpoint.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    gold = SPECTRA6["yellow"]   # imperial gilt trim / Aquila
+    blood = SPECTRA6["red"]     # inner rule / rivet cores / studs
+    bone = SPECTRA6["white"]    # skull
+    void = SPECTRA6["black"]    # ground / skull recesses
+
+    # --- Layer 0: industrial gunmetal mottle over the black void, painted
+    # before everything so the trim / ornaments / quote text land on top.
+    _grimdark_paint_mottle(image, width, height)
+
+    # --- Doubled imperial trim. ImageDraw rectangles clip, but an inverted
+    # bbox (inset >= half-dimension) raises, so guard at tiny preview sizes.
+    outer_inset = 12
+    inner_inset = 19
+    if width > 2 * outer_inset and height > 2 * outer_inset:
+        draw.rectangle(
+            (outer_inset, outer_inset, width - 1 - outer_inset, height - 1 - outer_inset),
+            outline=gold,
+            width=3,
+        )
+    if width > 2 * inner_inset and height > 2 * inner_inset:
+        draw.rectangle(
+            (inner_inset, inner_inset, width - 1 - inner_inset, height - 1 - inner_inset),
+            outline=blood,
+            width=1,
+        )
+
+    cx = width // 2
+
+    # --- Imperial Aquila in the top margin (centred on (cx, ay)). Only paint
+    # when the full wingspan fits inside the inner trim — at thumbnail widths
+    # there isn't room, and a clipped half-eagle reads as noise.
+    ay = 40
+    half_span = 40
+    if cx - half_span > inner_inset and ay + 18 < height:
+        # Torso — a vertical gold diamond.
+        draw.polygon(
+            [(cx, ay - 14), (cx + 7, ay), (cx, ay + 16), (cx - 7, ay)],
+            fill=gold,
+        )
+        # Twin heads angled outward, each with a downward-hooked beak.
+        for sign in (-1, 1):
+            hx = cx + sign * 8
+            hy = ay - 13
+            draw.ellipse((hx - 4, hy - 5, hx + 4, hy + 3), fill=gold)
+            draw.polygon(
+                [(hx + sign * 4, hy - 1), (hx + sign * 12, hy + 1), (hx + sign * 4, hy + 4)],
+                fill=gold,
+            )
+        # Swept wings — the top edge rises to a raised outer tip, then the
+        # underside steps back toward the torso in three downward feather
+        # points so the wing reads as a splayed heraldic eagle pinion
+        # rather than a smooth bat membrane.
+        for sign in (-1, 1):
+            wing = [
+                (cx + sign * 5, ay - 9),            # inner shoulder
+                (cx + sign * half_span, ay - 13),   # raised outer tip
+                (cx + sign * (half_span - 5), ay + 1),
+                (cx + sign * 31, ay - 2),           # notch
+                (cx + sign * 27, ay + 9),           # primary feather (down)
+                (cx + sign * 21, ay - 1),           # notch
+                (cx + sign * 16, ay + 9),           # secondary feather (down)
+                (cx + sign * 11, ay + 0),           # notch
+                (cx + sign * 7, ay + 6),            # inner covert
+            ]
+            draw.polygon(wing, fill=gold)
+
+    # --- Mechanicus cog-skull in the bottom margin (centred on (cx, sy)):
+    # a gold toothed gear ring with a bone skull set inside it, plus two
+    # smaller flanking skulls reading as an ossuary shelf.
+    sy = height - 36
+    if sy - 24 > inner_inset and cx - 24 > inner_inset:
+        # Gear ring behind the skull — the Adeptus Mechanicus cog. Drawn first
+        # so the skull paints on top, leaving the toothed rim showing around it.
+        _grimdark_cog(draw, cx, sy, 21, 12, gold, tooth_len=4, tooth_w=3)
+        draw.ellipse((cx - 16, sy - 16, cx + 16, sy + 16), fill=void)  # hollow the hub
+        # Flanking ossuary skulls — small, just inside the side machinery.
+        flank = 66
+        if cx - flank - 8 > inner_inset:
+            for fx in (cx - flank, cx + flank):
+                _grimdark_skull(draw, fx, sy + 2, 8, bone, void)
+        # Central skull set into the cog.
+        _grimdark_skull(draw, cx, sy, 12, bone, void)
+
+    # --- Riveted bulkhead seams down each side rail: a column of small gold
+    # rivets with two embedded Mechanicus cog nodes per side. The servitor /
+    # machine-corridor texture, kept in the narrow side band (x ~ 25) well
+    # clear of the centred quote column.
+    rail_x_left = inner_inset + 6
+    rail_x_right = width - 1 - inner_inset - 6
+    if rail_x_left + 10 < rail_x_right and height > 160:
+        cog_ys = (round(height * 0.30), round(height * 0.70))
+        for rail_x in (rail_x_left, rail_x_right):
+            for ry in range(inner_inset + 30, height - inner_inset - 24, 40):
+                draw.ellipse((rail_x - 3, ry - 3, rail_x + 3, ry + 3), fill=gold)
+                draw.ellipse((rail_x - 1, ry - 1, rail_x + 1, ry + 1), fill=void)
+            for cy_node in cog_ys:
+                _grimdark_cog(draw, rail_x, cy_node, 8, 8, gold, tooth_len=3, tooth_w=2, hub=3, hub_color=void)
+
+    # --- Corner rivets — gold hex-bolt discs with a blood centre, tucked
+    # just inside the blood inner rule.
+    rivet_r = 4
+    rivet_inset = inner_inset + 7
+    for rx, ry in (
+        (rivet_inset, rivet_inset),
+        (width - 1 - rivet_inset, rivet_inset),
+        (rivet_inset, height - 1 - rivet_inset),
+        (width - 1 - rivet_inset, height - 1 - rivet_inset),
+    ):
+        if rivet_r <= rx < width - rivet_r and rivet_r <= ry < height - rivet_r:
+            draw.ellipse((rx - rivet_r, ry - rivet_r, rx + rivet_r, ry + rivet_r), fill=gold)
+            draw.ellipse((rx - 1, ry - 1, rx + 1, ry + 1), fill=blood)
+
+    # --- Mid-edge studs — small blood diamonds riveted onto the gold side
+    # rules at the vertical midpoint.
+    my = height // 2
+    if my - 5 > outer_inset and my + 5 < height - outer_inset:
+        for mx in (outer_inset, width - 1 - outer_inset):
+            draw.polygon(
+                [(mx, my - 5), (mx + 4, my), (mx, my + 5), (mx - 4, my)],
+                fill=blood,
+            )
+
+
 # Fixed seed for the letter theme's aged-paper texture (foxing scatter +
 # crumple wrinkles), so re-renders of a given time stay byte-identical —
 # same fixed-seed invariant as ``_SALOON_FOXING`` / ``_FIRMAMENT_STAR_SEED``.
@@ -11425,6 +11802,7 @@ _BORDER_PAINTERS = {
     "cartograph": draw_cartograph_border,
     "circuit": draw_circuit_border,
     "letter": draw_letter_border,
+    "grimdark": draw_grimdark_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -11457,6 +11835,14 @@ _BORDER_PAINTERS = {
 #     (592, 149) is even lower. No outer frame, no other TR ornaments,
 #     so the default debug label clears every painted layer by
 #     construction.
+#   - grimdark: the Aquila is centred horizontally (far from the right-
+#     aligned label's x range) and sits at y=26-58 anyway; the doubled
+#     gold+blood trim's right rule paints x=width-15 to width-12, leaving
+#     ~7px of clearance beyond the default label right edge (same as
+#     newsprint). The corner rivet at the TR inner corner is centred at
+#     (width-27, 26) with radius 4 → rightmost pixel x=width-23, well
+#     left of the label. So the default debug label clears every painted
+#     layer, same exemption as atomic / dispatch.
 _DEBUG_LABEL_RIGHT_INSET = {
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
