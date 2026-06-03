@@ -8,3 +8,4 @@ coverage.json
 research/raw-gutenberg/
 output/*
 !output/.gitkeep
+build/

@@ -804,6 +804,7 @@ class TestRender:
             "outrun",
             "letter",
             "sampler",
+            "anna_atkins",
         ],
     )
     def test_render_new_themes_smoke(self, theme):

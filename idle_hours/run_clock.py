@@ -200,6 +200,7 @@ def parse_args() -> argparse.Namespace:
         "letter",
         "grimdark",
         "sampler",
+        "anna_atkins",
         "diags",
     ]
     parser.add_argument(
