@@ -803,6 +803,7 @@ class TestRender:
             "firmament",
             "outrun",
             "letter",
+            "sampler",
         ],
     )
     def test_render_new_themes_smoke(self, theme):
