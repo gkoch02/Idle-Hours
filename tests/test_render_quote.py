@@ -803,6 +803,7 @@ class TestRender:
             "firmament",
             "outrun",
             "letter",
+            "sampler",
             "anna_atkins",
         ],
     )

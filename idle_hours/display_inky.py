@@ -151,6 +151,11 @@ THEME_SATURATION: dict[str, float] = {
     # pixel averaging at panel distance, so over-saturation would shift
     # the calibration target.
     "diags": 0.5,
+    # sampler — counted cross-stitch embroidery on a cream Aida-cloth ground.
+    # White/cream ground with red + green + blue + yellow floss stitches, so the
+    # gentler white-ground 0.5 tier keeps the floss colours calibrated rather
+    # than blown out.
+    "sampler": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

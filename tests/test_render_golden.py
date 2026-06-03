@@ -431,6 +431,27 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "kanagawa",
     },
+    # sampler — a custom-render frame (counted cross-stitch). Pins the
+    # deterministic stitch-mapping: a regression in the fit loop, the stitch
+    # primitive, the matched-phrase floss reroute, or the Aida ground flips
+    # thousands of pixels here.
+    {
+        "name": "standard_sampler_production",
+        "time": "04:30",
+        "row": _row(
+            "It was almost half past four when the bell finally rang and "
+            "the waves crashed against the harbour wall.",
+            "half past four",
+            author="Jane Austen",
+            title="Pride and Prejudice",
+            bucket="h4_half_past",
+            resolved_bucket="h4_half_past",
+            quality_score=88,
+            source_id="1342",
+        ),
+        "mode": "production",
+        "theme": "sampler",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

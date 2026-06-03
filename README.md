@@ -306,6 +306,7 @@ Forty-one themes ship built-in, all constrained to the Spectra 6 panel palette (
 | `outrun`      | <img src="idle_hours/assets/previews/outrun.png" width="240" alt="outrun theme preview">           | black       | white | cyan   | Oxanium (techno sans) | 1980s synthwave sunset (neon grid, custom layout) |
 | `circuit`     | <img src="idle_hours/assets/previews/circuit.png" width="240" alt="circuit theme preview">         | forest green | white | gold   | Space Mono (mono)    | Printed circuit board (PCB silkscreen) |
 | `letter`      | <img src="idle_hours/assets/previews/letter.png" width="240" alt="letter theme preview">           | cream/white | black | red    | Dancing Script + Pinyon Script | Wax-sealed handwritten letter |
+| `sampler`     | <img src="idle_hours/assets/previews/sampler.png" width="240" alt="sampler theme preview">         | cream/white | black | red    | Silkscreen (pixel)   | Counted cross-stitch embroidery sampler (custom layout) |
 | `anna_atkins` | <img src="idle_hours/assets/previews/anna_atkins.png" width="240" alt="anna_atkins theme preview"> | Prussian blue | white | sky-blue | Libre Caslon Text + Pinyon Script | Anna Atkins 1843 botanical cyanotype (dithered photogram) |
 | `diags`       | <img src="idle_hours/assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
 

@@ -1,8 +1,9 @@
 """Smoke tests for the custom-render themes that bypass the standard literary layout.
 
-These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``, ``vinyl``)
-each dispatch out of ``render()`` into their own frame function and own their
-composition top to bottom. The contracts every custom-render frame must keep:
+These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``, ``vinyl``,
+``vitrail``, ``outrun``, ``sampler``) each dispatch out of ``render()`` into
+their own frame function and own their composition top to bottom. The contracts
+every custom-render frame must keep:
 
 * the returned image is the requested ``(width, height)``;
 * every output pixel sits on the SPECTRA6 palette (verified after
@@ -23,7 +24,7 @@ from idle_hours import render_quote as rq
 
 from .conftest import make_row
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler")
 
 
 def _on_palette(image: Image.Image) -> bool:
