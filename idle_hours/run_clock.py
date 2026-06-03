@@ -54,6 +54,8 @@ from idle_hours.runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_re
     auto_theme_for,
     pick_next_random_theme,
     pick_random_theme,
+    random_theme_pool,
+    recent_window_size,
     resolve_effective_theme,
 )
 
@@ -711,8 +713,10 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
 
     Picks are drained from :attr:`RuntimeState.random_theme_bag` (a shuffled
     pass through the full cycle) so every theme is shown once before any
-    repeat. When the bag empties it's refilled with a fresh shuffle, with the
-    head swapped if it would replay the just-played theme.
+    repeat. When the bag empties it's refilled with a fresh shuffle, and the
+    themes in :attr:`RuntimeState.random_theme_recent` (the last ~half-pool
+    picks) are held out of the new bag's draw-front so a theme shown at the
+    tail of one pass can't reappear at the head of the next.
 
     The gate uses :attr:`RuntimeState.last_random_quote_id` (advanced
     synchronously by this function), not ``last_quote_id`` (advanced only by
@@ -739,10 +743,16 @@ def _maybe_pick_random_theme(state: RuntimeState, quote_id: tuple | None) -> str
         if not quote_changed:
             return None
         new_theme, new_bag = pick_next_random_theme(
-            list(state.random_theme_bag), just_played=state.current_random_theme
+            list(state.random_theme_bag), recent=state.random_theme_recent
         )
         state.current_random_theme = new_theme
         state.random_theme_bag = new_bag
+        # Roll the recent-window forward (most-recent last) and cap it at
+        # ~half the pool, so the next refill keeps these themes out of the
+        # new bag's draw-front. This is what prevents a tail-of-pass theme
+        # from reappearing a pick or two into the next pass.
+        window = recent_window_size(len(random_theme_pool()))
+        state.random_theme_recent = (state.random_theme_recent + [new_theme])[-window:]
         state.last_random_quote_id = quote_id
     return new_theme
 

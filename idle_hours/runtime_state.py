@@ -59,6 +59,13 @@ class RuntimeState:
         # restart starts a fresh pass, same rationale as
         # ``current_random_theme``.
         self.random_theme_bag: list[str] = []
+        # Rolling window of the most-recently-drawn themes (most-recent last),
+        # capped at ~half the pool. Carried across the bag-refill boundary so
+        # a theme drawn at the tail of one pass can't reappear at the head of
+        # the next — the independent per-pass shuffles otherwise let the same
+        # theme recur only one or two picks later. Not persisted, same
+        # rationale as ``random_theme_bag``.
+        self.random_theme_recent: list[str] = []
         self.manual_quiet = False             # toggled by button D
         self.last_bucket: str | None = None
         self.last_quote_id: tuple | None = None
