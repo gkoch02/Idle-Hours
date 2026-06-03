@@ -90,6 +90,7 @@ THEME_ORDER: tuple[str, ...] = (
     "circuit",
     "letter",
     "grimdark",
+    "anna_atkins",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1131,6 +1132,31 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Anna Atkins 1843 botanical cyanotype — the first book illustrated with
+    # photographs. Deep Prussian-blue ground carrying a render-time
+    # Floyd–Steinberg-dithered continuous-tone cyanotype photogram (the new
+    # ``dither_image_to_palette`` capability — see ``draw_anna_atkins_border``)
+    # plus procedural white algae/fern silhouettes and handwritten white Latin
+    # margin labels in copperplate. Body / matched-phrase white Libre Caslon
+    # Text; the quote sits in a deep-blue knockout panel so the white text reads
+    # over the busy plate. ``accent`` is a *yellow sentinel*, not a painted
+    # colour: ``_draw_text_body`` reroutes the matched-phrase yellow to a 50/50
+    # blue+white sky-blue stipple (the documented ``glacier`` recipe), so the
+    # time phrase reads as a ghostly cyanotype element rather than warm ink. The
+    # sentinel surfaces literally only in the debug-mode banner (yellow-on-blue,
+    # legible), the same accent-as-debug-banner pattern ``firmament`` uses on its
+    # navy ground. ornament_dark/light = blue/white so the oversized quote marks
+    # render as the same sky-blue stipple.
+    "anna_atkins": {
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1487,6 +1513,24 @@ PRESSSTART2P_REGULAR = str(BASE_DIR / "fonts/press-start-2p/PressStart2P-Regular
 # Noto Sans before the Playfair chain.
 PIXELIFYSANS_VARIABLE = str(BASE_DIR / "fonts/pixelify-sans/PixelifySans-Variable.ttf")
 OXANIUM_VARIABLE = str(BASE_DIR / "fonts/oxanium/Oxanium-Variable.ttf")
+# Libre Caslon Text — Pablo Impallari / Rodrigo Fuenzalida (OFL). A
+# screen-legible revival of Caslon, the canonical English book face of
+# the 18th–19th centuries — the typography of Anna Atkins's own era and
+# nation (her *Photographs of British Algae* was self-published in
+# England in 1843). Used by the ``anna_atkins`` cyanotype theme for the
+# body / matched-phrase white text so the quote reads as the printed
+# letterpress an English natural-history book of the period carried,
+# while the handwritten white margin labels keep to copperplate (Pinyon
+# Script). Variable font with named instances Regular / Medium /
+# SemiBold / Bold (default Regular); the Regular / Bold slots are pinned
+# explicitly the same way the Inter / Jost / Rubik / Antonio / Oxanium
+# variable fonts are. Distinct from every other serif in the rotation
+# (Playfair display-transitional, Bitter slab, Old Standard Didone, the
+# Garamond/Caslon-adjacent EB Garamond / Cormorant / IM Fell, Cardo
+# humanist) so the cyanotype plate reads as its own typographic register.
+# Falls back through DejaVu / Liberation / Noto Serif before the Playfair
+# chain so a missing install still lands on a serif silhouette.
+LIBRECASLON_VARIABLE = str(BASE_DIR / "fonts/libre-caslon-text/LibreCaslonText-Variable.ttf")
 # Dancing Script — The Dancing Script Project Authors (OFL). A lively,
 # fluid pen-script with a real weight axis (wght 400..700, named Regular
 # / Medium / SemiBold / Bold instances). The body face of the ``letter``
@@ -2786,6 +2830,34 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "anna_atkins": {
+        # Libre Caslon Text — the printed-letterpress register of an 1843
+        # English natural-history book (see the LIBRECASLON_VARIABLE comment).
+        # Regular body, Bold matched phrase; the matched-phrase differentiation
+        # also arrives via the sky-blue stipple reroute in ``_draw_text_body``.
+        "quote_regular": [
+            (LIBRECASLON_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (LIBRECASLON_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        # Oversized opening / closing quote marks in copperplate (Pinyon
+        # Script), rendered as the same sky-blue stipple via the blue/white
+        # ornament slots — the white handwritten flourish of a cyanotype caption.
+        "ornament": [
+            PINYONSCRIPT_REGULAR,
+            (LIBRECASLON_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     "diags": {
         "quote_regular": [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -3712,6 +3784,15 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # attribution white passes through solid via the ``else`` branch;
         # only the matched-phrase red sentinel hits this seam.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"], light_density=0.375)
+    elif theme == "anna_atkins" and fill == SPECTRA6["yellow"]:
+        # The matched-phrase ``accent`` is a yellow *sentinel* (see the THEMES
+        # entry), rerouted here to a 50/50 blue+white sky-blue stipple — the
+        # documented ``glacier`` recipe. On the deep Prussian-blue panel the
+        # time phrase reads as a ghostly cyanotype element (paler, cooler,
+        # stippled) sitting distinct from the crisp solid-white body, rather than
+        # the warm yellow the sentinel would otherwise paint. The yellow surfaces
+        # literally only in the debug-mode banner, which paints outside this seam.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["blue"], light=SPECTRA6["white"])
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -11770,6 +11851,174 @@ def draw_circuit_border(
 # — themes without a border entry paint nothing. Extend here when adding a new
 # theme border (and update ``_DEBUG_LABEL_RIGHT_INSET`` below if the new graphic
 # touches the top-right corner).
+def _anna_atkins_fern(draw: ImageDraw.ImageDraw, x0: float, y0: float, length: float,
+                      angle: float, scale: float, curl: float, ink) -> None:
+    """A single crisp white fern/algae frond: a gently-curving rachis carrying
+    paired pinnate leaflets that taper toward the tip. Sharp line-art (1 px),
+    layered over the soft photographic plate as an inked accent the way Atkins's
+    plates pair the photogram with a few drawn reference sprigs."""
+    pts = []
+    x, y, a = x0, y0, angle
+    n = max(4, int(length))
+    for i in range(n):
+        a += curl
+        x += math.cos(a)
+        y += math.sin(a)
+        pts.append((x, y))
+    for i in range(1, len(pts)):
+        draw.line((pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]), fill=ink, width=1)
+    # Pinnate leaflets along the rachis.
+    for i in range(2, len(pts) - 1, 3):
+        px, py = pts[i]
+        t = i / len(pts)
+        span = max(3.0, (1 - t) * 14.0 * scale)
+        # local tangent → perpendicular leaflet direction
+        tx, ty = pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]
+        plen = math.hypot(tx, ty) or 1.0
+        nx, ny = -ty / plen, tx / plen
+        lean = 0.5  # leaflets sweep toward the tip
+        dx, dy = tx / plen, ty / plen
+        for side in (-1, 1):
+            ex = px + (nx * side + dx * lean) * span
+            ey = py + (ny * side + dy * lean) * span
+            draw.line((px, py, ex, ey), fill=ink, width=1)
+    # A tiny terminal flourish.
+    tipx, tipy = pts[-1]
+    draw.ellipse((tipx - 1, tipy - 1, tipx + 1, tipy + 1), fill=ink)
+
+
+def _anna_atkins_ferns(draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Delicate white fern sprigs tucked into the four corners / edge margins,
+    clear of the centred quote panel. Fixed positions so the two border-painter
+    passes render identically (idempotent)."""
+    ink = SPECTRA6["white"]
+    # (x0, y0, length, angle, scale, curl) — anchored in the margins.
+    sprigs = [
+        (40, 150, 80, -1.35, 0.9, 0.03),     # left edge, reaching up
+        (44, 330, 70, -1.7, 0.8, -0.025),    # lower-left
+        (width - 44, 360, 78, -1.45, 0.9, -0.03),  # lower-right
+        (width - 60, 150, 64, -1.9, 0.75, 0.03),   # upper-right
+    ]
+    for x0, y0, length, angle, scale, curl in sprigs:
+        _anna_atkins_fern(draw, x0, y0, length, angle, scale, curl, ink)
+
+
+def _anna_atkins_handwrite(image: Image.Image, text: str, cx: int, cy: int,
+                           font, angle: float) -> None:
+    """Stamp a slightly-rotated white handwritten label, the way Atkins captioned
+    each plate in her own hand. Renders to an L mask, rotates, and pastes SOLID
+    white where the mask is opaque — a binary stamp so the rotated antialiased
+    edges can't leave a blue halo after palette snapping."""
+    tmp = Image.new("L", (1, 1), 0)
+    bbox = ImageDraw.Draw(tmp).textbbox((0, 0), text, font=font)
+    tw, th = max(1, bbox[2] - bbox[0]), max(1, bbox[3] - bbox[1])
+    pad = 6
+    mask = Image.new("L", (tw + 2 * pad, th + 2 * pad), 0)
+    ImageDraw.Draw(mask).text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=255)
+    if angle:
+        mask = mask.rotate(angle, expand=True, resample=Image.BICUBIC)
+    mw, mh = mask.size
+    px0, py0 = cx - mw // 2, cy - mh // 2
+    base = image.load()
+    mpx = mask.load()
+    white = SPECTRA6["white"]
+    for my in range(mh):
+        ay = py0 + my
+        if ay < 0 or ay >= image.height:
+            continue
+        for mx in range(mw):
+            ax = px0 + mx
+            if 0 <= ax < image.width and mpx[mx, my] >= 128:
+                base[ax, ay] = white
+
+
+def _anna_atkins_labels(image: Image.Image, draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Handwritten white Latin species labels in copperplate, scattered in the
+    margins beside the specimens — the captions that make a cyanotype plate read
+    as a scientific record."""
+    font = load_font([PINYONSCRIPT_REGULAR, DANCINGSCRIPT_VARIABLE, *ORNAMENT_FONT_CANDIDATES], size=26)
+    # (text, cx, cy, angle) — kept in the corners, clear of the centred panel.
+    labels = [
+        ("Cystoseira fibrosa", 96, 408, 4),
+        ("Ptilota plumosa", width - 96, 96, -5),
+        ("Dictyota dichotoma", width - 104, 432, 3),
+    ]
+    for text, cx, cy, angle in labels:
+        _anna_atkins_handwrite(image, text, cx, cy, font, angle)
+
+
+def draw_anna_atkins_border(image: Image.Image, colors: dict,
+                            clear_rect: tuple[int, int, int, int] | None = None) -> None:
+    """Anna Atkins 1843 botanical cyanotype plate (see the THEMES entry).
+
+    Layers, deepest → shallowest:
+
+    * **Layer 0 — full-bleed Floyd–Steinberg-dithered cyanotype photogram.**
+      The committed continuous-tone plate (``assets/anna_atkins_cyanotype.png``)
+      is resized to the canvas and dithered to the six Spectra-6 inks via
+      ``dither_image_to_palette`` — the new render-time image-dither capability.
+      The deep blues break into a blue/black stipple (Prussian), the feathered
+      specimen edges melt through a blue+white "sky-blue" haze, and the bright
+      cores stay white. If the asset is missing, the flat blue ground is
+      deepened to Prussian with a blue→black Bayer stipple instead so the theme
+      still renders.
+    * **Procedural white fern sprigs** in the corner margins — crisp 1 px
+      ink-line accents layered over the soft photographic specimens.
+    * **Handwritten white Latin species labels** in copperplate (Pinyon Script),
+      slightly rotated and stamped binary so they read as Atkins's own captions.
+    * **Thin white plate rule** at inset 12 — the mounting-sheet edge.
+    * **Body-text knockout** (when ``render`` supplies ``clear_rect``): a deep
+      Prussian-blue rounded panel (solid blue + blue→black Bayer) with a doubled
+      white plate rule and corner pin-dots, so the white quote text reads cleanly
+      over the busy plate. Same single-call ``clear_rect`` dispatch as
+      ``kanagawa`` / ``cartograph`` / ``circuit``.
+    """
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    page_bg = colors.get("page_bg")
+    pixels = image.load()
+    WHITE = SPECTRA6["white"]
+    BLUE = SPECTRA6["blue"]
+    BLACK = SPECTRA6["black"]
+
+    # Layer 0 — dithered photogram (or Prussian-deepened flat ground fallback).
+    plate = _load_dithered_plate(ANNA_ATKINS_PLATE, width, height, palette=_CYANOTYPE_PALETTE)
+    if plate is not None:
+        image.paste(plate, (0, 0))
+    elif page_bg is not None:
+        for y in range(height):
+            row = BAYER_4x4[y & 3]
+            for x in range(width):
+                if pixels[x, y] == page_bg and row[x & 3] < 6:
+                    pixels[x, y] = BLACK
+
+    _anna_atkins_ferns(draw, width, height)
+    _anna_atkins_labels(image, draw, width, height)
+
+    draw.rectangle((12, 12, width - 13, height - 13), outline=WHITE, width=1)
+
+    if clear_rect is not None:
+        cx0, cy0, cx1, cy1 = clear_rect
+        cx0 = max(0, cx0)
+        cy0 = max(0, cy0)
+        cx1 = min(width - 1, cx1)
+        cy1 = min(height - 1, cy1)
+        if cx1 > cx0 and cy1 > cy0:
+            draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=10, fill=BLUE)
+            # Deepen the panel blue → Prussian with a blue→black Bayer stipple.
+            for py in range(cy0, cy1 + 1):
+                row = BAYER_4x4[py & 3]
+                for px in range(cx0, cx1 + 1):
+                    if pixels[px, py] == BLUE and row[px & 3] < 6:
+                        pixels[px, py] = BLACK
+            # Doubled white plate rule following the rounded corner.
+            draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=10, outline=WHITE, width=1)
+            draw.rounded_rectangle((cx0 + 3, cy0 + 3, cx1 - 3, cy1 - 3), radius=8, outline=WHITE, width=1)
+            # Corner pin-dots — where the specimen sheet is mounted.
+            for mx, my in ((cx0 + 9, cy0 + 9), (cx1 - 9, cy0 + 9), (cx0 + 9, cy1 - 9), (cx1 - 9, cy1 - 9)):
+                draw.ellipse((mx - 1, my - 1, mx + 1, my + 1), fill=WHITE)
+
+
 _BORDER_PAINTERS = {
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
@@ -11803,6 +12052,7 @@ _BORDER_PAINTERS = {
     "circuit": draw_circuit_border,
     "letter": draw_letter_border,
     "grimdark": draw_grimdark_border,
+    "anna_atkins": draw_anna_atkins_border,
 }
 
 # Themes whose decorative border paints a graphic in the top-right corner need
@@ -12022,6 +12272,123 @@ def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]
                 cache[pixel] = nearest
             dst[x, y] = nearest
     return snapped
+
+
+# ---------------------------------------------------------------------------
+# Render-time image dithering to the Spectra-6 palette.
+#
+# New in the ``anna_atkins`` theme: rather than synthesising every graphic from
+# ImageDraw primitives, a committed *continuous-tone* PNG is dithered down to the
+# six inks at render time, giving photographic tonal fidelity on the 6-colour
+# panel. ``dither_image_to_palette`` is the general capability; the cyanotype
+# plate is its first consumer but any future theme can drop a PNG into
+# ``assets/`` and route it through here.
+ANNA_ATKINS_PLATE = BASE_DIR / "assets" / "anna_atkins_cyanotype.png"
+# The cyanotype plate is dithered against only the three inks a real cyanotype
+# uses — white, black, blue — rather than the full Spectra-6 set. Error
+# diffusion over all six inks scatters stray red/green specks across the deep
+# blues (the residual error occasionally overshoots into a far ink); restricting
+# the candidate palette keeps the plate pure Prussian: white cores, blue+white
+# "sky-blue" haze in the feathered edges, blue+black in the deep ground. Still a
+# strict subset of SPECTRA6, so the final ``snap_image_to_palette`` is a no-op.
+_CYANOTYPE_PALETTE = [SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]]
+
+# Dithered results are deterministic per (source, size, method) and re-used
+# across the 144-frame contact sheet and the golden suite, so memoise them.
+_DITHER_CACHE: dict = {}
+
+
+def dither_image_to_palette(
+    image: Image.Image,
+    palette: list[tuple[int, int, int]],
+    method: str = "floyd-steinberg",
+) -> Image.Image:
+    """Quantise a continuous-tone RGB image down to ``palette`` with dithering,
+    so smooth gradients survive on a 6-ink panel as a stipple the eye averages
+    back into the original tone (the same principle the per-theme two-ink
+    recipes use, applied here to a whole photograph).
+
+    ``method``:
+
+    * ``"floyd-steinberg"`` (default) — error-diffusion dithering via Pillow's
+      C-speed ``Image.quantize``, mapped onto a palette image built from the six
+      inks. Produces the soft, organic stipple of a real halftone — best for
+      photographic content like the cyanotype plate, where the feathered
+      specimen edges need to melt smoothly from white through blue+white
+      "sky-blue" into the deep-blue ground.
+    * ``"ordered"`` — a deterministic 4×4 Bayer ordered dither (the same
+      ``BAYER_4x4`` matrix the theme decorations use), perturbing each pixel by a
+      tile-positioned threshold before snapping to the nearest ink. Cross-hatch
+      texture rather than organic grain; useful when a stable, tileable pattern
+      is wanted over error diffusion's content-dependent noise.
+
+    Output is pure on-palette RGB, so a subsequent ``snap_image_to_palette`` pass
+    over the composited frame is a no-op on these pixels and won't undo the
+    dither.
+    """
+    if not palette:
+        raise ValueError("palette must contain at least one colour")
+    src = image.convert("RGB")
+    if method == "floyd-steinberg":
+        pal_img = Image.new("P", (1, 1))
+        flat: list[int] = []
+        for colour in palette:
+            flat.extend(colour)
+        # Pad the 256-entry palette by repeating the first ink so quantize only
+        # ever maps to colours actually in ``palette`` (padding with 0,0,0 would
+        # inject black as a spurious candidate for palettes that lack it).
+        while len(flat) < 768:
+            flat.extend(palette[0])
+        pal_img.putpalette(flat[:768])
+        quantised = src.quantize(palette=pal_img, dither=Image.Dither.FLOYDSTEINBERG)
+        return quantised.convert("RGB")
+    if method == "ordered":
+        out = Image.new("RGB", src.size)
+        sp = src.load()
+        op = out.load()
+        # Bayer cell values 0..15 → a signed bias in roughly [-0.5, +0.5] of an
+        # ink step, scaled to 8-bit. ``amp`` controls the dither strength.
+        amp = 64
+        cache: dict = {}
+        w, h = src.size
+        for y in range(h):
+            brow = BAYER_4x4[y & 3]
+            for x in range(w):
+                bias = (brow[x & 3] / 15.0 - 0.5) * amp
+                r, g, b = sp[x, y]
+                key = (int(r + bias), int(g + bias), int(b + bias))
+                nearest = cache.get(key)
+                if nearest is None:
+                    pr, pg, pb = key
+                    nearest = min(
+                        palette,
+                        key=lambda c, pr=pr, pg=pg, pb=pb: (pr - c[0]) ** 2 + (pg - c[1]) ** 2 + (pb - c[2]) ** 2,
+                    )
+                    cache[key] = nearest
+                op[x, y] = nearest
+        return out
+    raise ValueError(f"unknown dither method: {method!r}")
+
+
+def _load_dithered_plate(path: Path, width: int, height: int, method: str = "floyd-steinberg",
+                         palette: list[tuple[int, int, int]] | None = None) -> Image.Image | None:
+    """Open a committed plate PNG, resize to the target box, and dither it to
+    ``palette`` (default the full Spectra-6 set), memoising the result. Returns
+    ``None`` if the asset is missing or unreadable so a stripped install degrades
+    to a plain ground rather than crashing the render loop."""
+    pal = palette if palette is not None else SPECTRA6_PALETTE
+    key = (str(path), width, height, method, tuple(pal))
+    cached = _DITHER_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        with Image.open(path) as raw:
+            resized = raw.convert("RGB").resize((width, height), Image.LANCZOS)
+    except (OSError, ValueError):
+        return None
+    dithered = dither_image_to_palette(resized, pal, method=method)
+    _DITHER_CACHE[key] = dithered
+    return dithered
 
 
 def debug_quote_id(quote_row: dict) -> str | None:
@@ -16822,6 +17189,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # the 16/10/10 pad keeps that outline (and the dot just outside the
         # top-left corner) clear of the first / last text lines.
         "circuit": (16, 10, 10),
+        # anna_atkins knocks the body region back to a deep Prussian-blue panel
+        # framed by a doubled white plate rule + corner pin-dots; the 20/12/12
+        # pad keeps that rule and the rounded corners clear of the white text.
+        "anna_atkins": (20, 12, 12),
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
         clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
@@ -16866,6 +17237,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # knocks the body-text rect back to clean forest soldermask and
         # frames it with a white silkscreen component outline.
         draw_circuit_border(image, colors, clear_rect=clear_rect)
+    elif theme == "anna_atkins":
+        # Same single-call dispatch — the cyanotype painter pastes the dithered
+        # photogram + ferns + labels, then knocks the body rect back to a deep
+        # Prussian-blue panel so the white quote text reads over the plate.
+        draw_anna_atkins_border(image, colors, clear_rect=clear_rect)
     else:
         _paint_theme_border(image, theme, colors)
 

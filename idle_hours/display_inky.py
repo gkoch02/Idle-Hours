@@ -308,6 +308,14 @@ THEME_SATURATION: dict[str, float] = {
     # the seal into a fire-engine spot that would fight the quiet
     # handwritten body.
     "letter": 0.5,
+    # Anna Atkins cyanotype. A deep Prussian-blue ground (the dithered
+    # photogram plate, blue/black stipple) carrying ghostly white specimens,
+    # white Caslon body text, and a sky-blue (B+W) matched phrase. Joins the
+    # dark / non-white-ground tier — the white-on-deep-blue needs the 0.7 push
+    # so the Prussian ground stays a rich saturated blue and the sky-blue
+    # matched phrase reads cool rather than washing toward grey at panel
+    # viewing distance.
+    "anna_atkins": 0.7,
 }
 
 
