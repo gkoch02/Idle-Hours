@@ -3528,17 +3528,19 @@ class TestRandomThemeMode:
         assert len(state.random_theme_bag) == len(themes) - 1
 
     def test_random_mode_no_back_to_back_repeat_across_bag_boundary(self):
-        """The reshuffle boundary must not replay the just-played theme.
+        """The reshuffle boundary must not replay a recently-played theme.
 
         We force the worst case: the just-played theme is set, and we
         construct a cycle where ``random.shuffle`` would put it at the
-        pop position. The swap must move it.
+        pop position. The recent-window block must move it to the head
+        (drawn last) so it does not recur as the first pick of the new bag.
         """
         from idle_hours.runtime_theme import random_theme_pool
         themes = list(random_theme_pool())
         just_played = themes[0]
         state = run_clock.RuntimeState("random")
         state.current_random_theme = just_played
+        state.random_theme_recent = [just_played]
         state.random_theme_bag = []
         # Force shuffle to a known order where bag[-1] == just_played.
         forced = [t for t in themes if t != just_played] + [just_played]
@@ -3546,11 +3548,33 @@ class TestRandomThemeMode:
         def _force_order(b):
             b[:] = forced  # random.shuffle mutates in place
 
-        # randint patched to a deterministic in-range swap index.
-        with patch("idle_hours.runtime_theme.random.shuffle", side_effect=_force_order), \
-             patch("idle_hours.runtime_theme.random.randint", return_value=0):
+        with patch("idle_hours.runtime_theme.random.shuffle", side_effect=_force_order):
             pick = run_clock._maybe_pick_random_theme(state, ("src", 42, "q", "m"))
         assert pick != just_played, "back-to-back repeat at reshuffle boundary"
+
+    def test_random_mode_no_near_boundary_repeat(self):
+        """A theme shown at the tail of one pass must not reappear within a
+        few picks at the head of the next — the gap-2 regression that the
+        single-theme swap missed. Drive several full passes and assert the
+        guaranteed minimum spacing holds.
+        """
+        from idle_hours.runtime_theme import random_theme_pool, recent_window_size
+        themes = list(random_theme_pool())
+        window = recent_window_size(len(themes))
+        state = run_clock.RuntimeState("random")
+        seq: list[str] = []
+        for i in range(len(themes) * 4):
+            new_quote_id = ("src", i, "q", "m")
+            pick = run_clock._maybe_pick_random_theme(state, new_quote_id)
+            seq.append(pick)
+            state.last_quote_id = new_quote_id
+        last_seen: dict[str, int] = {}
+        min_gap = len(seq)
+        for i, theme in enumerate(seq):
+            if theme in last_seen:
+                min_gap = min(min_gap, i - last_seen[theme])
+            last_seen[theme] = i
+        assert min_gap > window, f"theme repeated within {min_gap} picks (window={window})"
 
     def test_random_mode_never_picks_excluded_themes(self):
         """``diags`` renders a status panel rather than a quote — a random

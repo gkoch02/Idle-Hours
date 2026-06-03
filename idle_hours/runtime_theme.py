@@ -89,20 +89,40 @@ def pick_random_theme() -> str:
     return random.choice(list(random_theme_pool()))
 
 
+def recent_window_size(pool_size: int) -> int:
+    """How many recent picks to hold out of the next bag's draw-front.
+
+    Picking half the pool is the value that maximises the *guaranteed*
+    minimum gap between two appearances of the same theme. Blocking the
+    last ``R`` themes from the first ``R`` draws of a fresh bag gives a
+    protected-theme gap of ``pool - R + 1`` and an unprotected-theme gap
+    of ``R + 1``; the smaller of the two is maximised when ``R = pool/2``
+    (gap ~ ``pool/2 + 1`` either way). For the 40-theme pool that's a
+    guaranteed spacing of ~21 picks instead of the old worst case of 2.
+    """
+    return max(1, pool_size // 2)
+
+
 def pick_next_random_theme(
-    bag: list[str], *, just_played: str | None = None,
+    bag: list[str], *, recent: list[str] | None = None,
 ) -> tuple[str, list[str]]:
     """Draw the next theme from a shuffled bag of unseen themes.
 
     Returns ``(theme, updated_bag)`` — the caller stores ``updated_bag``
-    on :class:`RuntimeState`. When ``bag`` is empty the bag is refilled
-    with a fresh shuffle of the full cycle; if the freshly-shuffled next
-    pick would replay ``just_played``, it's swapped with another random
-    position so back-to-back repeats don't sneak across the reshuffle
-    boundary.
+    on :class:`RuntimeState`. When ``bag`` is empty it's refilled with a
+    fresh shuffle of the full cycle.
 
-    The bag is popped from the end (``list.pop`` is O(1)), so ``bag[-1]``
-    is the "next" theme — that's the slot the swap targets.
+    ``recent`` is the caller's rolling window of the most-recently-drawn
+    themes (most-recent last). On a refill the themes in ``recent`` are
+    moved to the *head* of the new bag — and since the bag is popped from
+    the end (``list.pop`` is O(1)), the head is drawn *last*. The
+    non-recent themes fill the tail and are drawn first, so a theme shown
+    near the end of the previous pass can't reappear at the start of the
+    next one. This is the cross-boundary generalisation of the old
+    "don't replay the single just-played theme" swap: independent
+    per-pass shuffles otherwise let a tail theme recur as the second pick
+    of the next pass (a gap of 2). See :func:`recent_window_size` for why
+    the caller caps ``recent`` at half the pool.
 
     The refill draws from :func:`random_theme_pool` (= ``theme_cycle()``
     minus :data:`RANDOM_EXCLUDED_THEMES`) rather than the full cycle, so
@@ -110,11 +130,17 @@ def pick_next_random_theme(
     """
     bag = list(bag)  # never mutate the caller's list
     if not bag:
-        bag = list(random_theme_pool())
-        random.shuffle(bag)
-        if just_played is not None and len(bag) > 1 and bag[-1] == just_played:
-            swap_idx = random.randint(0, len(bag) - 2)
-            bag[-1], bag[swap_idx] = bag[swap_idx], bag[-1]
+        pool = list(random_theme_pool())
+        random.shuffle(pool)
+        if recent:
+            recent_set = set(recent)
+            # Recently-seen themes -> head (drawn last); fresh themes -> tail
+            # (drawn first). Order within each partition stays the shuffled
+            # order, so randomness is preserved on both sides of the split.
+            blocked = [t for t in pool if t in recent_set]
+            free = [t for t in pool if t not in recent_set]
+            pool = blocked + free
+        bag = pool
 
     theme = bag.pop()
     return theme, bag
