@@ -11,7 +11,7 @@ import re
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
@@ -12024,10 +12024,13 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict,
     * **Handwritten white Latin species labels** in copperplate (Pinyon Script),
       slightly rotated and stamped binary so they read as Atkins's own captions.
     * **Thin white plate rule** at inset 12 — the mounting-sheet edge.
-    * **Body-text knockout** (when ``render`` supplies ``clear_rect``): a deep
-      Prussian-blue rounded panel (solid blue + blue→black Bayer) with a doubled
-      white plate rule and corner pin-dots, so the white quote text reads cleanly
-      over the busy plate. Same single-call ``clear_rect`` dispatch as
+    * **Body-text knockout** (when ``render`` supplies ``clear_rect``): a frosted
+      translucent-grey rounded panel — the plate under the body region is
+      Gaussian-blurred, blended toward a neutral-grey veil, and dithered to a
+      white/black grey stipple so the blurred cyanotype ghosts faintly through
+      (see the ``_ANNA_ATKINS_FROST_*`` constants) — with a doubled white plate
+      rule and corner pin-dots, so the white quote text reads cleanly over it.
+      Same single-call ``clear_rect`` dispatch as
       ``kanagawa`` / ``cartograph`` / ``circuit``.
     """
     draw = ImageDraw.Draw(image)
@@ -12035,7 +12038,6 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict,
     page_bg = colors.get("page_bg")
     pixels = image.load()
     WHITE = SPECTRA6["white"]
-    BLUE = SPECTRA6["blue"]
     BLACK = SPECTRA6["black"]
 
     # Layer 0 — dithered photogram (or Prussian-deepened flat ground fallback).
@@ -12061,13 +12063,20 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict,
         cx1 = min(width - 1, cx1)
         cy1 = min(height - 1, cy1)
         if cx1 > cx0 and cy1 > cy0:
-            draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=10, fill=BLUE)
-            # Deepen the panel blue → Prussian with a blue→black Bayer stipple.
-            for py in range(cy0, cy1 + 1):
-                row = BAYER_4x4[py & 3]
-                for px in range(cx0, cx1 + 1):
-                    if pixels[px, py] == BLUE and row[px & 3] < 6:
-                        pixels[px, py] = BLACK
+            # Frosted translucent-grey panel (see the _ANNA_ATKINS_FROST_* notes):
+            # blur the plate under the body region, blend toward a neutral-grey
+            # veil, and dither to a white/black stipple so a grey panel emerges
+            # with the blurred cyanotype ghosting faintly through.
+            panel = image.crop((cx0, cy0, cx1 + 1, cy1 + 1))
+            frosted = panel.filter(ImageFilter.GaussianBlur(radius=_ANNA_ATKINS_FROST_BLUR))
+            veil = Image.new("RGB", frosted.size, _ANNA_ATKINS_FROST_GREY)
+            frosted = Image.blend(frosted, veil, _ANNA_ATKINS_FROST_ALPHA)
+            frosted = dither_image_to_palette(frosted, _FROST_PALETTE)
+            # Rounded-corner mask so the frosted fill follows the panel radius.
+            mask = Image.new("L", frosted.size, 0)
+            ImageDraw.Draw(mask).rounded_rectangle(
+                (0, 0, frosted.size[0] - 1, frosted.size[1] - 1), radius=10, fill=255)
+            image.paste(frosted, (cx0, cy0), mask)
             # Doubled white plate rule following the rounded corner.
             draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=10, outline=WHITE, width=1)
             draw.rounded_rectangle((cx0 + 3, cy0 + 3, cx1 - 3, cy1 - 3), radius=8, outline=WHITE, width=1)
@@ -12349,6 +12358,21 @@ ANNA_ATKINS_PLATE = BASE_DIR / "assets" / "anna_atkins_cyanotype.png"
 # "sky-blue" haze in the feathered edges, blue+black in the deep ground. Still a
 # strict subset of SPECTRA6, so the final ``snap_image_to_palette`` is a no-op.
 _CYANOTYPE_PALETTE = [SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]]
+
+# Frosted-glass body panel. Spectra 6 has no alpha and no grey ink, so the
+# "translucent frosted grey" look is faked at render time: the cyanotype plate
+# under the body region is Gaussian-blurred (the *frost*), blended toward a
+# neutral-grey veil (the *translucency* — ``ALPHA`` of the way to solid grey,
+# so the blurred plate still ghosts through), then dithered against pure
+# white/black so a grey black-and-white stipple emerges in place of the deep
+# Prussian blue. Kept dark enough (mid-grey, ~40% luminance) that the white
+# body text + sky-blue matched phrase still read cleanly over it. Dithering
+# against white/black only (not the cyanotype's blue) is what turns the panel
+# grey "instead of the blue" — luminance survives, hue is dropped.
+_FROST_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
+_ANNA_ATKINS_FROST_BLUR = 6
+_ANNA_ATKINS_FROST_GREY = (104, 104, 104)
+_ANNA_ATKINS_FROST_ALPHA = 0.68
 
 # Dithered results are deterministic per (source, size, method) and re-used
 # across the 144-frame contact sheet and the golden suite, so memoise them.
@@ -17559,9 +17583,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # the 16/10/10 pad keeps that outline (and the dot just outside the
         # top-left corner) clear of the first / last text lines.
         "circuit": (16, 10, 10),
-        # anna_atkins knocks the body region back to a deep Prussian-blue panel
-        # framed by a doubled white plate rule + corner pin-dots; the 20/12/12
-        # pad keeps that rule and the rounded corners clear of the white text.
+        # anna_atkins knocks the body region back to a frosted translucent-grey
+        # panel framed by a doubled white plate rule + corner pin-dots; the
+        # 20/12/12 pad keeps that rule and the rounded corners clear of the text.
         "anna_atkins": (20, 12, 12),
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
@@ -17609,8 +17633,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         draw_circuit_border(image, colors, clear_rect=clear_rect)
     elif theme == "anna_atkins":
         # Same single-call dispatch — the cyanotype painter pastes the dithered
-        # photogram + ferns + labels, then knocks the body rect back to a deep
-        # Prussian-blue panel so the white quote text reads over the plate.
+        # photogram + ferns + labels, then knocks the body rect back to a frosted
+        # translucent-grey panel so the white quote text reads over the plate.
         draw_anna_atkins_border(image, colors, clear_rect=clear_rect)
     else:
         _paint_theme_border(image, theme, colors)
