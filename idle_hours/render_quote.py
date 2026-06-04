@@ -11455,7 +11455,8 @@ def _letter_paint_aged_paper(image: Image.Image, width: int, height: int, page_b
                     pixels[px, py] = sepia_a if (px + py) & 1 else sepia_b
 
 
-def draw_letter_border(image: Image.Image, colors: dict) -> None:
+def draw_letter_border(image: Image.Image, colors: dict,
+                       clear_rect: tuple[int, int, int, int] | None = None) -> None:
     """Wax-sealed letter decoration: aged, lightly-crumpled paper ground +
     fold/crumple creases + a pressed oxblood / maroon wax seal in the
     bottom-right corner.
@@ -11535,6 +11536,31 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     else:
         _letter_paint_aged_paper(image, width, height, page_bg, cream_light, sepia_a, sepia_b, rng)
     pixels = image.load()
+
+    # ---- Body-text writing area: clean cream knockout -----------------
+    # The plate scatters R+G foxing across the whole sheet; behind the thin
+    # Dancing Script body that speckle surrounds every stroke and reads as
+    # blurry. When render() threads ``clear_rect`` through, reset that rect to
+    # a clean cream wash (white + a light yellow stipple, no foxing) — the
+    # written area a real letter keeps clear of age spots — feathered at the
+    # edges so it blends into the foxed margins instead of cutting a hard
+    # rectangle. The fold creases and body text paint on top. Same single-call
+    # clear_rect-knockout dispatch ``kanagawa`` / ``cartograph`` / ``anna_atkins``
+    # use, here resetting to cream rather than the panel ground.
+    if clear_rect is not None and page_bg is not None:
+        cx0, cy0, cx1, cy1 = clear_rect
+        feather = 16
+        for py in range(max(0, cy0), min(height - 1, cy1) + 1):
+            for px in range(max(0, cx0), min(width - 1, cx1) + 1):
+                edge_d = min(px - cx0, cx1 - px, py - cy0, cy1 - py)
+                # Feathered border ring: clean with probability rising toward
+                # the interior so the writing area melts into the foxed margin.
+                if edge_d < feather and ((px * 131 + py * 57) % 16) / 16.0 >= edge_d / feather:
+                    continue
+                # ~1/16 yellow (≈6%), matching the plate's pale-cream centre so
+                # the cleaned bed/writing-area tone melts into the surrounding
+                # paper and only the removed foxing distinguishes it.
+                pixels[px, py] = cream_light if BAYER_4x4[py & 3][px & 3] == 0 else page_bg
 
     # ---- Crumple creases ----------------------------------------------
     # Two primary fold creases at the thirds (the folds that put a letter
@@ -11631,7 +11657,10 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
                         if ((px * 131 + py * 57) % 16) / 16.0 < keep:
                             pixels[px, py] = page_bg
                     continue
-                pixels[px, py] = cream_light if BAYER_4x4[py & 3][px & 3] < 0.09 * 16 else page_bg
+                # ~1/16 yellow (≈6%), matching the plate's pale-cream centre so
+                # the cleaned bed/writing-area tone melts into the surrounding
+                # paper and only the removed foxing distinguishes it.
+                pixels[px, py] = cream_light if BAYER_4x4[py & 3][px & 3] == 0 else page_bg
 
     # (1) Soft cast shadow on the paper. A stippled disc offset down-right
     # (away from the light), densest at its centre and fading to nothing at
@@ -17651,6 +17680,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # framed by a doubled white plate rule + corner pin-dots; the 20/12/12
         # pad keeps that rule and the rounded corners clear of the white text.
         "anna_atkins": (20, 12, 12),
+        # letter knocks the writing area back to clean cream (no foxing) so the
+        # thin Dancing Script body doesn't blur against the plate's foxing
+        # speckle; a generous 26/18/18 pad leaves clean margin around the text
+        # even after the 16 px feathered edge, with no drawn frame.
+        "letter": (26, 18, 18),
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
         clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
@@ -17700,6 +17734,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # photogram + ferns + labels, then knocks the body rect back to a deep
         # Prussian-blue panel so the white quote text reads over the plate.
         draw_anna_atkins_border(image, colors, clear_rect=clear_rect)
+    elif theme == "letter":
+        # Same single-call dispatch — the letter painter pastes the dithered
+        # aged-paper plate, knocks the writing area back to clean cream so the
+        # thin script reads without foxing speckle, then paints creases + the
+        # wax seal on top.
+        draw_letter_border(image, colors, clear_rect=clear_rect)
     else:
         _paint_theme_border(image, theme, colors)
 

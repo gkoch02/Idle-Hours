@@ -77,14 +77,18 @@ def _foxing(img: Image.Image, rng: random.Random) -> None:
     w, h = img.size
     stain = Image.new("L", (w, h), 0)
     sd = ImageDraw.Draw(stain)
-    n = rng.randint(60, 90)
+    # Sparse, soft foxing — a gentle aging at the margins, not a dense speckle.
+    # The body-text writing area is knocked back to clean cream at render time,
+    # so the foxing only needs to texture the borders; keeping it light stops
+    # the margins reading as an aggressive red/green field around the quote.
+    n = rng.randint(34, 48)
     for _ in range(n):
         fx = int(rng.triangular(0, w - 1, rng.choice((0, w - 1))))
         fy = int(rng.triangular(0, h - 1, rng.choice((0, h - 1))))
-        fr = rng.randint(3 * SS, 14 * SS)
-        strength = rng.randint(40, 120)
+        fr = rng.randint(3 * SS, 12 * SS)
+        strength = rng.randint(28, 80)
         sd.ellipse((fx - fr, fy - fr, fx + fr, fy + fr), fill=strength)
-    stain = stain.filter(ImageFilter.GaussianBlur(radius=2.5 * SS))
+    stain = stain.filter(ImageFilter.GaussianBlur(radius=3.0 * SS))
     px = img.load()
     sp = stain.load()
     # Sepia direction: pull green and (more) blue down, leave red high → warm
@@ -94,12 +98,12 @@ def _foxing(img: Image.Image, rng: random.Random) -> None:
             s = sp[x, y]
             if not s:
                 continue
-            a = min(1.0, s / 160.0)
+            a = min(1.0, s / 200.0)
             r, g, b = px[x, y]
             px[x, y] = (
-                max(120, int(r - 35 * a)),
-                max(90, int(g - 70 * a)),
-                max(60, int(b - 95 * a)),
+                max(140, int(r - 28 * a)),
+                max(110, int(g - 55 * a)),
+                max(80, int(b - 80 * a)),
             )
 
 
