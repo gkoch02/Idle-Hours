@@ -85,6 +85,75 @@ class TestCyanotypePlate:
         assert rq._load_dithered_plate(tmp_path / "nope.png", 80, 60) is None
 
 
+class TestGrimdarkPlate:
+    def test_plate_asset_is_committed(self):
+        assert rq.GRIMDARK_PLATE.exists(), "grimdark gunmetal plate asset is missing"
+
+    def test_load_dithered_plate_is_on_palette_and_sized(self):
+        plate = rq._load_dithered_plate(rq.GRIMDARK_PLATE, 200, 120, palette=rq._GUNMETAL_PALETTE)
+        assert plate is not None
+        assert plate.size == (200, 120)
+        assert _all_pixels(plate) <= set(rq._GUNMETAL_PALETTE)
+
+    def test_load_dithered_plate_is_cached(self):
+        a = rq._load_dithered_plate(rq.GRIMDARK_PLATE, 160, 96, palette=rq._GUNMETAL_PALETTE)
+        b = rq._load_dithered_plate(rq.GRIMDARK_PLATE, 160, 96, palette=rq._GUNMETAL_PALETTE)
+        assert a is b  # memoised, same object
+
+
+class TestLetterPlate:
+    def test_plate_asset_is_committed(self):
+        assert rq.LETTER_PLATE.exists(), "letter aged-paper plate asset is missing"
+
+    def test_load_dithered_plate_is_on_palette_and_sized(self):
+        plate = rq._load_dithered_plate(rq.LETTER_PLATE, 200, 120, palette=rq._AGED_PAPER_PALETTE)
+        assert plate is not None
+        assert plate.size == (200, 120)
+        assert _all_pixels(plate) <= set(rq._AGED_PAPER_PALETTE)
+
+    def test_load_dithered_plate_is_cached(self):
+        a = rq._load_dithered_plate(rq.LETTER_PLATE, 160, 96, palette=rq._AGED_PAPER_PALETTE)
+        b = rq._load_dithered_plate(rq.LETTER_PLATE, 160, 96, palette=rq._AGED_PAPER_PALETTE)
+        assert a is b  # memoised, same object
+
+
+def _plate_row():
+    return {
+        "display_quote": "It was half past two when the clock struck and the house fell still.",
+        "matched_text": "half past two",
+        "author": "Test Author",
+        "title": "A Test Title",
+        "bucket": "h2_half_past",
+        "quality_score": 88,
+        "source_id": "1",
+        "line_number": 2,
+    }
+
+
+class TestPlateThemeRender:
+    @pytest.mark.parametrize("theme", ["grimdark", "letter"])
+    @pytest.mark.parametrize("mode", ["production", "debug"])
+    def test_renders_on_palette(self, theme, mode):
+        img = rq.render("02:30", _plate_row(), 800, 480, mode=mode, theme=theme)
+        assert img.size == (800, 480)
+        assert _all_pixels(img) <= set(rq.SPECTRA6_PALETTE)
+
+    @pytest.mark.parametrize("theme", ["grimdark", "letter"])
+    def test_small_preview_size_does_not_crash(self, theme):
+        img = rq.render("02:30", _plate_row(), 400, 240, mode="production", theme=theme)
+        assert img.size == (400, 240)
+
+    @pytest.mark.parametrize("theme,const", [("grimdark", "GRIMDARK_PLATE"), ("letter", "LETTER_PLATE")])
+    def test_missing_plate_falls_back_to_primitive_painter(self, theme, const, tmp_path, monkeypatch):
+        # Point the plate constant at a missing path: _load_dithered_plate
+        # returns None and the theme must still render on-palette via its
+        # synthesised Layer-0 fallback rather than crashing.
+        monkeypatch.setattr(rq, const, tmp_path / "missing.png")
+        img = rq.render("02:30", _plate_row(), 800, 480, mode="production", theme=theme)
+        assert img.size == (800, 480)
+        assert _all_pixels(img) <= set(rq.SPECTRA6_PALETTE)
+
+
 class TestAnnaAtkinsRender:
     def _row(self):
         return {

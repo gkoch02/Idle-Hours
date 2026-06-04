@@ -11221,10 +11221,13 @@ def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
 
     Composition:
 
-    * **Layer-0 gunmetal mottle** — a synthesised dark-grey weathering of the
-      black ground (sparse white-on-black stipple + irregular blotches), so
-      the bulkhead reads as scuffed industrial metal rather than flat void.
-      See ``_grimdark_paint_mottle``.
+    * **Layer-0 gunmetal plate** — a committed continuous-tone weathered-metal
+      PNG (``grimdark_gunmetal.png``: base charcoal vignette + oxidation
+      blotches + faint scratches) Floyd–Steinberg-dithered to white+black at
+      render time, so the bulkhead reads as photographic scuffed industrial
+      metal rather than a flat void. If the asset is missing the synthesised
+      ``_grimdark_paint_mottle`` stipple (sparse white-on-black + irregular
+      blotches) is used as a graceful fallback.
     * **Doubled imperial trim** — a thick gold outer rule (Imperial gilt
       edging) + a thin blood-red inner rule, the polychrome banded frame of
       an ornate reliquary or a starship bulkhead hatch.
@@ -11257,9 +11260,15 @@ def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
     bone = SPECTRA6["white"]    # skull
     void = SPECTRA6["black"]    # ground / skull recesses
 
-    # --- Layer 0: industrial gunmetal mottle over the black void, painted
-    # before everything so the trim / ornaments / quote text land on top.
-    _grimdark_paint_mottle(image, width, height)
+    # --- Layer 0: industrial gunmetal, painted before everything so the trim /
+    # ornaments / quote text land on top. Prefer the committed continuous-tone
+    # plate dithered to white+black; fall back to the synthesised stipple when
+    # the asset is unavailable (stripped install).
+    plate = _load_dithered_plate(GRIMDARK_PLATE, width, height, palette=_GUNMETAL_PALETTE)
+    if plate is not None:
+        image.paste(plate, (0, 0))
+    else:
+        _grimdark_paint_mottle(image, width, height)
 
     # --- Doubled imperial trim. ImageDraw rectangles clip, but an inverted
     # bbox (inset >= half-dimension) raises, so guard at tiny preview sizes.
@@ -11381,6 +11390,71 @@ def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
 _LETTER_PAPER_SEED = 0x1E77E2
 
 
+def _letter_paint_aged_paper(image: Image.Image, width: int, height: int, page_bg,
+                             cream_light, sepia_a, sepia_b, rng: random.Random) -> None:
+    """Synthesised aged-paper Layer 0 — the graceful fallback for ``letter``
+    when the committed ``letter_aged_paper.png`` plate is missing.
+
+    Turns the panel's flat white into an aged letter sheet with two stacked
+    textures, all native to the Spectra-6 palette (every output pixel is one
+    of the inks, so palette-snap is a no-op and the script glyphs that paint
+    on top stay crisp). Deliberately subtle — it should read at arm's length
+    as "old paper", not as a pattern competing with the handwriting:
+
+      (a) Uneven cream tan. The yellow cream-wash density is modulated by a
+          gentle edge vignette (the sheet tans more at the margins) plus a
+          low-amplitude mottle (precomputed per-row / per-column sine tables,
+          no per-pixel trig) and a fine per-pixel grain jitter, so the cream
+          breaks up into an organic fibrous tone instead of a flat tint.
+          Centre ≈9% yellow, corners ≈14%.
+      (b) Foxing. A deterministic seeded scatter of small R+G sepia age spots
+          (the documented brown recipe — each spot a ≥1-radius cluster
+          carrying both red and green pixels so it averages to rust-brown at
+          panel distance rather than reading as a lone speck), biased toward
+          the edges where foxing concentrates.
+
+    The crumple creases and wax seal are painted by ``draw_letter_border``
+    after this returns, so they are intentionally not handled here.
+    """
+    if page_bg is None:
+        return
+    pixels = image.load()
+    col = [math.sin(x * 0.013) + 0.6 * math.sin(x * 0.031 + 1.7) for x in range(width)]
+    row_mottle = [math.sin(y * 0.015 + 0.5) + 0.6 * math.sin(y * 0.029 + 2.3) for y in range(height)]
+    half_w = max(1.0, width * 0.5)
+    half_h = max(1.0, height * 0.5)
+    for y in range(height):
+        brow = BAYER_4x4[y & 3]
+        ry = row_mottle[y]
+        edge_y = 1.0 - min(y, height - 1 - y) / half_h
+        for x in range(width):
+            if pixels[x, y] != page_bg:
+                continue
+            edge_x = 1.0 - min(x, width - 1 - x) / half_w
+            edge = edge_x if edge_x > edge_y else edge_y
+            mottle = (col[x] + ry) * 0.5
+            grain = (((x * 131 + y * 57) % 17) - 8) / 8.0
+            density = 0.085 + 0.05 * (edge * edge) + 0.02 * mottle + 0.02 * grain
+            if brow[x & 3] < density * 16:
+                pixels[x, y] = cream_light
+
+    # (b) Foxing: small brown spots, each a square red/green checkerboard
+    # block (2×2 or 3×3) so every spot carries a balanced red+green pair and
+    # averages to rust-brown — a circular mask would leave colour-imbalanced
+    # plus-shapes that read as lone green or red specks. Biased toward a
+    # random edge.
+    n_spots = max(10, (width * height) // 9000)
+    for _ in range(n_spots):
+        fx = int(rng.triangular(0, width - 1, rng.choice((0, width - 1))))
+        fy = int(rng.triangular(0, height - 1, rng.choice((0, height - 1))))
+        spot_w = rng.choice((2, 2, 3))
+        for dy in range(spot_w):
+            for dx in range(spot_w):
+                px, py = fx + dx, fy + dy
+                if 0 <= px < width and 0 <= py < height and pixels[px, py] in (page_bg, cream_light):
+                    pixels[px, py] = sepia_a if (px + py) & 1 else sepia_b
+
+
 def draw_letter_border(image: Image.Image, colors: dict) -> None:
     """Wax-sealed letter decoration: aged, lightly-crumpled paper ground +
     fold/crumple creases + a pressed oxblood / maroon wax seal in the
@@ -11393,17 +11467,17 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     never reaches the corner the seal occupies). Layers, painted bottom
     to top:
 
-    * **Layer 0 — aged, lightly-crumpled paper.** Three stacked textures,
-      all native to the Spectra-6 palette (so ``snap_image_to_palette``
-      is a no-op and the script glyph edges stay crisp): (a) an **uneven
-      cream tan** — the documented Y+W yellow cream wash, but its density
-      is modulated by a cheap low-frequency mottle field (precomputed
-      per-row / per-column sine tables, no per-pixel trig) plus an
-      edge-weighted vignette, so the sheet tans more at the margins and
-      in soft patches the way real aged paper does rather than as a flat
-      tint; (b) **foxing** — a deterministic seeded scatter of small R+G
-      sepia age spots (the documented brown recipe), biased toward the
-      edges; and (c) **crumple creases** (below).
+    * **Layer 0 — aged paper.** A committed continuous-tone aged-paper PNG
+      (``letter_aged_paper.png``: warm cream base + edge tan vignette +
+      low-frequency mottle + reddish-brown foxing blobs) Floyd–Steinberg-
+      dithered at render time to white/yellow/red/green — cream as a W+Y
+      stipple, sepia foxing as the documented R+G brown recipe where the
+      paper has browned. Result is pure Spectra-6, so ``snap_image_to_palette``
+      is a no-op and the script glyphs that paint on top stay crisp. If the
+      asset is missing, ``_letter_paint_aged_paper`` synthesises the
+      equivalent texture with sine-table cream wash + vignette + foxing
+      stipple as a graceful fallback. The crumple creases (below) and the
+      wax seal paint as primitives over Layer 0 either way.
     * **Crumple creases** — two horizontal fold creases at the thirds of
       the page (the folds a letter picks up tucked into an envelope) plus
       a handful of fainter short random-angle wrinkles (the creases a
@@ -11441,68 +11515,26 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     wax_red = colors["accent"]
     maroon_dark = SPECTRA6["black"]
     cream_light = SPECTRA6["yellow"]
-    pixels = image.load()
 
     sepia_a = SPECTRA6["red"]
     sepia_b = SPECTRA6["green"]
     rng = random.Random(_LETTER_PAPER_SEED)
 
-    # ---- Layer 0: aged, lightly-crumpled paper ------------------------
-    # Three stacked textures turn the panel's flat white into an aged
-    # letter sheet, all native to the Spectra-6 palette (every output
-    # pixel is one of the six inks, so palette-snap is a no-op and the
-    # script glyphs that paint on top stay crisp). Deliberately subtle —
-    # the textures should read at arm's length as "old paper", not as a
-    # pattern competing with the handwriting:
-    #
-    #   (a) Uneven cream tan. The yellow cream-wash density is no longer
-    #       uniform — a gentle edge vignette (the sheet tans more at the
-    #       margins) plus a low-amplitude mottle (precomputed per-row /
-    #       per-column sine tables, no per-pixel trig) and a fine per-pixel
-    #       grain jitter, so the cream breaks up into an organic fibrous
-    #       tone instead of a flat tint. Centre ≈9% yellow, corners ≈14%.
-    #   (b) Foxing. A deterministic seeded scatter of small R+G sepia age
-    #       spots (the documented brown recipe — each spot is a ≥1-radius
-    #       cluster carrying both red and green pixels so it averages to
-    #       rust-brown at panel distance rather than reading as a lone
-    #       red/green speck), biased toward the edges where foxing
-    #       concentrates.
-    #   (c) Crumple creases — see below the wash.
-    if page_bg is not None:
-        col = [math.sin(x * 0.013) + 0.6 * math.sin(x * 0.031 + 1.7) for x in range(width)]
-        row_mottle = [math.sin(y * 0.015 + 0.5) + 0.6 * math.sin(y * 0.029 + 2.3) for y in range(height)]
-        half_w = max(1.0, width * 0.5)
-        half_h = max(1.0, height * 0.5)
-        for y in range(height):
-            brow = BAYER_4x4[y & 3]
-            ry = row_mottle[y]
-            edge_y = 1.0 - min(y, height - 1 - y) / half_h
-            for x in range(width):
-                if pixels[x, y] != page_bg:
-                    continue
-                edge_x = 1.0 - min(x, width - 1 - x) / half_w
-                edge = edge_x if edge_x > edge_y else edge_y
-                mottle = (col[x] + ry) * 0.5
-                grain = (((x * 131 + y * 57) % 17) - 8) / 8.0
-                density = 0.085 + 0.05 * (edge * edge) + 0.02 * mottle + 0.02 * grain
-                if brow[x & 3] < density * 16:
-                    pixels[x, y] = cream_light
-
-        # (b) Foxing: small brown spots, each a square red/green
-        # checkerboard block (2×2 or 3×3) so every spot carries a balanced
-        # red+green pair and averages to rust-brown — a circular mask
-        # would leave colour-imbalanced plus-shapes that read as lone
-        # green or red specks. Biased toward a random edge.
-        n_spots = max(10, (width * height) // 9000)
-        for _ in range(n_spots):
-            fx = int(rng.triangular(0, width - 1, rng.choice((0, width - 1))))
-            fy = int(rng.triangular(0, height - 1, rng.choice((0, height - 1))))
-            spot_w = rng.choice((2, 2, 3))
-            for dy in range(spot_w):
-                for dx in range(spot_w):
-                    px, py = fx + dx, fy + dy
-                    if 0 <= px < width and 0 <= py < height and pixels[px, py] in (page_bg, cream_light):
-                        pixels[px, py] = sepia_a if (px + py) & 1 else sepia_b
+    # ---- Layer 0: aged paper ------------------------------------------
+    # Prefer the committed continuous-tone aged-paper plate dithered to
+    # white/yellow/red/green (cream W+Y body with R+G sepia foxing where
+    # the paper has browned); fall back to the synthesised cream-wash +
+    # foxing stipple when the asset is unavailable (stripped install).
+    # Either path yields pure Spectra-6, so palette-snap is a no-op and the
+    # script glyphs that paint on top stay crisp. The crumple creases + wax
+    # seal below paint as primitives over Layer 0 regardless of which path
+    # produced the paper.
+    plate = _load_dithered_plate(LETTER_PLATE, width, height, palette=_AGED_PAPER_PALETTE)
+    if plate is not None:
+        image.paste(plate, (0, 0))
+    else:
+        _letter_paint_aged_paper(image, width, height, page_bg, cream_light, sepia_a, sepia_b, rng)
+    pixels = image.load()
 
     # ---- Crumple creases ----------------------------------------------
     # Two primary fold creases at the thirds (the folds that put a letter
@@ -12349,6 +12381,21 @@ ANNA_ATKINS_PLATE = BASE_DIR / "assets" / "anna_atkins_cyanotype.png"
 # "sky-blue" haze in the feathered edges, blue+black in the deep ground. Still a
 # strict subset of SPECTRA6, so the final ``snap_image_to_palette`` is a no-op.
 _CYANOTYPE_PALETTE = [SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]]
+
+# The grimdark bulkhead is a committed continuous-tone weathered-metal plate.
+# Gunmetal is greyscale, so dither to white+black only: the K+W charcoal stays
+# pure with no stray chroma scattering into the deep void. The gold/blood trim,
+# Aquila, and cog-skull paint as primitives on top.
+GRIMDARK_PLATE = BASE_DIR / "assets" / "grimdark_gunmetal.png"
+_GUNMETAL_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
+
+# The letter aged-paper plate dithers to white/yellow/red/green: cream paper as
+# a W+Y stipple, sepia foxing as the documented R+G brown recipe. Black is
+# deliberately excluded (the crumple creases + wax seal supply their own black
+# as primitives on top) so error diffusion can't scatter hard black flecks
+# across clean paper; blue is excluded so foxing can't drift cool.
+LETTER_PLATE = BASE_DIR / "assets" / "letter_aged_paper.png"
+_AGED_PAPER_PALETTE = [SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], SPECTRA6["green"]]
 
 # Dithered results are deterministic per (source, size, method) and re-used
 # across the 144-frame contact sheet and the golden suite, so memoise them.
