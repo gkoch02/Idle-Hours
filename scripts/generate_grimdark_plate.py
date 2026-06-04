@@ -41,9 +41,16 @@ SEED = 0x28E7  # deterministic re-renders.
 def _gunmetal_ground(w: int, h: int, rng: random.Random) -> Image.Image:
     """Dark charcoal ground with an edge vignette and low-frequency exposure
     mottle, built as continuous-tone greyscale (R=G=B) so the dither has smooth
-    gradients to break into a white/black stipple."""
-    base = 58       # mid-charcoal at the centre
-    edge = 26       # darker toward the plate edges (a vignetted bulkhead)
+    gradients to break into a white/black stipple.
+
+    Kept deliberately *dark* — a white/black Floyd–Steinberg dither paints white
+    with roughly ``L/255`` probability, so a mid-grey base would scatter ~25%
+    white across the whole panel and the bone-white body text would lose its
+    edges into that stipple. A low base (centre L≈30 ≈ 12% white, margins ≈6%)
+    reads as dark gunmetal and leaves the quote crisp; only scuffs lift far from
+    the void."""
+    base = 30       # dark charcoal at the centre (~12% white after dithering)
+    edge = 15       # darker toward the plate edges (a vignetted bulkhead)
     img = Image.new("L", (w, h))
     px = img.load()
     cx, cy = w / 2, h / 2
@@ -51,7 +58,7 @@ def _gunmetal_ground(w: int, h: int, rng: random.Random) -> Image.Image:
     # A few broad sinusoids with random phase so the sheet reads as unevenly
     # lit rolled steel rather than a flat fill.
     waves = [(rng.uniform(0.5, 1.6) / w, rng.uniform(0.5, 1.6) / h,
-              rng.uniform(0, math.tau), rng.uniform(6, 14)) for _ in range(4)]
+              rng.uniform(0, math.tau), rng.uniform(4, 9)) for _ in range(4)]
     for y in range(h):
         for x in range(w):
             d = math.hypot(x - cx, y - cy) / maxd          # 0 centre .. 1 corner
@@ -60,7 +67,7 @@ def _gunmetal_ground(w: int, h: int, rng: random.Random) -> Image.Image:
             for fx, fy, ph, amp in waves:
                 mott += amp * math.sin(x * fx * math.tau + ph) * math.sin(y * fy * math.tau + ph)
             tone = base * (1 - v) + edge * v + mott * 0.5
-            px[x, y] = max(0, min(120, int(tone)))
+            px[x, y] = max(0, min(70, int(tone)))
     return img
 
 
@@ -79,7 +86,7 @@ def _blotches(img: Image.Image, rng: random.Random) -> None:
         # ~1/3 darken (grime), the rest lighten (scuff). Scuffs are stronger so
         # the eye reads bright metal where the plate has been rubbed.
         darken = rng.random() < 0.34
-        peak = rng.uniform(14, 30) if not darken else rng.uniform(10, 22)
+        peak = rng.uniform(12, 26) if not darken else rng.uniform(8, 18)
         br2 = br * br
         x0, x1 = max(0, bx - br), min(w - 1, bx + br)
         y0, y1 = max(0, by - br), min(h - 1, by + br)
@@ -93,7 +100,7 @@ def _blotches(img: Image.Image, rng: random.Random) -> None:
                 falloff = 1.0 - (d2 ** 0.5) / br
                 delta = peak * falloff * falloff
                 v = px[x, y]
-                px[x, y] = max(0, min(150, int(v - delta if darken else v + delta)))
+                px[x, y] = max(0, min(90, int(v - delta if darken else v + delta)))
 
 
 def _scratches(img: Image.Image, rng: random.Random) -> None:
@@ -110,7 +117,7 @@ def _scratches(img: Image.Image, rng: random.Random) -> None:
         length = rng.randint(120 * SS // 2, 360 * SS // 2)
         x1 = x0 + int(math.cos(angle) * length)
         y1 = y0 + int(math.sin(angle) * length)
-        ld.line((x0, y0, x1, y1), fill=rng.randint(40, 80), width=max(1, SS // 2))
+        ld.line((x0, y0, x1, y1), fill=rng.randint(28, 52), width=max(1, SS // 2))
     layer = layer.filter(ImageFilter.GaussianBlur(radius=1.4 * SS))
     base = img.load()
     sp = layer.load()
@@ -118,7 +125,7 @@ def _scratches(img: Image.Image, rng: random.Random) -> None:
         for x in range(w):
             s = sp[x, y]
             if s:
-                base[x, y] = min(150, base[x, y] + s // 2)
+                base[x, y] = min(90, base[x, y] + s // 3)
 
 
 def main() -> int:
