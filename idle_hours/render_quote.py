@@ -11560,7 +11560,11 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
                 pixels[vx, cy + 1] = ink
 
     # Soft tonal crumple wrinkles: a cream ridge + white highlight relief.
-    if page_bg is not None:
+    # Only painted in the synthesised-fallback path: the committed plate
+    # already carries continuous-tone surface texture, and a solid cream ridge
+    # laid over its W+Y stipple reads as a hard bright streak rather than a
+    # subtle wrinkle.
+    if page_bg is not None and plate is None:
         for _ in range(5):
             wx = rng.randint(60, max(61, width - 60))
             wy = rng.randint(50, max(51, height - 50))
@@ -11597,6 +11601,38 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
     highlight_ink = SPECTRA6["white"]  # R+W coral at <100% density; pure gloss at 100%
     light_dx, light_dy = -0.7071, -0.7071  # light from the upper-left
 
+    # (0) Clean cream bed behind the seal. The committed plate scatters R+G
+    # sepia foxing across the whole sheet; directly around the wax bead that
+    # speckle reads as a noisy "background" showing through. Reset a soft disc
+    # to clean cream (white + a light yellow stipple, no foxing) so the seal
+    # and its shadow sit on calm paper — the way a seal pressed onto a letter
+    # clears the fibre beneath it. The cream/plate tone matches (both are W+Y),
+    # so only the colourful foxing is removed and the disc edge stays invisible;
+    # the rim ring thins the foxing out gradually rather than cutting a hard
+    # circle. No-op in the synthesised-fallback path's terms (it also leaves
+    # clean cream), guarded by ``page_bg is not None`` like the rest.
+    if page_bg is not None:
+        knock_r = base_r * 1.7
+        feather = knock_r * 0.78
+        kx0 = max(0, int(scx - knock_r))
+        kx1 = min(width - 1, int(scx + knock_r))
+        ky0 = max(0, int(scy - knock_r))
+        ky1 = min(height - 1, int(scy + knock_r))
+        for py in range(ky0, ky1 + 1):
+            for px in range(kx0, kx1 + 1):
+                d = math.hypot(px - scx, py - scy)
+                if d > knock_r:
+                    continue
+                if d > feather:
+                    # Rim: thin the foxing out toward the edge so the bed blends
+                    # into the surrounding plate instead of ending in a ring.
+                    if pixels[px, py] in (sepia_a, sepia_b):
+                        keep = (knock_r - d) / (knock_r - feather)  # 1 at feather → 0 at rim
+                        if ((px * 131 + py * 57) % 16) / 16.0 < keep:
+                            pixels[px, py] = page_bg
+                    continue
+                pixels[px, py] = cream_light if BAYER_4x4[py & 3][px & 3] < 0.09 * 16 else page_bg
+
     # (1) Soft cast shadow on the paper. A stippled disc offset down-right
     # (away from the light), densest at its centre and fading to nothing at
     # the rim, painted only on bare paper (page_bg / cream wash). Drawn
@@ -11613,9 +11649,14 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
         sy0 = max(0, int(shy - shadow_r))
         sx1 = min(width - 1, int(shx + shadow_r))
         sy1 = min(height - 1, int(shy + shadow_r))
+        # Fall on any of the four paper inks — white/yellow cream plus the
+        # red/green sepia foxing the plate scatters — so the shadow reads as a
+        # coherent soft disc over the textured paper instead of leaving the
+        # plate's foxing specks poking through a white/yellow-only stipple.
+        paper_inks = (page_bg, cream_light, sepia_a, sepia_b)
         for py in range(sy0, sy1 + 1):
             for px in range(sx0, sx1 + 1):
-                if pixels[px, py] != page_bg and pixels[px, py] != cream_light:
+                if pixels[px, py] not in paper_inks:
                     continue
                 d = math.hypot(px - shx, py - shy)
                 if d >= shadow_r:
@@ -11745,7 +11786,7 @@ def draw_letter_border(image: Image.Image, colors: dict) -> None:
         if 0 <= fx - fr and fx + fr < width and 0 <= fy - fr and fy + fr < height:
             sxp, syp = fx + 1, fy + 2
             if page_bg is not None and 0 <= sxp < width and 0 <= syp < height:
-                if pixels[sxp, syp] in (page_bg, cream_light):
+                if pixels[sxp, syp] in (page_bg, cream_light, sepia_a, sepia_b):
                     pixels[sxp, syp] = maroon_dark
             draw.ellipse((fx - fr, fy - fr, fx + fr, fy + fr), fill=wax_red)
             # Tone the fleck toward oxblood so it matches the shaded seal.
