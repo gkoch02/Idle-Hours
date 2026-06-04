@@ -1139,8 +1139,9 @@ THEMES = {
     # ``dither_image_to_palette`` capability — see ``draw_anna_atkins_border``)
     # plus procedural white algae/fern silhouettes and handwritten white Latin
     # margin labels in copperplate. Body / matched-phrase white Libre Caslon
-    # Text; the quote sits in a deep-blue knockout panel so the white text reads
-    # over the busy plate. ``accent`` is a *yellow sentinel*, not a painted
+    # Text drawn directly over the plate (no knockout panel) with a subtle
+    # per-glyph black halo from ``_draw_text_body`` keeping it legible over the
+    # busy photogram. ``accent`` is a *yellow sentinel*, not a painted
     # colour: ``_draw_text_body`` reroutes the matched-phrase yellow to a 50/50
     # blue+white sky-blue stipple (the documented ``glacier`` recipe), so the
     # time phrase reads as a ghostly cyanotype element rather than warm ink. The
@@ -3657,6 +3658,14 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       this seam. Stars, constellation lines, and corner ornaments
       paint outside this seam via ``draw_firmament_border``.
     """
+    if theme == "anna_atkins" and text.strip():
+        # anna_atkins renders white / sky-blue text directly on the dithered
+        # cyanotype plate (no body panel), so stamp a thin black outline behind
+        # each glyph first — a subtle halo that keeps the text legible where it
+        # crosses bright specimen fronds without covering the plate. The real
+        # (white body / sky-blue matched-phrase) glyph is drawn on top by the
+        # branches below, sitting inside the black ring.
+        draw.text(xy, text, font=font, fill=SPECTRA6["black"], stroke_width=2, stroke_fill=SPECTRA6["black"])
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
@@ -3844,11 +3853,12 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     elif theme == "anna_atkins" and fill == SPECTRA6["yellow"]:
         # The matched-phrase ``accent`` is a yellow *sentinel* (see the THEMES
         # entry), rerouted here to a 50/50 blue+white sky-blue stipple — the
-        # documented ``glacier`` recipe. On the deep Prussian-blue panel the
-        # time phrase reads as a ghostly cyanotype element (paler, cooler,
-        # stippled) sitting distinct from the crisp solid-white body, rather than
-        # the warm yellow the sentinel would otherwise paint. The yellow surfaces
-        # literally only in the debug-mode banner, which paints outside this seam.
+        # documented ``glacier`` recipe. Over the cyanotype plate (with the
+        # per-glyph black halo stamped above) the time phrase reads as a ghostly
+        # cyanotype element (paler, cooler, stippled) sitting distinct from the
+        # crisp solid-white body, rather than the warm yellow the sentinel would
+        # otherwise paint. The yellow surfaces literally only in the debug-mode
+        # banner, which paints outside this seam.
         draw_text_dithered(image, xy, text, font, dark=SPECTRA6["blue"], light=SPECTRA6["white"])
     else:
         draw.text(xy, text, font=font, fill=fill)
@@ -12004,8 +12014,7 @@ def _anna_atkins_labels(image: Image.Image, draw: ImageDraw.ImageDraw, width: in
         _anna_atkins_handwrite(image, text, cx, cy, font, angle)
 
 
-def draw_anna_atkins_border(image: Image.Image, colors: dict,
-                            clear_rect: tuple[int, int, int, int] | None = None) -> None:
+def draw_anna_atkins_border(image: Image.Image, colors: dict) -> None:
     """Anna Atkins 1843 botanical cyanotype plate (see the THEMES entry).
 
     Layers, deepest → shallowest:
@@ -12024,18 +12033,20 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict,
     * **Handwritten white Latin species labels** in copperplate (Pinyon Script),
       slightly rotated and stamped binary so they read as Atkins's own captions.
     * **Thin white plate rule** at inset 12 — the mounting-sheet edge.
-    * **Body-text knockout** (when ``render`` supplies ``clear_rect``): a deep
-      Prussian-blue rounded panel (solid blue + blue→black Bayer) with a doubled
-      white plate rule and corner pin-dots, so the white quote text reads cleanly
-      over the busy plate. Same single-call ``clear_rect`` dispatch as
-      ``kanagawa`` / ``cartograph`` / ``circuit``.
+
+    There is deliberately **no body-text knockout panel** — the quote is drawn
+    directly over the photogram so the full plate stays visible, and
+    ``_draw_text_body`` stamps a subtle per-glyph black halo under the
+    white / sky-blue text to keep it legible where it crosses bright specimen
+    fronds. (Earlier revisions knocked the body region back to a Prussian-blue,
+    then a frosted-grey, panel; the halo-over-plate look reads as a real
+    cyanotype plate with its caption written straight on the sheet.)
     """
     draw = ImageDraw.Draw(image)
     width, height = image.size
     page_bg = colors.get("page_bg")
     pixels = image.load()
     WHITE = SPECTRA6["white"]
-    BLUE = SPECTRA6["blue"]
     BLACK = SPECTRA6["black"]
 
     # Layer 0 — dithered photogram (or Prussian-deepened flat ground fallback).
@@ -12053,27 +12064,6 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict,
     _anna_atkins_labels(image, draw, width, height)
 
     draw.rectangle((12, 12, width - 13, height - 13), outline=WHITE, width=1)
-
-    if clear_rect is not None:
-        cx0, cy0, cx1, cy1 = clear_rect
-        cx0 = max(0, cx0)
-        cy0 = max(0, cy0)
-        cx1 = min(width - 1, cx1)
-        cy1 = min(height - 1, cy1)
-        if cx1 > cx0 and cy1 > cy0:
-            draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=10, fill=BLUE)
-            # Deepen the panel blue → Prussian with a blue→black Bayer stipple.
-            for py in range(cy0, cy1 + 1):
-                row = BAYER_4x4[py & 3]
-                for px in range(cx0, cx1 + 1):
-                    if pixels[px, py] == BLUE and row[px & 3] < 6:
-                        pixels[px, py] = BLACK
-            # Doubled white plate rule following the rounded corner.
-            draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=10, outline=WHITE, width=1)
-            draw.rounded_rectangle((cx0 + 3, cy0 + 3, cx1 - 3, cy1 - 3), radius=8, outline=WHITE, width=1)
-            # Corner pin-dots — where the specimen sheet is mounted.
-            for mx, my in ((cx0 + 9, cy0 + 9), (cx1 - 9, cy0 + 9), (cx0 + 9, cy1 - 9), (cx1 - 9, cy1 - 9)):
-                draw.ellipse((mx - 1, my - 1, mx + 1, my + 1), fill=WHITE)
 
 
 _BORDER_PAINTERS = {
@@ -17559,10 +17549,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # the 16/10/10 pad keeps that outline (and the dot just outside the
         # top-left corner) clear of the first / last text lines.
         "circuit": (16, 10, 10),
-        # anna_atkins knocks the body region back to a deep Prussian-blue panel
-        # framed by a doubled white plate rule + corner pin-dots; the 20/12/12
-        # pad keeps that rule and the rounded corners clear of the white text.
-        "anna_atkins": (20, 12, 12),
+        # anna_atkins deliberately omits a body-text knockout — the white /
+        # sky-blue text is rendered directly on the cyanotype plate with a
+        # subtle per-glyph black halo (see ``_draw_text_body``) instead of a
+        # panel, so the full photogram stays visible behind the quote.
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
         clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
@@ -17607,12 +17597,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # knocks the body-text rect back to clean forest soldermask and
         # frames it with a white silkscreen component outline.
         draw_circuit_border(image, colors, clear_rect=clear_rect)
-    elif theme == "anna_atkins":
-        # Same single-call dispatch — the cyanotype painter pastes the dithered
-        # photogram + ferns + labels, then knocks the body rect back to a deep
-        # Prussian-blue panel so the white quote text reads over the plate.
-        draw_anna_atkins_border(image, colors, clear_rect=clear_rect)
     else:
+        # anna_atkins falls through here too: it paints the dithered photogram +
+        # ferns + labels via _paint_theme_border with no body-rect knockout, and
+        # the quote text is drawn directly over the plate with a per-glyph halo.
         _paint_theme_border(image, theme, colors)
 
     draw = ImageDraw.Draw(image)
