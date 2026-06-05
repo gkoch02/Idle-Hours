@@ -429,10 +429,12 @@ class TestOutrunFrame:
         crown = [px[x, y] for y in range(top + 4, top + 34) for x in range(cx - 50, cx + 50)]
         assert rq.SPECTRA6["yellow"] in crown, "sun crown should carry warm yellow ink"
 
-    def test_matched_phrase_is_cyan(self):
-        """The matched time-phrase is painted as a green+blue (cyan) stipple in
-        the upper sky, where no other element introduces green ink — so green
-        in the quote band is a positive signal the accent rendered."""
+    def test_matched_phrase_is_teal(self):
+        """The matched time-phrase is painted as a green-biased green+blue
+        (teal) stipple in the upper sky, where no other element introduces
+        green ink — so green in the quote band is a positive signal the accent
+        rendered. Biased toward green (not 50/50 cyan) so it stays legible
+        against the navy/blue sky instead of melting into the blue ground."""
         row = make_row(display_quote="It struck three o'clock sharp.", matched_text="three o'clock")
         img = rq.render("03:00", row, 800, 480, theme="outrun")
         px = img.load()
