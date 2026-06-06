@@ -17110,12 +17110,18 @@ def _outrun_paint_sun(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
 
 
 def _outrun_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """The literary quote in white Oxanium, matched phrase in synthesised cyan.
+    """The literary quote in white Oxanium, matched phrase in synthesised teal.
 
     Centred line-by-line in the dark upper sky. The matched time-phrase chunks
-    are painted as a 50/50 green+blue Bayer stipple (cyan) via
+    are painted as a 5/8:3/8 green+blue Bayer stipple (green-biased teal) via
     ``draw_text_dithered`` — the classic neon accent — while the body stays
-    solid white for maximum legibility on the navy ground.
+    solid white for maximum legibility on the navy ground. The accent is biased
+    toward green rather than an even 50/50 cyan because the quote block sits in
+    the navy/blue zone of the sky: a 50/50 cyan's blue half melts into the blue
+    ground, leaving only a sparse green scatter that reads dim and illegible.
+    Dominating with green widens the hue stride off the blue ground so the
+    phrase stays crisp — the same fix ``glacier``'s matched phrase makes against
+    its solid-blue body.
     """
     width = image.size[0]
     WHITE = SPECTRA6["white"]
@@ -17149,7 +17155,7 @@ def _outrun_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (ascent - _font_ascent(font))
             if is_bold and chunk.strip():
-                draw_text_dithered(image, (x, chunk_y), chunk, font, dark=BLUE, light=GREEN, light_density=0.5)
+                draw_text_dithered(image, (x, chunk_y), chunk, font, dark=GREEN, light=BLUE, light_density=0.375)
             else:
                 draw.text((x, chunk_y), chunk, font=font, fill=WHITE)
             bbox = draw.textbbox((0, 0), chunk, font=font)
@@ -17158,10 +17164,12 @@ def _outrun_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
 
 
 def _outrun_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """Author (white) + title (cyan) credit line below the quote, in Antonio.
+    """Author (white) + title (teal) credit line below the quote, in Antonio.
 
     Sits in the clear sky band between the quote block and the rising sun cap,
     in the condensed Antonio poster-credit face the other custom frames reuse.
+    The title uses the same green-biased teal stipple as the matched phrase so
+    it stays legible against the cool sky rather than melting into the blue.
     """
     width = image.size[0]
     WHITE = SPECTRA6["white"]
@@ -17188,7 +17196,7 @@ def _outrun_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_r
         label = f"— {text} —"
         bbox = draw.textbbox((0, 0), label, font=font)
         fx = (width - (bbox[2] - bbox[0])) // 2 - bbox[0]
-        draw_text_dithered(image, (fx, y - bbox[1]), label, font, dark=BLUE, light=GREEN, light_density=0.5)
+        draw_text_dithered(image, (fx, y - bbox[1]), label, font, dark=GREEN, light=BLUE, light_density=0.375)
 
 
 def render_outrun_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
