@@ -429,17 +429,19 @@ class TestOutrunFrame:
         crown = [px[x, y] for y in range(top + 4, top + 34) for x in range(cx - 50, cx + 50)]
         assert rq.SPECTRA6["yellow"] in crown, "sun crown should carry warm yellow ink"
 
-    def test_matched_phrase_is_teal(self):
-        """The matched time-phrase is painted as a green-biased green+blue
-        (teal) stipple in the upper sky, where no other element introduces
-        green ink — so green in the quote band is a positive signal the accent
-        rendered. Biased toward green (not 50/50 cyan) so it stays legible
-        against the navy/blue sky instead of melting into the blue ground."""
+    def test_matched_phrase_is_magenta(self):
+        """The matched time-phrase is painted as a red-biased red+blue (magenta)
+        stipple in the navy upper sky. The sky gradient only starts mixing red
+        in below frac 0.42 of the horizon (y >= 126 for the 300px horizon), so
+        sampling the navy band above that (y < 120) isolates the accent — red
+        there is a positive signal the magenta phrase rendered. Biased toward
+        red (not 50/50 violet) so it stays legible against the navy/blue sky
+        instead of melting into the blue ground, and ties to the magenta grid."""
         row = make_row(display_quote="It struck three o'clock sharp.", matched_text="three o'clock")
         img = rq.render("03:00", row, 800, 480, theme="outrun")
         px = img.load()
-        upper = [px[x, y] for y in range(38, 150) for x in range(0, 800, 2)]
-        assert rq.SPECTRA6["green"] in upper, "matched-phrase cyan stipple not found in the sky band"
+        navy_band = [px[x, y] for y in range(38, 120) for x in range(0, 800, 2)]
+        assert rq.SPECTRA6["red"] in navy_band, "matched-phrase magenta stipple not found in the navy sky band"
 
     def test_no_digital_time_chrome(self):
         """Like the other custom frames, outrun never surfaces the digital
