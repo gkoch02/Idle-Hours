@@ -31,8 +31,9 @@ class TestLoadConfigNoop:
         is almost certainly a path bug they want to hear about on the
         next `systemctl restart`, not defaults-in-disguise.
         """
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as excinfo:
             runtime_config.load_config(tmp_path / "does_not_exist.toml")
+        assert excinfo.value.code == runtime_config.EXIT_CONFIG_ERROR
 
 
 class TestLoadConfigHappyPath:
@@ -314,8 +315,9 @@ class TestRunClockIntegration:
             "sys.argv",
             ["run_clock.py", "--config", str(tmp_path / "nope.toml")],
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as excinfo:
             run_clock.parse_args()
+        assert excinfo.value.code == runtime_config.EXIT_CONFIG_ERROR
 
     def test_empty_string_config_is_noop(self, monkeypatch):
         """``--config ""`` must be treated as "no config file", not as a

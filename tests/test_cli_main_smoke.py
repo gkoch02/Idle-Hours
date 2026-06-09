@@ -242,7 +242,9 @@ class TestRunClockOnce:
         assert out.stat().st_size > 0, "--config --once produced an empty PNG"
 
     def test_once_with_missing_config_fails_fast(self, tmp_path):
-        """Typoed --config path must exit 1, not silently boot with defaults."""
+        """Typoed --config path must exit 42 (EXIT_CONFIG_ERROR), not silently
+        boot with defaults — 42 pairs with the sample unit's
+        RestartPreventExitStatus=42 so systemd halts instead of flapping."""
         result = _run([
             "run_clock",
             "--config", str(tmp_path / "does_not_exist.toml"),
@@ -250,7 +252,7 @@ class TestRunClockOnce:
             "--output", str(tmp_path / "frame.png"),
             "--quiet-off",
         ])
-        assert result.returncode == 1, (
-            f"expected exit 1 for missing --config path, got {result.returncode}"
+        assert result.returncode == 42, (
+            f"expected exit 42 for missing --config path, got {result.returncode}"
         )
         assert "does not exist" in result.stderr

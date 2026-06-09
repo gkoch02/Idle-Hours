@@ -12,8 +12,11 @@ default**.
 Loading is fail-open on a malformed or unreadable file, mirroring the
 durability pattern :func:`apply_content_overrides.load_overrides` uses
 for its sidecar. A typoed ``--config`` path is the one exception: that
-raises :class:`SystemExit` so a misconfigured unit file fails fast in
-the journal instead of silently booting with argparse defaults.
+raises :class:`SystemExit` with :data:`EXIT_CONFIG_ERROR` (42) so a
+misconfigured unit file fails fast in the journal instead of silently
+booting with argparse defaults — and so systemd's
+``RestartPreventExitStatus=42`` (see ``ops/idle-hours.service.example``)
+stops ``Restart=always`` from flapping on a terminal configuration bug.
 """
 from __future__ import annotations
 
@@ -22,6 +25,14 @@ from pathlib import Path
 from typing import Callable
 
 from idle_hours.runtime_log import _log
+
+# Exit code for terminal configuration errors (typoed --config path,
+# failed pre-flight path checks in run_clock). Paired with
+# ``RestartPreventExitStatus=42`` in the sample systemd unit so a config
+# bug halts the service instead of restart-flapping. Deliberately NOT
+# used for pidfile contention (a racing restart should retry, exit 1)
+# or argparse validation errors (argparse's own exit 2).
+EXIT_CONFIG_ERROR = 42
 
 # Every key understood by the config file. The value is either a Python
 # type (``int`` / ``str`` / ``bool``) or a two-tuple ``(type, validator)``
@@ -88,7 +99,8 @@ def load_config(
     ``path`` of ``None`` returns ``{}`` (no-op, keeps argparse defaults).
 
     ``path`` pointing at a non-existent file is treated as a hard error
-    (``SystemExit(1)``) rather than silently falling back: the user
+    (``SystemExit`` with :data:`EXIT_CONFIG_ERROR`) rather than silently
+    falling back: the user
     passed ``--config FOO``, so a missing FOO is a typo they want to
     hear about loudly at startup, not an implicit "run with defaults"
     signal.
@@ -115,7 +127,7 @@ def load_config(
         return {}
     if not path.exists():
         _log(f"config: --config {path!s} does not exist", err=True)
-        raise SystemExit(1)
+        raise SystemExit(EXIT_CONFIG_ERROR)
     try:
         raw_bytes = path.read_bytes()
     except OSError as exc:

@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from idle_hours import run_clock
+from idle_hours import run_clock, runtime_config
 
 
 class TestCurrentBucket:
@@ -4479,7 +4479,7 @@ class TestPreflightPaths:
         args = self._args(display_script="/does/not/exist/display.py")
         with pytest.raises(SystemExit) as excinfo:
             run_clock._run_preflight(args)
-        assert excinfo.value.code == 1
+        assert excinfo.value.code == runtime_config.EXIT_CONFIG_ERROR
 
     def test_unset_optional_paths_are_fine(self):
         """Leaving --display-script / --quiet-image / --startup-image empty is
