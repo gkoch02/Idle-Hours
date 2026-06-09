@@ -80,8 +80,6 @@ jobs:
           python -c "from PIL import Image; im = Image.open('output/current.png'); im.verify(); im.close(); print('PNG OK')"
 
   coverage:
-    # Temporarily disabled — flip ``if: false`` off to re-enable.
-    #
     # Coverage runs in its own job so the ``test`` matrix isn't gated on tracer
     # overhead. ``--cov-branch`` measures both arms of every ``if`` so a refactor
     # that silently skips one branch (e.g. an ``except Exception`` that was once
@@ -90,7 +88,8 @@ jobs:
     # floor blocks the merge — without this gate, coverage.xml is uploaded
     # as an artifact but nothing acts on it. Python 3.12 + COVERAGE_CORE=sysmon
     # uses sys.monitoring (PEP 669) for the lightest available tracer.
-    if: false
+    # (Re-enabled 2026-06-09: measured 96% combined line+branch locally,
+    # comfortably above the 95 gate.)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
