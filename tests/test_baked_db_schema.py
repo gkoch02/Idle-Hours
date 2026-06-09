@@ -21,7 +21,7 @@ import pytest
 
 from idle_hours import bake_quote_database, pick_quote
 
-DB_PATH = Path(__file__).resolve().parent.parent / "assets" / "quote_database.jsonl"
+DB_PATH = Path(pick_quote.DEFAULT_DATABASE_PATH)
 
 pytestmark = pytest.mark.skipif(not DB_PATH.exists(), reason="baked quote database missing")
 

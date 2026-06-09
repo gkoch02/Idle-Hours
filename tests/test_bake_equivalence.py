@@ -64,7 +64,7 @@ def _iter_canonical_times():
 # Running the full corpus through the baker for every test would make the
 # suite slow; scope a "bake once per module" fixture that uses the shipped
 # corpus so the 144-bucket sweep runs against real data.
-CORPUS_PATH = Path(__file__).resolve().parent.parent / "assets" / "candidates-attributed.jsonl"
+CORPUS_PATH = Path(pick_quote.DEFAULT_INPUT_PATH)
 
 pytestmark = pytest.mark.skipif(not CORPUS_PATH.exists(), reason="shipped corpus missing")
 
