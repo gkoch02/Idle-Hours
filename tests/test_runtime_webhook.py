@@ -42,13 +42,22 @@ def _reset_webhook_config():
 
 
 def _wait_for_threads():
-    """The webhook posts on a daemon thread; give them a moment to finish so
-    assertions on patched mocks see the call."""
-    deadline = time.monotonic() + 1.5
-    while time.monotonic() < deadline:
-        if threading.active_count() <= 2:  # main + pytest
-            return
-        time.sleep(0.02)
+    """Join any in-flight webhook worker threads so assertions on patched
+    mocks observe their effects deterministically.
+
+    ``post_event`` names its workers ``idle-hours-webhook``, so we join those
+    by name rather than polling ``threading.active_count()`` — the count
+    heuristic raced: in a quiet worker process, main + the webhook thread
+    itself already satisfied ``<= 2``, returning before the worker had
+    executed the patched ``_post_blocking`` (and once the ``with patch``
+    block exited, the late thread hit the real one instead, leaving the
+    recording list empty). Must be called *inside* the ``with patch(...)``
+    block so the join happens while the fake is still installed.
+    """
+    deadline = time.monotonic() + 5.0
+    for thread in threading.enumerate():
+        if thread.name == "idle-hours-webhook":
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
 
 
 class TestConfigure:
