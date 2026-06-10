@@ -88,8 +88,11 @@ jobs:
     # floor blocks the merge — without this gate, coverage.xml is uploaded
     # as an artifact but nothing acts on it. Python 3.12 + COVERAGE_CORE=sysmon
     # uses sys.monitoring (PEP 669) for the lightest available tracer.
-    # (Re-enabled 2026-06-09: measured 96% combined line+branch locally,
-    # comfortably above the 95 gate.)
+    #
+    # push-only (main): the tracer makes this the slowest job in the run
+    # (~4 min), so it's skipped on pull_request to keep PR feedback fast.
+    # The gate still catches regressions post-merge on main.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
