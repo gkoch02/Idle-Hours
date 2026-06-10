@@ -186,3 +186,72 @@ class TestMain:
         result = json.loads(output_file.read_text(encoding="utf-8").strip())
         assert result["minute"] == 10
         assert result["fuzzy_bucket"] == "h3_ten_past"
+
+
+class TestArchaicReversedCompound:
+    """"five-and-twenty minutes past eight" (= 8:25) — the Victorian reversed
+    compound that previously slipped through as the bare trailing phrase
+    ("twenty minutes past eight" = 8:20)."""
+
+    def test_parse_five_and_twenty(self):
+        assert parse_number_word("five and twenty") == 25
+
+    def test_parse_hyphenated_five_and_twenty(self):
+        assert parse_number_word("five-and-twenty") == 25
+
+    def test_parse_one_and_twenty(self):
+        assert parse_number_word("one and twenty") == 21
+
+    def test_parse_and_with_unknown_word_returns_none(self):
+        assert parse_number_word("five and banana") is None
+
+    def test_infer_hyphenated_past(self):
+        result = infer_time_from_quote(
+            "I shall be passing here at five-and-twenty minutes past seven."
+        )
+        assert result is not None
+        assert result["matched_text"] == "five-and-twenty minutes past seven"
+        assert result["normalized_time"] == "07:25"
+        assert result["fuzzy_bucket"] == "h7_twenty_five_past"
+
+    def test_infer_spaced_capitalised_past(self):
+        result = infer_time_from_quote("Five and twenty minutes past eight, Winnie.")
+        assert result is not None
+        assert result["normalized_time"] == "08:25"
+        assert result["fuzzy_bucket"] == "h8_twenty_five_past"
+
+    def test_infer_hyphenated_to(self):
+        result = infer_time_from_quote(
+            "At five-and-twenty minutes to three, Captain Nemo appeared in the saloon."
+        )
+        assert result is not None
+        assert result["normalized_time"] == "02:35"
+        assert result["fuzzy_bucket"] == "h2_twenty_five_to"
+
+    def test_main_repairs_archaic_substring_collision(self, tmp_path):
+        """The exact corpus shape: matched_text captured the bare trailing
+        phrase of an archaic compound; the repair rewrites it to the full
+        phrase and re-derives the time fields."""
+        import sys
+
+        from idle_hours.fix_substring_time_matches import main
+
+        row = {
+            "display_quote": "Five and twenty minutes past eight, Winnie.",
+            "matched_text": "twenty minutes past eight",
+            "hour": 8,
+            "minute": 20,
+            "normalized_time": "08:20",
+            "fuzzy_bucket": "h8_twenty_past",
+        }
+        input_file = tmp_path / "input.jsonl"
+        output_file = tmp_path / "output.jsonl"
+        input_file.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        sys.argv = ["fix_substring_time_matches.py", str(input_file), "--output", str(output_file)]
+        main()
+
+        fixed = json.loads(output_file.read_text(encoding="utf-8").strip())
+        assert fixed["matched_text"] == "Five and twenty minutes past eight"
+        assert fixed["normalized_time"] == "08:25"
+        assert fixed["fuzzy_bucket"] == "h8_twenty_five_past"

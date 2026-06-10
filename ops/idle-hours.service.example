@@ -49,11 +49,12 @@ ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python -m idle_hours.run_clock \
 
 Restart=always
 RestartSec=10
-# Reserved "do not restart" exit code for future pre-flight failures — a path
-# typo or similar configuration error should stop systemd from flapping the
-# unit. Pair with explicit `raise SystemExit(42)` in run_clock when surfacing
-# terminal configuration errors. Current code exits 1 on pre-flight failure,
-# which still triggers Restart=always (intentional — transient FS issues).
+# "Do not restart" exit code for terminal configuration errors. run_clock
+# exits with runtime_config.EXIT_CONFIG_ERROR (42) on a typoed --config path
+# or a failed pre-flight path check, so a configuration bug halts the unit
+# loudly in the journal instead of flapping against Restart=always.
+# Pidfile contention deliberately stays exit 1 — a racing `systemctl restart`
+# SHOULD be retried, not latched off.
 # NB: this is RestartPreventExitStatus, NOT RestartForceExitStatus — the
 # Force variant does the opposite (restarts *even when* Restart=no would
 # otherwise suppress it), which is not what we want here.

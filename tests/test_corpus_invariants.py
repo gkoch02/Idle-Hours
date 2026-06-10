@@ -1,9 +1,9 @@
 """Invariants over the shipped runtime corpus.
 
-These tests read ``assets/candidates-attributed.jsonl`` (the picker's default
-input) and assert schema / bucket / metadata invariants that the pipeline is
-supposed to guarantee. A break here typically means a miner or cleanup stage
-regressed and a rebuild is needed.
+These tests read ``idle_hours/assets/candidates-attributed.jsonl`` (the
+picker's default input) and assert schema / bucket / metadata invariants that
+the pipeline is supposed to guarantee. A break here typically means a miner or
+cleanup stage regressed and a rebuild is needed.
 
 The checks are *schema* and *cross-field consistency* — not statistical checks
 like "every bucket must have >= N quotes" (that's ``bucket_coverage.py``'s job).
@@ -15,9 +15,14 @@ from pathlib import Path
 
 import pytest
 
+from idle_hours import pick_quote
 from idle_hours.buckets import BUCKET_ORDER, bucket_for_time, minute_bucket
 
-CORPUS_PATH = Path(__file__).resolve().parent.parent / "assets" / "candidates-attributed.jsonl"
+# Resolve through the package's own default-path constants rather than a
+# hand-built repo-relative path: a previous revision pointed at the
+# pre-restructure ``assets/`` location, which silently skipped this whole
+# module (including in CI) after the corpus moved into ``idle_hours/assets/``.
+CORPUS_PATH = Path(pick_quote.DEFAULT_INPUT_PATH)
 
 pytestmark = pytest.mark.skipif(not CORPUS_PATH.exists(), reason="shipped corpus missing")
 
@@ -214,7 +219,7 @@ class TestMetadataCoverage:
         assert ratio >= 0.90, f"metadata coverage dropped to {ratio:.1%} of gutenberg rows — did enrich_metadata break?"
 
 
-DATABASE_PATH = Path(__file__).resolve().parent.parent / "assets" / "quote_database.jsonl"
+DATABASE_PATH = Path(pick_quote.DEFAULT_DATABASE_PATH)
 
 
 @pytest.fixture(scope="module")

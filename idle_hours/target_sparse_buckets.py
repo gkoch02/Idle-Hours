@@ -129,6 +129,38 @@ def templates_for_bucket(bucket: str) -> list[tuple[str, str]]:
     ]
 
 
+# Loose phrase templates ("nearly seven", "five to seven") match plenty of
+# non-clock prose: durations ("nearly seven months"), measurements ("almost
+# seven feet"), ranges ("from five to seven"), large numbers ("nearly seven
+# hundred"). These two context guards encode the false-positive classes found
+# during hand-curation of a real sweep, so the next sweep rejects them at the
+# source instead of relying on a human to re-discover them.
+_RANGE_LEAD_RE = re.compile(r"(?:\bfrom|\bbetween)\s+$", re.IGNORECASE)
+_UNIT_TAIL_RE = re.compile(
+    r"^[\s\-–—]*(?:(?:good|long|whole|full|short|odd|more)\s+)?"
+    r"(?:months?|weeks?|years?|days?|hours?|nights?|seconds?"
+    r"|leagues?|miles?|yards?|feet|foot|inch(?:es)?|fathoms?|acres?|paces?"
+    r"|tons?|pounds?|shillings?|pence|francs?|dollars?|guineas?"
+    r"|hundred|thousand|million|score|dozen|tenths?|per\b|percent)\b",
+    re.IGNORECASE,
+)
+
+
+def looks_like_false_positive(text: str, start: int, end: int) -> str | None:
+    """Reject a phrase hit whose surrounding prose marks it as not-a-clock-time.
+
+    Returns a short reason string (for diagnostics) or ``None`` when the hit
+    survives. Conservative by design: only the two classes observed in real
+    sweeps are rejected, so a borderline hit still flows downstream where the
+    quality filter and human curation can judge it.
+    """
+    if _RANGE_LEAD_RE.search(text[max(0, start - 12):start]):
+        return "range_lead"
+    if _UNIT_TAIL_RE.match(text[end:end + 32]):
+        return "unit_tail"
+    return None
+
+
 def sentence_window(text: str, start: int, end: int, context_chars: int = 180) -> tuple[str, str, int]:
     left = max(0, start - context_chars)
     right = min(len(text), end + context_chars)
@@ -161,6 +193,8 @@ def search_bucket(bucket: str, search_dir: Path) -> list[dict]:
                 if pos in seen_positions:
                     continue
                 seen_positions.add(pos)
+                if looks_like_false_positive(text, match.start(), match.end()):
+                    continue
                 quote, context, line_number = sentence_window(text, match.start(), match.end())
                 results.append(
                     {

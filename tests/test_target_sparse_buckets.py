@@ -221,3 +221,66 @@ class TestMainCLI:
         out = capsys.readouterr().out
         assert "Targeted buckets searched: 2" in out
         assert "Targeted candidates found: 2" in out
+
+
+class TestLooksLikeFalsePositive:
+    """Context guards encoding the false-positive classes found during
+    hand-curation of a real sweep: duration/measurement continuations and
+    from/between ranges."""
+
+    def _check(self, text, phrase):
+        start = text.index(phrase)
+        return tsb.looks_like_false_positive(text, start, start + len(phrase))
+
+    def test_duration_months_rejected(self):
+        assert self._check("It had been nearly seven months since the hearing.", "nearly seven") == "unit_tail"
+
+    def test_measurement_feet_rejected(self):
+        assert self._check("Nearly seven feet stood Kerchak on his short legs.", "Nearly seven") == "unit_tail"
+
+    def test_adjective_then_unit_rejected(self):
+        assert self._check("Nearly seven good leagues.", "Nearly seven") == "unit_tail"
+
+    def test_large_number_rejected(self):
+        assert self._check("back nearly seven hundred inscriptions from Yemen", "nearly seven") == "unit_tail"
+
+    def test_range_lead_from_rejected(self):
+        assert self._check("an annual term of from five to seven months only", "five to seven") == "range_lead"
+
+    def test_range_lead_between_rejected(self):
+        assert self._check("between ten to four hundred", "ten to four") == "range_lead"
+
+    def test_clock_time_kept(self):
+        assert self._check("Do you know it is nearly seven?", "nearly seven") is None
+
+    def test_clock_time_with_clause_kept(self):
+        assert self._check("It was nearly seven when she returned home.", "nearly seven") is None
+
+    def test_oclock_kept(self):
+        assert self._check("at twenty minutes past eight o'clock he rose", "twenty minutes past eight") is None
+
+
+class TestSearchBucketGuards:
+    def test_duration_hit_filtered_from_results(self, tmp_path):
+        pg = tmp_path / "pg99.txt"
+        pg.write_text(
+            "It had been nearly seven months since the hearing ended.\n"
+            "Do you know it is nearly seven?\n",
+            encoding="utf-8",
+        )
+        results = tsb.search_bucket("h6_five_to", tmp_path)
+        quotes = [r["quote_text"] for r in results]
+        assert any("Do you know" in q for q in quotes)
+        assert not any("months" in q for q in quotes)
+
+    def test_range_hit_filtered_from_results(self, tmp_path):
+        pg = tmp_path / "pg99.txt"
+        pg.write_text(
+            "The schools ran from five to seven months only.\n"
+            "She said she would call at five minutes to seven.\n",
+            encoding="utf-8",
+        )
+        results = tsb.search_bucket("h6_five_to", tmp_path)
+        quotes = [r["quote_text"] for r in results]
+        assert any("would call" in q for q in quotes)
+        assert not any("schools" in q for q in quotes)

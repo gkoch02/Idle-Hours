@@ -1413,9 +1413,12 @@ def _run_preflight(args: argparse.Namespace) -> None:
     """Abort loudly when any configured script / image path is missing.
 
     Skipped entirely by ``--skip-preflight``. Raises :class:`SystemExit` with
-    code 1 and a multi-line message so an operator can tell from the journal
-    which file was wrong — the systemd ``ExecStart=`` field gets copied into
-    the log preamble so all the context is right there.
+    :data:`runtime_config.EXIT_CONFIG_ERROR` (42) and a multi-line message so
+    an operator can tell from the journal which file was wrong — the systemd
+    ``ExecStart=`` field gets copied into the log preamble so all the context
+    is right there. The 42 pairs with ``RestartPreventExitStatus=42`` in the
+    sample unit so a typoed path halts the service instead of flapping
+    against ``Restart=always``.
     """
     if getattr(args, "skip_preflight", False):
         return
@@ -1423,7 +1426,7 @@ def _run_preflight(args: argparse.Namespace) -> None:
     if errors:
         message = "pre-flight path checks failed:\n  " + "\n  ".join(errors)
         _log(message, err=True)
-        raise SystemExit(1)
+        raise SystemExit(runtime_config.EXIT_CONFIG_ERROR)
 
 
 def main() -> int:
