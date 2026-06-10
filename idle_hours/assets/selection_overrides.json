@@ -1,5 +1,11 @@
 {
-  "ban_source_ids": ["48", "200"],
+  "ban_source_ids": [
+    "48",
+    "200"
+  ],
   "boost_source_ids": [],
-  "preferred_buckets": {}
+  "preferred_buckets": {},
+  "ban_quote_keys": [
+    "83:5162"
+  ]
 }

@@ -1,5 +1,5 @@
 {
-  "total_rows": 3193,
+  "total_rows": 3191,
   "total_expected_buckets": 144,
   "populated_bucket_count": 122,
   "empty_bucket_count": 22,
@@ -25,7 +25,7 @@
     "h2_twenty_five_past": 0,
     "h2_half_past": 27,
     "h2_twenty_five_to": 2,
-    "h2_twenty_to": 5,
+    "h2_twenty_to": 4,
     "h2_quarter_to": 4,
     "h2_ten_to": 2,
     "h2_five_to": 10,
@@ -81,7 +81,7 @@
     "h7_five_past": 3,
     "h7_ten_past": 3,
     "h7_quarter_past": 4,
-    "h7_twenty_past": 2,
+    "h7_twenty_past": 1,
     "h7_twenty_five_past": 3,
     "h7_half_past": 6,
     "h7_twenty_five_to": 0,
@@ -93,8 +93,8 @@
     "h8_five_past": 6,
     "h8_ten_past": 3,
     "h8_quarter_past": 4,
-    "h8_twenty_past": 3,
-    "h8_twenty_five_past": 2,
+    "h8_twenty_past": 2,
+    "h8_twenty_five_past": 3,
     "h8_half_past": 8,
     "h8_twenty_five_to": 1,
     "h8_twenty_to": 9,
@@ -244,6 +244,10 @@
       "count": 1
     },
     {
+      "bucket": "h7_twenty_past",
+      "count": 1
+    },
+    {
       "bucket": "h8_twenty_five_to",
       "count": 1
     },
@@ -328,11 +332,7 @@
       "count": 2
     },
     {
-      "bucket": "h7_twenty_past",
-      "count": 2
-    },
-    {
-      "bucket": "h8_twenty_five_past",
+      "bucket": "h8_twenty_past",
       "count": 2
     },
     {
@@ -416,7 +416,7 @@
       "count": 3
     },
     {
-      "bucket": "h8_twenty_past",
+      "bucket": "h8_twenty_five_past",
       "count": 3
     }
   ],
@@ -523,8 +523,8 @@
     }
   ],
   "daypart_counts": {
-    "morning": 1375,
-    "night": 938,
+    "morning": 1374,
+    "night": 937,
     "dawn": 469,
     "noon": 297,
     "midnight": 44,
@@ -827,14 +827,14 @@
         "source_id": "103"
       },
       {
-        "quote_text": "At five-and-twenty minutes to three, Captain Nemo appeared in the",
+        "quote_text": "“To-morrow,” added the Captain, rising, “to-morrow, at twenty minutes to three p.",
         "matched_text": "twenty minutes to three",
         "source_id": "164"
       },
       {
-        "quote_text": "“To-morrow,” added the Captain, rising, “to-morrow, at twenty minutes to three p.",
-        "matched_text": "twenty minutes to three",
-        "source_id": "164"
+        "quote_text": "to-morrow at twenty to three; don’t be late, we must carry out our ambush",
+        "matched_text": "twenty to three",
+        "source_id": "269"
       }
     ],
     "h2_quarter_to": [
@@ -1416,11 +1416,6 @@
         "quote_text": "was between twenty minutes past seven and twenty minutes before nine in",
         "matched_text": "twenty minutes past seven",
         "source_id": "103"
-      },
-      {
-        "quote_text": "five-and-twenty minutes past seven.",
-        "matched_text": "twenty minutes past seven",
-        "source_id": "153"
       }
     ],
     "h7_twenty_five_past": [
@@ -1576,11 +1571,6 @@
         "quote_text": "When the clock indicated twenty minutes past eight, Andrew Stuart got",
         "matched_text": "twenty minutes past eight",
         "source_id": "103"
-      },
-      {
-        "quote_text": "“Five and twenty minutes past eight, Winnie.",
-        "matched_text": "twenty minutes past eight",
-        "source_id": "974"
       }
     ],
     "h8_twenty_five_past": [
@@ -1593,6 +1583,11 @@
         "quote_text": "twenty-five minutes past eight a second shock took place, this time",
         "matched_text": "twenty-five minutes past eight",
         "source_id": "164"
+      },
+      {
+        "quote_text": "“Five and twenty minutes past eight, Winnie.",
+        "matched_text": "Five and twenty minutes past eight",
+        "source_id": "974"
       }
     ],
     "h8_half_past": [

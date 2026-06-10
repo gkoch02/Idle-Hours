@@ -1,6 +1,6 @@
 # Bucket Coverage Report
 
-- Total rows: **3193**
+- Total rows: **3191**
 - Expected buckets: **144**
 - Populated buckets: **122**
 - Empty buckets: **22**
@@ -43,6 +43,7 @@
 - `h6_twenty_five_to`: 1
 - `h6_twenty_to`: 1
 - `h7_ten_to`: 1
+- `h7_twenty_past`: 1
 - `h8_twenty_five_to`: 1
 - `h9_five_past`: 1
 - `h9_quarter_past`: 1
@@ -64,8 +65,7 @@
 - `h4_quarter_to`: 2
 - `h6_ten_past`: 2
 - `h6_twenty_past`: 2
-- `h7_twenty_past`: 2
-- `h8_twenty_five_past`: 2
+- `h8_twenty_past`: 2
 
 ## Empty buckets
 
@@ -75,8 +75,8 @@
 
 ## Daypart counts
 
-- `morning`: 1375
-- `night`: 938
+- `morning`: 1374
+- `night`: 937
 - `dawn`: 469
 - `noon`: 297
 - `midnight`: 44
