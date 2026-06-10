@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Fix substring-collision time metadata like 'five minutes' inside 'thirty-five minutes'.
 
-LEGACY MIGRATION TOOL. The current ``gutenberg_time_miner.py`` regex already
-captures the longest time phrase (regex alternation tries compound number
-forms like ``thirty-five`` before the bare ``five``), so fresh harvests should
-not produce substring-collision rows. This script is retained to repair rows
-harvested by earlier revisions of the miner. New hand-curated content fixes
+MIGRATION / REPAIR TOOL. The current ``gutenberg_time_miner.py`` regex
+captures the longest *standard* time phrase (regex alternation tries compound
+number forms like ``thirty-five`` before the bare ``five``), so fresh harvests
+mostly do not produce substring-collision rows — but the archaic reversed
+compound ("five-and-twenty minutes past eight" = 8:25) still slips through as
+the bare trailing phrase ("twenty minutes past eight" = 8:20), so this script
+stays in the pipeline to repair that class. New hand-curated content fixes
 should go in ``assets/content_overrides.json`` (applied by
 ``apply_content_overrides.py``) so they survive pipeline re-runs.
 """
@@ -49,7 +51,15 @@ NUMBER_WORDS = {
 }
 
 TIME_PATTERN = re.compile(
-    r"\b(?P<minute_word>(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hour_word>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+    r"\b(?P<minute_word>"
+    # Archaic reversed compound first: "five-and-twenty minutes past seven"
+    # (= 25). Victorian-era texts use this form heavily; capturing only the
+    # trailing "twenty minutes past seven" mis-tags the row by five minutes.
+    r"(?:one|two|three|four|five|six|seven|eight|nine)[- ]and[- ](?:twenty|thirty|forty|fifty)"
+    r"|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?"
+    r"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen"
+    r"|sixteen|seventeen|eighteen|nineteen"
+    r")\s+minutes?\s+(?P<relation>past|to)\s+(?P<hour_word>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
     re.IGNORECASE,
 )
 
@@ -67,6 +77,14 @@ def parse_number_word(text: str) -> int | None:
     parts = text.split()
     if len(parts) == 2 and parts[0] in NUMBER_WORDS and parts[1] in NUMBER_WORDS:
         return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[1]]
+    # Archaic reversed compound: "five and twenty" = 25.
+    if (
+        len(parts) == 3
+        and parts[1] == 'and'
+        and parts[0] in NUMBER_WORDS
+        and parts[2] in NUMBER_WORDS
+    ):
+        return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[2]]
     return None
 
 
