@@ -5,6 +5,7 @@ import argparse
 import datetime as dt
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -4438,6 +4439,10 @@ class TestPreflightPaths:
             quiet_image=None,
             startup_image=None,
             skip_preflight=False,
+            # Corpus locations. ``None`` means "use the bundled package asset",
+            # which is what the argparse defaults resolve to in production.
+            baked_db=None,
+            raw_corpus=None,
         )
         defaults.update(kw)
         return argparse.Namespace(**defaults)
@@ -4497,7 +4502,7 @@ class TestPreflightPaths:
         missing-corpus error. If this test fails, the repo's `assets/`
         directory has drifted out of source control."""
         errors = run_clock._preflight_paths(self._args())
-        corpus_errors = [e for e in errors if "corpus assets missing" in e]
+        corpus_errors = [e for e in errors if "corpus missing" in e]
         assert corpus_errors == [], (
             "Expected committed corpus assets to satisfy the preflight guard; "
             f"got {corpus_errors}"
@@ -4505,29 +4510,43 @@ class TestPreflightPaths:
 
     def test_corpus_missing_surfaces(self, tmp_path, monkeypatch):
         """A wheel-only install (Python modules + no static assets) must
-        fail preflight with a clear pointer to the supported install paths."""
-        # Redirect BASE_DIR to a tmp dir with NO assets/ subdirectory so the
-        # corpus guard fires. The render_script default also lives under
-        # BASE_DIR so we have to write it first.
+        fail preflight with a clear pointer to the supported install paths.
+
+        The guard checks the EFFECTIVE ``--baked-db`` / ``--raw-corpus`` paths
+        rather than ``BASE_DIR / "assets"``, so that an operator who relocated
+        the corpus onto a writable path (issue #179) gets an error naming the
+        file the picker will actually open. Pointing both at absent paths is
+        the modern equivalent of the old BASE_DIR redirect.
+        """
         monkeypatch.setattr(run_clock, "BASE_DIR", tmp_path)
         (tmp_path / "render_quote.py").write_text("")
-        errors = run_clock._preflight_paths(self._args())
-        corpus_errors = [e for e in errors if "corpus assets missing" in e]
+        errors = run_clock._preflight_paths(self._args(
+            baked_db=str(tmp_path / "nope" / "quote_database.jsonl"),
+            raw_corpus=str(tmp_path / "nope" / "candidates-attributed.jsonl"),
+        ))
+        corpus_errors = [e for e in errors if "corpus missing" in e]
         assert len(corpus_errors) == 1
         # Pointer to the supported install paths must be in the message so an
         # operator hitting this for the first time knows what to do.
         assert "pip install -e ." in corpus_errors[0]
         assert "Dockerfile" in corpus_errors[0]
+        # The message must name the paths actually consulted, so a relocated
+        # corpus doesn't send the operator hunting inside site-packages.
+        assert "nope" in corpus_errors[0]
 
     def test_corpus_check_passes_when_only_raw_corpus_exists(self, tmp_path, monkeypatch):
         """The fallback path: an old install that has the raw corpus but no
         baked DB still works (pick_quote falls back), so preflight allows it."""
         monkeypatch.setattr(run_clock, "BASE_DIR", tmp_path)
         (tmp_path / "render_quote.py").write_text("")
-        (tmp_path / "assets").mkdir()
-        (tmp_path / "assets" / "candidates-attributed.jsonl").write_text("")
-        errors = run_clock._preflight_paths(self._args())
-        corpus_errors = [e for e in errors if "corpus assets missing" in e]
+        raw = tmp_path / "assets" / "candidates-attributed.jsonl"
+        raw.parent.mkdir()
+        raw.write_text("")
+        errors = run_clock._preflight_paths(self._args(
+            baked_db=str(tmp_path / "nope" / "quote_database.jsonl"),
+            raw_corpus=str(raw),
+        ))
+        corpus_errors = [e for e in errors if "corpus missing" in e]
         assert corpus_errors == []
 
 
@@ -4809,3 +4828,169 @@ class TestPidfileIntegration:
                 run_clock.main()
         # Pidfile should be gone.
         assert not pid_path.exists()
+
+
+class TestCorpusPathPlumbing:
+    """Issue #179: the runtime picker and the curator UI must resolve the SAME
+    corpus / sidecar files.
+
+    The four paths default to locations inside the installed package, which a
+    ``ProtectSystem=strict`` systemd unit mounts read-only — so the curator UI
+    could not save overrides or bake. Relocating them onto a writable path is
+    the fix, and that only works if every consumer follows the relocation:
+    ``peek_quote_id`` (the dedup peek), the render subprocess, and
+    ``web_server.WebContext`` all have to agree.
+    """
+
+    def _args(self, **kw):
+        defaults = dict(
+            overrides=None,
+            content_overrides=None,
+            raw_corpus=None,
+            baked_db=None,
+        )
+        defaults.update(kw)
+        return argparse.Namespace(**defaults)
+
+    def test_defaults_fall_back_to_bundled_assets(self):
+        """Unset flags keep the pre-#179 behaviour: the bundled package copies."""
+        kwargs = run_clock._corpus_kwargs(self._args())
+        assert kwargs == {
+            "database_path": run_clock.pick_quote_module.DEFAULT_DATABASE_PATH,
+            "input_path": run_clock.pick_quote_module.DEFAULT_INPUT_PATH,
+            "overrides_path": run_clock.pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        }
+
+    def test_missing_attributes_fall_back(self):
+        """A Namespace predating these flags (or built ad-hoc in a test) must
+        not raise — the getattr defaults preserve the bundled contract."""
+        kwargs = run_clock._corpus_kwargs(argparse.Namespace())
+        assert kwargs["database_path"] == run_clock.pick_quote_module.DEFAULT_DATABASE_PATH
+
+    def test_relocated_paths_are_threaded(self, tmp_path):
+        kwargs = run_clock._corpus_kwargs(self._args(
+            baked_db=str(tmp_path / "db.jsonl"),
+            raw_corpus=str(tmp_path / "raw.jsonl"),
+            overrides=str(tmp_path / "sel.json"),
+        ))
+        assert kwargs["database_path"] == str(tmp_path / "db.jsonl")
+        assert kwargs["input_path"] == str(tmp_path / "raw.jsonl")
+        assert kwargs["overrides_path"] == str(tmp_path / "sel.json")
+
+    def test_peek_quote_id_passes_paths_to_select_quote(self, tmp_path):
+        """The peek must score against the relocated corpus, not the bundled
+        one — otherwise it disagrees with the render subprocess about which
+        quote is current and the dedup check misfires."""
+        with patch.object(run_clock.pick_quote_module, "select_quote") as sq:
+            sq.return_value = {"source_id": "1", "line_number": 2,
+                               "display_quote": "q", "matched_text": "m"}
+            run_clock.peek_quote_id(
+                "03:00",
+                database_path=str(tmp_path / "db.jsonl"),
+                input_path=str(tmp_path / "raw.jsonl"),
+                overrides_path=str(tmp_path / "sel.json"),
+            )
+        kwargs = sq.call_args.kwargs
+        assert kwargs["database_path"] == str(tmp_path / "db.jsonl")
+        assert kwargs["input_path"] == str(tmp_path / "raw.jsonl")
+        assert kwargs["overrides_path"] == str(tmp_path / "sel.json")
+
+    def test_render_now_forwards_paths_to_subprocess(self, tmp_path):
+        """Without these argv entries the render subprocess silently falls back
+        to the bundled assets, so a UI-issued ban would never reach the panel."""
+        with patch("idle_hours.run_clock.subprocess.run") as run_mock:
+            run_clock.render_now(
+                "render_quote.py", str(tmp_path / "out.png"), 800, 480,
+                display_script=None, time_str="03:00",
+                database_path=str(tmp_path / "db.jsonl"),
+                input_path=str(tmp_path / "raw.jsonl"),
+                overrides_path=str(tmp_path / "sel.json"),
+            )
+        argv = run_mock.call_args.args[0]
+        for flag, value in (
+            ("--database", str(tmp_path / "db.jsonl")),
+            ("--input", str(tmp_path / "raw.jsonl")),
+            ("--overrides", str(tmp_path / "sel.json")),
+        ):
+            assert flag in argv, f"{flag} not forwarded to render subprocess"
+            assert argv[argv.index(flag) + 1] == value
+
+    def test_render_now_defaults_to_bundled_when_unset(self, tmp_path):
+        with patch("idle_hours.run_clock.subprocess.run") as run_mock:
+            run_clock.render_now(
+                "render_quote.py", str(tmp_path / "out.png"), 800, 480,
+                display_script=None, time_str="03:00",
+            )
+        argv = run_mock.call_args.args[0]
+        assert argv[argv.index("--database") + 1] == run_clock.pick_quote_module.DEFAULT_DATABASE_PATH
+
+
+class TestSeedWritableCorpusPaths:
+    """Issue #179: relocating the curator-owned files onto a writable path must
+    not require the operator to hand-copy them first, and must carry the
+    committed bans / content fixes across (the "migrate without loss" criterion).
+    """
+
+    def _args(self, **kw):
+        defaults = dict(
+            overrides=None, content_overrides=None,
+            raw_corpus=None, baked_db=None,
+        )
+        defaults.update(kw)
+        return argparse.Namespace(**defaults)
+
+    def test_seeds_missing_relocated_file_from_bundle(self, tmp_path):
+        dest = tmp_path / "state" / "selection_overrides.json"
+        errors = run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
+        assert errors == []
+        assert dest.exists(), "relocated sidecar should have been seeded"
+        # Content must match the bundled copy — this is the migration path, so
+        # the committed bans have to survive it.
+        bundled = json.loads(
+            Path(run_clock.pick_quote_module.DEFAULT_OVERRIDES_PATH).read_text(encoding="utf-8"))
+        assert json.loads(dest.read_text(encoding="utf-8")) == bundled
+
+    def test_never_clobbers_an_existing_file(self, tmp_path):
+        """Idempotent across restarts: operator edits must survive a reboot."""
+        dest = tmp_path / "selection_overrides.json"
+        dest.write_text('{"ban_source_ids": ["operator-edit"]}', encoding="utf-8")
+        run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
+        assert "operator-edit" in dest.read_text(encoding="utf-8")
+
+    def test_default_paths_are_not_copied_onto_themselves(self):
+        """Unset flags must be a no-op — never write into the package dir."""
+        assert run_clock._seed_writable_corpus_paths(self._args()) == []
+
+    def test_seeds_all_four_files(self, tmp_path):
+        args = self._args(
+            overrides=str(tmp_path / "sel.json"),
+            content_overrides=str(tmp_path / "content.json"),
+            raw_corpus=str(tmp_path / "raw.jsonl"),
+            baked_db=str(tmp_path / "db.jsonl"),
+        )
+        assert run_clock._seed_writable_corpus_paths(args) == []
+        for name in ("sel.json", "content.json", "raw.jsonl", "db.jsonl"):
+            assert (tmp_path / name).exists(), f"{name} was not seeded"
+
+    def test_seed_failure_is_reported_not_raised(self, tmp_path):
+        """A seeding problem surfaces through pre-flight, so --skip-preflight
+        keeps its 'let me run this weird setup anyway' contract."""
+        dest = tmp_path / "sel.json"
+        with patch("idle_hours.run_clock.shutil.copy2", side_effect=OSError("read-only fs")):
+            errors = run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
+        assert len(errors) == 1
+        assert "could not be seeded" in errors[0]
+
+    def test_preflight_seeds_before_validating(self, tmp_path):
+        """A relocated corpus is legitimately absent on first boot; seeding is
+        what makes it present, so it must run before the existence checks."""
+        args = argparse.Namespace(
+            render_script="render_quote.py", display_script=None,
+            quiet_image=None, startup_image=None, skip_preflight=False,
+            overrides=None, content_overrides=None,
+            raw_corpus=str(tmp_path / "raw.jsonl"),
+            baked_db=str(tmp_path / "db.jsonl"),
+        )
+        # Must NOT raise: the corpus guard sees the freshly-seeded files.
+        run_clock._run_preflight(args)
+        assert (tmp_path / "db.jsonl").exists()

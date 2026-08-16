@@ -81,3 +81,26 @@ web_token_file = ""
 # heartbeats and successful renders".
 webhook_url        = ""
 webhook_all_events = false
+
+# ---- Corpus + curator-owned sidecars ---------------------------------------
+# The four files the curator UI mutates (selection bans/boosts, per-row
+# content fixes, and the baked DB that "Bake now" rewrites), plus the raw
+# corpus the baker reads. These defaults point INSIDE the installed package,
+# which a `ProtectSystem=strict` systemd unit mounts read-only — under that
+# unit every curator save and every bake fails with HTTP 500.
+#
+# For an appliance install, relocate all four into the writable state dir
+# (see config.toml.example). run_clock seeds any relocated file that doesn't
+# exist yet from the bundled copy, so a first boot migrates the committed
+# bans and content fixes across with no manual step.
+#
+# Whatever these are set to is used by BOTH the runtime picker and the
+# curator UI — a curator edit the render path can't see is worse than no
+# edit at all, so they must never be split.
+# Unset by default (like `startup_image`), which means "use the bundled copy
+# inside the installed package". TOML has no null literal, so the defaults
+# live here commented out rather than as active keys.
+# overrides         = "/var/lib/idle-hours/selection_overrides.json"
+# content_overrides = "/var/lib/idle-hours/content_overrides.json"
+# raw_corpus        = "/var/lib/idle-hours/candidates-attributed.jsonl"
+# baked_db          = "/var/lib/idle-hours/quote_database.jsonl"

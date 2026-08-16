@@ -193,6 +193,7 @@ def enter_quiet(
                     "goodnight", effective_theme, time_str=args.quiet_start,
                     history_path=history_path, history_days=args.history_days,
                     telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                    **run_clock._corpus_kwargs(args),
                 )
         elif args.quiet_image:
             with state.render_lock:
@@ -212,6 +213,7 @@ def enter_quiet(
                     args.mode, effective_theme, time_str=args.quiet_start,
                     history_path=history_path, history_days=args.history_days,
                     telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                    **run_clock._corpus_kwargs(args),
                 )
     except Exception as exc:
         _log(f"quiet-hours display failed: {exc!r}", err=True)

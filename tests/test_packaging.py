@@ -21,7 +21,9 @@ regardless of how ``setuptools.packages.find`` is configured):
 """
 from __future__ import annotations
 
+import importlib.metadata
 import json
+import re
 import subprocess
 import sys
 import tomllib
@@ -74,6 +76,73 @@ class TestPackageDeclaration:
         assert scripts["idle-hours"] == "idle_hours.idle_hours_cli:main", (
             "Console script target drifted; check [project.scripts] in pyproject.toml."
         )
+
+
+class TestReleaseVersion:
+    """Guard against release/package-metadata drift.
+
+    The repo shipped v1.0.0 / v1.1.0 / v2.0.0 tags while ``pyproject.toml``
+    still declared ``0.1.0``, so every wheel built from those releases
+    identified itself as 0.1.0 — installed diagnostics reported the wrong
+    release and no package manager could tell the 1.x and 2.x wheels apart.
+    The old CLI test only asserted ``"idle-hours" in out``, which passes for
+    literally any version string, so the drift was invisible.
+
+    ``pyproject.toml`` is the single source of truth; ``--version`` reads it
+    back through ``importlib.metadata``. The CI ``release-version`` job
+    additionally fails a ``vX.Y.Z`` tag build whose ref disagrees with it.
+    """
+
+    def _declared_version(self) -> str:
+        pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        return pyproject["project"]["version"]
+
+    def test_declared_version_is_pep440_release(self):
+        declared = self._declared_version()
+        assert re.fullmatch(r"\d+\.\d+\.\d+", declared), (
+            f"pyproject version {declared!r} is not a plain X.Y.Z release "
+            "version; the CI tag check compares it against a vX.Y.Z git tag."
+        )
+
+    def test_declared_version_is_not_the_placeholder(self):
+        # Explicitly pins the regression: 0.1.0 was the never-updated
+        # scaffold default that shipped through three tagged releases.
+        assert self._declared_version() != "0.1.0", (
+            "pyproject still declares the 0.1.0 scaffold placeholder — bump it "
+            "to the release version before tagging."
+        )
+
+    def test_installed_metadata_matches_pyproject(self):
+        """The installed dist reports what pyproject declares.
+
+        Skipped when the dist isn't installed (bare checkout, no
+        ``pip install -e .``) since there is no metadata to compare against.
+        """
+        try:
+            installed = importlib.metadata.version("idle-hours")
+        except importlib.metadata.PackageNotFoundError:
+            pytest.skip("idle-hours dist not installed; nothing to compare")
+        assert installed == self._declared_version(), (
+            f"installed metadata {installed!r} != pyproject "
+            f"{self._declared_version()!r}. Re-run `pip install -e .` after a "
+            "version bump so the console script reports the right release."
+        )
+
+    def test_cli_version_flag_reports_the_release_version(self):
+        """``idle-hours --version`` must print the real version, not a stub."""
+        try:
+            expected = importlib.metadata.version("idle-hours")
+        except importlib.metadata.PackageNotFoundError:
+            pytest.skip("idle-hours dist not installed; --version falls back")
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "idle_hours.idle_hours_cli", "--version"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            check=True,
+        )
+        assert proc.stdout.strip() == f"idle-hours {expected}"
 
 
 class TestNoOptionalDepLeakage:

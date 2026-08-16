@@ -53,10 +53,23 @@ class TestHelpAndDispatch:
         assert "Subcommands:" in capsys.readouterr().out
 
     def test_version_flag(self, capsys):
+        """``--version`` prints the installed release, or the source-checkout note.
+
+        Asserting only ``"idle-hours" in out`` (the previous form) passes for
+        any version string, which is how the 0.1.0-at-v2.0.0 metadata drift
+        went unnoticed. Pin both exact shapes instead; the tag/metadata
+        agreement itself is fenced by ``tests/test_packaging.py``.
+        """
+        import importlib.metadata
+
         rc = idle_hours_cli.main(["--version"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().out.strip()
         assert rc == 0
-        assert "idle-hours" in out
+        try:
+            expected = f"idle-hours {importlib.metadata.version('idle-hours')}"
+        except importlib.metadata.PackageNotFoundError:
+            expected = "idle-hours (unreleased; running from source checkout)"
+        assert out == expected
 
     def test_unknown_subcommand_returns_2(self, capsys):
         rc = idle_hours_cli.main(["bogus-subcommand"])

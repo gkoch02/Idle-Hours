@@ -1063,6 +1063,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
             row = pick_quote_module.select_quote(
                 time_str=time_str,
                 database_path=str(ctx.baked_db_path),
+                input_path=str(ctx.raw_corpus_path),
+                # Preview must honour the operator's relocated sidecar, or the
+                # thumbnail would show a quote the panel will never pick.
+                overrides_path=str(ctx.overrides_path),
                 history_path=None,  # Preview should be deterministic — don't tie it to ledger state.
             )
         except SystemExit as exc:
@@ -1121,6 +1125,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self._json(HTTPStatus.OK, {"entries": entries[:limit], "total": len(entries)})
 
     def _api_bucket(self, bucket: str, query: dict) -> None:
+        ctx = self._ctx()
         try:
             top_n = int(query.get("top", ["10"])[0])
         except (TypeError, ValueError):
@@ -1130,6 +1135,12 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             candidates = pick_quote_module.select_candidates(
                 time_str=time_str, bucket=bucket, top_n=top_n,
+                # Deliberately the RAW corpus (see CLAUDE.md): the inspector
+                # must show rows the baker dropped so an operator can see why a
+                # quote never appears. Overrides come from the same relocated
+                # sidecar the picker uses, so override_bonus reads true.
+                input_path=str(ctx.raw_corpus_path),
+                overrides_path=str(ctx.overrides_path),
                 history_path=None,  # UI wants the full corpus view, not the anti-repeat-filtered one
             )
         except SystemExit as exc:

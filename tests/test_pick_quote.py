@@ -7,7 +7,9 @@ own selection logic.
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 import json
+from pathlib import Path
 
 import pytest
 
@@ -1139,3 +1141,82 @@ class TestPickQuoteCLI:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["bucket"] == "h3_exact"
+
+
+class TestOverridesPathDefaults:
+    """Regression fence for the stale relative default on ``select_quote`` /
+    ``select_candidates``.
+
+    Both defaulted to the bare relative string ``"assets/selection_overrides.json"``,
+    a path that stopped existing when the v2.x restructure moved the tree to
+    ``idle_hours/assets/``. ``load_overrides`` fail-opens on a missing file, so
+    every in-process caller that relied on the default silently applied NO bans,
+    boosts, or preferred buckets. The runtime render path was one of those
+    callers, which meant the curator UI's "Ban this quote" button wrote a ban
+    the panel then ignored forever.
+    """
+
+    def test_select_quote_default_points_at_the_bundled_sidecar(self):
+        default = inspect.signature(pq.select_quote).parameters["overrides_path"].default
+        assert default == pq.DEFAULT_OVERRIDES_PATH
+        assert Path(default).exists(), (
+            "select_quote's default overrides path must resolve to a real file; "
+            "a non-existent default silently disables every override."
+        )
+
+    def test_select_candidates_default_points_at_the_bundled_sidecar(self):
+        default = inspect.signature(pq.select_candidates).parameters["overrides_path"].default
+        assert default == pq.DEFAULT_OVERRIDES_PATH
+        assert Path(default).exists()
+
+    def test_no_picker_default_is_a_bare_relative_path(self):
+        """CWD-relative defaults are the shape of the original bug: they
+        resolve differently depending on where the process was started."""
+        for fn in (pq.select_quote, pq.select_candidates):
+            for name in ("input_path", "database_path", "overrides_path"):
+                default = inspect.signature(fn).parameters.get(name)
+                if default is None or default.default in (None, ""):
+                    continue
+                assert Path(default.default).is_absolute(), (
+                    f"{fn.__name__}({name}=...) defaults to the relative path "
+                    f"{default.default!r}; anchor it on BASE_DIR instead."
+                )
+
+    def test_a_banned_quote_key_actually_changes_the_pick(self, tmp_path):
+        """End-to-end: banning the row that currently wins a bucket must make
+        the picker return a different row. This is the behaviour the curator
+        UI's ban button promises."""
+        winner = pq.select_quote(
+            bucket="h3_exact", database_path=pq.DEFAULT_DATABASE_PATH)
+        key = f"{winner['source_id']}:{winner['line_number']}"
+
+        sidecar = tmp_path / "selection_overrides.json"
+        sidecar.write_text(json.dumps({
+            "ban_source_ids": [], "boost_source_ids": [],
+            "preferred_buckets": {}, "ban_quote_keys": [key],
+        }), encoding="utf-8")
+
+        after = pq.select_quote(
+            bucket="h3_exact",
+            database_path=pq.DEFAULT_DATABASE_PATH,
+            overrides_path=str(sidecar),
+        )
+        assert f"{after['source_id']}:{after['line_number']}" != key
+
+    def test_render_path_honours_a_ban(self, tmp_path):
+        """``render_quote.pick_quote`` is what the panel actually renders from;
+        it must thread the sidecar through rather than falling back to a default."""
+        import idle_hours.render_quote as render_quote
+
+        winner = pq.select_quote(
+            bucket="h3_exact", database_path=pq.DEFAULT_DATABASE_PATH)
+        key = f"{winner['source_id']}:{winner['line_number']}"
+
+        sidecar = tmp_path / "selection_overrides.json"
+        sidecar.write_text(json.dumps({
+            "ban_source_ids": [], "boost_source_ids": [],
+            "preferred_buckets": {}, "ban_quote_keys": [key],
+        }), encoding="utf-8")
+
+        rendered = render_quote.pick_quote("03:00", overrides_path=str(sidecar))
+        assert f"{rendered['source_id']}:{rendered['line_number']}" != key

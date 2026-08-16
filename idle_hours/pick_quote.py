@@ -654,7 +654,12 @@ def select_candidates(
     bucket: str | None = None,
     top_n: int = 10,
     input_path: str = DEFAULT_INPUT_PATH,
-    overrides_path: str = "assets/selection_overrides.json",
+    # BASE_DIR-anchored — see the matching note on ``select_quote``. The bare
+    # relative literal this defaulted to hasn't existed since the v2.x package
+    # restructure, so the curator UI's bucket inspector was ranking candidates
+    # against an empty overrides sidecar and showing an ``override_bonus`` of 0
+    # for rows the operator had explicitly boosted or banned.
+    overrides_path: str = DEFAULT_OVERRIDES_PATH,
     seed: int = 0,
     min_quality: int = 60,
     history_path: str | None = None,
@@ -780,7 +785,16 @@ def select_quote(
     bucket: str | None = None,
     input_path: str = DEFAULT_INPUT_PATH,
     database_path: str | None = None,
-    overrides_path: str = "assets/selection_overrides.json",
+    # BASE_DIR-anchored, NOT the bare relative "assets/selection_overrides.json"
+    # this defaulted to before. That literal predates the v2.x package
+    # restructure that moved the tree to ``idle_hours/assets/``, so it resolved
+    # against CWD to a path that no longer exists — and ``load_overrides``
+    # fail-opens to an empty sidecar on a missing file. Every in-process caller
+    # that relied on the default (notably ``render_quote.pick_quote``, i.e. the
+    # actual runtime render path) therefore silently applied NO bans, boosts, or
+    # preferred buckets: the curator UI's "Ban this quote" button wrote a ban
+    # that the panel then ignored forever.
+    overrides_path: str = DEFAULT_OVERRIDES_PATH,
     seed: int = 0,
     min_quality: int = 60,
     history_path: str | None = None,
