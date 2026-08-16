@@ -6,7 +6,6 @@ import argparse
 import contextlib
 import datetime as dt
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
@@ -15,7 +14,7 @@ import time
 import traceback
 from pathlib import Path
 
-from idle_hours import apply_content_overrides, pidfile, runtime_config, runtime_webhook, sd_notify
+from idle_hours import apply_content_overrides, atomic_io, pidfile, runtime_config, runtime_webhook, sd_notify
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import resolve_input_path
@@ -593,6 +592,45 @@ def _corpus_kwargs(args) -> dict[str, str]:
     }
 
 
+def _corpus_render_args(
+    database_path: str | None,
+    input_path: str | None,
+    overrides_path: str | None,
+) -> list[str]:
+    """Build the corpus/sidecar argv tail for the render subprocess.
+
+    Each flag is emitted ONLY when it differs from the value ``render_quote.py``
+    would compute for itself. That keeps two properties:
+
+    * **Correctness.** When the operator relocates a path (the issue #179
+      deployment), the renderer must be told — otherwise it picks from the
+      bundled corpus while ``peek_quote_id`` scored against the relocated one,
+      and the dedup check compares two different worlds.
+    * **Backwards compatibility.** ``--render-script`` is a documented
+      extension point for operator-supplied renderers, which only have to
+      accept the flags that existed when they were written. Emitting these
+      unconditionally would make every tick fail with argparse's "unrecognized
+      arguments" exit 2 — and because the render path counts failures, the
+      appliance would slide into exponential backoff and stop updating
+      entirely. Omitting a flag whose value is already the renderer's default
+      leaves the default-deployment argv byte-identical to what shipped
+      before, so no existing custom renderer can break by upgrading.
+
+    An operator who both relocates the corpus AND runs a custom renderer does
+    have to teach it these three flags — but that is a new opt-in
+    configuration, and sending the flags is the only correct behaviour there.
+    """
+    argv: list[str] = []
+    for flag, value, default in (
+        ("--database", database_path, pick_quote_module.DEFAULT_DATABASE_PATH),
+        ("--input", input_path, pick_quote_module.DEFAULT_INPUT_PATH),
+        ("--overrides", overrides_path, pick_quote_module.DEFAULT_OVERRIDES_PATH),
+    ):
+        if value and value != default:
+            argv += [flag, value]
+    return argv
+
+
 def peek_quote_id(
     time_str: str,
     history_path: str | None = None,
@@ -722,17 +760,7 @@ def render_now(
                 history_path or "",
                 "--history-days",
                 str(history_days),
-                # Forwarded so the subprocess picks from the same corpus and
-                # honours the same selection-overrides sidecar that
-                # ``peek_quote_id`` just scored against — and that the curator
-                # UI writes to. Without these the render would silently fall
-                # back to the bundled package assets.
-                "--database",
-                database_path or pick_quote_module.DEFAULT_DATABASE_PATH,
-                "--input",
-                input_path or pick_quote_module.DEFAULT_INPUT_PATH,
-                "--overrides",
-                overrides_path or pick_quote_module.DEFAULT_OVERRIDES_PATH,
+                *_corpus_render_args(database_path, input_path, overrides_path),
             ],
             check=True,
             timeout=RENDER_TIMEOUT_SECONDS,
@@ -1565,9 +1593,16 @@ def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
             continue
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
-            # copy2 preserves mtime, which keeps the web token-style
-            # stat-based staleness checks and operator `ls -l` forensics honest.
-            shutil.copy2(bundled, dest)
+            # Atomic, not a plain copy2. The corpus files are ~5-6 MB, so a
+            # full-disk error or a power cut partway through first-boot
+            # migration would otherwise leave a truncated destination — and
+            # because both the `dest.exists()` check above and the pre-flight
+            # corpus guard test only for existence, that partial file would be
+            # treated as successfully seeded forever, wedging the picker on a
+            # corrupt corpus. Routing through atomic_io (tmp sibling → fsync →
+            # os.replace → dir fsync) means the destination either doesn't
+            # exist yet (so the next boot retries) or is complete.
+            atomic_io.atomic_write_bytes(dest, bundled.read_bytes())
             _log(f"seeded {dest} from bundled {bundled.name}")
         except OSError as exc:
             errors.append(

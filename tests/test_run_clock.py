@@ -4915,14 +4915,57 @@ class TestCorpusPathPlumbing:
             assert flag in argv, f"{flag} not forwarded to render subprocess"
             assert argv[argv.index(flag) + 1] == value
 
-    def test_render_now_defaults_to_bundled_when_unset(self, tmp_path):
+    def test_default_paths_are_omitted_from_subprocess_argv(self, tmp_path):
+        """Backwards compatibility: ``--render-script`` is a documented
+        extension point, and an operator-supplied renderer only accepts the
+        flags that existed when it was written. A flag whose value already
+        equals the renderer's own default is redundant, so it is omitted —
+        keeping the default-deployment argv byte-identical to the pre-#179
+        contract. Emitting them unconditionally would make argparse exit 2 on
+        every tick in a custom renderer, and the render-failure backoff would
+        then stop the appliance updating at all.
+        """
         with patch("idle_hours.run_clock.subprocess.run") as run_mock:
             run_clock.render_now(
                 "render_quote.py", str(tmp_path / "out.png"), 800, 480,
                 display_script=None, time_str="03:00",
             )
         argv = run_mock.call_args.args[0]
-        assert argv[argv.index("--database") + 1] == run_clock.pick_quote_module.DEFAULT_DATABASE_PATH
+        for flag in ("--database", "--input", "--overrides"):
+            assert flag not in argv, (
+                f"{flag} was passed with its default value; a custom "
+                "--render-script written against the old contract would "
+                "reject it and fail every render."
+            )
+
+    def test_explicit_default_valued_paths_are_also_omitted(self, tmp_path):
+        """Passing the bundled default explicitly is equivalent to leaving it
+        unset — the renderer computes the identical value either way."""
+        with patch("idle_hours.run_clock.subprocess.run") as run_mock:
+            run_clock.render_now(
+                "render_quote.py", str(tmp_path / "out.png"), 800, 480,
+                display_script=None, time_str="03:00",
+                database_path=run_clock.pick_quote_module.DEFAULT_DATABASE_PATH,
+                input_path=run_clock.pick_quote_module.DEFAULT_INPUT_PATH,
+                overrides_path=run_clock.pick_quote_module.DEFAULT_OVERRIDES_PATH,
+            )
+        argv = run_mock.call_args.args[0]
+        assert "--database" not in argv
+        assert "--input" not in argv
+        assert "--overrides" not in argv
+
+    def test_only_relocated_paths_are_emitted(self, tmp_path):
+        """A partially-relocated config emits exactly the flags that differ."""
+        with patch("idle_hours.run_clock.subprocess.run") as run_mock:
+            run_clock.render_now(
+                "render_quote.py", str(tmp_path / "out.png"), 800, 480,
+                display_script=None, time_str="03:00",
+                database_path=str(tmp_path / "db.jsonl"),
+                overrides_path=run_clock.pick_quote_module.DEFAULT_OVERRIDES_PATH,
+            )
+        argv = run_mock.call_args.args[0]
+        assert argv[argv.index("--database") + 1] == str(tmp_path / "db.jsonl")
+        assert "--overrides" not in argv
 
 
 class TestSeedWritableCorpusPaths:
@@ -4972,11 +5015,39 @@ class TestSeedWritableCorpusPaths:
         for name in ("sel.json", "content.json", "raw.jsonl", "db.jsonl"):
             assert (tmp_path / name).exists(), f"{name} was not seeded"
 
+    def test_partial_copy_never_leaves_a_truncated_destination(self, tmp_path):
+        """A disk-full / power-cut mid-seed must not leave a partial file.
+
+        Both the seeder's own ``dest.exists()`` guard and the pre-flight corpus
+        check test only for existence, so a truncated destination would be
+        treated as successfully seeded forever — wedging the picker on a
+        corrupt corpus with no retry. Seeding goes through ``atomic_io``, so
+        the destination is either absent (next boot retries) or complete.
+        """
+        dest = tmp_path / "raw.jsonl"
+        with patch.object(run_clock.atomic_io, "atomic_write_bytes",
+                          side_effect=OSError("No space left on device")):
+            errors = run_clock._seed_writable_corpus_paths(self._args(raw_corpus=str(dest)))
+        assert len(errors) == 1
+        assert not dest.exists(), (
+            "a failed seed left a destination behind; the next boot would "
+            "treat it as already-seeded and never retry"
+        )
+
+    def test_seeded_file_is_byte_identical_to_the_bundle(self, tmp_path):
+        """Atomicity must not come at the cost of fidelity — the migrated
+        corpus has to match the bundled copy exactly."""
+        dest = tmp_path / "db.jsonl"
+        run_clock._seed_writable_corpus_paths(self._args(baked_db=str(dest)))
+        bundled = Path(run_clock.pick_quote_module.DEFAULT_DATABASE_PATH)
+        assert dest.read_bytes() == bundled.read_bytes()
+
     def test_seed_failure_is_reported_not_raised(self, tmp_path):
         """A seeding problem surfaces through pre-flight, so --skip-preflight
         keeps its 'let me run this weird setup anyway' contract."""
         dest = tmp_path / "sel.json"
-        with patch("idle_hours.run_clock.shutil.copy2", side_effect=OSError("read-only fs")):
+        with patch.object(run_clock.atomic_io, "atomic_write_bytes",
+                          side_effect=OSError("read-only fs")):
             errors = run_clock._seed_writable_corpus_paths(self._args(overrides=str(dest)))
         assert len(errors) == 1
         assert "could not be seeded" in errors[0]
