@@ -43,6 +43,12 @@ from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Bundled location of the per-row content-overrides sidecar. Exported so
+# ``run_clock`` (which exposes ``--content-overrides``) and ``web_server``
+# (which serves + rewrites it) share one definition instead of each
+# re-deriving ``BASE_DIR / "assets/content_overrides.json"``.
+DEFAULT_OVERRIDES_PATH = BASE_DIR / "assets" / "content_overrides.json"
+
 ALLOWED_FIELDS: frozenset[str] = frozenset({
     "display_quote",
     "matched_text",
@@ -60,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="Input JSONL file (typically assets/candidates-attributed.jsonl)")
     parser.add_argument(
         "--overrides",
-        default=str(BASE_DIR / "assets/content_overrides.json"),
+        default=str(DEFAULT_OVERRIDES_PATH),
         help="Path to the content overrides sidecar JSON",
     )
     parser.add_argument("--output", default=None, help="Output path; defaults to in-place overwrite")

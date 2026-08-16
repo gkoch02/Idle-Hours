@@ -46,6 +46,31 @@ telemetry_path = "/var/lib/idle-hours/telemetry.jsonl"
 telemetry_retain_days = 90
 pidfile        = "/var/lib/idle-hours/run_clock.pid"
 
+# ---- Corpus + curator-owned sidecars ---------------------------------------
+# REQUIRED for the curator UI under the shipped systemd unit.
+#
+# These four files default to locations inside the installed package. The unit
+# sets `ProtectSystem=strict`, which mounts that read-only — so with the
+# defaults, every curator save (`POST /api/overrides`,
+# `POST /api/content-overrides`) and every "Bake now" (`POST /api/bake`)
+# fails with a read-only-filesystem error and returns HTTP 500.
+#
+# Relocating them into StateDirectory (%S/idle-hours = /var/lib/idle-hours,
+# already granted by `ReadWritePaths=` in the unit) makes the whole documented
+# curation workflow work with no further sandbox changes.
+#
+# Migration is automatic: on startup run_clock copies the bundled file to any
+# of these paths that doesn't exist yet, so the committed bans/boosts and
+# per-row content fixes carry over on the first boot. Existing files are never
+# overwritten, so this is safe to leave enabled across restarts.
+#
+# Both the runtime picker AND the curator UI read these same paths — that's
+# deliberate. A curator edit the render path can't see is worse than no edit.
+overrides         = "/var/lib/idle-hours/selection_overrides.json"
+content_overrides = "/var/lib/idle-hours/content_overrides.json"
+raw_corpus        = "/var/lib/idle-hours/candidates-attributed.jsonl"
+baked_db          = "/var/lib/idle-hours/quote_database.jsonl"
+
 # ---- Quiet hours -----------------------------------------------------------
 # Overnight ranges (start > end) are supported. Set `quiet_off = true` to
 # disable entirely (24/7 rendering).

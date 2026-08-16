@@ -197,3 +197,70 @@ sudo systemctl enable --now litclock.service
   the `ExecStart=` paths are still mismatched between old (`litclock`)
   and new (`idle-hours`) forms. Re-check the unit file against
   `idle-hours.service.example`.
+
+## v2.0.x: relocating the curator-owned files (issue #179)
+
+**Who this affects:** anyone running the systemd unit *and* using the curator
+web UI. If you don't run the UI, nothing here applies — the defaults still
+work and the panel is unaffected.
+
+**Symptom.** The UI loads and browses fine, but saving selection overrides,
+saving content overrides, or pressing **Bake now** returns `HTTP 500` with a
+read-only-filesystem error in the journal.
+
+**Cause.** The unit sets `ProtectSystem=strict`, which mounts the installed
+package read-only. Four files the curator mutates live inside that package by
+default:
+
+| File | Written by |
+|---|---|
+| `selection_overrides.json` | `POST /api/overrides` (bans / boosts / preferred buckets) |
+| `content_overrides.json` | `POST /api/content-overrides` (per-row fixes) |
+| `quote_database.jsonl` | `POST /api/bake` |
+| `candidates-attributed.jsonl` | read by the baker, search, and the bucket inspector |
+
+**Fix.** Point all four at the state dir, which the unit already grants write
+access to via `ReadWritePaths=%S/idle-hours`. Add to
+`/var/lib/idle-hours/config.toml`:
+
+```toml
+overrides         = "/var/lib/idle-hours/selection_overrides.json"
+content_overrides = "/var/lib/idle-hours/content_overrides.json"
+raw_corpus        = "/var/lib/idle-hours/candidates-attributed.jsonl"
+baked_db          = "/var/lib/idle-hours/quote_database.jsonl"
+```
+
+then `sudo systemctl restart idle-hours.service`. No `daemon-reload` — the
+unit file itself is unchanged.
+
+**Migration is automatic and lossless.** On the next start, `run_clock` copies
+each bundled file to any of those paths that does not exist yet, logging
+`seeded /var/lib/idle-hours/… from bundled …`. Your committed bans, boosts,
+and per-row content fixes carry over. Files that already exist are never
+overwritten, so the step is safe to leave in place across restarts and
+upgrades.
+
+**If you had hand-edited the in-package files**, copy them across *before* the
+first restart so the seeder doesn't shadow them with the bundled versions:
+
+```bash
+PKG=$(python3 -c "import idle_hours, pathlib; print(pathlib.Path(idle_hours.__file__).parent / 'assets')")
+sudo install -o pi -g pi "$PKG/selection_overrides.json" /var/lib/idle-hours/
+sudo install -o pi -g pi "$PKG/content_overrides.json"   /var/lib/idle-hours/
+```
+
+**Do not** add the package directory to `ReadWritePaths=` as a workaround.
+Writing into `site-packages` defeats the sandbox and every edit is lost on the
+next `pip install -U`.
+
+**Related fix in the same release.** The picker's `overrides_path` default was
+a stale relative path (`assets/selection_overrides.json`) that stopped
+existing when v2.x moved the tree under `idle_hours/`. Because
+`load_overrides` fail-opens on a missing file, the render path silently
+applied *no* bans, boosts, or preferred buckets — a quote banned in the UI
+kept appearing on the panel indefinitely. The default is now anchored on the
+package directory and threaded through the render subprocess. **After
+upgrading, previously-configured bans start taking effect**, so a bucket may
+begin showing a different quote than it did before. That is the intended
+behaviour finally working; if a newly-surfaced quote isn't to your taste, ban
+it from the Now tab.

@@ -4,7 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "idle-hours"
-version = "0.1.0"
+# Single source of truth for the release version. `idle-hours --version` reads
+# it back through importlib.metadata, so this literal is what the installed
+# CLI, the wheel filename, and `pip show idle-hours` all report. Keep it in
+# lockstep with the git tag: the CI `release-version` job fails a tag build
+# whose `vX.Y.Z` ref does not match this value.
+version = "2.0.0"
 description = "Idle Hours: a literary clock that harvests time phrases from Project Gutenberg and renders a matching quote on an Inky Impression eInk display."
 readme = "README.md"
 requires-python = ">=3.11"

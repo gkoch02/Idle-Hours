@@ -8,6 +8,8 @@ rendering action endpoints stub ``run_clock._render_unlocked`` and the picker.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import errno
 import http.client
 import json
 import threading
@@ -17,7 +19,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from idle_hours import pick_quote, run_clock, web_server
+from idle_hours import atomic_io, pick_quote, run_clock, web_server
 
 
 def _make_args(tmp_path: Path, **overrides) -> argparse.Namespace:
@@ -2264,3 +2266,136 @@ class TestTelemetryWebhookFanout:
                 {"error": "boom"},
             )
         post.assert_not_called()
+
+
+# ============================================================================
+# Issue #179: curator writes under the shipped systemd sandbox
+# ============================================================================
+
+class TestSandboxedDeploymentWritePaths:
+    """The shipped unit sets ``ProtectSystem=strict`` and grants write access
+    only to ``%S/idle-hours`` and ``output/``. The curator's default mutation
+    targets all live inside the installed package, so with the defaults every
+    save and every bake failed with a read-only-filesystem error (HTTP 500).
+
+    The fix relocates the four files into the state dir. These tests model the
+    sandbox by making writes under the simulated package directory raise
+    ``EROFS``, then assert that the documented deployment pattern (relocated
+    paths, as shipped in ``config.toml.example``) makes the three mutating
+    endpoints work — and that the un-relocated default is what breaks.
+    """
+
+    ROWS = [
+        {
+            "source_id": "141", "line_number": 1,
+            "display_quote": "It was three o'clock in the afternoon, exactly.",
+            "matched_text": "three o'clock", "normalized_time": "03:00",
+            "fuzzy_bucket": "h3_exact", "quality_score": 80,
+            "display_fragment": False, "cleanup_status": "complete_sentence",
+            "author": "Jane Austen", "title": "Mansfield Park",
+        },
+    ]
+
+    def _layout(self, tmp_path):
+        """Build a read-only 'installed package' dir + a writable 'state' dir."""
+        package = tmp_path / "site-packages" / "idle_hours" / "assets"
+        package.mkdir(parents=True)
+        state = tmp_path / "var-lib" / "idle-hours"
+        state.mkdir(parents=True)
+        return package, state
+
+    @contextlib.contextmanager
+    def _readonly(self, package_dir):
+        """Simulate ProtectSystem=strict for the package directory.
+
+        Modelled by raising ``OSError(EROFS)`` from the atomic writer rather
+        than by chmod, which root (how CI runs) would simply bypass.
+        """
+        real_text = atomic_io.atomic_write_text
+        real_lines = atomic_io.atomic_write_lines
+
+        def guard(real):
+            def wrapper(path, *a, **kw):
+                if str(Path(path).resolve()).startswith(str(package_dir.resolve())):
+                    raise OSError(errno.EROFS, "Read-only file system", str(path))
+                return real(path, *a, **kw)
+            return wrapper
+
+        with patch.object(atomic_io, "atomic_write_text", guard(real_text)), \
+             patch.object(atomic_io, "atomic_write_lines", guard(real_lines)):
+            yield
+
+    def _args_for(self, tmp_path, assets_dir):
+        args = _make_args_v2(tmp_path)
+        args.overrides = str(assets_dir / "selection_overrides.json")
+        args.content_overrides = str(assets_dir / "content_overrides.json")
+        args.raw_corpus = str(assets_dir / "candidates-attributed.jsonl")
+        args.baked_db = str(assets_dir / "quote_database.jsonl")
+        return args
+
+    def test_relocated_paths_make_all_three_mutations_succeed(self, tmp_path):
+        """The documented fix: `overrides` / `content_overrides` / `raw_corpus`
+        / `baked_db` pointed at StateDirectory. All three POSTs must return 200
+        with the package directory still read-only."""
+        package, state = self._layout(tmp_path)
+        args = self._args_for(tmp_path, state)
+        Path(args.raw_corpus).write_text(
+            "\n".join(json.dumps(r) for r in self.ROWS) + "\n", encoding="utf-8")
+
+        server, thread, _state, _ = _start_v2(tmp_path, args=args)
+        try:
+            with self._readonly(package):
+                status, body = _post(server, "/api/overrides",
+                                     {"ban_source_ids": ["48"], "boost_source_ids": [],
+                                      "preferred_buckets": {}, "ban_quote_keys": ["141:1"]})
+                assert status == 200, _json_body(body)
+
+                status, body = _post(server, "/api/content-overrides",
+                                     {"141:1": {"display_quote": "patched"}})
+                assert status == 200, _json_body(body)
+
+                status, body = _post(server, "/api/bake", None)
+                assert status == 200, _json_body(body)
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+        # All three landed in the writable state dir.
+        assert json.loads(Path(args.overrides).read_text())["ban_quote_keys"] == ["141:1"]
+        assert json.loads(Path(args.content_overrides).read_text()) == {
+            "141:1": {"display_quote": "patched"}}
+        assert Path(args.baked_db).exists()
+        # …and nothing was written into the package directory.
+        assert list(package.iterdir()) == []
+
+    def test_default_package_paths_fail_under_the_sandbox(self, tmp_path):
+        """The regression this issue reported: leave the paths at their
+        in-package defaults and the same two saves return HTTP 500."""
+        package, _state = self._layout(tmp_path)
+        args = self._args_for(tmp_path, package)
+
+        server, thread, _st, _ = _start_v2(tmp_path, args=args)
+        try:
+            with self._readonly(package):
+                status, _ = _post(server, "/api/overrides",
+                                  {"ban_source_ids": [], "boost_source_ids": [],
+                                   "preferred_buckets": {}, "ban_quote_keys": []})
+                assert status == 500, "expected a read-only-filesystem failure"
+
+                status, _ = _post(server, "/api/content-overrides", {})
+                assert status == 500, "expected a read-only-filesystem failure"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_runtime_and_curator_resolve_the_same_relocated_files(self, tmp_path):
+        """Acceptance criterion: the picker the panel uses and the sidecar the
+        UI writes must be the same file. ``run_clock._corpus_kwargs`` and
+        ``web_server.WebContext`` read the same four Namespace attributes."""
+        _package, state = self._layout(tmp_path)
+        args = self._args_for(tmp_path, state)
+
+        ctx_paths = web_server.WebContext(args, run_clock.RuntimeState(args.theme))
+        runtime = run_clock._corpus_kwargs(args)
+
+        assert str(ctx_paths.overrides_path) == runtime["overrides_path"]
+        assert str(ctx_paths.baked_db_path) == runtime["database_path"]
+        assert str(ctx_paths.raw_corpus_path) == runtime["input_path"]

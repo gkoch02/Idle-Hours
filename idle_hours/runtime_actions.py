@@ -135,6 +135,7 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
             time_str = run_clock.current_time_str()
             quote_id = run_clock.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
+                **run_clock._corpus_kwargs(args),
             )
             run_clock._maybe_pick_random_theme(state, quote_id)
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
@@ -182,6 +183,7 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
             time_str = run_clock.current_time_str()
             quote_id = run_clock.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
+                **run_clock._corpus_kwargs(args),
             )
             run_clock._maybe_pick_random_theme(state, quote_id)
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
@@ -325,6 +327,7 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 time_str = run_clock.current_time_str()
                 quote_id = run_clock.peek_quote_id(
                     time_str, history_path=history_path, history_days=args.history_days,
+                    **run_clock._corpus_kwargs(args),
                 )
                 run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
         except Exception as exc:
@@ -357,6 +360,7 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
             bucket = bucket_for_time(time_str)
             quote_id = run_clock.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
+                **run_clock._corpus_kwargs(args),
             )
             run_clock._render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
             if quote_id is not None:

@@ -68,6 +68,10 @@ class TestLoadConfigHappyPath:
             'pidfile = "/var/lib/idle-hours/run_clock.pid"',
             'webhook_url = "https://example.test/hook"',
             "webhook_all_events = false",
+            'overrides = "/var/lib/idle-hours/selection_overrides.json"',
+            'content_overrides = "/var/lib/idle-hours/content_overrides.json"',
+            'raw_corpus = "/var/lib/idle-hours/candidates-attributed.jsonl"',
+            'baked_db = "/var/lib/idle-hours/quote_database.jsonl"',
         ]
         p = tmp_path / "cfg.toml"
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")

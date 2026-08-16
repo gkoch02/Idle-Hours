@@ -438,6 +438,17 @@ systemctl status --no-pager idle-hours.service     # confirm it came back up
 
 `idle_hours/assets/config.toml.example` already ships commented-out `web_bind` / `web_token_file` lines near the bottom — uncomment the pair you want and you're done. (If the unit still uses raw `--web-bind` CLI flags on `ExecStart=`, `sudoedit` the unit itself and `daemon-reload` first, then `restart`.)
 
+> **Required for saving under systemd.** The unit sets `ProtectSystem=strict`, which mounts the installed package read-only — and the selection-overrides sidecar, the content-overrides sidecar, and the baked DB all live *inside* that package by default. Leave them there and the UI browses fine but every save and every **Bake now** returns HTTP 500 with a read-only-filesystem error. Relocate the four files into the state dir (already writable via `ReadWritePaths=`) by setting these in `/var/lib/idle-hours/config.toml`:
+>
+> ```toml
+> overrides         = "/var/lib/idle-hours/selection_overrides.json"
+> content_overrides = "/var/lib/idle-hours/content_overrides.json"
+> raw_corpus        = "/var/lib/idle-hours/candidates-attributed.jsonl"
+> baked_db          = "/var/lib/idle-hours/quote_database.jsonl"
+> ```
+>
+> `config.toml.example` ships these pre-filled. On the next start, `run_clock` copies each bundled file to any of those paths that doesn't exist yet — so the committed bans, boosts, and per-row content fixes migrate across with no manual step, and existing files are never overwritten. Both the runtime picker and the curator UI read these same paths, so a ban applied in the UI takes effect on the panel at the next bucket change. Don't add the package directory to `ReadWritePaths=` instead — writing into `site-packages` defeats the sandbox and is clobbered on the next upgrade.
+
 **Reaching a loopback-bound UI from another machine.** Keep the `127.0.0.1:8080` bind (no token needed) and SSH-tunnel into the Pi from your laptop:
 
 ```bash

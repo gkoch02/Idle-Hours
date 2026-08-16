@@ -14,8 +14,8 @@ import time
 import traceback
 from pathlib import Path
 
+from idle_hours import apply_content_overrides, atomic_io, pidfile, runtime_config, runtime_webhook, sd_notify
 from idle_hours import pick_quote as pick_quote_module
-from idle_hours import pidfile, runtime_config, runtime_webhook, sd_notify
 from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import resolve_input_path
 from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_server + tests
@@ -464,6 +464,63 @@ def parse_args() -> argparse.Namespace:
             "empty string to disable the single-instance check."
         ),
     )
+    # ---- Corpus + curator-owned sidecar locations ---------------------------
+    # These four files are the ones the curator UI MUTATES (selection bans /
+    # boosts, per-row content fixes, and the baked DB that `POST /api/bake`
+    # rewrites from the raw corpus). Their defaults live inside the installed
+    # package, which `ProtectSystem=strict` mounts read-only — so under the
+    # shipped systemd unit every curator save and every "Bake now" failed with
+    # a read-only-filesystem error (HTTP 500).
+    #
+    # Pointing them at the writable state dir (%S/idle-hours, already carved
+    # out by ReadWritePaths=) fixes that. Whatever they are set to is used by
+    # BOTH the runtime picker and the curator UI: run_clock forwards them to
+    # `peek_quote_id` and to the render subprocess, and `web_server.WebContext`
+    # reads the same attributes off this namespace. That shared resolution is
+    # the point — a curator edit that the render path can't see is worse than
+    # no edit at all.
+    #
+    # Defaults stay on the bundled package assets so a checkout / dev run is
+    # unchanged. Relocated paths that don't exist yet are seeded from the
+    # bundled copies at startup (see `_seed_writable_corpus_paths`).
+    parser.add_argument(
+        "--overrides",
+        default=None,
+        help=(
+            "Selection-overrides sidecar (bans / boosts / preferred buckets / "
+            "per-row bans). Written by the curator UI's POST /api/overrides, so "
+            "it must live on a writable path under a sandboxed unit. "
+            "Unset uses the bundled copy inside the installed package."
+        ),
+    )
+    parser.add_argument(
+        "--content-overrides",
+        default=None,
+        help=(
+            "Per-row content-overrides sidecar. Written by the curator UI's "
+            "POST /api/content-overrides and re-applied by POST /api/bake. "
+            "Unset uses the bundled copy inside the installed package."
+        ),
+    )
+    parser.add_argument(
+        "--raw-corpus",
+        default=None,
+        help=(
+            "Raw attributed corpus. Read by the curator UI's bucket inspector "
+            "and search, and used as the baker's input and the picker's "
+            "fallback when the baked DB is missing. Unset uses the bundled copy."
+        ),
+    )
+    parser.add_argument(
+        "--baked-db",
+        default=None,
+        help=(
+            "Baked display-ready quote database — the canonical runtime input. "
+            "Rewritten in place by the curator UI's POST /api/bake, so it must "
+            "live on a writable path under a sandboxed unit. Unset uses the "
+            "bundled copy inside the installed package."
+        ),
+    )
     parser.add_argument(
         "--skip-preflight",
         action="store_true",
@@ -515,7 +572,73 @@ def current_bucket() -> str:
     return bucket_for_time(current_time_str())
 
 
-def peek_quote_id(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> tuple | None:
+def _corpus_kwargs(args) -> dict[str, str]:
+    """Pluck the corpus / sidecar paths off an argparse Namespace.
+
+    Single seam so the many ``peek_quote_id`` / ``render_now`` call sites don't
+    each reach into ``args`` for three attributes — same pattern (and same
+    rationale) as ``runtime_theme._auto_theme_kwargs``. The ``getattr``
+    defaults cover programmatically-built ``argparse.Namespace`` objects in
+    tests and any caller predating these flags, so the bundled-asset contract
+    is preserved when the attributes are absent.
+
+    Both the peek and the render subprocess MUST be given the same values, or
+    they can disagree about which quote is current and break the dedup check.
+    """
+    return {
+        "database_path": getattr(args, "baked_db", None) or pick_quote_module.DEFAULT_DATABASE_PATH,
+        "input_path": getattr(args, "raw_corpus", None) or pick_quote_module.DEFAULT_INPUT_PATH,
+        "overrides_path": getattr(args, "overrides", None) or pick_quote_module.DEFAULT_OVERRIDES_PATH,
+    }
+
+
+def _corpus_render_args(
+    database_path: str | None,
+    input_path: str | None,
+    overrides_path: str | None,
+) -> list[str]:
+    """Build the corpus/sidecar argv tail for the render subprocess.
+
+    Each flag is emitted ONLY when it differs from the value ``render_quote.py``
+    would compute for itself. That keeps two properties:
+
+    * **Correctness.** When the operator relocates a path (the issue #179
+      deployment), the renderer must be told — otherwise it picks from the
+      bundled corpus while ``peek_quote_id`` scored against the relocated one,
+      and the dedup check compares two different worlds.
+    * **Backwards compatibility.** ``--render-script`` is a documented
+      extension point for operator-supplied renderers, which only have to
+      accept the flags that existed when they were written. Emitting these
+      unconditionally would make every tick fail with argparse's "unrecognized
+      arguments" exit 2 — and because the render path counts failures, the
+      appliance would slide into exponential backoff and stop updating
+      entirely. Omitting a flag whose value is already the renderer's default
+      leaves the default-deployment argv byte-identical to what shipped
+      before, so no existing custom renderer can break by upgrading.
+
+    An operator who both relocates the corpus AND runs a custom renderer does
+    have to teach it these three flags — but that is a new opt-in
+    configuration, and sending the flags is the only correct behaviour there.
+    """
+    argv: list[str] = []
+    for flag, value, default in (
+        ("--database", database_path, pick_quote_module.DEFAULT_DATABASE_PATH),
+        ("--input", input_path, pick_quote_module.DEFAULT_INPUT_PATH),
+        ("--overrides", overrides_path, pick_quote_module.DEFAULT_OVERRIDES_PATH),
+    ):
+        if value and value != default:
+            argv += [flag, value]
+    return argv
+
+
+def peek_quote_id(
+    time_str: str,
+    history_path: str | None = None,
+    history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS,
+    database_path: str | None = None,
+    input_path: str | None = None,
+    overrides_path: str | None = None,
+) -> tuple | None:
     """Return a stable identity tuple for the quote pick_quote would return, or None on failure.
 
     ``matched_text`` is part of the identity because the renderer uses it to choose which
@@ -524,7 +647,11 @@ def peek_quote_id(time_str: str, history_path: str | None = None, history_days: 
     produce visibly different frames, so they must not dedup together.
 
     History params must match what the render subprocess will use so the peek's dedup
-    check stays consistent with the actual render's pick.
+    check stays consistent with the actual render's pick. The same goes for the
+    three corpus/sidecar paths: if the peek scored against the bundled assets
+    while the subprocess rendered from the operator's relocated copies, the two
+    would disagree about which quote is current and the dedup check would either
+    suppress a needed redraw or force a redundant one.
 
     ``pick_quote.select_quote`` raises ``SystemExit`` when no candidate survives the quality
     gate in the target bucket or its neighbours; we swallow that alongside ``Exception`` so
@@ -535,7 +662,9 @@ def peek_quote_id(time_str: str, history_path: str | None = None, history_days: 
             time_str=time_str,
             history_path=history_path,
             history_days=history_days,
-            database_path=pick_quote_module.DEFAULT_DATABASE_PATH,
+            database_path=database_path or pick_quote_module.DEFAULT_DATABASE_PATH,
+            input_path=input_path or pick_quote_module.DEFAULT_INPUT_PATH,
+            overrides_path=overrides_path or pick_quote_module.DEFAULT_OVERRIDES_PATH,
         )
     except (Exception, SystemExit) as exc:
         _log(f"pick_quote failed for {time_str}: {exc!r}", err=True)
@@ -595,6 +724,9 @@ def render_now(
     telemetry_path: str | None = None,
     bucket: str | None = None,
     quote_id: tuple | None = None,
+    database_path: str | None = None,
+    input_path: str | None = None,
+    overrides_path: str | None = None,
 ) -> None:
     if time_str is None:
         time_str = current_time_str()
@@ -628,6 +760,7 @@ def render_now(
                 history_path or "",
                 "--history-days",
                 str(history_days),
+                *_corpus_render_args(database_path, input_path, overrides_path),
             ],
             check=True,
             timeout=RENDER_TIMEOUT_SECONDS,
@@ -781,6 +914,7 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         actual_mode, effective_theme, time_str=time_str,
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
+        **_corpus_kwargs(args),
     )
     if actual_mode in _IDENTITY_RENDER_MODES:
         state.commit_render_result(actual_bucket, effective_theme, quote_id)
@@ -841,7 +975,7 @@ def _build_button_handlers(
             _log("button C: source card")
             try:
                 time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
                 _render_unlocked(args, state, time_str, history_path, mode="card", quote_id=quote_id)
 
                 def restore() -> None:
@@ -853,7 +987,7 @@ def _build_button_handlers(
                     # has the render lock at the 5s mark.
                     try:
                         rs_time = current_time_str()
-                        rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days)
+                        rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
                         _do_render(args, state, rs_time, history_path, quote_id=rs_quote)
                     except Exception as restore_exc:
                         _log(f"source card restore failed: {restore_exc!r}", err=True)
@@ -1397,15 +1531,84 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     # operate without. Web assets / fonts degrade gracefully (the curator
     # UI 404s, the renderer falls back to bitmap fonts), but the picker
     # has no fallback for a missing baked DB.
-    baked_db = BASE_DIR / "assets" / "quote_database.jsonl"
-    raw_corpus = BASE_DIR / "assets" / "candidates-attributed.jsonl"
+    #
+    # Checks the EFFECTIVE paths (``--baked-db`` / ``--raw-corpus``), not the
+    # bundled ones, so an operator who relocated the corpus onto a writable
+    # path gets a message about the file the picker will actually open.
+    baked_db = Path(getattr(args, "baked_db", None) or pick_quote_module.DEFAULT_DATABASE_PATH).expanduser()
+    raw_corpus = Path(getattr(args, "raw_corpus", None) or pick_quote_module.DEFAULT_INPUT_PATH).expanduser()
     if not baked_db.exists() and not raw_corpus.exists():
         errors.append(
-            f"corpus assets missing at {BASE_DIR / 'assets'} (no quote_database.jsonl "
-            "or candidates-attributed.jsonl). The wheel ships only Python modules; "
-            "the static assets need a checkout. Install via `pip install -e .` from a "
-            "git clone, or use the bundled Dockerfile."
+            f"corpus missing: neither {baked_db} nor {raw_corpus} exists. The wheel "
+            "ships only Python modules; the static assets need a checkout. Install "
+            "via `pip install -e .` from a git clone, or use the bundled Dockerfile."
         )
+    return errors
+
+
+# The curator-mutable files, paired with the bundled copy each is seeded from.
+# ``(namespace_attr, bundled_source)`` — see ``_seed_writable_corpus_paths``.
+_SEEDED_CORPUS_PATHS: tuple[tuple[str, Path], ...] = (
+    ("overrides", Path(pick_quote_module.DEFAULT_OVERRIDES_PATH)),
+    ("content_overrides", apply_content_overrides.DEFAULT_OVERRIDES_PATH),
+    ("raw_corpus", Path(pick_quote_module.DEFAULT_INPUT_PATH)),
+    ("baked_db", Path(pick_quote_module.DEFAULT_DATABASE_PATH)),
+)
+
+
+def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
+    """Copy bundled corpus / sidecar files to relocated paths that don't exist yet.
+
+    An operator who moves these onto a writable path (the whole point of the
+    ``--overrides`` / ``--content-overrides`` / ``--raw-corpus`` / ``--baked-db``
+    flags under a ``ProtectSystem=strict`` unit) would otherwise start from an
+    empty state dir: the picker would find no corpus and pre-flight would fail,
+    and the curator UI would serve empty sidecars. Seeding on first boot makes
+    the documented systemd deployment work with no manual copy step, and is
+    exactly the "migrate existing asset-side overrides without loss" path — the
+    committed bans/boosts and content fixes carry over on the first start.
+
+    Only ever *creates* files: an existing destination is left untouched, so
+    this is idempotent across restarts and can never clobber operator edits. A
+    destination equal to its bundled source is skipped outright.
+
+    Returns a list of human-readable failures; seeding problems are reported
+    through pre-flight rather than raised, so ``--skip-preflight`` keeps its
+    "let me run this weird setup anyway" contract.
+    """
+    errors: list[str] = []
+    for attr, bundled in _SEEDED_CORPUS_PATHS:
+        value = getattr(args, attr, None)
+        if not value:
+            continue
+        dest = Path(value).expanduser()
+        # Default (still pointing at the bundled asset) — nothing to seed.
+        if dest == bundled or dest.resolve() == bundled.resolve():
+            continue
+        if dest.exists():
+            continue
+        if not bundled.exists():
+            # Nothing to copy from. Not fatal on its own: the corpus guard in
+            # _preflight_paths covers the case where this actually matters.
+            continue
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            # Atomic, not a plain copy2. The corpus files are ~5-6 MB, so a
+            # full-disk error or a power cut partway through first-boot
+            # migration would otherwise leave a truncated destination — and
+            # because both the `dest.exists()` check above and the pre-flight
+            # corpus guard test only for existence, that partial file would be
+            # treated as successfully seeded forever, wedging the picker on a
+            # corrupt corpus. Routing through atomic_io (tmp sibling → fsync →
+            # os.replace → dir fsync) means the destination either doesn't
+            # exist yet (so the next boot retries) or is complete.
+            atomic_io.atomic_write_bytes(dest, bundled.read_bytes())
+            _log(f"seeded {dest} from bundled {bundled.name}")
+        except OSError as exc:
+            errors.append(
+                f"--{attr.replace('_', '-')} {value!r} could not be seeded from "
+                f"{bundled}: {exc!r}"
+            )
     return errors
 
 
@@ -1422,7 +1625,10 @@ def _run_preflight(args: argparse.Namespace) -> None:
     """
     if getattr(args, "skip_preflight", False):
         return
-    errors = _preflight_paths(args)
+    # Seed BEFORE validating: a relocated corpus path is legitimately absent on
+    # first boot, and the seeding step is what makes it present.
+    errors = _seed_writable_corpus_paths(args)
+    errors += _preflight_paths(args)
     if errors:
         message = "pre-flight path checks failed:\n  " + "\n  ".join(errors)
         _log(message, err=True)
@@ -1482,12 +1688,13 @@ def main() -> int:
         )
         # Peek before rendering so the ledger entry matches what render_quote picks.
         # Both see the same ledger state because run_clock appends only after render succeeds.
-        quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+        quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
         render_now(
             args.render_script, args.output, args.width, args.height, args.display_script,
             args.mode, effective_theme, time_str=time_str,
             history_path=history_path, history_days=args.history_days,
             telemetry_path=telemetry_path, bucket=current_bucket(), quote_id=quote_id,
+            **_corpus_kwargs(args),
         )
         if quote_id is not None:
             pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
@@ -1534,6 +1741,7 @@ def main() -> int:
                 "goodnight", effective_theme, time_str=time_str,
                 history_path=history_path, history_days=args.history_days,
                 telemetry_path=telemetry_path, bucket=None, quote_id=None,
+                **_corpus_kwargs(args),
             )
         except Exception as exc:
             _log(f"startup image render failed: {exc!r}", err=True)
@@ -1622,7 +1830,7 @@ def main() -> int:
             theme_changed = effective_theme != state.last_effective_theme and state.last_effective_theme is not None
             if bucket_changed or theme_changed:
                 try:
-                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days)
+                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
                     new_rnd = _maybe_pick_random_theme(state, quote_id)
                     if new_rnd is not None:
                         effective_theme = new_rnd
@@ -1649,6 +1857,7 @@ def main() -> int:
                                 args.mode, effective_theme, time_str=time_str,
                                 history_path=history_path, history_days=args.history_days,
                                 telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
+                                **_corpus_kwargs(args),
                             )
                         state.commit_render_result(bucket, effective_theme, quote_id)
                         _persist_state_after_render(args, state)

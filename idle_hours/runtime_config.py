@@ -73,6 +73,14 @@ CONFIG_SCHEMA: dict[str, object] = {
     "pidfile": str,
     "webhook_url": str,
     "webhook_all_events": bool,
+    # Corpus + curator-owned sidecar locations. Config-settable because the
+    # whole point is relocating them off the read-only installed package and
+    # onto the writable state dir under a `ProtectSystem=strict` unit, and the
+    # systemd deployment configures everything through the config file.
+    "overrides": str,
+    "content_overrides": str,
+    "raw_corpus": str,
+    "baked_db": str,
 }
 
 # Flags that exist on the CLI but are intentionally refused in the config

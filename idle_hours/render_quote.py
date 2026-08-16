@@ -3067,18 +3067,56 @@ def parse_args() -> argparse.Namespace:
         default=pick_quote_module.DEFAULT_HISTORY_DAYS,
         help="Number of days of history to consider when filtering repeats. 0 disables.",
     )
+    # Corpus / sidecar locations. run_clock forwards its own resolved values so
+    # the render subprocess reads exactly the files the curator UI writes —
+    # under the systemd sandbox those live in the writable state dir, not in
+    # the read-only installed package. Defaults keep a bare
+    # ``render_quote.py --time HH:MM`` pointed at the bundled assets.
+    parser.add_argument(
+        "--database",
+        default=pick_quote_module.DEFAULT_DATABASE_PATH,
+        help="Baked display-ready quote database (output of bake_quote_database.py).",
+    )
+    parser.add_argument(
+        "--input",
+        default=pick_quote_module.DEFAULT_INPUT_PATH,
+        help="Raw attributed corpus, used as the fallback when --database is missing.",
+    )
+    parser.add_argument(
+        "--overrides",
+        default=pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        help="Selection-overrides sidecar (bans / boosts / preferred buckets).",
+    )
     args = parser.parse_args()
     if args.mode != "goodnight" and not args.time:
         parser.error("--time is required unless --mode goodnight")
     return args
 
 
-def pick_quote(time_str: str, history_path: str | None = None, history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS) -> dict:
+def pick_quote(
+    time_str: str,
+    history_path: str | None = None,
+    history_days: int = pick_quote_module.DEFAULT_HISTORY_DAYS,
+    database_path: str | None = None,
+    input_path: str | None = None,
+    overrides_path: str | None = None,
+) -> dict:
+    """Pick the quote to render.
+
+    The three corpus/sidecar paths default to the bundled package assets but
+    are overridable so ``run_clock`` can point the render subprocess at the
+    operator's writable copies — the ones the curator UI actually mutates.
+    Passing ``overrides_path`` through is what makes a UI-issued ban take
+    effect on the panel; before this was threaded, the render path fell back
+    to a stale relative default and silently applied no overrides at all.
+    """
     return pick_quote_module.select_quote(
         time_str=time_str,
         history_path=history_path,
         history_days=history_days,
-        database_path=pick_quote_module.DEFAULT_DATABASE_PATH,
+        database_path=database_path or pick_quote_module.DEFAULT_DATABASE_PATH,
+        input_path=input_path or pick_quote_module.DEFAULT_INPUT_PATH,
+        overrides_path=overrides_path or pick_quote_module.DEFAULT_OVERRIDES_PATH,
     )
 
 
@@ -17913,7 +17951,14 @@ def main() -> int:
     if args.mode == "goodnight":
         image = render_static_message(args.message, args.width, args.height, theme=args.theme)
     else:
-        quote_row = pick_quote(args.time, history_path=args.history_path, history_days=args.history_days)
+        quote_row = pick_quote(
+            args.time,
+            history_path=args.history_path,
+            history_days=args.history_days,
+            database_path=args.database,
+            input_path=args.input,
+            overrides_path=args.overrides,
+        )
         image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
     try:
         # Encode to an in-memory buffer first so a mid-save exception can't leave
