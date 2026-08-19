@@ -1325,6 +1325,89 @@ class TestDailyTelemetryPath:
         assert out.name == "telemetry-20260102.jsonl"
 
 
+class TestExtraStateKeySet:
+    """#191 follow-up: the known-key set is derived from the persistence
+    schema, not hand-copied. A field added to the schema and to
+    ``snapshot_for_persistence`` but forgotten in a duplicated literal would be
+    copied into ``_extra_state``, pinning a stale value in state.json next to
+    the live one."""
+
+    def test_known_keys_track_the_schema(self):
+        from idle_hours import runtime_state as rs
+        from idle_hours.runtime_store import _STATE_SCHEMA
+
+        persisted = {k: None for k in _STATE_SCHEMA}
+        state = rs.RuntimeState("default", persisted=persisted)
+        assert state._extra_state == {}
+
+    def test_every_schema_key_is_persisted_back(self):
+        from idle_hours import runtime_state as rs
+        from idle_hours.runtime_store import _STATE_SCHEMA
+
+        snapshot = rs.RuntimeState("default").snapshot_for_persistence()
+        assert set(_STATE_SCHEMA) <= set(snapshot)
+
+    def test_unknown_key_still_round_trips(self):
+        from idle_hours import runtime_state as rs
+
+        state = rs.RuntimeState("default", persisted={"future_field": {"a": 1}})
+        assert state.snapshot_for_persistence()["future_field"] == {"a": 1}
+
+    def test_known_key_wins_over_a_stale_extra_copy(self):
+        from idle_hours import runtime_state as rs
+
+        state = rs.RuntimeState("default", persisted={"manual_quiet": True})
+        state.manual_quiet = False
+        assert state.snapshot_for_persistence()["manual_quiet"] is False
+
+
+class TestPinKeyForwarding:
+    """#190 follow-up: the pin must carry ``matched_text``.
+
+    ``(source_id, line_number)`` is not a unique corpus row key — one source
+    line can hold several time phrases — so a bare-key pin let the render
+    subprocess draw a phrase (and report a bucket) the main loop never picked.
+    """
+
+    def _argv(self, tmp_path, quote_id):
+        with patch("subprocess.run") as mock_call, \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800, height=480,
+                pin_quote=run_clock._pin_key_for(quote_id),
+            )
+        return mock_call.call_args[0][0]
+
+    def test_matched_text_is_forwarded_to_the_subprocess(self, tmp_path):
+        cmd = self._argv(tmp_path, ("141", 482, "a quote", "half past two"))
+        assert "--pin-quote" in cmd
+        assert "141:482" in cmd
+        assert "--pin-matched-text" in cmd
+        assert cmd[cmd.index("--pin-matched-text") + 1] == "half past two"
+
+    def test_legacy_short_identity_degrades_to_a_bare_pin(self, tmp_path):
+        """``last_quote_id`` is restored from state.json without a pinned
+        length, so a 3-element value written by an older build must not
+        IndexError on the render path."""
+        cmd = self._argv(tmp_path, ("141", 482, "a quote"))
+        assert "--pin-quote" in cmd
+        assert "--pin-matched-text" not in cmd
+
+    def test_no_pin_emits_neither_flag(self, tmp_path):
+        cmd = self._argv(tmp_path, None)
+        assert "--pin-quote" not in cmd
+        assert "--pin-matched-text" not in cmd
+
+    def test_pin_key_for_shapes(self):
+        assert run_clock._pin_key_for(None) is None
+        assert run_clock._pin_key_for(("1",)) is None
+        assert run_clock._pin_key_for(("1", 2)) == ("1", 2)
+        assert run_clock._pin_key_for(("1", 2, "q", None)) == ("1", 2)
+        assert run_clock._pin_key_for(("1", 2, "q", "m")) == ("1", 2, "m")
+
+
 class TestRenderNowTelemetry:
     def test_writes_telemetry_after_successful_render(self, tmp_path):
         telemetry_base = tmp_path / "telemetry.jsonl"
@@ -2056,7 +2139,7 @@ class TestUnskipHandler:
              patch("idle_hours.run_clock.render_now") as mock_render, \
              patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
              patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
-             patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry", return_value=True) as mock_rm, \
+             patch("idle_hours.run_clock.pick_quote_module.remove_history_entries", return_value=2) as mock_rm, \
              patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["A"]()
@@ -2075,7 +2158,7 @@ class TestUnskipHandler:
         state = run_clock.RuntimeState("default")
         state.last_skipped = None
         with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry") as mock_rm:
+             patch("idle_hours.run_clock.pick_quote_module.remove_history_entries") as mock_rm:
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["A"]()
         assert not mock_rm.called
@@ -2960,7 +3043,7 @@ class TestActionExceptionBranches:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = ("src-banned", 42)
-        with patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry",
+        with patch("idle_hours.run_clock.pick_quote_module.remove_history_entries",
                    side_effect=OSError("disk full")), \
              patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_unskip(args, state, label="web")
@@ -3657,7 +3740,7 @@ class TestRandomThemeMode:
              patch("idle_hours.run_clock._render_unlocked"), \
              patch("idle_hours.run_clock._append_history_after_render"), \
              patch("idle_hours.run_clock.pick_quote_module") as mock_pq:
-            mock_pq.remove_last_history_entry.return_value = True
+            mock_pq.remove_history_entries.return_value = 2
             run_clock.action_unskip(args, state, label="button A")
 
         assert state.current_random_theme == "nightvision"
@@ -5065,3 +5148,98 @@ class TestSeedWritableCorpusPaths:
         # Must NOT raise: the corpus guard sees the freshly-seeded files.
         run_clock._run_preflight(args)
         assert (tmp_path / "db.jsonl").exists()
+
+
+class TestShutdownFailureRollback:
+    """Regression (#187): a failing --shutdown-command must un-latch the
+    already-persisted manual_quiet flip — otherwise a single long-press on an
+    install where sudo is blocked (e.g. the sandbox's NoNewPrivileges)
+    silences the clock across every subsequent restart."""
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="default",
+            history_path="", history_days=7, telemetry_path="",
+            state_path=str(tmp_path / "state.json"), quiet_image="",
+            shutdown_command="sudo -n shutdown -h now",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_failed_command_rolls_back_quiet_and_persist(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_exact"
+        state.last_quote_id = ("1", 1, "q", "mt")
+        with patch("idle_hours.run_clock.subprocess.run", side_effect=RuntimeError("sudo blocked")), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is False
+        # Dedup identity cleared so the next tick repaints over the goodnight frame.
+        assert state.last_bucket is None
+        assert state.last_quote_id is None
+        # The rollback was persisted, not just flipped in memory.
+        persisted = json.loads((tmp_path / "state.json").read_text())
+        assert persisted["manual_quiet"] is False
+
+    def test_timeout_also_rolls_back(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        exc = subprocess.TimeoutExpired(cmd="shutdown", timeout=30)
+        with patch("idle_hours.run_clock.subprocess.run", side_effect=exc), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is False
+
+    def test_successful_command_keeps_quiet_latched(self, tmp_path):
+        # The system is about to power off — the persisted quiet flip is the
+        # intended pre-shutdown state and must survive.
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.run_clock.subprocess.run"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is True
+
+
+class TestUnknownStateKeysRoundTrip:
+    """Regression (#191): unknown top-level keys in state.json are preserved
+    by load_runtime_state so a newer schema can round-trip through an older
+    install — but they were dropped by the very next save. RuntimeState now
+    stashes them and snapshot_for_persistence merges them back."""
+
+    def test_unknown_key_survives_load_save_cycle(self, tmp_path):
+        state_path = tmp_path / "state.json"
+        state_path.write_text(json.dumps({
+            "manual_theme": "dark",
+            "manual_quiet": False,
+            "future_field": {"nested": 1},
+        }))
+        persisted = run_clock.load_runtime_state(str(state_path))
+        state = run_clock.RuntimeState("default", persisted=persisted)
+        snapshot = state.snapshot_for_persistence()
+        assert snapshot["future_field"] == {"nested": 1}
+        assert snapshot["manual_theme"] == "dark"
+        run_clock.save_runtime_state(str(state_path), snapshot)
+        reloaded = json.loads(state_path.read_text())
+        assert reloaded["future_field"] == {"nested": 1}
+
+    def test_known_fields_win_over_extras_on_collision(self):
+        state = run_clock.RuntimeState("default", persisted={"manual_quiet": False})
+        state.manual_quiet = True
+        snapshot = state.snapshot_for_persistence()
+        assert snapshot["manual_quiet"] is True
+
+    def test_no_persisted_state_has_no_extras(self):
+        state = run_clock.RuntimeState("default")
+        snapshot = state.snapshot_for_persistence()
+        assert set(snapshot) == {
+            "manual_theme", "manual_quiet", "last_bucket",
+            "last_quote_id", "last_effective_theme", "setup_complete",
+        }

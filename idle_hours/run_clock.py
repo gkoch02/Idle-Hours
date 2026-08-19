@@ -710,6 +710,27 @@ def _append_history_after_render(state: RuntimeState, history_path: str | None, 
         pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
 
 
+def _pin_key_for(quote_id) -> tuple | None:
+    """Build a ``--pin-quote`` key from a peeked/committed quote identity.
+
+    ``quote_id`` is ``(source_id, line_number, display_quote, matched_text)``.
+    ``matched_text`` rides along as the third pin element because
+    ``(source_id, line_number)`` is NOT a unique corpus row key — one source
+    line can carry several time phrases, and pinning on the bare key renders
+    whichever duplicate happens to come first on disk.
+
+    Tolerates a short tuple: ``last_quote_id`` is restored from ``state.json``
+    without a pinned length (the identity shape has grown before), so a legacy
+    3-element persisted value degrades to an unqualified pin rather than
+    raising IndexError on the render path.
+    """
+    if quote_id is None or len(quote_id) < 2:
+        return None
+    if len(quote_id) > 3 and quote_id[3] is not None:
+        return (quote_id[0], quote_id[1], quote_id[3])
+    return (quote_id[0], quote_id[1])
+
+
 def render_now(
     render_script: str,
     output_path: str,
@@ -727,6 +748,7 @@ def render_now(
     database_path: str | None = None,
     input_path: str | None = None,
     overrides_path: str | None = None,
+    pin_quote: tuple | None = None,
 ) -> None:
     if time_str is None:
         time_str = current_time_str()
@@ -760,6 +782,16 @@ def render_now(
                 history_path or "",
                 "--history-days",
                 str(history_days),
+                # Pin the subprocess to the exact row the caller peeked (or is
+                # repainting): the subprocess otherwise re-picks with the
+                # anti-repeat filter, which excludes the currently-displayed
+                # quote and silently swaps it on theme-only changes (#190).
+                # The matched_text element is not optional in practice —
+                # (source_id, line_number) is a non-unique row key, so without
+                # it the subprocess can render a different phrase (and a
+                # different bucket) than the one we just committed.
+                *(["--pin-quote", f"{pin_quote[0]}:{pin_quote[1]}"] if pin_quote else []),
+                *(["--pin-matched-text", str(pin_quote[2])] if pin_quote and len(pin_quote) > 2 else []),
                 *_corpus_render_args(database_path, input_path, overrides_path),
             ],
             check=True,
@@ -914,6 +946,7 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         actual_mode, effective_theme, time_str=time_str,
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
+        pin_quote=_pin_key_for(quote_id),
         **_corpus_kwargs(args),
     )
     if actual_mode in _IDENTITY_RENDER_MODES:
@@ -1054,6 +1087,23 @@ def _build_button_handlers(
                     )
             except Exception as exc:
                 _log(f"shutdown pre-frame failed: {exc!r}", err=True)
+            def _rollback_quiet() -> None:
+                # The shutdown command failed, so the process lives on. The
+                # quiet flip was already persisted, so without a rollback the
+                # panel stays on goodnight AND every restart boots back into
+                # manual quiet — a single failed long-press (e.g. sudo blocked
+                # by the sandbox's NoNewPrivileges) silences the clock until
+                # someone knows to short-press D (#187). Mirror action_quiet's
+                # rollback: un-latch, re-persist, and clear the dedup identity
+                # so the next tick repaints a normal quote over the goodnight
+                # frame.
+                with state.lock:
+                    state.manual_quiet = False
+                    state.last_bucket = None
+                    state.last_quote_id = None
+                    with contextlib.suppress(Exception):
+                        save_runtime_state(args.state_path, state.snapshot_for_persistence())
+
             try:
                 subprocess.run(shlex.split(cmd), check=True, timeout=SHUTDOWN_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired as exc:
@@ -1070,9 +1120,11 @@ def _build_button_handlers(
                         "timeout_seconds": SHUTDOWN_TIMEOUT_SECONDS,
                     },
                 )
+                _rollback_quiet()
             except Exception as exc:
                 _log(f"shutdown command {cmd!r} failed: {exc!r}", err=True)
                 append_telemetry(telemetry_path, {"bucket": current_bucket(), "error": repr(exc), "mode": "shutdown"})
+                _rollback_quiet()
 
     def on_quiet_toggle() -> None:
         action_quiet(args, state, label="button D")
@@ -1247,7 +1299,7 @@ def _maybe_compact_history(args: argparse.Namespace, state: RuntimeState) -> Non
     Gated on ``state.last_compacted_date`` so the compact sweep runs at most
     once per calendar day — the ledger is a ~288-entries-per-week
     append-only file, so a per-tick compact would re-parse it needlessly.
-    Serialised against button A's ``remove_last_history_entry`` rewrite via
+    Serialised against button A's ``remove_history_entries`` rewrite via
     ``state.ledger_lock`` to avoid stepping on a concurrent un-skip.
     Best-effort: a disk hiccup here must not bubble into the render path and
     trip the outer-loop backoff counter.
@@ -1830,7 +1882,19 @@ def main() -> int:
             theme_changed = effective_theme != state.last_effective_theme and state.last_effective_theme is not None
             if bucket_changed or theme_changed:
                 try:
-                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
+                    repaint_only = (
+                        theme_changed and not bucket_changed and state.last_quote_id is not None
+                    )
+                    if repaint_only:
+                        # Theme-only change (auto day/night flip, random
+                        # re-roll): repaint the SAME quote, matching
+                        # action_theme's contract. A fresh peek would
+                        # history-filter out the currently-displayed quote and
+                        # silently swap it — burning a ledger entry on what the
+                        # docs promise is a same-quote redraw (#190).
+                        quote_id = state.last_quote_id
+                    else:
+                        quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
                     new_rnd = _maybe_pick_random_theme(state, quote_id)
                     if new_rnd is not None:
                         effective_theme = new_rnd
@@ -1857,11 +1921,14 @@ def main() -> int:
                                 args.mode, effective_theme, time_str=time_str,
                                 history_path=history_path, history_days=args.history_days,
                                 telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
+                                pin_quote=_pin_key_for(quote_id),
                                 **_corpus_kwargs(args),
                             )
                         state.commit_render_result(bucket, effective_theme, quote_id)
                         _persist_state_after_render(args, state)
-                        if quote_id is not None:
+                        # A theme-only repaint redraws the quote already on the
+                        # ledger — re-appending would double-record it.
+                        if quote_id is not None and not repaint_only:
                             _append_history_after_render(state, history_path, quote_id)
                 except Exception as exc:
                     # Keep the loop alive so a transient failure (pick_quote crash, Inky I/O,

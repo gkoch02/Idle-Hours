@@ -3087,6 +3087,31 @@ def parse_args() -> argparse.Namespace:
         default=pick_quote_module.DEFAULT_OVERRIDES_PATH,
         help="Selection-overrides sidecar (bans / boosts / preferred buckets).",
     )
+    parser.add_argument(
+        "--pin-quote",
+        default=None,
+        metavar="SOURCE_ID:LINE",
+        help=(
+            "Render this exact corpus row instead of picking one. Used by "
+            "run_clock for theme-change repaints so the panel keeps showing "
+            "the same quote the anti-repeat filter would otherwise exclude. "
+            "Falls back to a normal pick when the row no longer exists; a "
+            "malformed value is ignored with a warning."
+        ),
+    )
+    parser.add_argument(
+        "--pin-matched-text",
+        default=None,
+        metavar="TEXT",
+        help=(
+            "Disambiguator for --pin-quote. One source line can carry several "
+            "time phrases, so SOURCE_ID:LINE is not a unique row key; passing "
+            "the peeked matched_text alongside it pins the exact row the "
+            "caller chose instead of whichever duplicate comes first on disk. "
+            "A row that matches the key but not this text is skipped, and the "
+            "render falls back to a normal pick."
+        ),
+    )
     args = parser.parse_args()
     if args.mode != "goodnight" and not args.time:
         parser.error("--time is required unless --mode goodnight")
@@ -3100,6 +3125,7 @@ def pick_quote(
     database_path: str | None = None,
     input_path: str | None = None,
     overrides_path: str | None = None,
+    pin_key: tuple | None = None,
 ) -> dict:
     """Pick the quote to render.
 
@@ -3117,7 +3143,33 @@ def pick_quote(
         database_path=database_path or pick_quote_module.DEFAULT_DATABASE_PATH,
         input_path=input_path or pick_quote_module.DEFAULT_INPUT_PATH,
         overrides_path=overrides_path or pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        pin_key=pin_key,
     )
+
+
+def parse_pin_quote(value: str | None, matched_text: str | None = None) -> tuple | None:
+    """Parse a ``SOURCE_ID:LINE`` --pin-quote value; None/malformed → None.
+
+    ``matched_text`` (from ``--pin-matched-text``) is appended as a third
+    element when supplied. It is required for correctness whenever the pin has
+    to survive a corpus with duplicate ``(source_id, line_number)`` keys — see
+    the pin block in ``pick_quote.select_quote``.
+
+    Fail-open: a malformed pin must degrade to a normal pick with a stderr
+    warning, never kill the render subprocess mid-loop.
+    """
+    if not value:
+        return None
+    source_id, sep, line = value.partition(":")
+    if sep and source_id:
+        try:
+            key = (source_id, int(line))
+        except ValueError:
+            pass
+        else:
+            return key if matched_text is None else (*key, matched_text)
+    print(f"warning: ignoring malformed --pin-quote {value!r}", file=sys.stderr)
+    return None
 
 
 _FONT_CACHE: dict[tuple, ImageFont.ImageFont] = {}
@@ -17958,6 +18010,7 @@ def main() -> int:
             database_path=args.database,
             input_path=args.input,
             overrides_path=args.overrides,
+            pin_key=parse_pin_quote(args.pin_quote, args.pin_matched_text),
         )
         image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
     try:

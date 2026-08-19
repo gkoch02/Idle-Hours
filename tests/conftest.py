@@ -80,3 +80,32 @@ def tmp_jsonl(tmp_path):
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
         return path
     return _write
+
+
+@pytest.fixture(autouse=True)
+def _clear_corpus_cache():
+    """Isolate the stat-keyed in-process corpus cache (#192) between tests.
+
+    Fast test loops can rewrite a tmp corpus file with the same size inside
+    the filesystem's timestamp granularity; clearing around every test keeps
+    a stale hit from leaking across cases.
+    """
+    from idle_hours import pick_quote
+
+    pick_quote.clear_corpus_cache()
+    yield
+    pick_quote.clear_corpus_cache()
+
+
+@pytest.fixture(autouse=True)
+def _clear_preview_cache():
+    """Isolate the /api/preview PNG LRU (#193) between tests."""
+    import sys
+
+    ws = sys.modules.get("idle_hours.web_server")
+    if ws is not None:
+        ws.clear_preview_cache()
+    yield
+    ws = sys.modules.get("idle_hours.web_server")
+    if ws is not None:
+        ws.clear_preview_cache()

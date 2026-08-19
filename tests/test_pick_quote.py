@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -163,6 +164,24 @@ class TestScoreRow:
         overrides = self._overrides()
         score = pq.score_row(row, "h3_exact", overrides)
         assert score[9] < abs(len(display) - 140)
+
+    def test_exactness_bonus_not_fired_by_embedded_five_minutes_to(self):
+        # Regression (#185): "twenty-five minutes to three" contains the
+        # substring "five minutes to" but is a 35-minute phrase, not an x:55
+        # marker — it must not receive the strong -2 exactness bonus.
+        display = "It was twenty-five minutes to three when the bells rang out across the square."
+        overrides = self._overrides()
+        embedded = make_row(matched_text="twenty-five minutes to three",
+                            quality_score=80, display_quote=display)
+        neutral = make_row(matched_text="a vague reference",
+                           quality_score=80, display_quote=display)
+        assert pq.score_row(embedded, "h3_exact", overrides)[9] == \
+            pq.score_row(neutral, "h3_exact", overrides)[9]
+        # The standalone phrase still earns it.
+        standalone = make_row(matched_text="five minutes to three",
+                              quality_score=80, display_quote=display)
+        assert pq.score_row(standalone, "h3_exact", overrides)[9] < \
+            pq.score_row(neutral, "h3_exact", overrides)[9]
 
     def test_no_source_id_penalty(self):
         with_id = make_row(source_id="1234")
@@ -525,39 +544,51 @@ class TestRecentHistory:
         entry = json.loads(path.read_text().strip())
         assert entry["source_id"] == "1234"
 
-    def test_remove_last_history_entry_removes_most_recent_match(self, tmp_path):
+    def test_remove_history_entries_removes_every_match(self, tmp_path):
+        # Regression (#183): a skipped quote has (at least) two ledger entries
+        # — the render append plus the ban append. Un-skip must remove them
+        # all, or the fresh-first filter still excludes the quote.
         path = tmp_path / "history.jsonl"
-        pq.append_history(str(path), "1", 1)
+        pq.append_history(str(path), "1", 1)   # original render append
         pq.append_history(str(path), "2", 2)
-        pq.append_history(str(path), "1", 1)  # duplicate — we expect this one to go
-        removed = pq.remove_last_history_entry(str(path), "1", 1)
-        assert removed is True
+        pq.append_history(str(path), "1", 1)   # ban append from action_skip
+        removed = pq.remove_history_entries(str(path), "1", 1)
+        assert removed == 2
         remaining = [json.loads(line) for line in path.read_text().splitlines()]
-        # The first (1, 1) entry must still be there; only the duplicate was removed.
-        assert [(e["source_id"], e["line_number"]) for e in remaining] == [("1", 1), ("2", 2)]
+        assert [(e["source_id"], e["line_number"]) for e in remaining] == [("2", 2)]
 
-    def test_remove_last_history_entry_returns_false_when_no_match(self, tmp_path):
+    def test_remove_history_entries_returns_zero_when_no_match(self, tmp_path):
         path = tmp_path / "history.jsonl"
         pq.append_history(str(path), "1", 1)
-        assert pq.remove_last_history_entry(str(path), "42", 99) is False
+        assert pq.remove_history_entries(str(path), "42", 99) == 0
         # Unchanged.
         assert len(path.read_text().splitlines()) == 1
 
-    def test_remove_last_history_entry_noop_for_empty_path(self, tmp_path):
-        assert pq.remove_last_history_entry("", "1", 1) is False
-        assert pq.remove_last_history_entry(None, "1", 1) is False
+    def test_remove_history_entries_noop_for_empty_path(self, tmp_path):
+        assert pq.remove_history_entries("", "1", 1) == 0
+        assert pq.remove_history_entries(None, "1", 1) == 0
 
-    def test_remove_last_history_entry_noop_when_file_missing(self, tmp_path):
+    def test_remove_history_entries_noop_when_file_missing(self, tmp_path):
         path = tmp_path / "missing.jsonl"
-        assert pq.remove_last_history_entry(str(path), "1", 1) is False
+        assert pq.remove_history_entries(str(path), "1", 1) == 0
 
-    def test_remove_last_history_entry_leaves_empty_file_when_last_removed(self, tmp_path):
+    def test_remove_history_entries_leaves_empty_file_when_last_removed(self, tmp_path):
         path = tmp_path / "history.jsonl"
         pq.append_history(str(path), "1", 1)
-        assert pq.remove_last_history_entry(str(path), "1", 1) is True
+        assert pq.remove_history_entries(str(path), "1", 1) == 1
         assert path.read_text() == ""
 
-    def test_remove_last_history_entry_atomic_on_replace_failure(self, tmp_path, monkeypatch):
+    def test_remove_history_entries_preserves_malformed_lines(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1", 1)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("{torn line\n")
+        pq.append_history(str(path), "1", 1)
+        assert pq.remove_history_entries(str(path), "1", 1) == 2
+        # The torn line survives — corruption repair is load_recent_history's job.
+        assert path.read_text() == "{torn line\n"
+
+    def test_remove_history_entries_atomic_on_replace_failure(self, tmp_path, monkeypatch):
         """A mid-rewrite crash must leave the original ledger untouched, not wiped."""
         import os
 
@@ -570,7 +601,7 @@ class TestRecentHistory:
             os, "replace", lambda s, d: (_ for _ in ()).throw(OSError("simulated power loss"))
         )
         with pytest.raises(OSError):
-            pq.remove_last_history_entry(str(path), "1", 1)
+            pq.remove_history_entries(str(path), "1", 1)
 
         # Ledger must be byte-identical to pre-call state — no truncation, no tmp left behind.
         assert path.read_text(encoding="utf-8") == original
@@ -854,14 +885,21 @@ class TestInferQuoteMinute:
         row = {"matched_text": "half\npast two"}
         assert pq.infer_quote_minute(row) == 30
 
-    def test_known_substring_collision_twenty_five_past_matches_shorter_pattern(self):
-        # Documents a known limitation: "twenty-five minutes past" contains
-        # "five minutes past" (the 5-minute pattern) and dict-iteration order
-        # means the shorter pattern wins. In practice rows reach this code path
-        # only when normalized_time is missing, so the impact is minimal — but
-        # future callers should be aware.
-        row = {"matched_text": "twenty-five minutes past seven"}
-        assert pq.infer_quote_minute(row) == 5
+    @pytest.mark.parametrize("phrase,minute", [
+        # Regression (#185): these phrases contain shorter sibling patterns
+        # ("five minutes past" / "five past") and used to mis-infer as minute 5
+        # under dict-iteration-order substring matching. Longest-first matching
+        # must return the most specific phrase's minute.
+        ("twenty-five minutes past seven", 25),
+        ("twenty five minutes past seven", 25),
+        ("twenty-five past seven", 25),
+        ("twenty five past seven", 25),
+        ("thirty-five minutes past two", 35),
+        ("thirty five minutes past two", 35),
+    ])
+    def test_substring_sibling_patterns_prefer_longest_match(self, phrase, minute):
+        row = {"matched_text": phrase}
+        assert pq.infer_quote_minute(row) == minute
 
 
 class TestMinuteDistancePenalty:
@@ -1220,3 +1258,295 @@ class TestOverridesPathDefaults:
 
         rendered = render_quote.pick_quote("03:00", overrides_path=str(sidecar))
         assert f"{rendered['source_id']}:{rendered['line_number']}" != key
+
+
+class TestLoadOverridesFailOpen:
+    """Regression (#186): a corrupt selection_overrides.json must degrade to
+    empty overrides with a stderr warning — this loader is on the per-tick
+    render hot path and hand-editing the file is the documented workflow, so
+    raising here froze the panel in render-failure backoff."""
+
+    def test_truncated_json_returns_empty_defaults(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text('{"ban_source_ids": [1,', encoding="utf-8")
+        overrides = pq.load_overrides(path)
+        assert overrides == {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
+        assert "invalid JSON" in capsys.readouterr().err
+
+    def test_non_object_root_returns_empty_defaults(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text('["not", "a", "dict"]', encoding="utf-8")
+        overrides = pq.load_overrides(path)
+        assert overrides["ban_source_ids"] == []
+        assert "not a JSON object" in capsys.readouterr().err
+
+    def test_unreadable_file_returns_empty_defaults(self, tmp_path, capsys, monkeypatch):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            Path, "read_text",
+            lambda self, **kw: (_ for _ in ()).throw(OSError("permission denied")),
+        )
+        overrides = pq.load_overrides(path)
+        assert overrides["ban_quote_keys"] == []
+        assert "unreadable" in capsys.readouterr().err
+
+    def test_valid_file_still_loads(self, tmp_path):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text('{"ban_source_ids": ["7"]}', encoding="utf-8")
+        overrides = pq.load_overrides(path)
+        assert overrides["ban_source_ids"] == ["7"]
+        assert overrides["ban_quote_keys"] == []
+
+
+class TestSelectQuotePin:
+    """Regression (#190): theme-only repaints pin the render subprocess to the
+    exact row already on the panel — bypassing scoring and the anti-repeat
+    history filter, which would otherwise exclude the displayed quote and
+    silently swap it on an auto day/night flip or button-B press."""
+
+    def _rows(self):
+        return [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=90,
+                     display_quote="It was three o'clock and all was well in the town."),
+            make_row(fuzzy_bucket="h3_exact", source_id="2", line_number=200, quality_score=95,
+                     display_quote="The clock struck three and everyone looked up at once."),
+        ]
+
+    def test_pin_returns_exact_row_despite_history(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "1", 100)  # displayed quote is in the ledger
+        result = pq.select_quote(
+            time_str="03:00", rows=self._rows(), overrides={},
+            history_path=str(history), history_days=7,
+            pin_key=("1", 100),
+        )
+        assert (result["source_id"], result["line_number"]) == ("1", 100)
+
+    def test_pin_int_source_id_normalised(self):
+        rows = self._rows()
+        rows[0]["source_id"] = 1
+        result = pq.select_quote(time_str="03:00", rows=rows, overrides={}, pin_key=("1", 100))
+        assert result["line_number"] == 100
+
+    def test_missing_pin_falls_back_to_normal_pick(self, capsys):
+        result = pq.select_quote(
+            time_str="03:00", rows=self._rows(), overrides={}, pin_key=("999", 1),
+        )
+        assert result["source_id"] in {"1", "2"}
+        assert "pinned quote" in capsys.readouterr().err
+
+    def test_no_pin_unchanged_behaviour(self):
+        result = pq.select_quote(time_str="03:00", rows=self._rows(), overrides={})
+        assert result["source_id"] in {"1", "2"}
+
+
+class TestFiftyFiveMinutePatterns:
+    """``fifty-five minutes past`` embeds the 5-minute pattern
+    ``five minutes past``, so it needs its own entry — otherwise the
+    longest-first scan infers minute 5 for it, the exact shorter-sibling
+    collision that ordering exists to prevent."""
+
+    def test_fifty_five_minutes_past_infers_55(self):
+        assert pq.infer_quote_minute({"matched_text": "fifty-five minutes past one"}) == 55
+        assert pq.infer_quote_minute({"matched_text": "fifty five minutes past one"}) == 55
+
+    def test_shorter_siblings_still_resolve(self):
+        assert pq.infer_quote_minute({"matched_text": "five minutes past two"}) == 5
+        assert pq.infer_quote_minute({"matched_text": "twenty-five minutes past three"}) == 25
+        assert pq.infer_quote_minute({"matched_text": "thirty-five minutes past ten"}) == 35
+        assert pq.infer_quote_minute({"matched_text": "five minutes to four"}) == 55
+
+    def test_no_pattern_is_shadowed_by_a_longer_sibling(self):
+        """Sweep every pattern: each must infer its own minute, even when a
+        different pattern is a substring of it."""
+        for minute, patterns in pq.EXACT_MINUTE_PATTERNS.items():
+            expected = 0 if minute == "zero" else minute
+            for pattern in patterns:
+                got = pq.infer_quote_minute({"matched_text": pattern})
+                assert got == expected, f"{pattern!r} inferred {got}, expected {expected}"
+
+
+class TestSelectQuotePinAmbiguity:
+    """``(source_id, line_number)`` is NOT a unique corpus row key: one source
+    line can carry several time phrases, so the committed database holds 128
+    duplicate keys, many spanning different buckets. Pinning on the bare key
+    returned whichever copy came first on disk, so the panel rendered a phrase
+    (and reported a bucket) the caller never picked."""
+
+    def _dup_rows(self):
+        # Same source line, two phrases, two buckets — the shape that recurs
+        # 128 times in the shipped quote_database.jsonl.
+        return [
+            make_row(fuzzy_bucket="h10_exact", source_id="155", line_number=19656,
+                     matched_text="ten o'clock", normalized_time="10:00", quality_score=90,
+                     display_quote="He came home at ten o'clock, or close on ten o'clock."),
+            make_row(fuzzy_bucket="h9_five_to", source_id="155", line_number=19656,
+                     matched_text="close on ten o'clock", normalized_time="09:55", quality_score=90,
+                     display_quote="He came home at ten o'clock, or close on ten o'clock."),
+        ]
+
+    def test_matched_text_selects_the_right_duplicate(self):
+        rows = self._dup_rows()
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides={},
+            pin_key=("155", 19656, "close on ten o'clock"),
+        )
+        assert result["matched_text"] == "close on ten o'clock"
+        assert result["resolved_bucket"] == "h9_five_to"
+
+    def test_bare_key_no_longer_decides_purely_by_file_order(self):
+        """Even a legacy 2-element pin (a state.json written before the
+        discriminator existed) is steered by the bucket tie-break rather than
+        by whichever duplicate happens to sit first in the file."""
+        rows = self._dup_rows()
+        result = pq.select_quote(time_str="09:55", rows=rows, overrides={}, pin_key=("155", 19656))
+        assert result["resolved_bucket"] == "h9_five_to"
+        assert result["matched_text"] == "close on ten o'clock"
+
+    def test_bucket_tiebreak_prefers_target_bucket(self):
+        """Rows that tie on (key, matched_text) but disagree on fuzzy_bucket
+        resolve in the picker's own bucket-preference order, so resolved_bucket
+        and used_fallback match what a natural pick would have reported."""
+        rows = [
+            make_row(fuzzy_bucket="h1_twenty_five_past", source_id="9", line_number=1,
+                     matched_text="twenty minutes to two", normalized_time="01:40",
+                     quality_score=90, display_quote="It was twenty minutes to two."),
+            make_row(fuzzy_bucket="h1_twenty_to", source_id="9", line_number=1,
+                     matched_text="twenty minutes to two", normalized_time="01:40",
+                     quality_score=90, display_quote="It was twenty minutes to two."),
+        ]
+        result = pq.select_quote(
+            time_str="01:40", rows=rows, overrides={},
+            pin_key=("9", 1, "twenty minutes to two"),
+        )
+        assert result["resolved_bucket"] == "h1_twenty_to"
+        assert result["used_fallback"] is False
+
+    def test_matched_text_mismatch_falls_back_to_normal_pick(self, capsys):
+        rows = self._dup_rows()
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides={},
+            pin_key=("155", 19656, "a phrase that is not in the corpus"),
+        )
+        assert "pinned quote" in capsys.readouterr().err
+        assert result["source_id"] == "155"
+
+    def test_pin_honours_per_row_ban(self, capsys):
+        """A curator ban must win over a repaint, or the UI's "Ban this quote"
+        button appears to do nothing on the next theme change."""
+        rows = self._dup_rows()
+        rows.append(make_row(fuzzy_bucket="h9_five_to", source_id="7", line_number=3,
+                             normalized_time="09:55", quality_score=80,
+                             display_quote="A perfectly serviceable replacement quote."))
+        overrides = {"ban_quote_keys": ["155:19656"]}
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides=overrides,
+            pin_key=("155", 19656, "close on ten o'clock"),
+        )
+        assert result["source_id"] == "7"
+        assert "pinned quote" in capsys.readouterr().err
+
+    def test_pin_honours_banned_source(self):
+        rows = self._dup_rows()
+        rows.append(make_row(fuzzy_bucket="h9_five_to", source_id="7", line_number=3,
+                             normalized_time="09:55", quality_score=80,
+                             display_quote="A perfectly serviceable replacement quote."))
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides={"ban_source_ids": ["155"]},
+            pin_key=("155", 19656, "close on ten o'clock"),
+        )
+        assert result["source_id"] == "7"
+
+
+class TestPinFidelityAgainstShippedCorpus:
+    """End-to-end fence against the real database. The synthetic-corpus pin
+    tests all used unique keys, so a full green suite still shipped a panel
+    that rendered the wrong phrase for ~8% of clock times."""
+
+    def test_pinned_render_reproduces_the_peek_for_every_bucket(self):
+        from idle_hours import run_clock
+
+        kwargs = dict(
+            database_path=str(pq.DEFAULT_DATABASE_PATH),
+            input_path=str(pq.DEFAULT_INPUT_PATH),
+            overrides_path=str(pq.DEFAULT_OVERRIDES_PATH),
+        )
+        mismatches = []
+        for hour in range(24):
+            for minute in range(0, 60, 5):
+                time_str = f"{hour:02d}:{minute:02d}"
+                peeked = pq.select_quote(time_str=time_str, **kwargs)
+                # Exactly the identity run_clock commits and forwards.
+                quote_id = (
+                    peeked["source_id"], peeked["line_number"],
+                    peeked["display_quote"], peeked["matched_text"],
+                )
+                pinned = pq.select_quote(
+                    time_str=time_str, pin_key=run_clock._pin_key_for(quote_id), **kwargs,
+                )
+                for field in ("source_id", "line_number", "display_quote",
+                              "matched_text", "resolved_bucket", "used_fallback"):
+                    if pinned[field] != peeked[field]:
+                        mismatches.append((time_str, field, peeked[field], pinned[field]))
+                        break
+        assert mismatches == [], f"pinned render diverged from the peek: {mismatches[:5]}"
+
+
+class TestCorpusCache:
+    """#192: the multi-MB corpus is parsed once per (path, mtime, size) —
+    repeat picks in one process cost a stat, and an atomic replace (bake)
+    invalidates automatically."""
+
+    def _write_corpus(self, path, quote):
+        rows = [make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100,
+                         quality_score=90, display_quote=quote)]
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    def test_second_pick_hits_cache(self, tmp_path, monkeypatch):
+        corpus = tmp_path / "db.jsonl"
+        self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
+        calls = {"n": 0}
+        real_load = pq.load_rows
+
+        def counting_load(path):
+            calls["n"] += 1
+            return real_load(path)
+
+        monkeypatch.setattr(pq, "load_rows", counting_load)
+        pq.clear_corpus_cache()
+        r1 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        r2 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        assert r1["source_id"] == r2["source_id"] == "1"
+        assert calls["n"] == 1
+
+    def test_rewrite_invalidates(self, tmp_path):
+        corpus = tmp_path / "db.jsonl"
+        self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
+        pq.clear_corpus_cache()
+        r1 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        assert "all was well" in r1["display_quote"]
+        # Atomic-replace-style rewrite with different content/size.
+        rows = [json.dumps(make_row(fuzzy_bucket="h3_exact", source_id="2", line_number=7,
+                                    quality_score=90,
+                                    display_quote="Three o'clock rang out over the quiet harbour below."))]
+        tmp = corpus.with_suffix(".tmp")
+        tmp.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        os.replace(tmp, corpus)
+        r2 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        assert r2["source_id"] == "2"
+
+    def test_missing_file_not_cached(self, tmp_path):
+        corpus = tmp_path / "later.jsonl"
+        pq.clear_corpus_cache()
+        # A missing file takes load_rows' normal failure mode (unchanged
+        # behaviour) and must not poison the cache for when it appears.
+        with pytest.raises(OSError):
+            pq._load_rows_cached(corpus)
+        self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
+        assert len(pq._load_rows_cached(corpus)) == 1

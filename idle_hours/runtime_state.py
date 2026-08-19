@@ -145,7 +145,20 @@ class RuntimeState:
         # heartbeat writes to HEARTBEAT_INTERVAL_SECONDS even when
         # --interval-seconds is smaller (e.g. tests running at 1s ticks).
         self.last_heartbeat_monotonic: float = 0.0
+        # Unknown top-level keys from a newer schema version, carried so the
+        # next save doesn't silently drop them. load_runtime_state preserves
+        # them in its payload precisely so a downgrade → upgrade cycle
+        # round-trips (#191) — the promise only holds if
+        # snapshot_for_persistence merges them back in.
+        self._extra_state: dict = {}
         if persisted:
+            # Derived from the persistence schema rather than hand-copied:
+            # a field added to _STATE_SCHEMA and snapshot_for_persistence but
+            # forgotten here would be duplicated into _extra_state, pinning a
+            # stale copy of it in the file alongside the live value.
+            from idle_hours.runtime_store import _STATE_SCHEMA
+            known = set(_STATE_SCHEMA)
+            self._extra_state = {k: v for k, v in persisted.items() if k not in known}
             mt = persisted.get("manual_theme")
             if isinstance(mt, str) and mt in _known_theme_names():
                 self.manual_theme = mt
@@ -192,6 +205,9 @@ class RuntimeState:
         """
         last_quote_id = list(self.last_quote_id) if self.last_quote_id is not None else None
         return {
+            # Unknown keys loaded from a newer schema go first so the known
+            # fields below always win on a (pathological) name collision.
+            **self._extra_state,
             "manual_theme": self.manual_theme,
             "manual_quiet": self.manual_quiet,
             "last_bucket": self.last_bucket,

@@ -1425,7 +1425,48 @@ class TestTokenComparison:
             # We don't care about the status here (it may 200 or 500 without
             # the peek stub) — only that compare_digest was invoked.
             assert calls, "token comparison did not go through hmac.compare_digest"
-            assert calls[0] == ("secret", "secret")
+            # Compared as encoded bytes — compare_digest raises TypeError on
+            # non-ASCII str inputs (#189), so the str form would be a bug.
+            assert calls[0] == (b"secret", b"secret")
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_non_ascii_token_authenticates(self, tmp_path):
+        """A non-ASCII token must actually work, not just fail politely.
+
+        http.server hands headers to the app latin-1-decoded, while the
+        configured token is read from a UTF-8 file. Encoding *both* sides as
+        UTF-8 double-encodes the supplied value, so a correct token can never
+        match — turning the #189 TypeError into a permanent silent 401, which
+        is harder to diagnose than the crash it replaced.
+        """
+        token = "s\u00e9cret-t\u00f8ken"
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token=token)
+        try:
+            # What a correct client puts on the wire, as http.server presents it.
+            supplied = token.encode("utf-8").decode("latin-1")
+            with patch("idle_hours.run_clock._render_unlocked"), \
+                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+                status, _ = _post(
+                    server, "/api/action/rerender",
+                    headers={"X-Idle-Hours-Token": supplied},
+                )
+            assert status != 401
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_non_ascii_wrong_token_is_rejected_cleanly(self, tmp_path):
+        """The #189 case itself: a garbage non-ASCII probe gets a 401, not an
+        unhandled TypeError escaping do_POST."""
+        server, thread, _state, _args = _start(tmp_path, token="secret")
+        try:
+            status, _ = _post(
+                server, "/api/action/rerender",
+                headers={"X-Idle-Hours-Token": "\u00e9\u00e9\u00e9"},
+            )
+            assert status == 401
         finally:
             run_clock.stop_web_server((server, thread))
 
@@ -2399,3 +2440,94 @@ class TestSandboxedDeploymentWritePaths:
         assert str(ctx_paths.overrides_path) == runtime["overrides_path"]
         assert str(ctx_paths.baked_db_path) == runtime["database_path"]
         assert str(ctx_paths.raw_corpus_path) == runtime["input_path"]
+
+
+class TestNonAsciiToken:
+    """Regression (#189): a non-ASCII token header made hmac.compare_digest
+    raise TypeError before do_POST's try block — dropped connection, raw
+    traceback, and no web_auth_fail telemetry."""
+
+    def test_non_ascii_token_returns_401(self, tmp_path):
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            status, body = _post(
+                server, "/api/action/rerender",
+                headers={"X-Idle-Hours-Token": "tok\xe9n"},
+            )
+            assert status == 401
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+
+class TestPreviewCache:
+    """Regression (#193): the Now tab fires ~45 parallel /api/preview
+    requests; repeat requests for an unchanged quote must serve from the
+    encoded-PNG LRU instead of re-rendering, and a corpus/sidecar change
+    must invalidate."""
+
+    _ROW = {
+        "display_quote": "It was three o'clock in the afternoon, exactly.",
+        "matched_text": "three o'clock",
+        "author": "Jane Austen", "title": "Emma",
+        "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+        "source_id": "141", "line_number": 42,
+    }
+
+    def test_repeat_request_hits_cache(self, v2_server):
+        server, _state, _args = v2_server
+        web_server.clear_preview_cache()
+        from idle_hours import render_quote
+        real_render = render_quote.render
+        calls = {"n": 0}
+
+        def counting_render(*a, **kw):
+            calls["n"] += 1
+            return real_render(*a, **kw)
+
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
+             patch("idle_hours.render_quote.render", side_effect=counting_render):
+            s1, b1 = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+            s2, b2 = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+        assert s1 == s2 == 200
+        assert b1 == b2
+        assert calls["n"] == 1
+
+    def test_different_theme_is_a_miss(self, v2_server):
+        server, _state, _args = v2_server
+        web_server.clear_preview_cache()
+        from idle_hours import render_quote
+        real_render = render_quote.render
+        calls = {"n": 0}
+
+        def counting_render(*a, **kw):
+            calls["n"] += 1
+            return real_render(*a, **kw)
+
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
+             patch("idle_hours.render_quote.render", side_effect=counting_render):
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+            _get(server, "/api/preview?theme=dark&time=03:00&width=400&height=240")
+        assert calls["n"] == 2
+
+    def test_sidecar_change_invalidates(self, v2_server):
+        server, _state, args = v2_server
+        web_server.clear_preview_cache()
+        from idle_hours import render_quote
+        real_render = render_quote.render
+        calls = {"n": 0}
+
+        def counting_render(*a, **kw):
+            calls["n"] += 1
+            return real_render(*a, **kw)
+
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
+             patch("idle_hours.render_quote.render", side_effect=counting_render):
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+            # An operator ban rewrites the overrides sidecar — new stat stamp.
+            Path(args.overrides).write_text(
+                json.dumps({"ban_source_ids": ["7"]}), encoding="utf-8",
+            )
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+        assert calls["n"] == 2

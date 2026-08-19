@@ -29,9 +29,11 @@ import contextlib
 import datetime as dt
 import hmac
 import json
+import os
 import re
 import threading
 import urllib.parse
+from collections import OrderedDict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -52,6 +54,40 @@ DEFAULT_OUTPUT_PATH = BASE_DIR / "output" / "current.png"
 
 TOKEN_HEADER = "X-Idle-Hours-Token"
 MAX_BODY_BYTES = 64 * 1024  # Overrides payloads are tiny; cap to stop runaway requests.
+# Preview throttling + memoisation (#193). The Now tab (the default tab)
+# fires one /api/preview per registered theme — ~45 requests in parallel
+# ThreadingHTTPServer threads, each a full Pillow render. Unbounded, that
+# starves the render loop's Python process on a Pi; uncached, every tab
+# activation re-renders identical thumbnails. The semaphore bounds
+# concurrent renders (the panel loop always wins the CPU), and the LRU of
+# encoded PNG bytes — keyed on everything the frame depends on, including a
+# stat stamp of the corpus/sidecar files so a bake or ban invalidates —
+# makes repeat grid loads served from memory.
+PREVIEW_RENDER_CONCURRENCY = 2
+PREVIEW_CACHE_MAX_ENTRIES = 96
+_PREVIEW_RENDER_SEMAPHORE = threading.Semaphore(PREVIEW_RENDER_CONCURRENCY)
+_PREVIEW_CACHE: OrderedDict[tuple, bytes] = OrderedDict()
+_PREVIEW_CACHE_LOCK = threading.Lock()
+
+
+def clear_preview_cache() -> None:
+    """Drop cached preview PNGs (test isolation)."""
+    with _PREVIEW_CACHE_LOCK:
+        _PREVIEW_CACHE.clear()
+
+
+def _preview_corpus_stamp(ctx) -> tuple:
+    """(mtime_ns, size) stamps for the files a preview render depends on."""
+    stamp = []
+    for p in (ctx.baked_db_path, ctx.raw_corpus_path, ctx.overrides_path):
+        try:
+            st = os.stat(p)
+            stamp.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            stamp.append(None)
+    return tuple(stamp)
+
+
 PREVIEW_MIN_WIDTH = 80
 PREVIEW_MIN_HEIGHT = 60
 PREVIEW_MAX_WIDTH = 800
@@ -416,7 +452,27 @@ class CuratorHandler(BaseHTTPRequestHandler):
         if not token:
             return True
         supplied = self.headers.get(TOKEN_HEADER, "")
-        if not supplied or not hmac.compare_digest(supplied, token):
+        # Compare encoded bytes: hmac.compare_digest raises TypeError on
+        # non-ASCII *str* inputs, so a probe with a non-ASCII token would
+        # otherwise escape do_POST's try block — dropped connection, raw
+        # traceback, and no auth-fail telemetry (#189). Bytes comparison is
+        # total and stays timing-safe.
+        #
+        # The two sides need DIFFERENT codecs. http.server decodes request
+        # headers as latin-1, so re-encoding the supplied value as latin-1
+        # recovers the exact bytes the client put on the wire; the configured
+        # token came from a UTF-8 file read. Encoding both as UTF-8 would
+        # double-encode the supplied side and make a correct non-ASCII token
+        # permanently unauthenticatable — a silent 401 rather than the loud
+        # TypeError it replaced.
+        try:
+            supplied_bytes = supplied.encode("latin-1")
+        except UnicodeEncodeError:
+            # Not reachable from a real HTTP request (latin-1 round-trips
+            # every byte http.server can hand us), but a synthetic caller can
+            # inject an arbitrary str — treat it as a mismatch, not a crash.
+            supplied_bytes = b""
+        if not supplied or not hmac.compare_digest(supplied_bytes, token.encode("utf-8")):
             # Structured auth-failure marker so an operator can grep for
             # "was the web UI hammered with bad tokens?" without scraping
             # journald; remote+path are sufficient to distinguish a fat-
@@ -1082,13 +1138,29 @@ class CuratorHandler(BaseHTTPRequestHandler):
         # hostile or buggy client.
         width = max(PREVIEW_MIN_WIDTH, min(width, PREVIEW_MAX_WIDTH))
         height = max(PREVIEW_MIN_HEIGHT, min(height, PREVIEW_MAX_HEIGHT))
-        image = render_quote.render(time_str, row, width, height, mode=mode, theme=theme)
-        buf = BytesIO()
-        try:
-            image.save(buf, format="PNG")
-        finally:
-            image.close()
-        data = buf.getvalue()
+        cache_key = (
+            theme, mode, width, height, time_str,
+            str(row.get("source_id")), row.get("line_number"),
+            _preview_corpus_stamp(ctx),
+        )
+        with _PREVIEW_CACHE_LOCK:
+            data = _PREVIEW_CACHE.get(cache_key)
+            if data is not None:
+                _PREVIEW_CACHE.move_to_end(cache_key)
+        if data is None:
+            with _PREVIEW_RENDER_SEMAPHORE:
+                image = render_quote.render(time_str, row, width, height, mode=mode, theme=theme)
+                buf = BytesIO()
+                try:
+                    image.save(buf, format="PNG")
+                finally:
+                    image.close()
+                data = buf.getvalue()
+            with _PREVIEW_CACHE_LOCK:
+                _PREVIEW_CACHE[cache_key] = data
+                _PREVIEW_CACHE.move_to_end(cache_key)
+                while len(_PREVIEW_CACHE) > PREVIEW_CACHE_MAX_ENTRIES:
+                    _PREVIEW_CACHE.popitem(last=False)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "image/png")
         self.send_header("Content-Length", str(len(data)))
@@ -1108,7 +1180,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             path = Path(ctx.history_path).expanduser()
             if path.exists():
                 # Hold ledger_lock so a concurrent button-A long-press
-                # (remove_last_history_entry → atomic rewrite) can't surface a
+                # (remove_history_entries → atomic rewrite) can't surface a
                 # torn snapshot. The lock is also what append_history callers
                 # acquire from the main loop.
                 ledger_lock = getattr(ctx.state, "ledger_lock", None)

@@ -7,7 +7,9 @@ import datetime as dt
 import json
 import os
 import random
+import re
 import sys
+import threading
 from collections import Counter
 from pathlib import Path
 
@@ -71,8 +73,37 @@ EXACT_MINUTE_PATTERNS = {
     40: ["twenty minutes to", "twenty to"],
     45: ["quarter to"],
     50: ["ten minutes to", "ten to"],
-    55: ["five minutes to", "five to"],
+    # "fifty-five minutes past" must be listed explicitly: it embeds the
+    # 5-minute pattern "five minutes past", so without its own entry the
+    # longest-first scan below infers minute 5 for it — the same
+    # shorter-sibling collision the sort order exists to prevent.
+    55: ["fifty-five minutes past", "fifty five minutes past", "five minutes to", "five to"],
 }
+
+# Flattened longest-first view of ``EXACT_MINUTE_PATTERNS``. Plain substring
+# matching in dict order mis-infers phrases whose pattern contains a shorter
+# sibling — "twenty-five minutes past" contains the 5-minute pattern
+# "five minutes past", so iteration order used to return minute 5 for it.
+# Trying the longest pattern first means the most specific phrase always wins.
+_MINUTE_PATTERNS_LONGEST_FIRST = sorted(
+    (
+        (pattern, minute)
+        for minute, patterns in EXACT_MINUTE_PATTERNS.items()
+        for pattern in patterns
+    ),
+    key=lambda item: len(item[0]),
+    reverse=True,
+)
+
+# "five minutes to" earns the strong exactness bonus only as a standalone
+# phrase — inside "twenty-five minutes to three" it is a fragment of a
+# 35-minute phrase, not an x:55 marker. The fixed-width lookbehinds reject
+# the tens-word prefixes (hyphenated or spaced) that embed it.
+_FIVE_MINUTES_TO_RE = re.compile(
+    r"(?<!twenty-)(?<!twenty )(?<!thirty-)(?<!thirty )"
+    r"(?<!forty-)(?<!forty )(?<!fifty-)(?<!fifty )"
+    r"\bfive minutes to"
+)
 
 DIALOGUE_FILLER_PATTERNS = [
     "he said",
@@ -193,6 +224,47 @@ def load_rows(path: Path) -> list[dict]:
     return rows
 
 
+# In-process corpus cache (#192). Every select_quote used to re-read and
+# re-parse the multi-MB corpus JSONL per pick — once per tick in the main
+# loop, twice within 5 s on a button-C source card, and once per /api/preview
+# request (the Now tab fires ~45 of those). The corpus files only change via
+# atomic replace (bake, pipeline writeback), which changes (mtime_ns, size),
+# so a stat-keyed cache invalidates automatically and a hit costs one stat.
+#
+# Callers share the cached row objects: the scoring path is pure (fenced by
+# the scorer-purity tests) and the writers (bake_quote_database,
+# apply_content_overrides) load their own copies. ``tests/conftest.py``
+# clears the cache around every test so same-stamp rewrites in fast test
+# loops can't serve stale rows.
+_CORPUS_CACHE: dict[str, tuple[tuple[int, int], list[dict]]] = {}
+_CORPUS_CACHE_LOCK = threading.Lock()
+
+
+def clear_corpus_cache() -> None:
+    """Drop all cached corpus rows (test isolation / manual invalidation)."""
+    with _CORPUS_CACHE_LOCK:
+        _CORPUS_CACHE.clear()
+
+
+def _load_rows_cached(path: Path) -> list[dict]:
+    key = str(path)
+    try:
+        st = os.stat(path)
+    except OSError:
+        # Missing/unreadable — take (and don't cache) the normal load path so
+        # its behaviour (empty list / caller's fallback warnings) is unchanged.
+        return load_rows(path)
+    stamp = (st.st_mtime_ns, st.st_size)
+    with _CORPUS_CACHE_LOCK:
+        hit = _CORPUS_CACHE.get(key)
+        if hit is not None and hit[0] == stamp:
+            return hit[1]
+    rows = load_rows(path)
+    with _CORPUS_CACHE_LOCK:
+        _CORPUS_CACHE[key] = (stamp, rows)
+    return rows
+
+
 def valid_bucket_names() -> set[str]:
     """Return the full set of ``h{1..12}_{state}`` bucket names."""
     return {f"h{hour}_{state}" for hour in range(1, 13) for state in BUCKET_ORDER}
@@ -216,15 +288,42 @@ def _warn_unknown_preferred_buckets(overrides: dict) -> None:
         )
 
 
+def _empty_overrides() -> dict:
+    return {
+        "ban_source_ids": [],
+        "boost_source_ids": [],
+        "preferred_buckets": {},
+        "ban_quote_keys": [],
+    }
+
+
 def load_overrides(path: Path) -> dict:
+    """Load the selection-overrides sidecar, failing open on any defect.
+
+    Hand-editing this file is the documented curation workflow, and this
+    loader sits on the per-tick render hot path — a truncated save or a
+    non-object root must degrade to "no bans/boosts applied" with a stderr
+    warning, not raise and freeze the panel in render-failure backoff
+    (issue #186). Mirrors ``apply_content_overrides.load_overrides``.
+    """
     if not path.exists():
-        return {
-            "ban_source_ids": [],
-            "boost_source_ids": [],
-            "preferred_buckets": {},
-            "ban_quote_keys": [],
-        }
-    overrides = json.loads(path.read_text(encoding="utf-8"))
+        return _empty_overrides()
+    try:
+        overrides = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(
+            f"warning: selection overrides {path}: unreadable or invalid JSON ({exc}); "
+            "continuing with no overrides",
+            file=sys.stderr,
+        )
+        return _empty_overrides()
+    if not isinstance(overrides, dict):
+        print(
+            f"warning: selection overrides {path}: root is not a JSON object; "
+            "continuing with no overrides",
+            file=sys.stderr,
+        )
+        return _empty_overrides()
     _warn_unknown_preferred_buckets(overrides)
     # Older v1 sidecar files predate ban_quote_keys; default it so the rest of
     # the picker doesn't have to special-case its absence.
@@ -315,10 +414,21 @@ def infer_quote_minute(row: dict) -> int | None:
             pass
 
     lowered = (row.get("matched_text") or "").lower().replace("\n", " ")
-    for minute, patterns in EXACT_MINUTE_PATTERNS.items():
-        if any(pattern in lowered for pattern in patterns):
+    for pattern, minute in _MINUTE_PATTERNS_LONGEST_FIRST:
+        if pattern in lowered:
             return 0 if minute == "zero" else minute
     return None
+
+
+def circular_minute_distance(a: int, b: int) -> int:
+    """Distance between two minutes on the 60-minute clock face.
+
+    Plain ``abs(a - b)`` penalises an 11:58 quote 58 minutes away from a
+    12:00 request even though it is 2 minutes early — minute distance must
+    wrap at the top of the hour.
+    """
+    d = abs(a - b)
+    return min(d, 60 - d)
 
 
 def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) -> int:
@@ -326,7 +436,7 @@ def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) 
     quote_minute = infer_quote_minute(row)
     if requested_minute is None or quote_minute is None:
         return 99
-    return abs(requested_minute - quote_minute)
+    return circular_minute_distance(requested_minute, quote_minute)
 
 
 def count_sources(rows: list[dict]) -> Counter:
@@ -359,7 +469,7 @@ def compose_baked_score_key(row: dict, bucket: str, overrides: dict, requested_t
     if requested_minute is None or quote_minute is None:
         minute_penalty = 99
     else:
-        minute_penalty = abs(requested_minute - quote_minute)
+        minute_penalty = circular_minute_distance(requested_minute, quote_minute)
     ovr = override_bonus(row, overrides, bucket)
     return (
         baked[0], baked[1], minute_penalty,
@@ -385,7 +495,7 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
         length_penalty += 80
     exactness_bonus = 0
     lowered = matched.lower().replace("\n", " ")
-    if "five minutes to" in lowered or "ten minutes to" in lowered or "fifty-five minutes past" in lowered:
+    if _FIVE_MINUTES_TO_RE.search(lowered) or "ten minutes to" in lowered or "fifty-five minutes past" in lowered:
         exactness_bonus = -2
     elif "quarter" in lowered or "half" in lowered:
         exactness_bonus = -1
@@ -533,36 +643,47 @@ def compact_history(history_path: str | None, days: int) -> int:
     return dropped
 
 
-def remove_last_history_entry(history_path: str | None, source_id, line_number) -> bool:
-    """Remove the most recent ledger entry matching ``(source_id, line_number)``.
+def remove_history_entries(history_path: str | None, source_id, line_number) -> int:
+    """Remove every ledger entry matching ``(source_id, line_number)``.
 
-    Powers the "un-skip" button long-press: a skip appended the banned quote to
-    the ledger, holding the button reverses that entry so the quote can appear
-    again. Returns True if an entry was removed, False otherwise (no path,
-    missing file, nothing matched).
+    Powers the "un-skip" button long-press. A skipped quote has (at least)
+    two ledger entries — the original render-time append plus the ban append
+    from ``action_skip`` — and *all* of them must go, or the fresh-first
+    history filter still excludes the quote and the restore renders a third
+    quote instead of bringing the skipped one back (issue #183). Removing
+    every match is safe: the restore render re-appends the quote once.
+
+    Malformed lines are preserved as-is (corruption repair is
+    ``load_recent_history``'s job). Returns the number of entries removed —
+    0 when there is no path, no file, or nothing matched.
     """
     if not history_path or source_id is None or line_number is None:
-        return False
+        return 0
     path = Path(history_path).expanduser()
     if not path.exists():
-        return False
+        return 0
     lines = path.read_text(encoding="utf-8").splitlines()
     target = (str(source_id), line_number)
-    for i in range(len(lines) - 1, -1, -1):
+    kept: list[str] = []
+    removed = 0
+    for line in lines:
         try:
-            entry = json.loads(lines[i])
+            entry = json.loads(line)
         except (ValueError, json.JSONDecodeError):
+            kept.append(line)
             continue
         if (str(entry.get("source_id")), entry.get("line_number")) == target:
-            del lines[i]
-            # Atomic rewrite: a SIGKILL between truncate and write-back would
-            # otherwise wipe the ledger entirely, since this is the only path
-            # that can change history.jsonl without the append-only guarantee
-            # append_history relies on.
-            payload = ("\n".join(lines) + "\n") if lines else ""
-            atomic_io.atomic_write_text(path, payload)
-            return True
-    return False
+            removed += 1
+            continue
+        kept.append(line)
+    if removed:
+        # Atomic rewrite: a SIGKILL between truncate and write-back would
+        # otherwise wipe the ledger entirely, since this is the only path
+        # that can change history.jsonl without the append-only guarantee
+        # append_history relies on.
+        payload = ("\n".join(kept) + "\n") if kept else ""
+        atomic_io.atomic_write_text(path, payload)
+    return removed
 
 
 def _row_history_key(row: dict) -> tuple | None:
@@ -753,7 +874,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
     if database_path:
         path = resolve_path(database_path)
         if path.exists() and path.stat().st_size > 0:
-            rows = load_rows(path)
+            rows = _load_rows_cached(path)
             stale = _rows_schema_mismatch(rows)
             if stale is not None:
                 print(
@@ -763,7 +884,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
                     file=sys.stderr,
                     flush=True,
                 )
-                return load_rows(resolve_path(input_path))
+                return _load_rows_cached(resolve_path(input_path))
             return rows
         if path.exists():
             print(
@@ -777,7 +898,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
                 file=sys.stderr,
                 flush=True,
             )
-    return load_rows(resolve_path(input_path))
+    return _load_rows_cached(resolve_path(input_path))
 
 
 def select_quote(
@@ -801,6 +922,7 @@ def select_quote(
     history_days: int = DEFAULT_HISTORY_DAYS,
     rows: list[dict] | None = None,
     overrides: dict | None = None,
+    pin_key: tuple | None = None,
 ) -> dict:
     """Pick the best quote for a time or bucket and return the result dict.
 
@@ -827,8 +949,69 @@ def select_quote(
         rows = _resolve_corpus(database_path, input_path)
     if overrides is None:
         overrides = load_overrides(resolve_path(overrides_path))
+    if pin_key is not None:
+        # Repaint contract: the caller (run_clock's theme-only repaint, or any
+        # render whose peek already committed to a row) wants THIS exact row —
+        # bypassing scoring and, crucially, the anti-repeat history filter,
+        # which would otherwise exclude the currently-displayed quote and
+        # silently swap it on a theme change (issue #190). Falls through to a
+        # normal pick when the pinned row no longer exists (re-bake, ban).
+        #
+        # (source_id, line_number) alone does NOT identify a row: one source
+        # line can carry several time phrases, so the committed corpus has 128
+        # duplicate (source_id, line_number) keys — many spanning different
+        # buckets ("ten o'clock" in h10_exact vs "close on ten o'clock" in
+        # h9_five_to). Matching on the key alone returned whichever copy came
+        # first in file order, so ~8% of clock times rendered a row the peek
+        # never chose — the panel bolted the wrong phrase and reported the
+        # wrong bucket. The optional third element carries the peeked
+        # ``matched_text``, which is exactly the discriminator peek_quote_id
+        # already tracks for this reason; when it is supplied a row must match
+        # it too, and a miss falls through to a normal pick rather than
+        # rendering an arbitrary sibling.
+        want = (str(pin_key[0]), pin_key[1])
+        want_matched = pin_key[2] if len(pin_key) > 2 else None
+        candidates = [
+            row for row in rows
+            if (str(row.get("source_id")), row.get("line_number")) == want
+            and row.get("display_quote")
+            and (want_matched is None or row.get("matched_text") == want_matched)
+            # An operator ban must win over a repaint: otherwise the curator
+            # UI's "Ban this quote" button looks broken, because the very next
+            # theme change repaints the row the operator just banned.
+            and not is_banned(row, overrides)
+        ]
+        if candidates:
+            # A handful of rows still tie on (key, matched_text) while
+            # disagreeing about fuzzy_bucket — the same phrase mis-bucketed
+            # twice in the corpus. Taking the first on disk would report a
+            # resolved_bucket the natural pick never would (and a bogus
+            # used_fallback in the debug footer), so break the tie with the
+            # picker's own bucket-preference order: the target bucket first,
+            # then its siblings in alternating outward-distance order. That
+            # reproduces exactly which copy pick_best would have landed on.
+            try:
+                order = {b: i for i, b in enumerate(neighbor_buckets(target_bucket))}
+            except (ValueError, KeyError):
+                order = {}
+            best = min(
+                candidates,
+                key=lambda row: order.get(row.get("fuzzy_bucket"), len(order)),
+            )
+            return _select_result(
+                time_str, target_bucket, best.get("fuzzy_bucket") or target_bucket, best,
+            )
+        print(
+            f"warning: pinned quote {want[0]}:{want[1]} not available "
+            "(missing, banned, or matched-text mismatch); picking normally",
+            file=sys.stderr,
+        )
     recent = load_recent_history(history_path, history_days)
     best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str, recent)
+    return _select_result(time_str, target_bucket, resolved_bucket, best)
+
+
+def _select_result(time_str: str | None, target_bucket: str, resolved_bucket: str, best: dict) -> dict:
     return {
         "requested_time": time_str,
         "bucket": target_bucket,
