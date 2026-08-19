@@ -2056,7 +2056,7 @@ class TestUnskipHandler:
              patch("idle_hours.run_clock.render_now") as mock_render, \
              patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
              patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"), \
-             patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry", return_value=True) as mock_rm, \
+             patch("idle_hours.run_clock.pick_quote_module.remove_history_entries", return_value=2) as mock_rm, \
              patch("idle_hours.run_clock.pick_quote_module.append_history") as mock_append:
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["A"]()
@@ -2075,7 +2075,7 @@ class TestUnskipHandler:
         state = run_clock.RuntimeState("default")
         state.last_skipped = None
         with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry") as mock_rm:
+             patch("idle_hours.run_clock.pick_quote_module.remove_history_entries") as mock_rm:
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["A"]()
         assert not mock_rm.called
@@ -2960,7 +2960,7 @@ class TestActionExceptionBranches:
         args = self._args(tmp_path)
         state = run_clock.RuntimeState("default")
         state.last_skipped = ("src-banned", 42)
-        with patch("idle_hours.run_clock.pick_quote_module.remove_last_history_entry",
+        with patch("idle_hours.run_clock.pick_quote_module.remove_history_entries",
                    side_effect=OSError("disk full")), \
              patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
             result = run_clock.action_unskip(args, state, label="web")
@@ -3657,7 +3657,7 @@ class TestRandomThemeMode:
              patch("idle_hours.run_clock._render_unlocked"), \
              patch("idle_hours.run_clock._append_history_after_render"), \
              patch("idle_hours.run_clock.pick_quote_module") as mock_pq:
-            mock_pq.remove_last_history_entry.return_value = True
+            mock_pq.remove_history_entries.return_value = 2
             run_clock.action_unskip(args, state, label="button A")
 
         assert state.current_random_theme == "nightvision"

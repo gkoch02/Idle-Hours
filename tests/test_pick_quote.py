@@ -543,39 +543,51 @@ class TestRecentHistory:
         entry = json.loads(path.read_text().strip())
         assert entry["source_id"] == "1234"
 
-    def test_remove_last_history_entry_removes_most_recent_match(self, tmp_path):
+    def test_remove_history_entries_removes_every_match(self, tmp_path):
+        # Regression (#183): a skipped quote has (at least) two ledger entries
+        # — the render append plus the ban append. Un-skip must remove them
+        # all, or the fresh-first filter still excludes the quote.
         path = tmp_path / "history.jsonl"
-        pq.append_history(str(path), "1", 1)
+        pq.append_history(str(path), "1", 1)   # original render append
         pq.append_history(str(path), "2", 2)
-        pq.append_history(str(path), "1", 1)  # duplicate — we expect this one to go
-        removed = pq.remove_last_history_entry(str(path), "1", 1)
-        assert removed is True
+        pq.append_history(str(path), "1", 1)   # ban append from action_skip
+        removed = pq.remove_history_entries(str(path), "1", 1)
+        assert removed == 2
         remaining = [json.loads(line) for line in path.read_text().splitlines()]
-        # The first (1, 1) entry must still be there; only the duplicate was removed.
-        assert [(e["source_id"], e["line_number"]) for e in remaining] == [("1", 1), ("2", 2)]
+        assert [(e["source_id"], e["line_number"]) for e in remaining] == [("2", 2)]
 
-    def test_remove_last_history_entry_returns_false_when_no_match(self, tmp_path):
+    def test_remove_history_entries_returns_zero_when_no_match(self, tmp_path):
         path = tmp_path / "history.jsonl"
         pq.append_history(str(path), "1", 1)
-        assert pq.remove_last_history_entry(str(path), "42", 99) is False
+        assert pq.remove_history_entries(str(path), "42", 99) == 0
         # Unchanged.
         assert len(path.read_text().splitlines()) == 1
 
-    def test_remove_last_history_entry_noop_for_empty_path(self, tmp_path):
-        assert pq.remove_last_history_entry("", "1", 1) is False
-        assert pq.remove_last_history_entry(None, "1", 1) is False
+    def test_remove_history_entries_noop_for_empty_path(self, tmp_path):
+        assert pq.remove_history_entries("", "1", 1) == 0
+        assert pq.remove_history_entries(None, "1", 1) == 0
 
-    def test_remove_last_history_entry_noop_when_file_missing(self, tmp_path):
+    def test_remove_history_entries_noop_when_file_missing(self, tmp_path):
         path = tmp_path / "missing.jsonl"
-        assert pq.remove_last_history_entry(str(path), "1", 1) is False
+        assert pq.remove_history_entries(str(path), "1", 1) == 0
 
-    def test_remove_last_history_entry_leaves_empty_file_when_last_removed(self, tmp_path):
+    def test_remove_history_entries_leaves_empty_file_when_last_removed(self, tmp_path):
         path = tmp_path / "history.jsonl"
         pq.append_history(str(path), "1", 1)
-        assert pq.remove_last_history_entry(str(path), "1", 1) is True
+        assert pq.remove_history_entries(str(path), "1", 1) == 1
         assert path.read_text() == ""
 
-    def test_remove_last_history_entry_atomic_on_replace_failure(self, tmp_path, monkeypatch):
+    def test_remove_history_entries_preserves_malformed_lines(self, tmp_path):
+        path = tmp_path / "history.jsonl"
+        pq.append_history(str(path), "1", 1)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("{torn line\n")
+        pq.append_history(str(path), "1", 1)
+        assert pq.remove_history_entries(str(path), "1", 1) == 2
+        # The torn line survives — corruption repair is load_recent_history's job.
+        assert path.read_text() == "{torn line\n"
+
+    def test_remove_history_entries_atomic_on_replace_failure(self, tmp_path, monkeypatch):
         """A mid-rewrite crash must leave the original ledger untouched, not wiped."""
         import os
 
@@ -588,7 +600,7 @@ class TestRecentHistory:
             os, "replace", lambda s, d: (_ for _ in ()).throw(OSError("simulated power loss"))
         )
         with pytest.raises(OSError):
-            pq.remove_last_history_entry(str(path), "1", 1)
+            pq.remove_history_entries(str(path), "1", 1)
 
         # Ledger must be byte-identical to pre-call state — no truncation, no tmp left behind.
         assert path.read_text(encoding="utf-8") == original
@@ -1245,3 +1257,47 @@ class TestOverridesPathDefaults:
 
         rendered = render_quote.pick_quote("03:00", overrides_path=str(sidecar))
         assert f"{rendered['source_id']}:{rendered['line_number']}" != key
+
+
+class TestLoadOverridesFailOpen:
+    """Regression (#186): a corrupt selection_overrides.json must degrade to
+    empty overrides with a stderr warning — this loader is on the per-tick
+    render hot path and hand-editing the file is the documented workflow, so
+    raising here froze the panel in render-failure backoff."""
+
+    def test_truncated_json_returns_empty_defaults(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text('{"ban_source_ids": [1,', encoding="utf-8")
+        overrides = pq.load_overrides(path)
+        assert overrides == {
+            "ban_source_ids": [],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
+        assert "invalid JSON" in capsys.readouterr().err
+
+    def test_non_object_root_returns_empty_defaults(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text('["not", "a", "dict"]', encoding="utf-8")
+        overrides = pq.load_overrides(path)
+        assert overrides["ban_source_ids"] == []
+        assert "not a JSON object" in capsys.readouterr().err
+
+    def test_unreadable_file_returns_empty_defaults(self, tmp_path, capsys, monkeypatch):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            Path, "read_text",
+            lambda self, **kw: (_ for _ in ()).throw(OSError("permission denied")),
+        )
+        overrides = pq.load_overrides(path)
+        assert overrides["ban_quote_keys"] == []
+        assert "unreadable" in capsys.readouterr().err
+
+    def test_valid_file_still_loads(self, tmp_path):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text('{"ban_source_ids": ["7"]}', encoding="utf-8")
+        overrides = pq.load_overrides(path)
+        assert overrides["ban_source_ids"] == ["7"]
+        assert overrides["ban_quote_keys"] == []

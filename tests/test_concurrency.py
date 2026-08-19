@@ -4,7 +4,7 @@ The main loop, button handlers, and the curator web server all live in the
 same process and share three locks on ``RuntimeState``:
 
 * ``render_lock``   — whoever holds this is painting to the panel
-* ``ledger_lock``   — serialises ``append_history`` / ``remove_last_history_entry``
+* ``ledger_lock``   — serialises ``append_history`` / ``remove_history_entries``
 * ``lock``          — protects scalar state fields (``manual_theme`` etc.)
 
 These tests don't try to exhaustively verify correctness under every
@@ -16,7 +16,7 @@ observable guarantees the code comments promise:
   execute N handlers N ticks later.
 * ``append_history`` under ``ledger_lock`` produces well-formed JSONL even
   under concurrent writers.
-* ``remove_last_history_entry`` is atomic — a concurrent reader never sees
+* ``remove_history_entries`` is atomic — a concurrent reader never sees
   a torn ledger.
 """
 from __future__ import annotations
@@ -118,7 +118,7 @@ class TestConcurrentLedgerAppend:
         assert len(keys) == n_threads * n_per_thread, "some appends were lost or collided"
 
     def test_unskip_rewrite_is_atomic_under_concurrent_reader(self, tmp_path):
-        """``remove_last_history_entry`` rewrites the ledger atomically
+        """``remove_history_entries`` rewrites the ledger atomically
         (via ``atomic_io.atomic_write_text``). A reader running concurrently
         with the rewrite sees either the pre-rewrite or the post-rewrite
         content — never a torn/empty ledger."""
@@ -147,7 +147,7 @@ class TestConcurrentLedgerAppend:
         t.start()
         try:
             for i in range(10):
-                pick_quote.remove_last_history_entry(str(path), "src-X", 49 - i)
+                pick_quote.remove_history_entries(str(path), "src-X", 49 - i)
                 time.sleep(0.001)
         finally:
             stop.set()

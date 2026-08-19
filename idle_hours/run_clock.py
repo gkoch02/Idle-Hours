@@ -1247,7 +1247,7 @@ def _maybe_compact_history(args: argparse.Namespace, state: RuntimeState) -> Non
     Gated on ``state.last_compacted_date`` so the compact sweep runs at most
     once per calendar day — the ledger is a ~288-entries-per-week
     append-only file, so a per-tick compact would re-parse it needlessly.
-    Serialised against button A's ``remove_last_history_entry`` rewrite via
+    Serialised against button A's ``remove_history_entries`` rewrite via
     ``state.ledger_lock`` to avoid stepping on a concurrent un-skip.
     Best-effort: a disk hiccup here must not bubble into the render path and
     trip the outer-loop backoff counter.

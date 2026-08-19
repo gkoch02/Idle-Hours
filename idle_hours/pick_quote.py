@@ -242,15 +242,42 @@ def _warn_unknown_preferred_buckets(overrides: dict) -> None:
         )
 
 
+def _empty_overrides() -> dict:
+    return {
+        "ban_source_ids": [],
+        "boost_source_ids": [],
+        "preferred_buckets": {},
+        "ban_quote_keys": [],
+    }
+
+
 def load_overrides(path: Path) -> dict:
+    """Load the selection-overrides sidecar, failing open on any defect.
+
+    Hand-editing this file is the documented curation workflow, and this
+    loader sits on the per-tick render hot path — a truncated save or a
+    non-object root must degrade to "no bans/boosts applied" with a stderr
+    warning, not raise and freeze the panel in render-failure backoff
+    (issue #186). Mirrors ``apply_content_overrides.load_overrides``.
+    """
     if not path.exists():
-        return {
-            "ban_source_ids": [],
-            "boost_source_ids": [],
-            "preferred_buckets": {},
-            "ban_quote_keys": [],
-        }
-    overrides = json.loads(path.read_text(encoding="utf-8"))
+        return _empty_overrides()
+    try:
+        overrides = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(
+            f"warning: selection overrides {path}: unreadable or invalid JSON ({exc}); "
+            "continuing with no overrides",
+            file=sys.stderr,
+        )
+        return _empty_overrides()
+    if not isinstance(overrides, dict):
+        print(
+            f"warning: selection overrides {path}: root is not a JSON object; "
+            "continuing with no overrides",
+            file=sys.stderr,
+        )
+        return _empty_overrides()
     _warn_unknown_preferred_buckets(overrides)
     # Older v1 sidecar files predate ban_quote_keys; default it so the rest of
     # the picker doesn't have to special-case its absence.
@@ -570,36 +597,47 @@ def compact_history(history_path: str | None, days: int) -> int:
     return dropped
 
 
-def remove_last_history_entry(history_path: str | None, source_id, line_number) -> bool:
-    """Remove the most recent ledger entry matching ``(source_id, line_number)``.
+def remove_history_entries(history_path: str | None, source_id, line_number) -> int:
+    """Remove every ledger entry matching ``(source_id, line_number)``.
 
-    Powers the "un-skip" button long-press: a skip appended the banned quote to
-    the ledger, holding the button reverses that entry so the quote can appear
-    again. Returns True if an entry was removed, False otherwise (no path,
-    missing file, nothing matched).
+    Powers the "un-skip" button long-press. A skipped quote has (at least)
+    two ledger entries — the original render-time append plus the ban append
+    from ``action_skip`` — and *all* of them must go, or the fresh-first
+    history filter still excludes the quote and the restore renders a third
+    quote instead of bringing the skipped one back (issue #183). Removing
+    every match is safe: the restore render re-appends the quote once.
+
+    Malformed lines are preserved as-is (corruption repair is
+    ``load_recent_history``'s job). Returns the number of entries removed —
+    0 when there is no path, no file, or nothing matched.
     """
     if not history_path or source_id is None or line_number is None:
-        return False
+        return 0
     path = Path(history_path).expanduser()
     if not path.exists():
-        return False
+        return 0
     lines = path.read_text(encoding="utf-8").splitlines()
     target = (str(source_id), line_number)
-    for i in range(len(lines) - 1, -1, -1):
+    kept: list[str] = []
+    removed = 0
+    for line in lines:
         try:
-            entry = json.loads(lines[i])
+            entry = json.loads(line)
         except (ValueError, json.JSONDecodeError):
+            kept.append(line)
             continue
         if (str(entry.get("source_id")), entry.get("line_number")) == target:
-            del lines[i]
-            # Atomic rewrite: a SIGKILL between truncate and write-back would
-            # otherwise wipe the ledger entirely, since this is the only path
-            # that can change history.jsonl without the append-only guarantee
-            # append_history relies on.
-            payload = ("\n".join(lines) + "\n") if lines else ""
-            atomic_io.atomic_write_text(path, payload)
-            return True
-    return False
+            removed += 1
+            continue
+        kept.append(line)
+    if removed:
+        # Atomic rewrite: a SIGKILL between truncate and write-back would
+        # otherwise wipe the ledger entirely, since this is the only path
+        # that can change history.jsonl without the append-only guarantee
+        # append_history relies on.
+        payload = ("\n".join(kept) + "\n") if kept else ""
+        atomic_io.atomic_write_text(path, payload)
+    return removed
 
 
 def _row_history_key(row: dict) -> tuple | None:

@@ -1108,7 +1108,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             path = Path(ctx.history_path).expanduser()
             if path.exists():
                 # Hold ledger_lock so a concurrent button-A long-press
-                # (remove_last_history_entry → atomic rewrite) can't surface a
+                # (remove_history_entries → atomic rewrite) can't surface a
                 # torn snapshot. The lock is also what append_history callers
                 # acquire from the main loop.
                 ledger_lock = getattr(ctx.state, "ledger_lock", None)

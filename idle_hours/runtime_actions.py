@@ -140,9 +140,9 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
             run_clock._maybe_pick_random_theme(state, quote_id)
             run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             # Record the freshly-shown quote — unless it's the same row we just
-            # banned (a sparse bucket can fall back to the only candidate). A
-            # duplicate ledger entry would leave one copy behind after un-skip's
-            # single-entry removal, keeping the quote stuck in the history filter.
+            # banned (a sparse bucket can fall back to the only candidate).
+            # Un-skip removes every matching entry now, but skipping the
+            # duplicate keeps the ledger an honest one-entry-per-display log.
             if quote_id is not None and (previous is None or quote_id[:2] != previous[:2]):
                 run_clock._append_history_after_render(state, history_path, quote_id)
             _emit_action(telemetry_path, "skip", label, ok=True)
@@ -176,10 +176,13 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
                 _emit_action(telemetry_path, "unskip", label, ok=True)
                 return {"ok": True, "restored": None}
             with state.ledger_lock:
-                removed = run_clock.pick_quote_module.remove_last_history_entry(
+                # Remove EVERY entry for the key: the skip left both the
+                # original render append and the ban append, and a single
+                # removal would leave the quote history-filtered (#183).
+                removed = run_clock.pick_quote_module.remove_history_entries(
                     history_path, target[0], target[1],
                 )
-            _log(f"un-skip: removed ledger entry for source={target[0]} line={target[1]} ok={removed}")
+            _log(f"un-skip: removed {removed} ledger entries for source={target[0]} line={target[1]}")
             time_str = run_clock.current_time_str()
             quote_id = run_clock.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
