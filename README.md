@@ -4,7 +4,7 @@
 
 # Idle Hours
 
-[![CI](https://github.com/gkoch02/idle-hours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/idle-hours/actions/workflows/ci.yml)
+[![CI](https://github.com/gkoch02/Idle-Hours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/Idle-Hours/actions/workflows/ci.yml)
 
 Idle Hours is a literary clock built from public-domain text. It picks a quote that matches the current fuzzy time bucket, renders it into an 800×480 image, and can push that image to an eInk display such as the Pimoroni Inky Impression 7.3.
 
@@ -760,3 +760,10 @@ If the clock is behaving oddly, these are the first files to inspect:
 - [`docs/CODE_OF_CONDUCT.md`](docs/CODE_OF_CONDUCT.md) — Contributor Covenant v2.1.
 
 Deeper architecture and design notes live in [`CLAUDE.md`](CLAUDE.md); skim that first when modifying the runtime or pipeline.
+
+There's also a project landing page at [plumpbug.dev/idlehours](https://plumpbug.dev/idlehours/home.html)
+(privacy/support pages too, though Idle Hours needs neither an App Store account nor
+authentication to use), maintained in the separate
+[`gkoch02/plumpbug-site`](https://github.com/gkoch02/plumpbug-site) repo alongside the
+other Plumpbug-family projects. This repo stays the source of truth for the theme gallery
+and preview PNGs that page embeds.
