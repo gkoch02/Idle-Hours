@@ -9,6 +9,7 @@ import os
 import random
 import re
 import sys
+import threading
 from collections import Counter
 from pathlib import Path
 
@@ -216,6 +217,47 @@ def load_rows(path: Path) -> list[dict]:
             except (ValueError, KeyError):
                 pass
         rows.append(row)
+    return rows
+
+
+# In-process corpus cache (#192). Every select_quote used to re-read and
+# re-parse the multi-MB corpus JSONL per pick — once per tick in the main
+# loop, twice within 5 s on a button-C source card, and once per /api/preview
+# request (the Now tab fires ~45 of those). The corpus files only change via
+# atomic replace (bake, pipeline writeback), which changes (mtime_ns, size),
+# so a stat-keyed cache invalidates automatically and a hit costs one stat.
+#
+# Callers share the cached row objects: the scoring path is pure (fenced by
+# the scorer-purity tests) and the writers (bake_quote_database,
+# apply_content_overrides) load their own copies. ``tests/conftest.py``
+# clears the cache around every test so same-stamp rewrites in fast test
+# loops can't serve stale rows.
+_CORPUS_CACHE: dict[str, tuple[tuple[int, int], list[dict]]] = {}
+_CORPUS_CACHE_LOCK = threading.Lock()
+
+
+def clear_corpus_cache() -> None:
+    """Drop all cached corpus rows (test isolation / manual invalidation)."""
+    with _CORPUS_CACHE_LOCK:
+        _CORPUS_CACHE.clear()
+
+
+def _load_rows_cached(path: Path) -> list[dict]:
+    key = str(path)
+    try:
+        st = os.stat(path)
+    except OSError:
+        # Missing/unreadable — take (and don't cache) the normal load path so
+        # its behaviour (empty list / caller's fallback warnings) is unchanged.
+        return load_rows(path)
+    stamp = (st.st_mtime_ns, st.st_size)
+    with _CORPUS_CACHE_LOCK:
+        hit = _CORPUS_CACHE.get(key)
+        if hit is not None and hit[0] == stamp:
+            return hit[1]
+    rows = load_rows(path)
+    with _CORPUS_CACHE_LOCK:
+        _CORPUS_CACHE[key] = (stamp, rows)
     return rows
 
 
@@ -828,7 +870,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
     if database_path:
         path = resolve_path(database_path)
         if path.exists() and path.stat().st_size > 0:
-            rows = load_rows(path)
+            rows = _load_rows_cached(path)
             stale = _rows_schema_mismatch(rows)
             if stale is not None:
                 print(
@@ -838,7 +880,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
                     file=sys.stderr,
                     flush=True,
                 )
-                return load_rows(resolve_path(input_path))
+                return _load_rows_cached(resolve_path(input_path))
             return rows
         if path.exists():
             print(
@@ -852,7 +894,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
                 file=sys.stderr,
                 flush=True,
             )
-    return load_rows(resolve_path(input_path))
+    return _load_rows_cached(resolve_path(input_path))
 
 
 def select_quote(

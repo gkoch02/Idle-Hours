@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -1343,3 +1344,57 @@ class TestSelectQuotePin:
     def test_no_pin_unchanged_behaviour(self):
         result = pq.select_quote(time_str="03:00", rows=self._rows(), overrides={})
         assert result["source_id"] in {"1", "2"}
+
+
+class TestCorpusCache:
+    """#192: the multi-MB corpus is parsed once per (path, mtime, size) —
+    repeat picks in one process cost a stat, and an atomic replace (bake)
+    invalidates automatically."""
+
+    def _write_corpus(self, path, quote):
+        rows = [make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100,
+                         quality_score=90, display_quote=quote)]
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    def test_second_pick_hits_cache(self, tmp_path, monkeypatch):
+        corpus = tmp_path / "db.jsonl"
+        self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
+        calls = {"n": 0}
+        real_load = pq.load_rows
+
+        def counting_load(path):
+            calls["n"] += 1
+            return real_load(path)
+
+        monkeypatch.setattr(pq, "load_rows", counting_load)
+        pq.clear_corpus_cache()
+        r1 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        r2 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        assert r1["source_id"] == r2["source_id"] == "1"
+        assert calls["n"] == 1
+
+    def test_rewrite_invalidates(self, tmp_path):
+        corpus = tmp_path / "db.jsonl"
+        self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
+        pq.clear_corpus_cache()
+        r1 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        assert "all was well" in r1["display_quote"]
+        # Atomic-replace-style rewrite with different content/size.
+        rows = [json.dumps(make_row(fuzzy_bucket="h3_exact", source_id="2", line_number=7,
+                                    quality_score=90,
+                                    display_quote="Three o'clock rang out over the quiet harbour below."))]
+        tmp = corpus.with_suffix(".tmp")
+        tmp.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        os.replace(tmp, corpus)
+        r2 = pq.select_quote(time_str="03:00", database_path=str(corpus), overrides={})
+        assert r2["source_id"] == "2"
+
+    def test_missing_file_not_cached(self, tmp_path):
+        corpus = tmp_path / "later.jsonl"
+        pq.clear_corpus_cache()
+        # A missing file takes load_rows' normal failure mode (unchanged
+        # behaviour) and must not poison the cache for when it appears.
+        with pytest.raises(OSError):
+            pq._load_rows_cached(corpus)
+        self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
+        assert len(pq._load_rows_cached(corpus)) == 1
