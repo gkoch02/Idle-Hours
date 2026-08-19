@@ -1301,3 +1301,45 @@ class TestLoadOverridesFailOpen:
         overrides = pq.load_overrides(path)
         assert overrides["ban_source_ids"] == ["7"]
         assert overrides["ban_quote_keys"] == []
+
+
+class TestSelectQuotePin:
+    """Regression (#190): theme-only repaints pin the render subprocess to the
+    exact row already on the panel — bypassing scoring and the anti-repeat
+    history filter, which would otherwise exclude the displayed quote and
+    silently swap it on an auto day/night flip or button-B press."""
+
+    def _rows(self):
+        return [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100, quality_score=90,
+                     display_quote="It was three o'clock and all was well in the town."),
+            make_row(fuzzy_bucket="h3_exact", source_id="2", line_number=200, quality_score=95,
+                     display_quote="The clock struck three and everyone looked up at once."),
+        ]
+
+    def test_pin_returns_exact_row_despite_history(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        pq.append_history(str(history), "1", 100)  # displayed quote is in the ledger
+        result = pq.select_quote(
+            time_str="03:00", rows=self._rows(), overrides={},
+            history_path=str(history), history_days=7,
+            pin_key=("1", 100),
+        )
+        assert (result["source_id"], result["line_number"]) == ("1", 100)
+
+    def test_pin_int_source_id_normalised(self):
+        rows = self._rows()
+        rows[0]["source_id"] = 1
+        result = pq.select_quote(time_str="03:00", rows=rows, overrides={}, pin_key=("1", 100))
+        assert result["line_number"] == 100
+
+    def test_missing_pin_falls_back_to_normal_pick(self, capsys):
+        result = pq.select_quote(
+            time_str="03:00", rows=self._rows(), overrides={}, pin_key=("999", 1),
+        )
+        assert result["source_id"] in {"1", "2"}
+        assert "pinned quote" in capsys.readouterr().err
+
+    def test_no_pin_unchanged_behaviour(self):
+        result = pq.select_quote(time_str="03:00", rows=self._rows(), overrides={})
+        assert result["source_id"] in {"1", "2"}

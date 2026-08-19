@@ -5065,3 +5065,98 @@ class TestSeedWritableCorpusPaths:
         # Must NOT raise: the corpus guard sees the freshly-seeded files.
         run_clock._run_preflight(args)
         assert (tmp_path / "db.jsonl").exists()
+
+
+class TestShutdownFailureRollback:
+    """Regression (#187): a failing --shutdown-command must un-latch the
+    already-persisted manual_quiet flip — otherwise a single long-press on an
+    install where sudo is blocked (e.g. the sandbox's NoNewPrivileges)
+    silences the clock across every subsequent restart."""
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="default",
+            history_path="", history_days=7, telemetry_path="",
+            state_path=str(tmp_path / "state.json"), quiet_image="",
+            shutdown_command="sudo -n shutdown -h now",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def test_failed_command_rolls_back_quiet_and_persist(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_exact"
+        state.last_quote_id = ("1", 1, "q", "mt")
+        with patch("idle_hours.run_clock.subprocess.run", side_effect=RuntimeError("sudo blocked")), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is False
+        # Dedup identity cleared so the next tick repaints over the goodnight frame.
+        assert state.last_bucket is None
+        assert state.last_quote_id is None
+        # The rollback was persisted, not just flipped in memory.
+        persisted = json.loads((tmp_path / "state.json").read_text())
+        assert persisted["manual_quiet"] is False
+
+    def test_timeout_also_rolls_back(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        exc = subprocess.TimeoutExpired(cmd="shutdown", timeout=30)
+        with patch("idle_hours.run_clock.subprocess.run", side_effect=exc), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is False
+
+    def test_successful_command_keeps_quiet_latched(self, tmp_path):
+        # The system is about to power off — the persisted quiet flip is the
+        # intended pre-shutdown state and must survive.
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.run_clock.subprocess.run"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+            _short, hold = run_clock._build_button_handlers(args, state)
+            hold["D"]()
+        assert state.manual_quiet is True
+
+
+class TestUnknownStateKeysRoundTrip:
+    """Regression (#191): unknown top-level keys in state.json are preserved
+    by load_runtime_state so a newer schema can round-trip through an older
+    install — but they were dropped by the very next save. RuntimeState now
+    stashes them and snapshot_for_persistence merges them back."""
+
+    def test_unknown_key_survives_load_save_cycle(self, tmp_path):
+        state_path = tmp_path / "state.json"
+        state_path.write_text(json.dumps({
+            "manual_theme": "dark",
+            "manual_quiet": False,
+            "future_field": {"nested": 1},
+        }))
+        persisted = run_clock.load_runtime_state(str(state_path))
+        state = run_clock.RuntimeState("default", persisted=persisted)
+        snapshot = state.snapshot_for_persistence()
+        assert snapshot["future_field"] == {"nested": 1}
+        assert snapshot["manual_theme"] == "dark"
+        run_clock.save_runtime_state(str(state_path), snapshot)
+        reloaded = json.loads(state_path.read_text())
+        assert reloaded["future_field"] == {"nested": 1}
+
+    def test_known_fields_win_over_extras_on_collision(self):
+        state = run_clock.RuntimeState("default", persisted={"manual_quiet": False})
+        state.manual_quiet = True
+        snapshot = state.snapshot_for_persistence()
+        assert snapshot["manual_quiet"] is True
+
+    def test_no_persisted_state_has_no_extras(self):
+        state = run_clock.RuntimeState("default")
+        snapshot = state.snapshot_for_persistence()
+        assert set(snapshot) == {
+            "manual_theme", "manual_quiet", "last_bucket",
+            "last_quote_id", "last_effective_theme", "setup_complete",
+        }

@@ -876,6 +876,7 @@ def select_quote(
     history_days: int = DEFAULT_HISTORY_DAYS,
     rows: list[dict] | None = None,
     overrides: dict | None = None,
+    pin_key: tuple | None = None,
 ) -> dict:
     """Pick the best quote for a time or bucket and return the result dict.
 
@@ -902,8 +903,28 @@ def select_quote(
         rows = _resolve_corpus(database_path, input_path)
     if overrides is None:
         overrides = load_overrides(resolve_path(overrides_path))
+    if pin_key is not None:
+        # Repaint contract: the caller (run_clock's theme-only repaint, or any
+        # render whose peek already committed to a row) wants THIS exact row —
+        # bypassing scoring and, crucially, the anti-repeat history filter,
+        # which would otherwise exclude the currently-displayed quote and
+        # silently swap it on a theme change (issue #190). Falls through to a
+        # normal pick when the pinned row no longer exists (re-bake, ban).
+        want = (str(pin_key[0]), pin_key[1])
+        for row in rows:
+            if (str(row.get("source_id")), row.get("line_number")) == want and row.get("display_quote"):
+                pinned_bucket = row.get("fuzzy_bucket") or target_bucket
+                return _select_result(time_str, target_bucket, pinned_bucket, row)
+        print(
+            f"warning: pinned quote {want[0]}:{want[1]} not found in corpus; picking normally",
+            file=sys.stderr,
+        )
     recent = load_recent_history(history_path, history_days)
     best, resolved_bucket = pick_best(rows, target_bucket, seed, min_quality, overrides, time_str, recent)
+    return _select_result(time_str, target_bucket, resolved_bucket, best)
+
+
+def _select_result(time_str: str | None, target_bucket: str, resolved_bucket: str, best: dict) -> dict:
     return {
         "requested_time": time_str,
         "bucket": target_bucket,

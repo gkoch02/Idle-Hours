@@ -3087,6 +3087,18 @@ def parse_args() -> argparse.Namespace:
         default=pick_quote_module.DEFAULT_OVERRIDES_PATH,
         help="Selection-overrides sidecar (bans / boosts / preferred buckets).",
     )
+    parser.add_argument(
+        "--pin-quote",
+        default=None,
+        metavar="SOURCE_ID:LINE",
+        help=(
+            "Render this exact corpus row instead of picking one. Used by "
+            "run_clock for theme-change repaints so the panel keeps showing "
+            "the same quote the anti-repeat filter would otherwise exclude. "
+            "Falls back to a normal pick when the row no longer exists; a "
+            "malformed value is ignored with a warning."
+        ),
+    )
     args = parser.parse_args()
     if args.mode != "goodnight" and not args.time:
         parser.error("--time is required unless --mode goodnight")
@@ -3100,6 +3112,7 @@ def pick_quote(
     database_path: str | None = None,
     input_path: str | None = None,
     overrides_path: str | None = None,
+    pin_key: tuple | None = None,
 ) -> dict:
     """Pick the quote to render.
 
@@ -3117,7 +3130,26 @@ def pick_quote(
         database_path=database_path or pick_quote_module.DEFAULT_DATABASE_PATH,
         input_path=input_path or pick_quote_module.DEFAULT_INPUT_PATH,
         overrides_path=overrides_path or pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        pin_key=pin_key,
     )
+
+
+def parse_pin_quote(value: str | None) -> tuple | None:
+    """Parse a ``SOURCE_ID:LINE`` --pin-quote value; None/malformed → None.
+
+    Fail-open: a malformed pin must degrade to a normal pick with a stderr
+    warning, never kill the render subprocess mid-loop.
+    """
+    if not value:
+        return None
+    source_id, sep, line = value.partition(":")
+    if sep and source_id:
+        try:
+            return (source_id, int(line))
+        except ValueError:
+            pass
+    print(f"warning: ignoring malformed --pin-quote {value!r}", file=sys.stderr)
+    return None
 
 
 _FONT_CACHE: dict[tuple, ImageFont.ImageFont] = {}
@@ -17958,6 +17990,7 @@ def main() -> int:
             database_path=args.database,
             input_path=args.input,
             overrides_path=args.overrides,
+            pin_key=parse_pin_quote(args.pin_quote),
         )
         image = render(args.time, quote_row, args.width, args.height, mode=args.mode, theme=args.theme)
     try:

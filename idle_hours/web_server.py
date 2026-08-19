@@ -416,7 +416,12 @@ class CuratorHandler(BaseHTTPRequestHandler):
         if not token:
             return True
         supplied = self.headers.get(TOKEN_HEADER, "")
-        if not supplied or not hmac.compare_digest(supplied, token):
+        # Compare encoded bytes: hmac.compare_digest raises TypeError on
+        # non-ASCII *str* inputs, and HTTP headers are latin-1-decoded, so a
+        # probe with a non-ASCII token would otherwise escape do_POST's try
+        # block — dropped connection, raw traceback, and no auth-fail
+        # telemetry (#189). Bytes comparison is total and stays timing-safe.
+        if not supplied or not hmac.compare_digest(supplied.encode("utf-8"), token.encode("utf-8")):
             # Structured auth-failure marker so an operator can grep for
             # "was the web UI hammered with bad tokens?" without scraping
             # journald; remote+path are sufficient to distinguish a fat-

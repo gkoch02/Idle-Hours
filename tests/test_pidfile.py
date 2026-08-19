@@ -298,3 +298,61 @@ class TestRunClockMainRejectsSecondInstance:
             assert "already locked" in err
         finally:
             held.release()
+
+
+class TestInodeVerification:
+    """Regression (#188): flock succeeding on an inode the path no longer
+    names (previous holder unlinked it during release) must not count as
+    holding the single-instance lock — retry against the fresh inode."""
+
+    def test_stale_inode_retries_and_acquires_fresh_file(self, tmp_path, monkeypatch):
+        import idle_hours.pidfile as pf
+
+        path = tmp_path / "run_clock.pid"
+        real_stat = os.stat
+        calls = {"n": 0}
+
+        def racing_stat(p, *a, **kw):
+            # First post-flock verification: simulate the previous holder
+            # unlinking + a new file appearing by replacing the file between
+            # our open() and the stat().
+            if str(p) == str(path):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    path.unlink()
+                    path.write_text("999\n")
+            return real_stat(p, *a, **kw)
+
+        monkeypatch.setattr(pf.os, "stat", racing_stat)
+        handle = pf.acquire_pidfile(str(path))
+        try:
+            assert handle is not None
+            # The handle's fd names the CURRENT inode of the path.
+            assert os.fstat(handle._fh.fileno()).st_ino == real_stat(path).st_ino
+            assert path.read_text().strip() == str(os.getpid())
+            assert calls["n"] >= 2  # verified, retried, verified again
+        finally:
+            handle.release()
+
+    def test_path_vanishing_mid_acquire_retries(self, tmp_path, monkeypatch):
+        import idle_hours.pidfile as pf
+
+        path = tmp_path / "run_clock.pid"
+        real_stat = os.stat
+        calls = {"n": 0}
+
+        def vanishing_stat(p, *a, **kw):
+            if str(p) == str(path):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    path.unlink()
+                    raise FileNotFoundError(p)
+            return real_stat(p, *a, **kw)
+
+        monkeypatch.setattr(pf.os, "stat", vanishing_stat)
+        handle = pf.acquire_pidfile(str(path))
+        try:
+            assert handle is not None
+            assert path.exists()
+        finally:
+            handle.release()

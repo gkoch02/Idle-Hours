@@ -138,39 +138,60 @@ def acquire_pidfile(pidfile_path: str | None = DEFAULT_PIDFILE_PATH) -> PidfileH
     path = Path(pidfile_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Open with O_RDWR|O_CREAT so flock can adjudicate; we never truncate up
-    # front because that would wipe the existing-pid contents before we've
-    # confirmed the lock is ours to take.
-    fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o644)
-    fh = os.fdopen(fd, "r+", encoding="utf-8")
-    try:
+    # Bounded open→flock→verify loop. The verify step closes the race where
+    # we open() the current inode, the previous holder then unlinks the path
+    # and drops its flock during release, and our flock succeeds — on an
+    # orphaned inode no path names. A later starter would create a fresh
+    # file, flock it, and both processes would "hold" the single-instance
+    # lock (#188). Re-stat-ing the path after the flock detects that and
+    # retries against the fresh inode; a couple of attempts is plenty since
+    # each retry only races one release.
+    for _attempt in range(5):
+        # Open with O_RDWR|O_CREAT so flock can adjudicate; we never truncate
+        # up front because that would wipe the existing-pid contents before
+        # we've confirmed the lock is ours to take.
+        fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o644)
+        fh = os.fdopen(fd, "r+", encoding="utf-8")
         try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            # Someone else holds the flock — they are, by definition, the
-            # live holder. Read the pid they wrote so we can surface it to
-            # the operator, then bail.
-            existing = _read_existing_pid(fh)
-            fh.close()
-            raise PidfileLockedError(path, existing) from None
-        # We hold the exclusive flock, so we own the pidfile. Any pid bytes
-        # already in the file are stale — either a dead predecessor, or
-        # (more commonly on a Pi that reboots) a PID that has been recycled
-        # by an unrelated process. ``flock`` is the single source of truth;
-        # second-guessing it with ``_pid_alive`` would trap startup on every
-        # SIGKILL / power-loss / reboot where the PID happens to be reused.
-        fh.seek(0)
-        fh.truncate()
-        fh.write(f"{os.getpid()}\n")
-        fh.flush()
-        try:
-            os.fsync(fh.fileno())
-        except OSError:
-            pass
-    except Exception:
-        try:
-            fh.close()
-        except OSError:
-            pass
-        raise
-    return PidfileHandle(path, fh)
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                # Someone else holds the flock — they are, by definition, the
+                # live holder. Read the pid they wrote so we can surface it to
+                # the operator, then bail.
+                existing = _read_existing_pid(fh)
+                fh.close()
+                raise PidfileLockedError(path, existing) from None
+            # Post-flock inode verification (see loop comment above).
+            try:
+                path_ino = os.stat(path).st_ino
+            except FileNotFoundError:
+                path_ino = None
+            if path_ino is None or os.fstat(fh.fileno()).st_ino != path_ino:
+                fh.close()
+                continue
+            # We hold the exclusive flock on the inode the path names, so we
+            # own the pidfile. Any pid bytes already in the file are stale —
+            # either a dead predecessor, or (more commonly on a Pi that
+            # reboots) a PID that has been recycled by an unrelated process.
+            # ``flock`` is the single source of truth; second-guessing it with
+            # ``_pid_alive`` would trap startup on every SIGKILL / power-loss
+            # / reboot where the PID happens to be reused.
+            fh.seek(0)
+            fh.truncate()
+            fh.write(f"{os.getpid()}\n")
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass
+        except Exception:
+            try:
+                fh.close()
+            except OSError:
+                pass
+            raise
+        return PidfileHandle(path, fh)
+    # Five consecutive inode swaps means the path is being churned by
+    # something pathological — surface it as contention rather than looping.
+    raise PidfileLockedError(path, None)

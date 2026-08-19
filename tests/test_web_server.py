@@ -1425,7 +1425,9 @@ class TestTokenComparison:
             # We don't care about the status here (it may 200 or 500 without
             # the peek stub) — only that compare_digest was invoked.
             assert calls, "token comparison did not go through hmac.compare_digest"
-            assert calls[0] == ("secret", "secret")
+            # Compared as encoded bytes — compare_digest raises TypeError on
+            # non-ASCII str inputs (#189), so the str form would be a bug.
+            assert calls[0] == (b"secret", b"secret")
         finally:
             run_clock.stop_web_server((server, thread))
 
@@ -2399,3 +2401,22 @@ class TestSandboxedDeploymentWritePaths:
         assert str(ctx_paths.overrides_path) == runtime["overrides_path"]
         assert str(ctx_paths.baked_db_path) == runtime["database_path"]
         assert str(ctx_paths.raw_corpus_path) == runtime["input_path"]
+
+
+class TestNonAsciiToken:
+    """Regression (#189): a non-ASCII token header made hmac.compare_digest
+    raise TypeError before do_POST's try block — dropped connection, raw
+    traceback, and no web_auth_fail telemetry."""
+
+    def test_non_ascii_token_returns_401(self, tmp_path):
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            status, body = _post(
+                server, "/api/action/rerender",
+                headers={"X-Idle-Hours-Token": "tok\xe9n"},
+            )
+            assert status == 401
+        finally:
+            run_clock.stop_web_server((server, thread))

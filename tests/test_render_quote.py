@@ -4064,3 +4064,21 @@ def test_firmament_milky_way_is_deterministic():
     a = rq.render("10:00", row, 800, 480, mode="production", theme="firmament").convert("RGB").tobytes()
     b = rq.render("10:00", row, 800, 480, mode="production", theme="firmament").convert("RGB").tobytes()
     assert a == b, "firmament frame not byte-deterministic across renders"
+
+
+class TestParsePinQuote:
+    def test_valid(self):
+        import idle_hours.render_quote as rq
+        assert rq.parse_pin_quote("141:482") == ("141", 482)
+
+    def test_none_and_empty(self):
+        import idle_hours.render_quote as rq
+        assert rq.parse_pin_quote(None) is None
+        assert rq.parse_pin_quote("") is None
+
+    def test_malformed_warns_and_returns_none(self, capsys):
+        import idle_hours.render_quote as rq
+        assert rq.parse_pin_quote("garbage") is None
+        assert rq.parse_pin_quote("141:xx") is None
+        assert rq.parse_pin_quote(":42") is None
+        assert "malformed --pin-quote" in capsys.readouterr().err
