@@ -710,6 +710,27 @@ def _append_history_after_render(state: RuntimeState, history_path: str | None, 
         pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
 
 
+def _pin_key_for(quote_id) -> tuple | None:
+    """Build a ``--pin-quote`` key from a peeked/committed quote identity.
+
+    ``quote_id`` is ``(source_id, line_number, display_quote, matched_text)``.
+    ``matched_text`` rides along as the third pin element because
+    ``(source_id, line_number)`` is NOT a unique corpus row key — one source
+    line can carry several time phrases, and pinning on the bare key renders
+    whichever duplicate happens to come first on disk.
+
+    Tolerates a short tuple: ``last_quote_id`` is restored from ``state.json``
+    without a pinned length (the identity shape has grown before), so a legacy
+    3-element persisted value degrades to an unqualified pin rather than
+    raising IndexError on the render path.
+    """
+    if quote_id is None or len(quote_id) < 2:
+        return None
+    if len(quote_id) > 3 and quote_id[3] is not None:
+        return (quote_id[0], quote_id[1], quote_id[3])
+    return (quote_id[0], quote_id[1])
+
+
 def render_now(
     render_script: str,
     output_path: str,
@@ -765,7 +786,12 @@ def render_now(
                 # repainting): the subprocess otherwise re-picks with the
                 # anti-repeat filter, which excludes the currently-displayed
                 # quote and silently swaps it on theme-only changes (#190).
+                # The matched_text element is not optional in practice —
+                # (source_id, line_number) is a non-unique row key, so without
+                # it the subprocess can render a different phrase (and a
+                # different bucket) than the one we just committed.
                 *(["--pin-quote", f"{pin_quote[0]}:{pin_quote[1]}"] if pin_quote else []),
+                *(["--pin-matched-text", str(pin_quote[2])] if pin_quote and len(pin_quote) > 2 else []),
                 *_corpus_render_args(database_path, input_path, overrides_path),
             ],
             check=True,
@@ -920,7 +946,7 @@ def _render_unlocked(args: argparse.Namespace, state: RuntimeState, time_str: st
         actual_mode, effective_theme, time_str=time_str,
         history_path=history_path, history_days=args.history_days,
         telemetry_path=args.telemetry_path or None, bucket=actual_bucket, quote_id=quote_id,
-        pin_quote=tuple(quote_id[:2]) if quote_id is not None else None,
+        pin_quote=_pin_key_for(quote_id),
         **_corpus_kwargs(args),
     )
     if actual_mode in _IDENTITY_RENDER_MODES:
@@ -1895,7 +1921,7 @@ def main() -> int:
                                 args.mode, effective_theme, time_str=time_str,
                                 history_path=history_path, history_days=args.history_days,
                                 telemetry_path=telemetry_path, bucket=bucket, quote_id=quote_id,
-                                pin_quote=tuple(quote_id[:2]) if quote_id is not None else None,
+                                pin_quote=_pin_key_for(quote_id),
                                 **_corpus_kwargs(args),
                             )
                         state.commit_render_result(bucket, effective_theme, quote_id)

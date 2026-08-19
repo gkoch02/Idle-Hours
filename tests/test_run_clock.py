@@ -1325,6 +1325,89 @@ class TestDailyTelemetryPath:
         assert out.name == "telemetry-20260102.jsonl"
 
 
+class TestExtraStateKeySet:
+    """#191 follow-up: the known-key set is derived from the persistence
+    schema, not hand-copied. A field added to the schema and to
+    ``snapshot_for_persistence`` but forgotten in a duplicated literal would be
+    copied into ``_extra_state``, pinning a stale value in state.json next to
+    the live one."""
+
+    def test_known_keys_track_the_schema(self):
+        from idle_hours import runtime_state as rs
+        from idle_hours.runtime_store import _STATE_SCHEMA
+
+        persisted = {k: None for k in _STATE_SCHEMA}
+        state = rs.RuntimeState("default", persisted=persisted)
+        assert state._extra_state == {}
+
+    def test_every_schema_key_is_persisted_back(self):
+        from idle_hours import runtime_state as rs
+        from idle_hours.runtime_store import _STATE_SCHEMA
+
+        snapshot = rs.RuntimeState("default").snapshot_for_persistence()
+        assert set(_STATE_SCHEMA) <= set(snapshot)
+
+    def test_unknown_key_still_round_trips(self):
+        from idle_hours import runtime_state as rs
+
+        state = rs.RuntimeState("default", persisted={"future_field": {"a": 1}})
+        assert state.snapshot_for_persistence()["future_field"] == {"a": 1}
+
+    def test_known_key_wins_over_a_stale_extra_copy(self):
+        from idle_hours import runtime_state as rs
+
+        state = rs.RuntimeState("default", persisted={"manual_quiet": True})
+        state.manual_quiet = False
+        assert state.snapshot_for_persistence()["manual_quiet"] is False
+
+
+class TestPinKeyForwarding:
+    """#190 follow-up: the pin must carry ``matched_text``.
+
+    ``(source_id, line_number)`` is not a unique corpus row key — one source
+    line can hold several time phrases — so a bare-key pin let the render
+    subprocess draw a phrase (and report a bucket) the main loop never picked.
+    """
+
+    def _argv(self, tmp_path, quote_id):
+        with patch("subprocess.run") as mock_call, \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800, height=480,
+                pin_quote=run_clock._pin_key_for(quote_id),
+            )
+        return mock_call.call_args[0][0]
+
+    def test_matched_text_is_forwarded_to_the_subprocess(self, tmp_path):
+        cmd = self._argv(tmp_path, ("141", 482, "a quote", "half past two"))
+        assert "--pin-quote" in cmd
+        assert "141:482" in cmd
+        assert "--pin-matched-text" in cmd
+        assert cmd[cmd.index("--pin-matched-text") + 1] == "half past two"
+
+    def test_legacy_short_identity_degrades_to_a_bare_pin(self, tmp_path):
+        """``last_quote_id`` is restored from state.json without a pinned
+        length, so a 3-element value written by an older build must not
+        IndexError on the render path."""
+        cmd = self._argv(tmp_path, ("141", 482, "a quote"))
+        assert "--pin-quote" in cmd
+        assert "--pin-matched-text" not in cmd
+
+    def test_no_pin_emits_neither_flag(self, tmp_path):
+        cmd = self._argv(tmp_path, None)
+        assert "--pin-quote" not in cmd
+        assert "--pin-matched-text" not in cmd
+
+    def test_pin_key_for_shapes(self):
+        assert run_clock._pin_key_for(None) is None
+        assert run_clock._pin_key_for(("1",)) is None
+        assert run_clock._pin_key_for(("1", 2)) == ("1", 2)
+        assert run_clock._pin_key_for(("1", 2, "q", None)) == ("1", 2)
+        assert run_clock._pin_key_for(("1", 2, "q", "m")) == ("1", 2, "m")
+
+
 class TestRenderNowTelemetry:
     def test_writes_telemetry_after_successful_render(self, tmp_path):
         telemetry_base = tmp_path / "telemetry.jsonl"

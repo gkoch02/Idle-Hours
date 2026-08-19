@@ -152,10 +152,12 @@ class RuntimeState:
         # snapshot_for_persistence merges them back in.
         self._extra_state: dict = {}
         if persisted:
-            known = {
-                "manual_theme", "manual_quiet", "last_bucket",
-                "last_quote_id", "last_effective_theme", "setup_complete",
-            }
+            # Derived from the persistence schema rather than hand-copied:
+            # a field added to _STATE_SCHEMA and snapshot_for_persistence but
+            # forgotten here would be duplicated into _extra_state, pinning a
+            # stale copy of it in the file alongside the live value.
+            from idle_hours.runtime_store import _STATE_SCHEMA
+            known = set(_STATE_SCHEMA)
             self._extra_state = {k: v for k, v in persisted.items() if k not in known}
             mt = persisted.get("manual_theme")
             if isinstance(mt, str) and mt in _known_theme_names():

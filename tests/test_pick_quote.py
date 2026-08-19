@@ -1346,6 +1346,158 @@ class TestSelectQuotePin:
         assert result["source_id"] in {"1", "2"}
 
 
+class TestFiftyFiveMinutePatterns:
+    """``fifty-five minutes past`` embeds the 5-minute pattern
+    ``five minutes past``, so it needs its own entry — otherwise the
+    longest-first scan infers minute 5 for it, the exact shorter-sibling
+    collision that ordering exists to prevent."""
+
+    def test_fifty_five_minutes_past_infers_55(self):
+        assert pq.infer_quote_minute({"matched_text": "fifty-five minutes past one"}) == 55
+        assert pq.infer_quote_minute({"matched_text": "fifty five minutes past one"}) == 55
+
+    def test_shorter_siblings_still_resolve(self):
+        assert pq.infer_quote_minute({"matched_text": "five minutes past two"}) == 5
+        assert pq.infer_quote_minute({"matched_text": "twenty-five minutes past three"}) == 25
+        assert pq.infer_quote_minute({"matched_text": "thirty-five minutes past ten"}) == 35
+        assert pq.infer_quote_minute({"matched_text": "five minutes to four"}) == 55
+
+    def test_no_pattern_is_shadowed_by_a_longer_sibling(self):
+        """Sweep every pattern: each must infer its own minute, even when a
+        different pattern is a substring of it."""
+        for minute, patterns in pq.EXACT_MINUTE_PATTERNS.items():
+            expected = 0 if minute == "zero" else minute
+            for pattern in patterns:
+                got = pq.infer_quote_minute({"matched_text": pattern})
+                assert got == expected, f"{pattern!r} inferred {got}, expected {expected}"
+
+
+class TestSelectQuotePinAmbiguity:
+    """``(source_id, line_number)`` is NOT a unique corpus row key: one source
+    line can carry several time phrases, so the committed database holds 128
+    duplicate keys, many spanning different buckets. Pinning on the bare key
+    returned whichever copy came first on disk, so the panel rendered a phrase
+    (and reported a bucket) the caller never picked."""
+
+    def _dup_rows(self):
+        # Same source line, two phrases, two buckets — the shape that recurs
+        # 128 times in the shipped quote_database.jsonl.
+        return [
+            make_row(fuzzy_bucket="h10_exact", source_id="155", line_number=19656,
+                     matched_text="ten o'clock", normalized_time="10:00", quality_score=90,
+                     display_quote="He came home at ten o'clock, or close on ten o'clock."),
+            make_row(fuzzy_bucket="h9_five_to", source_id="155", line_number=19656,
+                     matched_text="close on ten o'clock", normalized_time="09:55", quality_score=90,
+                     display_quote="He came home at ten o'clock, or close on ten o'clock."),
+        ]
+
+    def test_matched_text_selects_the_right_duplicate(self):
+        rows = self._dup_rows()
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides={},
+            pin_key=("155", 19656, "close on ten o'clock"),
+        )
+        assert result["matched_text"] == "close on ten o'clock"
+        assert result["resolved_bucket"] == "h9_five_to"
+
+    def test_bare_key_no_longer_decides_purely_by_file_order(self):
+        """Even a legacy 2-element pin (a state.json written before the
+        discriminator existed) is steered by the bucket tie-break rather than
+        by whichever duplicate happens to sit first in the file."""
+        rows = self._dup_rows()
+        result = pq.select_quote(time_str="09:55", rows=rows, overrides={}, pin_key=("155", 19656))
+        assert result["resolved_bucket"] == "h9_five_to"
+        assert result["matched_text"] == "close on ten o'clock"
+
+    def test_bucket_tiebreak_prefers_target_bucket(self):
+        """Rows that tie on (key, matched_text) but disagree on fuzzy_bucket
+        resolve in the picker's own bucket-preference order, so resolved_bucket
+        and used_fallback match what a natural pick would have reported."""
+        rows = [
+            make_row(fuzzy_bucket="h1_twenty_five_past", source_id="9", line_number=1,
+                     matched_text="twenty minutes to two", normalized_time="01:40",
+                     quality_score=90, display_quote="It was twenty minutes to two."),
+            make_row(fuzzy_bucket="h1_twenty_to", source_id="9", line_number=1,
+                     matched_text="twenty minutes to two", normalized_time="01:40",
+                     quality_score=90, display_quote="It was twenty minutes to two."),
+        ]
+        result = pq.select_quote(
+            time_str="01:40", rows=rows, overrides={},
+            pin_key=("9", 1, "twenty minutes to two"),
+        )
+        assert result["resolved_bucket"] == "h1_twenty_to"
+        assert result["used_fallback"] is False
+
+    def test_matched_text_mismatch_falls_back_to_normal_pick(self, capsys):
+        rows = self._dup_rows()
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides={},
+            pin_key=("155", 19656, "a phrase that is not in the corpus"),
+        )
+        assert "pinned quote" in capsys.readouterr().err
+        assert result["source_id"] == "155"
+
+    def test_pin_honours_per_row_ban(self, capsys):
+        """A curator ban must win over a repaint, or the UI's "Ban this quote"
+        button appears to do nothing on the next theme change."""
+        rows = self._dup_rows()
+        rows.append(make_row(fuzzy_bucket="h9_five_to", source_id="7", line_number=3,
+                             normalized_time="09:55", quality_score=80,
+                             display_quote="A perfectly serviceable replacement quote."))
+        overrides = {"ban_quote_keys": ["155:19656"]}
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides=overrides,
+            pin_key=("155", 19656, "close on ten o'clock"),
+        )
+        assert result["source_id"] == "7"
+        assert "pinned quote" in capsys.readouterr().err
+
+    def test_pin_honours_banned_source(self):
+        rows = self._dup_rows()
+        rows.append(make_row(fuzzy_bucket="h9_five_to", source_id="7", line_number=3,
+                             normalized_time="09:55", quality_score=80,
+                             display_quote="A perfectly serviceable replacement quote."))
+        result = pq.select_quote(
+            time_str="09:55", rows=rows, overrides={"ban_source_ids": ["155"]},
+            pin_key=("155", 19656, "close on ten o'clock"),
+        )
+        assert result["source_id"] == "7"
+
+
+class TestPinFidelityAgainstShippedCorpus:
+    """End-to-end fence against the real database. The synthetic-corpus pin
+    tests all used unique keys, so a full green suite still shipped a panel
+    that rendered the wrong phrase for ~8% of clock times."""
+
+    def test_pinned_render_reproduces_the_peek_for_every_bucket(self):
+        from idle_hours import run_clock
+
+        kwargs = dict(
+            database_path=str(pq.DEFAULT_DATABASE_PATH),
+            input_path=str(pq.DEFAULT_INPUT_PATH),
+            overrides_path=str(pq.DEFAULT_OVERRIDES_PATH),
+        )
+        mismatches = []
+        for hour in range(24):
+            for minute in range(0, 60, 5):
+                time_str = f"{hour:02d}:{minute:02d}"
+                peeked = pq.select_quote(time_str=time_str, **kwargs)
+                # Exactly the identity run_clock commits and forwards.
+                quote_id = (
+                    peeked["source_id"], peeked["line_number"],
+                    peeked["display_quote"], peeked["matched_text"],
+                )
+                pinned = pq.select_quote(
+                    time_str=time_str, pin_key=run_clock._pin_key_for(quote_id), **kwargs,
+                )
+                for field in ("source_id", "line_number", "display_quote",
+                              "matched_text", "resolved_bucket", "used_fallback"):
+                    if pinned[field] != peeked[field]:
+                        mismatches.append((time_str, field, peeked[field], pinned[field]))
+                        break
+        assert mismatches == [], f"pinned render diverged from the peek: {mismatches[:5]}"
+
+
 class TestCorpusCache:
     """#192: the multi-MB corpus is parsed once per (path, mtime, size) —
     repeat picks in one process cost a stat, and an atomic replace (bake)

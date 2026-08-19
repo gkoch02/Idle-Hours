@@ -4071,6 +4071,15 @@ class TestParsePinQuote:
         import idle_hours.render_quote as rq
         assert rq.parse_pin_quote("141:482") == ("141", 482)
 
+    def test_matched_text_becomes_the_third_element(self):
+        """(source_id, line_number) is not a unique corpus row key, so the
+        peeked matched_text rides along to disambiguate duplicates."""
+        assert rq.parse_pin_quote("141:482", "half past two") == ("141", 482, "half past two")
+
+    def test_matched_text_ignored_when_the_key_is_malformed(self, capsys):
+        assert rq.parse_pin_quote("garbage", "half past two") is None
+        assert "malformed --pin-quote" in capsys.readouterr().err
+
     def test_none_and_empty(self):
         import idle_hours.render_quote as rq
         assert rq.parse_pin_quote(None) is None

@@ -73,7 +73,11 @@ EXACT_MINUTE_PATTERNS = {
     40: ["twenty minutes to", "twenty to"],
     45: ["quarter to"],
     50: ["ten minutes to", "ten to"],
-    55: ["five minutes to", "five to"],
+    # "fifty-five minutes past" must be listed explicitly: it embeds the
+    # 5-minute pattern "five minutes past", so without its own entry the
+    # longest-first scan below infers minute 5 for it — the same
+    # shorter-sibling collision the sort order exists to prevent.
+    55: ["fifty-five minutes past", "fifty five minutes past", "five minutes to", "five to"],
 }
 
 # Flattened longest-first view of ``EXACT_MINUTE_PATTERNS``. Plain substring
@@ -952,13 +956,54 @@ def select_quote(
         # which would otherwise exclude the currently-displayed quote and
         # silently swap it on a theme change (issue #190). Falls through to a
         # normal pick when the pinned row no longer exists (re-bake, ban).
+        #
+        # (source_id, line_number) alone does NOT identify a row: one source
+        # line can carry several time phrases, so the committed corpus has 128
+        # duplicate (source_id, line_number) keys — many spanning different
+        # buckets ("ten o'clock" in h10_exact vs "close on ten o'clock" in
+        # h9_five_to). Matching on the key alone returned whichever copy came
+        # first in file order, so ~8% of clock times rendered a row the peek
+        # never chose — the panel bolted the wrong phrase and reported the
+        # wrong bucket. The optional third element carries the peeked
+        # ``matched_text``, which is exactly the discriminator peek_quote_id
+        # already tracks for this reason; when it is supplied a row must match
+        # it too, and a miss falls through to a normal pick rather than
+        # rendering an arbitrary sibling.
         want = (str(pin_key[0]), pin_key[1])
-        for row in rows:
-            if (str(row.get("source_id")), row.get("line_number")) == want and row.get("display_quote"):
-                pinned_bucket = row.get("fuzzy_bucket") or target_bucket
-                return _select_result(time_str, target_bucket, pinned_bucket, row)
+        want_matched = pin_key[2] if len(pin_key) > 2 else None
+        candidates = [
+            row for row in rows
+            if (str(row.get("source_id")), row.get("line_number")) == want
+            and row.get("display_quote")
+            and (want_matched is None or row.get("matched_text") == want_matched)
+            # An operator ban must win over a repaint: otherwise the curator
+            # UI's "Ban this quote" button looks broken, because the very next
+            # theme change repaints the row the operator just banned.
+            and not is_banned(row, overrides)
+        ]
+        if candidates:
+            # A handful of rows still tie on (key, matched_text) while
+            # disagreeing about fuzzy_bucket — the same phrase mis-bucketed
+            # twice in the corpus. Taking the first on disk would report a
+            # resolved_bucket the natural pick never would (and a bogus
+            # used_fallback in the debug footer), so break the tie with the
+            # picker's own bucket-preference order: the target bucket first,
+            # then its siblings in alternating outward-distance order. That
+            # reproduces exactly which copy pick_best would have landed on.
+            try:
+                order = {b: i for i, b in enumerate(neighbor_buckets(target_bucket))}
+            except (ValueError, KeyError):
+                order = {}
+            best = min(
+                candidates,
+                key=lambda row: order.get(row.get("fuzzy_bucket"), len(order)),
+            )
+            return _select_result(
+                time_str, target_bucket, best.get("fuzzy_bucket") or target_bucket, best,
+            )
         print(
-            f"warning: pinned quote {want[0]}:{want[1]} not found in corpus; picking normally",
+            f"warning: pinned quote {want[0]}:{want[1]} not available "
+            "(missing, banned, or matched-text mismatch); picking normally",
             file=sys.stderr,
         )
     recent = load_recent_history(history_path, history_days)

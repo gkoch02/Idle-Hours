@@ -194,4 +194,6 @@ def acquire_pidfile(pidfile_path: str | None = DEFAULT_PIDFILE_PATH) -> PidfileH
         return PidfileHandle(path, fh)
     # Five consecutive inode swaps means the path is being churned by
     # something pathological — surface it as contention rather than looping.
+    # No pid to report: we never held a lock on the inode the path names, so
+    # there is no writer we can name for the operator.
     raise PidfileLockedError(path, None)

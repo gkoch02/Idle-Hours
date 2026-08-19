@@ -453,11 +453,26 @@ class CuratorHandler(BaseHTTPRequestHandler):
             return True
         supplied = self.headers.get(TOKEN_HEADER, "")
         # Compare encoded bytes: hmac.compare_digest raises TypeError on
-        # non-ASCII *str* inputs, and HTTP headers are latin-1-decoded, so a
-        # probe with a non-ASCII token would otherwise escape do_POST's try
-        # block — dropped connection, raw traceback, and no auth-fail
-        # telemetry (#189). Bytes comparison is total and stays timing-safe.
-        if not supplied or not hmac.compare_digest(supplied.encode("utf-8"), token.encode("utf-8")):
+        # non-ASCII *str* inputs, so a probe with a non-ASCII token would
+        # otherwise escape do_POST's try block — dropped connection, raw
+        # traceback, and no auth-fail telemetry (#189). Bytes comparison is
+        # total and stays timing-safe.
+        #
+        # The two sides need DIFFERENT codecs. http.server decodes request
+        # headers as latin-1, so re-encoding the supplied value as latin-1
+        # recovers the exact bytes the client put on the wire; the configured
+        # token came from a UTF-8 file read. Encoding both as UTF-8 would
+        # double-encode the supplied side and make a correct non-ASCII token
+        # permanently unauthenticatable — a silent 401 rather than the loud
+        # TypeError it replaced.
+        try:
+            supplied_bytes = supplied.encode("latin-1")
+        except UnicodeEncodeError:
+            # Not reachable from a real HTTP request (latin-1 round-trips
+            # every byte http.server can hand us), but a synthetic caller can
+            # inject an arbitrary str — treat it as a mismatch, not a crash.
+            supplied_bytes = b""
+        if not supplied or not hmac.compare_digest(supplied_bytes, token.encode("utf-8")):
             # Structured auth-failure marker so an operator can grep for
             # "was the web UI hammered with bad tokens?" without scraping
             # journald; remote+path are sufficient to distinguish a fat-
