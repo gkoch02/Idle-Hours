@@ -2420,3 +2420,75 @@ class TestNonAsciiToken:
             assert status == 401
         finally:
             run_clock.stop_web_server((server, thread))
+
+
+class TestPreviewCache:
+    """Regression (#193): the Now tab fires ~45 parallel /api/preview
+    requests; repeat requests for an unchanged quote must serve from the
+    encoded-PNG LRU instead of re-rendering, and a corpus/sidecar change
+    must invalidate."""
+
+    _ROW = {
+        "display_quote": "It was three o'clock in the afternoon, exactly.",
+        "matched_text": "three o'clock",
+        "author": "Jane Austen", "title": "Emma",
+        "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+        "source_id": "141", "line_number": 42,
+    }
+
+    def test_repeat_request_hits_cache(self, v2_server):
+        server, _state, _args = v2_server
+        web_server.clear_preview_cache()
+        from idle_hours import render_quote
+        real_render = render_quote.render
+        calls = {"n": 0}
+
+        def counting_render(*a, **kw):
+            calls["n"] += 1
+            return real_render(*a, **kw)
+
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
+             patch("idle_hours.render_quote.render", side_effect=counting_render):
+            s1, b1 = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+            s2, b2 = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+        assert s1 == s2 == 200
+        assert b1 == b2
+        assert calls["n"] == 1
+
+    def test_different_theme_is_a_miss(self, v2_server):
+        server, _state, _args = v2_server
+        web_server.clear_preview_cache()
+        from idle_hours import render_quote
+        real_render = render_quote.render
+        calls = {"n": 0}
+
+        def counting_render(*a, **kw):
+            calls["n"] += 1
+            return real_render(*a, **kw)
+
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
+             patch("idle_hours.render_quote.render", side_effect=counting_render):
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+            _get(server, "/api/preview?theme=dark&time=03:00&width=400&height=240")
+        assert calls["n"] == 2
+
+    def test_sidecar_change_invalidates(self, v2_server):
+        server, _state, args = v2_server
+        web_server.clear_preview_cache()
+        from idle_hours import render_quote
+        real_render = render_quote.render
+        calls = {"n": 0}
+
+        def counting_render(*a, **kw):
+            calls["n"] += 1
+            return real_render(*a, **kw)
+
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
+             patch("idle_hours.render_quote.render", side_effect=counting_render):
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+            # An operator ban rewrites the overrides sidecar — new stat stamp.
+            Path(args.overrides).write_text(
+                json.dumps({"ban_source_ids": ["7"]}), encoding="utf-8",
+            )
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+        assert calls["n"] == 2

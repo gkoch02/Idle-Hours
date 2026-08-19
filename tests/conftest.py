@@ -95,3 +95,17 @@ def _clear_corpus_cache():
     pick_quote.clear_corpus_cache()
     yield
     pick_quote.clear_corpus_cache()
+
+
+@pytest.fixture(autouse=True)
+def _clear_preview_cache():
+    """Isolate the /api/preview PNG LRU (#193) between tests."""
+    import sys
+
+    ws = sys.modules.get("idle_hours.web_server")
+    if ws is not None:
+        ws.clear_preview_cache()
+    yield
+    ws = sys.modules.get("idle_hours.web_server")
+    if ws is not None:
+        ws.clear_preview_cache()
