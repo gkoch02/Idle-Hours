@@ -164,6 +164,24 @@ class TestScoreRow:
         score = pq.score_row(row, "h3_exact", overrides)
         assert score[9] < abs(len(display) - 140)
 
+    def test_exactness_bonus_not_fired_by_embedded_five_minutes_to(self):
+        # Regression (#185): "twenty-five minutes to three" contains the
+        # substring "five minutes to" but is a 35-minute phrase, not an x:55
+        # marker — it must not receive the strong -2 exactness bonus.
+        display = "It was twenty-five minutes to three when the bells rang out across the square."
+        overrides = self._overrides()
+        embedded = make_row(matched_text="twenty-five minutes to three",
+                            quality_score=80, display_quote=display)
+        neutral = make_row(matched_text="a vague reference",
+                           quality_score=80, display_quote=display)
+        assert pq.score_row(embedded, "h3_exact", overrides)[9] == \
+            pq.score_row(neutral, "h3_exact", overrides)[9]
+        # The standalone phrase still earns it.
+        standalone = make_row(matched_text="five minutes to three",
+                              quality_score=80, display_quote=display)
+        assert pq.score_row(standalone, "h3_exact", overrides)[9] < \
+            pq.score_row(neutral, "h3_exact", overrides)[9]
+
     def test_no_source_id_penalty(self):
         with_id = make_row(source_id="1234")
         without_id = make_row(source_id=None)
@@ -854,14 +872,21 @@ class TestInferQuoteMinute:
         row = {"matched_text": "half\npast two"}
         assert pq.infer_quote_minute(row) == 30
 
-    def test_known_substring_collision_twenty_five_past_matches_shorter_pattern(self):
-        # Documents a known limitation: "twenty-five minutes past" contains
-        # "five minutes past" (the 5-minute pattern) and dict-iteration order
-        # means the shorter pattern wins. In practice rows reach this code path
-        # only when normalized_time is missing, so the impact is minimal — but
-        # future callers should be aware.
-        row = {"matched_text": "twenty-five minutes past seven"}
-        assert pq.infer_quote_minute(row) == 5
+    @pytest.mark.parametrize("phrase,minute", [
+        # Regression (#185): these phrases contain shorter sibling patterns
+        # ("five minutes past" / "five past") and used to mis-infer as minute 5
+        # under dict-iteration-order substring matching. Longest-first matching
+        # must return the most specific phrase's minute.
+        ("twenty-five minutes past seven", 25),
+        ("twenty five minutes past seven", 25),
+        ("twenty-five past seven", 25),
+        ("twenty five past seven", 25),
+        ("thirty-five minutes past two", 35),
+        ("thirty five minutes past two", 35),
+    ])
+    def test_substring_sibling_patterns_prefer_longest_match(self, phrase, minute):
+        row = {"matched_text": phrase}
+        assert pq.infer_quote_minute(row) == minute
 
 
 class TestMinuteDistancePenalty:

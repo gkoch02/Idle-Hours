@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 import random
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -73,6 +74,31 @@ EXACT_MINUTE_PATTERNS = {
     50: ["ten minutes to", "ten to"],
     55: ["five minutes to", "five to"],
 }
+
+# Flattened longest-first view of ``EXACT_MINUTE_PATTERNS``. Plain substring
+# matching in dict order mis-infers phrases whose pattern contains a shorter
+# sibling — "twenty-five minutes past" contains the 5-minute pattern
+# "five minutes past", so iteration order used to return minute 5 for it.
+# Trying the longest pattern first means the most specific phrase always wins.
+_MINUTE_PATTERNS_LONGEST_FIRST = sorted(
+    (
+        (pattern, minute)
+        for minute, patterns in EXACT_MINUTE_PATTERNS.items()
+        for pattern in patterns
+    ),
+    key=lambda item: len(item[0]),
+    reverse=True,
+)
+
+# "five minutes to" earns the strong exactness bonus only as a standalone
+# phrase — inside "twenty-five minutes to three" it is a fragment of a
+# 35-minute phrase, not an x:55 marker. The fixed-width lookbehinds reject
+# the tens-word prefixes (hyphenated or spaced) that embed it.
+_FIVE_MINUTES_TO_RE = re.compile(
+    r"(?<!twenty-)(?<!twenty )(?<!thirty-)(?<!thirty )"
+    r"(?<!forty-)(?<!forty )(?<!fifty-)(?<!fifty )"
+    r"\bfive minutes to"
+)
 
 DIALOGUE_FILLER_PATTERNS = [
     "he said",
@@ -315,10 +341,21 @@ def infer_quote_minute(row: dict) -> int | None:
             pass
 
     lowered = (row.get("matched_text") or "").lower().replace("\n", " ")
-    for minute, patterns in EXACT_MINUTE_PATTERNS.items():
-        if any(pattern in lowered for pattern in patterns):
+    for pattern, minute in _MINUTE_PATTERNS_LONGEST_FIRST:
+        if pattern in lowered:
             return 0 if minute == "zero" else minute
     return None
+
+
+def circular_minute_distance(a: int, b: int) -> int:
+    """Distance between two minutes on the 60-minute clock face.
+
+    Plain ``abs(a - b)`` penalises an 11:58 quote 58 minutes away from a
+    12:00 request even though it is 2 minutes early — minute distance must
+    wrap at the top of the hour.
+    """
+    d = abs(a - b)
+    return min(d, 60 - d)
 
 
 def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) -> int:
@@ -326,7 +363,7 @@ def minute_distance_penalty(row: dict, bucket: str, requested_time: str | None) 
     quote_minute = infer_quote_minute(row)
     if requested_minute is None or quote_minute is None:
         return 99
-    return abs(requested_minute - quote_minute)
+    return circular_minute_distance(requested_minute, quote_minute)
 
 
 def count_sources(rows: list[dict]) -> Counter:
@@ -359,7 +396,7 @@ def compose_baked_score_key(row: dict, bucket: str, overrides: dict, requested_t
     if requested_minute is None or quote_minute is None:
         minute_penalty = 99
     else:
-        minute_penalty = abs(requested_minute - quote_minute)
+        minute_penalty = circular_minute_distance(requested_minute, quote_minute)
     ovr = override_bonus(row, overrides, bucket)
     return (
         baked[0], baked[1], minute_penalty,
@@ -385,7 +422,7 @@ def score_row(row: dict, bucket: str, overrides: dict, requested_time: str | Non
         length_penalty += 80
     exactness_bonus = 0
     lowered = matched.lower().replace("\n", " ")
-    if "five minutes to" in lowered or "ten minutes to" in lowered or "fifty-five minutes past" in lowered:
+    if _FIVE_MINUTES_TO_RE.search(lowered) or "ten minutes to" in lowered or "fifty-five minutes past" in lowered:
         exactness_bonus = -2
     elif "quarter" in lowered or "half" in lowered:
         exactness_bonus = -1

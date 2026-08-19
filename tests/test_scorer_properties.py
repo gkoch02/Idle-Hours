@@ -425,14 +425,16 @@ class TestBakedInterleaveEquivalence:
 
 
 class TestMinutePenaltySweep:
-    """``minute_distance_penalty`` should produce the correct absolute
+    """``minute_distance_penalty`` should produce the correct circular
     distance for every (requested_minute, quote_minute) pair, with 99 as the
     sentinel for missing information.
     """
 
-    def test_abs_distance_over_all_pairs(self):
+    def test_circular_distance_over_all_pairs(self):
         """Brute-force: for every pair in [0..55] step 5, the penalty must
-        equal abs(a - b). Catches a sign flip or off-by-one in the arithmetic."""
+        equal the wrap-around clock-face distance min(d, 60-d). Plain abs()
+        penalised an 11:58 quote 58 minutes away from a 12:00 request even
+        though it is 2 minutes early (#184)."""
         for requested in range(0, 60, 5):
             for quote_minute in range(0, 60, 5):
                 row = {
@@ -443,9 +445,19 @@ class TestMinutePenaltySweep:
                 penalty = pick_quote.minute_distance_penalty(
                     row, bucket, f"03:{requested:02d}",
                 )
-                assert penalty == abs(requested - quote_minute), (
+                d = abs(requested - quote_minute)
+                assert penalty == min(d, 60 - d), (
                     f"requested={requested} quote={quote_minute}: got {penalty}"
                 )
+
+    def test_top_of_hour_rollover_pairs(self):
+        """The concrete #184 failure: a :58 quote lands in the next hour's
+        exact bucket (bucket_for_time rounds 58 up), where it must score
+        distance 2 from the :00 request — not 58."""
+        row = {"normalized_time": "11:58", "matched_text": ""}
+        assert pick_quote.minute_distance_penalty(row, "h12_exact", "12:00") == 2
+        row55 = {"normalized_time": "03:55", "matched_text": ""}
+        assert pick_quote.minute_distance_penalty(row55, "h4_exact", "04:00") == 5
 
     def test_missing_minute_returns_sentinel(self):
         row_no_minute = {"normalized_time": None, "matched_text": ""}
