@@ -7,7 +7,7 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from idle_hours.buckets import BUCKET_ORDER, bucket_for_time
+from idle_hours.buckets import BUCKET_ORDER, rederive_buckets
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -37,16 +37,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_rows(path: Path) -> list[dict]:
-    rows = []
-    for row in iter_jsonl(path):
-        normalized = row.get("normalized_time")
-        if isinstance(normalized, str) and ":" in normalized:
-            try:
-                row["fuzzy_bucket"] = bucket_for_time(normalized)
-            except (ValueError, KeyError):
-                pass
-        rows.append(row)
-    return rows
+    return rederive_buckets(list(iter_jsonl(path)))
 
 
 def expected_buckets() -> list[str]:

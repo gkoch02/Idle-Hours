@@ -40,7 +40,7 @@ from pathlib import Path
 
 from idle_hours import apply_content_overrides, atomic_io
 from idle_hours import pick_quote as pick_quote_module
-from idle_hours.buckets import bucket_for_time
+from idle_hours.buckets import bucket_for_time, rederive_buckets
 from idle_hours.runtime_log import _log
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -1302,13 +1302,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 applied = 0
             # Re-derive fuzzy_bucket from the post-override normalized_time so
             # the baker sees the same buckets it would after a full pipeline run.
-            for row in rows:
-                normalized = row.get("normalized_time")
-                if isinstance(normalized, str) and ":" in normalized:
-                    try:
-                        row["fuzzy_bucket"] = bucket_for_time(normalized)
-                    except (ValueError, KeyError):
-                        pass
+            rederive_buckets(rows)
             baked, stats = bake_quote_database.bake_rows(rows, min_quality=60)
             atomic_io.atomic_write_lines(
                 ctx.baked_db_path,
