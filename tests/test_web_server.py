@@ -331,6 +331,109 @@ class TestTokenFileHotReload:
         assert ctx.current_token() == "valid-secret"
         assert "refusing to downgrade to no-auth" in capsys.readouterr().err
 
+    def test_read_failure_after_successful_stat_keeps_previous_token(self, tmp_path, capsys):
+        """``stat()`` succeeds but ``read_text()`` raises — keep the old token.
+
+        This is the narrow window an operator actually hits during rotation:
+        ``stat`` sees the new file, and the read lands while the replacement is
+        still being written or before its mode is fixed up. It is a distinct
+        branch from the stat-failure path above (which never gets as far as
+        reading), and it was the only uncovered code in the module.
+
+        The failure mode if this regressed is the one that matters most on a
+        LAN bind: a read error must not leave ``_cached_token`` empty, because
+        an empty cached token means every POST is accepted.
+        """
+        import os
+        import time
+        from pathlib import Path as _Path
+        from unittest.mock import patch as _patch
+
+        token_file = tmp_path / "token"
+        token_file.write_text("original-secret\n", encoding="utf-8")
+        past = time.time() - 10
+        os.utime(token_file, (past, past))
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="", token_file=str(token_file))
+        assert ctx.current_token() == "original-secret"
+
+        # Bump mtime so the refresh doesn't short-circuit, then fail the read.
+        token_file.write_text("replacement-secret\n", encoding="utf-8")
+        now = time.time()
+        os.utime(token_file, (now, now))
+
+        real_read = _Path.read_text
+
+        def _bad_read(self, *args, **kwargs):
+            if self == ctx._token_file:
+                raise OSError("Permission denied")
+            return real_read(self, *args, **kwargs)
+
+        with _patch.object(_Path, "read_text", _bad_read):
+            assert ctx.current_token() == "original-secret"
+
+        assert "read failed" in capsys.readouterr().err
+
+    def test_token_is_picked_up_once_the_read_recovers(self, tmp_path):
+        """A failed read must not poison the cache permanently.
+
+        ``_cached_token_mtime`` is deliberately left untouched on the read-error
+        path, so the very next request retries instead of waiting for another
+        mtime change that may never come — the replacement file was already
+        written, so its mtime will not move again.
+        """
+        import os
+        import time
+        from pathlib import Path as _Path
+        from unittest.mock import patch as _patch
+
+        token_file = tmp_path / "token"
+        token_file.write_text("original-secret\n", encoding="utf-8")
+        past = time.time() - 10
+        os.utime(token_file, (past, past))
+
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="", token_file=str(token_file))
+        assert ctx.current_token() == "original-secret"
+
+        token_file.write_text("replacement-secret\n", encoding="utf-8")
+        now = time.time()
+        os.utime(token_file, (now, now))
+
+        real_read = _Path.read_text
+
+        def _bad_read(self, *args, **kwargs):
+            if self == ctx._token_file:
+                raise OSError("Permission denied")
+            return real_read(self, *args, **kwargs)
+
+        with _patch.object(_Path, "read_text", _bad_read):
+            ctx.current_token()
+
+        # No further mtime change — the retry has to come from the unchanged
+        # cached mtime, not from a new filesystem event.
+        assert ctx.current_token() == "replacement-secret"
+
+    def test_no_token_file_returns_the_inline_token_without_touching_disk(self, tmp_path):
+        """``--web-token`` alone must not stat anything per request.
+
+        ``current_token`` short-circuits before the lock when no file is
+        configured; a regression that dropped the short-circuit would add a
+        filesystem call to every single request on the hot path.
+        """
+        from pathlib import Path as _Path
+        from unittest.mock import patch as _patch
+
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0", web_token="inline-only")
+        state = run_clock.RuntimeState(args.theme)
+        ctx = web_server.WebContext(args, state, token="inline-only", token_file=None)
+
+        with _patch.object(_Path, "stat", side_effect=AssertionError("must not stat")):
+            assert ctx.current_token() == "inline-only"
+
 
 # ============================================================================
 # GET endpoints

@@ -47,7 +47,10 @@ colour, or the quote block shifts by half a line).
 """
 from __future__ import annotations
 
+import contextlib
+import datetime
 import os
+import types
 from pathlib import Path
 
 import pytest
@@ -473,7 +476,113 @@ SCENARIOS: list[dict] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Full-rotation theme coverage
+# ---------------------------------------------------------------------------
+#
+# The hand-written scenarios above pin layouts, modes, and the themes whose
+# decoration warranted a bespoke note. That left most of the rotation with no
+# pixel-level fence at all: before this block, 14 of 45 registered themes had
+# a golden, and the only all-theme sweep in the suite renders at the
+# ``/api/preview`` thumbnail sizes (80x60, 240x144) asserting nothing but size
+# and palette-subset.
+#
+# Rather than hand-listing the remainder — which guarantees the list rots the
+# next time someone adds a theme — the standard-layout scenario for every
+# registered theme is generated here. A newly registered theme therefore
+# arrives with a failing golden test ("golden was missing; wrote a new
+# fixture") instead of silently shipping unpinned.
+#
+# Themes that already have a hand-written ``standard_<theme>_production``
+# entry keep it; this only fills gaps.
+
+THEME_SWEEP_TIME = "08:55"
+THEME_SWEEP_QUOTE = (
+    "Do you think I should be standing here at five minutes to nine "
+    "looking for it if I had it in my pocket all the while?"
+)
+THEME_SWEEP_MATCH = "five minutes to nine"
+
+_hand_written = {s["name"] for s in SCENARIOS}
+for _theme in sorted(rq.THEMES):
+    _name = f"standard_{_theme}_production"
+    if _name in _hand_written:
+        continue
+    SCENARIOS.append(
+        {
+            "name": _name,
+            "time": THEME_SWEEP_TIME,
+            "row": _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH),
+            "mode": "production",
+            "theme": _theme,
+        }
+    )
+
+
+# A fixed instant for the two themes that read the wall clock. ``astrarium``
+# prints the date in its header strip and derives its solar-elevation and
+# lunar-phase datums from the day of year; ``vinyl`` stamps a copyright year on
+# the label and seeds its sleeve wear-speckle from ``YYYYMMDD`` so the pattern
+# drifts day to day (by design — see the theme's note in CLAUDE.md).
+#
+# Both are legitimate behaviours and both make an un-frozen golden expire
+# overnight, which is why neither theme had a fixture before. Freezing the
+# clock for the comparison keeps the rest of each frame — the dial, the
+# tonearm geometry, the liner-notes typography — under the same regression
+# fence as every other theme. The set is verified against the renderer rather
+# than trusted: ``test_clock_dependent_theme_list_is_accurate`` re-renders
+# every theme at two instants and fails if this list is wrong in either
+# direction.
+GOLDEN_NOW = datetime.datetime(2026, 4, 19, 14, 30, 0)
+CLOCK_DEPENDENT_THEMES = frozenset({"astrarium", "vinyl"})
+
+
+def _frozen_datetime_module() -> types.SimpleNamespace:
+    """A stand-in for the stdlib ``datetime`` module pinned to ``GOLDEN_NOW``.
+
+    The frozen classes subclass the real ones so ``isinstance`` checks and
+    ordinary construction keep working; only ``now()`` / ``today()`` are
+    overridden. ``render_quote`` does ``import datetime`` and touches just
+    ``datetime.datetime`` and ``datetime.date``, so swapping the module
+    reference on the module object is enough.
+    """
+
+    class _FrozenDatetime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return GOLDEN_NOW if tz is None else GOLDEN_NOW.replace(tzinfo=tz)
+
+    class _FrozenDate(datetime.date):
+        @classmethod
+        def today(cls):
+            return GOLDEN_NOW.date()
+
+    return types.SimpleNamespace(
+        datetime=_FrozenDatetime,
+        date=_FrozenDate,
+        timedelta=datetime.timedelta,
+        timezone=datetime.timezone,
+    )
+
+
+@contextlib.contextmanager
+def _frozen_clock():
+    original = rq.datetime
+    rq.datetime = _frozen_datetime_module()
+    try:
+        yield
+    finally:
+        rq.datetime = original
+
+
 def _render_scenario(scenario: dict) -> Image.Image:
+    if scenario["theme"] in CLOCK_DEPENDENT_THEMES:
+        with _frozen_clock():
+            return _render_scenario_now(scenario)
+    return _render_scenario_now(scenario)
+
+
+def _render_scenario_now(scenario: dict) -> Image.Image:
     if scenario["mode"] == "goodnight":
         return rq.render_static_message(
             scenario["message"],
@@ -571,6 +680,54 @@ class TestGoldenStructure:
         actual = {p.name for p in GOLDEN_DIR.glob("*.png")}
         stale = actual - expected
         assert not stale, f"orphaned golden PNGs in {GOLDEN_DIR}: {sorted(stale)}"
+
+    def test_every_registered_theme_has_a_golden(self):
+        """Every theme in the rotation must be pinned by at least one scenario.
+
+        The generated block above makes this true by construction today; the
+        assertion exists so that a future refactor which replaces generation
+        with a hand-maintained list (or filters it) can't quietly drop themes
+        back to being unpinned — the exact state 31 of them were in before.
+        """
+        pinned = {s["theme"] for s in SCENARIOS}
+        missing = set(rq.THEMES) - pinned
+        assert not missing, f"themes with no golden scenario: {sorted(missing)}"
+
+    def test_clock_dependent_theme_list_is_accurate(self):
+        """``CLOCK_DEPENDENT_THEMES`` must match what the renderer actually does.
+
+        Wrong in one direction (a theme reads the clock but isn't listed) and
+        its golden expires overnight, turning CI red for reasons unrelated to
+        any commit. Wrong in the other (a listed theme stopped reading the
+        clock) and the freeze silently hides a real dependency change. Both are
+        cheap to detect: render every theme at two well-separated instants and
+        see which frames move.
+        """
+        far_future = datetime.datetime(2031, 11, 3, 9, 5, 0)
+        row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
+        drifted = set()
+        original = rq.datetime
+        try:
+            for theme in sorted(rq.THEMES):
+                frames = []
+                for instant in (GOLDEN_NOW, far_future):
+                    module = _frozen_datetime_module()
+                    module.datetime.now = classmethod(lambda cls, tz=None, _i=instant: _i)
+                    module.date.today = classmethod(lambda cls, _i=instant: _i.date())
+                    rq.datetime = module
+                    frames.append(
+                        rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
+                                  mode="production", theme=theme).convert("RGB")
+                    )
+                if ImageChops.difference(*frames).getbbox() is not None:
+                    drifted.add(theme)
+        finally:
+            rq.datetime = original
+        assert drifted == CLOCK_DEPENDENT_THEMES, (
+            "CLOCK_DEPENDENT_THEMES is stale: themes that read the wall clock "
+            f"but aren't frozen={sorted(drifted - CLOCK_DEPENDENT_THEMES)}, "
+            f"themes frozen unnecessarily={sorted(CLOCK_DEPENDENT_THEMES - drifted)}"
+        )
 
     def test_themes_produce_distinct_goldens(self):
         """A regression that swapped THEMES['default'] and THEMES['dark']

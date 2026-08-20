@@ -148,6 +148,34 @@ jobs:
       - name: Run golden render tests
         run: pytest tests/test_render_golden.py -n auto --dist worksteal
 
+  web-ui-js:
+    # The curator UI's front end (idle_hours/web/main.js) is 726 lines of
+    # operator-facing behaviour Python tests cannot reach: hash routing, lazy
+    # per-tab fetch gating, the poll-vs-focus guard on the theme dropdown, 401
+    # token recovery, and the read-modify-write in banQuoteKey that rewrites
+    # the shared selection_overrides sidecar from the browser.
+    #
+    # tests/test_web_ui_js.py also shells out to this suite, but it *skips*
+    # when node is absent. Running node --test as its own job means a missing
+    # interpreter fails the build loudly instead of turning the whole JS
+    # suite into a silent green skip.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No dependencies, no build step: the tests load the real main.js into a
+      # node:vm sandbox with a DOM stub (tests/js/harness.mjs), so there is no
+      # transcribed copy to drift out of sync with the served file.
+      - name: Run curator UI tests
+        run: node --test tests/js/*.test.mjs
+
   package-build:
     # Builds a wheel + sdist from pyproject.toml and installs the wheel into
     # a fresh venv with NO extras (no ``[dev]``, no ``[pi]``). Then imports
