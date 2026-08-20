@@ -687,6 +687,97 @@ class TestReadEndpoints:
         assert data["entries"] == []
         assert data["total"] == 0
 
+    def test_api_history_joins_against_corpus(self, tmp_path, live_server):
+        """#197: the ledger stores only IDs, so the Activity tab could render
+        nothing better than "source 141 line 482". The server joins each
+        entry against the corpus so the operator reads the actual quote."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(json.dumps(make_row(
+            source_id="141", line_number=482, author="Jane Austen", title="Emma",
+            display_quote="It was three o'clock and the bells rang out across the water.",
+        )) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "141", "line_number": 482}
+        ) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entry = _json_body(body)["entries"][0]
+        assert entry["display_quote"].startswith("It was three o'clock")
+        assert entry["author"] == "Jane Austen"
+        assert entry["title"] == "Emma"
+        # The original ledger fields survive the join.
+        assert entry["source_id"] == "141"
+        assert entry["line_number"] == 482
+
+    def test_api_history_keeps_entries_whose_row_is_gone(self, tmp_path, live_server):
+        """A re-bake can drop a row that was genuinely on the panel. The
+        ledger is a record of what was displayed, so the entry stays -- with
+        IDs alone."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(json.dumps(make_row(
+            source_id="1", line_number=1, display_quote="Still here."
+        )) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(x) for x in [
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "1", "line_number": 1},
+            {"ts": "2026-04-20T15:30:00+00:00", "source_id": "999", "line_number": 7},
+        ]) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entries = _json_body(body)["entries"]
+        assert len(entries) == 2
+        gone = [e for e in entries if e["source_id"] == "999"][0]
+        assert "display_quote" not in gone
+        assert gone["line_number"] == 7
+
+    def test_api_history_serves_bare_ids_when_corpus_unreadable(self, tmp_path, live_server):
+        """A missing corpus degrades to the pre-#197 shape rather than 500ing
+        -- the ledger itself is still perfectly readable."""
+        server, _, args = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "1", "line_number": 1}
+        ) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entry = _json_body(body)["entries"][0]
+        assert entry["source_id"] == "1"
+        assert "display_quote" not in entry
+
+    def test_api_history_only_enriches_the_returned_page(self, tmp_path, live_server):
+        """The join is scoped to the page, not the whole ledger."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text("\n".join(json.dumps(make_row(
+            source_id=str(i), line_number=i, display_quote=f"Quote number {i} rang out."
+        )) for i in range(5)) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(
+            {"ts": f"2026-04-{20 + i:02d}T14:30:00+00:00", "source_id": str(i), "line_number": i}
+        ) for i in range(5)) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history?limit=2")
+        assert status == 200
+        data = _json_body(body)
+        assert data["total"] == 5
+        assert len(data["entries"]) == 2
+        # Newest first, and both enriched.
+        assert data["entries"][0]["display_quote"] == "Quote number 4 rang out."
+        assert data["entries"][1]["display_quote"] == "Quote number 3 rang out."
+
     def test_api_history_rejects_bad_limit(self, live_server):
         server, _, _ = live_server
         status, _ = _get(server, "/api/history?limit=abc")

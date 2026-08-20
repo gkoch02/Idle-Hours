@@ -414,8 +414,16 @@ textarea {
 
 /* History ----------------------------------------------------------------- */
 
-.history-list, #history-list { padding-left: 24px; margin: 0; font-family: "DejaVu Sans Mono", monospace; font-size: 0.82rem; }
+.history-list, #history-list { padding-left: 24px; margin: 0; font-size: 0.82rem; }
 #history-list li { margin-bottom: 2px; color: var(--muted); }
+/* Enriched entries (#197): the ledger stores only IDs, but the server joins
+   them against the corpus so the operator reads the actual quote. */
+#history-list li.history-entry { margin-bottom: 12px; }
+.history-ts { font-family: "DejaVu Sans Mono", monospace; font-size: 0.76rem; color: var(--muted); }
+.history-quote { color: var(--ink); margin: 2px 0; line-height: 1.35; }
+.history-quote.history-missing { color: var(--muted); font-style: italic; }
+.history-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.76rem; color: var(--muted); }
+.history-id { font-family: "DejaVu Sans Mono", monospace; }
 
 /* First-run wizard ------------------------------------------------------- */
 

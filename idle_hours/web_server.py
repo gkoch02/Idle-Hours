@@ -1247,7 +1247,67 @@ class CuratorHandler(BaseHTTPRequestHandler):
                             with contextlib.suppress(ValueError):
                                 entries.append(json.loads(line))
         entries.reverse()  # newest first
-        self._json(HTTPStatus.OK, {"entries": entries[:limit], "total": len(entries)})
+        page = entries[:limit]
+        self._json(
+            HTTPStatus.OK,
+            {"entries": self._enrich_history(page), "total": len(entries)},
+        )
+
+    def _enrich_history(self, entries: list[dict]) -> list[dict]:
+        """Attach ``display_quote`` / ``author`` / ``title`` to ledger entries.
+
+        The ledger stores only ``(ts, source_id, line_number)``, so the
+        Activity tab could render nothing better than "source 141 line 482" —
+        meaningless to an operator asking "what has the clock shown this
+        week?". Joining against the corpus here (rather than in the browser)
+        keeps the corpus off the wire and reuses the stat-keyed row cache.
+
+        Only the rows on the requested page are looked up, and the index is
+        built once per request. Entries whose row no longer exists — dropped
+        by a re-bake, or removed from the corpus entirely — are returned with
+        their IDs alone rather than omitted: the ledger is a record of what
+        was displayed, and hiding an entry because its source row moved would
+        misrepresent that history.
+
+        Reads the RAW corpus so an entry stays readable after a re-bake drops
+        its row below the quality floor — the quote *was* on the panel, so the
+        operator should still see what it said.
+        """
+        ctx = self._ctx()
+        wanted = {
+            (str(e.get("source_id")), e.get("line_number"))
+            for e in entries
+            if e.get("source_id") is not None and e.get("line_number") is not None
+        }
+        if not wanted:
+            return entries
+        index: dict[tuple[str, object], dict] = {}
+        try:
+            for row in pick_quote_module.load_rows_cached(ctx.raw_corpus_path):
+                key = (str(row.get("source_id")), row.get("line_number"))
+                # A single source line can carry several time phrases, so
+                # (source_id, line_number) is not unique in the corpus. The
+                # ledger doesn't record which phrase was shown, so first-wins
+                # is the honest choice: the quote text is what the operator
+                # is reading, and duplicate keys share it.
+                if key in wanted and key not in index:
+                    index[key] = row
+        except OSError as exc:
+            _log(f"web: history enrichment unavailable ({exc!r}); serving bare IDs", err=True)
+            return entries
+        enriched = []
+        for entry in entries:
+            row = index.get((str(entry.get("source_id")), entry.get("line_number")))
+            if row is None:
+                enriched.append(entry)
+                continue
+            enriched.append({
+                **entry,
+                "display_quote": row.get("display_quote"),
+                "author": row.get("author"),
+                "title": row.get("title"),
+            })
+        return enriched
 
     def _api_bucket(self, bucket: str, query: dict) -> None:
         ctx = self._ctx()

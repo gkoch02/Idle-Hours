@@ -597,7 +597,34 @@ async function refreshHistory() {
   list.innerHTML = "";
   for (const entry of data.entries || []) {
     const li = document.createElement("li");
-    li.textContent = `${entry.ts} — source ${entry.source_id} line ${entry.line_number}`;
+    li.className = "history-entry";
+    // The server joins each ledger entry against the corpus, but a row can
+    // be gone (dropped by a re-bake, or removed outright). Fall back to the
+    // bare IDs in that case rather than rendering an empty line — the ledger
+    // is a record of what was displayed, so the entry still belongs here.
+    const key = entry.source_id != null && entry.line_number != null
+      ? `${entry.source_id}:${entry.line_number}` : "";
+    const attribution = entry.title
+      ? `${entry.title}${entry.author ? " · " + entry.author : ""}`
+      : (entry.author || "");
+    li.innerHTML = `
+      <div class="history-ts">${escapeHtml(entry.ts || "?")}</div>
+      ${entry.display_quote
+        ? `<div class="history-quote">${escapeHtml(entry.display_quote)}</div>`
+        : `<div class="history-quote history-missing">(quote no longer in corpus)</div>`}
+      <div class="history-meta">
+        ${attribution ? `<span>${escapeHtml(attribution)}</span>` : ""}
+        <span class="history-id">source ${entry.source_id ?? "?"} · line ${entry.line_number ?? "?"}</span>
+        ${key ? `<button class="btn btn-small btn-danger" data-ban-key="${escapeHtml(key)}">Ban</button>` : ""}
+      </div>
+    `;
+    const banBtn = li.querySelector("[data-ban-key]");
+    if (banBtn) {
+      banBtn.addEventListener("click", async () => {
+        await banQuoteKey(banBtn.dataset.banKey);
+        refreshHistory();
+      });
+    }
     list.appendChild(li);
   }
 }

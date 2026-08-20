@@ -530,7 +530,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /api/overrides` | Current `idle_hours/assets/selection_overrides.json` (now includes `ban_quote_keys`) |
 | `GET /api/content-overrides` | **v2** — current `idle_hours/assets/content_overrides.json` (fail-open on corrupt sidecar) |
 | `GET /api/setup` | **v2** — first-run wizard status + the values it shows (themes, quiet hours) |
-| `GET /api/history?limit=N` | Recent anti-repeat ledger entries |
+| `GET /api/history?limit=N` | Recent anti-repeat ledger entries, joined against the corpus so each carries its quote text and attribution |
 | `POST /api/overrides` | Validate + atomically rewrite selection overrides (now accepts `ban_quote_keys`) |
 | `POST /api/content-overrides` | **v2** — validate + atomically rewrite the per-row content sidecar; empty `{}` is a legitimate "wipe everything" |
 | `POST /api/bake` | **v2** — re-run `bake_quote_database.bake_rows` in-process under `render_lock`; re-applies the content-overrides sidecar first so save → bake reflects on the next tick. 409 when busy. |
