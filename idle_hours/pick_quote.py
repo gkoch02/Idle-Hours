@@ -262,6 +262,12 @@ def _load_rows_cached(path: Path) -> list[dict]:
     return rows
 
 
+# Public alias. Out-of-module readers (the curator UI's live coverage view)
+# want the same stat-keyed cache the picker uses rather than re-parsing the
+# corpus per request; they should not have to reach for a private name.
+load_rows_cached = _load_rows_cached
+
+
 def valid_bucket_names() -> set[str]:
     """Return the full set of ``h{1..12}_{state}`` bucket names."""
     return {f"h{hour}_{state}" for hour in range(1, 13) for state in BUCKET_ORDER}

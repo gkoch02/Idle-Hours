@@ -20,6 +20,7 @@ import pytest
 from PIL import Image
 
 from idle_hours import atomic_io, pick_quote, run_clock, web_server
+from tests.conftest import make_row
 
 
 def _make_args(tmp_path: Path, **overrides) -> argparse.Namespace:
@@ -471,19 +472,69 @@ class TestReadEndpoints:
         finally:
             run_clock.stop_web_server((server, thread))
 
-    def test_api_coverage_from_prebuilt_json(self, tmp_path, live_server, monkeypatch):
+    def test_api_coverage_is_live_from_the_raw_corpus(self, tmp_path, live_server):
+        """#194: coverage is computed from the corpus this appliance actually
+        uses, not the committed build-time snapshot -- otherwise the Coverage
+        tab describes the bundled corpus on a relocated deployment, and never
+        moves after a ban or a bake."""
         server, _, _ = live_server
-        # Redirect the coverage path to a controlled fixture.
+        corpus = tmp_path / "relocated-corpus.jsonl"
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2),
+            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=3),
+        ]
+        corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        # A stale snapshot must NOT be preferred over the live corpus.
+        stale = tmp_path / "coverage.json"
+        stale.write_text(json.dumps({"total_rows": 999, "bucket_counts": {"h1_exact": 999}}))
+        server.context.coverage_path = stale
+        pick_quote.clear_corpus_cache()
+        status, body = _get(server, "/api/coverage")
+        assert status == 200
+        data = _json_body(body)
+        assert data["live"] is True
+        assert data["source"] == str(corpus)
+        assert data["total_rows"] == 3
+        assert data["bucket_counts"]["h3_exact"] == 2
+        assert data["bucket_counts"]["h9_half_past"] == 1
+
+    def test_api_coverage_tracks_corpus_rewrite(self, tmp_path, live_server):
+        """A bake / ban that rewrites the corpus is reflected on the next read."""
+        server, _, _ = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        server.context.raw_corpus_path = corpus
+
+        def write(rows):
+            corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+        write([make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=i)
+               for i in range(4)])
+        pick_quote.clear_corpus_cache()
+        assert _json_body(_get(server, "/api/coverage")[1])["bucket_counts"]["h3_exact"] == 4
+        write([make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=0)])
+        pick_quote.clear_corpus_cache()
+        assert _json_body(_get(server, "/api/coverage")[1])["bucket_counts"]["h3_exact"] == 1
+
+    def test_api_coverage_falls_back_to_snapshot_when_corpus_missing(self, tmp_path, live_server):
+        """A corpus we can't read degrades to the committed snapshot rather
+        than reporting a falsely-empty corpus."""
+        server, _, _ = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
         payload = {"total_rows": 12, "bucket_counts": {"h3_exact": 4, "h12_half_past": 0}}
         fake = tmp_path / "coverage.json"
         fake.write_text(json.dumps(payload))
         server.context.coverage_path = fake
         status, body = _get(server, "/api/coverage")
         assert status == 200
-        assert _json_body(body) == payload
+        data = _json_body(body)
+        assert data["live"] is False
+        assert data["bucket_counts"] == payload["bucket_counts"]
 
     def test_api_coverage_missing_file_returns_empty(self, tmp_path, live_server):
         server, _, _ = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
         server.context.coverage_path = tmp_path / "does_not_exist.json"
         status, body = _get(server, "/api/coverage")
         assert status == 200
@@ -1127,6 +1178,8 @@ class TestErrorBranches:
 
     def test_api_coverage_malformed_json_returns_500(self, tmp_path, live_server):
         server, _, _ = live_server
+        # Force the snapshot fallback (live corpus unreadable), then corrupt it.
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
         bad = tmp_path / "bucket-coverage.json"
         bad.write_text("not { valid json", encoding="utf-8")
         server.context.coverage_path = bad

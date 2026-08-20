@@ -514,7 +514,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /metrics` | **v2** — Prometheus text-exposition format over a 24 h window (renders / errors / heartbeats / actions / latency p50+p95 / `last_heartbeat_age_seconds`). Unauthed on every bind. |
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
 | `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `idle_hours_health`) |
-| `GET /api/coverage` | The 144-bucket coverage snapshot from `idle_hours/assets/bucket-coverage.json` |
+| `GET /api/coverage` | The 144-bucket coverage, computed live from the running corpus (falls back to `idle_hours/assets/bucket-coverage.json`) |
 | `GET /api/gaps?threshold=N` | **v2** — empty/sparse buckets with harvester phrase suggestions |
 | `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
 | `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |

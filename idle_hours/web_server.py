@@ -755,12 +755,49 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _api_coverage(self) -> None:
+    def _coverage_summary(self) -> dict:
+        """Compute bucket coverage from the corpus this appliance actually uses.
+
+        Previously both coverage views served ``assets/bucket-coverage.json``,
+        a *build-time* artifact committed alongside the bundled corpus. That
+        made the Coverage tab and the gap-finder wrong in exactly the moments
+        an operator consults them: a ban or a "Bake now" changes which rows the
+        picker can reach and the snapshot never moves, and on a relocated
+        ``--raw-corpus`` deployment (the shipped systemd preset) the snapshot
+        describes the *bundled* corpus rather than the live one.
+
+        ``bucket_coverage.build_summary`` is already a pure function over rows,
+        and ``pick_quote.load_rows_cached`` is stat-keyed, so a repeat request
+        against an unchanged corpus costs one stat plus the summary walk over
+        ~3K rows. The committed snapshot stays as a fallback for the case where
+        the corpus itself is missing or unreadable.
+
+        Reads the RAW corpus for the same reason ``/api/bucket`` does: the
+        operator needs to see rows the baker dropped, or the gap-finder would
+        report a bucket as covered by quotes that can never be displayed.
+        """
+        from idle_hours import bucket_coverage
         ctx = self._ctx()
-        if not ctx.coverage_path.exists():
-            return self._json(HTTPStatus.OK, {"total_rows": 0, "bucket_counts": {}})
         try:
-            payload = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+            rows = pick_quote_module.load_rows_cached(ctx.raw_corpus_path)
+        except OSError as exc:
+            _log(f"web: live coverage unavailable ({exc!r}); falling back to {ctx.coverage_path}", err=True)
+            rows = None
+        if rows is not None:
+            summary = bucket_coverage.build_summary(rows)
+            summary["source"] = str(ctx.raw_corpus_path)
+            summary["live"] = True
+            return summary
+        if not ctx.coverage_path.exists():
+            return {"total_rows": 0, "bucket_counts": {}, "live": False}
+        payload = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+        payload["source"] = str(ctx.coverage_path)
+        payload["live"] = False
+        return payload
+
+    def _api_coverage(self) -> None:
+        try:
+            payload = self._coverage_summary()
         except (OSError, ValueError) as exc:
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
         self._json(HTTPStatus.OK, payload)
@@ -776,19 +813,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
         candidates, matching the bucket-coverage shading).
         """
         from idle_hours import target_sparse_buckets
-        ctx = self._ctx()
         try:
             threshold = int(query.get("threshold", ["3"])[0])
         except (TypeError, ValueError):
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "threshold must be int"})
         threshold = max(0, min(threshold, 50))
-        if not ctx.coverage_path.exists():
-            return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
         try:
-            coverage = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+            coverage = self._coverage_summary()
         except (OSError, ValueError) as exc:
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
         bucket_counts = coverage.get("bucket_counts") or {}
+        if not bucket_counts:
+            return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
         gaps: list[dict] = []
         for bucket, count in bucket_counts.items():
             if count > threshold:
