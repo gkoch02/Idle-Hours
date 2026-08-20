@@ -376,6 +376,13 @@ idle-hours health --hours 24
 
 # JSON summary for cron / systemd health checks (exits 2 when unhealthy)
 idle-hours health --hours 1 --json --fail-if-no-renders
+
+# Exit 2 if the panel hasn't repainted recently (a loop can heartbeat while stuck in backoff).
+idle-hours health --hours 24 --max-render-age-minutes 90
+
+# systemd installs relocate telemetry under /var/lib/idle-hours; read the path from the same
+# config file the unit uses instead of restating it. An explicit --telemetry-path still wins.
+idle-hours health --config /var/lib/idle-hours/config.toml --hours 24
 ```
 
 Every file the next tick or boot reads is written atomically (`tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger.

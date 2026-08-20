@@ -692,7 +692,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 "quiet_enter_count": 0, "quiet_exit_count": 0,
                 "render_p50_ms": None, "render_p95_ms": None,
                 "display_p50_ms": None, "display_p95_ms": None,
-                "last_heartbeat_ts": None,
+                "last_heartbeat_ts": None, "last_render_ts": None,
             }
 
         def metric(name: str, value: float | int | None, help_text: str, mtype: str = "gauge") -> None:
@@ -731,19 +731,36 @@ class CuratorHandler(BaseHTTPRequestHandler):
         metric("idle_hours_display_p95_ms", summary.get("display_p95_ms"),
                "p95 Inky display push duration over the last 24 hours.")
 
-        # Heartbeat age is the metric an operator alerts on for "is the loop
-        # alive" — equivalent to idle-hours health's --max-heartbeat-age-minutes.
-        last_hb = summary.get("last_heartbeat_ts")
-        if last_hb:
-            try:
-                hb_dt = dt.datetime.fromisoformat(last_hb)
-                if hb_dt.tzinfo is None:
-                    hb_dt = hb_dt.replace(tzinfo=dt.timezone.utc)
-                age_seconds = (dt.datetime.now(dt.timezone.utc) - hb_dt).total_seconds()
-                metric("idle_hours_last_heartbeat_age_seconds", int(max(0, age_seconds)),
-                       "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
-            except ValueError:
-                pass
+        # Age gauges are what an operator actually alerts on. They answer two
+        # different questions and both are needed: heartbeat age is "is the
+        # loop alive", render age is "is the panel current". A loop stuck in
+        # dedup-skip or render backoff keeps heartbeating while the panel goes
+        # stale, so heartbeat age alone would report that appliance healthy.
+        # Omitted (per the missing-value convention above) when the window
+        # holds no such entry.
+        def age_metric(ts: str | None, name: str, help_text: str) -> None:
+            # Route through ``metric`` even when we have no timestamp, so the
+            # HELP/TYPE lines are always present and only the sample is
+            # omitted — the same missing-value convention the latency gauges
+            # use. A series that vanishes entirely on a fresh or idle
+            # appliance is harder for a scraper to reason about than one
+            # that is merely absent-valued.
+            age: int | None = None
+            if ts:
+                try:
+                    then = dt.datetime.fromisoformat(ts)
+                except (TypeError, ValueError):
+                    then = None
+                if then is not None:
+                    if then.tzinfo is None:
+                        then = then.replace(tzinfo=dt.timezone.utc)
+                    age = int(max(0, (dt.datetime.now(dt.timezone.utc) - then).total_seconds()))
+            metric(name, age, help_text)
+
+        age_metric(summary.get("last_heartbeat_ts"), "idle_hours_last_heartbeat_age_seconds",
+                   "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
+        age_metric(summary.get("last_render_ts"), "idle_hours_last_render_age_seconds",
+                   "Seconds since the panel last rendered. The 'panel is stale' alert.")
 
         body = ("\n".join(lines) + "\n").encode("utf-8")
         self.send_response(HTTPStatus.OK)

@@ -88,14 +88,16 @@ HEARTBEAT_INTERVAL_SECONDS = 60
 
 
 def _valid_hhmm(value: str) -> str:
-    parts = value.split(":")
+    """argparse ``type=`` adapter around :func:`runtime_config.validate_hhmm`.
+
+    The rule itself lives in ``runtime_config`` so the CLI flag and the
+    config-file path can't drift apart; this wrapper only restates the
+    failure as the exception argparse formats nicely.
+    """
     try:
-        h, m = int(parts[0]), int(parts[1])
-        if not (len(parts) == 2 and 0 <= h <= 23 and 0 <= m <= 59):
-            raise ValueError
-    except (ValueError, IndexError):
-        raise argparse.ArgumentTypeError(f"{value!r} is not a valid HH:MM time (expected 00:00–23:59)")
-    return value
+        return runtime_config.validate_hhmm(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def parse_args() -> argparse.Namespace:

@@ -2169,6 +2169,37 @@ class TestMetricsEndpoint:
         assert "idle_hours_render_p50_ms" in text
         assert "idle_hours_display_p50_ms" in text
 
+    def test_metrics_exposes_last_render_age(self, live_server):
+        """#196: the 'panel is stale' alert metric. A loop stuck in dedup-skip
+        or render backoff keeps heartbeating, so heartbeat age alone would
+        report that appliance healthy."""
+        server, _state, args = live_server
+        self._write_telemetry(args, [
+            {"render_ms": 120, "display_ms": 15000, "bucket": "h3_exact", "mode": "debug"},
+        ])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        assert "# HELP idle_hours_last_render_age_seconds" in text
+        assert "# TYPE idle_hours_last_render_age_seconds gauge" in text
+        sample = [ln for ln in text.splitlines()
+                  if ln.startswith("idle_hours_last_render_age_seconds ")]
+        assert len(sample) == 1
+        # Telemetry was written moments ago, so the age is a small non-negative int.
+        assert 0 <= int(sample[0].split()[1]) < 120
+
+    def test_metrics_omits_render_age_when_no_renders(self, live_server):
+        """Missing-value convention: HELP/TYPE stay, the sample line goes."""
+        server, _state, args = live_server
+        self._write_telemetry(args, [{"type": "heartbeat"}])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        assert "# HELP idle_hours_last_render_age_seconds" in text
+        assert not any(
+            ln.startswith("idle_hours_last_render_age_seconds ") for ln in text.splitlines()
+        )
+
     def test_metrics_no_telemetry_returns_zeros(self, tmp_path):
         """A telemetry-disabled appliance still exposes the metric names so
         Prometheus's first-scrape doesn't see missing series. Otherwise rate()
