@@ -92,6 +92,26 @@ CONFIG_SCHEMA: dict[str, object] = {
 TRANSIENT_KEYS: frozenset[str] = frozenset({"config", "once", "skip_preflight"})
 
 
+def validate_hhmm(value: str) -> str:
+    """Return ``value`` unchanged if it is a valid ``HH:MM`` 24-hour time.
+
+    Raises :class:`ValueError` otherwise. ``run_clock._valid_hhmm`` wraps this
+    to re-raise as ``argparse.ArgumentTypeError`` for ``type=`` use; keeping
+    the rule itself here means :func:`load_config` can validate ``quiet_start``
+    / ``quiet_end`` without an injected callback, so callers that only want one
+    key out of a config file (``idle-hours health --config``) don't have to
+    either import the orchestrator or restate the rule.
+    """
+    parts = value.split(":")
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+        if not (len(parts) == 2 and 0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+    except (ValueError, IndexError):
+        raise ValueError(f"{value!r} is not a valid HH:MM time (expected 00:00–23:59)") from None
+    return value
+
+
 def _warn(msg: str) -> None:
     _log(f"config: {msg}", err=True)
 
@@ -118,10 +138,14 @@ def load_config(
     The loader never raises on a file it *could* read; the stream of
     warnings plus the surviving good keys is the contract.
 
-    ``hhmm_validator`` is injected by ``run_clock`` so this module does
-    not import back into the orchestrator at load time (keeps the
-    runtime-module acyclic import graph intact — same pattern
-    ``runtime_actions`` uses).
+    ``hhmm_validator`` is injected by ``run_clock`` so its argparse
+    ``type=`` callable and the config path report identical errors. When
+    omitted, :func:`validate_hhmm` is used instead, so a caller that only
+    wants one key out of a config file (``idle-hours health --config``) need
+    not import the orchestrator. Note the injection direction is load-bearing:
+    this module must never import ``run_clock``, or the runtime modules'
+    acyclic import graph breaks — which is why the rule itself lives here and
+    ``run_clock._valid_hhmm`` wraps it, rather than the reverse.
 
     ``choices_map`` mirrors argparse's own ``choices=`` gate for the
     subset of keys that declare one (``mode``, ``theme``, …). Without
@@ -189,14 +213,8 @@ def load_config(
                 )
                 continue
         if kind == "hhmm":
-            if hhmm_validator is None:  # pragma: no cover - defensive; run_clock always injects one
-                # Defensive; should not happen because ``run_clock``
-                # always injects one. If it does, keep the string as-is
-                # and let downstream handling catch a bad value.
-                resolved[key] = value
-                continue
             try:
-                resolved[key] = hhmm_validator(value)
+                resolved[key] = (hhmm_validator or validate_hhmm)(value)
             except Exception as exc:
                 _warn(f"{path}: {key!r}={value!r} rejected ({exc}); dropped")
                 continue

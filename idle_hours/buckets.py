@@ -78,3 +78,35 @@ def neighbor_buckets(bucket: str) -> list[str]:
         if idx + distance < len(BUCKET_ORDER):
             neighbors.append(f"{hour_part}_{BUCKET_ORDER[idx + distance]}")
     return neighbors
+
+
+def rederive_bucket(row: dict) -> None:
+    """Re-derive ``row["fuzzy_bucket"]`` in place from its ``normalized_time``.
+
+    Rows are a no-op unless ``normalized_time`` is a string carrying a colon;
+    an unparseable value leaves the stored ``fuzzy_bucket`` untouched rather
+    than raising, because a single malformed corpus row must not abort a load
+    of the whole file.
+
+    The corpus stores ``fuzzy_bucket`` alongside ``normalized_time``, but the
+    stored value can be stale — rows harvested before this module existed
+    carry legacy 8-state names, and a content override that rewrites
+    ``normalized_time`` invalidates whatever the pipeline last wrote. Every
+    consumer therefore re-derives on load. Keeping that rule here (rather
+    than as a copy per consumer) is the same drift defence the rest of this
+    module exists for: the pick path, the coverage report, and the in-process
+    bake would otherwise be free to disagree about which bucket a row is in.
+    """
+    normalized = row.get("normalized_time")
+    if isinstance(normalized, str) and ":" in normalized:
+        try:
+            row["fuzzy_bucket"] = bucket_for_time(normalized)
+        except (ValueError, KeyError):
+            pass
+
+
+def rederive_buckets(rows):
+    """Apply :func:`rederive_bucket` to every row, returning the same list."""
+    for row in rows:
+        rederive_bucket(row)
+    return rows

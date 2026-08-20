@@ -20,6 +20,7 @@ import pytest
 from PIL import Image
 
 from idle_hours import atomic_io, pick_quote, run_clock, web_server
+from tests.conftest import make_row
 
 
 def _make_args(tmp_path: Path, **overrides) -> argparse.Namespace:
@@ -471,19 +472,68 @@ class TestReadEndpoints:
         finally:
             run_clock.stop_web_server((server, thread))
 
-    def test_api_coverage_from_prebuilt_json(self, tmp_path, live_server, monkeypatch):
+    def test_api_coverage_is_live_from_the_raw_corpus(self, tmp_path, live_server):
+        """#194: coverage is computed from the corpus this appliance actually
+        uses, not the committed build-time snapshot -- otherwise the Coverage
+        tab describes the bundled corpus on a relocated deployment, and never
+        moves after a ban or a bake."""
         server, _, _ = live_server
-        # Redirect the coverage path to a controlled fixture.
+        corpus = tmp_path / "relocated-corpus.jsonl"
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2),
+            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=3),
+        ]
+        corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        # A stale snapshot must NOT be preferred over the live corpus.
+        stale = tmp_path / "coverage.json"
+        stale.write_text(json.dumps({"total_rows": 999, "bucket_counts": {"h1_exact": 999}}))
+        server.context.coverage_path = stale
+        pick_quote.clear_corpus_cache()
+        status, body = _get(server, "/api/coverage")
+        assert status == 200
+        data = _json_body(body)
+        assert data["live"] is True
+        assert data["total_rows"] == 3
+        assert data["bucket_counts"]["h3_exact"] == 2
+        assert data["bucket_counts"]["h9_half_past"] == 1
+
+    def test_api_coverage_tracks_corpus_rewrite(self, tmp_path, live_server):
+        """A bake / ban that rewrites the corpus is reflected on the next read."""
+        server, _, _ = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        server.context.raw_corpus_path = corpus
+
+        def write(rows):
+            corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+        write([make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=i)
+               for i in range(4)])
+        pick_quote.clear_corpus_cache()
+        assert _json_body(_get(server, "/api/coverage")[1])["bucket_counts"]["h3_exact"] == 4
+        write([make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=0)])
+        pick_quote.clear_corpus_cache()
+        assert _json_body(_get(server, "/api/coverage")[1])["bucket_counts"]["h3_exact"] == 1
+
+    def test_api_coverage_falls_back_to_snapshot_when_corpus_missing(self, tmp_path, live_server):
+        """A corpus we can't read degrades to the committed snapshot rather
+        than reporting a falsely-empty corpus."""
+        server, _, _ = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
         payload = {"total_rows": 12, "bucket_counts": {"h3_exact": 4, "h12_half_past": 0}}
         fake = tmp_path / "coverage.json"
         fake.write_text(json.dumps(payload))
         server.context.coverage_path = fake
         status, body = _get(server, "/api/coverage")
         assert status == 200
-        assert _json_body(body) == payload
+        data = _json_body(body)
+        assert data["live"] is False
+        assert data["bucket_counts"] == payload["bucket_counts"]
 
     def test_api_coverage_missing_file_returns_empty(self, tmp_path, live_server):
         server, _, _ = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
         server.context.coverage_path = tmp_path / "does_not_exist.json"
         status, body = _get(server, "/api/coverage")
         assert status == 200
@@ -635,6 +685,138 @@ class TestReadEndpoints:
         data = _json_body(body)
         assert data["entries"] == []
         assert data["total"] == 0
+
+    def test_api_history_joins_against_corpus(self, tmp_path, live_server):
+        """#197: the ledger stores only IDs, so the Activity tab could render
+        nothing better than "source 141 line 482". The server joins each
+        entry against the corpus so the operator reads the actual quote."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(json.dumps(make_row(
+            source_id="141", line_number=482, author="Jane Austen", title="Emma",
+            display_quote="It was three o'clock and the bells rang out across the water.",
+        )) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "141", "line_number": 482}
+        ) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entry = _json_body(body)["entries"][0]
+        assert entry["display_quote"].startswith("It was three o'clock")
+        assert entry["author"] == "Jane Austen"
+        assert entry["title"] == "Emma"
+        # The original ledger fields survive the join.
+        assert entry["source_id"] == "141"
+        assert entry["line_number"] == 482
+
+    def test_api_history_keeps_entries_whose_row_is_gone(self, tmp_path, live_server):
+        """A re-bake can drop a row that was genuinely on the panel. The
+        ledger is a record of what was displayed, so the entry stays -- with
+        IDs alone."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(json.dumps(make_row(
+            source_id="1", line_number=1, display_quote="Still here."
+        )) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(x) for x in [
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "1", "line_number": 1},
+            {"ts": "2026-04-20T15:30:00+00:00", "source_id": "999", "line_number": 7},
+        ]) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entries = _json_body(body)["entries"]
+        assert len(entries) == 2
+        gone = [e for e in entries if e["source_id"] == "999"][0]
+        assert "display_quote" not in gone
+        assert gone["line_number"] == 7
+
+    def test_api_history_serves_bare_ids_when_corpus_unreadable(self, tmp_path, live_server):
+        """A missing corpus degrades to the pre-#197 shape rather than 500ing
+        -- the ledger itself is still perfectly readable."""
+        server, _, args = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "1", "line_number": 1}
+        ) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entry = _json_body(body)["entries"][0]
+        assert entry["source_id"] == "1"
+        assert "display_quote" not in entry
+
+    def test_api_history_only_enriches_the_returned_page(self, tmp_path, live_server):
+        """The join is scoped to the page, not the whole ledger."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text("\n".join(json.dumps(make_row(
+            source_id=str(i), line_number=i, display_quote=f"Quote number {i} rang out."
+        )) for i in range(5)) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(
+            {"ts": f"2026-04-{20 + i:02d}T14:30:00+00:00", "source_id": str(i), "line_number": i}
+        ) for i in range(5)) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history?limit=2")
+        assert status == 200
+        data = _json_body(body)
+        assert data["total"] == 5
+        assert len(data["entries"]) == 2
+        # Newest first, and both enriched.
+        assert data["entries"][0]["display_quote"] == "Quote number 4 rang out."
+        assert data["entries"][1]["display_quote"] == "Quote number 3 rang out."
+
+    def test_api_history_tolerates_malformed_line_number(self, tmp_path, live_server):
+        """A parseable ledger line with an odd shape must degrade to bare IDs,
+        not 500. Using the raw value as a dict key would raise
+        TypeError: unhashable -- and _api_history already tolerates a torn
+        ledger by skipping unparseable lines, so a weird-but-parseable one
+        should degrade the same way."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(json.dumps(make_row(
+            source_id="1", line_number=1, display_quote="Still here."
+        )) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(x) for x in [
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "1", "line_number": 1},
+            {"ts": "2026-04-20T15:30:00+00:00", "source_id": "1", "line_number": ["nope"]},
+        ]) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entries = _json_body(body)["entries"]
+        assert len(entries) == 2
+        # The good entry still enriches; the malformed one keeps its IDs.
+        good = [e for e in entries if e["line_number"] == 1][0]
+        assert good["display_quote"] == "Still here."
+        bad = [e for e in entries if e["line_number"] == ["nope"]][0]
+        assert "display_quote" not in bad
+
+    def test_api_coverage_does_not_disclose_filesystem_paths(self, live_server):
+        """GETs are unauthenticated on every bind. Telemetry counts and bucket
+        counts are not sensitive; an absolute install path (which leaks the OS
+        username and state-dir layout) is a different category, and nothing in
+        the UI consumes it -- ``live`` carries the useful signal."""
+        server, _, _ = live_server
+        status, body = _get(server, "/api/coverage")
+        assert status == 200
+        data = _json_body(body)
+        assert "source" not in data
+        assert "live" in data
 
     def test_api_history_rejects_bad_limit(self, live_server):
         server, _, _ = live_server
@@ -1127,6 +1309,8 @@ class TestErrorBranches:
 
     def test_api_coverage_malformed_json_returns_500(self, tmp_path, live_server):
         server, _, _ = live_server
+        # Force the snapshot fallback (live corpus unreadable), then corrupt it.
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
         bad = tmp_path / "bucket-coverage.json"
         bad.write_text("not { valid json", encoding="utf-8")
         server.context.coverage_path = bad
@@ -2115,6 +2299,37 @@ class TestMetricsEndpoint:
         # p50 / p95 latencies are gauges with integer milliseconds.
         assert "idle_hours_render_p50_ms" in text
         assert "idle_hours_display_p50_ms" in text
+
+    def test_metrics_exposes_last_render_age(self, live_server):
+        """#196: the 'panel is stale' alert metric. A loop stuck in dedup-skip
+        or render backoff keeps heartbeating, so heartbeat age alone would
+        report that appliance healthy."""
+        server, _state, args = live_server
+        self._write_telemetry(args, [
+            {"render_ms": 120, "display_ms": 15000, "bucket": "h3_exact", "mode": "debug"},
+        ])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        assert "# HELP idle_hours_last_render_age_seconds" in text
+        assert "# TYPE idle_hours_last_render_age_seconds gauge" in text
+        sample = [ln for ln in text.splitlines()
+                  if ln.startswith("idle_hours_last_render_age_seconds ")]
+        assert len(sample) == 1
+        # Telemetry was written moments ago, so the age is a small non-negative int.
+        assert 0 <= int(sample[0].split()[1]) < 120
+
+    def test_metrics_omits_render_age_when_no_renders(self, live_server):
+        """Missing-value convention: HELP/TYPE stay, the sample line goes."""
+        server, _state, args = live_server
+        self._write_telemetry(args, [{"type": "heartbeat"}])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        assert "# HELP idle_hours_last_render_age_seconds" in text
+        assert not any(
+            ln.startswith("idle_hours_last_render_age_seconds ") for ln in text.splitlines()
+        )
 
     def test_metrics_no_telemetry_returns_zeros(self, tmp_path):
         """A telemetry-disabled appliance still exposes the metric names so

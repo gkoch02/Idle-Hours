@@ -3394,6 +3394,55 @@ class TestActionThemeCycle:
                     raise AssertionError(f"--theme {name} was rejected by argparse")
                 assert ns.theme == name
 
+    def test_theme_help_carries_no_per_theme_prose(self):
+        """#200: the --theme help used to carry ~90 lines of hand-written
+        prose describing a subset of the themes. Nothing pinned it, so it
+        drifted: it described lcars with a "STARDATE callout" the design no
+        longer has, and firmament with "~80 stars in three magnitude tiers"
+        when the design has ~150 in four. argparse already prints the full
+        choices list (guarded by the sync test above); the designs are
+        documented next to rendered previews instead.
+
+        This pins the *shape*, not the wording: a short help string that
+        doesn't try to describe individual themes. If a future change wants
+        to reintroduce per-theme text here, it has to justify carrying 45
+        descriptions that nothing keeps current.
+        """
+        from idle_hours import render_quote as rq
+        parser_help = self._theme_action().help
+        assert len(parser_help) < 800, (
+            "--theme help is growing back into a per-theme catalogue; "
+            "document designs in the README theme table instead"
+        )
+        # No theme should be singled out for a design description. 'default'
+        # and 'dark' are named by the --auto-day-theme / --auto-night-theme
+        # sentence, so exempt those two.
+        described = [
+            name for name in rq.THEME_ORDER
+            if name not in {"default", "dark"} and f"'{name}'" in parser_help
+        ]
+        assert described == [], f"per-theme prose crept back for: {described}"
+
+    @staticmethod
+    def _theme_action():
+        """Return run_clock's ``--theme`` argparse action.
+
+        ``parse_args`` builds its parser locally, so intercept the parser on
+        its way into ``parse_args`` to reach the action objects.
+        """
+        import argparse
+        holder = {}
+        real_parse = argparse.ArgumentParser.parse_args
+
+        def capture(self, *args, **kwargs):
+            holder.setdefault("parser", self)
+            return real_parse(self, *args, **kwargs)
+
+        with patch("sys.argv", ["run_clock.py", "--once"]), \
+                patch.object(argparse.ArgumentParser, "parse_args", capture):
+            run_clock.parse_args()
+        return next(a for a in holder["parser"]._actions if a.dest == "theme")
+
     def test_cli_auto_day_theme_choices_match_theme_order(self):
         """``--auto-day-theme`` / ``--auto-night-theme`` accept every
         registered theme name and reject ``auto``. ``auto`` is rejected

@@ -716,3 +716,163 @@ class TestActionsOnlyView:
         assert data["action_count"] == 1
         assert data["press_dropped_count"] == 1
         assert data["actions_by_type"] == {"skip": 1}
+
+
+class TestConfigFileTelemetryPath:
+    """#195: the documented appliance preset relocates telemetry under
+    /var/lib/idle-hours, but the health CLI defaulted to ~/.idle-hours — so
+    the exact command the README and CLAUDE.md document exited 1 'No
+    telemetry log' on the shipped deployment."""
+
+    def _config(self, tmp_path, telemetry_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text(
+            f'telemetry_path = "{telemetry_path}"\n'
+            'mode = "production"\n'
+            'quiet_start = "22:00"\n',
+            encoding="utf-8",
+        )
+        return cfg
+
+    def test_config_supplies_telemetry_path(self, tmp_path, capsys):
+        path = _ledger(tmp_path, [{"ts": _ts(5), "render_ms": 100, "display_ms": 50}])
+        cfg = self._config(tmp_path, path)
+        argv = ["idle_hours_health.py", "--config", str(cfg), "--hours", "1"]
+        with patch("sys.argv", argv):
+            rc = idle_hours_health.main()
+        assert rc == 0
+        assert "1 renders" in capsys.readouterr().out
+
+    def test_explicit_flag_beats_config(self, tmp_path, capsys):
+        real = _ledger(tmp_path, [{"ts": _ts(5), "render_ms": 100, "display_ms": 50}])
+        cfg = self._config(tmp_path, tmp_path / "decoy.jsonl")
+        argv = [
+            "idle_hours_health.py", "--config", str(cfg),
+            "--telemetry-path", str(real), "--hours", "1",
+        ]
+        with patch("sys.argv", argv):
+            rc = idle_hours_health.main()
+        assert rc == 0
+        assert "1 renders" in capsys.readouterr().out
+
+    def test_config_without_telemetry_key_keeps_default(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text('mode = "production"\n', encoding="utf-8")
+        argv = ["idle_hours_health.py", "--config", str(cfg)]
+        with patch("sys.argv", argv):
+            args = idle_hours_health.parse_args()
+        assert args.telemetry_path == idle_hours_health.DEFAULT_TELEMETRY_PATH
+
+    def test_missing_config_file_exits_config_error(self, tmp_path):
+        """Same hard-fail run_clock gives a typoed --config path."""
+        from idle_hours import runtime_config
+        argv = ["idle_hours_health.py", "--config", str(tmp_path / "nope.toml")]
+        with patch("sys.argv", argv):
+            try:
+                idle_hours_health.parse_args()
+            except SystemExit as exc:
+                assert exc.code == runtime_config.EXIT_CONFIG_ERROR
+            else:  # pragma: no cover
+                raise AssertionError("expected SystemExit")
+
+
+class TestLastRenderAge:
+    """#196: 'when did the panel last render' is the most operator-relevant
+    timestamp and the summary didn't carry it. A loop wedged in dedup-skip or
+    render backoff keeps heartbeating, so the heartbeat gate reads healthy
+    while the panel goes stale."""
+
+    def test_summarise_reports_last_render_ts(self):
+        entries = [
+            {"ts": _ts(30), "render_ms": 100},
+            {"ts": _ts(10), "render_ms": 120},
+            {"ts": _ts(2), "type": "heartbeat"},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["last_render_ts"] == entries[1]["ts"]
+
+    def test_last_render_ts_none_when_no_renders(self):
+        summary = idle_hours_health.summarise([{"ts": _ts(2), "type": "heartbeat"}])
+        assert summary["last_render_ts"] is None
+
+    def test_backoff_entry_is_not_a_render(self):
+        """Guards the same misclassification render_count already avoids."""
+        summary = idle_hours_health.summarise(
+            [{"ts": _ts(3), "mode": "backoff", "failures": 3, "skip_seconds": 8}]
+        )
+        assert summary["last_render_ts"] is None
+
+    def test_human_summary_shows_last_render(self, tmp_path, capsys):
+        path = _ledger(tmp_path, [{"ts": _ts(5), "render_ms": 100, "display_ms": 50}])
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1"]
+        with patch("sys.argv", argv):
+            idle_hours_health.main()
+        assert "last render:" in capsys.readouterr().out
+
+    def test_json_carries_last_render_ts(self, tmp_path, capsys):
+        path = _ledger(tmp_path, [{"ts": _ts(5), "render_ms": 100, "display_ms": 50}])
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1", "--json"]
+        with patch("sys.argv", argv):
+            idle_hours_health.main()
+        assert json.loads(capsys.readouterr().out)["last_render_ts"] is not None
+
+    def test_is_render_stale_missing_counts_as_stale(self):
+        assert idle_hours_health.is_render_stale({}, 30) is True
+        assert idle_hours_health.is_render_stale({"last_render_ts": "not-a-date"}, 30) is True
+
+    def test_is_render_stale_respects_cap(self):
+        assert idle_hours_health.is_render_stale({"last_render_ts": _ts(5)}, 30) is False
+        assert idle_hours_health.is_render_stale({"last_render_ts": _ts(60)}, 30) is True
+
+    def test_naive_timestamp_treated_as_utc(self):
+        naive = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=5)).replace(
+            tzinfo=None
+        ).isoformat(timespec="seconds")
+        assert idle_hours_health.is_render_stale({"last_render_ts": naive}, 30) is False
+
+    def test_gate_exits_two_when_render_stale(self, tmp_path):
+        """Heartbeating but not rendering: the condition heartbeat age misses."""
+        path = _ledger(tmp_path, [
+            {"ts": _ts(200), "render_ms": 100, "display_ms": 50},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ])
+        argv = [
+            "idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24",
+            "--max-render-age-minutes", "30", "--max-heartbeat-age-minutes", "10",
+        ]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 2
+
+    def test_gate_exits_zero_when_render_fresh(self, tmp_path):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(5), "render_ms": 100, "display_ms": 50},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ])
+        argv = [
+            "idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24",
+            "--max-render-age-minutes", "30",
+        ]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 0
+
+    def test_gate_disabled_by_default(self, tmp_path):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(600), "render_ms": 100, "display_ms": 50},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ])
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24"]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 0
+
+    def test_stale_render_warning_in_human_output(self, tmp_path, capsys):
+        path = _ledger(tmp_path, [
+            {"ts": _ts(200), "render_ms": 100, "display_ms": 50},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ])
+        argv = [
+            "idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24",
+            "--max-render-age-minutes", "30",
+        ]
+        with patch("sys.argv", argv):
+            idle_hours_health.main()
+        assert "last render is stale" in capsys.readouterr().out

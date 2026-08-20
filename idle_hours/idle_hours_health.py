@@ -21,6 +21,16 @@ DEFAULT_HOURS = 24
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Summarise Idle Hours telemetry.")
     parser.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to the same TOML config file run_clock uses. Reads "
+            "'telemetry_path' from it so the documented appliance deployment "
+            "(which relocates telemetry under /var/lib/idle-hours) summarises "
+            "without restating the path. An explicit --telemetry-path wins."
+        ),
+    )
+    parser.add_argument(
         "--telemetry-path",
         default=DEFAULT_TELEMETRY_PATH,
         help="JSONL log written by run_clock.py (default: ~/.idle-hours/telemetry.jsonl)",
@@ -57,6 +67,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--max-render-age-minutes",
+        type=int,
+        default=None,
+        help=(
+            "Exit 2 if the panel hasn't rendered within this many minutes. Symmetric with "
+            "--max-heartbeat-age-minutes, but answers a different question: a loop stuck in "
+            "perpetual dedup-skip or render backoff keeps heartbeating while the panel goes "
+            "stale. Pick a cap comfortably above your longest expected quiet window. "
+            "Default: disabled."
+        ),
+    )
+    parser.add_argument(
         "--actions-only",
         action="store_true",
         help=(
@@ -66,6 +88,18 @@ def parse_args() -> argparse.Namespace:
             "Combine with --json for machine-readable output."
         ),
     )
+    # Same three-layer precedence run_clock uses (CLI flag > config value >
+    # argparse default), and the same mechanism: argparse consults a default
+    # only when the flag is absent from argv, so feeding config values through
+    # set_defaults gets the ordering right with no bespoke merge layer.
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default=None)
+    pre_args, _ = pre.parse_known_args()
+    if pre_args.config:
+        from idle_hours import runtime_config
+        config = runtime_config.load_config(Path(pre_args.config).expanduser())
+        if config.get("telemetry_path"):
+            parser.set_defaults(telemetry_path=config["telemetry_path"])
     return parser.parse_args()
 
 
@@ -219,8 +253,16 @@ def summarise(entries: list[dict]) -> dict:
         name = str(entry.get("action") or "unknown")
         actions_by_type[name] = actions_by_type.get(name, 0) + 1
     last_action_ts = actions[-1].get("ts") if actions else None
+    # "When did the panel last actually render?" is the single most
+    # operator-relevant timestamp, and it was the one the summary didn't
+    # carry: a loop wedged in perpetual dedup-skip or render backoff keeps
+    # heartbeating, so heartbeat age reads healthy while the panel goes
+    # stale, and a 24h render count is only a coarse proxy. Entries are
+    # append-ordered, so the last render's ts is the most recent.
+    last_render_ts = renders[-1].get("ts") if renders else None
     return {
         "render_count": len(renders),
+        "last_render_ts": last_render_ts,
         "error_count": len(errors),
         "heartbeat_count": len(heartbeats),
         "last_heartbeat_ts": last_heartbeat_ts,
@@ -244,6 +286,8 @@ def format_summary(summary: dict, hours: int) -> str:
     parts = [
         f"Last {hours}h: {summary['render_count']} renders, {summary['error_count']} errors",
     ]
+    if summary.get("last_render_ts"):
+        parts.append(f"last render: {summary['last_render_ts']}")
     if summary.get("heartbeat_count"):
         last_hb = summary.get("last_heartbeat_ts") or "?"
         parts.append(f"{summary['heartbeat_count']} heartbeats (last {last_hb})")
@@ -279,6 +323,8 @@ def format_summary(summary: dict, hours: int) -> str:
         parts.append(f"last error: {summary['last_error']}")
     if summary.get("stale_heartbeat"):
         parts.append("WARNING: heartbeat is stale — loop may be wedged")
+    if summary.get("stale_render"):
+        parts.append("WARNING: last render is stale — panel may be showing an old frame")
     return "\n".join(parts)
 
 
@@ -307,20 +353,22 @@ def format_actions_summary(summary: dict, hours: int) -> str:
     ])
 
 
-def is_heartbeat_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
-    """Return True when the most recent heartbeat is older than ``max_age_minutes``.
+def _is_stale(
+    summary: dict, field: str, max_age_minutes: int, now: dt.datetime | None = None
+) -> bool:
+    """Return True when ``summary[field]`` is missing, unparseable, or too old.
 
-    Also returns True when no heartbeat was seen at all — an appliance that
-    has been running long enough for the summary window to populate but has
-    emitted zero heartbeats is either pre-heartbeat code (operator should
-    upgrade) or wedged before the first emit (same flag, same exit code).
+    A missing timestamp counts as stale: an appliance that has been running
+    long enough for the summary window to populate but has recorded no
+    heartbeat (or no render) is either running pre-telemetry code or wedged
+    before the first emit — same flag, same exit code either way.
     """
-    last = summary.get("last_heartbeat_ts")
+    last = summary.get(field)
     if not last:
         return True
     try:
         last_dt = dt.datetime.fromisoformat(last)
-    except ValueError:
+    except (TypeError, ValueError):
         return True
     if last_dt.tzinfo is None:
         last_dt = last_dt.replace(tzinfo=dt.timezone.utc)
@@ -329,25 +377,47 @@ def is_heartbeat_stale(summary: dict, max_age_minutes: int, now: dt.datetime | N
     return (now - last_dt) > dt.timedelta(minutes=max_age_minutes)
 
 
+def is_heartbeat_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
+    """Return True when the most recent heartbeat is older than ``max_age_minutes``."""
+    return _is_stale(summary, "last_heartbeat_ts", max_age_minutes, now)
+
+
+def is_render_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
+    """Return True when the most recent successful render is older than ``max_age_minutes``.
+
+    Distinct from heartbeat staleness: the loop can be perfectly alive —
+    heartbeating every 60s — while stuck in render backoff or a dedup-skip
+    branch that never repaints. That combination is invisible to the
+    heartbeat gate and is exactly the "panel is showing an old frame"
+    condition an operator wants paged on.
+    """
+    return _is_stale(summary, "last_render_ts", max_age_minutes, now)
+
+
 def evaluate_health(
     summary: dict,
     *,
     fail_if_no_renders: bool,
     max_heartbeat_age_minutes: int | None = None,
+    max_render_age_minutes: int | None = None,
 ) -> int:
     """Map a summary dict to a process exit code.
 
     - ``0``: healthy (there are renders, or nothing unhealthy happened)
     - ``2``: unhealthy — errors but no successful renders;
-      ``--fail-if-no-renders`` was set and the window was silent; or
+      ``--fail-if-no-renders`` was set and the window was silent;
       ``--max-heartbeat-age-minutes`` was set and the most recent heartbeat
-      is older than the cap (including the "never emitted" case).
+      is older than the cap (including the "never emitted" case); or
+      ``--max-render-age-minutes`` was set and the panel hasn't rendered
+      within the cap.
     """
     if summary["error_count"] > 0 and summary["render_count"] == 0:
         return 2
     if fail_if_no_renders and summary["render_count"] == 0:
         return 2
     if max_heartbeat_age_minutes is not None and is_heartbeat_stale(summary, max_heartbeat_age_minutes):
+        return 2
+    if max_render_age_minutes is not None and is_render_stale(summary, max_render_age_minutes):
         return 2
     return 0
 
@@ -368,6 +438,8 @@ def main() -> int:
     summary = summarise(entries)
     if args.max_heartbeat_age_minutes is not None:
         summary["stale_heartbeat"] = is_heartbeat_stale(summary, args.max_heartbeat_age_minutes)
+    if args.max_render_age_minutes is not None:
+        summary["stale_render"] = is_render_stale(summary, args.max_render_age_minutes)
     if args.json:
         # --actions-only is a human-readability concern; the JSON already
         # contains every field either view consumes, so keep the payload
@@ -381,6 +453,7 @@ def main() -> int:
         summary,
         fail_if_no_renders=args.fail_if_no_renders,
         max_heartbeat_age_minutes=args.max_heartbeat_age_minutes,
+        max_render_age_minutes=args.max_render_age_minutes,
     )
 
 

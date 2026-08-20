@@ -40,7 +40,7 @@ from pathlib import Path
 
 from idle_hours import apply_content_overrides, atomic_io
 from idle_hours import pick_quote as pick_quote_module
-from idle_hours.buckets import bucket_for_time
+from idle_hours.buckets import bucket_for_time, rederive_buckets
 from idle_hours.runtime_log import _log
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -120,6 +120,24 @@ def _parse_bind(bind_str: str) -> tuple[str, int]:
 
 def _is_non_localhost_host(host: str) -> bool:
     return host not in LOCALHOST_HOSTS
+
+
+def _history_join_key(obj: dict) -> tuple[str, int] | None:
+    """Return the ``(source_id, line_number)`` join key for a row or ledger entry.
+
+    ``None`` when the object can't take part in the join. ``line_number`` must
+    be a real ``int`` — both the ledger writer and the corpus emit ints, so
+    anything else could never match anyway, and taking the value on trust
+    would let a corrupt entry (a list, say) raise ``TypeError: unhashable``
+    out of a dict lookup. ``_api_history`` already tolerates a torn ledger by
+    skipping unparseable lines; a parseable line with an odd shape should
+    degrade the same way — to bare IDs, not a 500.
+    """
+    source_id = obj.get("source_id")
+    line_number = obj.get("line_number")
+    if source_id is None or not isinstance(line_number, int) or isinstance(line_number, bool):
+        return None
+    return (str(source_id), line_number)
 
 
 class WebContext:
@@ -692,7 +710,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 "quiet_enter_count": 0, "quiet_exit_count": 0,
                 "render_p50_ms": None, "render_p95_ms": None,
                 "display_p50_ms": None, "display_p95_ms": None,
-                "last_heartbeat_ts": None,
+                "last_heartbeat_ts": None, "last_render_ts": None,
             }
 
         def metric(name: str, value: float | int | None, help_text: str, mtype: str = "gauge") -> None:
@@ -731,19 +749,36 @@ class CuratorHandler(BaseHTTPRequestHandler):
         metric("idle_hours_display_p95_ms", summary.get("display_p95_ms"),
                "p95 Inky display push duration over the last 24 hours.")
 
-        # Heartbeat age is the metric an operator alerts on for "is the loop
-        # alive" — equivalent to idle-hours health's --max-heartbeat-age-minutes.
-        last_hb = summary.get("last_heartbeat_ts")
-        if last_hb:
-            try:
-                hb_dt = dt.datetime.fromisoformat(last_hb)
-                if hb_dt.tzinfo is None:
-                    hb_dt = hb_dt.replace(tzinfo=dt.timezone.utc)
-                age_seconds = (dt.datetime.now(dt.timezone.utc) - hb_dt).total_seconds()
-                metric("idle_hours_last_heartbeat_age_seconds", int(max(0, age_seconds)),
-                       "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
-            except ValueError:
-                pass
+        # Age gauges are what an operator actually alerts on. They answer two
+        # different questions and both are needed: heartbeat age is "is the
+        # loop alive", render age is "is the panel current". A loop stuck in
+        # dedup-skip or render backoff keeps heartbeating while the panel goes
+        # stale, so heartbeat age alone would report that appliance healthy.
+        # Omitted (per the missing-value convention above) when the window
+        # holds no such entry.
+        def age_metric(ts: str | None, name: str, help_text: str) -> None:
+            # Route through ``metric`` even when we have no timestamp, so the
+            # HELP/TYPE lines are always present and only the sample is
+            # omitted — the same missing-value convention the latency gauges
+            # use. A series that vanishes entirely on a fresh or idle
+            # appliance is harder for a scraper to reason about than one
+            # that is merely absent-valued.
+            age: int | None = None
+            if ts:
+                try:
+                    then = dt.datetime.fromisoformat(ts)
+                except (TypeError, ValueError):
+                    then = None
+                if then is not None:
+                    if then.tzinfo is None:
+                        then = then.replace(tzinfo=dt.timezone.utc)
+                    age = int(max(0, (dt.datetime.now(dt.timezone.utc) - then).total_seconds()))
+            metric(name, age, help_text)
+
+        age_metric(summary.get("last_heartbeat_ts"), "idle_hours_last_heartbeat_age_seconds",
+                   "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
+        age_metric(summary.get("last_render_ts"), "idle_hours_last_render_age_seconds",
+                   "Seconds since the panel last rendered. The 'panel is stale' alert.")
 
         body = ("\n".join(lines) + "\n").encode("utf-8")
         self.send_response(HTTPStatus.OK)
@@ -755,12 +790,47 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _api_coverage(self) -> None:
+    def _coverage_summary(self) -> dict:
+        """Compute bucket coverage from the corpus this appliance actually uses.
+
+        Previously both coverage views served ``assets/bucket-coverage.json``,
+        a *build-time* artifact committed alongside the bundled corpus. That
+        made the Coverage tab and the gap-finder wrong in exactly the moments
+        an operator consults them: a ban or a "Bake now" changes which rows the
+        picker can reach and the snapshot never moves, and on a relocated
+        ``--raw-corpus`` deployment (the shipped systemd preset) the snapshot
+        describes the *bundled* corpus rather than the live one.
+
+        ``bucket_coverage.build_summary`` is already a pure function over rows,
+        and ``pick_quote.load_rows_cached`` is stat-keyed, so a repeat request
+        against an unchanged corpus costs one stat plus the summary walk over
+        ~3K rows. The committed snapshot stays as a fallback for the case where
+        the corpus itself is missing or unreadable.
+
+        Reads the RAW corpus for the same reason ``/api/bucket`` does: the
+        operator needs to see rows the baker dropped, or the gap-finder would
+        report a bucket as covered by quotes that can never be displayed.
+        """
+        from idle_hours import bucket_coverage
         ctx = self._ctx()
-        if not ctx.coverage_path.exists():
-            return self._json(HTTPStatus.OK, {"total_rows": 0, "bucket_counts": {}})
         try:
-            payload = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+            rows = pick_quote_module.load_rows_cached(ctx.raw_corpus_path)
+        except OSError as exc:
+            _log(f"web: live coverage unavailable ({exc!r}); falling back to {ctx.coverage_path}", err=True)
+            rows = None
+        if rows is not None:
+            summary = bucket_coverage.build_summary(rows)
+            summary["live"] = True
+            return summary
+        if not ctx.coverage_path.exists():
+            return {"total_rows": 0, "bucket_counts": {}, "live": False}
+        payload = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+        payload["live"] = False
+        return payload
+
+    def _api_coverage(self) -> None:
+        try:
+            payload = self._coverage_summary()
         except (OSError, ValueError) as exc:
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
         self._json(HTTPStatus.OK, payload)
@@ -776,19 +846,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
         candidates, matching the bucket-coverage shading).
         """
         from idle_hours import target_sparse_buckets
-        ctx = self._ctx()
         try:
             threshold = int(query.get("threshold", ["3"])[0])
         except (TypeError, ValueError):
             return self._json(HTTPStatus.BAD_REQUEST, {"error": "threshold must be int"})
         threshold = max(0, min(threshold, 50))
-        if not ctx.coverage_path.exists():
-            return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
         try:
-            coverage = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
+            coverage = self._coverage_summary()
         except (OSError, ValueError) as exc:
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
         bucket_counts = coverage.get("bucket_counts") or {}
+        if not bucket_counts:
+            return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
         gaps: list[dict] = []
         for bucket, count in bucket_counts.items():
             if count > threshold:
@@ -1194,7 +1263,66 @@ class CuratorHandler(BaseHTTPRequestHandler):
                             with contextlib.suppress(ValueError):
                                 entries.append(json.loads(line))
         entries.reverse()  # newest first
-        self._json(HTTPStatus.OK, {"entries": entries[:limit], "total": len(entries)})
+        page = entries[:limit]
+        self._json(
+            HTTPStatus.OK,
+            {"entries": self._enrich_history(page), "total": len(entries)},
+        )
+
+    def _enrich_history(self, entries: list[dict]) -> list[dict]:
+        """Attach ``display_quote`` / ``author`` / ``title`` to ledger entries.
+
+        The ledger stores only ``(ts, source_id, line_number)``, so the
+        Activity tab could render nothing better than "source 141 line 482" —
+        meaningless to an operator asking "what has the clock shown this
+        week?". Joining against the corpus here (rather than in the browser)
+        keeps the corpus off the wire and reuses the stat-keyed row cache.
+
+        Only the rows on the requested page are looked up, and the index is
+        built once per request. Entries whose row no longer exists — dropped
+        by a re-bake, or removed from the corpus entirely — are returned with
+        their IDs alone rather than omitted: the ledger is a record of what
+        was displayed, and hiding an entry because its source row moved would
+        misrepresent that history.
+
+        Reads the RAW corpus so an entry stays readable after a re-bake drops
+        its row below the quality floor — the quote *was* on the panel, so the
+        operator should still see what it said.
+        """
+        ctx = self._ctx()
+        wanted = {k for k in (_history_join_key(e) for e in entries) if k is not None}
+        if not wanted:
+            return entries
+        index: dict[tuple[str, int], dict] = {}
+        try:
+            for row in pick_quote_module.load_rows_cached(ctx.raw_corpus_path):
+                key = _history_join_key(row)
+                if key is None:
+                    continue
+                # A single source line can carry several time phrases, so
+                # (source_id, line_number) is not unique in the corpus. The
+                # ledger doesn't record which phrase was shown, so first-wins
+                # is the honest choice: the quote text is what the operator
+                # is reading, and duplicate keys share it.
+                if key in wanted and key not in index:
+                    index[key] = row
+        except OSError as exc:
+            _log(f"web: history enrichment unavailable ({exc!r}); serving bare IDs", err=True)
+            return entries
+        enriched = []
+        for entry in entries:
+            key = _history_join_key(entry)
+            row = index.get(key) if key is not None else None
+            if row is None:
+                enriched.append(entry)
+                continue
+            enriched.append({
+                **entry,
+                "display_quote": row.get("display_quote"),
+                "author": row.get("author"),
+                "title": row.get("title"),
+            })
+        return enriched
 
     def _api_bucket(self, bucket: str, query: dict) -> None:
         ctx = self._ctx()
@@ -1302,13 +1430,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 applied = 0
             # Re-derive fuzzy_bucket from the post-override normalized_time so
             # the baker sees the same buckets it would after a full pipeline run.
-            for row in rows:
-                normalized = row.get("normalized_time")
-                if isinstance(normalized, str) and ":" in normalized:
-                    try:
-                        row["fuzzy_bucket"] = bucket_for_time(normalized)
-                    except (ValueError, KeyError):
-                        pass
+            rederive_buckets(rows)
             baked, stats = bake_quote_database.bake_rows(rows, min_quality=60)
             atomic_io.atomic_write_lines(
                 ctx.baked_db_path,

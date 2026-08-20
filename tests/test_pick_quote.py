@@ -1550,3 +1550,136 @@ class TestCorpusCache:
             pq._load_rows_cached(corpus)
         self._write_corpus(corpus, "It was three o'clock and all was well in the town.")
         assert len(pq._load_rows_cached(corpus)) == 1
+
+
+class TestPickBestLazySourceCounts:
+    """#198: the per-pick corpus-wide Counter is only built when a raw
+    (non-baked) row actually reaches the scorer.
+
+    Rarity is baked into ``baked_score``, so on the runtime path the Counter
+    was built once per pick and never read. These tests pin both halves:
+    the baked path skips it, and the raw path still gets an identical
+    (whole-corpus, not candidate-scoped) rarity penalty.
+    """
+
+    def _baked_rows(self):
+        rows = []
+        for idx in range(3):
+            row = make_row(
+                fuzzy_bucket="h3_exact", source_id=str(idx + 1), line_number=idx + 1,
+                quality_score=90,
+                display_quote=f"It was three o'clock and the {idx} bells rang across the water.",
+            )
+            row["baked_score"] = [0, 0, 0, 0, 0, 0, 0, idx, 0, 0]
+            row["inferred_quote_minute"] = 0
+            rows.append(row)
+        return rows
+
+    def test_baked_pick_never_builds_counter(self, monkeypatch):
+        calls = {"n": 0}
+        real = pq.count_sources
+
+        def counting(rows):
+            calls["n"] += 1
+            return real(rows)
+
+        monkeypatch.setattr(pq, "count_sources", counting)
+        chosen, resolved = pq.pick_best(
+            self._baked_rows(), "h3_exact", seed=0, min_quality=60, overrides={},
+        )
+        assert resolved == "h3_exact"
+        assert chosen["source_id"] == "1"
+        assert calls["n"] == 0
+
+    def test_raw_pick_builds_counter_once(self, monkeypatch):
+        calls = {"n": 0}
+        real = pq.count_sources
+
+        def counting(rows):
+            calls["n"] += 1
+            return real(rows)
+
+        monkeypatch.setattr(pq, "count_sources", counting)
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=1, quality_score=90,
+                     display_quote="It was three o'clock and the bells rang across the water."),
+        ]
+        pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
+        assert calls["n"] == 1
+
+    def test_rarity_counts_whole_corpus_not_just_candidates(self):
+        """A common source must lose to a rare one even when the common
+        source's other rows live in a different bucket — i.e. the Counter is
+        still built over every row, not the candidate slice."""
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="common", line_number=1, quality_score=90,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+            make_row(fuzzy_bucket="h3_exact", source_id="rare", line_number=2, quality_score=90,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+        ]
+        # Five more "common" rows parked in an unrelated bucket.
+        rows += [
+            make_row(fuzzy_bucket="h9_half_past", source_id="common", line_number=10 + i,
+                     quality_score=90, display_quote="Half past nine, and the lamps were being lit.")
+            for i in range(5)
+        ]
+        chosen, _ = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
+        assert chosen["source_id"] == "rare"
+
+
+class TestPickBestBucketIndex:
+    """#198: the neighbour walk indexes a prebuilt bucket map instead of
+    re-scanning the full row list per candidate bucket. Order within a bucket
+    (and therefore the seeded tie-break) must be preserved."""
+
+    def test_neighbour_fallback_still_resolves(self):
+        rows = [
+            make_row(fuzzy_bucket="h3_five_past", source_id="1", line_number=1, quality_score=90,
+                     display_quote="Five past three, and the household had not yet stirred at all."),
+        ]
+        chosen, resolved = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
+        assert resolved == "h3_five_past"
+        assert chosen["source_id"] == "1"
+
+    def test_rows_without_bucket_are_never_candidates(self):
+        rows = [
+            make_row(fuzzy_bucket=None, source_id="nobucket", line_number=1, quality_score=99,
+                     display_quote="A daypart-only row that names no hour at all, just evening."),
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=2, quality_score=70,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+        ]
+        chosen, resolved = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
+        assert resolved == "h3_exact"
+        assert chosen["source_id"] == "1"
+
+    def test_malformed_bucket_value_does_not_crash_the_picker(self):
+        """Grouping rows into a dict keys on fuzzy_bucket, so an unhashable
+        value (a corpus row whose bucket is a list) would raise TypeError.
+        The filter this replaced compared with ``==`` and simply never
+        matched. The picker runs on the per-tick render path, where an
+        exception costs a frozen panel and a backoff window, so a single
+        malformed row must stay silently ignored."""
+        rows = [
+            make_row(fuzzy_bucket=["h3_exact"], source_id="bad", line_number=1, quality_score=99,
+                     display_quote="A malformed row that must never match any bucket at all."),
+            make_row(fuzzy_bucket={"h": 3}, source_id="worse", line_number=2, quality_score=99,
+                     display_quote="Another malformed row that must never match any bucket."),
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=3, quality_score=70,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+        ]
+        chosen, resolved = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
+        assert resolved == "h3_exact"
+        assert chosen["source_id"] == "1"
+
+    def test_candidate_order_preserved_for_seeded_tiebreak(self):
+        """Two identical-scoring rows: the seeded choice must land on the same
+        row the pre-index implementation picked (input order preserved)."""
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", source_id="a", line_number=1, quality_score=90,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+            make_row(fuzzy_bucket="h3_exact", source_id="b", line_number=2, quality_score=90,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+        ]
+        picks = {pq.pick_best(rows, "h3_exact", seed=7, min_quality=60, overrides={})[0]["source_id"]
+                 for _ in range(5)}
+        assert len(picks) == 1  # deterministic for a fixed seed

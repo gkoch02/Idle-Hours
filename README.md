@@ -376,6 +376,13 @@ idle-hours health --hours 24
 
 # JSON summary for cron / systemd health checks (exits 2 when unhealthy)
 idle-hours health --hours 1 --json --fail-if-no-renders
+
+# Exit 2 if the panel hasn't repainted recently (a loop can heartbeat while stuck in backoff).
+idle-hours health --hours 24 --max-render-age-minutes 90
+
+# systemd installs relocate telemetry under /var/lib/idle-hours; read the path from the same
+# config file the unit uses instead of restating it. An explicit --telemetry-path still wins.
+idle-hours health --config /var/lib/idle-hours/config.toml --hours 24
 ```
 
 Every file the next tick or boot reads is written atomically (`tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger.
@@ -514,7 +521,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /metrics` | **v2** — Prometheus text-exposition format over a 24 h window (renders / errors / heartbeats / actions / latency p50+p95 / `last_heartbeat_age_seconds`). Unauthed on every bind. |
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
 | `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `idle_hours_health`) |
-| `GET /api/coverage` | The 144-bucket coverage snapshot from `idle_hours/assets/bucket-coverage.json` |
+| `GET /api/coverage` | The 144-bucket coverage, computed live from the running corpus (falls back to `idle_hours/assets/bucket-coverage.json`) |
 | `GET /api/gaps?threshold=N` | **v2** — empty/sparse buckets with harvester phrase suggestions |
 | `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
 | `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |
@@ -523,7 +530,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /api/overrides` | Current `idle_hours/assets/selection_overrides.json` (now includes `ban_quote_keys`) |
 | `GET /api/content-overrides` | **v2** — current `idle_hours/assets/content_overrides.json` (fail-open on corrupt sidecar) |
 | `GET /api/setup` | **v2** — first-run wizard status + the values it shows (themes, quiet hours) |
-| `GET /api/history?limit=N` | Recent anti-repeat ledger entries |
+| `GET /api/history?limit=N` | Recent anti-repeat ledger entries, joined against the corpus so each carries its quote text and attribution |
 | `POST /api/overrides` | Validate + atomically rewrite selection overrides (now accepts `ban_quote_keys`) |
 | `POST /api/content-overrides` | **v2** — validate + atomically rewrite the per-row content sidecar; empty `{}` is a legitimate "wipe everything" |
 | `POST /api/bake` | **v2** — re-run `bake_quote_database.bake_rows` in-process under `render_lock`; re-applies the content-overrides sidecar first so save → bake reflects on the next tick. 409 when busy. |

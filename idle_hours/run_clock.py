@@ -88,14 +88,16 @@ HEARTBEAT_INTERVAL_SECONDS = 60
 
 
 def _valid_hhmm(value: str) -> str:
-    parts = value.split(":")
+    """argparse ``type=`` adapter around :func:`runtime_config.validate_hhmm`.
+
+    The rule itself lives in ``runtime_config`` so the CLI flag and the
+    config-file path can't drift apart; this wrapper only restates the
+    failure as the exception argparse formats nicely.
+    """
     try:
-        h, m = int(parts[0]), int(parts[1])
-        if not (len(parts) == 2 and 0 <= h <= 23 and 0 <= m <= 59):
-            raise ValueError
-    except (ValueError, IndexError):
-        raise argparse.ArgumentTypeError(f"{value!r} is not a valid HH:MM time (expected 00:00–23:59)")
-    return value
+        return runtime_config.validate_hhmm(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def parse_args() -> argparse.Namespace:
@@ -207,89 +209,21 @@ def parse_args() -> argparse.Namespace:
         "--theme",
         choices=[*_theme_choices, "auto", "random"],
         default="default",
+        # Deliberately NOT a per-theme catalogue. This help string used to
+        # carry ~90 lines of prose describing a subset of the themes, which
+        # nothing pinned and which had already drifted from the designs it
+        # described (issue #200). argparse prints the full choices list from
+        # ``choices=`` above, and that list IS guarded -- by
+        # TestActionThemeCycle::test_cli_theme_choices_match_theme_order. The
+        # designs themselves are documented where they can be seen next to a
+        # rendered preview.
         help=(
-            "Render theme passed through to render_quote.py. "
-            "Light: 'default' (white/black/red), 'scholar' (white/blue/red), "
-            "'newsprint' (white/black/no-accent), 'blueprint' (white/blue/red, "
-            "geometric sans), 'illuminated' (white/red/blue, manuscript serif + "
-            "blackletter ornaments), 'bauhaus' (white/black/blue with red "
-            "ornaments, geometric sans), 'risograph' (white/red/blue, no black, "
-            "rounded sans), 'comic' (yellow bg / black body / red accent, "
-            "comic-book display face), 'dispatch' (white/black/red, Special "
-            "Elite typewriter face, vintage-office dossier border with "
-            "tractor-feed perforations and red rubber-stamp imprint), "
-            "'atomic' (green-bg/black-body/red-accent, Atomic Age display "
-            "face, mid-century border with rounded frame, atom symbol "
-            "and starbursts), "
-            "'marker' (white/black/blue + multi-colour decorative border, "
-            "Permanent Marker hand-drawn face — fridge-doodle vibe, lights "
-            "up every spot colour the Spectra 6 panel can produce), "
-            "'saloon' (white/black/red, Rye wood-engraved slab serif — "
-            "19th-century Wild West wanted-poster vibe, layered "
-            "background with red foxing speckles, decorative banner "
-            "bands, double-rule frame, corner fleurons and mid-edge "
-            "diamonds), "
-            "'roman' (white limestone / black body / red rubrum accent, "
-            "Cinzel Decorative Trajan-column inscriptional capitals — "
-            "Roman lapidary inscription vibe, tabula ansata frame with "
-            "trapezoidal handles, SPQR cartouche, stone-grain speckles, "
-            "mid-edge interpunct dots, and a laurel sprig), "
-            "'alchemy' (yellow parchment / black IM Fell English body / "
-            "red MedievalSharp matched phrase + blue Hermetic ornaments, "
-            "alchemical tome with corner pentagrams, planetary mid-edge "
-            "sigils, and a central transmutation circle), "
-            "'deco' (white/black/red→tangerine, Righteous geometric "
-            "display sans, 1930s art-deco poster — doubled hairline "
-            "frame, stepped skyscraper-corner ornaments, top-centre "
-            "rising-sun fan), "
-            "'glacier' (white / blue Iceland body / green matched "
-            "phrase→cyan, icy aurora panel with frost-crystal corner "
-            "clusters and snowflake-tick mid-edges), "
-            "'placard' (white / black hand-printed body / red accent, "
-            "Patrick Hand SC small-caps, hand-lettered sandwich-board "
-            "signage with weathered sign-painter's frame and red "
-            "thumbtack corners), "
-            "'diags' (white/black/red, DejaVu Sans — REPLACES the "
-            "literary frame with a calibration / status panel: clock + "
-            "bucket / layout / quality / source fields + the Spectra 6 "
-            "native palette + 2-ink stipple recipe swatches; excluded "
-            "from --theme random). "
-            "Dark: 'dark' (black/white/yellow), "
-            "'nightvision' (black / green Space Mono body / yellow "
-            "matched phrase→lime, retro-terminal mono with CRT-style "
-            "scanlines and HUD-bracket corners), "
-            "'gothic' (black/white/red, EB Garamond body + "
-            "UnifrakturMaguntia blackletter matched phrase + ornaments, "
-            "cathedral double-rule frame with corner quatrefoils and "
-            "mid-edge diamonds), "
-            "'grimoire' (black / white IM Fell English body / red "
-            "TFoust hollow-outline matched phrase, occultist spellbook "
-            "with corner pentagrams + mid-edge planetary sigils), "
-            "'chalkboard' (black slate / white Playwrite GB J Guides "
-            "dotted-cursive body / yellow chalk-stick matched phrase, "
-            "doubled white wooden frame, green chalk teacher's tick, "
-            "coral eraser smudges along the bottom), "
-            "'chanbara' (black / white Shojumaru brush body / red "
-            "accent, samurai-cinema poster with a dominant red "
-            "rising-sun disc anchored off-canvas in the bottom-right "
-            "and a small red artist's-chop seal in the top-left), "
-            "'lcars' (black/white/yellow, Antonio condensed sans, Star Trek "
-            "Okudagram console panel — annular quarter-circle elbow chrome "
-            "wrapping the canvas top-left and bottom-left corners in synthesised "
-            "tangerine, stacked colour-coded rail blocks down the sidebar "
-            "(lavender / yellow / coral / lilac / red / coral / blue), LCARS "
-            "wordmark in the top bar and STARDATE callout in the bottom bar). "
-            "'firmament' (navy synthesised ground / white Cardo humanist serif "
-            "body / yellow→cream matched phrase, 17th-century celestial atlas — "
-            "lavender Milky Way swaths in two corners, ~80 scattered yellow "
-            "stars in three magnitude tiers, Cassiopeia + Orion's Belt "
-            "constellation polylines, sun / crescent moon / compass rose / "
-            "ringed Saturn corner ornaments, and a sky-blue ecliptic arc "
-            "across the top margin). "
-            "'auto' selects 'dark' between "
-            "18:00 and 06:00 and 'default' otherwise — broaden the rotation via "
-            "--auto-day-theme / --auto-night-theme. "
-            "'random' picks a theme at random each time the displayed quote changes. "
+            "Render theme passed through to render_quote.py; see the choices list above "
+            "for every registered theme. The README theme table shows a preview of each, "
+            "and CLAUDE.md documents the design intent. "
+            "'auto' picks --auto-day-theme between 06:00 and 18:00 and --auto-night-theme "
+            "otherwise (defaults 'default' / 'dark'). "
+            "'random' picks a fresh theme each time the displayed quote changes. "
             "Pressing button B cycles themes manually and overrides 'auto'/'random' until midnight."
         ),
     )

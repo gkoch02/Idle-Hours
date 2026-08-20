@@ -10,11 +10,17 @@ import random
 import re
 import sys
 import threading
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from idle_hours import atomic_io
-from idle_hours.buckets import BUCKET_ORDER, DEFAULT_BUCKET_MINUTES, bucket_for_time, neighbor_buckets
+from idle_hours.buckets import (
+    BUCKET_ORDER,
+    DEFAULT_BUCKET_MINUTES,
+    bucket_for_time,
+    neighbor_buckets,
+    rederive_buckets,
+)
 from idle_hours.jsonl_io import iter_jsonl
 
 DEFAULT_HISTORY_PATH = "~/.idle-hours/history.jsonl"
@@ -212,16 +218,7 @@ def resolve_path(path_str: str) -> Path:
 
 
 def load_rows(path: Path) -> list[dict]:
-    rows = []
-    for row in iter_jsonl(path):
-        normalized = row.get("normalized_time")
-        if isinstance(normalized, str) and ":" in normalized:
-            try:
-                row["fuzzy_bucket"] = bucket_for_time(normalized)
-            except (ValueError, KeyError):
-                pass
-        rows.append(row)
-    return rows
+    return rederive_buckets(list(iter_jsonl(path)))
 
 
 # In-process corpus cache (#192). Every select_quote used to re-read and
@@ -263,6 +260,12 @@ def _load_rows_cached(path: Path) -> list[dict]:
     with _CORPUS_CACHE_LOCK:
         _CORPUS_CACHE[key] = (stamp, rows)
     return rows
+
+
+# Public alias. Out-of-module readers (the curator UI's live coverage view)
+# want the same stat-keyed cache the picker uses rather than re-parsing the
+# corpus per request; they should not have to reach for a private name.
+load_rows_cached = _load_rows_cached
 
 
 def valid_bucket_names() -> set[str]:
@@ -731,13 +734,48 @@ def pick_best(
     is a list of ``{"row": dict, "score": tuple}`` ordered by ascending score
     (best first). This variant powers the curator UI's bucket-inspector view.
     """
-    source_counts = count_sources(rows)
+    # Rarity is the only score component that needs a view of the whole
+    # corpus, and baked rows already carry it inside ``baked_score`` — so on
+    # the runtime path (baked DB) the Counter over every row was built once
+    # per pick and never read. Build it lazily, and only when a non-baked row
+    # actually reaches the scorer. ``count_sources`` still counts *all* rows,
+    # not just the candidates, so the penalty a raw row gets is unchanged.
+    source_counts: Counter | None = None
+    counts_built = False
+
+    def counts_for(pool: list[dict]) -> Counter | None:
+        nonlocal source_counts, counts_built
+        if all("baked_score" in row for row in pool):
+            return None
+        if not counts_built:
+            source_counts = count_sources(rows)
+            counts_built = True
+        return source_counts
+
+    # Index by bucket once. The neighbour walk visits up to 12 buckets for a
+    # sparse hour, and each visit used to re-scan the entire row list.
+    # Grouping preserves input order, so each bucket's candidate list — and
+    # therefore the seeded tie-break below — is byte-identical to the
+    # per-bucket filter it replaces.
+    # Only string buckets are indexed. ``neighbor_buckets`` always yields
+    # strings, so the ``fuzzy_bucket == candidate_bucket`` test this replaces
+    # could never match a non-string value either — but that test *tolerated*
+    # one, whereas using the raw value as a dict key raises TypeError on any
+    # unhashable shape (a corpus row whose fuzzy_bucket is a list). The
+    # picker runs on the per-tick render path, where an exception costs a
+    # frozen panel and a backoff window, so a single malformed row must
+    # degrade the way it always did: silently ignored.
+    rows_by_bucket: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        bucket_name = row.get("fuzzy_bucket")
+        if isinstance(bucket_name, str):
+            rows_by_bucket[bucket_name].append(row)
+
     recent = recent_history or set()
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
-            row for row in rows
-            if row.get("fuzzy_bucket") == candidate_bucket
-            and row.get("display_quote")
+            row for row in rows_by_bucket.get(candidate_bucket, ())
+            if row.get("display_quote")
             and not is_banned(row, overrides)
             and (row.get("quality_score") is None or row.get("quality_score", 0) >= min_quality)
         ]
@@ -752,9 +790,10 @@ def pick_best(
         # than re-scoring 3-4× per row on this per-tick path. A stable sort over
         # the precomputed keys preserves pool order, so the seeded choice below
         # stays byte-identical to the prior repeated-score_row implementation.
+        pool_counts = counts_for(pool)
         scored = sorted(
             (
-                (score_row(row, candidate_bucket, overrides, requested_time, source_counts), row)
+                (score_row(row, candidate_bucket, overrides, requested_time, pool_counts), row)
                 for row in pool
             ),
             key=lambda sr: sr[0],
