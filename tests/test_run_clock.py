@@ -128,6 +128,143 @@ class TestRenderNow:
         assert mock_call.call_count == 1
 
 
+class TestMainStartupOrdering:
+    """``main()`` must arm every ingress before telling systemd it is ready.
+
+    ``idle-hours.service.example`` ships ``Type=notify``, so ``systemctl start``
+    blocks until READY=1 and only then starts follow-on units. If READY=1 were
+    sent before buttons / web / signal handlers were wired, systemd would
+    consider the appliance up while a SIGTERM could still be missed, a button
+    press dropped, or an HTTP request refused. The ordering is documented in a
+    comment in ``main()`` but nothing enforced it — the surrounding lines were
+    among the module's uncovered statements.
+    """
+
+    def _run_main_once(self, tmp_path, argv_extra=()):
+        """Run ``main()`` far enough to complete startup, then abort the loop."""
+        events: list[str] = []
+
+        def record(name, result=None):
+            def _fn(*args, **kwargs):
+                events.append(name)
+                return result
+            return _fn
+
+        argv = [
+            "run_clock.py",
+            "--output", str(tmp_path / "current.png"),
+            "--interval-seconds", "0",
+            "--state-path", "",
+            "--history-path", "",
+            "--telemetry-path", "",
+            "--pidfile", "",
+            "--skip-preflight",
+            *argv_extra,
+        ]
+        with patch("sys.argv", argv), \
+             patch("idle_hours.run_clock._maybe_start_buttons", record("buttons")), \
+             patch("idle_hours.run_clock._maybe_start_web_server", record("web")), \
+             patch("idle_hours.run_clock._install_signal_handlers", record("signals")), \
+             patch("idle_hours.run_clock.sd_notify.notify_ready", record("ready")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h12_exact"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("1", 2, "q", "m")), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=KeyboardInterrupt):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+        return events
+
+    def test_ready_is_sent_only_after_every_ingress_is_armed(self, tmp_path):
+        events = self._run_main_once(tmp_path)
+        assert events.index("ready") > events.index("buttons")
+        assert events.index("ready") > events.index("web")
+        assert events.index("ready") > events.index("signals")
+
+    def test_signal_handlers_are_installed_after_buttons_and_web(self, tmp_path):
+        """Handlers go up last among the three so button / web startup can't
+        clobber our SIGTERM registration with one of their own."""
+        events = self._run_main_once(tmp_path)
+        assert events.index("signals") > events.index("buttons")
+        assert events.index("signals") > events.index("web")
+
+    def test_ready_is_sent_exactly_once(self, tmp_path):
+        """A duplicate READY=1 is harmless to systemd but signals that the
+        notify call has drifted into the tick loop, where it would mask a
+        wedged startup."""
+        events = self._run_main_once(tmp_path)
+        assert events.count("ready") == 1
+
+
+class TestPressLogger:
+    """Every physical press is logged before dispatch, independent of handlers.
+
+    ``_press_logger`` is a closure inside ``_maybe_start_buttons``, so it is
+    only reachable through the ``press_logger`` kwarg handed to
+    ``inky_buttons.start_listener``. Capturing it there also checks the wiring
+    itself: a refactor that stopped passing the callback would leave the
+    journal silent on every press, which is exactly the signal a field
+    operator uses to tell "the button never fired" from "the handler broke".
+    """
+
+    def _button_args(self):
+        return argparse.Namespace(
+            buttons_off=False,
+            render_script="r", output="o", width=800, height=480,
+            display_script=None, mode="debug", theme="default",
+            history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_image="", shutdown_command="",
+        )
+
+    def _capture_press_logger(self, monkeypatch):
+        captured = {}
+
+        def fake_start(handlers, *, hold_handlers=None, press_logger=None, **kw):
+            captured["press_logger"] = press_logger
+            return ["stub"]
+
+        from idle_hours import inky_buttons as ib
+        monkeypatch.setattr(ib, "start_listener", fake_start)
+        run_clock._maybe_start_buttons(self._button_args(), run_clock.RuntimeState("default"))
+        return captured.get("press_logger")
+
+    def test_a_press_logger_is_wired_into_the_listener(self, monkeypatch):
+        assert callable(self._capture_press_logger(monkeypatch))
+
+    def test_logs_the_label_and_gpio_pin(self, monkeypatch, capsys):
+        press_logger = self._capture_press_logger(monkeypatch)
+        capsys.readouterr()  # drop the listener-startup line
+        press_logger("A", 5)
+        out = capsys.readouterr().out
+        assert "A" in out and "5" in out
+
+
+class TestCheckButtonLivenessImport:
+    def test_missing_gpio_library_is_not_an_error(self, tmp_path):
+        """On a dev host without gpiozero the liveness probe must no-op.
+
+        ``--buttons-off`` is the documented dev flag, but a headless smoke run
+        that forgets it should still tick rather than log a button warning
+        every 60 seconds for hardware that was never present.
+        """
+        import builtins
+
+        state = run_clock.RuntimeState("default")
+        telemetry = tmp_path / "telemetry.jsonl"
+        real_import = builtins.__import__
+
+        def _boom(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "idle_hours" and fromlist and "inky_buttons" in fromlist:
+                raise ImportError("no gpiozero")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch.object(builtins, "__import__", _boom):
+            run_clock._check_button_liveness(state, str(telemetry))
+
+        assert state.buttons_dead_logged is False
+        assert not telemetry.exists(), "a missing GPIO library is not a dead-button event"
+
+
 class TestMainLoopResilience:
     """A render failure must not kill the clock loop."""
 
@@ -4135,6 +4272,66 @@ class TestMaybeStartWebServer:
         assert result is None
         err = capsys.readouterr().err
         assert "web UI failed to start" in err and "bad bind" in err
+
+    def test_import_failure_logs_and_returns_none(self, monkeypatch, capsys):
+        """A broken/partial install must disable the UI, not kill the clock.
+
+        ``web_server`` is imported lazily so headless runs never pay for
+        ``http.server``; the flip side is that an import error surfaces at
+        startup rather than at module load, and the appliance's primary job
+        (painting the panel) has to survive it.
+        """
+        import builtins
+
+        state = run_clock.RuntimeState("default")
+        real_import = builtins.__import__
+
+        def _boom(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "idle_hours" and fromlist and "web_server" in fromlist:
+                raise ImportError("no module named web_server")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", _boom)
+        assert run_clock._maybe_start_web_server(self._args("127.0.0.1:0"), state) is None
+        assert "web UI disabled" in capsys.readouterr().err
+
+    def test_success_returns_handle_and_logs_the_bound_address(self, monkeypatch, capsys):
+        """The happy path was never exercised: both existing tests take an
+        early return. That left the log line — the only place an operator
+        learns which port the UI actually landed on, which matters because
+        ``--web-bind host:0`` is how you ask the OS to choose one — and the
+        token/no-token wording untested.
+        """
+        state = run_clock.RuntimeState("default")
+        args = self._args("127.0.0.1:0")
+        handle = run_clock._maybe_start_web_server(args, state)
+        assert handle is not None
+        try:
+            server, thread = handle
+            assert thread.daemon, "web server must not block interpreter shutdown"
+            out = capsys.readouterr().out
+            assert "web UI listening on" in out
+            assert f"{server.server_address[1]}" in out
+            assert "no token" in out
+        finally:
+            run_clock.stop_web_server(handle)
+
+    def test_logs_token_required_when_a_token_is_configured(self, tmp_path, monkeypatch, capsys):
+        """The log must distinguish an authenticated bind from an open one.
+
+        Getting this backwards would tell an operator their LAN bind is
+        protected when it is not — the one startup line they are most likely
+        to trust without re-checking.
+        """
+        state = run_clock.RuntimeState("default")
+        args = self._args("127.0.0.1:0")
+        args.web_token = "s3cret"
+        handle = run_clock._maybe_start_web_server(args, state)
+        assert handle is not None
+        try:
+            assert "token required" in capsys.readouterr().out
+        finally:
+            run_clock.stop_web_server(handle)
 
 
 class TestResolveWebToken:
