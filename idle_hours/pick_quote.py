@@ -757,9 +757,19 @@ def pick_best(
     # Grouping preserves input order, so each bucket's candidate list — and
     # therefore the seeded tie-break below — is byte-identical to the
     # per-bucket filter it replaces.
+    # Only string buckets are indexed. ``neighbor_buckets`` always yields
+    # strings, so the ``fuzzy_bucket == candidate_bucket`` test this replaces
+    # could never match a non-string value either — but that test *tolerated*
+    # one, whereas using the raw value as a dict key raises TypeError on any
+    # unhashable shape (a corpus row whose fuzzy_bucket is a list). The
+    # picker runs on the per-tick render path, where an exception costs a
+    # frozen panel and a backoff window, so a single malformed row must
+    # degrade the way it always did: silently ignored.
     rows_by_bucket: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        rows_by_bucket[row.get("fuzzy_bucket")].append(row)
+        bucket_name = row.get("fuzzy_bucket")
+        if isinstance(bucket_name, str):
+            rows_by_bucket[bucket_name].append(row)
 
     recent = recent_history or set()
     for candidate_bucket in neighbor_buckets(bucket):

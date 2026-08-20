@@ -614,7 +614,7 @@ async function refreshHistory() {
         : `<div class="history-quote history-missing">(quote no longer in corpus)</div>`}
       <div class="history-meta">
         ${attribution ? `<span>${escapeHtml(attribution)}</span>` : ""}
-        <span class="history-id">source ${entry.source_id ?? "?"} · line ${entry.line_number ?? "?"}</span>
+        <span class="history-id">source ${escapeHtml(String(entry.source_id ?? "?"))} · line ${escapeHtml(String(entry.line_number ?? "?"))}</span>
         ${key ? `<button class="btn btn-small btn-danger" data-ban-key="${escapeHtml(key)}">Ban</button>` : ""}
       </div>
     `;

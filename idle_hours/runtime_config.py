@@ -139,10 +139,13 @@ def load_config(
     warnings plus the surviving good keys is the contract.
 
     ``hhmm_validator`` is injected by ``run_clock`` so its argparse
-    ``type=`` callable and the config path report identical errors; when
-    omitted, :func:`validate_hhmm` (this module's own copy of the rule) is
-    used, so a caller that only wants one key out of a config file does not
-    have to import the orchestrator.
+    ``type=`` callable and the config path report identical errors. When
+    omitted, :func:`validate_hhmm` is used instead, so a caller that only
+    wants one key out of a config file (``idle-hours health --config``) need
+    not import the orchestrator. Note the injection direction is load-bearing:
+    this module must never import ``run_clock``, or the runtime modules'
+    acyclic import graph breaks — which is why the rule itself lives here and
+    ``run_clock._valid_hhmm`` wraps it, rather than the reverse.
 
     ``choices_map`` mirrors argparse's own ``choices=`` gate for the
     subset of keys that declare one (``mode``, ``theme``, …). Without

@@ -495,7 +495,6 @@ class TestReadEndpoints:
         assert status == 200
         data = _json_body(body)
         assert data["live"] is True
-        assert data["source"] == str(corpus)
         assert data["total_rows"] == 3
         assert data["bucket_counts"]["h3_exact"] == 2
         assert data["bucket_counts"]["h9_half_past"] == 1
@@ -777,6 +776,47 @@ class TestReadEndpoints:
         # Newest first, and both enriched.
         assert data["entries"][0]["display_quote"] == "Quote number 4 rang out."
         assert data["entries"][1]["display_quote"] == "Quote number 3 rang out."
+
+    def test_api_history_tolerates_malformed_line_number(self, tmp_path, live_server):
+        """A parseable ledger line with an odd shape must degrade to bare IDs,
+        not 500. Using the raw value as a dict key would raise
+        TypeError: unhashable -- and _api_history already tolerates a torn
+        ledger by skipping unparseable lines, so a weird-but-parseable one
+        should degrade the same way."""
+        server, _, args = live_server
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(json.dumps(make_row(
+            source_id="1", line_number=1, display_quote="Still here."
+        )) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+        path = Path(args.history_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(x) for x in [
+            {"ts": "2026-04-20T14:30:00+00:00", "source_id": "1", "line_number": 1},
+            {"ts": "2026-04-20T15:30:00+00:00", "source_id": "1", "line_number": ["nope"]},
+        ]) + "\n", encoding="utf-8")
+        status, body = _get(server, "/api/history")
+        assert status == 200
+        entries = _json_body(body)["entries"]
+        assert len(entries) == 2
+        # The good entry still enriches; the malformed one keeps its IDs.
+        good = [e for e in entries if e["line_number"] == 1][0]
+        assert good["display_quote"] == "Still here."
+        bad = [e for e in entries if e["line_number"] == ["nope"]][0]
+        assert "display_quote" not in bad
+
+    def test_api_coverage_does_not_disclose_filesystem_paths(self, live_server):
+        """GETs are unauthenticated on every bind. Telemetry counts and bucket
+        counts are not sensitive; an absolute install path (which leaks the OS
+        username and state-dir layout) is a different category, and nothing in
+        the UI consumes it -- ``live`` carries the useful signal."""
+        server, _, _ = live_server
+        status, body = _get(server, "/api/coverage")
+        assert status == 200
+        data = _json_body(body)
+        assert "source" not in data
+        assert "live" in data
 
     def test_api_history_rejects_bad_limit(self, live_server):
         server, _, _ = live_server

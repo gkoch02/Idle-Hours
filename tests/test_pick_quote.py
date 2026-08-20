@@ -1652,6 +1652,25 @@ class TestPickBestBucketIndex:
         assert resolved == "h3_exact"
         assert chosen["source_id"] == "1"
 
+    def test_malformed_bucket_value_does_not_crash_the_picker(self):
+        """Grouping rows into a dict keys on fuzzy_bucket, so an unhashable
+        value (a corpus row whose bucket is a list) would raise TypeError.
+        The filter this replaced compared with ``==`` and simply never
+        matched. The picker runs on the per-tick render path, where an
+        exception costs a frozen panel and a backoff window, so a single
+        malformed row must stay silently ignored."""
+        rows = [
+            make_row(fuzzy_bucket=["h3_exact"], source_id="bad", line_number=1, quality_score=99,
+                     display_quote="A malformed row that must never match any bucket at all."),
+            make_row(fuzzy_bucket={"h": 3}, source_id="worse", line_number=2, quality_score=99,
+                     display_quote="Another malformed row that must never match any bucket."),
+            make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=3, quality_score=70,
+                     display_quote="It was three o'clock and the bells rang out across the water."),
+        ]
+        chosen, resolved = pq.pick_best(rows, "h3_exact", seed=0, min_quality=60, overrides={})
+        assert resolved == "h3_exact"
+        assert chosen["source_id"] == "1"
+
     def test_candidate_order_preserved_for_seeded_tiebreak(self):
         """Two identical-scoring rows: the seeded choice must land on the same
         row the pre-index implementation picked (input order preserved)."""

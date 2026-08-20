@@ -122,6 +122,24 @@ def _is_non_localhost_host(host: str) -> bool:
     return host not in LOCALHOST_HOSTS
 
 
+def _history_join_key(obj: dict) -> tuple[str, int] | None:
+    """Return the ``(source_id, line_number)`` join key for a row or ledger entry.
+
+    ``None`` when the object can't take part in the join. ``line_number`` must
+    be a real ``int`` — both the ledger writer and the corpus emit ints, so
+    anything else could never match anyway, and taking the value on trust
+    would let a corrupt entry (a list, say) raise ``TypeError: unhashable``
+    out of a dict lookup. ``_api_history`` already tolerates a torn ledger by
+    skipping unparseable lines; a parseable line with an odd shape should
+    degrade the same way — to bare IDs, not a 500.
+    """
+    source_id = obj.get("source_id")
+    line_number = obj.get("line_number")
+    if source_id is None or not isinstance(line_number, int) or isinstance(line_number, bool):
+        return None
+    return (str(source_id), line_number)
+
+
 class WebContext:
     """Bundle of shared state the HTTP handler reaches through ``server.context``.
 
@@ -802,13 +820,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
             rows = None
         if rows is not None:
             summary = bucket_coverage.build_summary(rows)
-            summary["source"] = str(ctx.raw_corpus_path)
             summary["live"] = True
             return summary
         if not ctx.coverage_path.exists():
             return {"total_rows": 0, "bucket_counts": {}, "live": False}
         payload = json.loads(ctx.coverage_path.read_text(encoding="utf-8"))
-        payload["source"] = str(ctx.coverage_path)
         payload["live"] = False
         return payload
 
@@ -1274,17 +1290,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         operator should still see what it said.
         """
         ctx = self._ctx()
-        wanted = {
-            (str(e.get("source_id")), e.get("line_number"))
-            for e in entries
-            if e.get("source_id") is not None and e.get("line_number") is not None
-        }
+        wanted = {k for k in (_history_join_key(e) for e in entries) if k is not None}
         if not wanted:
             return entries
-        index: dict[tuple[str, object], dict] = {}
+        index: dict[tuple[str, int], dict] = {}
         try:
             for row in pick_quote_module.load_rows_cached(ctx.raw_corpus_path):
-                key = (str(row.get("source_id")), row.get("line_number"))
+                key = _history_join_key(row)
+                if key is None:
+                    continue
                 # A single source line can carry several time phrases, so
                 # (source_id, line_number) is not unique in the corpus. The
                 # ledger doesn't record which phrase was shown, so first-wins
@@ -1297,7 +1311,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             return entries
         enriched = []
         for entry in entries:
-            row = index.get((str(entry.get("source_id")), entry.get("line_number")))
+            key = _history_join_key(entry)
+            row = index.get(key) if key is not None else None
             if row is None:
                 enriched.append(entry)
                 continue
