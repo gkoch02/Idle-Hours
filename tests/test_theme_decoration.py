@@ -178,7 +178,17 @@ class TestBorderPainterActuallyPaints:
         the panel. ``snap_image_to_palette`` normally catches this, so this
         assertion is defence in depth at native resolution.
         """
-        pixels = set(_render(theme).convert("RGB").get_flattened_data())
+        image = _render(theme).convert("RGB")
+        # ``getcolors`` rather than ``getdata`` / ``get_flattened_data``: the
+        # former is deprecated (removed in Pillow 14), the latter only exists
+        # from Pillow 11.1, and pyproject.toml pins no lower bound on Pillow —
+        # so either would tie this test to a version window. ``getcolors`` has
+        # been stable across every Pillow release and is the better fit anyway:
+        # the assertion is about the set of distinct inks, not about walking
+        # 384,000 pixels. Passing ``width * height`` as the cap guarantees a
+        # non-``None`` return, since an image cannot hold more distinct colours
+        # than it has pixels.
+        pixels = {colour for _count, colour in image.getcolors(maxcolors=image.width * image.height)}
         assert pixels.issubset(set(rq.SPECTRA6.values())), (
             f"{theme}: off-palette colours {pixels - set(rq.SPECTRA6.values())}"
         )
