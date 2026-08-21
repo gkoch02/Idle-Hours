@@ -14,13 +14,13 @@
 # the curator UI without any GPIO bindings.
 #
 # Build:
-#   docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:2.0 .
+#   docker buildx build --platform linux/arm64,linux/amd64 -t idle-hours:2.5 .
 #
 # Run (one-shot render):
-#   docker run --rm -v "$PWD/output:/app/output" idle-hours:2.0 idle-hours render --time 14:30
+#   docker run --rm -v "$PWD/output:/app/output" idle-hours:2.5 idle-hours render --time 14:30
 #
 # Run (clock loop, no display):
-#   docker run --rm -p 8080:8080 -v idle-hours-state:/state idle-hours:2.0 \
+#   docker run --rm -p 8080:8080 -v idle-hours-state:/state idle-hours:2.5 \
 #       idle-hours run --buttons-off --skip-preflight \
 #                      --web-bind 0.0.0.0:8080 \
 #                      --state-path /state/state.json \

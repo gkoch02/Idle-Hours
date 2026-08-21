@@ -9,7 +9,7 @@ name = "idle-hours"
 # CLI, the wheel filename, and `pip show idle-hours` all report. Keep it in
 # lockstep with the git tag: the CI `release-version` job fails a tag build
 # whose `vX.Y.Z` ref does not match this value.
-version = "2.0.0"
+version = "2.5.0"
 description = "Idle Hours: a literary clock that harvests time phrases from Project Gutenberg and renders a matching quote on an Inky Impression eInk display."
 readme = "README.md"
 requires-python = ">=3.11"
