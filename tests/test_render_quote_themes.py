@@ -23,13 +23,14 @@ from PIL import Image
 from idle_hours import render_quote as rq
 
 from .conftest import make_row
+from .pixel_helpers import distinct_inks, pixel_bytes
 
 CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler")
 
 
 def _on_palette(image: Image.Image) -> bool:
     palette = set(rq.SPECTRA6.values())
-    return set(image.getdata()).issubset(palette)
+    return distinct_inks(image).issubset(palette)
 
 
 @pytest.mark.parametrize("theme", CUSTOM_THEMES)
@@ -160,7 +161,7 @@ class TestMarqueeFrame:
         img = rq.render("14:30", row, 800, 480, theme="marquee")
         assert img.size == (800, 480)
         palette = set(rq.SPECTRA6.values())
-        assert set(img.getdata()).issubset(palette)
+        assert distinct_inks(img).issubset(palette)
 
     def test_credits_render_when_author_present(self):
         """WRITTEN BY label paints in yellow when the row carries an
@@ -290,7 +291,7 @@ class TestVinylFrame:
         rq._astrarium_paint_cream_wash(img_b)
         rq._vinyl_paint_wear_speckle(img_a, seed=20260521)
         rq._vinyl_paint_wear_speckle(img_b, seed=20260521)
-        assert list(img_a.getdata()) == list(img_b.getdata())
+        assert pixel_bytes(img_a) == pixel_bytes(img_b)
 
     def test_wear_speckle_varies_with_seed(self):
         """Different seeds must produce different wear-mark patterns
@@ -301,7 +302,7 @@ class TestVinylFrame:
         rq._astrarium_paint_cream_wash(img_b)
         rq._vinyl_paint_wear_speckle(img_a, seed=20260101)
         rq._vinyl_paint_wear_speckle(img_b, seed=20261231)
-        assert list(img_a.getdata()) != list(img_b.getdata())
+        assert pixel_bytes(img_a) != pixel_bytes(img_b)
 
 
 class TestVitrailFrame:
@@ -314,7 +315,7 @@ class TestVitrailFrame:
         render should surface all six Spectra-6 colours via the solid
         panes + jewel-tone stipples."""
         img = rq.render("14:30", make_row(), 800, 480, theme="vitrail")
-        used = set(img.getdata())
+        used = distinct_inks(img)
         assert used == set(rq.SPECTRA6.values()), f"expected all six inks, got {used}"
 
     def test_quote_cartouche_is_clear_white(self):
@@ -351,7 +352,7 @@ class TestVitrailFrame:
         row = make_row(display_quote="A quiet hour with no clock in it.", matched_text="")
         img = rq.render("14:37", row, 800, 480, theme="vitrail")
         assert img.size == (800, 480)
-        assert set(img.getdata()).issubset(set(rq.SPECTRA6.values()))
+        assert distinct_inks(img).issubset(set(rq.SPECTRA6.values()))
 
     def test_composes_at_non_native_resolution(self):
         """The rose / arch / cartouche geometry is derived from the canvas
@@ -361,7 +362,7 @@ class TestVitrailFrame:
         for w, h in ((1024, 600), (640, 384)):
             img = rq.render("08:00", make_row(), w, h, theme="vitrail")
             assert img.size == (w, h)
-            assert set(img.getdata()).issubset(set(rq.SPECTRA6.values()))
+            assert distinct_inks(img).issubset(set(rq.SPECTRA6.values()))
 
     def test_render_is_deterministic(self):
         """The seeded tessellation + pure-function geometry must produce a
@@ -383,14 +384,14 @@ class TestVitrailFrame:
         for hh in range(24):
             img = rq.render(f"{hh:02d}:15", make_row(), 800, 480, theme="vitrail")
             assert img.size == (800, 480)
-            assert set(img.getdata()).issubset(palette), f"off-palette at hour {hh}"
+            assert distinct_inks(img).issubset(palette), f"off-palette at hour {hh}"
 
     def test_is_deterministic(self):
         """No RNG in the vitrail path — re-rendering the same time must be
         byte-identical (golden tests + panel dedup depend on this)."""
         row = make_row()
-        a = list(rq.render("14:30", row, 800, 480, theme="vitrail").getdata())
-        b = list(rq.render("14:30", row, 800, 480, theme="vitrail").getdata())
+        a = pixel_bytes(rq.render("14:30", row, 800, 480, theme="vitrail"))
+        b = pixel_bytes(rq.render("14:30", row, 800, 480, theme="vitrail"))
         assert a == b
 
 
@@ -405,8 +406,8 @@ class TestOutrunFrame:
         geometry, so re-rendering the same time must be byte-identical (panel
         dedup + any future golden fixture depend on it)."""
         row = make_row()
-        a = list(rq.render("14:30", row, 800, 480, theme="outrun").getdata())
-        b = list(rq.render("14:30", row, 800, 480, theme="outrun").getdata())
+        a = pixel_bytes(rq.render("14:30", row, 800, 480, theme="outrun"))
+        b = pixel_bytes(rq.render("14:30", row, 800, 480, theme="outrun"))
         assert a == b
 
     def test_neon_grid_below_horizon(self):
@@ -451,7 +452,7 @@ class TestOutrunFrame:
         row = make_row(display_quote="A quiet hour with no clock in it.", matched_text="")
         img = rq.render("14:37", row, 800, 480, theme="outrun")
         assert img.size == (800, 480)
-        assert set(img.getdata()).issubset(self._palette())
+        assert distinct_inks(img).issubset(self._palette())
 
     def test_composes_at_non_native_resolution(self):
         """The composition is anchored on the 800×480 reference constants but
@@ -460,4 +461,4 @@ class TestOutrunFrame:
         for w, h in ((1024, 600), (320, 192)):
             img = rq.render("08:00", make_row(), w, h, theme="outrun")
             assert img.size == (w, h)
-            assert set(img.getdata()).issubset(self._palette()), f"off-palette at {w}x{h}"
+            assert distinct_inks(img).issubset(self._palette()), f"off-palette at {w}x{h}"
