@@ -331,7 +331,7 @@ idle-hours run --theme auto --auto-day-theme scholar --auto-night-theme nightvis
 
 `auto` itself is rejected for the day/night picks (would be a config typo, not a useful recursion). A manual button-B press (or a web-UI dropdown jump) overrides `auto` until the next midnight rollover, when the override clears and `auto` resumes.
 
-Pass `--theme random` to pick a theme at random each time the displayed quote changes (so every new bucket gets a fresh look). The pick is held for the lifetime of the displayed quote and is **not persisted** — a restart picks a fresh theme on the first render. Button B / the web-UI dropdown still wins over the random pick until midnight, the same way it wins over `auto`.
+Pass `--theme random` to pick a theme at random each time the displayed quote changes (so every new bucket gets a fresh look). Picks are drawn from a shuffled bag rather than uniformly, so you see every eligible theme once before any repeats — and the most recent half of the rotation is held back from the front of the next pass, so a theme shown at the end of one pass can't turn up again a pick or two later. The pick is held for the lifetime of the displayed quote and is **not persisted** — a restart picks a fresh theme on the first render. Button B / the web-UI dropdown still wins over the random pick until midnight, the same way it wins over `auto`.
 
 Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` / `random` mode.
 
