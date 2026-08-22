@@ -7,9 +7,7 @@ from PIL import Image
 
 from idle_hours import render_quote as rq
 
-
-def _all_pixels(img: Image.Image) -> set:
-    return set(img.convert("RGB").getdata())
+from .pixel_helpers import distinct_inks, pixel_bytes
 
 
 class TestDitherImageToPalette:
@@ -23,13 +21,13 @@ class TestDitherImageToPalette:
                 px[x, y] = (v, v, v)
         out = rq.dither_image_to_palette(src, rq.SPECTRA6_PALETTE, method="floyd-steinberg")
         assert out.size == src.size
-        assert _all_pixels(out) <= set(rq.SPECTRA6_PALETTE)
+        assert distinct_inks(out) <= set(rq.SPECTRA6_PALETTE)
 
     def test_ordered_output_is_on_palette(self):
         src = Image.new("RGB", (24, 24), (90, 120, 200))
         out = rq.dither_image_to_palette(src, rq.SPECTRA6_PALETTE, method="ordered")
         assert out.size == src.size
-        assert _all_pixels(out) <= set(rq.SPECTRA6_PALETTE)
+        assert distinct_inks(out) <= set(rq.SPECTRA6_PALETTE)
 
     def test_ordered_is_deterministic(self):
         src = Image.new("RGB", (40, 16))
@@ -39,21 +37,21 @@ class TestDitherImageToPalette:
                 px[x, y] = (x * 6, 64, 200 - y * 4)
         a = rq.dither_image_to_palette(src, rq.SPECTRA6_PALETTE, method="ordered")
         b = rq.dither_image_to_palette(src, rq.SPECTRA6_PALETTE, method="ordered")
-        assert list(a.getdata()) == list(b.getdata())
+        assert pixel_bytes(a) == pixel_bytes(b)
 
     def test_midtone_dithers_to_a_mix_not_a_flat_fill(self):
         # A mid blue+white tone should break into >1 ink (the whole point of
         # dithering) rather than snapping flat to one nearest colour.
         src = Image.new("RGB", (40, 40), (128, 128, 255))
         out = rq.dither_image_to_palette(src, rq.SPECTRA6_PALETTE, method="floyd-steinberg")
-        inks = _all_pixels(out)
+        inks = distinct_inks(out)
         assert len(inks) >= 2
         assert inks <= set(rq.SPECTRA6_PALETTE)
 
     def test_restricted_palette_only_emits_those_inks(self):
         src = Image.new("RGB", (24, 24), (40, 60, 120))
         out = rq.dither_image_to_palette(src, rq._CYANOTYPE_PALETTE, method="floyd-steinberg")
-        assert _all_pixels(out) <= set(rq._CYANOTYPE_PALETTE)
+        assert distinct_inks(out) <= set(rq._CYANOTYPE_PALETTE)
 
     def test_unknown_method_raises(self):
         src = Image.new("RGB", (4, 4), (0, 0, 0))
@@ -74,7 +72,7 @@ class TestCyanotypePlate:
         plate = rq._load_dithered_plate(rq.ANNA_ATKINS_PLATE, 200, 120, palette=rq._CYANOTYPE_PALETTE)
         assert plate is not None
         assert plate.size == (200, 120)
-        assert _all_pixels(plate) <= set(rq._CYANOTYPE_PALETTE)
+        assert distinct_inks(plate) <= set(rq._CYANOTYPE_PALETTE)
 
     def test_load_dithered_plate_is_cached(self):
         a = rq._load_dithered_plate(rq.ANNA_ATKINS_PLATE, 160, 96, palette=rq._CYANOTYPE_PALETTE)
@@ -93,7 +91,7 @@ class TestGrimdarkPlate:
         plate = rq._load_dithered_plate(rq.GRIMDARK_PLATE, 200, 120, palette=rq._GUNMETAL_PALETTE)
         assert plate is not None
         assert plate.size == (200, 120)
-        assert _all_pixels(plate) <= set(rq._GUNMETAL_PALETTE)
+        assert distinct_inks(plate) <= set(rq._GUNMETAL_PALETTE)
 
     def test_load_dithered_plate_is_cached(self):
         a = rq._load_dithered_plate(rq.GRIMDARK_PLATE, 160, 96, palette=rq._GUNMETAL_PALETTE)
@@ -109,7 +107,7 @@ class TestLetterPlate:
         plate = rq._load_dithered_plate(rq.LETTER_PLATE, 200, 120, palette=rq._AGED_PAPER_PALETTE)
         assert plate is not None
         assert plate.size == (200, 120)
-        assert _all_pixels(plate) <= set(rq._AGED_PAPER_PALETTE)
+        assert distinct_inks(plate) <= set(rq._AGED_PAPER_PALETTE)
 
     def test_load_dithered_plate_is_cached(self):
         a = rq._load_dithered_plate(rq.LETTER_PLATE, 160, 96, palette=rq._AGED_PAPER_PALETTE)
@@ -136,7 +134,7 @@ class TestPlateThemeRender:
     def test_renders_on_palette(self, theme, mode):
         img = rq.render("02:30", _plate_row(), 800, 480, mode=mode, theme=theme)
         assert img.size == (800, 480)
-        assert _all_pixels(img) <= set(rq.SPECTRA6_PALETTE)
+        assert distinct_inks(img) <= set(rq.SPECTRA6_PALETTE)
 
     @pytest.mark.parametrize("theme", ["grimdark", "letter"])
     def test_small_preview_size_does_not_crash(self, theme):
@@ -151,7 +149,7 @@ class TestPlateThemeRender:
         monkeypatch.setattr(rq, const, tmp_path / "missing.png")
         img = rq.render("02:30", _plate_row(), 800, 480, mode="production", theme=theme)
         assert img.size == (800, 480)
-        assert _all_pixels(img) <= set(rq.SPECTRA6_PALETTE)
+        assert distinct_inks(img) <= set(rq.SPECTRA6_PALETTE)
 
 
 class TestAnnaAtkinsRender:
@@ -171,7 +169,7 @@ class TestAnnaAtkinsRender:
     def test_renders_on_palette(self, mode):
         img = rq.render("02:30", self._row(), 800, 480, mode=mode, theme="anna_atkins")
         assert img.size == (800, 480)
-        assert _all_pixels(img) <= set(rq.SPECTRA6_PALETTE)
+        assert distinct_inks(img) <= set(rq.SPECTRA6_PALETTE)
 
     def test_small_preview_size_does_not_crash(self):
         # /api/preview can request reduced sizes; the cyanotype frame must clip
@@ -184,6 +182,6 @@ class TestAnnaAtkinsRender:
         # white must appear in the panel region (the deep panel is blue/black, so
         # white pixels there come from the body + matched-phrase text).
         img = rq.render("02:30", self._row(), 800, 480, mode="production", theme="anna_atkins")
-        inks = _all_pixels(img)
+        inks = distinct_inks(img)
         assert rq.SPECTRA6["white"] in inks
         assert rq.SPECTRA6["blue"] in inks

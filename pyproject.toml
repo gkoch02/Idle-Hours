@@ -14,7 +14,17 @@ description = "Idle Hours: a literary clock that harvests time phrases from Proj
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "Pillow",
+    # Floor, not a pin. The newest Pillow API the renderer calls is the
+    # ``Image.Dither`` enum (``Image.Dither.FLOYDSTEINBERG``, added in 9.1.0);
+    # 9.3.0 is the oldest release the suite is verified green on under this
+    # project's ``requires-python >= 3.11``, so that is what we declare rather
+    # than an untested 9.1. Deliberately NOT raised to 11.1 (where
+    # ``get_flattened_data`` lands): no production or test code calls it — the
+    # image assertions use ``getcolors`` / ``tobytes`` / ``histogram``, stable
+    # across every Pillow release — and an 11.1 floor would lock out the distro
+    # Pillow on Raspberry Pi OS bookworm (9.4), which is the appliance's own
+    # deployment target.
+    "Pillow>=9.3",
 ]
 
 [project.optional-dependencies]
@@ -44,7 +54,19 @@ idle_hours = ["assets/**/*", "fonts/**/*", "web/**/*"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-filterwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = [
+    # Third-party DeprecationWarnings are noise for this suite; the broad
+    # ignore stays.
+    "ignore::DeprecationWarning",
+    # …but not for Pillow's own removal notices. The blanket ignore above let
+    # 26 ``Image.getdata()`` call sites accrue silently for a year against a
+    # Pillow 14 removal (issue #204). Pillow words every one of these the same
+    # way ("… is deprecated and will be removed in Pillow N (date)"), so
+    # matching that message turns the next one into a failing test on the day
+    # it is introduced. Later filters win in pytest, so this overrides the
+    # ignore above for exactly these warnings.
+    "error:.*will be removed in Pillow.*:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["idle_hours"]

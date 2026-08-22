@@ -209,6 +209,14 @@ python3 contact_sheet.py --theme <new>   --output output/contact-<new>.png
 - Hardware-touching modules (`display_inky.py`, `inky_buttons.py`) are tested
   with the hardware call mocked; new hardware code should follow the same
   pattern (local import inside a function, Pillow/GPIO stubbed in the test).
+- Image assertions use the helpers in `tests/pixel_helpers.py` —
+  `distinct_inks` (set of RGB tuples, for on-palette / which-inks-appear
+  checks), `ink_counts` (histogram, for ratio checks), and `pixel_bytes`
+  (for determinism / byte-identical comparisons). Do **not** call
+  `Image.getdata()`: Pillow removes it in 14, and pytest is configured to
+  turn Pillow removal warnings into errors, so a new call site fails the
+  suite. `get_flattened_data()` is not an option either — it only exists
+  from Pillow 11.1, above the project's `Pillow>=9.3` floor.
 - Renderer changes must either preserve the committed golden images in
   `tests/golden/renderer/` (most common — the Spectra 6 palette snap makes
   the fixtures stable across FreeType drift) or regenerate them in the same

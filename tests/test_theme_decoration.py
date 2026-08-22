@@ -42,6 +42,8 @@ from PIL import ImageChops
 
 from idle_hours import render_quote as rq
 
+from .pixel_helpers import distinct_inks
+
 # Native panel geometry. The sweep deliberately runs at full size rather than
 # at the ``/api/preview`` thumbnail sizes the pre-existing smoke sweep uses —
 # most frames pin decoration to fixed 800x480 coordinates, so a thumbnail
@@ -181,14 +183,13 @@ class TestBorderPainterActuallyPaints:
         image = _render(theme).convert("RGB")
         # ``getcolors`` rather than ``getdata`` / ``get_flattened_data``: the
         # former is deprecated (removed in Pillow 14), the latter only exists
-        # from Pillow 11.1, and pyproject.toml pins no lower bound on Pillow —
-        # so either would tie this test to a version window. ``getcolors`` has
-        # been stable across every Pillow release and is the better fit anyway:
-        # the assertion is about the set of distinct inks, not about walking
-        # 384,000 pixels. Passing ``width * height`` as the cap guarantees a
-        # non-``None`` return, since an image cannot hold more distinct colours
-        # than it has pixels.
-        pixels = {colour for _count, colour in image.getcolors(maxcolors=image.width * image.height)}
+        # from Pillow 11.1, and pyproject.toml floors Pillow well below that
+        # (9.3) — so either would tie this test to a version window.
+        # ``getcolors`` has been stable across every Pillow release and is the
+        # better fit anyway: the assertion is about the set of distinct inks,
+        # not about walking 384,000 pixels. ``tests/pixel_helpers.py`` wraps
+        # this same call for the rest of the image suite.
+        pixels = distinct_inks(image)
         assert pixels.issubset(set(rq.SPECTRA6.values())), (
             f"{theme}: off-palette colours {pixels - set(rq.SPECTRA6.values())}"
         )

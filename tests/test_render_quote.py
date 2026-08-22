@@ -16,6 +16,8 @@ pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed"
 
 from idle_hours import render_quote as rq  # noqa: E402
 
+from .pixel_helpers import distinct_inks, ink_counts  # noqa: E402
+
 
 @pytest.fixture(autouse=True)
 def _isolate_font_cache():
@@ -236,26 +238,26 @@ class TestTokenizeQuote:
 # ---------------------------------------------------------------------------
 
 class TestSnapImageToPalette:
-    def _pixels(self, img):
-        return list(img.convert("RGB").getdata())
+    def _inks(self, img):
+        return distinct_inks(img)
 
     def test_pure_white_snaps_to_white(self):
         img = Image.new("RGB", (4, 4), color=(255, 255, 255))
         palette = [(255, 255, 255), (0, 0, 0)]
         result = rq.snap_image_to_palette(img, palette)
-        assert all(p == (255, 255, 255) for p in self._pixels(result))
+        assert self._inks(result) == {(255, 255, 255)}
 
     def test_pure_black_snaps_to_black(self):
         img = Image.new("RGB", (4, 4), color=(0, 0, 0))
         palette = [(255, 255, 255), (0, 0, 0)]
         result = rq.snap_image_to_palette(img, palette)
-        assert all(p == (0, 0, 0) for p in self._pixels(result))
+        assert self._inks(result) == {(0, 0, 0)}
 
     def test_near_red_snaps_to_red(self):
         img = Image.new("RGB", (2, 2), color=(240, 10, 10))
         palette = [(255, 255, 255), (0, 0, 0), (255, 0, 0)]
         result = rq.snap_image_to_palette(img, palette)
-        assert all(p == (255, 0, 0) for p in self._pixels(result))
+        assert self._inks(result) == {(255, 0, 0)}
 
     def test_output_size_matches_input(self):
         img = Image.new("RGB", (10, 8), color=(128, 128, 128))
@@ -268,7 +270,7 @@ class TestSnapImageToPalette:
         for color in palette:
             img = Image.new("RGB", (2, 2), color=color)
             result = rq.snap_image_to_palette(img, palette)
-            assert all(p == color for p in self._pixels(result)), f"Color {color} did not round-trip"
+            assert self._inks(result) == {color}, f"Color {color} did not round-trip"
 
 
 # ---------------------------------------------------------------------------
@@ -838,7 +840,7 @@ class TestRender:
         row = self._quote_row()
         img = rq.render("03:00", row, 800, 480, mode="production")
         palette = set(rq.SPECTRA6.values())
-        pixels = set(img.convert("RGB").getdata())
+        pixels = distinct_inks(img)
         assert pixels.issubset(palette), f"Unexpected colors: {pixels - palette}"
 
     def test_render_dark_theme_uses_black_background(self):
@@ -2594,10 +2596,9 @@ class TestCircuitBorder:
         that skipped the wash would leave the board flat bright green
         (almost no black) and inherit atomic's silhouette."""
         img = rq.render("14:30", self._row(), 800, 480, mode="production", theme="circuit")
-        from collections import Counter
-        counts = Counter(img.getdata())
-        green = counts[rq.SPECTRA6["green"]]
-        black = counts[rq.SPECTRA6["black"]]
+        counts = ink_counts(img)
+        green = counts.get(rq.SPECTRA6["green"], 0)
+        black = counts.get(rq.SPECTRA6["black"], 0)
         assert green > 50_000, "soldermask wash erased too much of the green ground"
         assert black > 50_000, "soldermask wash did not flip enough green to black"
         # Balanced checkerboard: neither ink dominates the other more than 2:1.
@@ -2608,8 +2609,7 @@ class TestCircuitBorder:
         (Spectra-6 yellow). A render with no yellow pixels would mean the
         trace routing / pad / ornament layer silently dropped."""
         img = rq.render("14:30", self._row(), 800, 480, mode="production", theme="circuit")
-        from collections import Counter
-        assert Counter(img.getdata())[rq.SPECTRA6["yellow"]] > 1_000
+        assert ink_counts(img).get(rq.SPECTRA6["yellow"], 0) > 1_000
 
     def test_circuit_small_preview_does_not_crash(self):
         """The curator UI clamps preview renders down to 80x60; the
@@ -2649,7 +2649,7 @@ class TestRenderCard:
     def test_card_palette_is_spectra6(self):
         img = rq.render("03:00", self._row(), 800, 480, mode="card")
         palette = set(rq.SPECTRA6.values())
-        pixels = set(img.convert("RGB").getdata())
+        pixels = distinct_inks(img)
         assert pixels.issubset(palette), f"Unexpected colors: {pixels - palette}"
 
     def test_card_without_author_or_title_falls_back_gracefully(self):
@@ -2704,7 +2704,7 @@ class TestRenderStaticMessage:
         monitor but bleed unpredictably on the eInk panel."""
         img = rq.render_static_message("Good night.", 800, 480, theme=theme)
         palette = set(rq.SPECTRA6.values())
-        pixels = set(img.convert("RGB").getdata())
+        pixels = distinct_inks(img)
         assert pixels.issubset(palette), f"theme={theme}: unexpected colors {pixels - palette}"
 
     def test_message_wraps_for_long_text(self):
@@ -2762,7 +2762,7 @@ class TestPreviewSizeRendering:
         img = rq.render("14:30", self._row(), width, height, mode="production", theme=theme)
         assert img.size == (width, height)
         palette = set(rq.SPECTRA6.values())
-        assert set(img.convert("RGB").getdata()).issubset(palette)
+        assert distinct_inks(img).issubset(palette)
 
 
 class TestMainAtomicSave:
@@ -3166,11 +3166,11 @@ class TestFillSwatchStipple3way:
 
     @classmethod
     def _counts(cls, image):
-        pixels = list(image.getdata())
+        counts = ink_counts(image)
         return {
-            "a": pixels.count(cls._INK_A),
-            "b": pixels.count(cls._INK_B),
-            "c": pixels.count(cls._INK_C),
+            "a": counts.get(cls._INK_A, 0),
+            "b": counts.get(cls._INK_B, 0),
+            "c": counts.get(cls._INK_C, 0),
         }
 
     @pytest.mark.parametrize(
@@ -3823,7 +3823,7 @@ def test_grimdark_matched_phrase_uses_forge_amber_recipe():
     draw = ImageDraw.Draw(img)
     font = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=40)
     rq._draw_text_body(img, draw, (4, 4), "TWO", font=font, fill=rq.SPECTRA6["red"], theme="grimdark")
-    inks = set(img.convert("RGB").getdata())
+    inks = distinct_inks(img)
     assert rq.SPECTRA6["red"] in inks, "forge-amber should retain red pixels"
     assert rq.SPECTRA6["yellow"] in inks, "forge-amber should introduce yellow pixels"
 

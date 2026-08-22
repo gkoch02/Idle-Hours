@@ -615,11 +615,10 @@ def _count_diff_pixels(a: Image.Image, b: Image.Image) -> int:
         return 0
     # Sum non-zero pixels across the bounding box. A channel value of 0 means
     # the pixel matched on that channel; any non-zero byte means drift.
-    non_zero = 0
-    for px in diff.crop(bbox).convert("L").getdata():
-        if px:
-            non_zero += 1
-    return non_zero
+    # ``histogram()`` buckets an 'L' image by value, so everything from index 1
+    # upward is a differing pixel — the same count the per-pixel walk produced,
+    # without ``getdata()`` (deprecated, removed in Pillow 14).
+    return sum(diff.crop(bbox).convert("L").histogram()[1:])
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s["name"])
