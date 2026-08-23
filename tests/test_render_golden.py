@@ -501,6 +501,28 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "izakaya",
     },
+    # abyssal — a custom-render frame (deep sea). The generated sweep entry
+    # below covers it at 08:55; this second scenario pins the hour at its
+    # extreme, because the hour IS the depth here: at twelve the sounding gauge
+    # marker sits on the last graduation, which is the case where the marker
+    # label and the graduation numeral collide unless one is suppressed.
+    {
+        "name": "abyssal_depth_h12_production",
+        "time": "12:45",
+        "row": _row(
+            "It was a quarter to twelve, and the long corridor lay empty in "
+            "the winter light; somewhere below a door closed, and then another.",
+            "quarter to twelve",
+            author="Henry James",
+            title="The Portrait of a Lady",
+            bucket="h12_quarter_to",
+            resolved_bucket="h12_quarter_to",
+            quality_score=89,
+            source_id="2833",
+        ),
+        "mode": "production",
+        "theme": "abyssal",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

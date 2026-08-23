@@ -94,6 +94,7 @@ THEME_ORDER: tuple[str, ...] = (
     "anna_atkins",
     "lieder",
     "izakaya",
+    "abyssal",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1188,6 +1189,19 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # Deep sea. A custom-render frame, so these colours serve only the
+    # goodnight / source-card fall-through paths; the frame paints its own
+    # depth gradient and blooms (see the abyssal section comment).
+    "abyssal": {
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1653,6 +1667,15 @@ NOTOMUSIC_REGULAR = str(BASE_DIR / "fonts/noto-music/NotoMusic-Regular.ttf")
 # Rubik rounded-but-squarer, Antonio condensed, Oxanium techno).
 QUICKSAND_REGULAR = str(BASE_DIR / "fonts/quicksand/Quicksand-Regular.ttf")
 QUICKSAND_BOLD = str(BASE_DIR / "fonts/quicksand/Quicksand-Bold.ttf")
+
+# Lato (Łukasz Dziedzic, OFL) — a humanist sans, a branch of the sans family
+# nothing in the rotation had yet occupied: Inter and Archivo are grotesques,
+# Jost and Rubik and Quicksand geometrics, Antonio condensed, Oxanium techno.
+# `abyssal` wants its warmth and open counters specifically because white text
+# on a dark gradient needs sturdy letterforms to hold up at panel distance.
+LATO_REGULAR = str(BASE_DIR / "fonts/lato/Lato-Regular.ttf")
+LATO_BOLD = str(BASE_DIR / "fonts/lato/Lato-Bold.ttf")
+LATO_ITALIC = str(BASE_DIR / "fonts/lato/Lato-Italic.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -3005,6 +3028,31 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             YUJI_BOKU_REGULAR,
             QUICKSAND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "abyssal": {
+        # Lato: humanist sans, sturdy enough to stay legible as white text over
+        # a dark gradient at panel distance, which a high-contrast serif is not.
+        # Regular body, Bold matched phrase — a real weight step underneath the
+        # mint bloom. The italic fills the ornament slot for the attribution,
+        # which is the one piece of text down here that is *not* a light source.
+        "quote_regular": [
+            LATO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            LATO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            LATO_ITALIC,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            LATO_REGULAR,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -19119,6 +19167,323 @@ def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int
 
 
 
+# ─── abyssal (deep sea) ──────────────────────────────────────────────────────
+#
+# A quote read through deep water: a full-bleed vertical gradient from a bright
+# seafoam surface down to near-black, the rippling net of surface light fading
+# out below it, marine snow drifting through, and bioluminescent jellyfish
+# glowing in the dark.
+#
+# The theme claims a recipe the catalogue had been holding open.
+# `spectra6_color_recipes.md` listed **seafoam (G+B+W @ 40/30/30)** with the
+# note "Future ocean / spa theme" and nothing had ever used it; the surface band
+# here is that mix, painted as a 3-way Bayer partition whose weights fall with
+# depth so the water reads as turquoise at the top and pure blue a hundred
+# pixels down.
+#
+# It also fills a real palette gap. The rotation had four blue-ish themes and
+# none of them was *underwater*: `glacier` is a white-ground frost treatment,
+# `anna_atkins` a flat Prussian-blue photographic plate, `firmament` a navy
+# celestial atlas, `chrono` a twilight sky. Nothing used blue as **depth**.
+#
+# Second consumer of the glow primitive (`paint_neon_mask`, added for
+# `izakaya`), and the one that proves it generalises past neon: bioluminescence
+# is precisely a falling-density bloom, and the jellyfish and the sung time
+# phrase are lit the same way a neon tube is. The cool/hot split is the same
+# shape izakaya uses — a blue bloom for the prose so it sits *in* the water, a
+# mint-green bloom for the matched phrase so it reads as the one living light on
+# the page.
+#
+# **The hour is a depth.** `_ABYSSAL_METRES_PER_HOUR` is 500, so the sounding
+# gauge down the left margin runs 500 m at one o'clock to 6000 m at twelve —
+# and 6000 m is the true floor of the abyssal zone the theme is named for, so
+# the clock bottoms out exactly where the name does. The issue left this as an
+# open choice between a bare matched phrase and a gauge; the gauge wins because
+# it is the difference between "a gradient with text on it" and an instrument
+# record, and because it puts the theme in the company of `lieder`'s time
+# signature and `izakaya`'s lantern numeral rather than the themes that simply
+# `del`-assert `time_str`.
+
+_ABYSSAL_SURFACE_BOTTOM = 96     # seafoam band fades to plain blue by here
+_ABYSSAL_CAUSTIC_BOTTOM = 172    # the light net dies out by here
+_ABYSSAL_DEEP_TOP = 208          # below this the water darkens toward black
+_ABYSSAL_QUOTE_RECT = (128, 150, 688, 330)
+_ABYSSAL_GAUGE_X = 54
+_ABYSSAL_GAUGE_TOP = 62
+_ABYSSAL_GAUGE_BOTTOM = 428
+_ABYSSAL_METRES_PER_HOUR = 500
+# (cx, cy, bell radius) — kept clear of the quote rect and the gauge column.
+_ABYSSAL_JELLYFISH = ((252, 392, 25), (566, 374, 19), (712, 236, 14))
+_ABYSSAL_SNOW_SEED = 0xA1B255
+_ABYSSAL_SNOW_COUNT = 260
+
+
+def _abyssal_hour(time_str: str) -> int:
+    """Hour 1..12 parsed defensively from ``HH:MM`` (12 on a bad parse)."""
+    try:
+        return int(time_str.split(":")[0]) % 12 or 12
+    except (AttributeError, ValueError):
+        return 12
+
+
+def _abyssal_water_ground() -> frozenset:
+    """Inks a bloom may overwrite: the water itself, not what is lit in it.
+
+    Excludes white and green deliberately — the caustic net, the marine snow and
+    an already-painted jellyfish are all light *sources*, and letting a later
+    halo repaint them would dim the very things the glow is meant to sell.
+    """
+    return frozenset({SPECTRA6["blue"], SPECTRA6["black"]})
+
+
+def _abyssal_paint_water(image: Image.Image) -> None:
+    """The depth gradient: seafoam surface → blue → navy → near-black.
+
+    Three bands over one blue ground. The surface is a 3-way Bayer partition
+    (white / green / blue) whose white and green weights fall linearly with
+    depth — the documented seafoam recipe, animated by depth rather than held at
+    a fixed ratio. The middle is left as plain blue. The deep band flips blue to
+    black on a rising ramp, capped just short of solid so a little blue survives
+    all the way down; a fully black floor stops reading as water and starts
+    reading as a border.
+    """
+    px = image.load()
+    width, height = image.size
+    blue, white, green, black = (SPECTRA6["blue"], SPECTRA6["white"],
+                                 SPECTRA6["green"], SPECTRA6["black"])
+    deep_span = max(1, height - _ABYSSAL_DEEP_TOP)
+    for y in range(height):
+        row = BAYER_4x4[y % 4]
+        if y < _ABYSSAL_SURFACE_BOTTOM:
+            frac = 1.0 - y / _ABYSSAL_SURFACE_BOTTOM
+            white_cells = 5.0 * frac
+            green_cells = white_cells + 4.0 * frac
+            for x in range(width):
+                cell = row[x % 4]
+                px[x, y] = white if cell < white_cells else (green if cell < green_cells else blue)
+        elif y >= _ABYSSAL_DEEP_TOP:
+            frac = (y - _ABYSSAL_DEEP_TOP) / deep_span
+            black_cells = min(14.0, 16.0 * (frac ** 0.85))
+            for x in range(width):
+                px[x, y] = black if row[x % 4] < black_cells else blue
+        else:
+            for x in range(width):
+                px[x, y] = blue
+
+
+def _abyssal_paint_caustics(image: Image.Image) -> None:
+    """The rippling net of surface light, thinning with depth.
+
+    A caustic net is a **contour** of the interference field, not its peaks.
+    Thresholding high (``sum of sines > k``) isolates the maxima into
+    disconnected specks — tried first, and it reads as confetti. Painting a thin
+    band around the zero crossing (``abs(f) < eps``) traces the level set
+    instead, which is a connected curve, which is a net.
+
+    Two sines alone give a *perfectly regular* lattice that reads as tile grout;
+    the third term at an incommensurate frequency warps it into the irregular
+    closed cells real caustics form on a seabed. Density falls with depth on top
+    of that, which is what stops the band ending at a visible line.
+    """
+    px = image.load()
+    width = image.size[0]
+    white, blue = SPECTRA6["white"], SPECTRA6["blue"]
+    for y in range(min(image.size[1], _ABYSSAL_CAUSTIC_BOTTOM)):
+        fade = (1.0 - y / _ABYSSAL_CAUSTIC_BOTTOM) ** 1.2
+        density = 6.5 * fade
+        if density <= 0:
+            continue
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            field = (math.sin(x * 0.038 + y * 0.021)
+                     + math.sin(x * 0.026 - y * 0.033)
+                     + 0.8 * math.sin(x * 0.014 + y * 0.047))
+            if abs(field) < 0.13 and row[x % 4] < density and px[x, y] == blue:
+                px[x, y] = white
+
+
+def _abyssal_paint_snow(image: Image.Image) -> None:
+    """Marine snow — the constant drift of detritus that makes water read as deep.
+
+    Seeded, so a given frame is byte-identical on re-render. Skips the surface
+    band, where it would be lost in the caustics anyway.
+    """
+    rng = random.Random(_ABYSSAL_SNOW_SEED)
+    px = image.load()
+    width, height = image.size
+    white = SPECTRA6["white"]
+    ground = _abyssal_water_ground()
+    # Clamp the start against the canvas: at an /api/preview thumbnail the
+    # fixed 800x480 band start sits below the whole image, and randrange raises
+    # on an empty range rather than clipping the way ImageDraw would.
+    y_min = min(_ABYSSAL_CAUSTIC_BOTTOM // 2, max(0, height - 1))
+    for _ in range(_ABYSSAL_SNOW_COUNT):
+        x = rng.randrange(width)
+        y = rng.randrange(y_min, height)
+        if px[x, y] not in ground:
+            continue
+        px[x, y] = white
+        if rng.random() < 0.22 and x + 1 < width and y + 1 < height:
+            if px[x + 1, y] in ground:
+                px[x + 1, y] = white
+
+
+def _abyssal_paint_jellyfish(image: Image.Image, cx: int, cy: int, radius: int) -> None:
+    """One bioluminescent jellyfish: a domed bell over trailing tentacles.
+
+    Built as a single mask so the bell and its tentacles share one continuous
+    bloom — blooming them separately double-exposes where the two halos meet,
+    the same lesson izakaya's sign frames taught. Core white, halo green: the
+    eye reads white-inside-green as something *emitting* rather than something
+    painted, which is the whole point of putting it in the dark band.
+    """
+    mask = Image.new("L", image.size, 0)
+    mdraw = ImageDraw.Draw(mask)
+    # Bell: an arc, not a filled dome. A solid disc of white reads as an opaque
+    # blob stuck on the water; leaving the bell hollow lets the gradient show
+    # through it, which is what makes a jellyfish read as translucent.
+    mdraw.arc((cx - radius, cy - radius, cx + radius, cy + radius), 180, 360, fill=255, width=2)
+    mdraw.line((cx - radius, cy, cx + radius, cy), fill=255, width=2)
+    # A couple of radial ribs inside the bell, the way a real medusa is veined.
+    for rib in (-0.5, 0.0, 0.5):
+        rx = cx + int(radius * rib * 0.8)
+        mdraw.line((rx, cy - int(radius * (0.82 - abs(rib) * 0.5)), rx, cy), fill=255, width=1)
+    # Tentacles: wavy lines trailing below, each with its own phase.
+    for index in range(5):
+        offset = cx + int((index - 2) * radius * 0.42)
+        phase = index * 1.1
+        length = int(radius * (2.6 + 0.5 * math.sin(phase)))
+        prev = (offset, cy)
+        for step in range(1, length, 3):
+            sway = int(round(radius * 0.28 * math.sin(step * 0.16 + phase)))
+            point = (offset + sway, cy + step)
+            mdraw.line((prev[0], prev[1], point[0], point[1]), fill=255, width=1)
+            prev = point
+    paint_neon_mask(image, mask, SPECTRA6["white"], SPECTRA6["green"],
+                    radius=max(3, radius // 3), gamma=2.0, cap=0.62,
+                    ground=_abyssal_water_ground())
+
+
+def _abyssal_paint_gauge(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """Sounding gauge down the left margin — the hour, read as a depth.
+
+    Twelve graduations at 500 m each, so the scale bottoms out at 6000 m: the
+    true floor of the abyssal zone, which means the clock and the theme's name
+    run out at the same place. The current hour gets a filled marker and a
+    label; every third graduation is drawn long so the scale is countable at a
+    glance without numbering every tick.
+    """
+    white, green = SPECTRA6["white"], SPECTRA6["green"]
+    top, bottom = _ABYSSAL_GAUGE_TOP, _ABYSSAL_GAUGE_BOTTOM
+    x = _ABYSSAL_GAUGE_X
+    draw.line((x, top, x, bottom), fill=white, width=1)
+    step = (bottom - top) / 12.0
+    label_font = load_font(META_FONT_CANDIDATES, size=11)
+    for mark in range(1, 13):
+        y = top + step * mark
+        long_mark = mark % 3 == 0
+        draw.line((x, y, x + (13 if long_mark else 7), y), fill=white, width=1)
+        # Skip the graduation numeral on the hour's own mark — the green marker
+        # label lands in the same place and the two overprint into mush (most
+        # visibly at 12 o'clock, where both read "6000").
+        if long_mark and mark != hour:
+            draw.text((x + 17, y), f"{mark * _ABYSSAL_METRES_PER_HOUR}", font=label_font,
+                      fill=white, anchor="lm")
+    # The hour: a filled marker, drawn last so it sits over its graduation.
+    marker_y = top + step * hour
+    draw.polygon([(x - 9, marker_y - 5), (x - 1, marker_y), (x - 9, marker_y + 5)], fill=green)
+    depth_font = load_font(META_FONT_BOLD_CANDIDATES, size=12)
+    draw.text((x + 17, marker_y), f"{hour * _ABYSSAL_METRES_PER_HOUR} m", font=depth_font,
+              fill=green, anchor="lm")
+
+
+def _abyssal_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
+    """The quote, lit like everything else down here. Returns the block bottom.
+
+    Two masks, cool and hot, exactly as izakaya splits its prose from its sung
+    phrase: white cores throughout for legibility against the water, a blue
+    bloom on the body so it sits *in* the medium, and a mint-green bloom on the
+    matched phrase so the time reads as the one living light on the page.
+    """
+    x0, y0, x1, y1 = _ABYSSAL_QUOTE_RECT
+    box_w, box_h = x1 - x0, y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "", box_w, box_h,
+        font_max=34, font_min=15, line_height_mult=1.38, theme="abyssal",
+    )
+    cool = Image.new("L", image.size, 0)
+    hot = Image.new("L", image.size, 0)
+    cool_draw, hot_draw = ImageDraw.Draw(cool), ImageDraw.Draw(hot)
+
+    y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
+                       for c, b in segment)
+        x = x0 + max(0, (box_w - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            target = hot_draw if is_bold else cool_draw
+            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+
+    ground = _abyssal_water_ground()
+    paint_neon_mask(image, cool, SPECTRA6["white"], SPECTRA6["blue"],
+                    radius=6, gamma=2.1, cap=0.55, ground=ground)
+    paint_neon_mask(image, hot, SPECTRA6["white"], SPECTRA6["green"],
+                    radius=6, gamma=1.9, cap=0.7, ground=ground)
+    return y
+
+
+def _abyssal_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw,
+                           quote_row: dict, top: int) -> None:
+    """author · title below the quote, unlit — a label, not a light source."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = "  ·  ".join(parts)
+    font = load_font(theme_font_candidates("abyssal", "ornament"), size=14)
+    width = image.size[0]
+    max_w = max(40, width - 260)
+    while len(text) > 1 and draw.textlength(text, font=font) > max_w:
+        text = text[:-2].rstrip(" ·") + "…"
+    y = min(max(top + 14, _ABYSSAL_QUOTE_RECT[3] - 2), image.size[1] - 40)
+    draw.text((width // 2, y), text, font=font, fill=SPECTRA6["white"], anchor="ma")
+
+
+def render_abyssal_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Deep sea (see the module section comment above).
+
+    Laid out against the canonical 800×480; smaller canvases (the curator UI's
+    ``/api/preview`` thumbnails) crop the composition rather than reflowing it,
+    the same convention every other custom frame follows. The raw pixel writes
+    all go through helpers that clamp to ``image.size``, and the gauge and
+    credits use ``ImageDraw``, which clips silently.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["blue"])
+    _abyssal_paint_water(image)
+    _abyssal_paint_caustics(image)
+    _abyssal_paint_snow(image)
+    for cx, cy, radius in _ABYSSAL_JELLYFISH:
+        _abyssal_paint_jellyfish(image, cx, cy, radius)
+    draw = ImageDraw.Draw(image)
+    _abyssal_paint_gauge(image, draw, _abyssal_hour(time_str))
+    block_bottom = _abyssal_paint_quote(image, draw, quote_row)
+    _abyssal_paint_credits(image, draw, quote_row, block_bottom)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -19146,6 +19511,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_lieder_frame(time_str, quote_row, width, height)
     if theme == "izakaya":
         return render_izakaya_frame(time_str, quote_row, width, height)
+    if theme == "abyssal":
+        return render_abyssal_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

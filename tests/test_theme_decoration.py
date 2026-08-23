@@ -84,6 +84,7 @@ CUSTOM_FRAME_THEMES = (
     "sampler",
     "lieder",
     "izakaya",
+    "abyssal",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

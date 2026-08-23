@@ -1,7 +1,7 @@
 """Smoke tests for the custom-render themes that bypass the standard literary layout.
 
 These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``, ``vinyl``,
-``vitrail``, ``outrun``, ``sampler``, ``lieder``, ``izakaya``) each dispatch out of ``render()`` into
+``vitrail``, ``outrun``, ``sampler``, ``lieder``, ``izakaya``, ``abyssal``) each dispatch out of ``render()`` into
 their own frame function and own their composition top to bottom. The contracts
 every custom-render frame must keep:
 
@@ -28,7 +28,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal")
 
 
 def _on_palette(image: Image.Image) -> bool:
