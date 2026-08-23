@@ -171,6 +171,11 @@ THEME_SATURATION: dict[str, float] = {
     # cores are white and yellow and carry legibility on their own, so the push
     # lands on the coloured gas where it is wanted.
     "izakaya": 0.7,
+    # abyssal — deep sea. Dark blue-to-black gradient ground, and the lit
+    # elements (caustic net, marine snow, jellyfish, the quote's blooms) are all
+    # falling-density stipples, which is exactly what a low saturation flattens.
+    # Takes the 0.7 dark-ground tier alongside ``izakaya`` for the same reason.
+    "abyssal": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

@@ -1,7 +1,7 @@
 """Smoke tests for the custom-render themes that bypass the standard literary layout.
 
 These themes (``astrarium``, ``diags``, ``marquee``, ``tarot``, ``vinyl``,
-``vitrail``, ``outrun``, ``sampler``, ``lieder``, ``izakaya``) each dispatch out of ``render()`` into
+``vitrail``, ``outrun``, ``sampler``, ``lieder``, ``izakaya``, ``abyssal``) each dispatch out of ``render()`` into
 their own frame function and own their composition top to bottom. The contracts
 every custom-render frame must keep:
 
@@ -28,7 +28,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -634,3 +634,81 @@ class TestFooterTruncationTerminates:
         assert self._run_with_timeout(
             lambda: rq.render("02:30", row, 800, 480, mode="production", theme=theme)
         ), f"{theme} frame did not terminate with an absurd title"
+
+
+class TestAbyssalSeafoamMix:
+    """The surface band must actually be the seafoam recipe it claims.
+
+    ``abyssal`` is built around claiming G+B+W @ 40/30/30 — the recipe
+    ``spectra6_color_recipes.md`` had held open as a forward reference since the
+    catalogue was written — and the README, CLAUDE.md and the catalogue itself
+    all say so. The first revision allocated 5 white / 4 green cells and left
+    the remaining 7 to blue, which is G25/B44/W31: a substantially bluer surface
+    that did not implement the recipe. Nothing caught it, because the only
+    seafoam test in the suite checks the *diags swatch list's* names rather than
+    any theme's implementation.
+
+    The target is read out of ``_DIAGS_TRIPLE_SWATCHES`` rather than hardcoded,
+    so the recipe and its one consumer cannot drift apart independently.
+    """
+
+    # The quantisation floor for a 4x4 tile is 0.025 (16 cells split 6/5/5
+    # against 0.40/0.30/0.30). The defect this fences was 0.150, so a tolerance
+    # anywhere between leaves the test meaningful; 0.06 is comfortably clear of
+    # the floor without approaching the bug.
+    TOLERANCE = 0.06
+
+    @staticmethod
+    def _target() -> dict[str, float]:
+        entry = next(e for e in rq._DIAGS_TRIPLE_SWATCHES if e[0] == "seafoam")
+        _, first, second, third, w_first, w_second, _ = entry
+        assert (first, second, third) == (rq.SPECTRA6["green"], rq.SPECTRA6["blue"], rq.SPECTRA6["white"])
+        return {"G": w_first, "B": w_second, "W": round(1.0 - w_first - w_second, 6)}
+
+    @staticmethod
+    def _measure(y0: int, rows: int = 4) -> dict[str, float]:
+        """Ink shares in the bare water layer, over whole Bayer tiles.
+
+        Measures ``_abyssal_paint_water`` on its own rather than the finished
+        frame: the caustic net, marine snow and jellyfish all paint over the
+        water, and a sample that included them would be measuring the wrong
+        thing. ``rows`` must be a multiple of 4 — a single row of a 4x4 tile is
+        not representative (row 2 of the matrix alone reads W50/G25/B25).
+        """
+        assert rows % 4 == 0
+        image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["blue"])
+        rq._abyssal_paint_water(image)
+        px = image.load()
+        names = {rq.SPECTRA6["white"]: "W", rq.SPECTRA6["green"]: "G", rq.SPECTRA6["blue"]: "B"}
+        counts = {"W": 0, "G": 0, "B": 0}
+        for y in range(y0, y0 + rows):
+            for x in range(800):
+                counts[names[px[x, y]]] += 1
+        total = sum(counts.values())
+        return {k: v / total for k, v in counts.items()}
+
+    def test_surface_matches_the_documented_recipe(self):
+        target = self._target()
+        got = self._measure(0)
+        for ink in ("G", "B", "W"):
+            assert abs(got[ink] - target[ink]) <= self.TOLERANCE, (
+                f"seafoam surface {ink} is {got[ink]:.3f}, recipe says {target[ink]:.3f} — "
+                f"the band is not the mix abyssal is built around (full mix: {got})"
+            )
+
+    def test_green_leads_the_surface_mix(self):
+        """Green is the *dominant* ink at 40%; the bug made it the smallest."""
+        got = self._measure(0)
+        assert got["G"] > got["B"] and got["G"] > got["W"], (
+            f"green is not the leading ink at the surface ({got}) — seafoam is "
+            "green-dominant, and a blue-led mix is just water"
+        )
+
+    def test_band_fades_to_plain_blue_with_depth(self):
+        """The mix is animated by depth: both light inks recede, blue takes over."""
+        samples = [self._measure(y) for y in (0, 24, 48, 72, 92)]
+        for earlier, later in zip(samples, samples[1:]):
+            assert later["B"] >= earlier["B"], f"blue share did not rise with depth: {samples}"
+            assert later["G"] <= earlier["G"], f"green share did not fall with depth: {samples}"
+            assert later["W"] <= earlier["W"], f"white share did not fall with depth: {samples}"
+        assert samples[-1]["B"] > 0.9, f"surface band had not resolved to plain blue by its bottom: {samples[-1]}"
