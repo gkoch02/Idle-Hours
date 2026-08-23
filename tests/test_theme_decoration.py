@@ -83,6 +83,7 @@ CUSTOM_FRAME_THEMES = (
     "outrun",
     "sampler",
     "lieder",
+    "izakaya",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

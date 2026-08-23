@@ -479,6 +479,28 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "lieder",
     },
+    # izakaya — a custom-render frame (neon alley). The generated sweep entry
+    # below covers it at 08:55; this second scenario pins an hour whose lantern
+    # numeral is TWO kanji (十一), which is the only case where the lantern
+    # stacks its characters, and uses a long quote so the neon fit loop and the
+    # cool/hot dual-mask bloom are exercised across five wrapped lines.
+    {
+        "name": "izakaya_hour11_production",
+        "time": "11:50",
+        "row": _row(
+            "It was ten minutes to twelve, and the long corridor lay empty in "
+            "the winter light; somewhere below a door closed, and then another.",
+            "ten minutes to twelve",
+            author="Henry James",
+            title="The Portrait of a Lady",
+            bucket="h11_ten_to",
+            resolved_bucket="h11_ten_to",
+            quality_score=89,
+            source_id="2833",
+        ),
+        "mode": "production",
+        "theme": "izakaya",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

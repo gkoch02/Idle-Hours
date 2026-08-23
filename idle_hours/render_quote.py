@@ -11,7 +11,7 @@ import re
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
@@ -93,6 +93,7 @@ THEME_ORDER: tuple[str, ...] = (
     "sampler",
     "anna_atkins",
     "lieder",
+    "izakaya",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1174,6 +1175,19 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # Neon alley at night. A custom-render frame, so these colours serve only
+    # the goodnight / source-card fall-through paths; the frame itself paints
+    # its tube cores and blooms directly (see the izakaya section comment).
+    "izakaya": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1629,6 +1643,16 @@ ALEGREYA_ITALIC = str(BASE_DIR / "fonts/alegreya/Alegreya-Italic.ttf")
 # spiral is precisely the shape that polygon approximation turns to mush. It is
 # engraved on the standard metric where a five-line staff is one em tall.
 NOTOMUSIC_REGULAR = str(BASE_DIR / "fonts/noto-music/NotoMusic-Regular.ttf")
+
+# Quicksand (Andrew Paglinawan, OFL) — a rounded geometric sans whose monoline
+# strokes and circular terminals are the closest thing in open type to a bent
+# glass tube, which is why `izakaya` sets its neon lettering in it. Deliberately
+# quiet: the glow is the effect, so the letterform underneath has to be a
+# uniform-width tube and nothing more. Distinct from every other sans in the
+# rotation (Inter grotesque, Archivo grotesque, Jost geometric-constructed,
+# Rubik rounded-but-squarer, Antonio condensed, Oxanium techno).
+QUICKSAND_REGULAR = str(BASE_DIR / "fonts/quicksand/Quicksand-Regular.ttf")
+QUICKSAND_BOLD = str(BASE_DIR / "fonts/quicksand/Quicksand-Bold.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2956,6 +2980,34 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "izakaya": {
+        # Quicksand: rounded monoline geometric sans, the nearest open type gets
+        # to a bent glass tube. Regular for the body, Bold for the matched
+        # phrase — a real weight step underneath the hot yellow/red gas. The
+        # ornament slot holds Yuji Boku, the bundled Japanese brush face, which
+        # is what the shop signs and the lantern's hour numeral are set in
+        # (shared with `kanagawa`, the rotation's only other Japanese register).
+        # Falls back through the system sans chain before the Playfair serifs so
+        # a missing install still lands on a monoline face rather than a
+        # high-contrast serif, which would read as anything but neon.
+        "quote_regular": [
+            QUICKSAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            QUICKSAND_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            YUJI_BOKU_REGULAR,
+            QUICKSAND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     # sampler stitches text from a Silkscreen pixel-font mask — Regular for the
     # body floss, Bold for the matched-phrase / ornament floss. The fallbacks
     # are a safety net only (non-grid glyphs read wrong as stitches).
@@ -3740,6 +3792,102 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
                 if mx[x, y] >= 128:
                     ax = x + x0
                     px[ax, ay] = light if BAYER_4x4[(ay + oy) % 4][(ax + ox) % 4] < threshold else dark
+
+
+def paint_neon_mask(
+    image: Image.Image,
+    mask: Image.Image,
+    core,
+    glow,
+    *,
+    radius: int = 5,
+    gamma: float = 2.4,
+    cap: float = 0.5,
+    ground=None,
+) -> None:
+    """Paint a glyph/shape mask as a lit neon tube: solid ``core`` strokes
+    wrapped in a ``glow`` bloom stippled onto the surrounding ground.
+
+    The first *glow* effect in the renderer, and the reason it needs one: every
+    other synthesised tone here mixes two inks at a **constant** density to fake
+    a colour the panel lacks. A bloom is the opposite — one ink at a *falling*
+    density, so the eye integrates a gradient out of a binary field. The halo is
+    the glyph mask blurred (``ImageFilter.GaussianBlur``) and then read back as
+    a per-pixel Bayer **density**, which is what turns a hard-edged stroke into
+    something that reads as light spilling off a glass tube at panel distance.
+
+    Tuning, all of it learned the hard way against the 6-ink panel:
+
+    * ``radius`` must stay TIGHT — comparable to the stroke width, not to the
+      text block. A wide blur of a dense line of text is a solid rectangle, so a
+      wide-radius halo paints a uniform slab behind the whole line and reads as
+      a coloured box, not as glow. The halo has to hug each stroke.
+    * ``gamma`` > 1 pulls the mid-tones down so the bloom decays over ~6-10 px
+      instead of plateauing and then cutting off at a visible edge.
+    * ``cap`` keeps the densest ring below solid, so the halo always carries
+      visible stipple texture; a saturated ring reads as a painted outline.
+
+    ``mask`` must be an ``"L"`` image the same size as ``image`` — the two are
+    indexed with shared coordinates. Work is confined to the mask's bounding box
+    grown by ``radius``, so a small mask on a big canvas stays cheap. Pass
+    ``core=None`` to paint only the halo (used for shapes that are drawn
+    separately and just need to be made to glow).
+
+    ``ground`` optionally restricts the halo to pixels currently holding one of
+    those colours, so a later glow can't eat the core strokes or decoration a
+    previous pass already laid down. ``None`` means "paint over anything".
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    width, height = image.size
+    pad = max(2, int(radius * 3))
+    x0 = max(0, bbox[0] - pad)
+    y0 = max(0, bbox[1] - pad)
+    x1 = min(width, bbox[2] + pad)
+    y1 = min(height, bbox[3] + pad)
+    if x1 <= x0 or y1 <= y0:
+        return
+    halo = mask.filter(ImageFilter.GaussianBlur(radius))
+    px = image.load()
+    mp = mask.load()
+    hp = halo.load()
+    for y in range(y0, y1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1):
+            if mp[x, y] > 128:
+                if core is not None:
+                    px[x, y] = core
+                continue
+            level = hp[x, y] / 255.0
+            if level <= 0.02:
+                continue
+            density = min(cap, level ** gamma)
+            if row[x % 4] < density * 16 and (ground is None or px[x, y] in ground):
+                px[x, y] = glow
+
+
+def draw_text_neon(
+    image: Image.Image,
+    xy,
+    text: str,
+    font,
+    core,
+    glow,
+    *,
+    anchor: str | None = None,
+    **kwargs,
+) -> None:
+    """Convenience wrapper: render one string into a mask and bloom it.
+
+    Callers painting several chunks that should share a single bloom (a wrapped
+    quote, a column of sign characters) should build one mask themselves and
+    call ``paint_neon_mask`` once — per-chunk blooms would double-expose where
+    two halos overlap, and each call allocates a full-canvas mask.
+    """
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).text(xy, text, font=font, fill=255, anchor=anchor)
+    paint_neon_mask(image, mask, core, glow, **kwargs)
 
 
 def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
@@ -18166,6 +18314,358 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── izakaya (neon alley at night) ───────────────────────────────────────────
+#
+# A Kabukichō / Golden Gai back alley after rain: stacked vertical shop signs
+# glowing down both margins, paper lanterns hung above, and the quote itself
+# bent into neon tube lettering over wet asphalt that throws every sign back as
+# a smeared vertical reflection.
+#
+# The theme exists to introduce a capability the renderer did not have: GLOW.
+# Every other synthesised tone in this codebase mixes two inks at a *constant*
+# density to fake a colour the panel lacks. A bloom is the opposite — one ink at
+# a *falling* density — so the eye integrates a gradient out of a binary field.
+# ``paint_neon_mask`` (see its docstring for the tuning that survives the panel)
+# is the shared primitive; izakaya is its first consumer, and the sign columns,
+# the lanterns and the quote all route through it.
+#
+# Distinct from `outrun`, the rotation's other neon theme, by construction:
+# outrun is a flat *poster* — a horizon, a grid and a sun, all hard-edged, all
+# lit uniformly. This is a *place*: light sources at different depths, each with
+# its own bloom, and a ground that reflects them. Warm/cool clash rather than
+# outrun's single magenta key.
+#
+# Ink use — the "use the whole panel" theme, all six inks on screen at once:
+#   black       the alley itself.
+#   blue        the night haze above the roofline, and the body text's bloom.
+#   white       the neon tube cores — the glass, which is always the brightest
+#               thing in a neon sign regardless of the gas colour.
+#   yellow      the matched phrase's tube core, hot against the cool body.
+#   red         the matched phrase's bloom, the paper lanterns, and two signs.
+#   green       two more sign columns (the sodium-green of a real alley).
+#
+# The hour rides the main lantern as a KANJI NUMERAL (一 … 十二) — paper lanterns
+# carry a shop's character, so a numeral there is the one place a digit belongs
+# without breaking the fuzzy-clock premise. ``time_str`` is therefore used, like
+# `lieder` and `tarot` and `vitrail`, and the matched phrase still carries the
+# readable time. Sign words are real, ordinary alley signage — 居酒屋 (izakaya),
+# 焼鳥 (yakitori), 酒 (sake), 横丁 (yokochō, "alley"), 喫茶 (coffee house),
+# 営業中 ("open for business") — set in the bundled Yuji Boku, the rotation's
+# Japanese brush face (shared with `kanagawa`, the only other Japanese-register
+# theme; kanagawa is a daylight woodblock seascape, this is a night street).
+# Deliberately kanji-only: katakana signage would want ー rotated in vertical
+# setting, and a wrongly-oriented glyph is worse than not using one.
+
+_IZAKAYA_SIGN_W = 58
+_IZAKAYA_SIGN_COLUMNS = (10, 732)     # left / right sign-board x origins
+_IZAKAYA_SIGN_TOP = 34
+_IZAKAYA_SIGN_H = 92
+_IZAKAYA_SIGN_GAP = 18
+_IZAKAYA_STREET_Y = 360               # wet asphalt begins here (below a kerb gap)
+                                      # Deep on purpose: a reflection needs to be
+                                      # taller than the column is wide before it
+                                      # reads as a vertical smear rather than a bar.
+_IZAKAYA_QUOTE_RECT = (108, 146, 692, 316)
+_IZAKAYA_HAZE_BOTTOM = 210            # night-haze wash fades out by this row
+# (word, glow ink). Six boards, three per side, cycling the chroma inks so the
+# alley reads as competing shopfronts rather than one tinted light source.
+_IZAKAYA_SIGNS = (
+    ("居酒屋", "red"),
+    ("焼鳥", "green"),
+    ("酒", "yellow"),
+    ("横丁", "blue"),
+    ("喫茶", "green"),
+    ("営業中", "red"),
+)
+_IZAKAYA_HOUR_KANJI = {
+    1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六",
+    7: "七", 8: "八", 9: "九", 10: "十", 11: "十一", 12: "十二",
+}
+_IZAKAYA_LANTERNS = ((168, 74, 26, 34), (632, 80, 24, 31))  # (cx, cy, rx, ry) side pair
+_IZAKAYA_MAIN_LANTERN = (400, 84, 33, 45)
+
+
+def _izakaya_hour(time_str: str) -> int:
+    """Hour 1..12 parsed defensively from ``HH:MM`` (12 on a bad parse)."""
+    try:
+        return int(time_str.split(":")[0]) % 12 or 12
+    except (AttributeError, ValueError):
+        return 12
+
+
+def _izakaya_ground() -> frozenset:
+    """Pixels a bloom is allowed to overwrite: the night ground and its haze.
+
+    Passing this as ``paint_neon_mask(ground=...)`` is what stops a later glow
+    pass from eating the tube cores, sign frames and lantern ribs an earlier
+    pass already painted — the halos of adjacent sign columns overlap heavily.
+    """
+    return frozenset({SPECTRA6["black"], SPECTRA6["blue"]})
+
+
+def _izakaya_paint_night(image: Image.Image) -> None:
+    """Black alley under a blue night haze that thins toward the roofline.
+
+    A gradient Bayer wash (the shape ``glacier``'s frost edge and ``chrono``'s
+    sky use): densest at the top of the frame and gone by ``_IZAKAYA_HAZE_BOTTOM``,
+    so the sky between the buildings reads as city light-pollution rather than
+    as flat black. Everything below is left black for the neon to sit against.
+
+    Kept deliberately faint (peak ~2.2/16 ≈ 14%). An earlier pass ran it at
+    5/16 and the sky became the brightest thing on the page, which is exactly
+    backwards for a theme whose subject is light sources in the dark. The
+    threshold stays a float on purpose — rounding it to an int quantises the
+    ramp into five visibly banded steps down the sky.
+    """
+    px = image.load()
+    width, height = image.size
+    span = max(1, _IZAKAYA_HAZE_BOTTOM)
+    for y in range(min(height, _IZAKAYA_HAZE_BOTTOM)):
+        threshold = 2.2 * (1.0 - y / span)
+        if threshold <= 0:
+            continue
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            if row[x % 4] < threshold:
+                px[x, y] = SPECTRA6["blue"]
+
+
+def _izakaya_sign_boxes() -> list[tuple[int, int, int, int, str, str]]:
+    """``(x0, y0, x1, y1, word, ink)`` for all six boards, left column first."""
+    boxes = []
+    for index, (word, ink) in enumerate(_IZAKAYA_SIGNS):
+        column = _IZAKAYA_SIGN_COLUMNS[index // 3]
+        slot = index % 3
+        y0 = _IZAKAYA_SIGN_TOP + slot * (_IZAKAYA_SIGN_H + _IZAKAYA_SIGN_GAP)
+        boxes.append((column, y0, column + _IZAKAYA_SIGN_W, y0 + _IZAKAYA_SIGN_H, word, ink))
+    return boxes
+
+
+def _izakaya_paint_signs(image: Image.Image, draw: ImageDraw.ImageDraw, boxes) -> None:
+    """Vertical shop boards: a glowing frame with kanji set down the middle.
+
+    One mask per board — frame plus characters together — so the board's outline
+    and its lettering share a single continuous bloom, the way a real sign's
+    tube and its housing wash into one another. Blooming them separately would
+    double-expose along the frame where the two halos meet.
+    """
+    ground = _izakaya_ground()
+    for x0, y0, x1, y1, word, ink in boxes:
+        glow = SPECTRA6[ink]
+        mask = Image.new("L", image.size, 0)
+        mdraw = ImageDraw.Draw(mask)
+        mdraw.rectangle((x0, y0, x1, y1), outline=255, width=2)
+        size = 30 if len(word) <= 2 else 24
+        font = load_font([YUJI_BOKU_REGULAR, *ORNAMENT_FONT_CANDIDATES], size=size)
+        step = size + 4
+        cy = (y0 + y1) // 2 - (len(word) - 1) * step // 2
+        for i, char in enumerate(word):
+            mdraw.text(((x0 + x1) // 2, cy + i * step), char, font=font, fill=255, anchor="mm")
+        # The board interior is the shop's own light box: the tube core paints
+        # the frame and glyphs white, the gas colour blooms outward from both.
+        paint_neon_mask(image, mask, SPECTRA6["white"], glow, radius=5, gamma=2.0, cap=0.62, ground=ground)
+        del mdraw
+    del draw
+
+
+def _izakaya_paint_lantern(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    rx: int,
+    ry: int,
+    text: str | None = None,
+) -> None:
+    """A red paper lantern (提灯) on a cord, optionally carrying a character.
+
+    Painted in three passes so the parts layer the way the object does: the
+    silhouette blooms first (``core=None`` — the body is drawn separately
+    below), then the red body with its black cap, base and ribs, then the
+    character. Ribs are horizontal chords clipped to the ellipse, which is what
+    gives a paper lantern its barrel look.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+
+    draw.line((cx, 0, cx, cy - ry - 5), fill=WHITE, width=1)
+
+    silhouette = Image.new("L", image.size, 0)
+    ImageDraw.Draw(silhouette).ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
+    paint_neon_mask(image, silhouette, None, RED, radius=6, gamma=2.0, cap=0.6, ground=_izakaya_ground())
+
+    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=RED)
+    for ry_off in range(-ry + 4, ry - 2, 6):
+        half = int(rx * math.sqrt(max(0.0, 1.0 - (ry_off / float(ry)) ** 2)))
+        if half > 1:
+            draw.line((cx - half, cy + ry_off, cx + half, cy + ry_off), fill=BLACK, width=1)
+    cap_w = int(rx * 0.55)
+    draw.rectangle((cx - cap_w, cy - ry - 4, cx + cap_w, cy - ry + 1), fill=BLACK)
+    draw.rectangle((cx - cap_w, cy + ry - 1, cx + cap_w, cy + ry + 4), fill=BLACK)
+
+    if text:
+        font = load_font([YUJI_BOKU_REGULAR, *ORNAMENT_FONT_CANDIDATES], size=max(12, int(ry * 0.62)))
+        step = int(ry * 0.72)
+        top = cy - (len(text) - 1) * step // 2
+        for i, char in enumerate(text):
+            draw.text((cx, top + i * step), char, font=font, fill=BLACK, anchor="mm")
+
+
+def _izakaya_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
+    """The quote as bent neon tube. Returns the block's bottom y for the credits.
+
+    Two masks, not one: the body's chunks and the matched phrase's chunks are
+    accumulated separately so each can take its own gas colour — cool white/blue
+    for the prose, hot yellow/red for the sung time phrase. Each mask blooms in
+    a single pass, so overlapping halos inside a line expose once rather than
+    stacking into a solid block. The hot pass runs last and is allowed to
+    overwrite the cool halo, so the matched phrase's glow reads as nearer.
+    """
+    x0, y0, x1, y1 = _IZAKAYA_QUOTE_RECT
+    box_w, box_h = x1 - x0, y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, matched, box_w, box_h,
+        font_max=34, font_min=15, line_height_mult=1.42, theme="izakaya",
+    )
+    cool = Image.new("L", image.size, 0)
+    hot = Image.new("L", image.size, 0)
+    cool_draw, hot_draw = ImageDraw.Draw(cool), ImageDraw.Draw(hot)
+
+    block_h = len(wrapped) * line_height
+    y = y0 + max(0, (box_h - block_h) // 2)
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2] for c, b in segment)
+        x = x0 + max(0, (box_w - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            target = hot_draw if is_bold else cool_draw
+            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+
+    ground = _izakaya_ground()
+    paint_neon_mask(image, cool, SPECTRA6["white"], SPECTRA6["blue"], radius=6, gamma=2.0, cap=0.68, ground=ground)
+    paint_neon_mask(image, hot, SPECTRA6["yellow"], SPECTRA6["red"], radius=6, gamma=1.9, cap=0.72,
+                    ground=ground | {SPECTRA6["blue"]})
+    return y
+
+
+def _izakaya_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, top: int) -> None:
+    """author · title beneath the quote, unlit — a printed card, not a sign."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = "  ·  ".join(parts)
+    font = load_font(theme_font_candidates("izakaya", "quote_regular"), size=14)
+    width = image.size[0]
+    # Floor the budget and guard on length, not on emptiness: at a thumbnail
+    # width ``width - 240`` goes negative, and ``text[:-2] + "…"`` is a fixed
+    # point once the string is down to the ellipsis — together that spun
+    # forever on an 80 px preview render.
+    max_w = max(40, width - 240)
+    while len(text) > 1 and draw.textlength(text, font=font) > max_w:
+        text = text[:-2].rstrip(" ·") + "…"
+    y = min(max(top + 12, _IZAKAYA_QUOTE_RECT[3] - 4), _IZAKAYA_STREET_Y - 20)
+    draw.text((width // 2, y), text, font=font, fill=SPECTRA6["white"], anchor="ma")
+
+
+def _izakaya_paint_street(image: Image.Image, boxes) -> None:
+    """Wet asphalt: each sign column smeared back as a rippled vertical streak.
+
+    The single detail that turns a row of signs into a *place*. Each reflection
+    inherits its board's ink and x-range, fades with depth, and wobbles
+    horizontally on a sine so the column reads as broken by moving water, while
+    a second sine modulates its density where the ripple crests.
+
+    Both sines are phased **per column**. Sharing one phase across the whole
+    width made every column break on the same rows, which paints horizontal
+    bands across the street — the opposite of the vertical smear a wet road
+    actually produces. Lanterns reflect at a lower weight than the signs: they
+    hang high and small, so their contribution to the road is weaker.
+    """
+    px = image.load()
+    width, height = image.size
+    street = _IZAKAYA_STREET_Y
+    if street >= height:
+        return
+    depth = max(1, height - street)
+
+    columns = [(x0, x1, SPECTRA6[ink], 1.0) for x0, _, x1, _, _, ink in boxes]
+    columns += [(cx - rx, cx + rx, SPECTRA6["red"], 0.45) for cx, _, rx, _ in _IZAKAYA_LANTERNS]
+    columns.append((_IZAKAYA_MAIN_LANTERN[0] - _IZAKAYA_MAIN_LANTERN[2],
+                    _IZAKAYA_MAIN_LANTERN[0] + _IZAKAYA_MAIN_LANTERN[2], SPECTRA6["red"], 0.55))
+
+    # Faint blue sheen first, so the coloured streaks paint over it.
+    for y in range(street, height):
+        fade = max(0.0, (1.0 - (y - street) / depth) ** 1.6)
+        sheen = 1.6 * fade
+        if sheen <= 0:
+            continue
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            if row[x % 4] < sheen and px[x, y] == SPECTRA6["black"]:
+                px[x, y] = SPECTRA6["blue"]
+
+    for index, (x0, x1, ink, weight) in enumerate(columns):
+        phase = index * 1.7
+        for y in range(street, height):
+            fade = max(0.0, (1.0 - (y - street) / depth) ** 0.8)
+            # Ripple by MODULATING the density, not by cutting rows out. Skipping
+            # whole rows removes the reflection across the column's full width at
+            # once, which reads as stacked horizontal bricks; modulating keeps a
+            # single continuous smear that merely thins where the water crests.
+            ripple = 0.55 + 0.45 * math.sin(y * 0.42 + phase)
+            threshold = 5.5 * fade * weight * ripple
+            if threshold <= 0:
+                continue
+            # Distortion grows with depth: the near water is the most broken up.
+            swing = 1.0 + 2.2 * ((y - street) / depth)
+            wobble = int(round(swing * (4.0 * math.sin(y * 0.23 + phase) + 2.0 * math.sin(y * 0.61 + phase))))
+            row = BAYER_4x4[y % 4]
+            for x in range(max(0, x0 + wobble), min(width, x1 + wobble)):
+                if row[x % 4] < threshold:
+                    px[x, y] = ink
+
+
+def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Neon alley at night (see the module section comment above).
+
+    Laid out against the canonical 800×480; smaller canvases (the curator UI's
+    ``/api/preview`` thumbnails) crop the composition rather than reflowing it,
+    the same convention every other custom frame follows. Every raw pixel write
+    goes through a bounds-clipped helper, so a thumbnail render is safe.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    _izakaya_paint_night(image)
+    draw = ImageDraw.Draw(image)
+
+    boxes = _izakaya_sign_boxes()
+    _izakaya_paint_signs(image, draw, boxes)
+
+    for cx, cy, rx, ry in _IZAKAYA_LANTERNS:
+        _izakaya_paint_lantern(image, draw, cx, cy, rx, ry)
+    mcx, mcy, mrx, mry = _IZAKAYA_MAIN_LANTERN
+    _izakaya_paint_lantern(image, draw, mcx, mcy, mrx, mry, text=_IZAKAYA_HOUR_KANJI[_izakaya_hour(time_str)])
+
+    block_bottom = _izakaya_paint_quote(image, draw, quote_row)
+    _izakaya_paint_credits(image, draw, quote_row, block_bottom)
+    _izakaya_paint_street(image, boxes)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -18191,6 +18691,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_sampler_frame(time_str, quote_row, width, height)
     if theme == "lieder":
         return render_lieder_frame(time_str, quote_row, width, height)
+    if theme == "izakaya":
+        return render_izakaya_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

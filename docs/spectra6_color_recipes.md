@@ -56,6 +56,23 @@ For glyph and geometric work the pattern primitives below are the practical real
 
 For ratios above 50%, swap `dark`/`light` and pass the complementary density (e.g. "5/8 yellow + 3/8 red" = `dark=yellow, light=red, light_density=0.375`).
 
+### Gradient density — the glow primitive
+
+Every recipe above holds density **constant** across a region: two inks at a fixed ratio synthesise one flat colour. `paint_neon_mask(image, mask, core, glow, radius, gamma, cap, ground)` is the other axis — **one** ink at a *falling* density, so the eye integrates a gradient rather than a flat tone. Introduced for `izakaya`'s neon; reusable by anything that needs light to fall off (a lamp, a candle, a screen's spill, a halo).
+
+It blurs an `"L"` glyph/shape mask (`ImageFilter.GaussianBlur`, the only use of `ImageFilter` in the renderer) and reads the blurred field back per pixel as the Bayer density. Four things about tuning it, all learned against the panel rather than derived:
+
+| Knob | Rule | Failure mode if ignored |
+|---|---|---|
+| `radius` | Keep it comparable to the **stroke width**, never to the text block | A wide blur of a dense line of text *is* a solid rectangle, so the halo paints a uniform slab behind the whole line and reads as a coloured box |
+| `gamma` | `> 1` (≈2.0–2.4) | The halo plateaus near the stroke and then cuts off at a visible edge instead of decaying over ~6–10 px |
+| `cap` | Below solid (≈0.5–0.7) | The densest ring saturates and reads as a painted outline rather than as light |
+| overall density | Tune against a **box-averaged** frame, not at 1:1 | Parameters that look correct pixel-for-pixel vanish once the eye averages them at 1–3 m; the near ring has to be denser than it looks right at pixel scale |
+
+That last row is the one worth internalising for any recipe, not just this one: `img.resize((w//2, h//2), Image.BOX)` is a cheap stand-in for panel viewing distance, and it is the only honest way to judge a stipple. An image viewer's own resampling exaggerates a dither in the opposite direction — a 14%-blue wash can look like a solid blue slab on screen and correct on the panel.
+
+Pass `core=None` to paint only the halo (for a shape drawn separately that just needs to glow), and `ground={...}` to restrict the halo to the ground inks so a later bloom cannot eat cores and decoration an earlier pass laid down.
+
 ## Two-ink recipes
 
 Single combined catalogue: recipes the codebase pulls today plus the unused-but-reachable recipes upstream literature consistently recommends. The **In use** column flags themes that currently invoke each recipe; rows marked "not in use" are forward references for future themes — they're listed because someone considering an ocean / winter / parchment / forest theme will want a starting point rather than re-deriving the recipe.
