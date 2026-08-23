@@ -19256,8 +19256,16 @@ def _abyssal_paint_water(image: Image.Image) -> None:
         row = BAYER_4x4[y % 4]
         if y < _ABYSSAL_SURFACE_BOTTOM:
             frac = 1.0 - y / _ABYSSAL_SURFACE_BOTTOM
+            # Cell counts, not percentages: seafoam is G+B+W @ 40/30/30, and
+            # 16 Bayer cells split closest to that as 6 green / 5 blue / 5
+            # white (37.5/31.25/31.25 — the quantisation floor for a 4x4 tile).
+            # An earlier revision allocated 4 green and left 7 to blue, which
+            # is G25/B44/W31: a substantially bluer surface that did not
+            # implement the recipe this theme is built around and that all
+            # three docs claim it uses. Both weights scale with `frac`, so the
+            # ratio is preserved as the band fades into plain blue with depth.
             white_cells = 5.0 * frac
-            green_cells = white_cells + 4.0 * frac
+            green_cells = white_cells + 6.0 * frac
             for x in range(width):
                 cell = row[x % 4]
                 px[x, y] = white if cell < white_cells else (green if cell < green_cells else blue)
