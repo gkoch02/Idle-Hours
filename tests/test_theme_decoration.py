@@ -86,6 +86,7 @@ CUSTOM_FRAME_THEMES = (
     "izakaya",
     "abyssal",
     "pride",
+    "pulp",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its
@@ -154,8 +155,8 @@ class TestBorderPainterActuallyPaints:
 
         # Both dispatch paths must be neutered. Most themes reach their
         # painter through ``_paint_theme_border``'s registry lookup, but the
-        # five ``_CLEAR_RECT_PADS`` themes (blueprint, kanagawa, cartograph,
-        # circuit, letter) are called by name from ``render`` so the body-text
+        # six ``_CLEAR_RECT_PADS`` themes (blueprint, kanagawa, cartograph,
+        # circuit, synoptic, letter) are called by name from ``render`` so the body-text
         # knockout rect can be threaded through. Patching only the registry
         # made kanagawa and letter register a 0-pixel delta while their
         # painters were in fact still running.

@@ -113,6 +113,8 @@ THEME_ORDER: tuple[str, ...] = (
     "izakaya",
     "abyssal",
     "pride",
+    "pulp",
+    "synoptic",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1240,6 +1242,41 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
+    # 1940s lurid paperback front. A custom-render frame (``render_pulp_frame``)
+    # that owns the canvas — masthead, cover title, blurb band, price flash and
+    # corner banner leave nothing for the shared literary layout to sit on. The
+    # palette below serves only the goodnight / source-card fall-through paths.
+    "pulp": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["red"],
+        "source": SPECTRA6["black"],
+    },
+    # Meteorological surface analysis. A literary-layout theme (NOT a custom
+    # frame): the chart is a ground the quote sits on, so the shared layout runs
+    # and ``draw_synoptic_border`` paints under it, knocking the body region out
+    # to a boxed chart legend via ``clear_rect``. Blue and red are the canonical
+    # cold- and warm-front inks; the matched phrase takes red so the time phrase
+    # reads as the chart's own warm-front ink rather than an imported accent.
+    "synoptic": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        # Both ornament slots take the page ground on purpose. The shared layout
+        # paints its oversized quote marks OUTSIDE the body rect — so outside
+        # this theme's legend box — where a big blue glyph floating on the chart
+        # reads as debris rather than typography. A surface analysis has no
+        # decorative quotation marks, so here they are simply not drawn.
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1390,6 +1427,7 @@ OLDSTANDARD_REGULAR = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Regular.
 OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
 SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
 SPACEMONO_BOLD = str(BASE_DIR / "fonts/space-mono/SpaceMono-Bold.ttf")
+ALFA_SLAB_ONE = str(BASE_DIR / "fonts/alfa-slab-one/AlfaSlabOne-Regular.ttf")
 ARCHIVO_REGULAR = str(BASE_DIR / "fonts/archivo/Archivo-Regular.ttf")
 ARCHIVO_BOLD = str(BASE_DIR / "fonts/archivo/Archivo-Bold.ttf")
 EBGARAMOND_REGULAR = str(BASE_DIR / "fonts/eb-garamond/EBGaramond-Regular.ttf")
@@ -3121,6 +3159,52 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             (JOST_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # pulp uses Alfa Slab One, a heavy slab in the mid-century advertising and
+    # paperback idiom. The issue ruled out the bundled display faces on register
+    # (Rye is Western, Bangers belongs to the theme pulp is meant to be distinct
+    # from, Atomic Age is the right era but the wrong object), and the frame's
+    # misregistration effect specifically needs a FAT face: on a hairline serif
+    # the off-register red fringe eats the letterform instead of haloing it.
+    # Space Mono carries the small serial chrome — the issue line, byline and
+    # banner — where a slab at 14 px would clog.
+    "pulp": {
+        "quote_regular": [
+            (ALFA_SLAB_ONE, None),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (ALFA_SLAB_ONE, None),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (ALFA_SLAB_ONE, None),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # synoptic uses Space Mono rather than the Archivo the issue suggested.
+    # ``blueprint`` already owns Archivo and is the nearest neighbour in
+    # register — both are white-ground blue+red technical drawings — so a mono
+    # widens the typographic gap and reads as instrument printout, which is the
+    # meteorological idiom. Shared with ``nightvision`` (black terminal) and
+    # ``circuit`` (green board); neither collides with a white-ground chart.
+    "synoptic": {
+        "quote_regular": [
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPACEMONO_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -12584,7 +12668,280 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict) -> None:
     draw.rectangle((12, 12, width - 13, height - 13), outline=WHITE, width=1)
 
 
+
+# ---------------------------------------------------------------------------
+# synoptic — a meteorological surface analysis (issue #215).
+#
+# Completes the navigation family. ``firmament`` is a celestial atlas,
+# ``astrarium`` an instrument dashboard, ``cartograph`` a terrestrial chart;
+# this is the weather chart, and it shares none of their vocabulary. Where
+# ``cartograph`` *describes* terrain — coastlines, form-lines, a compass rose —
+# a synoptic chart is a field laid over geography: nested isobars, pressure
+# centres, and the front symbols, which are some of the most distinctive
+# line-work in any technical drawing.
+#
+# **The occluded front is the reason this theme is worth building.** Cold fronts
+# are drawn blue with triangles, warm fronts red with semicircles, and an
+# occluded front — a cold front that has caught up with and lifted a warm one —
+# is drawn *purple*, carrying both symbols alternately. So the R+B 1:1 mix is
+# semantically right here rather than merely convenient: the colour is purple
+# on a real chart precisely *because* it is the two fronts merged, which is
+# exactly what the two inks are doing. Nothing else in the rotation gets to use
+# a synthesised colour for the reason the source material uses it.
+#
+# The time rides the **validity stamp**, ``VALID 1630 UTC``. Every real chart
+# carries the observation time it analyses, so this is a place a number
+# genuinely belongs — the same category of solution as ``izakaya``'s lantern
+# numeral rather than a digit bolted onto the frame.
+#
+# Layout is the shared literary one plus this painter and a ``clear_rect``
+# knockout (the ``kanagawa`` / ``cartograph`` / ``circuit`` pattern), because a
+# chart is a *ground* the quote sits on, not a composition that owns the canvas.
+# Everything is drawn with ImageDraw primitives and clipped by PIL rather than
+# indexed into a raw ``PixelAccess``, so the ``/api/preview`` thumbnail path
+# crops the analysis instead of raising.
+# ---------------------------------------------------------------------------
+# Pressure centres as (x, y, label, innermost radius) in 800x480 space. One high
+# and one low, placed in opposite corners so the isobars sweep diagonally across
+# the page the way a real analysis does rather than sitting concentric.
+_SYNOPTIC_CENTRES = (
+    (74, 96, "H", 26),
+    (716, 388, "L", 24),
+)
+_SYNOPTIC_RINGS = 5
+_SYNOPTIC_RING_STEP = 26
+_SYNOPTIC_BASE_PRESSURE = {"H": 1032, "L": 984}
+_SYNOPTIC_ISOBAR_POINTS = 48
+# Fronts as (kind, polyline). Kinds: "cold" (blue, triangles), "warm" (red,
+# semicircles), "occluded" (purple, alternating). Hand-placed so the three
+# sweep across the middle band without crossing the quote cartouche.
+_SYNOPTIC_FRONTS = (
+    ("cold", ((36, 74), (150, 46), (272, 60), (368, 30))),
+    ("warm", ((470, 44), (566, 70), (664, 58), (768, 82))),
+    ("occluded", ((44, 430), (170, 452), (300, 436), (410, 458))),
+)
+_SYNOPTIC_PIP_SPACING = 34
+_SYNOPTIC_PIP_SIZE = 7
+# Station plots as (x, y, wind barb angle in degrees, number of full barbs).
+_SYNOPTIC_STATIONS = (
+    (26, 240, 210, 2), (30, 340, 250, 3), (128, 442, 160, 1),
+    (610, 118, 300, 2), (770, 210, 20, 3), (556, 452, 120, 1),
+    (312, 30, 340, 2), (452, 464, 70, 1),
+)
+_SYNOPTIC_GRATICULE_STEP = 64
+
+
+def _synoptic_isobar(cx: float, cy: float, radius: float, squash: float, seed: int) -> list[tuple[float, float]]:
+    """One closed isobar as a polyline, gently deformed so it is not an ellipse.
+
+    Real isobars are smooth but irregular. Two low-order harmonics on the radius
+    give that without any randomness, so the chart stays byte-deterministic —
+    the same approach ``atomic``'s orbits and ``mucha``'s vines use to get a
+    curve out of a library that has no curve primitive.
+    """
+    points = []
+    for i in range(_SYNOPTIC_ISOBAR_POINTS):
+        angle = math.tau * i / _SYNOPTIC_ISOBAR_POINTS
+        wobble = 1.0 + 0.10 * math.sin(2 * angle + seed) + 0.05 * math.sin(3 * angle - seed)
+        r = radius * wobble
+        points.append((cx + r * math.cos(angle), cy + r * math.sin(angle) * squash))
+    points.append(points[0])
+    return points
+
+
+def _synoptic_paint_graticule(draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Faint dotted lat/long grid — the geography the analysis is drawn over."""
+    faint = SPECTRA6["blue"]
+    for x in range(_SYNOPTIC_GRATICULE_STEP, width, _SYNOPTIC_GRATICULE_STEP):
+        for y in range(0, height, 6):
+            draw.point((x, y), fill=faint)
+    for y in range(_SYNOPTIC_GRATICULE_STEP, height, _SYNOPTIC_GRATICULE_STEP):
+        for x in range(0, width, 6):
+            draw.point((x, y), fill=faint)
+
+
+def _synoptic_paint_isobars(draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Nested pressure contours around each centre, with pressure labels."""
+    black = SPECTRA6["black"]
+    label_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=11)
+    centre_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=30)
+    for index, (cx, cy, label, inner) in enumerate(_SYNOPTIC_CENTRES):
+        cx = cx * width / 800.0
+        cy = cy * height / 480.0
+        step = _SYNOPTIC_BASE_PRESSURE[label]
+        for ring in range(_SYNOPTIC_RINGS):
+            radius = inner + ring * _SYNOPTIC_RING_STEP
+            points = _synoptic_isobar(cx, cy, radius, 0.82, seed=index * 1.7 + ring * 0.4)
+            draw.line([(int(px), int(py)) for px, py in points], fill=black, width=1)
+            # Pressure figure riding the contour, the way a real chart breaks
+            # the line to letter it. Outermost ring only, to avoid a thicket.
+            if ring == _SYNOPTIC_RINGS - 1:
+                value = step - 4 * ring if label == "H" else step + 4 * ring
+                lx, ly = points[_SYNOPTIC_ISOBAR_POINTS // 8]
+                draw.text((int(lx), int(ly)), str(value), font=label_font, fill=black, anchor="mm")
+        draw.text((int(cx), int(cy)), label, font=centre_font,
+                  fill=SPECTRA6["blue"] if label == "H" else SPECTRA6["red"], anchor="mm")
+
+
+def _synoptic_front_pips(points, spacing):
+    """Walk a polyline and yield (x, y, normal angle) every ``spacing`` px.
+
+    The pips have to sit *on* the line and point off one side of it, so each
+    needs the local direction as well as a position — which is why this walks
+    the polyline by arc length rather than just using the vertices.
+    """
+    pips = []
+    carry = spacing / 2.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if seg < 1e-6:
+            continue
+        angle = math.atan2(y1 - y0, x1 - x0)
+        travelled = carry
+        while travelled <= seg:
+            t = travelled / seg
+            pips.append((x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, angle))
+            travelled += spacing
+        carry = travelled - seg
+    return pips
+
+
+def _synoptic_paint_front(image, draw, kind, points, width, height):
+    """One front: the line, then its symbol furniture.
+
+    Cold gets triangles, warm gets semicircles, occluded alternates the two —
+    and the occluded line and its pips are painted in an off-palette sentinel
+    then bbox-post-passed to the R+B purple, because ``ImageDraw`` has no
+    per-pixel fill and the mix has to survive both the line and the polygons.
+    """
+    red, blue = SPECTRA6["red"], SPECTRA6["blue"]
+    scaled = [(x * width / 800.0, y * height / 480.0) for x, y in points]
+    sentinel = (7, 7, 7)
+    ink = {"cold": blue, "warm": red, "occluded": sentinel}[kind]
+    draw.line([(int(x), int(y)) for x, y in scaled], fill=ink, width=3, joint="curve")
+
+    size = _SYNOPTIC_PIP_SIZE
+    for index, (px, py, angle) in enumerate(_synoptic_front_pips(scaled, _SYNOPTIC_PIP_SPACING)):
+        if kind == "occluded":
+            shape = "triangle" if index % 2 == 0 else "semicircle"
+        else:
+            shape = "triangle" if kind == "cold" else "semicircle"
+        # Normal pointing to the left of travel, which is the side the symbols
+        # sit on for these west-to-east fronts.
+        nx, ny = math.sin(angle), -math.cos(angle)
+        if shape == "triangle":
+            tip = (px + nx * size * 1.6, py + ny * size * 1.6)
+            back = (math.cos(angle) * size, math.sin(angle) * size)
+            draw.polygon([(int(tip[0]), int(tip[1])),
+                          (int(px - back[0]), int(py - back[1])),
+                          (int(px + back[0]), int(py + back[1]))], fill=ink)
+        else:
+            box = (int(px - size), int(py - size), int(px + size), int(py + size))
+            start = math.degrees(angle) + 180
+            draw.pieslice(box, start, start + 180, fill=ink)
+    if kind == "occluded":
+        _synoptic_resolve_occluded(image, scaled, size)
+
+
+def _synoptic_resolve_occluded(image, scaled, size) -> None:
+    """Flip the occluded front's sentinel ink to the R+B 1:1 purple.
+
+    Scoped to the front's own bounding box so it cannot touch the isobars or
+    the graticule, and keyed on the sentinel colour so it is idempotent.
+    """
+    width, height = image.size
+    px = image.load()
+    red, blue = SPECTRA6["red"], SPECTRA6["blue"]
+    xs = [x for x, _ in scaled]
+    ys = [y for _, y in scaled]
+    pad = size * 3
+    x0 = max(0, int(min(xs) - pad))
+    x1 = min(width, int(max(xs) + pad) + 1)
+    y0 = max(0, int(min(ys) - pad))
+    y1 = min(height, int(max(ys) + pad) + 1)
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if px[x, y] == (7, 7, 7):
+                px[x, y] = red if (x + y) & 1 else blue
+
+
+def _synoptic_paint_stations(draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Station model plots — circle plus a wind barb with feathers.
+
+    Dense and technical, and instantly legible as "weather chart" even to a
+    reader who cannot decode one, which is the whole reason they earn their
+    space on a frame this small.
+    """
+    black = SPECTRA6["black"]
+    for sx, sy, bearing, barbs in _SYNOPTIC_STATIONS:
+        cx = sx * width / 800.0
+        cy = sy * height / 480.0
+        draw.ellipse((int(cx - 5), int(cy - 5), int(cx + 5), int(cy + 5)), outline=black, width=2)
+        angle = math.radians(bearing)
+        shaft = 26
+        ex, ey = cx + math.cos(angle) * shaft, cy + math.sin(angle) * shaft
+        draw.line((int(cx), int(cy), int(ex), int(ey)), fill=black, width=2)
+        # Feathers hang off the far end, perpendicular-ish to the shaft.
+        for i in range(barbs):
+            t = 1.0 - i * 0.22
+            bx, by = cx + math.cos(angle) * shaft * t, cy + math.sin(angle) * shaft * t
+            fx = bx + math.cos(angle + 2.2) * 9
+            fy = by + math.sin(angle + 2.2) * 9
+            draw.line((int(bx), int(by), int(fx), int(fy)), fill=black, width=2)
+
+
+def _synoptic_paint_stamp(draw: ImageDraw.ImageDraw, width: int, height: int, time_str: str) -> None:
+    """``VALID HHMM UTC`` — the chart's observation time, and the clock."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    digits = (time_str or "").replace(":", "")[:4] or "0000"
+    font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=13)
+    text = f"VALID {digits} UTC"
+    box = draw.textbbox((0, 0), text, font=font)
+    pad = 6
+    w, h = box[2] - box[0], box[3] - box[1]
+    x1, y1 = width - 16, height - 14
+    x0, y0 = x1 - w - 2 * pad, y1 - h - 2 * pad
+    if x0 < 0 or y0 < 0:
+        return
+    draw.rectangle((x0, y0, x1, y1), fill=SPECTRA6["white"], outline=black, width=1)
+    draw.text((x0 + pad - box[0], y0 + pad - box[1]), text, font=font, fill=red)
+
+
+def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time_str: str | None = None) -> None:
+    """Surface analysis behind the quote (see the module section comment above).
+
+    ``time_str`` is optional because the shared ``_BORDER_PAINTERS`` contract
+    passes only ``(image, colors, clear_rect)`` — ``render`` calls this painter
+    by name and threads the clock through, while the registry path (the button-C
+    source card) gets a chart with no validity stamp, which is correct: a source
+    card is not an analysis valid at a time.
+    """
+    width, height = image.size
+    draw = ImageDraw.Draw(image)
+    _synoptic_paint_graticule(draw, width, height)
+    _synoptic_paint_isobars(draw, width, height)
+    for kind, points in _SYNOPTIC_FRONTS:
+        _synoptic_paint_front(image, draw, kind, points, width, height)
+    _synoptic_paint_stations(draw, width, height)
+    if time_str:
+        _synoptic_paint_stamp(draw, width, height, time_str)
+    if clear_rect is not None:
+        # The quote sits in a chart-legend box: wipe the analysis out of the
+        # body region and frame it, the way a real chart boxes its legend.
+        x0, y0, x1, y1 = clear_rect
+        x0 = max(0, x0)
+        y0 = max(0, y0)
+        x1 = min(width - 1, x1)
+        y1 = min(height - 1, y1)
+        if x1 > x0 and y1 > y0:
+            draw.rectangle((x0, y0, x1, y1), fill=colors.get("page_bg", SPECTRA6["white"]))
+            draw.rectangle((x0, y0, x1, y1), outline=SPECTRA6["black"], width=2)
+            draw.line((x0 + 8, y0 + 8, x1 - 8, y0 + 8), fill=SPECTRA6["blue"], width=1)
+            draw.line((x0 + 8, y1 - 8, x1 - 8, y1 - 8), fill=SPECTRA6["blue"], width=1)
+
+
 _BORDER_PAINTERS = {
+    "synoptic": draw_synoptic_border,
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
     "comic": draw_comic_corner_stripes,
@@ -20053,6 +20410,276 @@ def render_abyssal_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ---------------------------------------------------------------------------
+# pulp — a 1940s lurid paperback front (issue #214).
+#
+# Distinct from ``comic`` by object, not just by palette. ``comic`` is a *panel*
+# — Ben-Day dots, racing stripes, a heavy gutter border. This is a *cover*: a
+# masthead strip, a huge title, a corner banner, a price flash and a blurb. The
+# saturated yellow ground is the only thing the two share.
+#
+# **The misregistration is the point.** Pulp paperbacks were printed fast and
+# cheap on bad presses, and the giveaway is that the colour plates do not line
+# up: every heavy element carries a red fringe where the red plate landed a
+# couple of millimetres off the black. ``_pulp_misregistered_text`` reproduces
+# that literally — it paints the red plate at an offset and the black plate on
+# top — which is a use of the panel's inks nothing else here makes. It is also
+# why the theme wants a *fat* face: a hairline serif would have the fringe eat
+# the letterform instead of haloing it.
+#
+# The time rides the **issue line**, ``VOL. XII · NO. 30`` — hour as a Roman
+# volume, minute as the issue number. Every real pulp carried volume and number
+# on the cover, so this is period chrome rather than a digit bolted on, the same
+# move ``lieder`` makes with its time signature and ``izakaya`` with its lantern
+# numeral. It is worth being honest that this is the most *direct* time surface
+# in the rotation — ``NO. 30`` at half past is the minute in plain digits, where
+# ``lieder`` hides its minute in a metronome mark. It earns the exception the
+# same way ``lieder``'s hour does: a volume/number line is required furniture on
+# this object, and a reader parses it as a serial, not as a clock. The quote
+# still carries the readable time, as everywhere else.
+#
+# Composition, top to bottom: a red masthead strip carrying the imprint and the
+# issue line; the book's title as the cover title, uppercased and auto-fitted;
+# an all-caps byline; the quote as the breathless cover blurb on a knocked-out
+# white band; a starburst price flash; and an angled corner banner reading
+# COMPLETE NOVEL IN THIS ISSUE. The blurb band is knocked out rather than set
+# straight onto the yellow because a long quote in black on saturated yellow is
+# the least legible pairing the panel can produce at distance.
+# ---------------------------------------------------------------------------
+_PULP_MASTHEAD_H = 46
+_PULP_TITLE_TOP = 58
+_PULP_TITLE_MAX = 132          # title block height before the byline
+_PULP_BLURB_RECT = (54, 176, 746, 380)
+_PULP_PLATE_OFFSET = (3, 2)    # how far the red plate missed the black one
+_PULP_IMPRINT = "IDLE HOURS"
+_PULP_BANNER_TEXT = "COMPLETE NOVEL"
+_PULP_PRICE = "25¢"
+# Centre of the diagonal corner flash. Far enough off the corner that the whole
+# banner text stays on canvas, and low enough to sit under the blurb band rather
+# than fighting it — the two would otherwise overlap on the left.
+_PULP_BANNER_CENTRE = (104, 420)
+_PULP_BANNER_SIZE = (186, 30)
+
+
+def _pulp_issue_line(time_str: str) -> str:
+    """``VOL. <roman hour> · NO. <minute>`` — the cover's serial, and the clock."""
+    try:
+        hour, minute = (int(part) for part in time_str.split(":")[:2])
+    except (ValueError, AttributeError):
+        hour, minute = 12, 0
+    roman = _TAROT_ROMAN_NUMERALS[(hour % 12) or 12]
+    return f"VOL. {roman}  ·  NO. {minute:02d}"
+
+
+def _pulp_misregistered_text(image, draw, xy, text, font, *, anchor=None, offset=None):
+    """Paint ``text`` as a black plate with the red plate landing off-register.
+
+    The red goes down first at an offset and the black covers most of it, so
+    what survives is a fringe on two edges — exactly what a cheap two-pass press
+    produced. Drawing red *after* black would put the fringe on top of the
+    letterform and read as a drop shadow instead of a printing fault.
+    """
+    dx, dy = offset or _PULP_PLATE_OFFSET
+    x, y = xy
+    draw.text((x + dx, y + dy), text, font=font, fill=SPECTRA6["red"], anchor=anchor)
+    draw.text((x, y), text, font=font, fill=SPECTRA6["black"], anchor=anchor)
+    del image
+
+
+def _pulp_paint_stock(image) -> None:
+    """A coarse black screen over the yellow — cheap paper, cheaply printed.
+
+    One dot per 4x4 tile (6.25%), which is dark enough to read as texture at
+    panel distance and sparse enough not to shift the hue. Deliberately NOT a
+    red screen: red over yellow is the documented R+Y tangerine, so it would
+    change the ground colour rather than dirty it, and it would collide with a
+    recipe three other themes already own. Distinct from ``comic``'s Ben-Day
+    field, which is a red dot *triangle* in one corner rather than a full-ground
+    screen.
+    """
+    width, height = image.size
+    px = image.load()
+    yellow, black = SPECTRA6["yellow"], SPECTRA6["black"]
+    for y in range(height):
+        if y % 4 != 1:
+            continue
+        for x in range(1, width, 4):
+            if px[x, y] == yellow:
+                px[x, y] = black
+
+
+def _pulp_paint_masthead(image, draw, width, time_str):
+    """Red strip across the head: imprint on the left, issue line on the right."""
+    red, black, yellow = SPECTRA6["red"], SPECTRA6["black"], SPECTRA6["yellow"]
+    draw.rectangle((0, 0, width, _PULP_MASTHEAD_H), fill=red)
+    draw.rectangle((0, _PULP_MASTHEAD_H - 4, width, _PULP_MASTHEAD_H), fill=black)
+    imprint = load_font([(ALFA_SLAB_ONE, None), *QUOTE_FONT_BOLD_CANDIDATES], size=25)
+    serial = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=15)
+    draw.text((18, _PULP_MASTHEAD_H // 2 - 3), _PULP_IMPRINT, font=imprint, fill=yellow, anchor="lm")
+    draw.text((width - 18, _PULP_MASTHEAD_H // 2 - 3), _pulp_issue_line(time_str),
+              font=serial, fill=yellow, anchor="rm")
+
+
+def _pulp_fit_title(draw, title, width):
+    """Largest Alfa Slab One size whose uppercased title fits, wrapping to two.
+
+    A cover title is the dominant element, so it is fitted down aggressively
+    before it is allowed to wrap — the same order ``marquee`` uses for its
+    feature title, and for the same reason: two lines of a smaller face reads as
+    a cover, four lines of a smaller one reads as a paragraph.
+    """
+    text = (title or "").strip().upper() or _PULP_IMPRINT
+    budget = width - 72
+    for size in range(64, 25, -3):
+        font = load_font([(ALFA_SLAB_ONE, None), *QUOTE_FONT_BOLD_CANDIDATES], size=size)
+        if draw.textlength(text, font=font) <= budget:
+            return font, [text]
+    # Still too wide at the floor: break at the space nearest the midpoint.
+    words = text.split()
+    if len(words) > 1:
+        best = min(range(1, len(words)), key=lambda i: abs(len(" ".join(words[:i])) - len(text) // 2))
+        pair = [" ".join(words[:best]), " ".join(words[best:])]
+        for size in range(48, 19, -3):
+            font = load_font([(ALFA_SLAB_ONE, None), *QUOTE_FONT_BOLD_CANDIDATES], size=size)
+            if max(draw.textlength(line, font=font) for line in pair) <= budget:
+                return font, pair
+        return load_font([(ALFA_SLAB_ONE, None), *QUOTE_FONT_BOLD_CANDIDATES], size=20), pair
+    return load_font([(ALFA_SLAB_ONE, None), *QUOTE_FONT_BOLD_CANDIDATES], size=26), [text]
+
+
+def _pulp_paint_title(image, draw, quote_row, width):
+    """Cover title (the book) plus an all-caps byline. Returns the next free y."""
+    title = (quote_row.get("title") or "").strip() or (quote_row.get("author") or "").strip()
+    font, lines = _pulp_fit_title(draw, title, width)
+    ascent = _font_ascent(font)
+    y = _PULP_TITLE_TOP
+    for line in lines:
+        _pulp_misregistered_text(image, draw, (width // 2, y), line, font, anchor="ma")
+        y += int(ascent * 1.02)
+    author = (quote_row.get("author") or "").strip()
+    if author:
+        byline_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=16)
+        text = f"BY {author.upper()}"
+        while text and draw.textlength(text, font=byline_font) > width - 80:
+            text = text[:-1]
+        draw.text((width // 2, y + 6), text, font=byline_font, fill=SPECTRA6["black"], anchor="ma")
+        y += 30
+    return y
+
+
+def _pulp_paint_blurb(image, draw, quote_row, rect):
+    """The quote as the cover blurb, on a knocked-out white band.
+
+    Set straight onto the saturated yellow this would be the least legible
+    pairing the panel can make at viewing distance, so the band is wiped to
+    white first and given a heavy black rule — which is also what a real cover
+    did with its blurb copy.
+    """
+    x0, y0, x1, y1 = rect
+    white, black, red = SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["red"]
+    draw.rectangle((x0, y0, x1, y1), fill=white, outline=black, width=3)
+    inner = (x0 + 18, y0 + 14, x1 - 18, y1 - 14)
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, matched, inner[2] - inner[0], inner[3] - inner[1],
+        font_max=27, font_min=12, line_height_mult=1.16, theme="pulp",
+    )
+    block_h = len(wrapped) * line_height
+    y = inner[1] + max(0, ((inner[3] - inner[1]) - block_h) // 2)
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        widths = []
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            box = draw.textbbox((0, 0), chunk, font=font)
+            widths.append(box[2] - box[0])
+        x = inner[0] + max(0, ((inner[2] - inner[0]) - sum(widths)) // 2)
+        for (chunk, is_bold), chunk_w in zip(drawable, widths):
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (ascent - _font_ascent(font))
+            draw.text((x, chunk_y), chunk, font=font, fill=red if is_bold else black)
+            x += chunk_w
+        y += line_height
+
+
+def _pulp_paint_price_flash(image, draw, width, height):
+    """A starburst price badge — the coin-price flash every cover carried."""
+    red, black, yellow = SPECTRA6["red"], SPECTRA6["black"], SPECTRA6["yellow"]
+    cx, cy, r = width - 72, height - 56, 44
+    points = []
+    for i in range(24):
+        angle = math.pi * 2 * i / 24
+        radius = r if i % 2 == 0 else r * 0.72
+        points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    draw.polygon(points, fill=red, outline=black)
+    font = load_font([(ALFA_SLAB_ONE, None), *QUOTE_FONT_BOLD_CANDIDATES], size=20)
+    draw.text((cx, cy), _PULP_PRICE, font=font, fill=yellow, anchor="mm")
+
+
+def _pulp_paint_corner_banner(image, draw, width, height):
+    """The angled flag across the bottom-left corner.
+
+    Drawn on its own tile and rotated, because PIL cannot set rotated text and a
+    banner parallel to the page edge is not the gesture — the whole point is the
+    diagonal slash across a corner.
+    """
+    red, yellow, black = SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["black"]
+    band_w, band_h = _PULP_BANNER_SIZE
+    # Built RGBA and pasted through its own alpha so the rotation's corner fill
+    # stays transparent — a rotated opaque tile would stamp a square of ground
+    # over the cover. NEAREST keeps the edges hard: a smoothed diagonal would
+    # dissolve into off-palette greys that the final snap has to guess at.
+    tile = Image.new("RGBA", (band_w, band_h), red + (255,))
+    tdraw = ImageDraw.Draw(tile)
+    tdraw.rectangle((0, 0, band_w - 1, band_h - 1), outline=black + (255,), width=2)
+    font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=13)
+    text = _PULP_BANNER_TEXT
+    while len(text) > 1 and tdraw.textlength(text, font=font) > band_w - 14:
+        text = text[:-1]
+    tdraw.text((band_w // 2, band_h // 2), text, font=font, fill=yellow + (255,), anchor="mm")
+    # BICUBIC, not NEAREST: at 13 px a rotated nearest-neighbour resample shreds
+    # the glyph stems and the banner reads as noise. The alpha is then hard
+    # thresholded so the band's *edges* stay crisp — an antialiased silhouette
+    # blended into the yellow leaves a fringe of off-palette pixels for the
+    # final snap to guess at, while the interior text keeps its smoothing and
+    # snaps cleanly to the two inks it is already made of.
+    rotated = tile.rotate(45, expand=True, resample=Image.BICUBIC, fillcolor=(0, 0, 0, 0))
+    mask = rotated.split()[3].point(lambda v: 255 if v > 127 else 0)
+    cx, cy = _PULP_BANNER_CENTRE
+    cx = min(cx, max(0, width - 40))
+    cy = min(cy, max(0, height - 40))
+    image.paste(rotated.convert("RGB"), (cx - rotated.size[0] // 2, cy - rotated.size[1] // 2), mask)
+    tile.close()
+    rotated.close()
+
+
+def render_pulp_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A 1940s lurid paperback front (see the module section comment above)."""
+    image = Image.new("RGB", (width, height), color=SPECTRA6["yellow"])
+    _pulp_paint_stock(image)
+    draw = ImageDraw.Draw(image)
+    _pulp_paint_masthead(image, draw, width, time_str)
+    _pulp_paint_title(image, draw, quote_row, width)
+    blurb = (
+        max(8, min(_PULP_BLURB_RECT[0], width - 24)),
+        max(8, min(_PULP_BLURB_RECT[1], height - 24)),
+        max(16, min(_PULP_BLURB_RECT[2], width - 8)),
+        max(24, min(_PULP_BLURB_RECT[3], height - 8)),
+    )
+    if blurb[2] > blurb[0] + 20 and blurb[3] > blurb[1] + 20:
+        _pulp_paint_blurb(image, draw, quote_row, blurb)
+    _pulp_paint_corner_banner(image, draw, width, height)
+    _pulp_paint_price_flash(image, draw, width, height)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
@@ -20085,6 +20712,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_abyssal_frame(time_str, quote_row, width, height)
     if theme == "pride":
         return render_pride_frame(time_str, quote_row, width, height)
+    if theme == "pulp":
+        return render_pulp_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
@@ -20208,6 +20837,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # the 16/10/10 pad keeps that outline (and the dot just outside the
         # top-left corner) clear of the first / last text lines.
         "circuit": (16, 10, 10),
+        # synoptic boxes the quote as a chart legend: a 2 px black frame with
+        # blue rules inset 8 px, so the pad has to clear both.
+        "synoptic": (20, 14, 14),
         # anna_atkins deliberately omits a body-text knockout — the white /
         # sky-blue text is rendered directly on the cyanotype plate with a
         # subtle per-glyph black halo (see ``_draw_text_body``) instead of a
@@ -20261,6 +20893,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # knocks the body-text rect back to clean forest soldermask and
         # frames it with a white silkscreen component outline.
         draw_circuit_border(image, colors, clear_rect=clear_rect)
+    elif theme == "synoptic":
+        # Same single-call dispatch as kanagawa / cartograph / circuit — the
+        # analysis paints graticule, isobars, fronts and station plots in one
+        # pass, then wipes the body-text rect and boxes it as a chart legend.
+        draw_synoptic_border(image, colors, clear_rect=clear_rect, time_str=time_str)
     elif theme == "letter":
         # Same single-call dispatch — the letter painter pastes the dithered
         # aged-paper plate, knocks the writing area back to clean cream so the

@@ -546,6 +546,48 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "pride",
     },
+    # pulp — a custom-render frame (1940s paperback). The generated sweep entry
+    # covers it at the standard length; this pins a LONG title, because the
+    # cover title is the dominant element and the two-line wrap path is the one
+    # the sweep's short title never reaches. It also fences the misregistration:
+    # a lost red plate would move thousands of pixels around every glyph.
+    {
+        "name": "pulp_long_title_production",
+        "time": "02:30",
+        "row": _row(
+            "It was half past two when the shot rang out, and nobody in that "
+            "house ever told the truth again.",
+            "half past two",
+            author="Wilkie Collins",
+            title="The Woman in White and Other Stories of Suspense",
+            bucket="h2_half_past",
+            resolved_bucket="h2_half_past",
+            quality_score=86,
+            source_id="583",
+        ),
+        "mode": "production",
+        "theme": "pulp",
+    },
+    # synoptic — a literary-layout theme whose painter owns the ground. Pinned
+    # at a time whose stamp digits differ in every position from the sweep's, so
+    # a broken validity stamp cannot hide behind a coincidence.
+    {
+        "name": "synoptic_stamp_production",
+        "time": "16:30",
+        "row": _row(
+            "It was about half past two when the wind shifted and the glass "
+            "began to fall.",
+            "half past two",
+            author="Joseph Conrad",
+            title="Typhoon",
+            bucket="h2_half_past",
+            resolved_bucket="h2_half_past",
+            quality_score=88,
+            source_id="1142",
+        ),
+        "mode": "production",
+        "theme": "synoptic",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",
