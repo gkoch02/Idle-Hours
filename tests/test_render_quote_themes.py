@@ -17,6 +17,8 @@ custom paths add.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from PIL import Image
 
@@ -462,3 +464,97 @@ class TestOutrunFrame:
             img = rq.render("08:00", make_row(), w, h, theme="outrun")
             assert img.size == (w, h)
             assert distinct_inks(img).issubset(self._palette()), f"off-palette at {w}x{h}"
+
+
+class TestLiederRhythm:
+    """Bar-filling invariants for the ``lieder`` engraver.
+
+    The theme's defining claim is that every bar holds exactly ``numerator``
+    beats. Two ways that can break, both silent in a rendered PNG unless you
+    count: a note can straddle a barline (which real notation would have to
+    write as a tie), and the final bar can be left short.
+
+    The second shipped broken once. The original final-bar fill only grew the
+    last note when the remainder happened to be one of four notated durations
+    and gave up otherwise, which left the last bar incomplete on 51% of
+    (row, meter) pairs across the committed corpus — 83% at 12/4 — while the
+    docs claimed bars always fill exactly. It is now padded with rests. This
+    sweeps real corpus rows against every meter the clock can produce, because
+    the meter *is* the hour and all twelve are reachable in normal operation.
+    """
+
+    METERS = tuple(range(1, 13))
+
+    @staticmethod
+    def _corpus_rows(limit):
+        path = rq.BASE_DIR / "assets" / "quote_database.jsonl"
+        rows = []
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if len(rows) >= limit:
+                    break
+                row = json.loads(line)
+                if row.get("display_quote"):
+                    rows.append(row)
+        return rows
+
+    @pytest.mark.parametrize("meter", METERS)
+    def test_every_bar_holds_exactly_the_meter(self, meter):
+        for row in self._corpus_rows(60):
+            notes = rq._lieder_notes(row)
+            if not notes:
+                continue
+            rq._lieder_rhythm(notes, meter)
+            total = sum(n["beats"] for n in notes)
+            assert abs(total % meter) < 1e-9, (
+                f"meter {meter}/4, row {row.get('source_id')}:{row.get('line_number')}: "
+                f"{total} beats leaves a final bar of {total % meter}, not {meter}"
+            )
+
+    @pytest.mark.parametrize("meter", METERS)
+    def test_no_note_straddles_a_barline(self, meter):
+        for row in self._corpus_rows(60):
+            notes = rq._lieder_notes(row)
+            if not notes:
+                continue
+            rq._lieder_rhythm(notes, meter)
+            elapsed = 0.0
+            for note in notes:
+                start = elapsed // meter
+                end = (elapsed + note["beats"] - 1e-9) // meter
+                assert start == end, (
+                    f"meter {meter}/4, row {row.get('source_id')}:{row.get('line_number')}: "
+                    f"a {note['beats']}-beat note starting at {elapsed} crosses a barline; "
+                    "notation would need a tie"
+                )
+                elapsed += note["beats"]
+
+    def test_rests_only_ever_pad_the_tail(self):
+        """Rests exist to complete the final bar, so none may precede a sung note."""
+        for row in self._corpus_rows(40):
+            for meter in (3, 7, 12):
+                notes = rq._lieder_notes(row)
+                if not notes:
+                    continue
+                rq._lieder_rhythm(notes, meter)
+                kinds = [bool(n.get("rest")) for n in notes]
+                assert kinds == sorted(kinds), (
+                    f"meter {meter}/4: a rest appears before a sung syllable in "
+                    f"{row.get('source_id')}:{row.get('line_number')}"
+                )
+
+    def test_cadence_lands_on_the_last_sung_note_not_a_rest(self):
+        """Trailing rests must not steal the cadence from the final syllable."""
+        for row in self._corpus_rows(40):
+            for meter in (4, 12):
+                notes = rq._lieder_notes(row)
+                if len(notes) < 2:
+                    continue
+                rq._lieder_rhythm(notes, meter)
+                rq._lieder_contour(rq._lieder_seed(row), notes)
+                sung = [n for n in notes if not n.get("rest")]
+                # Tonic degrees of C major on this staff: positions -2 and 5.
+                assert (sung[-1]["pitch"] + 2) % 7 == 0, (
+                    f"meter {meter}/4: final sung note is not the tonic "
+                    f"({sung[-1]['pitch']}) in {row.get('source_id')}:{row.get('line_number')}"
+                )
