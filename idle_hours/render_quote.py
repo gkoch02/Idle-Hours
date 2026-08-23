@@ -17910,6 +17910,7 @@ _LIEDER_TEMPO_WORDS = ("Larghetto", "Andante", "Moderato", "Allegretto", "Allegr
 _LIEDER_EXPRESSION = ("dolce", "espressivo", "cantabile", "sotto voce", "teneramente", "con moto")
 _MUSIC_G_CLEF = "\U0001D11E"
 _MUSIC_NOTEHEAD = "\U0001D158"
+_MUSIC_NOTEHEAD_VOID = "\U0001D157"   # half / dotted half
 _MUSIC_QUARTER_NOTE = "♩"
 
 
@@ -17945,42 +17946,362 @@ def _lieder_clock(time_str: str) -> tuple[int, int]:
     return hour, minute
 
 
-def _lieder_words(quote_row: dict) -> list[tuple[str, bool]]:
-    """Split the display quote into ``(word, is_matched)`` pairs.
+# Words the syllabifier below gets wrong, chosen by scanning the 150 most
+# frequent multi-syllable words in the committed corpus rather than invented.
+# Every hyphenation engine ships a list like this — TeX calls it
+# ``\hyphenation{}`` — because English orthography defeats any rule set at the
+# margins. Keep it small and evidence-driven: if a word is not actually frequent
+# in ``quote_database.jsonl`` it does not belong here.
+_LIEDER_SYLLABLE_EXCEPTIONS = {
+    "another": ("an", "oth", "er"),
+    "business": ("busi", "ness"),
+    "curious": ("cu", "ri", "ous"),
+    "eleven": ("e", "lev", "en"),
+    "entirely": ("en", "tire", "ly"),
+    "exactly": ("ex", "act", "ly"),
+    "precisely": ("pre", "cise", "ly"),
+    "quiet": ("qui", "et"),
+    "quietly": ("qui", "et", "ly"),
+    "serious": ("se", "ri", "ous"),
+    "something": ("some", "thing"),
+    "sometimes": ("some", "times"),
+    "somewhere": ("some", "where"),
+    "therefore": ("there", "fore"),
+    "various": ("va", "ri", "ous"),
+}
+# Consonant pairs that are one sound and must never be split across syllables.
+_LIEDER_DIGRAPHS = ("th", "sh", "ch", "wh", "ph", "gh", "ck", "ng", "qu")
+_LIEDER_VOWELS = frozenset("aeiouy")
+# Unstressed function words — set to a weak, short note.
+_LIEDER_FUNCTION_WORDS = frozenset(
+    "a an the of and to in is was were it its that this these those his her their they them "
+    "he she we you i be been am are had has have do did for with on at as by but or from not "
+    "no so then than there which who what when all one up out into upon own who's".split()
+)
+# Prefixes that carry no stress, so the stress falls on the SECOND syllable
+# (a-bout, be-fore, re-turn). Without this every polysyllable would be set with
+# a long first note, which is wrong for a large slice of ordinary English.
+_LIEDER_WEAK_PREFIXES = ("a", "be", "re", "de", "con", "ex", "in", "un", "for", "to", "per", "pro")
+_LIEDER_PHRASE_END = ".,;:!?—"
 
-    Reuses ``tokenize_quote`` so the matched-phrase span resolves exactly the
-    way the shared literary layout resolves it; the three segments it returns
-    (pre / matched / post) are then split on whitespace because this frame lays
-    out per *word* — each word carries its own notehead.
+
+def _lieder_syllables(word: str) -> list[str]:
+    """Split one word into display syllables.
+
+    A heuristic, deliberately: a correct English syllabifier needs a
+    pronunciation dictionary, and the failure that matters musically is the
+    *count* (it decides how many notes the word gets), not the exact split
+    point — a reader forgives ``ga-ther`` for ``gath-er``, but a three-note
+    setting of a two-syllable word is simply wrong. Measured against the 150
+    most frequent multi-syllable words in the committed corpus, plus the
+    exception table above for the rest.
+
+    Rules, in the order they matter: ``qu`` is a consonant (so ``quiet`` has
+    one vowel run, not two); a final silent ``e`` is not a syllable (``time``)
+    unless it is the ``-le`` of ``ta-ble``; ``-ed`` is silent except after t/d
+    (``slipped`` is one syllable, ``wanted`` two); ``-es`` is silent except
+    after a sibilant; a consonant pair that is a digraph never splits; a
+    doubled consonant always splits between the pair; and a consonant+``le``
+    ending takes the consonant with it.
+    """
+    core = "".join(ch for ch in word if ch.isalpha() or ch == "'")
+    if len(core) <= 3:
+        return [word]
+    low = core.lower()
+    if low in _LIEDER_SYLLABLE_EXCEPTIONS:
+        lengths = [len(p) for p in _LIEDER_SYLLABLE_EXCEPTIONS[low]]
+        cuts, run = [], 0
+        for length in lengths[:-1]:
+            run += length
+            cuts.append(run)
+        return _lieder_apply_cuts(word, cuts)
+
+    groups, i = [], 0
+    while i < len(low):
+        if low[i] in _LIEDER_VOWELS:
+            if low[i] == "u" and i and low[i - 1] == "q":   # "qu" is a consonant
+                i += 1
+                continue
+            j = i
+            while j < len(low) and low[j] in _LIEDER_VOWELS:
+                if low[j] == "u" and low[j - 1] == "q":
+                    break
+                j += 1
+            groups.append((i, j))
+            i = j
+        else:
+            i += 1
+    if len(groups) < 2:
+        return [word]
+
+    le_ending = len(low) > 3 and low.endswith("le") and low[-3] not in _LIEDER_VOWELS
+    if not le_ending and low.endswith("e") and groups[-1] == (len(low) - 1, len(low)):
+        groups.pop()
+    if len(groups) > 1 and low.endswith("ed") and low[-3:-2] not in ("t", "d"):
+        if groups[-1][0] == len(low) - 2:
+            groups.pop()
+    if len(groups) > 1 and low.endswith("es") and low[-3:-2] not in ("s", "z", "x", "h", "c", "i"):
+        if groups[-1][0] == len(low) - 2:
+            groups.pop()
+    if len(groups) < 2:
+        return [word]
+
+    cuts = []
+    for (_, end_a), (start_b, _) in zip(groups, groups[1:]):
+        run = low[end_a:start_b]
+        n = len(run)
+        if le_ending and start_b == len(low) - 1 and n >= 2:
+            cut = start_b - 2                       # ta-ble, lit-tle, pos-si-ble
+        elif n <= 1:
+            cut = end_a                             # o-ver
+        elif n == 2:
+            cut = end_a if run in _LIEDER_DIGRAPHS else end_a + 1   # an-oth-er / af-ter
+        elif run[0] == run[1]:
+            cut = end_a + 2                         # still-ness
+        elif run[1:3] in _LIEDER_DIGRAPHS:
+            cut = end_a + 1
+        elif run[:2] in _LIEDER_DIGRAPHS:
+            cut = end_a + 2
+        else:
+            cut = end_a + 1
+        cuts.append(cut)
+    kept, prev = [], 0
+    for cut in cuts:
+        # Never strand a fragment of under two letters — it is not a syllable
+        # and it looks like a typo under a notehead.
+        if cut - prev >= 2 and len(low) - cut >= 2:
+            kept.append(cut)
+            prev = cut
+    return _lieder_apply_cuts(word, kept) if kept else [word]
+
+
+def _lieder_apply_cuts(word: str, cuts: list[int]) -> list[str]:
+    """Slice ``word`` at cut positions expressed in *letters-only* coordinates.
+
+    The cuts are computed against the alphabetic core, but the displayed word
+    still carries its punctuation ("o'clock,"), so the indices are mapped back
+    onto the original string before slicing.
+    """
+    if not cuts:
+        return [word]
+    positions, seen = [], 0
+    for index, ch in enumerate(word):
+        if seen in cuts and ch.isalpha():
+            positions.append(index)
+            cuts = [c for c in cuts if c != seen]
+        if ch.isalpha() or ch == "'":
+            seen += 1
+    pieces, start = [], 0
+    for pos in positions:
+        if pos > start:
+            pieces.append(word[start:pos])
+            start = pos
+    pieces.append(word[start:])
+    return [p for p in pieces if p] or [word]
+
+
+def _lieder_notes(quote_row: dict) -> list[dict]:
+    """Build the per-syllable note list: one dict per note, in singing order.
+
+    Each carries what the later passes need — ``matched`` (inside the sung time
+    phrase), ``hyphen`` (another syllable of the same word follows, so a lyric
+    hyphen is drawn), ``breath`` (a phrase boundary follows) and ``stress``
+    (2 phrase-final, 1 stressed, 0 weak), which is what the rhythm pass turns
+    into note durations.
     """
     text = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    words: list[tuple[str, bool]] = []
-    for chunk, is_matched in tokenize_quote(text, quote_row.get("matched_text") or ""):
+    notes: list[dict] = []
+    word_index = 0
+    for chunk, matched in tokenize_quote(text, quote_row.get("matched_text") or ""):
         for word in chunk.split():
-            words.append((word, is_matched))
-    return words
+            bare = word.strip(_LIEDER_PHRASE_END + "\"'”“’")
+            low = "".join(ch for ch in bare if ch.isalpha()).lower()
+            pieces = _lieder_syllables(word)
+            ends_phrase = any(word.endswith(ch) for ch in _LIEDER_PHRASE_END)
+            weak_word = low in _LIEDER_FUNCTION_WORDS
+            # Stress lands on the second syllable when the word opens with an
+            # unstressed prefix (a-BOUT, be-FORE, re-TURN).
+            accent = 0
+            if len(pieces) > 1 and any(low.startswith(p) for p in _LIEDER_WEAK_PREFIXES):
+                accent = 1
+            for position, piece in enumerate(pieces):
+                last = position == len(pieces) - 1
+                if weak_word:
+                    stress = 0
+                elif position == accent:
+                    stress = 1
+                else:
+                    stress = 0
+                if last and ends_phrase:
+                    stress = 2
+                notes.append({
+                    "text": piece,
+                    "matched": matched,
+                    "hyphen": not last,
+                    "breath": last and ends_phrase,
+                    "stress": stress,
+                    "word": word_index,
+                })
+            word_index += 1
+    if notes:
+        notes[-1]["stress"] = 2
+        notes[-1]["breath"] = False
+    return notes
 
 
-def _lieder_wrap(draw, words, regular, bold, widths: list[int], min_gap: int) -> list[list[tuple[str, bool, int]]]:
-    """Greedy word wrap into systems, returning ``(word, matched, width)`` rows.
+def _lieder_is_dotted(beats: float) -> bool:
+    """A dot adds half again, so 1.5 (dotted quarter) and 3.0 (dotted half)."""
+    return abs(beats - 1.5) < 1e-9 or abs(beats - 3.0) < 1e-9
 
-    ``widths`` is per-system because system 1 is narrower — it carries the clef
-    *and* the time signature, while later systems carry only the clef.
+
+def _lieder_rhythm(notes: list[dict], numerator: int) -> None:
+    """Assign each note a duration in beats and mark where barlines fall.
+
+    Durations come from stress: a phrase-final syllable is held (a dotted half
+    at the very end), a stressed syllable takes a quarter, a weak one an
+    eighth. That is what gives the line speech rhythm instead of the flat
+    stream of equal notes an earlier revision drew.
+
+    Bars are then filled to *exactly* ``numerator`` beats. A note is shortened
+    rather than allowed to overflow, because a note that straddles a barline
+    has to be written as a tie, and an untied one is simply wrong notation.
+    Shortening is invisible musically — it just means a held syllable resolves
+    on the barline, which is where it would naturally fall anyway.
     """
-    lines: list[list[tuple[str, bool, int]]] = []
-    current: list[tuple[str, bool, int]] = []
-    current_w = 0
-    for word, matched in words:
-        font = bold if matched else regular
-        word_w = int(draw.textlength(word, font=font))
+    remaining = float(numerator)
+    for index, note in enumerate(notes):
+        if remaining <= 1e-9:
+            remaining = float(numerator)
+            note["bar"] = index > 0
+        else:
+            note["bar"] = False
+        if note["stress"] >= 2:
+            want = 3.0 if index == len(notes) - 1 else 2.0
+        elif note["stress"] == 1:
+            want = 1.0
+        else:
+            want = 0.5
+        options = [d for d in (3.0, 2.0, 1.0, 0.5) if d <= remaining + 1e-9]
+        beats = next((d for d in options if d <= want), options[-1] if options else 0.5)
+        note["beats"] = beats
+        note["dotted"] = _lieder_is_dotted(beats)
+        remaining -= beats
+    # Fill the last bar. A piece that stops partway through a measure is the
+    # one rhythmic defect a musician spots by counting rather than listening,
+    # and the fix is free: hold the final syllable for whatever is left.
+    if notes and remaining > 1e-9:
+        grown = notes[-1]["beats"] + remaining
+        if grown in (1.0, 1.5, 2.0, 3.0):
+            notes[-1]["beats"] = grown
+            notes[-1]["dotted"] = _lieder_is_dotted(grown)
+
+
+def _lieder_chord_tone(pitch: int) -> int:
+    """Nudge a pitch onto the nearest tonic-triad degree (C, E or G).
+
+    In this key (no key signature, so C major) every staff position is a
+    diatonic degree, and the triad sits on degrees 0/2/4 of the seven. Any
+    pitch is at most one step from one of them, so this never leaps.
+    """
+    for delta in (0, -1, 1, -2, 2):
+        candidate = pitch + delta
+        if _LIEDER_PITCH_MIN <= candidate <= _LIEDER_PITCH_MAX and (candidate + 2) % 7 in (0, 2, 4):
+            return candidate
+    return pitch
+
+
+def _lieder_contour(seed: int, notes: list[dict]) -> None:
+    """Give the line a singable shape, and make it end like a piece of music.
+
+    A weighted random walk on its own wanders and then simply stops, which is
+    what the first revision of this theme did and why it sounded aimless. Four
+    rules turn the walk into something with direction:
+
+    * **Downbeat gravity** — the first note of each bar is pulled onto a tonic
+      triad degree, so the line keeps returning to the chord and the ear hears
+      a key rather than a drift.
+    * **Leap resolution** — after any leap of three degrees or more the next
+      move is a step in the *opposite* direction. This is the oldest rule in
+      voice-leading and it is most of what makes a line feel sung rather than
+      generated.
+    * **Phrase resolution** — a syllable that ends a phrase settles onto a
+      chord tone, so each clause comes to rest before the next begins.
+    * **Cadence** — the final note lands on the tonic, approached by step. This
+      is the single biggest difference: a melody that ends anywhere else sounds
+      interrupted, however well-formed the rest of it is.
+
+    The matched time phrase keeps its upward bias, so the sung phrase still
+    peaks; the restoring pull at either edge of the range still applies.
+    """
+    rng = random.Random(seed)
+    pitch = _lieder_chord_tone(4)
+    previous_step = 0
+    total = len(notes)
+    for index, note in enumerate(notes):
+        if index == 0 or note.get("bar"):
+            pitch = _lieder_chord_tone(pitch)
+        note["pitch"] = pitch
+        if index == total - 1:
+            break
+        if abs(previous_step) >= 3:
+            step = -1 if previous_step > 0 else 1
+        elif note["breath"]:
+            step = _lieder_chord_tone(pitch) - pitch or rng.choice((-1, 1))
+        else:
+            step = rng.choice(_LIEDER_MELODY_STEPS)
+            if note["matched"] and step < 0 and pitch < 7:
+                step = -step
+        if pitch >= 8 and step > 0:
+            step = -step
+        elif pitch <= 0 and step < 0:
+            step = -step
+        previous_step = step
+        pitch = max(_LIEDER_PITCH_MIN, min(_LIEDER_PITCH_MAX, pitch + step))
+    if total >= 2:
+        tonic = min((-2, 5), key=lambda t: abs(t - notes[-1]["pitch"]))
+        notes[-1]["pitch"] = tonic
+        approach = notes[-2]["pitch"]
+        if abs(approach - tonic) != 1:
+            notes[-2]["pitch"] = max(_LIEDER_PITCH_MIN, min(_LIEDER_PITCH_MAX,
+                                                            tonic + (1 if approach >= tonic else -1)))
+
+
+def _lieder_slot(note: dict, min_gap: int, base: float) -> float:
+    """Horizontal space one note owns.
+
+    Two claims, whichever is larger: the syllable's own text plus breathing
+    room, and a duration-proportional share. Real engraving spaces notes by
+    duration but *compresses* the relation — a half note gets more room than an
+    eighth, nowhere near four times more — which is what the 0.6 exponent is.
+    """
+    return max(note["width"] + min_gap * 0.75, base * (note["beats"] ** 0.6))
+
+
+def _lieder_wrap(notes: list[dict], widths: list[int], min_gap: int, base: float) -> list[list[dict]]:
+    """Break the notes into systems, never splitting a word across two staves.
+
+    A real vocal score *will* break a word across a system with a trailing
+    hyphen, but it needs the continuation hyphen at the line head to stay
+    readable; keeping a word whole is the simpler contract and costs only a
+    little justification slack.
+    """
+    lines: list[list[dict]] = []
+    current: list[dict] = []
+    current_w = 0.0
+    index = 0
+    while index < len(notes):
+        word = notes[index]["word"]
+        group = []
+        while index < len(notes) and notes[index]["word"] == word:
+            group.append(notes[index])
+            index += 1
+        group_w = sum(_lieder_slot(n, min_gap, base) for n in group)
         avail = widths[min(len(lines), len(widths) - 1)]
-        advance = word_w if not current else word_w + min_gap
-        if current and current_w + advance > avail:
+        if current and current_w + group_w > avail:
             lines.append(current)
-            current, current_w = [], 0
-            advance = word_w
-        current.append((word, matched, word_w))
-        current_w += advance
+            current, current_w = [], 0.0
+        current.extend(group)
+        current_w += group_w
     if current:
         lines.append(current)
     return lines
@@ -17991,20 +18312,20 @@ def _lieder_system_core(size: int, gap: int) -> int:
     return int((_LIEDER_HEADROOM + 4 + _LIEDER_LYRIC_OFFSET) * gap) + size
 
 
-def _lieder_fit(draw, words, widths, gap: int) -> tuple:
-    """Shrink the lyric font until the words fit the page as engraved systems.
+def _lieder_fit(draw, notes: list[dict], widths: list[int], gap: int) -> tuple:
+    """Shrink the lyric font until the syllables fit the page as engraved systems.
 
-    Two constraints, both checked per size: the words must wrap into at most
-    ``_LIEDER_MAX_SYSTEMS`` staves, and those staves must fit the vertical band.
-    The second matters because a system is much taller than a line of prose —
-    headroom for stems and the slur above, the staff itself, then the lyric
-    below — so a size that wraps to three lines can still overrun the page.
+    Two constraints, both checked per size: the notes must wrap into at most
+    ``_LIEDER_MAX_SYSTEMS`` staves, and those staves must fit the vertical band
+    — a system is much taller than a line of prose (headroom for stems and the
+    slur above, the staff, then the lyric below), so a size that wraps to three
+    lines can still overrun the page.
 
-    The lyric size is also capped in a narrow band rather than scaled freely the
-    way ``fit_quote`` scales the literary layout: in real engraving the lyric
-    size tracks the staff size, so letting a short quote balloon to 60pt over a
-    28px staff would read as a caption pasted onto a score. Variance is absorbed
-    by the *number* of systems instead.
+    The lyric size is capped in a narrow band rather than scaled freely the way
+    ``fit_quote`` scales the literary layout: in engraving the lyric size tracks
+    the staff size, so letting a short quote balloon to 60pt over a 28px staff
+    would read as a caption pasted onto a score. Variance is absorbed by the
+    number of systems instead.
     """
     regular_chain = theme_font_candidates("lieder", "quote_regular")
     bold_chain = theme_font_candidates("lieder", "quote_bold")
@@ -18017,50 +18338,24 @@ def _lieder_fit(draw, words, widths, gap: int) -> tuple:
     for size in range(_LIEDER_FONT_MAX, _LIEDER_FONT_MIN - 1, -1):
         regular = load_font(regular_chain, size=size)
         bold = load_font(bold_chain, size=size)
-        min_gap = max(12, int(size * 0.55))
-        lines = _lieder_wrap(draw, words, regular, bold, widths, min_gap)
+        min_gap = max(7, int(size * 0.38))
+        base = min_gap * 2.1
+        for note in notes:
+            note["width"] = int(draw.textlength(note["text"], font=bold if note["matched"] else regular))
+        lines = _lieder_wrap(notes, widths, min_gap, base)
         if len(lines) > _LIEDER_MAX_SYSTEMS:
             continue
         block = len(lines) * _lieder_system_core(size, gap) + (len(lines) - 1) * _LIEDER_SYSTEM_GAP
         if block <= band_height:
-            return regular, bold, lines, size, min_gap
-    # Floor: keep the systems we can engrave and mark the elision, rather than
-    # silently running the last words off the bottom of the page.
+            return regular, bold, lines, size, min_gap, base
     if len(lines) > _LIEDER_MAX_SYSTEMS:
         lines = lines[:_LIEDER_MAX_SYSTEMS]
         if lines and lines[-1]:
-            word, matched, _ = lines[-1][-1]
-            word = word.rstrip(".,;:!?") + "…"
-            lines[-1][-1] = (word, matched, int(draw.textlength(word, font=bold if matched else regular)))
-    return regular, bold, lines, size, min_gap
-
-
-def _lieder_contour(seed: int, flags: list[bool]) -> list[int]:
-    """A singable pitch contour in staff positions, one entry per word.
-
-    A random walk weighted toward stepwise motion, clamped to one ledger line
-    either side of the staff. Words inside the matched phrase bias upward while
-    there is headroom, so the sung time phrase reads as the melodic peak of its
-    line — the expressive shape a composer would actually give the words the
-    song is about.
-    """
-    rng = random.Random(seed)
-    pitches: list[int] = []
-    pitch = 4  # middle line — a comfortable place for a voice to start
-    for matched in flags:
-        pitches.append(pitch)
-        step = rng.choice(_LIEDER_MELODY_STEPS)
-        if matched and step < 0 and pitch < 7:
-            step = -step  # the sung phrase rises toward its peak
-        # Restoring pull at either edge of the range. An unbiased walk drifts
-        # out to a clamp and sits against it for the rest of the page, which
-        # reads as a melody that has lost its way rather than one with a shape.
-        if pitch >= 8 and step > 0:
-            step = -step
-        elif pitch <= 0 and step < 0:
-            step = -step
-        pitch = max(_LIEDER_PITCH_MIN, min(_LIEDER_PITCH_MAX, pitch + step))
-    return pitches
+            tail = lines[-1][-1]
+            tail["text"] = tail["text"].rstrip(".,;:!?") + "…"
+            tail["hyphen"] = False
+            tail["width"] = int(draw.textlength(tail["text"], font=bold if tail["matched"] else regular))
+    return regular, bold, lines, size, min_gap, max(7, int(size * 0.38)) * 2.1
 
 
 def _lieder_pitch_y(staff_top: float, pitch: int, gap: int) -> float:
@@ -18072,6 +18367,7 @@ def _lieder_draw_glyph(draw, ch: str, font, cx: float, cy: float, fill) -> None:
     """Draw a music glyph with its ink bbox centred on ``(cx, cy)``."""
     x0, y0, x1, y1 = font.getbbox(ch, anchor="ls")
     draw.text((cx - (x0 + x1) / 2.0, cy - (y0 + y1) / 2.0), ch, font=font, fill=fill, anchor="ls")
+
 
 
 def _lieder_paint_header(draw, quote_row: dict, time_str: str) -> None:
@@ -18132,36 +18428,90 @@ def _lieder_paint_clef_and_meter(draw, x: float, staff_top: float, gap: int, num
     return x
 
 
-def _lieder_paint_note(draw, cx: float, note_y: float, gap: int, pitch: int, fill) -> None:
-    """Notehead + stem + any ledger line, for one word."""
-    note_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
-    nx0, _, nx1, _ = note_font.getbbox(_MUSIC_NOTEHEAD, anchor="ls")
-    head_w = max(4.0, float(nx1 - nx0))
-    _lieder_draw_glyph(draw, _MUSIC_NOTEHEAD, note_font, cx, note_y, fill)
+def _lieder_beam_groups(line: list[dict]) -> list[list[int]]:
+    """Index runs of consecutive eighths that should share a beam.
 
-    # Ledger line: only reachable at the clamped extremes, which are exactly the
-    # first ledger position either side of the staff.
-    if pitch <= _LIEDER_PITCH_MIN or pitch >= _LIEDER_PITCH_MAX:
+    Modern vocal engraving beams eighths even across separate syllables; the
+    older convention of flagging every syllable was abandoned because a page of
+    single flags reads as noise — which is exactly what it did here at a 7 px
+    staff gap. Runs break at a barline (a beam never crosses one) and are capped
+    at four so a long stream of weak syllables still groups by beat rather than
+    growing one enormous beam.
+    """
+    groups: list[list[int]] = []
+    run: list[int] = []
+    for index, note in enumerate(line):
+        is_eighth = abs(note["beats"] - 0.5) < 1e-9
+        if run and (not is_eighth or (index > 0 and note.get("bar")) or len(run) >= 4):
+            if len(run) >= 2:
+                groups.append(run)
+            run = []
+        if is_eighth:
+            run.append(index)
+    if len(run) >= 2:
+        groups.append(run)
+    return groups
+
+
+def _lieder_paint_head(draw, cx: float, note_y: float, gap: int, note: dict, fill) -> float:
+    """Notehead, ledger line and augmentation dot. Returns the notehead width.
+
+    Notehead shape carries the duration the way it does on paper: void for a
+    half or dotted half, filled otherwise.
+    """
+    note_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    glyph = _MUSIC_NOTEHEAD_VOID if note["beats"] >= 2.0 else _MUSIC_NOTEHEAD
+    nx0, _, nx1, _ = note_font.getbbox(glyph, anchor="ls")
+    head_w = max(4.0, float(nx1 - nx0))
+    _lieder_draw_glyph(draw, glyph, note_font, cx, note_y, fill)
+
+    if note["pitch"] <= _LIEDER_PITCH_MIN or note["pitch"] >= _LIEDER_PITCH_MAX:
         half = head_w / 2.0 + 3
         draw.line((cx - half, note_y, cx + half, note_y), fill=fill, width=1)
 
-    # Stems turn at the middle line, the way engraving does: notes on or above
-    # it hang their stem down on the left, notes below push it up on the right.
-    stem_h = _LIEDER_STEM_LEN * gap
-    if pitch >= 4:
-        sx = cx - head_w / 2.0 + 1
-        draw.line((sx, note_y, sx, note_y + stem_h), fill=fill, width=1)
-    else:
-        sx = cx + head_w / 2.0 - 1
-        draw.line((sx, note_y - stem_h, sx, note_y), fill=fill, width=1)
+    if note["dotted"]:
+        # The dot always sits in a space, so a note on a line pushes it up one.
+        dot_y = note_y if note["pitch"] % 2 else note_y - gap / 2.0
+        dot_x = cx + head_w / 2.0 + 3
+        draw.ellipse((dot_x - 1.5, dot_y - 1.5, dot_x + 1.5, dot_y + 1.5), fill=fill)
+    return head_w
+
+
+def _lieder_paint_stem(draw, cx: float, note_y: float, gap: int, head_w: float,
+                       down: bool, tip_y: float, flag: bool, fill) -> None:
+    """Stem from the notehead to ``tip_y``, with a flag when it stands alone.
+
+    Stems attach on the left of the head going down and on the right going up,
+    which is the engraving convention. A flag always hangs to the *right* of the
+    stem regardless of stem direction — that is fixed, not a mirror.
+    """
+    sx = cx - head_w / 2.0 + 1 if down else cx + head_w / 2.0 - 1
+    draw.line((sx, note_y, sx, tip_y), fill=fill, width=1)
+    if not flag:
+        return
+    direction = -1.0 if down else 1.0
+    draw.polygon(
+        [(sx, tip_y),
+         (sx + gap * 0.85, tip_y + direction * gap * 0.55),
+         (sx + gap * 0.75, tip_y + direction * gap * 1.45),
+         (sx + gap * 0.15, tip_y + direction * gap * 0.8)],
+        fill=fill,
+    )
+
+
+def _lieder_paint_breath(draw, x: float, staff_top: float, gap: int, fill) -> None:
+    """Breath mark: the comma above the staff that tells a singer to breathe."""
+    top = staff_top - gap * 1.3
+    draw.line((x, top, x - gap * 0.35, top + gap * 0.75), fill=fill, width=1)
+    draw.line((x, top, x + gap * 0.2, top + gap * 0.3), fill=fill, width=1)
 
 
 def _lieder_paint_slur(draw, xs: list[float], ys: list[float], gap: int) -> None:
     """Phrase slur arcing over the matched-phrase noteheads.
 
-    A slur needs two notes to bind, so a single-word phrase gets none. The arc
-    box is validated before drawing — ``draw.arc`` raises on an inverted box,
-    which a thumbnail-sized preview can produce.
+    A slur needs two notes to bind, so a single-syllable phrase gets none. The
+    arc box is validated before drawing — ``draw.arc`` raises on an inverted
+    box, which a thumbnail-sized preview can produce.
     """
     if len(xs) < 2:
         return
@@ -18176,79 +18526,109 @@ def _lieder_paint_slur(draw, xs: list[float], ys: list[float], gap: int) -> None
     draw.arc(box, start=180, end=360, fill=SPECTRA6["red"], width=2)
 
 
-def _lieder_paint_system(draw, ctx: dict, index: int, line: list, pitches: list[int], note_offset: int) -> None:
-    """Engrave one staff: lines, clef/meter, barlines, notes, lyrics, slur."""
+def _lieder_paint_system(draw, ctx: dict, index: int, line: list[dict]) -> None:
+    """Engrave one staff: lines, clef/meter, barlines, notes, lyrics, slur.
+
+    Geometry is resolved for the whole system first, because beaming needs to
+    know where every stem in a group lands before any of them can be drawn.
+    """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
     gap = ctx["gap"]
     staff_top = ctx["staff_tops"][index]
     staff_bottom = staff_top + 4 * gap
-    numerator = ctx["numerator"]
     last_system = index == len(ctx["staff_tops"]) - 1
 
     for i in range(5):
         y = staff_top + i * gap
         draw.line((_LIEDER_MARGIN_L, y, _LIEDER_MARGIN_R, y), fill=BLACK, width=1)
 
-    x = _lieder_paint_clef_and_meter(draw, _LIEDER_MARGIN_L + 5, staff_top, gap, numerator, index == 0)
+    x = _lieder_paint_clef_and_meter(draw, _LIEDER_MARGIN_L + 5, staff_top, gap, ctx["numerator"], index == 0)
 
-    # Justify the words across the remaining music area. The last system is
-    # capped so a two-word tail doesn't stretch across the whole page.
+    # Justify: hand the leftover width back to the notes in proportion to the
+    # space each already claims, so a held note keeps its extra room.
+    slots = [_lieder_slot(n, ctx["min_gap"], ctx["base"]) for n in line]
     avail = _LIEDER_MARGIN_R - x - gap * 2
-    natural = sum(w for _, _, w in line)
-    count = len(line)
-    if count > 1:
-        word_gap = (avail - natural) / (count - 1)
-        ceiling = ctx["min_gap"] * (3.5 if last_system else 12)
-        word_gap = max(ctx["min_gap"], min(word_gap, ceiling))
-    else:
-        word_gap = ctx["min_gap"]
+    natural = sum(slots)
+    if natural > 0 and avail > natural:
+        stretch = min(avail / natural, 2.4 if last_system else 6.0)
+        slots = [s * stretch for s in slots]
+
+    # Pass 1: where every note sits.
+    xs: list[float] = []
+    ys: list[float] = []
+    cursor = x
+    for note, slot in zip(line, slots):
+        xs.append(cursor + slot / 2.0)
+        ys.append(_lieder_pitch_y(staff_top, note["pitch"], gap))
+        cursor += slot
+
+    # Pass 2: beam groups. A whole group shares one stem direction (majority
+    # side of the middle line) and one horizontal beam clear of every head in it.
+    stem_h = _LIEDER_STEM_LEN * gap
+    beamed: dict[int, tuple[bool, float]] = {}
+    beams: list[tuple[float, float, float, bool]] = []
+    for run in _lieder_beam_groups(line):
+        down = sum(1 for i in run if line[i]["pitch"] >= 4) * 2 >= len(run)
+        beam_y = (max(ys[i] for i in run) + stem_h) if down else (min(ys[i] for i in run) - stem_h)
+        for i in run:
+            beamed[i] = (down, beam_y)
+        beams.append((xs[run[0]], xs[run[-1]], beam_y, down))
 
     lyric_baseline = staff_bottom + _LIEDER_LYRIC_OFFSET * gap
     matched_xs: list[float] = []
     matched_ys: list[float] = []
-    last_bar_x = None
     cursor = x
-    for i, (word, matched, word_w) in enumerate(line):
-        cx = cursor + word_w / 2.0
-        pitch = pitches[note_offset + i]
-        note_y = _lieder_pitch_y(staff_top, pitch, gap)
+    for position, (note, slot) in enumerate(zip(line, slots)):
+        cx, note_y = xs[position], ys[position]
 
-        # Barlines fall wherever the measure fills up, and the measure length IS
-        # the hour — this is where the time signature stops being decoration.
-        # The one concession: at 1 and 2 o'clock a bar is only one or two notes
-        # long, so a strict reading would fence the staff with barlines closer
-        # together than a notehead is wide. Bars closer than
-        # ``_LIEDER_MIN_BAR_SPACING`` are therefore dropped, which thins the
-        # picket fence without moving any barline off its true beat.
-        measure_index = note_offset + i
-        if measure_index > 0 and measure_index % numerator == 0:
-            bar_x = cursor - word_gap / 2.0 if i > 0 else x - gap * 0.8
-            if _LIEDER_MARGIN_L < bar_x < _LIEDER_MARGIN_R and (last_bar_x is None or bar_x - last_bar_x >= _LIEDER_MIN_BAR_SPACING):
+        if note.get("bar"):
+            bar_x = cursor - ctx["min_gap"] * 0.35 if position > 0 else x - gap * 0.8
+            if _LIEDER_MARGIN_L < bar_x < _LIEDER_MARGIN_R:
                 draw.line((bar_x, staff_top, bar_x, staff_bottom), fill=BLACK, width=1)
-                last_bar_x = bar_x
 
-        ink = RED if matched else BLACK
-        _lieder_paint_note(draw, cx, note_y, gap, pitch, ink)
-        if matched:
+        ink = RED if note["matched"] else BLACK
+        head_w = _lieder_paint_head(draw, cx, note_y, gap, note, ink)
+        if position in beamed:
+            down, beam_y = beamed[position]
+            _lieder_paint_stem(draw, cx, note_y, gap, head_w, down, beam_y, False, ink)
+        else:
+            down = note["pitch"] >= 4
+            tip = note_y + stem_h if down else note_y - stem_h
+            _lieder_paint_stem(draw, cx, note_y, gap, head_w, down,
+                               tip, abs(note["beats"] - 0.5) < 1e-9, ink)
+        if note["matched"]:
             matched_xs.append(cx)
             matched_ys.append(note_y)
 
-        # anchor="ms": centre on the note, and share one baseline across the
-        # whole line. Positioning by ink-bbox top instead would let a word with
-        # no ascender ("was", "away") float above its neighbours.
-        draw.text((cx, lyric_baseline), word, font=ctx["bold"] if matched else ctx["regular"], fill=ink, anchor="ms")
-        cursor += word_w + word_gap
+        font = ctx["bold"] if note["matched"] else ctx["regular"]
+        draw.text((cx, lyric_baseline), note["text"], font=font, fill=ink, anchor="ms")
+
+        # Lyric hyphen, centred in the gap to the next syllable of the same word.
+        if note["hyphen"] and position + 1 < len(line):
+            left = cx + note["width"] / 2.0
+            right = xs[position + 1] - line[position + 1]["width"] / 2.0
+            if right - left > 4:
+                mid = (left + right) / 2.0
+                hy = lyric_baseline - ctx["size"] * 0.28
+                draw.line((mid - 2, hy, mid + 2, hy), fill=ink, width=1)
+
+        if note["breath"]:
+            _lieder_paint_breath(draw, cursor + slot, staff_top, gap, BLACK)
+        cursor += slot
+
+    # Beams last, so they sit over the stems they cap.
+    thickness = max(2, int(gap * 0.5))
+    for bx0, bx1, by, down in beams:
+        top = by - thickness if down else by
+        draw.rectangle((bx0 - 1, top, bx1 + 1, top + thickness), fill=BLACK)
 
     _lieder_paint_slur(draw, matched_xs, matched_ys, gap)
 
     if last_system:
-        # Final barline: thin, then thick, hard against the right margin.
         draw.line((_LIEDER_MARGIN_R - 6, staff_top, _LIEDER_MARGIN_R - 6, staff_bottom), fill=BLACK, width=1)
         draw.rectangle((_LIEDER_MARGIN_R - 3, staff_top, _LIEDER_MARGIN_R, staff_bottom), fill=BLACK)
     if index == 1:
-        # Expression mark above the second staff — system 1's airspace already
-        # carries the tempo mark, so the editorial layer alternates down the page.
         italic = load_font(theme_font_candidates("lieder", "ornament"), size=14)
         draw.text((_LIEDER_MARGIN_L + 4, staff_top - gap * 1.4), ctx["expression"], font=italic, fill=BLACK, anchor="ls")
 
@@ -18264,6 +18644,10 @@ def _lieder_paint_plate_line(draw, quote_row: dict, width: int, height: int) -> 
 def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Engraved art-song manuscript (see the module section comment above).
 
+    Five passes, in dependency order: split the text into sung syllables, give
+    them durations and barlines, give them pitches (which needs the barlines,
+    since downbeats pull toward the chord), fit and wrap them, then engrave.
+
     Laid out against the canonical 800×480; smaller canvases (the curator UI's
     ``/api/preview`` thumbnails) crop the composition rather than reflowing it,
     the same convention every other custom frame follows. Every primitive here
@@ -18276,7 +18660,9 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
 
     hour, _ = _lieder_clock(time_str)
     seed = _lieder_seed(quote_row)
-    words = _lieder_words(quote_row) or [("—", False)]
+    notes = _lieder_notes(quote_row)
+    if not notes:
+        notes = [{"text": "—", "matched": False, "hyphen": False, "breath": False, "stress": 2, "word": 0}]
 
     gap = _LIEDER_STAVE_GAP
     clef_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
@@ -18286,9 +18672,9 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
     span = _LIEDER_MARGIN_R - _LIEDER_MARGIN_L - gap * 2
     widths = [int(span - clef_w - meter_w), int(span - clef_w)]
 
-    regular, bold, lines, size, min_gap = _lieder_fit(draw, words, widths, gap)
-    flags = [matched for line in lines for _, matched, _ in line]
-    pitches = _lieder_contour(seed, flags)
+    _lieder_rhythm(notes, hour)
+    _lieder_contour(seed, notes)
+    regular, bold, lines, size, min_gap, base = _lieder_fit(draw, notes, widths, gap)
 
     core = _lieder_system_core(size, gap)
     band_top, band_bottom = _LIEDER_BAND
@@ -18301,15 +18687,13 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
     staff_tops = [top + int(_LIEDER_HEADROOM * gap) + i * (core + _LIEDER_SYSTEM_GAP) for i in range(len(lines))]
 
     ctx = {
-        "gap": gap, "regular": regular, "bold": bold, "min_gap": min_gap,
-        "numerator": hour, "staff_tops": staff_tops,
+        "gap": gap, "regular": regular, "bold": bold, "min_gap": min_gap, "base": base,
+        "size": size, "numerator": hour, "staff_tops": staff_tops,
         "expression": _LIEDER_EXPRESSION[seed % len(_LIEDER_EXPRESSION)],
     }
     _lieder_paint_header(draw, quote_row, time_str)
-    note_offset = 0
     for index, line in enumerate(lines):
-        _lieder_paint_system(draw, ctx, index, line, pitches, note_offset)
-        note_offset += len(line)
+        _lieder_paint_system(draw, ctx, index, line)
     _lieder_paint_plate_line(draw, quote_row, width, height)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
