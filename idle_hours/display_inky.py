@@ -171,6 +171,7 @@ THEME_SATURATION: dict[str, float] = {
     # cores are white and yellow and carry legibility on their own, so the push
     # lands on the coloured gas where it is wanted.
     "izakaya": 0.7,
+    "pride": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

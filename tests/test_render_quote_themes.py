@@ -28,7 +28,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "pride")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -634,3 +634,143 @@ class TestFooterTruncationTerminates:
         assert self._run_with_timeout(
             lambda: rq.render("02:30", row, 800, 480, mode="production", theme=theme)
         ), f"{theme} frame did not terminate with an absurd title"
+
+
+class TestPrideStripeInkRatios:
+    """The flag's fold lighting must not shift the stripe hues.
+
+    ``pride`` paints two of its six stripes as two-ink mixes — orange as the
+    R+Y 5/8:3/8 tangerine, violet as the R+B 1:1 — and lights the whole flag by
+    dithering white or black in at a density that tracks the cloth's tilt. The
+    obvious way to combine those is to pick the stripe ink by one Bayer read and
+    then overwrite some of those pixels by a second read, and it is wrong: a
+    Bayer tile has a fixed number of cells, so *any* two reads of it are
+    perfectly correlated and no phase shift decorrelates them. Measured across
+    all sixteen 4x4 shifts, the lit face of the violet stripe came out at 0.27
+    or 0.73 red against a target of 0.50 — the hue sliding toward blue on one
+    face of every fold and toward red on the other, a colour shift wearing the
+    costume of shading.
+
+    ``_pride_paint_flag`` therefore resolves each pixel with a *single* read
+    that partitions the tile three ways. These tests measure the surviving mix
+    directly off the rendered canvas across the lighting range, so they fail if
+    the two-read form is ever reintroduced — including by someone "simplifying"
+    the partition back into an overlay.
+    """
+
+    # Generous, because the mix can only be quantised to whole tile cells: at
+    # peak lighting the violet stripe has 51 of 64 cells left to split evenly,
+    # which is 0.5098 rather than 0.5. Anything approaching the 0.23 error the
+    # two-read form produced is a different phenomenon entirely.
+    TOLERANCE = 0.06
+
+    @staticmethod
+    def _mix(level: float, light_density: float) -> float:
+        """Replay the painter's partition and return the surviving light share."""
+        tile = len(rq.BAYER_8x8)
+        scale = tile * tile
+        peak = rq._PRIDE_LIGHT_PEAK if level >= 0 else rq._PRIDE_SHADE_PEAK
+        cells = round(abs(level) * peak * scale)
+        split = cells + round(light_density * (scale - cells))
+        dark = light = 0
+        for y in range(tile):
+            for x in range(tile):
+                cell = rq.BAYER_8x8[y][x]
+                if cell < cells:
+                    continue
+                if cell < split:
+                    light += 1
+                else:
+                    dark += 1
+        return light / (light + dark)
+
+    @pytest.mark.parametrize("light_density", (0.375, 0.5))
+    @pytest.mark.parametrize("level", (0.0, 0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -1.0))
+    def test_mix_survives_every_lighting_level(self, level, light_density):
+        drift = abs(self._mix(level, light_density) - light_density)
+        assert drift <= self.TOLERANCE, (
+            f"stripe mix {light_density} drifted to {self._mix(level, light_density):.3f} "
+            f"at lighting level {level:+.2f} (drift {drift:.3f}) — the fold is shifting "
+            "the hue, not the brightness"
+        )
+
+    def test_two_read_overlay_would_fail_this_test(self):
+        """The guard above is only meaningful if it rejects the broken form.
+
+        Replays the overlay implementation this frame started life with, at
+        every phase shift, and asserts that at least one lighting level drifts
+        past the tolerance for *every* shift. If this ever passes trivially the
+        test above has stopped fencing anything.
+        """
+        tile = len(rq.BAYER_8x8)
+        scale = tile * tile
+
+        def overlay_mix(level, light_density, shift):
+            sx, sy = shift
+            peak = rq._PRIDE_LIGHT_PEAK if level >= 0 else rq._PRIDE_SHADE_PEAK
+            cells = round(abs(level) * peak * scale)
+            dark = light = 0
+            for y in range(tile):
+                for x in range(tile):
+                    if rq.BAYER_8x8[(y + sy) % tile][(x + sx) % tile] < cells:
+                        continue  # overwritten by the lighting ink
+                    if rq.BAYER_8x8[y][x] < round(light_density * scale):
+                        light += 1
+                    else:
+                        dark += 1
+            return light / (light + dark) if (light + dark) else 0.0
+
+        for shift in [(sx, sy) for sx in range(tile) for sy in range(tile)]:
+            worst = max(
+                abs(overlay_mix(level, 0.5, shift) - 0.5)
+                for level in (0.5, 1.0, -0.5, -1.0)
+            )
+            assert worst > self.TOLERANCE, (
+                f"the two-read overlay at shift {shift} stayed within tolerance "
+                f"(worst drift {worst:.3f}) — this test no longer proves the "
+                "partition is load-bearing"
+            )
+
+    def test_rendered_violet_stripe_is_balanced_at_the_fold_extremes(self):
+        """End-to-end: measure the real canvas, not just the partition maths.
+
+        The sample bands are the *extremes* of the wave, derived from
+        ``_pride_wave`` so they follow a future retune, and they are narrow.
+        Both details are load-bearing. An earlier version of this test averaged
+        a wide band spanning many folds and passed cleanly against a
+        deliberately reintroduced two-read overlay: the drift is equal and
+        opposite on the lit and shadowed faces, so a wide average cancels it to
+        nothing. Measured at the extremes the same broken build reads 0.617
+        blue against 0.506 for the partition, which is the signal this test
+        exists to see.
+        """
+        max_tilt = sum(amp * freq for amp, freq, _, _ in rq._PRIDE_WAVE)
+        sample_y = 460
+        levels = {x: rq._pride_wave(x, sample_y)[1] / max_tilt for x in range(20, 780)}
+        peaks = {
+            "lit": max(levels, key=lambda x: levels[x]),
+            "shadow": min(levels, key=lambda x: levels[x]),
+        }
+        row = make_row(display_quote="Nine.", matched_text="Nine", author="", title="")
+        image = rq.render("09:00", row, 800, 480, mode="production", theme="pride")
+        px = image.load()
+        red = rq.SPECTRA6["red"]
+        blue = rq.SPECTRA6["blue"]
+        for face, peak_x in peaks.items():
+            x0 = max(0, peak_x - 20)
+            reds = blues = 0
+            for x in range(x0, min(800, x0 + 40)):
+                for y in range(445, 475):
+                    ink = px[x, y]
+                    if ink == red:
+                        reds += 1
+                    elif ink == blue:
+                        blues += 1
+            total = reds + blues
+            assert total > 400, f"{face} band had too little violet to measure ({total} px)"
+            share = blues / total
+            assert abs(share - 0.5) <= self.TOLERANCE, (
+                f"violet stripe on the {face} face (x~{peak_x}, level "
+                f"{levels[peak_x]:+.2f}) is {share:.3f} blue — the fold lighting is "
+                "pulling the hue off violet instead of only its brightness"
+            )

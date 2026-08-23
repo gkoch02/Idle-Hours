@@ -501,6 +501,29 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "izakaya",
     },
+    # pride — a custom-render frame (the six-stripe flag, flying). The generated
+    # sweep entry below covers it at the standard length; this second scenario
+    # pins a ONE-LINE quote, because the card is sized to its contents and the
+    # short case is the one that exercises the _PRIDE_CARD_MIN floor and the
+    # centring of a card much smaller than its maximum. It also fences the two
+    # synthesised stripes: an orange or violet band that stopped mixing would
+    # move far more than 0.1% of the canvas.
+    {
+        "name": "pride_short_production",
+        "time": "09:00",
+        "row": _row(
+            "Nine o'clock, and not a soul stirring.",
+            "Nine o'clock",
+            author="Elizabeth Gaskell",
+            title="Cranford",
+            bucket="h9_exact",
+            resolved_bucket="h9_exact",
+            quality_score=84,
+            source_id="394",
+        ),
+        "mode": "production",
+        "theme": "pride",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

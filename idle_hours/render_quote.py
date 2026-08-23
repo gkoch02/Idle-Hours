@@ -44,6 +44,22 @@ BAYER_4x4: tuple[tuple[int, ...], ...] = (
     (3, 11, 1, 9),
     (15, 7, 13, 5),
 )
+# The 8x8 ordered Bayer tile, derived from the 4x4 above by the standard
+# recursive construction so the two can never drift apart. Where the 4x4 offers
+# 17 density levels, this offers 65 — the difference matters whenever a *smooth
+# gradient* is being dithered rather than a constant mix. The `pride` flag's
+# fold lighting is the first consumer: at 4x4 its shading quantised to five
+# steps across each fold and the step boundaries read as hard contour bands
+# rather than as curved cloth. The finer tile also lets a two-ink mix land on
+# its exact ratio (3/8 is 24/64 exactly, where 4x4 could only offer 6/16), so a
+# stripe's hue no longer drifts as its lighting changes.
+BAYER_8x8: tuple[tuple[int, ...], ...] = tuple(
+    tuple(
+        4 * BAYER_4x4[y % 4][x % 4] + ((0, 2), (3, 1))[y // 4][x // 4]
+        for x in range(8)
+    )
+    for y in range(8)
+)
 # Theme cycle order for button B / web dropdown. Kept as an explicit tuple so
 # the cycle is stable regardless of dict-literal ordering in Python; every name
 # here must also appear as a key in ``THEMES`` below (enforced in tests).
@@ -94,6 +110,7 @@ THEME_ORDER: tuple[str, ...] = (
     "anna_atkins",
     "lieder",
     "izakaya",
+    "pride",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1187,6 +1204,26 @@ THEMES = {
         "ornament_dark": SPECTRA6["blue"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
+    },
+    # The six-stripe rainbow flag, flying. A custom-render frame
+    # (``render_pride_frame``) that bypasses the literary layout entirely — the
+    # flag is full-bleed and the quote sits in a white cartouche knocked out of
+    # the cloth, so the shared margins / oversized quote marks / debug footer
+    # have nothing to sit on. The palette below is consumed only by the
+    # fall-through paths (``render_static_message`` for goodnight,
+    # ``render_source_card`` for the button-C overlay); the frame itself picks
+    # its stripe inks from ``_PRIDE_STRIPE_INKS``. ``accent`` is blue because
+    # the frame's matched phrase is the R+B violet stipple and blue is the half
+    # of that recipe which still reads on the white card.
+    "pride": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
     },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
@@ -3005,6 +3042,36 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             YUJI_BOKU_REGULAR,
             QUICKSAND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # pride reuses the bundled Jost chain that `bauhaus` pulls from. Jost is
+    # Futura-adjacent, and geometric sans is the register of the 1970s poster
+    # and protest printing Gilbert Baker's flag came out of — a period serif
+    # would read as a book jacket laid over a flag. Sharing a family with
+    # `bauhaus` is safe: a white-ground minimal grid and a full-bleed flag are
+    # in no danger of being confused, and family sharing is well established
+    # here (EB Garamond, IM Fell, Cormorant, Cardo, Space Mono, Yuji Boku).
+    # Regular for the body, Bold for the matched phrase, so the time phrase
+    # gets a real weight step underneath the violet accent.
+    "pride": {
+        "quote_regular": [
+            (JOST_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -19118,6 +19185,335 @@ def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ---------------------------------------------------------------------------
+# pride — the six-stripe rainbow flag, flying.
+#
+# The technical hook is that Gilbert Baker's six-stripe flag is the one banner
+# a Spectra 6 panel can fly essentially at native gamut: red, yellow, green and
+# blue are inks the panel actually carries, and the two that aren't are both
+# already-documented two-ink recipes — orange is the R+Y 5/8:3/8 tangerine that
+# ``deco`` / ``atomic`` / ``grimdark`` use, violet the R+B 1:1 that
+# ``illuminated`` / ``alchemy`` / ``vitrail`` use. So the frame surfaces every
+# chromatic ink the hardware has, at full saturation, without inventing a
+# single new recipe.
+#
+# What is new is the *shading*. Every other theme treats a synthesised colour
+# as a flat constant-density mix. Here the flag has to read as cloth, not as a
+# colour-bars test card, so the field is lit: a low-density white overlay on the
+# faces turned toward the light and a low-density black one on the faces turned
+# away, riding the same wave that displaces the stripes. That is a third way to
+# use the inks — after constant-density mixing (every 2-ink recipe) and falling
+# density (``paint_neon_mask``'s glow), tonal shading of an arbitrary colour
+# field by a low-density overlay of the two achromatic inks. It works on top of
+# the tangerine and violet stipples as well as the four native stripes because
+# it only flips a fraction of whatever is already there.
+#
+# Two things the wave has to get right, both learned the same way the caustics
+# in other frames were:
+#
+#   1. **Displacement and shading are 90 degrees apart.** If the cloth's height
+#      field is ``h(x) = A sin(kx)``, the stripes displace by ``h`` but the
+#      surface tilt — which is what the light sees — is ``dh/dx``, a cosine. Put
+#      the bright band on the crest instead of the slope and the flag reads as a
+#      corrugated roof. This is why ``_pride_wave`` returns both terms from one
+#      pass rather than letting a caller reuse one for the other.
+#   2. **One sine reads as corrugation.** A single frequency gives an evenly
+#      ribbed surface no real flag has. Two incommensurate frequencies at
+#      different amplitudes billow. The phases also drift with ``y`` so the
+#      folds lean rather than standing perfectly vertical.
+#
+# The stripe lookup is clamped rather than wrapped, so where the wave carries
+# the top or bottom stripe off-canvas the edge stripe simply fills — the frame
+# reads as a crop of a larger flag, which is more alive than a whole flag
+# floating in a margin.
+#
+# The quote sits in a white cartouche knocked out of the cloth (the knockout
+# pattern ``kanagawa`` / ``cartograph`` / ``anna_atkins`` / ``vitrail`` use),
+# lifted off the flag by a black drop-shadow ledge. Body type is Jost, shared
+# with ``bauhaus``: Futura-adjacent geometric sans is the register of the
+# 1970s poster and protest printing Baker's flag came out of, and the two
+# themes are in no danger of being confused (a white-ground minimal grid
+# against a full-bleed flag). The matched time phrase is painted in the
+# flag's own violet so the clock signal is drawn from the subject rather
+# than imposed on it; as in ``questline`` / ``outrun`` / ``marquee`` /
+# ``chrono`` the digital HH:MM is never surfaced.
+#
+# Deliberately *not* done: nothing encodes the hour in the stripes. The count
+# and order of the stripes carry meaning that is not mine to spend on a clock
+# gimmick, so the flag is drawn as the flag and the time is carried by the
+# matched phrase, the way it is everywhere else in the rotation.
+# ---------------------------------------------------------------------------
+_PRIDE_STRIPES = 6
+# (dark ink, light ink, light density) per stripe, top to bottom: red, orange,
+# yellow, green, blue, violet. A ``None`` light ink means the stripe is a native
+# Spectra 6 ink and paints solid.
+_PRIDE_STRIPE_INKS: tuple[tuple[str, str | None, float], ...] = (
+    ("red", None, 0.0),
+    ("red", "yellow", 0.375),   # tangerine — the documented R+Y 5/8:3/8 recipe
+    ("yellow", None, 0.0),
+    ("green", None, 0.0),
+    ("blue", None, 0.0),
+    ("red", "blue", 0.5),       # violet — the documented R+B 1:1 recipe
+)
+# Wave terms as (amplitude px, angular frequency per px, y-lean, phase). Two
+# incommensurate frequencies so the cloth billows instead of corrugating.
+_PRIDE_WAVE: tuple[tuple[float, float, float, float], ...] = (
+    (17.0, 0.0182, 0.0016, 0.7),
+    (8.0, 0.0331, -0.0027, 2.4),
+)
+# Peak overlay densities for the lit and shadowed faces. Kept well below the
+# 0.5 a two-ink recipe uses: the overlay has to model light falling on a colour,
+# not mix a new one, so a face that reaches solid white would read as a blown
+# highlight rather than a fold. Measured by box-averaging the finished frame to
+# 1:2 (the panel-distance check): below about 0.2 the fold structure vanishes
+# into the flat stripe at viewing distance.
+_PRIDE_LIGHT_PEAK = 0.22
+_PRIDE_SHADE_PEAK = 0.20
+# The lighting is a *partition* of the Bayer tile, not an overlay painted on top
+# of the stripe stipple, and that distinction is the whole correctness story of
+# this frame. The obvious implementation — pick the stripe ink by one Bayer
+# read, then overwrite some of those pixels by a second read — is wrong however
+# you phase-shift the second read: a 4x4 matrix has only 16 cells, so any two
+# reads of it are perfectly correlated and a shift merely selects a different
+# fixed subset. Measured across all sixteen shifts, the lit face of the violet
+# stripe came out at either 0.27 or 0.73 red against a target of 0.50 — the hue
+# sliding toward blue on one face of every fold and toward red on the other,
+# which is a colour shift masquerading as shading.
+#
+# So each pixel is resolved by a single read of ``BAYER_8x8`` that partitions
+# the tile three ways by rank: the lowest ``round(density * 64)`` cells go to
+# the lighting ink, and the cells that remain split between the stripe's two
+# inks in the stripe's own ratio. The 8x8 tile rather than the 4x4 is what makes
+# the fold read as cloth: 64 cells give the lighting 65 gradations instead of
+# 17, and at 4x4 the shading quantised to five steps per fold whose boundaries
+# read as hard contour bands. The mix that survives is then correct at every lighting level by
+# construction (to within one cell of quantisation), and a solid stripe is just
+# the degenerate case where the stripe's second ink gets zero cells.
+# `tests/test_render_quote_themes.py::TestPrideStripeInkRatios` sweeps the
+# lighting range and fails if a future edit reintroduces the two-read form.
+# The card is sized to its contents rather than being a fixed rectangle, so a
+# one-line quote gets a small card with plenty of flag around it instead of
+# floating in an acre of empty white. These bound that: the text may use at most
+# ``_PRIDE_TEXT_MAX`` and the finished card is never smaller than
+# ``_PRIDE_CARD_MIN`` (a card much smaller than its own corner radius stops
+# reading as a card at all).
+_PRIDE_TEXT_MAX = (596, 244)
+_PRIDE_CARD_MIN = (280, 132)
+_PRIDE_PAD_X = 30
+_PRIDE_PAD_TOP = 24
+_PRIDE_PAD_BOTTOM = 20
+_PRIDE_CREDIT_GAP = 16
+_PRIDE_CARTOUCHE_RADIUS = 10
+_PRIDE_SHADOW_OFFSET = 4
+
+
+def _pride_wave(x: float, y: float) -> tuple[float, float]:
+    """Return ``(displacement_px, tilt)`` for the cloth at ``(x, y)``.
+
+    ``displacement`` shifts the stripe boundaries; ``tilt`` is the derivative of
+    the same height field and drives the lighting, so the bright and dark bands
+    land on the slopes of each fold rather than on its crest. Returning both
+    from one pass is what keeps that 90-degree relationship from drifting.
+    """
+    displacement = 0.0
+    tilt = 0.0
+    for amp, freq, lean, phase in _PRIDE_WAVE:
+        angle = freq * x + lean * y + phase
+        displacement += amp * math.sin(angle)
+        tilt += amp * freq * math.cos(angle)
+    return displacement, tilt
+
+
+def _pride_paint_flag(image: Image.Image) -> None:
+    """Paint the full-bleed waving six-stripe flag.
+
+    Walks the canvas once, resolving each pixel to a stripe (via the wave-
+    displaced row), then to an ink (solid, or the stripe's two-ink stipple),
+    then applying the lighting overlay. The stripe index is clamped, so where
+    the wave lifts the top stripe off-canvas the red simply continues — the
+    frame is a crop of a larger flag.
+    """
+    width, height = image.size
+    px = image.load()
+    white = SPECTRA6["white"]
+    black = SPECTRA6["black"]
+    # A solid stripe is the degenerate partition: its "light" ink is its own ink
+    # and its share is zero, so the same three-way branch below covers both.
+    inks = []
+    for dark, light, density in _PRIDE_STRIPE_INKS:
+        dark_ink = SPECTRA6[dark]
+        inks.append((dark_ink, SPECTRA6[light] if light else dark_ink, density))
+    stripe_h = height / _PRIDE_STRIPES
+    # Normalise the tilt so the steepest fold reaches the configured peak
+    # density rather than whatever the amplitude/frequency product happens to be.
+    max_tilt = sum(amp * freq for amp, freq, _, _ in _PRIDE_WAVE) or 1.0
+    tile = len(BAYER_8x8)
+    scale = tile * tile
+    for y in range(height):
+        row = BAYER_8x8[y % tile]
+        for x in range(width):
+            displacement, tilt = _pride_wave(x, y)
+            index = int((y - displacement) / stripe_h)
+            dark, light, light_density = inks[max(0, min(_PRIDE_STRIPES - 1, index))]
+            level = tilt / max_tilt
+            if level >= 0.0:
+                lighting, cells = white, round(level * _PRIDE_LIGHT_PEAK * scale)
+            else:
+                lighting, cells = black, round(-level * _PRIDE_SHADE_PEAK * scale)
+            cell = row[x % tile]
+            if cell < cells:
+                px[x, y] = lighting
+                continue
+            px[x, y] = light if cell < cells + round(light_density * (scale - cells)) else dark
+
+
+def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict) -> dict:
+    """Measure the quote and credits before anything is painted.
+
+    The card has to be sized to its contents — a one-line quote on a fixed
+    rectangle floats in an acre of empty white — so every measurement the frame
+    needs is taken here, against the largest text area the card may occupy, and
+    the card is only then cut to fit. Returns the fonts, the wrapped lines, the
+    measured block size, and the rendered credit lines.
+    """
+    max_w, max_h = _PRIDE_TEXT_MAX
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, matched, max_w, max_h,
+        font_max=34, font_min=14, line_height_mult=1.24, theme="pride",
+    )
+    lines = []
+    block_w = 0
+    for line in wrapped:
+        start = 0
+        while start < len(line) and line[start][0].strip() == "":
+            start += 1
+        end = len(line)
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        widths = []
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            bbox = draw.textbbox((0, 0), chunk, font=font)
+            widths.append(bbox[2] - bbox[0])
+        block_w = max(block_w, sum(widths))
+        lines.append((drawable, widths, sum(widths)))
+
+    credits = []
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
+    for text, key, size in ((author.upper(), "quote_bold", 14), (title, "quote_regular", 13)):
+        if not text:
+            continue
+        font = load_font(theme_font_candidates("pride", key), size=size)
+        while len(text) > 1 and draw.textlength(text, font=font) > max_w:
+            text = text[:-1]
+        bbox = draw.textbbox((0, 0), text, font=font)
+        credits.append((text, font, bbox))
+        block_w = max(block_w, bbox[2] - bbox[0])
+    credits_h = sum(bbox[3] - bbox[1] + 5 for _, _, bbox in credits) - 5 if credits else 0
+
+    return {
+        "quote_font": quote_font,
+        "quote_font_bold": quote_font_bold,
+        "lines": lines,
+        "line_height": line_height,
+        "quote_h": len(lines) * line_height,
+        "credits": credits,
+        "credits_h": credits_h,
+        "block_w": block_w,
+    }
+
+
+def _pride_card_rect(layout: dict, width: int, height: int) -> tuple[int, int, int, int]:
+    """Cut the card to fit the measured block, centred and clamped to canvas."""
+    content_h = layout["quote_h"] + (_PRIDE_CREDIT_GAP + layout["credits_h"] if layout["credits"] else 0)
+    card_w = max(_PRIDE_CARD_MIN[0], layout["block_w"] + 2 * _PRIDE_PAD_X)
+    card_h = max(_PRIDE_CARD_MIN[1], content_h + _PRIDE_PAD_TOP + _PRIDE_PAD_BOTTOM)
+    # Leave room for the drop-shadow ledge, and never exceed the canvas — the
+    # /api/preview thumbnail path renders this frame down to ~60 px tall.
+    card_w = min(card_w, max(8, width - 2 * (_PRIDE_SHADOW_OFFSET + 4)))
+    card_h = min(card_h, max(8, height - 2 * (_PRIDE_SHADOW_OFFSET + 4)))
+    x0 = (width - card_w) // 2
+    y0 = (height - card_h) // 2
+    return x0, y0, x0 + card_w, y0 + card_h
+
+
+def _pride_paint_cartouche(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int]) -> None:
+    """Knock a white card out of the cloth, lifted off it by a shadow ledge.
+
+    The shadow is a black rounded rectangle offset down and right, all but a few
+    pixels of which the white fill then covers — the same ledge ``kanagawa``
+    uses to float its paper panel above the seigaiha. Without it the card reads
+    as a hole cut in the flag rather than as something resting on it.
+    """
+    x0, y0, x1, y1 = rect
+    radius = max(0, min(_PRIDE_CARTOUCHE_RADIUS, (x1 - x0) // 2, (y1 - y0) // 2))
+    offset = _PRIDE_SHADOW_OFFSET
+    draw.rounded_rectangle((x0 + offset, y0 + offset, x1 + offset, y1 + offset), radius=radius, fill=SPECTRA6["black"])
+    draw.rounded_rectangle(rect, radius=radius, fill=SPECTRA6["white"], outline=SPECTRA6["black"], width=1)
+
+
+def _pride_paint_text(image: Image.Image, draw: ImageDraw.ImageDraw, layout: dict, rect) -> None:
+    """Quote then credits on the card, the matched phrase in the flag's violet.
+
+    The time phrase is painted as the R+B 1:1 stipple that is also the flag's
+    sixth stripe, so the clock signal is drawn out of the subject rather than
+    imposed on it. On the card's white ground a 50/50 violet is the right mix —
+    unlike ``outrun``'s magenta, which is biased toward red only because it sits
+    on a blue ground it would otherwise melt into.
+    """
+    black = SPECTRA6["black"]
+    red = SPECTRA6["red"]
+    blue = SPECTRA6["blue"]
+    x0, y0, x1, y1 = rect
+    inner_w = x1 - x0
+    content_h = layout["quote_h"] + (_PRIDE_CREDIT_GAP + layout["credits_h"] if layout["credits"] else 0)
+    y = y0 + max(_PRIDE_PAD_TOP, ((y1 - y0) - content_h) // 2)
+    ascent = _font_ascent(layout["quote_font"])
+    for drawable, widths, line_w in layout["lines"]:
+        x = x0 + (inner_w - line_w) // 2
+        for (chunk, is_bold), chunk_w in zip(drawable, widths):
+            font = layout["quote_font_bold"] if is_bold else layout["quote_font"]
+            chunk_y = y + (ascent - _font_ascent(font))
+            if is_bold and chunk.strip():
+                draw_text_dithered(image, (x, chunk_y), chunk, font, dark=red, light=blue)
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=black)
+            x += chunk_w
+        y += layout["line_height"]
+    if not layout["credits"]:
+        return
+    y += _PRIDE_CREDIT_GAP
+    for text, font, bbox in layout["credits"]:
+        x = x0 + (inner_w - (bbox[2] - bbox[0])) // 2 - bbox[0]
+        draw.text((x, y - bbox[1]), text, font=font, fill=black)
+        y += (bbox[3] - bbox[1]) + 5
+
+
+def render_pride_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The six-stripe rainbow flag, flying (see the module section comment above).
+
+    ``time_str`` is accepted for dispatch uniformity with the other custom-frame
+    painters and deliberately unused: as in ``questline`` / ``chrono`` /
+    ``outrun`` / ``marquee`` the digital HH:MM is never surfaced, because
+    printing the time next to a quote chosen *for* the time defeats the premise
+    of a fuzzy literary clock. The matched phrase carries it.
+    """
+    del time_str
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    _pride_paint_flag(image)
+    draw = ImageDraw.Draw(image)
+    layout = _pride_layout(draw, quote_row)
+    rect = _pride_card_rect(layout, width, height)
+    _pride_paint_cartouche(draw, rect)
+    inner = (rect[0] + _PRIDE_PAD_X, rect[1], rect[2] - _PRIDE_PAD_X, rect[3])
+    _pride_paint_text(image, draw, layout, inner)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
@@ -19146,6 +19542,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_lieder_frame(time_str, quote_row, width, height)
     if theme == "izakaya":
         return render_izakaya_frame(time_str, quote_row, width, height)
+    if theme == "pride":
+        return render_pride_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
