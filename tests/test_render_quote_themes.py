@@ -29,7 +29,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "metro")
 
 
 def _on_palette(image: Image.Image) -> bool:
