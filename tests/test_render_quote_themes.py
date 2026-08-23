@@ -18,9 +18,10 @@ custom paths add.
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from idle_hours import render_quote as rq
 
@@ -558,3 +559,78 @@ class TestLiederRhythm:
                     f"meter {meter}/4: final sung note is not the tonic "
                     f"({sung[-1]['pitch']}) in {row.get('source_id')}:{row.get('line_number')}"
                 )
+
+
+class TestFooterTruncationTerminates:
+    """Text-shrinking loops must terminate however small the width budget is.
+
+    ``_questline_paint_footer`` and ``_chrono_paint_footer`` were written from
+    the same template and carried the same defect: the loop shrank ``title``
+    but guarded on ``text``, which is rebuilt as ``f"— from {title}… —"`` every
+    pass and therefore stays truthy after the title is exhausted. Once the
+    budget was too small to fit the bare ``"— from … —"``, the loop was a fixed
+    point and spun forever.
+
+    That is a hard hang of the render path, not a cosmetic bug: fatal in-process
+    on the curator UI's ``/api/preview`` thread, and a render_timeout plus
+    backoff on the appliance. Both were latent rather than live — the budget is
+    a fixed constant that happens to be generous — so nothing caught them, and
+    a golden fixture never would: a hang produces no pixels to compare.
+
+    These run the painter with the budget squeezed to nothing, on a worker
+    thread with a timeout, so a reintroduced hang fails in seconds instead of
+    burning the job's whole ``timeout-minutes``.
+    """
+
+    LONG_TITLE = "A Considerably Overlong Book Title That Cannot Possibly Fit" * 3
+
+    @staticmethod
+    def _run_with_timeout(fn, seconds=10):
+        done = threading.Event()
+        error: list[BaseException] = []
+
+        def target():
+            try:
+                fn()
+            except BaseException as exc:  # noqa: BLE001 - re-raised on the main thread
+                error.append(exc)
+            finally:
+                done.set()
+
+        threading.Thread(target=target, daemon=True).start()
+        finished = done.wait(seconds)
+        if error:
+            raise error[0]
+        return finished
+
+    @pytest.mark.parametrize(
+        "painter_name, box_name",
+        [
+            ("_questline_paint_footer", "_QUESTLINE_BOX"),
+            ("_chrono_paint_footer", "_CHRONO_WINDOW"),
+        ],
+    )
+    def test_terminates_with_no_width_budget(self, painter_name, box_name, monkeypatch):
+        # Squeeze the box until the width budget cannot fit even the ellipsis
+        # stub, which is the exact condition that used to spin.
+        box = getattr(rq, box_name)
+        monkeypatch.setattr(rq, box_name, (box[0], box[1], box[0] + 1, box[3]))
+        painter = getattr(rq, painter_name)
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+        draw = ImageDraw.Draw(image)
+        row = {"display_quote": "It was half past two.", "matched_text": "half past two",
+               "title": self.LONG_TITLE, "author": "Edith Wharton"}
+        assert self._run_with_timeout(lambda: painter(image, draw, row)), (
+            f"{painter_name} did not terminate with an exhausted width budget — "
+            "the truncation loop is a fixed point again"
+        )
+
+    @pytest.mark.parametrize("theme", ("questline", "chrono"))
+    def test_frame_still_renders_with_an_absurd_title(self, theme):
+        """The normal path must survive a title no sane budget can fit."""
+        row = {"display_quote": "It was half past two when the clock struck.",
+               "matched_text": "half past two", "title": self.LONG_TITLE,
+               "author": "Edith Wharton"}
+        assert self._run_with_timeout(
+            lambda: rq.render("02:30", row, 800, 480, mode="production", theme=theme)
+        ), f"{theme} frame did not terminate with an absurd title"
