@@ -29,7 +29,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -1098,3 +1098,85 @@ class TestPrideLayoutFitsEveryCanvas:
                        author="Elizabeth Gaskell", title="Cranford")
         draw = ImageDraw.Draw(rq.Image.new("RGB", (320, 192)))
         assert rq._pride_layout(draw, row, 320, 192)["credits"] == []
+
+
+class TestSynopticValidityStamp:
+    """The chart's validity stamp must not claim a timezone it does not have.
+
+    ``run_clock.current_time_str`` is ``datetime.now().strftime("%H:%M")`` —
+    naive local wall time — and that value reaches the painter unchanged. An
+    earlier revision stamped it ``VALID HHMM UTC`` because that is what a real
+    surface analysis carries, which made the label *false* on every appliance
+    outside UTC: a device in UTC-4 showing 12:30 claimed to be an analysis valid
+    at 12:30 UTC, a moment four hours away.
+
+    The label is now LT (local time). Converting the value to UTC instead would
+    be wrong for a different reason — this stamp *is* the theme's time carrier,
+    so a number disagreeing with the quote and the wall clock defeats it — and
+    reading the host's real zone abbreviation would make the frame depend on the
+    machine's timezone, which is the hazard ``CLOCK_DEPENDENT_THEMES`` exists
+    for in the golden suite.
+    """
+
+    @staticmethod
+    def _stamp_text(time_str: str) -> str:
+        captured = {}
+        image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(image)
+        real_text = draw.text
+
+        def spy(xy, text="", *args, **kwargs):
+            if "VALID" in str(text):
+                captured["text"] = text
+            return real_text(xy, text, *args, **kwargs)
+
+        draw.text = spy
+        rq._synoptic_paint_stamp(draw, 800, 480, time_str)
+        return captured.get("text", "")
+
+    @pytest.mark.parametrize("time_str,digits", [
+        ("16:30", "1630"), ("00:00", "0000"), ("09:05", "0905"), ("23:59", "2359"),
+    ])
+    def test_stamp_carries_the_wall_clock_digits(self, time_str, digits):
+        assert self._stamp_text(time_str) == f"VALID {digits} LT"
+
+    def test_stamp_never_claims_utc(self):
+        """The regression this class exists for."""
+        for hour in range(24):
+            text = self._stamp_text(f"{hour:02d}:30")
+            assert "UTC" not in text, (
+                f"the validity stamp reads {text!r} — the clock renders naive LOCAL "
+                "time, so a UTC label is false on every appliance outside UTC"
+            )
+
+    def test_stamp_is_not_machine_dependent(self):
+        """Two renders under different host timezones must be byte-identical.
+
+        The stamp must come from ``time_str`` alone. If it ever reads the host
+        clock or zone, this theme's golden fixtures become machine-dependent.
+        """
+        import os
+        import time as _time
+        row = make_row(display_quote="It was half past two.", matched_text="half past two",
+                       author="Joseph Conrad", title="Typhoon")
+        original = os.environ.get("TZ")
+        try:
+            renders = []
+            for zone in ("UTC", "America/New_York", "Asia/Tokyo"):
+                os.environ["TZ"] = zone
+                if hasattr(_time, "tzset"):
+                    _time.tzset()
+                renders.append(pixel_bytes(
+                    rq.render("16:30", row, 800, 480, mode="production", theme="synoptic")
+                ))
+            assert renders[0] == renders[1] == renders[2], (
+                "the synoptic frame differs between host timezones — something in it "
+                "is reading the machine clock instead of the passed time_str"
+            )
+        finally:
+            if original is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = original
+            if hasattr(_time, "tzset"):
+                _time.tzset()

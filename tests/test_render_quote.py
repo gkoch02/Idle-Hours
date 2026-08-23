@@ -742,6 +742,19 @@ class TestThemes:
         assert t["text"] == rq.SPECTRA6["black"]
         assert t["accent"] == rq.SPECTRA6["red"]
 
+    # Themes that render ornament-less ON PURPOSE. The assertion below exists to
+    # catch a theme that does so by *accident*, so a deliberate one has to be
+    # named here rather than quietly excused — and the second test makes the set
+    # self-policing, so an entry cannot rot after the theme changes its mind.
+    INTENTIONALLY_ORNAMENTLESS = frozenset({
+        # synoptic is a weather chart. The shared layout paints its oversized
+        # quote marks OUTSIDE the body rect — so outside synoptic's legend box,
+        # directly on the analysis — where a large glyph reads as chart debris
+        # rather than typography. A surface analysis has no decorative
+        # quotation marks, so both ornament slots take the page ground.
+        "synoptic",
+    })
+
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):
         """``draw_faux_gray_text`` paints a 50% stipple of ornament_dark /
         ornament_light over the page background. If BOTH ornament colours
@@ -753,12 +766,31 @@ class TestThemes:
         colour would render ornament-less — catch that class of bug here.
         """
         for name, fields in rq.THEMES.items():
+            if name in self.INTENTIONALLY_ORNAMENTLESS:
+                continue
             bg = fields["page_bg"]
             dark = fields["ornament_dark"]
             light = fields["ornament_light"]
             assert dark != bg or light != bg, (
                 f"{name}: both ornament colours equal page_bg={bg}, "
-                "so draw_faux_gray_text paints every pixel invisibly"
+                "so draw_faux_gray_text paints every pixel invisibly. If that is "
+                "deliberate, add it to INTENTIONALLY_ORNAMENTLESS with a reason."
+            )
+
+    def test_ornamentless_exemptions_are_real(self):
+        """Every exemption must be registered AND actually ornament-less.
+
+        Without this the set is a one-way ratchet: a theme could be added to it,
+        later gain a visible ornament, and silently keep its exemption — so the
+        next theme to go ornament-less by accident inherits a hole in the fence.
+        """
+        for name in self.INTENTIONALLY_ORNAMENTLESS:
+            assert name in rq.THEMES, f"{name} is exempted but is not a registered theme"
+            fields = rq.THEMES[name]
+            bg = fields["page_bg"]
+            assert fields["ornament_dark"] == bg and fields["ornament_light"] == bg, (
+                f"{name} is listed as intentionally ornament-less but now has a visible "
+                "ornament colour — drop it from INTENTIONALLY_ORNAMENTLESS"
             )
 
 

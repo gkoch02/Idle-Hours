@@ -168,13 +168,14 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
-Forty-nine themes ship today (`default`, `dark`, `swiss`, `scholar`,
+Fifty-one themes ship today (`default`, `dark`, `swiss`, `scholar`,
 `newsprint`, `nightvision`, `blueprint`, `illuminated`, … through the
 custom-render frames `astrarium`, `marquee`, `tarot`, `vinyl`, `vitrail`,
 `questline` (8-bit RPG dialogue), `chrono` (16-bit SNES JRPG cutscene),
 `outrun` (1980s synthwave sunset), `sampler` (counted cross-stitch),
 `lieder` (engraved art song), `izakaya` (neon alley),
 `abyssal` (deep sea), `pride` (the Progress Pride flag, flying),
+`pulp` (1940s paperback cover), `synoptic` (weather chart),
 the `circuit`
 printed-circuit-board theme, and the `diags` calibration panel — see the
 `THEME_ORDER` tuple for the canonical list). Some are simple palette + font
