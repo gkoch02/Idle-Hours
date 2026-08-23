@@ -205,6 +205,7 @@ def parse_args() -> argparse.Namespace:
         "anna_atkins",
         "lieder",
         "izakaya",
+        "abyssal",
         "pride",
         "diags",
     ]

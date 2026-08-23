@@ -84,6 +84,7 @@ CUSTOM_FRAME_THEMES = (
     "sampler",
     "lieder",
     "izakaya",
+    "abyssal",
     "pride",
 )
 
