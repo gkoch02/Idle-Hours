@@ -19345,6 +19345,18 @@ _PRIDE_CHEVRON_INKS: tuple[tuple[str, str | None, float], ...] = (
 # 0.465 of the flag's width). The innermost white is a filled arrow rather than
 # a band, which is why its depth is not simply one fifth.
 _PRIDE_CHEVRON_DEPTHS: tuple[float, ...] = (0.148, 0.223, 0.303, 0.383, 0.465)
+# The size of the flag those depths were measured from. It matters because the
+# depths are fractions of WIDTH while an arm's travel is vertical: a 45-degree
+# arm on a canvas of a different aspect meets the hoist at a different band than
+# it does on the reference. The reference is 1008x658, so its top-left corner
+# sits at 0.5 * 658 / 1008 = 0.326 of the width along the arm — inside the brown
+# band. Rendered at the panel's 800x480 with a literal 45 degrees the same
+# corner lands at 0.300, which is inside light blue: a visibly different flag.
+# Scaling the vertical term by the aspect ratio reproduces the reference's
+# proportions at any canvas size, at the cost of the arms no longer being
+# exactly 45 degrees in pixel space — which is correct, since a real flag
+# reproduced at a different aspect has its arm angle change too.
+_PRIDE_REFERENCE_SIZE = (1008, 658)
 # Clear space between the chevron's point and the quote card.
 _PRIDE_FIELD_GAP = 18
 # Wave terms as (amplitude px, angular frequency per px, y-lean, phase). Two
@@ -19403,6 +19415,8 @@ _PRIDE_PAD_BOTTOM = 20
 _PRIDE_CREDIT_GAP = 16
 _PRIDE_CARTOUCHE_RADIUS = 10
 _PRIDE_SHADOW_OFFSET = 4
+# Smallest byline the panel renders as readable text rather than a smudge.
+_PRIDE_CREDIT_MIN_SIZE = 7
 
 
 def _pride_wave(x: float, y: float) -> tuple[float, float]:
@@ -19420,6 +19434,61 @@ def _pride_wave(x: float, y: float) -> tuple[float, float]:
         displacement += amp * math.sin(angle)
         tilt += amp * freq * math.cos(angle)
     return displacement, tilt
+
+
+def _pride_metrics(width: int, height: int) -> dict:
+    """Card geometry and type sizes for this canvas.
+
+    Every constant below is a native-panel (800x480) value, so all of it has to
+    scale or a thumbnail gets a full-size card and full-size type on a quarter
+    of the canvas: at 320x192 the text block measured 320x316 against a 244x176
+    card, which overflowed the card horizontally and clipped off the bottom of
+    the image. The scale is the smaller of the two axis ratios, capped at 1, so
+    the native render is bit-for-bit unaffected and only smaller canvases move.
+    """
+    scale = min(1.0, width / 800.0, height / 480.0)
+
+    def down(value: float, floor: int) -> int:
+        return max(floor, round(value * scale))
+
+    pad_x, pad_top, pad_bottom = down(_PRIDE_PAD_X, 4), down(_PRIDE_PAD_TOP, 3), down(_PRIDE_PAD_BOTTOM, 3)
+    shadow = down(_PRIDE_SHADOW_OFFSET, 1)
+    margin = shadow + down(4, 1)
+    max_card_w = max(8, width - 2 * margin)
+    max_card_h = max(8, height - 2 * margin)
+    # Prefer the clear rainbow field right of the chevron; fall back to the full
+    # canvas when the field is too narrow to hold a card at all.
+    field_left = _pride_chevron_tip(width) + down(_PRIDE_FIELD_GAP, 2)
+    card_min_w = min(down(_PRIDE_CARD_MIN[0], 40), max_card_w)
+    field_w = width - margin - field_left
+    if field_w >= card_min_w:
+        max_card_w = min(max_card_w, field_w)
+    return {
+        "scale": scale,
+        "pad_x": pad_x, "pad_top": pad_top, "pad_bottom": pad_bottom,
+        "gap": down(_PRIDE_CREDIT_GAP, 2),
+        "shadow": shadow, "radius": down(_PRIDE_CARTOUCHE_RADIUS, 0), "margin": margin,
+        "field_left": field_left,
+        "max_card": (max_card_w, max_card_h),
+        "card_min": (card_min_w, min(down(_PRIDE_CARD_MIN[1], 30), max_card_h)),
+        "text_max": (
+            max(16, min(down(_PRIDE_TEXT_MAX[0], 16), max_card_w - 2 * pad_x)),
+            max(16, min(down(_PRIDE_TEXT_MAX[1], 16), max_card_h - pad_top - pad_bottom)),
+        ),
+        "font": (max(8, down(34, 8)), max(6, down(14, 6))),
+        "credits": (max(5, down(14, 5)), max(5, down(13, 5))),
+        # Below this the byline is a smudge rather than text — at 320x192 it
+        # scales to 5 px, which reads as a rendering fault, not an attribution.
+        # A thumbnail is for comparing themes at a glance, so the quote gets the
+        # room instead and the credits are dropped outright.
+        "show_credits": down(14, 5) >= _PRIDE_CREDIT_MIN_SIZE,
+    }
+
+
+def _pride_arm_slope(width: int, height: int) -> float:
+    """Vertical-distance multiplier that keeps the chevron aspect-correct."""
+    ref_w, ref_h = _PRIDE_REFERENCE_SIZE
+    return (width / max(1, height)) * (ref_h / ref_w)
 
 
 def _pride_chevron_tip(width: int) -> int:
@@ -19455,6 +19524,7 @@ def _pride_paint_flag(image: Image.Image) -> None:
     bands = len(depths)
     stripe_h = height / _PRIDE_STRIPES
     centre = height / 2.0
+    arm_slope = _pride_arm_slope(width, height)
     # Normalise the tilt so the steepest fold reaches the configured peak
     # density rather than whatever the amplitude/frequency product happens to be.
     max_tilt = sum(amp * freq for amp, freq, _, _ in _PRIDE_WAVE) or 1.0
@@ -19466,11 +19536,12 @@ def _pride_paint_flag(image: Image.Image) -> None:
             displacement, tilt = _pride_wave(x, y)
             # The chevron rides the same cloth as the stripes, so it is resolved
             # against the wave-displaced row too — otherwise the arrow would sit
-            # rigid on a rippling field. Its arms are at 45 degrees (confirmed
-            # off the reference: x + |y - centre| is constant down an arm), so
-            # one distance term places a pixel in the whole nest of Vs.
+            # rigid on a rippling field. The arms are straight (confirmed off
+            # the reference: x + |y - centre| is constant down an arm), so one
+            # distance term places a pixel in the whole nest of Vs; the slope
+            # carries the aspect correction described above.
             shifted = y - displacement
-            reach = x + abs(shifted - centre)
+            reach = x + abs(shifted - centre) * arm_slope
             band = bisect.bisect_left(depths, reach)
             if band < bands:
                 dark, light, light_density = chevron[band]
@@ -19489,7 +19560,7 @@ def _pride_paint_flag(image: Image.Image) -> None:
             px[x, y] = light if cell < cells + round(light_density * (scale - cells)) else dark
 
 
-def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict) -> dict:
+def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict, width: int, height: int) -> dict:
     """Measure the quote and credits before anything is painted.
 
     The card has to be sized to its contents — a one-line quote on a fixed
@@ -19498,12 +19569,33 @@ def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict) -> dict:
     the card is only then cut to fit. Returns the fonts, the wrapped lines, the
     measured block size, and the rendered credit lines.
     """
-    max_w, max_h = _PRIDE_TEXT_MAX
+    metrics = _pride_metrics(width, height)
+    max_w, max_h = metrics["text_max"]
+    font_max, font_min = metrics["font"]
+
+    # Credits are measured first because they do not depend on the quote, and
+    # the quote then gets whatever vertical budget is left. Fitting the quote to
+    # the whole box and appending credits afterwards is what pushed the byline
+    # off the bottom of a thumbnail.
+    credits = []
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
+    for text, key, size in ((author.upper(), "quote_bold", metrics["credits"][0]),
+                            (title, "quote_regular", metrics["credits"][1])):
+        if not text or not metrics["show_credits"]:
+            continue
+        font = load_font(theme_font_candidates("pride", key), size=size)
+        while len(text) > 1 and draw.textlength(text, font=font) > max_w:
+            text = text[:-1]
+        credits.append((text, font, draw.textbbox((0, 0), text, font=font)))
+    credits_h = sum(bbox[3] - bbox[1] + 5 for _, _, bbox in credits) - 5 if credits else 0
+
+    quote_budget = max(16, max_h - (credits_h + metrics["gap"] if credits else 0))
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     matched = quote_row.get("matched_text") or ""
     quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, matched, max_w, max_h,
-        font_max=34, font_min=14, line_height_mult=1.24, theme="pride",
+        draw, display_quote, matched, max_w, quote_budget,
+        font_max=font_max, font_min=font_min, line_height_mult=1.24, theme="pride",
     )
     lines = []
     block_w = 0
@@ -19523,21 +19615,11 @@ def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict) -> dict:
         block_w = max(block_w, sum(widths))
         lines.append((drawable, widths, sum(widths)))
 
-    credits = []
-    author = (quote_row.get("author") or "").strip()
-    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
-    for text, key, size in ((author.upper(), "quote_bold", 14), (title, "quote_regular", 13)):
-        if not text:
-            continue
-        font = load_font(theme_font_candidates("pride", key), size=size)
-        while len(text) > 1 and draw.textlength(text, font=font) > max_w:
-            text = text[:-1]
-        bbox = draw.textbbox((0, 0), text, font=font)
-        credits.append((text, font, bbox))
+    for _, _, bbox in credits:
         block_w = max(block_w, bbox[2] - bbox[0])
-    credits_h = sum(bbox[3] - bbox[1] + 5 for _, _, bbox in credits) - 5 if credits else 0
 
     return {
+        "metrics": metrics,
         "quote_font": quote_font,
         "quote_font_bold": quote_font_bold,
         "lines": lines,
@@ -19551,26 +19633,27 @@ def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict) -> dict:
 
 def _pride_card_rect(layout: dict, width: int, height: int) -> tuple[int, int, int, int]:
     """Cut the card to fit the measured block, centred and clamped to canvas."""
-    content_h = layout["quote_h"] + (_PRIDE_CREDIT_GAP + layout["credits_h"] if layout["credits"] else 0)
-    card_w = max(_PRIDE_CARD_MIN[0], layout["block_w"] + 2 * _PRIDE_PAD_X)
-    card_h = max(_PRIDE_CARD_MIN[1], content_h + _PRIDE_PAD_TOP + _PRIDE_PAD_BOTTOM)
-    # Leave room for the drop-shadow ledge, and never exceed the canvas — the
-    # /api/preview thumbnail path renders this frame down to ~60 px tall.
-    card_w = min(card_w, max(8, width - 2 * (_PRIDE_SHADOW_OFFSET + 4)))
-    card_h = min(card_h, max(8, height - 2 * (_PRIDE_SHADOW_OFFSET + 4)))
+    m = layout["metrics"]
+    content_h = layout["quote_h"] + (m["gap"] + layout["credits_h"] if layout["credits"] else 0)
+    card_w = max(m["card_min"][0], layout["block_w"] + 2 * m["pad_x"])
+    card_h = max(m["card_min"][1], content_h + m["pad_top"] + m["pad_bottom"])
+    # The layout was already fitted inside `metrics["text_max"]`, so these are a
+    # backstop rather than the mechanism — but they must still hold, because the
+    # measured block can exceed its budget when even the minimum font overflows.
+    card_w = min(card_w, m["max_card"][0])
+    card_h = min(card_h, m["max_card"][1])
     # Centre it in the rainbow field right of the chevron's point rather than on
     # the canvas, so the arrow stays whole. On a canvas too narrow to hold the
-    # card clear of the chevron (the /api/preview thumbnail path) the clamp
-    # below wins and the card simply overlaps — a legible quote matters more
-    # than an intact graphic at 80 px wide.
-    field_left = _pride_chevron_tip(width) + _PRIDE_FIELD_GAP
-    x0 = field_left + max(0, (width - _PRIDE_SHADOW_OFFSET - 4 - field_left - card_w) // 2)
-    x0 = max(4, min(x0, width - _PRIDE_SHADOW_OFFSET - 4 - card_w))
-    y0 = (height - card_h) // 2
+    # card clear of the chevron the clamp below wins and the card simply
+    # overlaps — a legible quote matters more than an intact graphic at 80 px.
+    right_limit = width - m["margin"] - card_w
+    x0 = max(m["margin"], min(m["field_left"] + max(0, (right_limit - m["field_left"]) // 2), right_limit))
+    x0 = max(0, x0)
+    y0 = max(0, (height - card_h) // 2)
     return x0, y0, x0 + card_w, y0 + card_h
 
 
-def _pride_paint_cartouche(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int]) -> None:
+def _pride_paint_cartouche(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int], metrics: dict) -> None:
     """Knock a white card out of the cloth, lifted off it by a shadow ledge.
 
     The shadow is a black rounded rectangle offset down and right, all but a few
@@ -19579,8 +19662,8 @@ def _pride_paint_cartouche(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int,
     as a hole cut in the flag rather than as something resting on it.
     """
     x0, y0, x1, y1 = rect
-    radius = max(0, min(_PRIDE_CARTOUCHE_RADIUS, (x1 - x0) // 2, (y1 - y0) // 2))
-    offset = _PRIDE_SHADOW_OFFSET
+    radius = max(0, min(metrics["radius"], (x1 - x0) // 2, (y1 - y0) // 2))
+    offset = metrics["shadow"]
     draw.rounded_rectangle((x0 + offset, y0 + offset, x1 + offset, y1 + offset), radius=radius, fill=SPECTRA6["black"])
     draw.rounded_rectangle(rect, radius=radius, fill=SPECTRA6["white"], outline=SPECTRA6["black"], width=1)
 
@@ -19597,10 +19680,11 @@ def _pride_paint_text(image: Image.Image, draw: ImageDraw.ImageDraw, layout: dic
     black = SPECTRA6["black"]
     red = SPECTRA6["red"]
     blue = SPECTRA6["blue"]
+    m = layout["metrics"]
     x0, y0, x1, y1 = rect
     inner_w = x1 - x0
-    content_h = layout["quote_h"] + (_PRIDE_CREDIT_GAP + layout["credits_h"] if layout["credits"] else 0)
-    y = y0 + max(_PRIDE_PAD_TOP, ((y1 - y0) - content_h) // 2)
+    content_h = layout["quote_h"] + (m["gap"] + layout["credits_h"] if layout["credits"] else 0)
+    y = y0 + max(m["pad_top"], ((y1 - y0) - content_h) // 2)
     ascent = _font_ascent(layout["quote_font"])
     for drawable, widths, line_w in layout["lines"]:
         x = x0 + (inner_w - line_w) // 2
@@ -19615,7 +19699,7 @@ def _pride_paint_text(image: Image.Image, draw: ImageDraw.ImageDraw, layout: dic
         y += layout["line_height"]
     if not layout["credits"]:
         return
-    y += _PRIDE_CREDIT_GAP
+    y += m["gap"]
     for text, font, bbox in layout["credits"]:
         x = x0 + (inner_w - (bbox[2] - bbox[0])) // 2 - bbox[0]
         draw.text((x, y - bbox[1]), text, font=font, fill=black)
@@ -19635,10 +19719,11 @@ def render_pride_frame(time_str: str, quote_row: dict, width: int, height: int) 
     image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
     _pride_paint_flag(image)
     draw = ImageDraw.Draw(image)
-    layout = _pride_layout(draw, quote_row)
+    layout = _pride_layout(draw, quote_row, width, height)
     rect = _pride_card_rect(layout, width, height)
-    _pride_paint_cartouche(draw, rect)
-    inner = (rect[0] + _PRIDE_PAD_X, rect[1], rect[2] - _PRIDE_PAD_X, rect[3])
+    _pride_paint_cartouche(draw, rect, layout["metrics"])
+    pad_x = layout["metrics"]["pad_x"]
+    inner = (rect[0] + pad_x, rect[1], rect[2] - pad_x, rect[3])
     _pride_paint_text(image, draw, layout, inner)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 

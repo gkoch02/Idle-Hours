@@ -895,11 +895,12 @@ class TestPrideChevronBands:
         names = {v: k for k, v in rq.SPECTRA6.items()}
         depths = [d * width for d in rq._PRIDE_CHEVRON_DEPTHS]
         centre = height / 2.0
+        slope = rq._pride_arm_slope(width, height)
         buckets = [{} for _ in depths]
         for y in range(0, height, 3):
             for x in range(0, int(depths[-1]) + 1):
                 displacement, _ = rq._pride_wave(x, y)
-                reach = x + abs((y - displacement) - centre)
+                reach = x + abs((y - displacement) - centre) * slope
                 band = bisect.bisect_left(depths, reach)
                 if band >= len(depths):
                     continue
@@ -969,9 +970,131 @@ class TestPrideChevronBands:
 
     def test_chevron_clears_the_quote_card(self):
         """The card must sit in the rainbow field, or the arrow loses its point."""
-        layout_stub = {"quote_h": 60, "credits_h": 20, "credits": [("x", None, (0, 0, 10, 10))], "block_w": 200}
-        rect = rq._pride_card_rect(layout_stub, 800, 480)
+        row = make_row(display_quote="It was half past two.", matched_text="half past two",
+                       author="Virginia Woolf", title="Mrs Dalloway")
+        draw = ImageDraw.Draw(rq.Image.new("RGB", (800, 480)))
+        rect = rq._pride_card_rect(rq._pride_layout(draw, row, 800, 480), 800, 480)
         assert rect[0] >= rq._pride_chevron_tip(800), (
             f"card starts at x={rect[0]}, chevron point is at "
             f"x={rq._pride_chevron_tip(800)} — the card is covering the arrow"
         )
+
+    @pytest.mark.parametrize("width,height", [(800, 480), (1008, 658), (400, 240), (320, 192), (240, 144)])
+    def test_corner_band_is_aspect_correct(self, width, height):
+        """The hoist corner must land in the same band at every aspect ratio.
+
+        The depths are fractions of WIDTH but an arm's travel is vertical, so a
+        literal 45-degree arm puts the corner in a different band on a canvas
+        whose aspect differs from the reference's 1008x658. Measured off the
+        reference image, the top-left corner is BROWN (its reach is 0.3264 of
+        the width, between light blue at 0.303 and brown at 0.383). Rendered at
+        the panel's 800x480 with an unscaled 45 degrees it fell at 0.300 —
+        inside light blue — so the flag simply had the wrong bands meeting the
+        hoist. ``_pride_arm_slope`` restores the reference proportion.
+        """
+        reach = (height / 2.0) * rq._pride_arm_slope(width, height) / width
+        ref_w, ref_h = rq._PRIDE_REFERENCE_SIZE
+        expected = (ref_h / 2.0) / ref_w
+        assert reach == pytest.approx(expected, abs=1e-6), (
+            f"at {width}x{height} the hoist corner sits at {reach:.4f} of the width, "
+            f"but the reference flag puts it at {expected:.4f}"
+        )
+        depths = rq._PRIDE_CHEVRON_DEPTHS
+        band = next((i for i, d in enumerate(depths) if reach < d), len(depths))
+        assert band == 3, (
+            f"the hoist corner falls in band {band}, but the reference flag's corner is "
+            "brown (band 3) — the chevron no longer meets the hoist as the flag does"
+        )
+
+
+class TestPrideLayoutFitsEveryCanvas:
+    """The card's contents must fit the card at every supported canvas size.
+
+    This is the class of defect the existing preview sweep cannot see: it renders
+    each theme at 80x60 and 240x144 and asserts only ``img.size`` and
+    palette-subset, so a frame whose text overflows its own card, spills past the
+    canvas and clips off the bottom of the image passes it cleanly. ``pride``
+    did exactly that — every metric in the frame was a native-panel constant, so
+    at 320x192 the text block measured 320x316 against a 244x176 card.
+
+    Measuring the layout directly is what catches it. The 60 px-tall canvases are
+    excluded from the height assertion on purpose: no legible layout of a
+    literary quote exists in 60 px, and clipping there is the documented
+    trade-off (a readable quote beats an intact graphic at thumbnail sizes).
+    Width has no such excuse and is asserted everywhere.
+    """
+
+    SIZES = ((800, 480), (400, 240), (320, 192), (240, 144), (120, 90), (80, 480), (80, 60), (800, 60))
+    LONG = ("The clock had struck half past two some while before, and still nobody in "
+            "that long cold house had thought to answer the door, nor to light a lamp.")
+
+    @staticmethod
+    def _measure(width, height, row):
+        draw = ImageDraw.Draw(rq.Image.new("RGB", (width, height)))
+        layout = rq._pride_layout(draw, row, width, height)
+        metrics = layout["metrics"]
+        rect = rq._pride_card_rect(layout, width, height)
+        content = layout["quote_h"] + (
+            metrics["gap"] + layout["credits_h"] if layout["credits"] else 0
+        )
+        return {
+            "inner_w": (rect[2] - rect[0]) - 2 * metrics["pad_x"],
+            "card_h": rect[3] - rect[1],
+            "block_w": layout["block_w"],
+            "content_h": content,
+            "rect": rect,
+        }
+
+    @pytest.mark.parametrize("width,height", SIZES)
+    def test_text_never_exceeds_the_card_width(self, width, height):
+        row = make_row(display_quote=self.LONG, matched_text="half past two",
+                       author="Elizabeth Gaskell", title="North and South")
+        m = self._measure(width, height, row)
+        assert m["block_w"] <= m["inner_w"], (
+            f"at {width}x{height} the text block is {m['block_w']} px wide inside a "
+            f"{m['inner_w']} px card — it will spill over the card edge onto the flag"
+        )
+
+    @pytest.mark.parametrize("width,height", [s for s in SIZES if s[1] >= 90])
+    def test_text_never_exceeds_the_card_height(self, width, height):
+        row = make_row(display_quote=self.LONG, matched_text="half past two",
+                       author="Elizabeth Gaskell", title="North and South")
+        m = self._measure(width, height, row)
+        assert m["content_h"] <= m["card_h"], (
+            f"at {width}x{height} the content is {m['content_h']} px tall inside a "
+            f"{m['card_h']} px card — the bottom will be clipped"
+        )
+
+    @pytest.mark.parametrize("width,height", SIZES)
+    def test_card_stays_inside_the_canvas(self, width, height):
+        row = make_row(display_quote=self.LONG, matched_text="half past two",
+                       author="Elizabeth Gaskell", title="North and South")
+        x0, y0, x1, y1 = self._measure(width, height, row)["rect"]
+        assert 0 <= x0 < x1 <= width, f"card x-range {x0}..{x1} escapes a {width}px canvas"
+        assert 0 <= y0 < y1 <= height, f"card y-range {y0}..{y1} escapes a {height}px canvas"
+
+    def test_native_metrics_are_the_declared_constants(self):
+        """At 800x480 nothing scales, so the native render is untouched by this.
+
+        Pins the scale-1 identity: if a future edit changes the derivation, the
+        native frame moves and the golden fixtures churn for no visible reason.
+        """
+        m = rq._pride_metrics(800, 480)
+        assert m["scale"] == 1.0
+        assert (m["pad_x"], m["pad_top"], m["pad_bottom"]) == (
+            rq._PRIDE_PAD_X, rq._PRIDE_PAD_TOP, rq._PRIDE_PAD_BOTTOM)
+        assert m["gap"] == rq._PRIDE_CREDIT_GAP
+        assert m["shadow"] == rq._PRIDE_SHADOW_OFFSET
+        assert m["radius"] == rq._PRIDE_CARTOUCHE_RADIUS
+        assert m["text_max"] == rq._PRIDE_TEXT_MAX
+        assert m["show_credits"] is True
+
+    def test_credits_are_dropped_only_when_illegible(self):
+        """Below the floor the byline is a smudge, so it is omitted entirely."""
+        assert rq._pride_metrics(800, 480)["show_credits"] is True
+        assert rq._pride_metrics(400, 240)["show_credits"] is True
+        assert rq._pride_metrics(320, 192)["show_credits"] is False
+        row = make_row(display_quote="Nine.", matched_text="Nine",
+                       author="Elizabeth Gaskell", title="Cranford")
+        draw = ImageDraw.Draw(rq.Image.new("RGB", (320, 192)))
+        assert rq._pride_layout(draw, row, 320, 192)["credits"] == []
