@@ -16802,9 +16802,19 @@ def _questline_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote
     font = load_font(theme_font_candidates("questline", "quote_regular"), size=8)
     # Keep the footer clear of the continue arrow on the right.
     max_w = (_QUESTLINE_BOX[2] - _QUESTLINE_BOX[0]) - 120
-    while text and draw.textlength(text, font=font) > max_w:
+    # Guard on `title`, the string that actually shrinks — not on `text`, which
+    # is rebuilt from a template each pass and stays non-empty even once the
+    # title is gone. Guarding on `text` made this a fixed point that spins
+    # forever whenever the budget is too small to fit "— from … —", which is a
+    # hard hang of the render path: fatal in-process on the curator UI's
+    # /api/preview thread, and a render_timeout plus backoff on the appliance.
+    # It is latent today only because `max_w` is a fixed constant that happens
+    # to be generous; narrowing the box or raising the font size would trip it.
+    while title and draw.textlength(text, font=font) > max_w:
         title = title[:-1]
         text = f"— from {title.rstrip()}… —"
+    if not title:
+        return  # no room for even a stub of the title — drop the footer
     bbox = draw.textbbox((0, 0), text, font=font)
     cx = (_QUESTLINE_BOX[0] + _QUESTLINE_BOX[2]) // 2
     fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
@@ -17178,9 +17188,14 @@ def _chrono_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
     text = f"— from {title} —"
     font = load_font(theme_font_candidates("chrono", "quote_regular"), size=12)
     max_w = (_CHRONO_WINDOW[2] - _CHRONO_WINDOW[0]) - 140
-    while text and draw.textlength(text, font=font) > max_w:
+    # Same fixed-point hang as questline's footer, and fixed the same way — see
+    # the note in `_questline_paint_footer`. The two were written from the same
+    # template, so they carried the same defect.
+    while title and draw.textlength(text, font=font) > max_w:
         title = title[:-1]
         text = f"— from {title.rstrip()}… —"
+    if not title:
+        return  # no room for even a stub of the title — drop the footer
     bbox = draw.textbbox((0, 0), text, font=font)
     cx = (_CHRONO_WINDOW[0] + _CHRONO_WINDOW[2]) // 2 + 50  # nudge clear of the portrait
     fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
