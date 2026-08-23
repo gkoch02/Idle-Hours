@@ -20776,6 +20776,43 @@ def _metro_paint_chrome(image: Image.Image, time_str: str) -> None:
         x += 119
 
 
+def _metro_ellipsize(draw, text: str, font, max_width: int) -> str:
+    """Trim text to a measured pixel budget, preserving an ellipsis."""
+    text = str(text)
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    ellipsis = "…"
+    if draw.textlength(ellipsis, font=font) > max_width:
+        return ""
+    while text and draw.textlength(text.rstrip() + ellipsis, font=font) > max_width:
+        text = text[:-1]
+    return text.rstrip(" ,;:") + ellipsis
+
+
+def _metro_fit_metadata(draw, author: str, title: str, author_font, title_font) -> tuple[str, str]:
+    """Fit the two metadata labels into their shared 174..658 pixel row."""
+    available = 658 - 174 - 12  # keep a visible gutter between the labels
+    author_width = draw.textlength(author, font=author_font)
+    title_width = draw.textlength(title, font=title_font)
+    if author_width + title_width <= available:
+        return author, title
+
+    half = available // 2
+    if author_width < half:
+        author_budget = int(author_width)
+        title_budget = available - author_budget
+    elif title_width < half:
+        title_budget = int(title_width)
+        author_budget = available - title_budget
+    else:
+        author_budget = half
+        title_budget = available - half
+    return (
+        _metro_ellipsize(draw, author, author_font, author_budget),
+        _metro_ellipsize(draw, title, title_font, title_budget),
+    )
+
+
 def _metro_paint_quote_card(image: Image.Image, quote_row: dict) -> None:
     draw = ImageDraw.Draw(image)
     card = (116, 100, 684, 388)
@@ -20814,9 +20851,12 @@ def _metro_paint_quote_card(image: Image.Image, quote_row: dict) -> None:
     meta_bold = load_font(theme_font_candidates("metro", "quote_bold"), 16)
     draw.line((142, 338, 658, 338), fill=SPECTRA6["black"], width=2)
     draw.rectangle((142, 348, 164, 370), fill=SPECTRA6["blue"])
-    draw.text((174, 349), str(author)[:38].upper(), font=meta_bold, fill=SPECTRA6["black"])
-    title_box = draw.textbbox((0, 0), str(title)[:44], font=meta_font)
-    draw.text((658 - (title_box[2] - title_box[0]), 350), str(title)[:44], font=meta_font, fill=SPECTRA6["black"])
+    author_text, title_text = _metro_fit_metadata(
+        draw, str(author).upper(), str(title), meta_bold, meta_font
+    )
+    draw.text((174, 349), author_text, font=meta_bold, fill=SPECTRA6["black"])
+    title_width = draw.textlength(title_text, font=meta_font)
+    draw.text((658 - title_width, 350), title_text, font=meta_font, fill=SPECTRA6["black"])
 
 
 def render_metro_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
