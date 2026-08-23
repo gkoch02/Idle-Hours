@@ -17,6 +17,7 @@ custom paths add.
 """
 from __future__ import annotations
 
+import bisect
 import json
 import threading
 
@@ -28,7 +29,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -712,3 +713,388 @@ class TestAbyssalSeafoamMix:
             assert later["G"] <= earlier["G"], f"green share did not fall with depth: {samples}"
             assert later["W"] <= earlier["W"], f"white share did not fall with depth: {samples}"
         assert samples[-1]["B"] > 0.9, f"surface band had not resolved to plain blue by its bottom: {samples[-1]}"
+
+
+class TestPrideStripeInkRatios:
+    """The flag's fold lighting must not shift the stripe hues.
+
+    ``pride`` paints two of its six stripes as two-ink mixes — orange as the
+    R+Y 5/8:3/8 tangerine, violet as the R+B 1:1 — and lights the whole flag by
+    dithering white or black in at a density that tracks the cloth's tilt. The
+    obvious way to combine those is to pick the stripe ink by one Bayer read and
+    then overwrite some of those pixels by a second read, and it is wrong: a
+    Bayer tile has a fixed number of cells, so *any* two reads of it are
+    perfectly correlated and no phase shift decorrelates them. Measured across
+    all sixteen 4x4 shifts, the lit face of the violet stripe came out at 0.27
+    or 0.73 red against a target of 0.50 — the hue sliding toward blue on one
+    face of every fold and toward red on the other, a colour shift wearing the
+    costume of shading.
+
+    ``_pride_paint_flag`` therefore resolves each pixel with a *single* read
+    that partitions the tile three ways. These tests measure the surviving mix
+    directly off the rendered canvas across the lighting range, so they fail if
+    the two-read form is ever reintroduced — including by someone "simplifying"
+    the partition back into an overlay.
+    """
+
+    # Generous, because the mix can only be quantised to whole tile cells: at
+    # peak lighting the violet stripe has 51 of 64 cells left to split evenly,
+    # which is 0.5098 rather than 0.5. Anything approaching the 0.23 error the
+    # two-read form produced is a different phenomenon entirely.
+    TOLERANCE = 0.06
+
+    @staticmethod
+    def _mix(level: float, light_density: float) -> float:
+        """Replay the painter's partition and return the surviving light share."""
+        tile = len(rq.BAYER_8x8)
+        scale = tile * tile
+        peak = rq._PRIDE_LIGHT_PEAK if level >= 0 else rq._PRIDE_SHADE_PEAK
+        cells = round(abs(level) * peak * scale)
+        split = cells + round(light_density * (scale - cells))
+        dark = light = 0
+        for y in range(tile):
+            for x in range(tile):
+                cell = rq.BAYER_8x8[y][x]
+                if cell < cells:
+                    continue
+                if cell < split:
+                    light += 1
+                else:
+                    dark += 1
+        return light / (light + dark)
+
+    @pytest.mark.parametrize("light_density", (0.375, 0.5))
+    @pytest.mark.parametrize("level", (0.0, 0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -1.0))
+    def test_mix_survives_every_lighting_level(self, level, light_density):
+        drift = abs(self._mix(level, light_density) - light_density)
+        assert drift <= self.TOLERANCE, (
+            f"stripe mix {light_density} drifted to {self._mix(level, light_density):.3f} "
+            f"at lighting level {level:+.2f} (drift {drift:.3f}) — the fold is shifting "
+            "the hue, not the brightness"
+        )
+
+    def test_two_read_overlay_would_fail_this_test(self):
+        """The guard above is only meaningful if it rejects the broken form.
+
+        Replays the overlay implementation this frame started life with, at
+        every phase shift, and asserts that at least one lighting level drifts
+        past the tolerance for *every* shift. If this ever passes trivially the
+        test above has stopped fencing anything.
+        """
+        tile = len(rq.BAYER_8x8)
+        scale = tile * tile
+
+        def overlay_mix(level, light_density, shift):
+            sx, sy = shift
+            peak = rq._PRIDE_LIGHT_PEAK if level >= 0 else rq._PRIDE_SHADE_PEAK
+            cells = round(abs(level) * peak * scale)
+            dark = light = 0
+            for y in range(tile):
+                for x in range(tile):
+                    if rq.BAYER_8x8[(y + sy) % tile][(x + sx) % tile] < cells:
+                        continue  # overwritten by the lighting ink
+                    if rq.BAYER_8x8[y][x] < round(light_density * scale):
+                        light += 1
+                    else:
+                        dark += 1
+            return light / (light + dark) if (light + dark) else 0.0
+
+        for shift in [(sx, sy) for sx in range(tile) for sy in range(tile)]:
+            worst = max(
+                abs(overlay_mix(level, 0.5, shift) - 0.5)
+                for level in (0.5, 1.0, -0.5, -1.0)
+            )
+            assert worst > self.TOLERANCE, (
+                f"the two-read overlay at shift {shift} stayed within tolerance "
+                f"(worst drift {worst:.3f}) — this test no longer proves the "
+                "partition is load-bearing"
+            )
+
+    def test_rendered_violet_stripe_is_balanced_at_the_fold_extremes(self):
+        """End-to-end: measure the real canvas, not just the partition maths.
+
+        The sample bands are the *extremes* of the wave, derived from
+        ``_pride_wave`` so they follow a future retune, and they are narrow.
+        Both details are load-bearing. An earlier version of this test averaged
+        a wide band spanning many folds and passed cleanly against a
+        deliberately reintroduced two-read overlay: the drift is equal and
+        opposite on the lit and shadowed faces, so a wide average cancels it to
+        nothing. Measured at the extremes the same broken build reads 0.617
+        blue against 0.506 for the partition, which is the signal this test
+        exists to see.
+        """
+        max_tilt = sum(amp * freq for amp, freq, _, _ in rq._PRIDE_WAVE)
+        sample_y = 460
+        # Only the rainbow field: left of the chevron's point this row is the
+        # black band, which has no violet in it to measure.
+        field_left = rq._pride_chevron_tip(800) + 30
+        levels = {x: rq._pride_wave(x, sample_y)[1] / max_tilt for x in range(field_left, 780)}
+        peaks = {
+            "lit": max(levels, key=lambda x: levels[x]),
+            "shadow": min(levels, key=lambda x: levels[x]),
+        }
+        row = make_row(display_quote="Nine.", matched_text="Nine", author="", title="")
+        image = rq.render("09:00", row, 800, 480, mode="production", theme="pride")
+        px = image.load()
+        red = rq.SPECTRA6["red"]
+        blue = rq.SPECTRA6["blue"]
+        for face, peak_x in peaks.items():
+            x0 = max(field_left, peak_x - 20)
+            reds = blues = 0
+            for x in range(x0, min(800, x0 + 40)):
+                for y in range(445, 475):
+                    ink = px[x, y]
+                    if ink == red:
+                        reds += 1
+                    elif ink == blue:
+                        blues += 1
+            total = reds + blues
+            assert total > 400, f"{face} band had too little violet to measure ({total} px)"
+            share = blues / total
+            assert abs(share - 0.5) <= self.TOLERANCE, (
+                f"violet stripe on the {face} face (x~{peak_x}, level "
+                f"{levels[peak_x]:+.2f}) is {share:.3f} blue — the fold lighting is "
+                "pulling the hue off violet instead of only its brightness"
+            )
+
+
+class TestPrideChevronBands:
+    """The Progress chevron's band order and inks, measured off the canvas.
+
+    This is the part of the flag that could not be implemented from memory. Two
+    web searches returned two *different* orders — one putting white between
+    pink and brown, the other light blue innermost — and neither matched the
+    reference image, whose bands measure (as fractions of flag width) white to
+    0.148, pink to 0.223, light blue to 0.303, brown to 0.383, black to 0.465.
+    Since the flag belongs to real communities, a wrong order is worse than no
+    implementation, so this fences the order rather than trusting the constant
+    table to stay in sync with the docs.
+
+    Each band is identified by its own geometry — ``reach = x + |y - centre|``
+    against the displaced row, the same term the painter uses — rather than by
+    guessing at pixel coordinates, so the assertions survive a wave retune.
+    """
+
+    # Expected (minority ink, minority share) per band, innermost outward.
+    # A share of 0.0 with a None ink means the band is a single native ink.
+    EXPECTED = (
+        ("white", None, 0.0),
+        ("white", "red", 0.375),
+        ("white", "blue", 0.5),
+        ("red", "green", 0.5),
+        ("black", None, 0.0),
+    )
+    TOLERANCE = 0.06
+
+    @staticmethod
+    def _bands(width: int = 800, height: int = 480) -> list[dict]:
+        """Ink histograms per chevron band, bucketed by the painter's own term."""
+        image = rq.Image.new("RGB", (width, height), rq.SPECTRA6["white"])
+        rq._pride_paint_flag(image)
+        px = image.load()
+        names = {v: k for k, v in rq.SPECTRA6.items()}
+        depths = [d * width for d in rq._PRIDE_CHEVRON_DEPTHS]
+        centre = height / 2.0
+        slope = rq._pride_arm_slope(width, height)
+        buckets = [{} for _ in depths]
+        for y in range(0, height, 3):
+            for x in range(0, int(depths[-1]) + 1):
+                displacement, _ = rq._pride_wave(x, y)
+                reach = x + abs((y - displacement) - centre) * slope
+                band = bisect.bisect_left(depths, reach)
+                if band >= len(depths):
+                    continue
+                # Skip a margin either side of each boundary: a pixel one cell
+                # from a band edge is genuinely ambiguous under rounding, and
+                # including it would smear neighbouring inks into the histogram.
+                lo = depths[band - 1] if band else 0.0
+                if reach - lo < 4 or depths[band] - reach < 4:
+                    continue
+                ink = names[px[x, y]]
+                buckets[band][ink] = buckets[band].get(ink, 0) + 1
+        return buckets
+
+    def test_band_inks_and_order(self):
+        buckets = self._bands()
+        for index, (base, minority, share) in enumerate(self.EXPECTED):
+            counts = dict(buckets[index])
+            total = sum(counts.values())
+            assert total > 500, f"band {index} too small to measure ({total} px)"
+            # The lighting inks are white and black, so they are only separable
+            # from a band's own inks when the band does not itself use them.
+            if minority is None:
+                dominant = max(counts, key=counts.get)
+                assert dominant == base, (
+                    f"band {index} should be solid {base}, reads mostly {dominant} "
+                    f"(full histogram {counts}) — the chevron order has drifted"
+                )
+                continue
+            chromatic = {k: v for k, v in counts.items() if k not in ("white", "black")}
+            assert chromatic, f"band {index} has no chromatic ink at all: {counts}"
+            expected_chromatic = {i for i in (base, minority) if i not in ("white", "black")}
+            assert set(chromatic) == expected_chromatic, (
+                f"band {index} paints {set(chromatic)}, expected {expected_chromatic} "
+                f"(full histogram {counts}) — bands are out of order or a recipe changed"
+            )
+
+    def test_pink_and_light_blue_are_not_swapped(self):
+        """The specific confusion both web sources got wrong, pinned directly."""
+        buckets = self._bands()
+        pink, light_blue = buckets[1], buckets[2]
+        assert pink.get("red", 0) > 0 and pink.get("blue", 0) == 0, (
+            f"the second band should be pink (white+red), reads {dict(pink)}"
+        )
+        assert light_blue.get("blue", 0) > 0 and light_blue.get("red", 0) == 0, (
+            f"the third band should be light blue (white+blue), reads {dict(light_blue)}"
+        )
+
+    def test_brown_is_the_documented_red_green_sepia(self):
+        """Brown must stay R+G — and must NOT be muted further with black.
+
+        The catalogue offers black as an optional mute for this recipe. It is
+        deliberately declined here: this band sits directly against the black
+        band, and a darker brown stops being distinguishable from it on a
+        six-ink panel. Note the mix looks olive in an RGB preview and reads as a
+        real brown on the panel, whose inks are muted (measured red ~#62201E and
+        green ~#35563A average to ~#4C3B2C against the flag's #613915) — so do
+        not "correct" this from a screenshot.
+        """
+        brown = dict(self._bands()[3])
+        assert brown.get("red", 0) > 0 and brown.get("green", 0) > 0, (
+            f"brown band is not the R+G sepia: {brown}"
+        )
+        ratio = brown["green"] / (brown["red"] + brown["green"])
+        assert abs(ratio - 0.5) <= self.TOLERANCE, (
+            f"brown band is {ratio:.3f} green, expected the documented 1:1 sepia"
+        )
+
+    def test_chevron_clears_the_quote_card(self):
+        """The card must sit in the rainbow field, or the arrow loses its point."""
+        row = make_row(display_quote="It was half past two.", matched_text="half past two",
+                       author="Virginia Woolf", title="Mrs Dalloway")
+        draw = ImageDraw.Draw(rq.Image.new("RGB", (800, 480)))
+        rect = rq._pride_card_rect(rq._pride_layout(draw, row, 800, 480), 800, 480)
+        assert rect[0] >= rq._pride_chevron_tip(800), (
+            f"card starts at x={rect[0]}, chevron point is at "
+            f"x={rq._pride_chevron_tip(800)} — the card is covering the arrow"
+        )
+
+    @pytest.mark.parametrize("width,height", [(800, 480), (1008, 658), (400, 240), (320, 192), (240, 144)])
+    def test_corner_band_is_aspect_correct(self, width, height):
+        """The hoist corner must land in the same band at every aspect ratio.
+
+        The depths are fractions of WIDTH but an arm's travel is vertical, so a
+        literal 45-degree arm puts the corner in a different band on a canvas
+        whose aspect differs from the reference's 1008x658. Measured off the
+        reference image, the top-left corner is BROWN (its reach is 0.3264 of
+        the width, between light blue at 0.303 and brown at 0.383). Rendered at
+        the panel's 800x480 with an unscaled 45 degrees it fell at 0.300 —
+        inside light blue — so the flag simply had the wrong bands meeting the
+        hoist. ``_pride_arm_slope`` restores the reference proportion.
+        """
+        reach = (height / 2.0) * rq._pride_arm_slope(width, height) / width
+        ref_w, ref_h = rq._PRIDE_REFERENCE_SIZE
+        expected = (ref_h / 2.0) / ref_w
+        assert reach == pytest.approx(expected, abs=1e-6), (
+            f"at {width}x{height} the hoist corner sits at {reach:.4f} of the width, "
+            f"but the reference flag puts it at {expected:.4f}"
+        )
+        depths = rq._PRIDE_CHEVRON_DEPTHS
+        band = next((i for i, d in enumerate(depths) if reach < d), len(depths))
+        assert band == 3, (
+            f"the hoist corner falls in band {band}, but the reference flag's corner is "
+            "brown (band 3) — the chevron no longer meets the hoist as the flag does"
+        )
+
+
+class TestPrideLayoutFitsEveryCanvas:
+    """The card's contents must fit the card at every supported canvas size.
+
+    This is the class of defect the existing preview sweep cannot see: it renders
+    each theme at 80x60 and 240x144 and asserts only ``img.size`` and
+    palette-subset, so a frame whose text overflows its own card, spills past the
+    canvas and clips off the bottom of the image passes it cleanly. ``pride``
+    did exactly that — every metric in the frame was a native-panel constant, so
+    at 320x192 the text block measured 320x316 against a 244x176 card.
+
+    Measuring the layout directly is what catches it. The 60 px-tall canvases are
+    excluded from the height assertion on purpose: no legible layout of a
+    literary quote exists in 60 px, and clipping there is the documented
+    trade-off (a readable quote beats an intact graphic at thumbnail sizes).
+    Width has no such excuse and is asserted everywhere.
+    """
+
+    SIZES = ((800, 480), (400, 240), (320, 192), (240, 144), (120, 90), (80, 480), (80, 60), (800, 60))
+    LONG = ("The clock had struck half past two some while before, and still nobody in "
+            "that long cold house had thought to answer the door, nor to light a lamp.")
+
+    @staticmethod
+    def _measure(width, height, row):
+        draw = ImageDraw.Draw(rq.Image.new("RGB", (width, height)))
+        layout = rq._pride_layout(draw, row, width, height)
+        metrics = layout["metrics"]
+        rect = rq._pride_card_rect(layout, width, height)
+        content = layout["quote_h"] + (
+            metrics["gap"] + layout["credits_h"] if layout["credits"] else 0
+        )
+        return {
+            "inner_w": (rect[2] - rect[0]) - 2 * metrics["pad_x"],
+            "card_h": rect[3] - rect[1],
+            "block_w": layout["block_w"],
+            "content_h": content,
+            "rect": rect,
+        }
+
+    @pytest.mark.parametrize("width,height", SIZES)
+    def test_text_never_exceeds_the_card_width(self, width, height):
+        row = make_row(display_quote=self.LONG, matched_text="half past two",
+                       author="Elizabeth Gaskell", title="North and South")
+        m = self._measure(width, height, row)
+        assert m["block_w"] <= m["inner_w"], (
+            f"at {width}x{height} the text block is {m['block_w']} px wide inside a "
+            f"{m['inner_w']} px card — it will spill over the card edge onto the flag"
+        )
+
+    @pytest.mark.parametrize("width,height", [s for s in SIZES if s[1] >= 90])
+    def test_text_never_exceeds_the_card_height(self, width, height):
+        row = make_row(display_quote=self.LONG, matched_text="half past two",
+                       author="Elizabeth Gaskell", title="North and South")
+        m = self._measure(width, height, row)
+        assert m["content_h"] <= m["card_h"], (
+            f"at {width}x{height} the content is {m['content_h']} px tall inside a "
+            f"{m['card_h']} px card — the bottom will be clipped"
+        )
+
+    @pytest.mark.parametrize("width,height", SIZES)
+    def test_card_stays_inside_the_canvas(self, width, height):
+        row = make_row(display_quote=self.LONG, matched_text="half past two",
+                       author="Elizabeth Gaskell", title="North and South")
+        x0, y0, x1, y1 = self._measure(width, height, row)["rect"]
+        assert 0 <= x0 < x1 <= width, f"card x-range {x0}..{x1} escapes a {width}px canvas"
+        assert 0 <= y0 < y1 <= height, f"card y-range {y0}..{y1} escapes a {height}px canvas"
+
+    def test_native_metrics_are_the_declared_constants(self):
+        """At 800x480 nothing scales, so the native render is untouched by this.
+
+        Pins the scale-1 identity: if a future edit changes the derivation, the
+        native frame moves and the golden fixtures churn for no visible reason.
+        """
+        m = rq._pride_metrics(800, 480)
+        assert m["scale"] == 1.0
+        assert (m["pad_x"], m["pad_top"], m["pad_bottom"]) == (
+            rq._PRIDE_PAD_X, rq._PRIDE_PAD_TOP, rq._PRIDE_PAD_BOTTOM)
+        assert m["gap"] == rq._PRIDE_CREDIT_GAP
+        assert m["shadow"] == rq._PRIDE_SHADOW_OFFSET
+        assert m["radius"] == rq._PRIDE_CARTOUCHE_RADIUS
+        assert m["text_max"] == rq._PRIDE_TEXT_MAX
+        assert m["show_credits"] is True
+
+    def test_credits_are_dropped_only_when_illegible(self):
+        """Below the floor the byline is a smudge, so it is omitted entirely."""
+        assert rq._pride_metrics(800, 480)["show_credits"] is True
+        assert rq._pride_metrics(400, 240)["show_credits"] is True
+        assert rq._pride_metrics(320, 192)["show_credits"] is False
+        row = make_row(display_quote="Nine.", matched_text="Nine",
+                       author="Elizabeth Gaskell", title="Cranford")
+        draw = ImageDraw.Draw(rq.Image.new("RGB", (320, 192)))
+        assert rq._pride_layout(draw, row, 320, 192)["credits"] == []

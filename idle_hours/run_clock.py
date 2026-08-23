@@ -206,6 +206,7 @@ def parse_args() -> argparse.Namespace:
         "lieder",
         "izakaya",
         "abyssal",
+        "pride",
         "diags",
     ]
     parser.add_argument(

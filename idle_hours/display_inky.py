@@ -176,6 +176,7 @@ THEME_SATURATION: dict[str, float] = {
     # falling-density stipples, which is exactly what a low saturation flattens.
     # Takes the 0.7 dark-ground tier alongside ``izakaya`` for the same reason.
     "abyssal": 0.7,
+    "pride": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
