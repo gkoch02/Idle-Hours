@@ -87,6 +87,7 @@ CUSTOM_FRAME_THEMES = (
     "abyssal",
     "pride",
     "pulp",
+    "metro",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

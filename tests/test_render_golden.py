@@ -66,6 +66,13 @@ GOLDEN_DIR = Path(__file__).parent / "golden" / "renderer"
 # one-pixel antialiasing boundary doesn't. If this starts flaking on CI across
 # Pillow upgrades, widen to 0.005 before lowering the signal of the test.
 MAX_DIFF_RATIO = 0.001
+# The diagnostics frame uses the host's installed DejaVu metadata faces for
+# very small system-info labels. Pillow/FreeType point releases can move those
+# glyph edges by roughly 0.14% of the canvas while leaving every panel-scale
+# shape and swatch unchanged. Keep the literary themes on the stricter global
+# budget; allow only this environment-facing calibration screen a slightly
+# wider cross-runner allowance.
+SCENARIO_MAX_DIFF_RATIOS = {"standard_diags_production": 0.0015}
 
 UPDATE_GOLDEN = os.environ.get("UPDATE_RENDER_GOLDEN") == "1"
 
@@ -786,9 +793,10 @@ class TestGoldenRenderer:
         diff = _count_diff_pixels(img, golden)
         total = img.size[0] * img.size[1]
         ratio = diff / total
-        assert ratio <= MAX_DIFF_RATIO, (
+        max_diff_ratio = SCENARIO_MAX_DIFF_RATIOS.get(scenario["name"], MAX_DIFF_RATIO)
+        assert ratio <= max_diff_ratio, (
             f"scenario {scenario['name']}: {diff} of {total} pixels differ "
-            f"({ratio:.4%} > {MAX_DIFF_RATIO:.4%}). "
+            f"({ratio:.4%} > {max_diff_ratio:.4%}). "
             f"Re-run with UPDATE_RENDER_GOLDEN=1 after verifying the change is intentional."
         )
 

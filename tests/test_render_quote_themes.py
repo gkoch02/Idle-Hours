@@ -29,7 +29,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "metro")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -62,6 +62,25 @@ class TestCustomRenderContract:
         row.pop("fuzzy_bucket", None)
         img = rq.render("14:30", row, 800, 480, theme=theme)
         assert img.size == (800, 480)
+
+
+class TestMetroFrame:
+    def test_long_metadata_labels_do_not_overlap(self):
+        """Shipped Shelley metadata must retain the Metro row's 12 px gutter."""
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        author_font = rq.load_font(rq.theme_font_candidates("metro", "quote_bold"), 16)
+        title_font = rq.load_font(rq.theme_font_candidates("metro", "quote_regular"), 16)
+        author, title = rq._metro_fit_metadata(
+            draw,
+            "MARY WOLLSTONECRAFT SHELLEY",
+            "Frankenstein; or, the modern prometheus",
+            author_font,
+            title_font,
+        )
+        author_right = 174 + draw.textlength(author, font=author_font)
+        title_left = 658 - draw.textlength(title, font=title_font)
+        assert author_right + 12 <= title_left
+        assert author.endswith("…") or title.endswith("…")
 
 
 class TestMarqueeFrame:

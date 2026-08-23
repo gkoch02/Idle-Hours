@@ -179,6 +179,9 @@ THEME_SATURATION: dict[str, float] = {
     "pride": 0.5,
     "pulp": 0.7,
     "synoptic": 0.5,
+    # White map stock with four native route inks. The lighter tier keeps the
+    # yellow line visible without blowing out the red/blue interchange marks.
+    "metro": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

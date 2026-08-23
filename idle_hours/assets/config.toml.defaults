@@ -25,7 +25,7 @@ render_script    = "render_quote.py"
 output           = "output/current.png"
 mode             = "debug"
 theme            = "default"
-# Valid: any registered theme name (fifty-one themes ship today; `idle-hours run
+# Valid: any registered theme name (fifty-two themes ship today; `idle-hours run
 # --help` prints the full list and render_quote.THEME_ORDER is the canonical
 # order), "auto" (wall-clock day/night), or "random" (rerolls each time the
 # displayed quote changes; not persisted across restarts).
