@@ -25,9 +25,9 @@ render_script    = "render_quote.py"
 output           = "output/current.png"
 mode             = "debug"
 theme            = "default"
-# Valid: any registered theme name (default | dark | scholar | newsprint |
-# nightvision | blueprint | illuminated | bauhaus | risograph | comic),
-# "auto" (wall-clock day/night), or "random" (rerolls each time the
+# Valid: any registered theme name (forty-seven ship today; `idle-hours run
+# --help` prints the full list and render_quote.THEME_ORDER is the canonical
+# order), "auto" (wall-clock day/night), or "random" (rerolls each time the
 # displayed quote changes; not persisted across restarts).
 #
 # When `theme = "auto"`, these pick the day/night theme. Defaults match the

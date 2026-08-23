@@ -346,7 +346,7 @@ Button B cycles forward through the list and wraps; the curator web UI at `/api/
 > Regenerate previews: the images under `idle_hours/assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
 >
 > ```bash
-> for theme in default dark swiss scholar herbarium newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier mucha chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vinyl cartograph questline chrono outrun circuit letter grimdark sampler anna_atkins lieder izakaya diags; do
+> for theme in default dark swiss scholar herbarium newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier mucha chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vinyl vitrail cartograph questline chrono outrun circuit letter grimdark sampler anna_atkins lieder izakaya diags; do
 >   idle-hours render --time 14:15 --theme "$theme" --mode production \
 >     --output "idle_hours/assets/previews/$theme.png"
 > done
