@@ -174,7 +174,7 @@ custom-render frames `astrarium`, `marquee`, `tarot`, `vinyl`, `vitrail`,
 `questline` (8-bit RPG dialogue), `chrono` (16-bit SNES JRPG cutscene),
 `outrun` (1980s synthwave sunset), `sampler` (counted cross-stitch),
 `lieder` (engraved art song), `izakaya` (neon alley),
-`pride` (the six-stripe rainbow flag, flying), the `circuit`
+`pride` (the Progress Pride flag, flying), the `circuit`
 printed-circuit-board theme, and the `diags` calibration panel — see the
 `THEME_ORDER` tuple for the canonical list). Some are simple palette + font
 swaps on the shared literary layout; others (the custom-render frames) own

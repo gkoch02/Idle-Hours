@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import bisect
 import datetime
 import io
 import math
@@ -1205,7 +1206,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # The six-stripe rainbow flag, flying. A custom-render frame
+    # The Progress Pride flag, flying. A custom-render frame
     # (``render_pride_frame``) that bypasses the literary layout entirely — the
     # flag is full-bleed and the quote sits in a white cartouche knocked out of
     # the cloth, so the shared margins / oversized quote marks / debug footer
@@ -19186,16 +19187,24 @@ def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int
 
 
 # ---------------------------------------------------------------------------
-# pride — the six-stripe rainbow flag, flying.
+# pride — the Progress Pride flag, flying.
 #
-# The technical hook is that Gilbert Baker's six-stripe flag is the one banner
-# a Spectra 6 panel can fly essentially at native gamut: red, yellow, green and
-# blue are inks the panel actually carries, and the two that aren't are both
-# already-documented two-ink recipes — orange is the R+Y 5/8:3/8 tangerine that
-# ``deco`` / ``atomic`` / ``grimdark`` use, violet the R+B 1:1 that
-# ``illuminated`` / ``alchemy`` / ``vitrail`` use. So the frame surfaces every
-# chromatic ink the hardware has, at full saturation, without inventing a
-# single new recipe.
+# The technical hook is that this flag is very nearly the one banner a Spectra 6
+# panel can fly at native gamut, and that it surfaces a wider span of the
+# documented palette than anything else in the rotation. Eleven bands: five are
+# native inks (red, yellow, green and blue across the rainbow, white and black
+# in the chevron) and the other four are all already-documented two-ink recipes
+# — orange is the R+Y 5/8:3/8 tangerine ``deco`` / ``atomic`` / ``grimdark``
+# use, violet the R+B 1:1 of ``illuminated`` / ``alchemy`` / ``vitrail``, pink
+# the R+W of ``placard`` / ``chalkboard``, light blue the B+W 1:1 sky blue of
+# ``glacier``, brown the R+G 1:1 sepia of ``saloon`` / ``newsprint``. Every ink
+# the hardware has appears at once, without inventing a single new recipe.
+#
+# The chevron's band order was measured off a reference image rather than
+# recalled: two web searches returned two *different* orders (one putting white
+# between pink and brown, the other light blue innermost) and neither matched.
+# See ``_PRIDE_CHEVRON_INKS`` for the order and ``_PRIDE_CHEVRON_DEPTHS`` for
+# the measured geometry.
 #
 # What is new is the *shading*. Every other theme treats a synthesised colour
 # as a flat constant-density mix. Here the flag has to read as cloth, not as a
@@ -19225,23 +19234,28 @@ def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int
 # The stripe lookup is clamped rather than wrapped, so where the wave carries
 # the top or bottom stripe off-canvas the edge stripe simply fills — the frame
 # reads as a crop of a larger flag, which is more alive than a whole flag
-# floating in a margin.
+# floating in a margin. The chevron rides the same cloth, resolved against the
+# same wave-displaced row — an arrow sitting rigid on a rippling field reads as
+# a decal stuck onto the flag rather than as part of it.
 #
 # The quote sits in a white cartouche knocked out of the cloth (the knockout
 # pattern ``kanagawa`` / ``cartograph`` / ``anna_atkins`` / ``vitrail`` use),
-# lifted off the flag by a black drop-shadow ledge. Body type is Jost, shared
+# lifted off the flag by a black drop-shadow ledge, and placed in the clear
+# rainbow field to the RIGHT of the chevron's point — a canvas-centred card
+# lands exactly on the arrow's tip and swallows the gesture that distinguishes
+# this flag. Body type is Jost, shared
 # with ``bauhaus``: Futura-adjacent geometric sans is the register of the
-# 1970s poster and protest printing Baker's flag came out of, and the two
+# 1970s poster and protest printing the flag came out of, and the two
 # themes are in no danger of being confused (a white-ground minimal grid
 # against a full-bleed flag). The matched time phrase is painted in the
 # flag's own violet so the clock signal is drawn from the subject rather
 # than imposed on it; as in ``questline`` / ``outrun`` / ``marquee`` /
 # ``chrono`` the digital HH:MM is never surfaced.
 #
-# Deliberately *not* done: nothing encodes the hour in the stripes. The count
-# and order of the stripes carry meaning that is not mine to spend on a clock
-# gimmick, so the flag is drawn as the flag and the time is carried by the
-# matched phrase, the way it is everywhere else in the rotation.
+# Deliberately *not* done: nothing encodes the hour in the bands. Their count
+# and order carry meaning that is not a designer's to spend on a clock gimmick,
+# so the flag is drawn as the flag and the time is carried by the matched
+# phrase, the way it is everywhere else in the rotation.
 # ---------------------------------------------------------------------------
 _PRIDE_STRIPES = 6
 # (dark ink, light ink, light density) per stripe, top to bottom: red, orange,
@@ -19255,6 +19269,36 @@ _PRIDE_STRIPE_INKS: tuple[tuple[str, str | None, float], ...] = (
     ("blue", None, 0.0),
     ("red", "blue", 0.5),       # violet — the documented R+B 1:1 recipe
 )
+# The Progress chevron, in the same (dark, light, light density) form, ordered
+# from the innermost band outward — i.e. reading inward from the hoist at
+# mid-height you meet them in this order. Getting that order right needed a
+# primary source: two web searches returned two different orders (one putting
+# white between pink and brown, the other light blue innermost) and the flag
+# belongs to real communities, so it was left unimplemented until the reference
+# image could be measured directly.
+#
+# Two of the five are synthesised, and both are recipes the catalogue already
+# documents. Brown is the R+G 1:1 sepia — worth noting that it is a *better*
+# match here than it looks on a monitor, because the panel's inks are muted
+# (measured red ~#62201E, green ~#35563A), so R+G averages to a genuine dark
+# brown on the panel rather than the olive an RGB preview suggests. The
+# catalogue's note that brown can be "muted further with black" is deliberately
+# not taken up: this brown sits directly against the black band, and a darker
+# brown would stop being distinguishable from it on a six-ink display.
+_PRIDE_CHEVRON_INKS: tuple[tuple[str, str | None, float], ...] = (
+    ("white", None, 0.0),
+    ("white", "red", 0.375),    # pink — R+W, white-dominant for the pale rose
+    ("white", "blue", 0.5),     # light blue — the documented B+W 1:1 sky blue
+    ("red", "green", 0.5),      # brown — the documented R+G 1:1 sepia
+    ("black", None, 0.0),
+)
+# Depth of each chevron band's vertex as a fraction of canvas width, measured
+# off the reference flag (band boundaries at 0.148 / 0.223 / 0.303 / 0.383 /
+# 0.465 of the flag's width). The innermost white is a filled arrow rather than
+# a band, which is why its depth is not simply one fifth.
+_PRIDE_CHEVRON_DEPTHS: tuple[float, ...] = (0.148, 0.223, 0.303, 0.383, 0.465)
+# Clear space between the chevron's point and the quote card.
+_PRIDE_FIELD_GAP = 18
 # Wave terms as (amplitude px, angular frequency per px, y-lean, phase). Two
 # incommensurate frequencies so the cloth billows instead of corrugating.
 _PRIDE_WAVE: tuple[tuple[float, float, float, float], ...] = (
@@ -19297,8 +19341,14 @@ _PRIDE_SHADE_PEAK = 0.20
 # ``_PRIDE_TEXT_MAX`` and the finished card is never smaller than
 # ``_PRIDE_CARD_MIN`` (a card much smaller than its own corner radius stops
 # reading as a card at all).
-_PRIDE_TEXT_MAX = (596, 244)
-_PRIDE_CARD_MIN = (280, 132)
+# The card lives in the rainbow field to the RIGHT of the chevron's point, not
+# centred on the canvas: a centred card would sit exactly on the arrow's tip and
+# swallow the gesture that distinguishes this flag. That costs text width, which
+# is why the maximum is much narrower than a full-bleed frame would allow — the
+# fit loop absorbs it by wrapping to more lines and, for a dense quote, stepping
+# the size down.
+_PRIDE_TEXT_MAX = (322, 316)
+_PRIDE_CARD_MIN = (220, 120)
 _PRIDE_PAD_X = 30
 _PRIDE_PAD_TOP = 24
 _PRIDE_PAD_BOTTOM = 20
@@ -19324,8 +19374,13 @@ def _pride_wave(x: float, y: float) -> tuple[float, float]:
     return displacement, tilt
 
 
+def _pride_chevron_tip(width: int) -> int:
+    """x of the chevron's point — the left edge of the clear rainbow field."""
+    return int(_PRIDE_CHEVRON_DEPTHS[-1] * width)
+
+
 def _pride_paint_flag(image: Image.Image) -> None:
-    """Paint the full-bleed waving six-stripe flag.
+    """Paint the full-bleed waving flag: chevron over rainbow.
 
     Walks the canvas once, resolving each pixel to a stripe (via the wave-
     displaced row), then to an ink (solid, or the stripe's two-ink stipple),
@@ -19337,13 +19392,21 @@ def _pride_paint_flag(image: Image.Image) -> None:
     px = image.load()
     white = SPECTRA6["white"]
     black = SPECTRA6["black"]
-    # A solid stripe is the degenerate partition: its "light" ink is its own ink
+    # A solid band is the degenerate partition: its "light" ink is its own ink
     # and its share is zero, so the same three-way branch below covers both.
-    inks = []
-    for dark, light, density in _PRIDE_STRIPE_INKS:
-        dark_ink = SPECTRA6[dark]
-        inks.append((dark_ink, SPECTRA6[light] if light else dark_ink, density))
+    def _resolve(table):
+        out = []
+        for dark, light, density in table:
+            dark_ink = SPECTRA6[dark]
+            out.append((dark_ink, SPECTRA6[light] if light else dark_ink, density))
+        return out
+
+    inks = _resolve(_PRIDE_STRIPE_INKS)
+    chevron = _resolve(_PRIDE_CHEVRON_INKS)
+    depths = [d * width for d in _PRIDE_CHEVRON_DEPTHS]
+    bands = len(depths)
     stripe_h = height / _PRIDE_STRIPES
+    centre = height / 2.0
     # Normalise the tilt so the steepest fold reaches the configured peak
     # density rather than whatever the amplitude/frequency product happens to be.
     max_tilt = sum(amp * freq for amp, freq, _, _ in _PRIDE_WAVE) or 1.0
@@ -19353,8 +19416,19 @@ def _pride_paint_flag(image: Image.Image) -> None:
         row = BAYER_8x8[y % tile]
         for x in range(width):
             displacement, tilt = _pride_wave(x, y)
-            index = int((y - displacement) / stripe_h)
-            dark, light, light_density = inks[max(0, min(_PRIDE_STRIPES - 1, index))]
+            # The chevron rides the same cloth as the stripes, so it is resolved
+            # against the wave-displaced row too — otherwise the arrow would sit
+            # rigid on a rippling field. Its arms are at 45 degrees (confirmed
+            # off the reference: x + |y - centre| is constant down an arm), so
+            # one distance term places a pixel in the whole nest of Vs.
+            shifted = y - displacement
+            reach = x + abs(shifted - centre)
+            band = bisect.bisect_left(depths, reach)
+            if band < bands:
+                dark, light, light_density = chevron[band]
+            else:
+                index = int(shifted / stripe_h)
+                dark, light, light_density = inks[max(0, min(_PRIDE_STRIPES - 1, index))]
             level = tilt / max_tilt
             if level >= 0.0:
                 lighting, cells = white, round(level * _PRIDE_LIGHT_PEAK * scale)
@@ -19436,7 +19510,14 @@ def _pride_card_rect(layout: dict, width: int, height: int) -> tuple[int, int, i
     # /api/preview thumbnail path renders this frame down to ~60 px tall.
     card_w = min(card_w, max(8, width - 2 * (_PRIDE_SHADOW_OFFSET + 4)))
     card_h = min(card_h, max(8, height - 2 * (_PRIDE_SHADOW_OFFSET + 4)))
-    x0 = (width - card_w) // 2
+    # Centre it in the rainbow field right of the chevron's point rather than on
+    # the canvas, so the arrow stays whole. On a canvas too narrow to hold the
+    # card clear of the chevron (the /api/preview thumbnail path) the clamp
+    # below wins and the card simply overlaps — a legible quote matters more
+    # than an intact graphic at 80 px wide.
+    field_left = _pride_chevron_tip(width) + _PRIDE_FIELD_GAP
+    x0 = field_left + max(0, (width - _PRIDE_SHADOW_OFFSET - 4 - field_left - card_w) // 2)
+    x0 = max(4, min(x0, width - _PRIDE_SHADOW_OFFSET - 4 - card_w))
     y0 = (height - card_h) // 2
     return x0, y0, x0 + card_w, y0 + card_h
 
@@ -19494,7 +19575,7 @@ def _pride_paint_text(image: Image.Image, draw: ImageDraw.ImageDraw, layout: dic
 
 
 def render_pride_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The six-stripe rainbow flag, flying (see the module section comment above).
+    """The Progress Pride flag, flying (see the module section comment above).
 
     ``time_str`` is accepted for dispatch uniformity with the other custom-frame
     painters and deliberately unused: as in ``questline`` / ``chrono`` /

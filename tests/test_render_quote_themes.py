@@ -17,6 +17,7 @@ custom paths add.
 """
 from __future__ import annotations
 
+import bisect
 import json
 import threading
 
@@ -746,7 +747,10 @@ class TestPrideStripeInkRatios:
         """
         max_tilt = sum(amp * freq for amp, freq, _, _ in rq._PRIDE_WAVE)
         sample_y = 460
-        levels = {x: rq._pride_wave(x, sample_y)[1] / max_tilt for x in range(20, 780)}
+        # Only the rainbow field: left of the chevron's point this row is the
+        # black band, which has no violet in it to measure.
+        field_left = rq._pride_chevron_tip(800) + 30
+        levels = {x: rq._pride_wave(x, sample_y)[1] / max_tilt for x in range(field_left, 780)}
         peaks = {
             "lit": max(levels, key=lambda x: levels[x]),
             "shadow": min(levels, key=lambda x: levels[x]),
@@ -757,7 +761,7 @@ class TestPrideStripeInkRatios:
         red = rq.SPECTRA6["red"]
         blue = rq.SPECTRA6["blue"]
         for face, peak_x in peaks.items():
-            x0 = max(0, peak_x - 20)
+            x0 = max(field_left, peak_x - 20)
             reds = blues = 0
             for x in range(x0, min(800, x0 + 40)):
                 for y in range(445, 475):
@@ -774,3 +778,122 @@ class TestPrideStripeInkRatios:
                 f"{levels[peak_x]:+.2f}) is {share:.3f} blue — the fold lighting is "
                 "pulling the hue off violet instead of only its brightness"
             )
+
+
+class TestPrideChevronBands:
+    """The Progress chevron's band order and inks, measured off the canvas.
+
+    This is the part of the flag that could not be implemented from memory. Two
+    web searches returned two *different* orders — one putting white between
+    pink and brown, the other light blue innermost — and neither matched the
+    reference image, whose bands measure (as fractions of flag width) white to
+    0.148, pink to 0.223, light blue to 0.303, brown to 0.383, black to 0.465.
+    Since the flag belongs to real communities, a wrong order is worse than no
+    implementation, so this fences the order rather than trusting the constant
+    table to stay in sync with the docs.
+
+    Each band is identified by its own geometry — ``reach = x + |y - centre|``
+    against the displaced row, the same term the painter uses — rather than by
+    guessing at pixel coordinates, so the assertions survive a wave retune.
+    """
+
+    # Expected (minority ink, minority share) per band, innermost outward.
+    # A share of 0.0 with a None ink means the band is a single native ink.
+    EXPECTED = (
+        ("white", None, 0.0),
+        ("white", "red", 0.375),
+        ("white", "blue", 0.5),
+        ("red", "green", 0.5),
+        ("black", None, 0.0),
+    )
+    TOLERANCE = 0.06
+
+    @staticmethod
+    def _bands(width: int = 800, height: int = 480) -> list[dict]:
+        """Ink histograms per chevron band, bucketed by the painter's own term."""
+        image = rq.Image.new("RGB", (width, height), rq.SPECTRA6["white"])
+        rq._pride_paint_flag(image)
+        px = image.load()
+        names = {v: k for k, v in rq.SPECTRA6.items()}
+        depths = [d * width for d in rq._PRIDE_CHEVRON_DEPTHS]
+        centre = height / 2.0
+        buckets = [{} for _ in depths]
+        for y in range(0, height, 3):
+            for x in range(0, int(depths[-1]) + 1):
+                displacement, _ = rq._pride_wave(x, y)
+                reach = x + abs((y - displacement) - centre)
+                band = bisect.bisect_left(depths, reach)
+                if band >= len(depths):
+                    continue
+                # Skip a margin either side of each boundary: a pixel one cell
+                # from a band edge is genuinely ambiguous under rounding, and
+                # including it would smear neighbouring inks into the histogram.
+                lo = depths[band - 1] if band else 0.0
+                if reach - lo < 4 or depths[band] - reach < 4:
+                    continue
+                ink = names[px[x, y]]
+                buckets[band][ink] = buckets[band].get(ink, 0) + 1
+        return buckets
+
+    def test_band_inks_and_order(self):
+        buckets = self._bands()
+        for index, (base, minority, share) in enumerate(self.EXPECTED):
+            counts = dict(buckets[index])
+            total = sum(counts.values())
+            assert total > 500, f"band {index} too small to measure ({total} px)"
+            # The lighting inks are white and black, so they are only separable
+            # from a band's own inks when the band does not itself use them.
+            if minority is None:
+                dominant = max(counts, key=counts.get)
+                assert dominant == base, (
+                    f"band {index} should be solid {base}, reads mostly {dominant} "
+                    f"(full histogram {counts}) — the chevron order has drifted"
+                )
+                continue
+            chromatic = {k: v for k, v in counts.items() if k not in ("white", "black")}
+            assert chromatic, f"band {index} has no chromatic ink at all: {counts}"
+            expected_chromatic = {i for i in (base, minority) if i not in ("white", "black")}
+            assert set(chromatic) == expected_chromatic, (
+                f"band {index} paints {set(chromatic)}, expected {expected_chromatic} "
+                f"(full histogram {counts}) — bands are out of order or a recipe changed"
+            )
+
+    def test_pink_and_light_blue_are_not_swapped(self):
+        """The specific confusion both web sources got wrong, pinned directly."""
+        buckets = self._bands()
+        pink, light_blue = buckets[1], buckets[2]
+        assert pink.get("red", 0) > 0 and pink.get("blue", 0) == 0, (
+            f"the second band should be pink (white+red), reads {dict(pink)}"
+        )
+        assert light_blue.get("blue", 0) > 0 and light_blue.get("red", 0) == 0, (
+            f"the third band should be light blue (white+blue), reads {dict(light_blue)}"
+        )
+
+    def test_brown_is_the_documented_red_green_sepia(self):
+        """Brown must stay R+G — and must NOT be muted further with black.
+
+        The catalogue offers black as an optional mute for this recipe. It is
+        deliberately declined here: this band sits directly against the black
+        band, and a darker brown stops being distinguishable from it on a
+        six-ink panel. Note the mix looks olive in an RGB preview and reads as a
+        real brown on the panel, whose inks are muted (measured red ~#62201E and
+        green ~#35563A average to ~#4C3B2C against the flag's #613915) — so do
+        not "correct" this from a screenshot.
+        """
+        brown = dict(self._bands()[3])
+        assert brown.get("red", 0) > 0 and brown.get("green", 0) > 0, (
+            f"brown band is not the R+G sepia: {brown}"
+        )
+        ratio = brown["green"] / (brown["red"] + brown["green"])
+        assert abs(ratio - 0.5) <= self.TOLERANCE, (
+            f"brown band is {ratio:.3f} green, expected the documented 1:1 sepia"
+        )
+
+    def test_chevron_clears_the_quote_card(self):
+        """The card must sit in the rainbow field, or the arrow loses its point."""
+        layout_stub = {"quote_h": 60, "credits_h": 20, "credits": [("x", None, (0, 0, 10, 10))], "block_w": 200}
+        rect = rq._pride_card_rect(layout_stub, 800, 480)
+        assert rect[0] >= rq._pride_chevron_tip(800), (
+            f"card starts at x={rect[0]}, chevron point is at "
+            f"x={rq._pride_chevron_tip(800)} — the card is covering the arrow"
+        )
