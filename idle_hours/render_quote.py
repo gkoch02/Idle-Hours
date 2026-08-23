@@ -11,7 +11,7 @@ import re
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
@@ -92,6 +92,8 @@ THEME_ORDER: tuple[str, ...] = (
     "grimdark",
     "sampler",
     "anna_atkins",
+    "lieder",
+    "izakaya",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1159,6 +1161,33 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # Engraved art-song manuscript. A custom-render frame, so these colours
+    # serve only the goodnight / source-card fall-through paths; the frame
+    # itself hardcodes its three-tier ink hierarchy (black plate / maroon
+    # editorial / red voice — see the lieder section comment).
+    "lieder": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Neon alley at night. A custom-render frame, so these colours serve only
+    # the goodnight / source-card fall-through paths; the frame itself paints
+    # its tube cores and blooms directly (see the izakaya section comment).
+    "izakaya": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1599,6 +1628,31 @@ DANCINGSCRIPT_VARIABLE = str(BASE_DIR / "fonts/dancing-script/DancingScript-Vari
 # through Dancing Script Bold (the theme's own body face, so the marks
 # still read as a pen hand) before the shared ornament chain.
 PINYONSCRIPT_REGULAR = str(BASE_DIR / "fonts/pinyon-script/PinyonScript-Regular.ttf")
+
+# Alegreya (Huerta Tipográfica, OFL) — a humanist serif designed specifically
+# for long-form literary setting, with a markedly calligraphic italic. Carries
+# `lieder`: the roman for the sung lyrics (the poem), the bold for the matched
+# phrase, and the italic for the tempo / expression / composer chrome, which is
+# exactly the roman-vs-italic division a real engraved score uses.
+ALEGREYA_REGULAR = str(BASE_DIR / "fonts/alegreya/Alegreya-Regular.ttf")
+ALEGREYA_BOLD = str(BASE_DIR / "fonts/alegreya/Alegreya-Bold.ttf")
+ALEGREYA_ITALIC = str(BASE_DIR / "fonts/alegreya/Alegreya-Italic.ttf")
+# Noto Music (Google, OFL) — a *symbol* face, not a text face: the Unicode
+# Musical Symbols block (U+1D100..U+1D1FF) plus U+2669.. quarter/eighth notes.
+# `lieder` draws its G clef and noteheads from it because a treble clef's
+# spiral is precisely the shape that polygon approximation turns to mush. It is
+# engraved on the standard metric where a five-line staff is one em tall.
+NOTOMUSIC_REGULAR = str(BASE_DIR / "fonts/noto-music/NotoMusic-Regular.ttf")
+
+# Quicksand (Andrew Paglinawan, OFL) — a rounded geometric sans whose monoline
+# strokes and circular terminals are the closest thing in open type to a bent
+# glass tube, which is why `izakaya` sets its neon lettering in it. Deliberately
+# quiet: the glow is the effect, so the letterform underneath has to be a
+# uniform-width tube and nothing more. Distinct from every other sans in the
+# rotation (Inter grotesque, Archivo grotesque, Jost geometric-constructed,
+# Rubik rounded-but-squarer, Antonio condensed, Oxanium techno).
+QUICKSAND_REGULAR = str(BASE_DIR / "fonts/quicksand/Quicksand-Regular.ttf")
+QUICKSAND_BOLD = str(BASE_DIR / "fonts/quicksand/Quicksand-Bold.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2894,6 +2948,66 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    "lieder": {
+        # Alegreya: a literary-text serif for a poem set to music. Roman for
+        # the sung lyric, Bold for the matched phrase (a real weight step on
+        # top of the red voice ink), Italic for every editorial mark — tempo,
+        # expression, composer, plate line — which is the roman/italic split a
+        # real engraved score runs on. Falls back through the bundled EB
+        # Garamond and the system serifs before the Playfair chain so a missing
+        # install still lands on a book serif rather than a display face.
+        "quote_regular": [
+            ALEGREYA_REGULAR,
+            EBGARAMOND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ALEGREYA_BOLD,
+            EBGARAMOND_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        # The italic fills the ornament slot because this theme's "ornament" is
+        # the editorial apparatus, not an oversized quote mark.
+        "ornament": [
+            ALEGREYA_ITALIC,
+            IMFELLENGLISH_ITALIC,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "izakaya": {
+        # Quicksand: rounded monoline geometric sans, the nearest open type gets
+        # to a bent glass tube. Regular for the body, Bold for the matched
+        # phrase — a real weight step underneath the hot yellow/red gas. The
+        # ornament slot holds Yuji Boku, the bundled Japanese brush face, which
+        # is what the shop signs and the lantern's hour numeral are set in
+        # (shared with `kanagawa`, the rotation's only other Japanese register).
+        # Falls back through the system sans chain before the Playfair serifs so
+        # a missing install still lands on a monoline face rather than a
+        # high-contrast serif, which would read as anything but neon.
+        "quote_regular": [
+            QUICKSAND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            QUICKSAND_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            YUJI_BOKU_REGULAR,
+            QUICKSAND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     # sampler stitches text from a Silkscreen pixel-font mask — Regular for the
     # body floss, Bold for the matched-phrase / ornament floss. The fallbacks
     # are a safety net only (non-grid glyphs read wrong as stitches).
@@ -3678,6 +3792,102 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
                 if mx[x, y] >= 128:
                     ax = x + x0
                     px[ax, ay] = light if BAYER_4x4[(ay + oy) % 4][(ax + ox) % 4] < threshold else dark
+
+
+def paint_neon_mask(
+    image: Image.Image,
+    mask: Image.Image,
+    core,
+    glow,
+    *,
+    radius: int = 5,
+    gamma: float = 2.4,
+    cap: float = 0.5,
+    ground=None,
+) -> None:
+    """Paint a glyph/shape mask as a lit neon tube: solid ``core`` strokes
+    wrapped in a ``glow`` bloom stippled onto the surrounding ground.
+
+    The first *glow* effect in the renderer, and the reason it needs one: every
+    other synthesised tone here mixes two inks at a **constant** density to fake
+    a colour the panel lacks. A bloom is the opposite — one ink at a *falling*
+    density, so the eye integrates a gradient out of a binary field. The halo is
+    the glyph mask blurred (``ImageFilter.GaussianBlur``) and then read back as
+    a per-pixel Bayer **density**, which is what turns a hard-edged stroke into
+    something that reads as light spilling off a glass tube at panel distance.
+
+    Tuning, all of it learned the hard way against the 6-ink panel:
+
+    * ``radius`` must stay TIGHT — comparable to the stroke width, not to the
+      text block. A wide blur of a dense line of text is a solid rectangle, so a
+      wide-radius halo paints a uniform slab behind the whole line and reads as
+      a coloured box, not as glow. The halo has to hug each stroke.
+    * ``gamma`` > 1 pulls the mid-tones down so the bloom decays over ~6-10 px
+      instead of plateauing and then cutting off at a visible edge.
+    * ``cap`` keeps the densest ring below solid, so the halo always carries
+      visible stipple texture; a saturated ring reads as a painted outline.
+
+    ``mask`` must be an ``"L"`` image the same size as ``image`` — the two are
+    indexed with shared coordinates. Work is confined to the mask's bounding box
+    grown by ``radius``, so a small mask on a big canvas stays cheap. Pass
+    ``core=None`` to paint only the halo (used for shapes that are drawn
+    separately and just need to be made to glow).
+
+    ``ground`` optionally restricts the halo to pixels currently holding one of
+    those colours, so a later glow can't eat the core strokes or decoration a
+    previous pass already laid down. ``None`` means "paint over anything".
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    width, height = image.size
+    pad = max(2, int(radius * 3))
+    x0 = max(0, bbox[0] - pad)
+    y0 = max(0, bbox[1] - pad)
+    x1 = min(width, bbox[2] + pad)
+    y1 = min(height, bbox[3] + pad)
+    if x1 <= x0 or y1 <= y0:
+        return
+    halo = mask.filter(ImageFilter.GaussianBlur(radius))
+    px = image.load()
+    mp = mask.load()
+    hp = halo.load()
+    for y in range(y0, y1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1):
+            if mp[x, y] > 128:
+                if core is not None:
+                    px[x, y] = core
+                continue
+            level = hp[x, y] / 255.0
+            if level <= 0.02:
+                continue
+            density = min(cap, level ** gamma)
+            if row[x % 4] < density * 16 and (ground is None or px[x, y] in ground):
+                px[x, y] = glow
+
+
+def draw_text_neon(
+    image: Image.Image,
+    xy,
+    text: str,
+    font,
+    core,
+    glow,
+    *,
+    anchor: str | None = None,
+    **kwargs,
+) -> None:
+    """Convenience wrapper: render one string into a mask and bloom it.
+
+    Callers painting several chunks that should share a single bloom (a wrapped
+    quote, a column of sign characters) should build one mask themselves and
+    call ``paint_neon_mask`` once — per-chunk blooms would double-expose where
+    two halos overlap, and each call allocates a full-canvas mask.
+    """
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).text(xy, text, font=font, fill=255, anchor=anchor)
+    paint_neon_mask(image, mask, core, glow, **kwargs)
 
 
 def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
@@ -17619,6 +17829,1281 @@ def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── lieder (engraved art-song manuscript) ───────────────────────────────────
+#
+# The quote as the vocal line of a Lied — a poem set to music. The words are
+# engraved as lyrics beneath a five-line stave, one notehead per word, and the
+# clock is carried by the score's own furniture rather than by digits:
+#
+#   * the TIME SIGNATURE is the hour over 4 (7 o'clock → 7/4), and because a
+#     time signature genuinely governs the measure length, the hour also decides
+#     where the barlines fall — a 3 o'clock page is busy with bars, a 12 o'clock
+#     page is wide open. The pun is the point of the theme.
+#   * the TEMPO MARK is the minute: an Italian tempo word plus a metronome mark
+#     of ``60 + minute`` BPM, which walks Larghetto → Allegro across the hour and
+#     stays inside a musically plausible range at every minute (a literal
+#     ``♩ = 3`` at three minutes past would be nonsense).
+#
+# The digital HH:MM is never printed as digits — the matched time phrase, sung
+# in red under its own slur, carries the readable time the way every other theme
+# in the rotation does. ``time_str`` IS used here (unlike questline / chrono /
+# outrun / marquee, which del-assert it), because that chrome derives from it.
+#
+# Ink discipline. The palette is the white/black/red shared with default /
+# dispatch / saloon / roman / letter / placard, but the *separation* is the one a
+# real engraving uses, and it is deliberately typographic before it is chromatic:
+#   roman black  — the plate proper: staves, clef, noteheads, stems, barlines,
+#                  the sung words, the title, the plate line.
+#   italic black — the editorial apparatus: tempo mark, expression word,
+#                  composer credit. Roman-vs-italic is exactly how a score
+#                  separates "what is printed on the plate" from "what the editor
+#                  tells you about it", and it survives the panel at 13px where a
+#                  synthesised two-ink tone would not: a 50/50 R+K maroon stipple
+#                  was tried here first and shattered Alegreya's italic hairlines
+#                  into speckle after ``snap_image_to_palette`` — the same
+#                  small-glyph failure documented for astrarium / tarot / vitrail.
+#   red          — the sung phrase alone: its lyric, its noteheads, its slur. One
+#                  gesture, unmistakable at panel distance.
+#
+# Layer 0 is the shared 1-in-8 yellow Bayer cream wash (via
+# ``_astrarium_paint_cream_wash``, the recipe dispatch / illuminated / herbarium
+# / mucha / astrarium / vinyl already use) so the page reads as warm manuscript
+# stock rather than the panel's flat white.
+#
+# Music glyphs (G clef, noteheads, the tempo mark's quarter note) come from the
+# bundled Noto Music face rather than hand-built polygons: a treble clef's
+# spiral is exactly the shape polygon approximation renders as mush. Noto Music
+# is engraved on the standard metric where the five-line staff is one em tall (so
+# a glyph drawn at ``size = 4 * gap`` matches a staff whose lines are ``gap``
+# apart) and the font's BASELINE sits on the BOTTOM staff line — measured, not
+# assumed: the barline glyph's ink spans exactly -4.00 .. 0.00 staff spaces about
+# the baseline, and the G clef's spans -5.30 .. +1.60, which is the canonical
+# treble-clef overhang. The clef is therefore drawn with ``anchor="ls"`` straight
+# onto the bottom line and lands correctly by construction; noteheads are
+# ink-bbox-centred on their pitch instead, because their glyph sits wholly above
+# the baseline and only the centring is unambiguous.
+
+_LIEDER_STAVE_GAP = 7            # px between adjacent staff lines (staff = 4×)
+_LIEDER_MARGIN_L = 46
+_LIEDER_MARGIN_R = 754
+_LIEDER_MAX_SYSTEMS = 3
+_LIEDER_BAND = (100, 446)        # vertical band the systems are laid out within
+_LIEDER_HEADROOM = 4.0           # staff spaces reserved above a staff (stems/slur)
+_LIEDER_LYRIC_OFFSET = 5.0       # staff spaces from staff bottom to lyric baseline
+                                 # (clears a down-stem, which hangs 3.4 spaces below a
+                                 #  middle-line notehead, by ~7px at the largest lyric)
+_LIEDER_STEM_LEN = 3.4           # staff spaces
+_LIEDER_PITCH_MIN = -2           # one ledger line below the staff
+_LIEDER_PITCH_MAX = 10           # one ledger line above the staff
+_LIEDER_FONT_MAX = 26
+_LIEDER_FONT_MIN = 13
+_LIEDER_SYSTEM_GAP = 6           # px between one system's lyric and the next staff's headroom
+_LIEDER_MIN_BAR_SPACING = 30     # px; see the barline comment in _lieder_paint_system
+# Melodic steps in staff positions (a "position" is a half-space: 1 = the next
+# line-or-space up). Weighted toward stepwise motion the way a singable vocal
+# line moves — a uniform choice over the range reads as random noise, not melody.
+_LIEDER_MELODY_STEPS = (-4, -3, -2, -2, -1, -1, -1, 0, 1, 1, 1, 2, 2, 3, 4)
+# Italian tempo words, one per 12-minute band; paired with ♩ = 60 + minute so
+# the word and the metronome figure always agree.
+_LIEDER_TEMPO_WORDS = ("Larghetto", "Andante", "Moderato", "Allegretto", "Allegro")
+# Expression marks for the second system, chosen by the per-quote seed.
+_LIEDER_EXPRESSION = ("dolce", "espressivo", "cantabile", "sotto voce", "teneramente", "con moto")
+_MUSIC_G_CLEF = "\U0001D11E"
+_MUSIC_NOTEHEAD = "\U0001D158"
+_MUSIC_NOTEHEAD_VOID = "\U0001D157"   # half / dotted half
+# Rests, longest first — the greedy set used to pad an incomplete final bar.
+_MUSIC_RESTS = ((4.0, "\U0001D13B"), (2.0, "\U0001D13C"), (1.0, "\U0001D13D"), (0.5, "\U0001D13E"))
+_MUSIC_QUARTER_NOTE = "♩"
+
+
+def _lieder_seed(quote_row: dict) -> int:
+    """Stable 32-bit seed for the melodic contour and expression mark.
+
+    ``hash()`` is PYTHONHASHSEED-salted, so a melody seeded from it would differ
+    between renders of the same quote — breaking both the golden-image fixture
+    and run_clock's "quote unchanged, skip the redraw" dedup. Uses an FNV-1a
+    walk over the row identity instead, which is stable across processes (the
+    same reason ``_vinyl_paint_spec_line`` derives its running time from an
+    ord() sum rather than from ``hash()``).
+    """
+    basis = f"{quote_row.get('source_id')}:{quote_row.get('line_number')}:{quote_row.get('display_quote')}"
+    digest = 2166136261
+    for ch in basis:
+        digest = ((digest ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    return digest
+
+
+def _lieder_clock(time_str: str) -> tuple[int, int]:
+    """``(hour 1..12, minute 0..59)`` parsed defensively from ``HH:MM``.
+
+    Preview and source-card renders can reach this with an odd string; a bad
+    parse falls back to 12/00 rather than raising into the render path.
+    """
+    try:
+        hh, mm = time_str.split(":")[:2]
+        hour = int(hh) % 12 or 12
+        minute = max(0, min(59, int(mm)))
+    except (AttributeError, ValueError):
+        return 12, 0
+    return hour, minute
+
+
+# Words the syllabifier below gets wrong, chosen by scanning the 150 most
+# frequent multi-syllable words in the committed corpus rather than invented.
+# Every hyphenation engine ships a list like this — TeX calls it
+# ``\hyphenation{}`` — because English orthography defeats any rule set at the
+# margins. Keep it small and evidence-driven: if a word is not actually frequent
+# in ``quote_database.jsonl`` it does not belong here.
+_LIEDER_SYLLABLE_EXCEPTIONS = {
+    "another": ("an", "oth", "er"),
+    "business": ("busi", "ness"),
+    "curious": ("cu", "ri", "ous"),
+    "eleven": ("e", "lev", "en"),
+    "entirely": ("en", "tire", "ly"),
+    "exactly": ("ex", "act", "ly"),
+    "precisely": ("pre", "cise", "ly"),
+    "quiet": ("qui", "et"),
+    "quietly": ("qui", "et", "ly"),
+    "serious": ("se", "ri", "ous"),
+    "something": ("some", "thing"),
+    "sometimes": ("some", "times"),
+    "somewhere": ("some", "where"),
+    "therefore": ("there", "fore"),
+    "various": ("va", "ri", "ous"),
+}
+# Consonant pairs that are one sound and must never be split across syllables.
+_LIEDER_DIGRAPHS = ("th", "sh", "ch", "wh", "ph", "gh", "ck", "ng", "qu")
+_LIEDER_VOWELS = frozenset("aeiouy")
+# Unstressed function words — set to a weak, short note.
+_LIEDER_FUNCTION_WORDS = frozenset(
+    "a an the of and to in is was were it its that this these those his her their they them "
+    "he she we you i be been am are had has have do did for with on at as by but or from not "
+    "no so then than there which who what when all one up out into upon own who's".split()
+)
+# Prefixes that carry no stress, so the stress falls on the SECOND syllable
+# (a-bout, be-fore, re-turn). Without this every polysyllable would be set with
+# a long first note, which is wrong for a large slice of ordinary English.
+_LIEDER_WEAK_PREFIXES = ("a", "be", "re", "de", "con", "ex", "in", "un", "for", "to", "per", "pro")
+_LIEDER_PHRASE_END = ".,;:!?—"
+
+
+def _lieder_syllables(word: str) -> list[str]:
+    """Split one word into display syllables.
+
+    A heuristic, deliberately: a correct English syllabifier needs a
+    pronunciation dictionary, and the failure that matters musically is the
+    *count* (it decides how many notes the word gets), not the exact split
+    point — a reader forgives ``ga-ther`` for ``gath-er``, but a three-note
+    setting of a two-syllable word is simply wrong. Measured against the 150
+    most frequent multi-syllable words in the committed corpus, plus the
+    exception table above for the rest.
+
+    Rules, in the order they matter: ``qu`` is a consonant (so ``quiet`` has
+    one vowel run, not two); a final silent ``e`` is not a syllable (``time``)
+    unless it is the ``-le`` of ``ta-ble``; ``-ed`` is silent except after t/d
+    (``slipped`` is one syllable, ``wanted`` two); ``-es`` is silent except
+    after a sibilant; a consonant pair that is a digraph never splits; a
+    doubled consonant always splits between the pair; and a consonant+``le``
+    ending takes the consonant with it.
+    """
+    core = "".join(ch for ch in word if ch.isalpha() or ch == "'")
+    if len(core) <= 3:
+        return [word]
+    low = core.lower()
+    if low in _LIEDER_SYLLABLE_EXCEPTIONS:
+        lengths = [len(p) for p in _LIEDER_SYLLABLE_EXCEPTIONS[low]]
+        cuts, run = [], 0
+        for length in lengths[:-1]:
+            run += length
+            cuts.append(run)
+        return _lieder_apply_cuts(word, cuts)
+
+    groups, i = [], 0
+    while i < len(low):
+        if low[i] in _LIEDER_VOWELS:
+            if low[i] == "u" and i and low[i - 1] == "q":   # "qu" is a consonant
+                i += 1
+                continue
+            j = i
+            while j < len(low) and low[j] in _LIEDER_VOWELS:
+                if low[j] == "u" and low[j - 1] == "q":
+                    break
+                j += 1
+            groups.append((i, j))
+            i = j
+        else:
+            i += 1
+    if len(groups) < 2:
+        return [word]
+
+    le_ending = len(low) > 3 and low.endswith("le") and low[-3] not in _LIEDER_VOWELS
+    if not le_ending and low.endswith("e") and groups[-1] == (len(low) - 1, len(low)):
+        groups.pop()
+    if len(groups) > 1 and low.endswith("ed") and low[-3:-2] not in ("t", "d"):
+        if groups[-1][0] == len(low) - 2:
+            groups.pop()
+    if len(groups) > 1 and low.endswith("es") and low[-3:-2] not in ("s", "z", "x", "h", "c", "i"):
+        if groups[-1][0] == len(low) - 2:
+            groups.pop()
+    if len(groups) < 2:
+        return [word]
+
+    cuts = []
+    for (_, end_a), (start_b, _) in zip(groups, groups[1:]):
+        run = low[end_a:start_b]
+        n = len(run)
+        if le_ending and start_b == len(low) - 1 and n >= 2:
+            cut = start_b - 2                       # ta-ble, lit-tle, pos-si-ble
+        elif n <= 1:
+            cut = end_a                             # o-ver
+        elif n == 2:
+            cut = end_a if run in _LIEDER_DIGRAPHS else end_a + 1   # an-oth-er / af-ter
+        elif run[0] == run[1]:
+            cut = end_a + 2                         # still-ness
+        elif run[1:3] in _LIEDER_DIGRAPHS:
+            cut = end_a + 1
+        elif run[:2] in _LIEDER_DIGRAPHS:
+            cut = end_a + 2
+        else:
+            cut = end_a + 1
+        cuts.append(cut)
+    kept, prev = [], 0
+    for cut in cuts:
+        # Never strand a fragment of under two letters — it is not a syllable
+        # and it looks like a typo under a notehead.
+        if cut - prev >= 2 and len(low) - cut >= 2:
+            kept.append(cut)
+            prev = cut
+    return _lieder_apply_cuts(word, kept) if kept else [word]
+
+
+def _lieder_apply_cuts(word: str, cuts: list[int]) -> list[str]:
+    """Slice ``word`` at cut positions expressed in *letters-only* coordinates.
+
+    The cuts are computed against the alphabetic core, but the displayed word
+    still carries its punctuation ("o'clock,"), so the indices are mapped back
+    onto the original string before slicing.
+    """
+    if not cuts:
+        return [word]
+    positions, seen = [], 0
+    for index, ch in enumerate(word):
+        if seen in cuts and ch.isalpha():
+            positions.append(index)
+            cuts = [c for c in cuts if c != seen]
+        if ch.isalpha() or ch == "'":
+            seen += 1
+    pieces, start = [], 0
+    for pos in positions:
+        if pos > start:
+            pieces.append(word[start:pos])
+            start = pos
+    pieces.append(word[start:])
+    return [p for p in pieces if p] or [word]
+
+
+def _lieder_notes(quote_row: dict) -> list[dict]:
+    """Build the per-syllable note list: one dict per note, in singing order.
+
+    Each carries what the later passes need — ``matched`` (inside the sung time
+    phrase), ``hyphen`` (another syllable of the same word follows, so a lyric
+    hyphen is drawn), ``breath`` (a phrase boundary follows) and ``stress``
+    (2 phrase-final, 1 stressed, 0 weak), which is what the rhythm pass turns
+    into note durations.
+    """
+    text = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    notes: list[dict] = []
+    word_index = 0
+    for chunk, matched in tokenize_quote(text, quote_row.get("matched_text") or ""):
+        for word in chunk.split():
+            bare = word.strip(_LIEDER_PHRASE_END + "\"'”“’")
+            low = "".join(ch for ch in bare if ch.isalpha()).lower()
+            pieces = _lieder_syllables(word)
+            ends_phrase = any(word.endswith(ch) for ch in _LIEDER_PHRASE_END)
+            weak_word = low in _LIEDER_FUNCTION_WORDS
+            # Stress lands on the second syllable when the word opens with an
+            # unstressed prefix (a-BOUT, be-FORE, re-TURN).
+            accent = 0
+            if len(pieces) > 1 and any(low.startswith(p) for p in _LIEDER_WEAK_PREFIXES):
+                accent = 1
+            for position, piece in enumerate(pieces):
+                last = position == len(pieces) - 1
+                if weak_word:
+                    stress = 0
+                elif position == accent:
+                    stress = 1
+                else:
+                    stress = 0
+                if last and ends_phrase:
+                    stress = 2
+                notes.append({
+                    "text": piece,
+                    "matched": matched,
+                    "hyphen": not last,
+                    "breath": last and ends_phrase,
+                    "stress": stress,
+                    "word": word_index,
+                })
+            word_index += 1
+    if notes:
+        notes[-1]["stress"] = 2
+        notes[-1]["breath"] = False
+    return notes
+
+
+def _lieder_is_dotted(beats: float) -> bool:
+    """A dot adds half again, so 1.5 (dotted quarter) and 3.0 (dotted half)."""
+    return abs(beats - 1.5) < 1e-9 or abs(beats - 3.0) < 1e-9
+
+
+def _lieder_rhythm(notes: list[dict], numerator: int) -> None:
+    """Assign each note a duration in beats and mark where barlines fall.
+
+    Durations come from stress: a phrase-final syllable is held (a dotted half
+    at the very end), a stressed syllable takes a quarter, a weak one an
+    eighth. That is what gives the line speech rhythm instead of the flat
+    stream of equal notes an earlier revision drew.
+
+    Bars are then filled to *exactly* ``numerator`` beats. A note is shortened
+    rather than allowed to overflow, because a note that straddles a barline
+    has to be written as a tie, and an untied one is simply wrong notation.
+    Shortening is invisible musically — it just means a held syllable resolves
+    on the barline, which is where it would naturally fall anyway.
+    """
+    remaining = float(numerator)
+    for index, note in enumerate(notes):
+        if remaining <= 1e-9:
+            remaining = float(numerator)
+            note["bar"] = index > 0
+        else:
+            note["bar"] = False
+        if note["stress"] >= 2:
+            want = 3.0 if index == len(notes) - 1 else 2.0
+        elif note["stress"] == 1:
+            want = 1.0
+        else:
+            want = 0.5
+        options = [d for d in (3.0, 2.0, 1.0, 0.5) if d <= remaining + 1e-9]
+        beats = next((d for d in options if d <= want), options[-1] if options else 0.5)
+        note["beats"] = beats
+        note["dotted"] = _lieder_is_dotted(beats)
+        remaining -= beats
+    # Fill the last bar. A piece that stops partway through a measure is the one
+    # rhythmic defect a musician spots by counting rather than listening.
+    #
+    # Two steps, because a single notehead can only express a few durations. An
+    # earlier revision did only the first and silently gave up whenever the
+    # remainder was not one of them — which left the final bar short on 51% of
+    # (row, meter) pairs across the committed corpus, rising to 83% at 12/4,
+    # while the docs claimed bars always fill exactly. Growing the note handles
+    # the small remainders; rests handle everything else, which is exactly what
+    # an engraver does when a voice stops mid-measure.
+    if notes and remaining > 1e-9:
+        last = notes[-1]
+        for grown in (3.0, 2.0, 1.5, 1.0):
+            if grown > last["beats"] and grown <= last["beats"] + remaining + 1e-9:
+                remaining -= grown - last["beats"]
+                last["beats"] = grown
+                last["dotted"] = _lieder_is_dotted(grown)
+                break
+        while remaining > 1e-9:
+            value = next((v for v, _ in _MUSIC_RESTS if v <= remaining + 1e-9), None)
+            if value is None:
+                break
+            notes.append({
+                "text": "", "matched": False, "hyphen": False, "breath": False,
+                "stress": 0, "word": last["word"], "beats": value, "dotted": False,
+                "bar": False, "rest": True, "pitch": 4,
+            })
+            remaining -= value
+
+
+def _lieder_chord_tone(pitch: int) -> int:
+    """Nudge a pitch onto the nearest tonic-triad degree (C, E or G).
+
+    In this key (no key signature, so C major) every staff position is a
+    diatonic degree, and the triad sits on degrees 0/2/4 of the seven. Any
+    pitch is at most one step from one of them, so this never leaps.
+    """
+    for delta in (0, -1, 1, -2, 2):
+        candidate = pitch + delta
+        if _LIEDER_PITCH_MIN <= candidate <= _LIEDER_PITCH_MAX and (candidate + 2) % 7 in (0, 2, 4):
+            return candidate
+    return pitch
+
+
+def _lieder_contour(seed: int, notes: list[dict]) -> None:
+    """Give the line a singable shape, and make it end like a piece of music.
+
+    A weighted random walk on its own wanders and then simply stops, which is
+    what the first revision of this theme did and why it sounded aimless. Four
+    rules turn the walk into something with direction:
+
+    * **Downbeat gravity** — the first note of each bar is pulled onto a tonic
+      triad degree, so the line keeps returning to the chord and the ear hears
+      a key rather than a drift.
+    * **Leap resolution** — after any leap of three degrees or more the next
+      move is a step in the *opposite* direction. This is the oldest rule in
+      voice-leading and it is most of what makes a line feel sung rather than
+      generated.
+    * **Phrase resolution** — a syllable that ends a phrase settles onto a
+      chord tone, so each clause comes to rest before the next begins.
+    * **Cadence** — the final note lands on the tonic, approached by step. This
+      is the single biggest difference: a melody that ends anywhere else sounds
+      interrupted, however well-formed the rest of it is.
+
+    The matched time phrase keeps its upward bias, so the sung phrase still
+    peaks; the restoring pull at either edge of the range still applies.
+    """
+    rng = random.Random(seed)
+    pitch = _lieder_chord_tone(4)
+    previous_step = 0
+    # Trailing rests carry no pitch, and the cadence must land on the last sung
+    # syllable rather than on a rest. Mutating these dicts still updates `notes`.
+    sung = [n for n in notes if not n.get("rest")]
+    total = len(sung)
+    for index, note in enumerate(sung):
+        if index == 0 or note.get("bar"):
+            pitch = _lieder_chord_tone(pitch)
+        note["pitch"] = pitch
+        if index == total - 1:
+            break
+        if abs(previous_step) >= 3:
+            step = -1 if previous_step > 0 else 1
+        elif note["breath"]:
+            step = _lieder_chord_tone(pitch) - pitch or rng.choice((-1, 1))
+        else:
+            step = rng.choice(_LIEDER_MELODY_STEPS)
+            if note["matched"] and step < 0 and pitch < 7:
+                step = -step
+        if pitch >= 8 and step > 0:
+            step = -step
+        elif pitch <= 0 and step < 0:
+            step = -step
+        previous_step = step
+        pitch = max(_LIEDER_PITCH_MIN, min(_LIEDER_PITCH_MAX, pitch + step))
+    if total >= 2:
+        tonic = min((-2, 5), key=lambda t: abs(t - sung[-1]["pitch"]))
+        sung[-1]["pitch"] = tonic
+        approach = sung[-2]["pitch"]
+        if abs(approach - tonic) != 1:
+            sung[-2]["pitch"] = max(_LIEDER_PITCH_MIN, min(_LIEDER_PITCH_MAX,
+                                                           tonic + (1 if approach >= tonic else -1)))
+
+
+def _lieder_slot(note: dict, min_gap: int, base: float) -> float:
+    """Horizontal space one note owns.
+
+    Two claims, whichever is larger: the syllable's own text plus breathing
+    room, and a duration-proportional share. Real engraving spaces notes by
+    duration but *compresses* the relation — a half note gets more room than an
+    eighth, nowhere near four times more — which is what the 0.6 exponent is.
+    """
+    if note.get("rest"):
+        return base * (note["beats"] ** 0.6)
+    return max(note["width"] + min_gap * 0.75, base * (note["beats"] ** 0.6))
+
+
+def _lieder_wrap(notes: list[dict], widths: list[int], min_gap: int, base: float) -> list[list[dict]]:
+    """Break the notes into systems, never splitting a word across two staves.
+
+    A real vocal score *will* break a word across a system with a trailing
+    hyphen, but it needs the continuation hyphen at the line head to stay
+    readable; keeping a word whole is the simpler contract and costs only a
+    little justification slack.
+    """
+    lines: list[list[dict]] = []
+    current: list[dict] = []
+    current_w = 0.0
+    index = 0
+    while index < len(notes):
+        word = notes[index]["word"]
+        group = []
+        while index < len(notes) and notes[index]["word"] == word:
+            group.append(notes[index])
+            index += 1
+        group_w = sum(_lieder_slot(n, min_gap, base) for n in group)
+        avail = widths[min(len(lines), len(widths) - 1)]
+        if current and current_w + group_w > avail:
+            lines.append(current)
+            current, current_w = [], 0.0
+        current.extend(group)
+        current_w += group_w
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _lieder_system_core(size: int, gap: int) -> int:
+    """Vertical extent of one system: headroom + staff + lyric descent."""
+    return int((_LIEDER_HEADROOM + 4 + _LIEDER_LYRIC_OFFSET) * gap) + size
+
+
+def _lieder_fit(draw, notes: list[dict], widths: list[int], gap: int) -> tuple:
+    """Shrink the lyric font until the syllables fit the page as engraved systems.
+
+    Two constraints, both checked per size: the notes must wrap into at most
+    ``_LIEDER_MAX_SYSTEMS`` staves, and those staves must fit the vertical band
+    — a system is much taller than a line of prose (headroom for stems and the
+    slur above, the staff, then the lyric below), so a size that wraps to three
+    lines can still overrun the page.
+
+    The lyric size is capped in a narrow band rather than scaled freely the way
+    ``fit_quote`` scales the literary layout: in engraving the lyric size tracks
+    the staff size, so letting a short quote balloon to 60pt over a 28px staff
+    would read as a caption pasted onto a score. Variance is absorbed by the
+    number of systems instead.
+    """
+    regular_chain = theme_font_candidates("lieder", "quote_regular")
+    bold_chain = theme_font_candidates("lieder", "quote_bold")
+    band_height = _LIEDER_BAND[1] - _LIEDER_BAND[0]
+    lines: list = []
+    size = _LIEDER_FONT_MIN
+    regular = load_font(regular_chain, size=size)
+    bold = load_font(bold_chain, size=size)
+    min_gap = 0
+    for size in range(_LIEDER_FONT_MAX, _LIEDER_FONT_MIN - 1, -1):
+        regular = load_font(regular_chain, size=size)
+        bold = load_font(bold_chain, size=size)
+        min_gap = max(7, int(size * 0.38))
+        base = min_gap * 2.1
+        for note in notes:
+            note["width"] = int(draw.textlength(note["text"], font=bold if note["matched"] else regular))
+        lines = _lieder_wrap(notes, widths, min_gap, base)
+        if len(lines) > _LIEDER_MAX_SYSTEMS:
+            continue
+        block = len(lines) * _lieder_system_core(size, gap) + (len(lines) - 1) * _LIEDER_SYSTEM_GAP
+        if block <= band_height:
+            return regular, bold, lines, size, min_gap, base
+    if len(lines) > _LIEDER_MAX_SYSTEMS:
+        lines = lines[:_LIEDER_MAX_SYSTEMS]
+        if lines and lines[-1]:
+            tail = lines[-1][-1]
+            tail["text"] = tail["text"].rstrip(".,;:!?") + "…"
+            tail["hyphen"] = False
+            tail["width"] = int(draw.textlength(tail["text"], font=bold if tail["matched"] else regular))
+    return regular, bold, lines, size, min_gap, max(7, int(size * 0.38)) * 2.1
+
+
+def _lieder_pitch_y(staff_top: float, pitch: int, gap: int) -> float:
+    """Staff position → y. Position 0 is the bottom line, 8 the top line."""
+    return staff_top + 4 * gap - pitch * (gap / 2.0)
+
+
+def _lieder_draw_glyph(draw, ch: str, font, cx: float, cy: float, fill) -> None:
+    """Draw a music glyph with its ink bbox centred on ``(cx, cy)``."""
+    x0, y0, x1, y1 = font.getbbox(ch, anchor="ls")
+    draw.text((cx - (x0 + x1) / 2.0, cy - (y0 + y1) / 2.0), ch, font=font, fill=fill, anchor="ls")
+
+
+
+def _lieder_paint_header(draw, quote_row: dict, time_str: str) -> None:
+    """Title (centred), composer credit and tempo mark — the head of a song.
+
+    Follows the standard engraved layout: title centred at the top, the composer
+    flush right below it, and the tempo mark flush left at the same height,
+    immediately above the first system.
+    """
+    BLACK = SPECTRA6["black"]
+    width = 800  # header is laid out against the canonical canvas; see render_lieder_frame
+    _, minute = _lieder_clock(time_str)
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    author = (quote_row.get("author") or "").strip()
+
+    if title:
+        font = load_font(theme_font_candidates("lieder", "card_quote_bold"), size=24)
+        text = title if len(title) <= 46 else title[:45].rstrip(" ,;:") + "…"
+        draw.text((width / 2, 44), text, font=font, fill=BLACK, anchor="ms")
+
+    italic = load_font(theme_font_candidates("lieder", "ornament"), size=16)
+    if author:
+        name = author if len(author) <= 34 else author[:33].rstrip(" ,;:") + "…"
+        draw.text((_LIEDER_MARGIN_R, 82), name, font=italic, fill=BLACK, anchor="rs")
+
+    # Tempo: Italian word + a real quarter-note glyph + the metronome figure.
+    word = _LIEDER_TEMPO_WORDS[min(len(_LIEDER_TEMPO_WORDS) - 1, minute // 12)]
+    x = _LIEDER_MARGIN_L
+    draw.text((x, 82), word, font=italic, fill=BLACK, anchor="ls")
+    x += draw.textlength(word, font=italic) + 12
+    note_font = load_font([NOTOMUSIC_REGULAR], size=24)
+    _lieder_draw_glyph(draw, _MUSIC_QUARTER_NOTE, note_font, x, 76, BLACK)
+    draw.text((x + 10, 82), f"= {60 + minute}", font=italic, fill=BLACK, anchor="ls")
+
+
+def _lieder_paint_clef_and_meter(draw, x: float, staff_top: float, gap: int, numerator: int, first: bool) -> float:
+    """Draw the G clef (and, on the first system, the time signature).
+
+    Returns the x at which the notes may begin. The clef is drawn with its
+    baseline on the bottom staff line — the metric Noto Music is engraved to —
+    so its spiral lands on the G line without any hand-tuned offset.
+    """
+    BLACK = SPECTRA6["black"]
+    staff_bottom = staff_top + 4 * gap
+    clef_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    cx0, _, cx1, _ = clef_font.getbbox(_MUSIC_G_CLEF, anchor="ls")
+    draw.text((x, staff_bottom), _MUSIC_G_CLEF, font=clef_font, fill=BLACK, anchor="ls")
+    x += (cx1 - cx0) + gap
+
+    if first:
+        # Numerator centred between the top and middle lines, denominator
+        # between the middle and bottom lines — the standard placement.
+        meter_font = load_font(theme_font_candidates("lieder", "card_quote_bold"), size=int(gap * 3.0))
+        widest = max(draw.textlength(str(numerator), font=meter_font), draw.textlength("4", font=meter_font))
+        for text, cy in ((str(numerator), staff_top + gap), ("4", staff_top + 3 * gap)):
+            draw.text((x + widest / 2.0, cy), text, font=meter_font, fill=BLACK, anchor="mm")
+        x += widest + gap * 1.6
+    return x
+
+
+def _lieder_beam_groups(line: list[dict]) -> list[list[int]]:
+    """Index runs of consecutive eighths that should share a beam.
+
+    Modern vocal engraving beams eighths even across separate syllables; the
+    older convention of flagging every syllable was abandoned because a page of
+    single flags reads as noise — which is exactly what it did here at a 7 px
+    staff gap. Runs break at a barline (a beam never crosses one) and are capped
+    at four so a long stream of weak syllables still groups by beat rather than
+    growing one enormous beam.
+    """
+    groups: list[list[int]] = []
+    run: list[int] = []
+    for index, note in enumerate(line):
+        is_eighth = abs(note["beats"] - 0.5) < 1e-9 and not note.get("rest")
+        if run and (not is_eighth or (index > 0 and note.get("bar")) or len(run) >= 4):
+            if len(run) >= 2:
+                groups.append(run)
+            run = []
+        if is_eighth:
+            run.append(index)
+    if len(run) >= 2:
+        groups.append(run)
+    return groups
+
+
+def _lieder_paint_head(draw, cx: float, note_y: float, gap: int, note: dict, fill) -> float:
+    """Notehead, ledger line and augmentation dot. Returns the notehead width.
+
+    Notehead shape carries the duration the way it does on paper: void for a
+    half or dotted half, filled otherwise.
+    """
+    note_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    glyph = _MUSIC_NOTEHEAD_VOID if note["beats"] >= 2.0 else _MUSIC_NOTEHEAD
+    nx0, _, nx1, _ = note_font.getbbox(glyph, anchor="ls")
+    head_w = max(4.0, float(nx1 - nx0))
+    _lieder_draw_glyph(draw, glyph, note_font, cx, note_y, fill)
+
+    if note["pitch"] <= _LIEDER_PITCH_MIN or note["pitch"] >= _LIEDER_PITCH_MAX:
+        half = head_w / 2.0 + 3
+        draw.line((cx - half, note_y, cx + half, note_y), fill=fill, width=1)
+
+    if note["dotted"]:
+        # The dot always sits in a space, so a note on a line pushes it up one.
+        dot_y = note_y if note["pitch"] % 2 else note_y - gap / 2.0
+        dot_x = cx + head_w / 2.0 + 3
+        draw.ellipse((dot_x - 1.5, dot_y - 1.5, dot_x + 1.5, dot_y + 1.5), fill=fill)
+    return head_w
+
+
+def _lieder_paint_stem(draw, cx: float, note_y: float, gap: int, head_w: float,
+                       down: bool, tip_y: float, flag: bool, fill) -> None:
+    """Stem from the notehead to ``tip_y``, with a flag when it stands alone.
+
+    Stems attach on the left of the head going down and on the right going up,
+    which is the engraving convention. A flag always hangs to the *right* of the
+    stem regardless of stem direction — that is fixed, not a mirror.
+    """
+    sx = cx - head_w / 2.0 + 1 if down else cx + head_w / 2.0 - 1
+    draw.line((sx, note_y, sx, tip_y), fill=fill, width=1)
+    if not flag:
+        return
+    direction = -1.0 if down else 1.0
+    draw.polygon(
+        [(sx, tip_y),
+         (sx + gap * 0.85, tip_y + direction * gap * 0.55),
+         (sx + gap * 0.75, tip_y + direction * gap * 1.45),
+         (sx + gap * 0.15, tip_y + direction * gap * 0.8)],
+        fill=fill,
+    )
+
+
+def _lieder_paint_rest(draw, cx: float, staff_top: float, gap: int, beats: float, fill) -> None:
+    """Draw the rest glyph for ``beats``, at its conventional staff position.
+
+    Rests are not centred alike: a whole rest hangs *below* the fourth line, a
+    half rest sits *on top of* the middle line, and quarter / eighth rests
+    centre on the middle line. Getting this right costs two extra branches and
+    is the difference between a rest that looks placed and one that looks
+    dropped in.
+    """
+    glyph = next((g for value, g in _MUSIC_RESTS if abs(value - beats) < 1e-9), None)
+    if glyph is None:
+        return
+    font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    x0, _, x1, y1 = font.getbbox(glyph, anchor="ls")
+    if beats >= 2.0:
+        # Ink bottom rests on the fourth line (whole) or the middle line (half).
+        line = 6 if beats >= 4.0 else 4
+        pen_y = _lieder_pitch_y(staff_top, line, gap) - y1
+        draw.text((cx - (x0 + x1) / 2.0, pen_y), glyph, font=font, fill=fill, anchor="ls")
+    else:
+        _lieder_draw_glyph(draw, glyph, font, cx, _lieder_pitch_y(staff_top, 4, gap), fill)
+
+
+def _lieder_paint_breath(draw, x: float, staff_top: float, gap: int, fill) -> None:
+    """Breath mark: the comma above the staff that tells a singer to breathe."""
+    top = staff_top - gap * 1.3
+    draw.line((x, top, x - gap * 0.35, top + gap * 0.75), fill=fill, width=1)
+    draw.line((x, top, x + gap * 0.2, top + gap * 0.3), fill=fill, width=1)
+
+
+def _lieder_paint_slur(draw, xs: list[float], ys: list[float], gap: int) -> None:
+    """Phrase slur arcing over the matched-phrase noteheads.
+
+    A slur needs two notes to bind, so a single-syllable phrase gets none. The
+    arc box is validated before drawing — ``draw.arc`` raises on an inverted
+    box, which a thumbnail-sized preview can produce.
+    """
+    if len(xs) < 2:
+        return
+    x0, x1 = min(xs), max(xs)
+    if x1 - x0 < 4:
+        return
+    rise = max(4, int(gap * 0.9))
+    top = min(ys) - gap * 2.2
+    box = (x0, top - rise, x1, top + rise)
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return
+    draw.arc(box, start=180, end=360, fill=SPECTRA6["red"], width=2)
+
+
+def _lieder_paint_system(draw, ctx: dict, index: int, line: list[dict]) -> None:
+    """Engrave one staff: lines, clef/meter, barlines, notes, lyrics, slur.
+
+    Geometry is resolved for the whole system first, because beaming needs to
+    know where every stem in a group lands before any of them can be drawn.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    gap = ctx["gap"]
+    staff_top = ctx["staff_tops"][index]
+    staff_bottom = staff_top + 4 * gap
+    last_system = index == len(ctx["staff_tops"]) - 1
+
+    for i in range(5):
+        y = staff_top + i * gap
+        draw.line((_LIEDER_MARGIN_L, y, _LIEDER_MARGIN_R, y), fill=BLACK, width=1)
+
+    x = _lieder_paint_clef_and_meter(draw, _LIEDER_MARGIN_L + 5, staff_top, gap, ctx["numerator"], index == 0)
+
+    # Justify: hand the leftover width back to the notes in proportion to the
+    # space each already claims, so a held note keeps its extra room.
+    slots = [_lieder_slot(n, ctx["min_gap"], ctx["base"]) for n in line]
+    avail = _LIEDER_MARGIN_R - x - gap * 2
+    natural = sum(slots)
+    if natural > 0 and avail > natural:
+        stretch = min(avail / natural, 2.4 if last_system else 6.0)
+        slots = [s * stretch for s in slots]
+
+    # Pass 1: where every note sits.
+    xs: list[float] = []
+    ys: list[float] = []
+    cursor = x
+    for note, slot in zip(line, slots):
+        xs.append(cursor + slot / 2.0)
+        ys.append(_lieder_pitch_y(staff_top, note["pitch"], gap))
+        cursor += slot
+
+    # Pass 2: beam groups. A whole group shares one stem direction (majority
+    # side of the middle line) and one horizontal beam clear of every head in it.
+    stem_h = _LIEDER_STEM_LEN * gap
+    beamed: dict[int, tuple[bool, float]] = {}
+    beams: list[tuple[float, float, float, bool]] = []
+    for run in _lieder_beam_groups(line):
+        down = sum(1 for i in run if line[i]["pitch"] >= 4) * 2 >= len(run)
+        beam_y = (max(ys[i] for i in run) + stem_h) if down else (min(ys[i] for i in run) - stem_h)
+        for i in run:
+            beamed[i] = (down, beam_y)
+        beams.append((xs[run[0]], xs[run[-1]], beam_y, down))
+
+    lyric_baseline = staff_bottom + _LIEDER_LYRIC_OFFSET * gap
+    matched_xs: list[float] = []
+    matched_ys: list[float] = []
+    cursor = x
+    for position, (note, slot) in enumerate(zip(line, slots)):
+        cx, note_y = xs[position], ys[position]
+
+        if note.get("bar"):
+            bar_x = cursor - ctx["min_gap"] * 0.35 if position > 0 else x - gap * 0.8
+            if _LIEDER_MARGIN_L < bar_x < _LIEDER_MARGIN_R:
+                draw.line((bar_x, staff_top, bar_x, staff_bottom), fill=BLACK, width=1)
+
+        ink = RED if note["matched"] else BLACK
+        if note.get("rest"):
+            _lieder_paint_rest(draw, cx, staff_top, gap, note["beats"], BLACK)
+            cursor += slot
+            continue
+        head_w = _lieder_paint_head(draw, cx, note_y, gap, note, ink)
+        if position in beamed:
+            down, beam_y = beamed[position]
+            _lieder_paint_stem(draw, cx, note_y, gap, head_w, down, beam_y, False, ink)
+        else:
+            down = note["pitch"] >= 4
+            tip = note_y + stem_h if down else note_y - stem_h
+            _lieder_paint_stem(draw, cx, note_y, gap, head_w, down,
+                               tip, abs(note["beats"] - 0.5) < 1e-9, ink)
+        if note["matched"]:
+            matched_xs.append(cx)
+            matched_ys.append(note_y)
+
+        font = ctx["bold"] if note["matched"] else ctx["regular"]
+        draw.text((cx, lyric_baseline), note["text"], font=font, fill=ink, anchor="ms")
+
+        # Lyric hyphen, centred in the gap to the next syllable of the same word.
+        if note["hyphen"] and position + 1 < len(line):
+            left = cx + note["width"] / 2.0
+            right = xs[position + 1] - line[position + 1]["width"] / 2.0
+            if right - left > 4:
+                mid = (left + right) / 2.0
+                hy = lyric_baseline - ctx["size"] * 0.28
+                draw.line((mid - 2, hy, mid + 2, hy), fill=ink, width=1)
+
+        if note["breath"]:
+            _lieder_paint_breath(draw, cursor + slot, staff_top, gap, BLACK)
+        cursor += slot
+
+    # Beams last, so they sit over the stems they cap.
+    thickness = max(2, int(gap * 0.5))
+    for bx0, bx1, by, down in beams:
+        top = by - thickness if down else by
+        draw.rectangle((bx0 - 1, top, bx1 + 1, top + thickness), fill=BLACK)
+
+    _lieder_paint_slur(draw, matched_xs, matched_ys, gap)
+
+    if last_system:
+        draw.line((_LIEDER_MARGIN_R - 6, staff_top, _LIEDER_MARGIN_R - 6, staff_bottom), fill=BLACK, width=1)
+        draw.rectangle((_LIEDER_MARGIN_R - 3, staff_top, _LIEDER_MARGIN_R, staff_bottom), fill=BLACK)
+    if index == 1:
+        italic = load_font(theme_font_candidates("lieder", "ornament"), size=14)
+        draw.text((_LIEDER_MARGIN_L + 4, staff_top - gap * 1.4), ctx["expression"], font=italic, fill=BLACK, anchor="ls")
+
+
+def _lieder_paint_plate_line(draw, quote_row: dict, width: int, height: int) -> None:
+    """Engraver's plate number, centred at the foot — real scores carry one."""
+    source_id = str(quote_row.get("source_id") or "").strip()
+    text = f"Idle Hours Edition · Pl. {source_id}" if source_id else "Idle Hours Edition"
+    font = load_font(theme_font_candidates("lieder", "ornament"), size=13)
+    draw.text((width / 2, height - 22), text, font=font, fill=SPECTRA6["black"], anchor="ms")
+
+
+def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Engraved art-song manuscript (see the module section comment above).
+
+    Five passes, in dependency order: split the text into sung syllables, give
+    them durations and barlines, give them pitches (which needs the barlines,
+    since downbeats pull toward the chord), fit and wrap them, then engrave.
+
+    Laid out against the canonical 800×480; smaller canvases (the curator UI's
+    ``/api/preview`` thumbnails) crop the composition rather than reflowing it,
+    the same convention every other custom frame follows. Every primitive here
+    is an ``ImageDraw`` call, which clips silently, so a thumbnail render is
+    safe without per-call bounds arithmetic.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    _astrarium_paint_cream_wash(image)
+    draw = ImageDraw.Draw(image)
+
+    hour, _ = _lieder_clock(time_str)
+    seed = _lieder_seed(quote_row)
+    notes = _lieder_notes(quote_row)
+    if not notes:
+        notes = [{"text": "—", "matched": False, "hyphen": False, "breath": False, "stress": 2, "word": 0}]
+
+    gap = _LIEDER_STAVE_GAP
+    clef_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    cx0, _, cx1, _ = clef_font.getbbox(_MUSIC_G_CLEF, anchor="ls")
+    clef_w = (cx1 - cx0) + gap + 5
+    meter_w = gap * 4.6  # the first system also carries the time signature
+    span = _LIEDER_MARGIN_R - _LIEDER_MARGIN_L - gap * 2
+    widths = [int(span - clef_w - meter_w), int(span - clef_w)]
+
+    _lieder_rhythm(notes, hour)
+    _lieder_contour(seed, notes)
+    regular, bold, lines, size, min_gap, base = _lieder_fit(draw, notes, widths, gap)
+
+    core = _lieder_system_core(size, gap)
+    band_top, band_bottom = _LIEDER_BAND
+    block = len(lines) * core + (len(lines) - 1) * _LIEDER_SYSTEM_GAP
+    # Slack goes 1/3 above, 2/3 below rather than centred: a one-system song
+    # centred in the band floats stranded between the header and the plate line,
+    # whereas engraved music hangs from the top of its type area. On a
+    # three-system page the slack is a few px, so this is a no-op there.
+    top = band_top + max(0, (band_bottom - band_top - block) // 3)
+    staff_tops = [top + int(_LIEDER_HEADROOM * gap) + i * (core + _LIEDER_SYSTEM_GAP) for i in range(len(lines))]
+
+    ctx = {
+        "gap": gap, "regular": regular, "bold": bold, "min_gap": min_gap, "base": base,
+        "size": size, "numerator": hour, "staff_tops": staff_tops,
+        "expression": _LIEDER_EXPRESSION[seed % len(_LIEDER_EXPRESSION)],
+    }
+    _lieder_paint_header(draw, quote_row, time_str)
+    for index, line in enumerate(lines):
+        _lieder_paint_system(draw, ctx, index, line)
+    _lieder_paint_plate_line(draw, quote_row, width, height)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+# ─── izakaya (neon alley at night) ───────────────────────────────────────────
+#
+# A Kabukichō / Golden Gai back alley after rain: stacked vertical shop signs
+# glowing down both margins, paper lanterns hung above, and the quote itself
+# bent into neon tube lettering over wet asphalt that throws every sign back as
+# a smeared vertical reflection.
+#
+# The theme exists to introduce a capability the renderer did not have: GLOW.
+# Every other synthesised tone in this codebase mixes two inks at a *constant*
+# density to fake a colour the panel lacks. A bloom is the opposite — one ink at
+# a *falling* density — so the eye integrates a gradient out of a binary field.
+# ``paint_neon_mask`` (see its docstring for the tuning that survives the panel)
+# is the shared primitive; izakaya is its first consumer, and the sign columns,
+# the lanterns and the quote all route through it.
+#
+# Distinct from `outrun`, the rotation's other neon theme, by construction:
+# outrun is a flat *poster* — a horizon, a grid and a sun, all hard-edged, all
+# lit uniformly. This is a *place*: light sources at different depths, each with
+# its own bloom, and a ground that reflects them. Warm/cool clash rather than
+# outrun's single magenta key.
+#
+# Ink use — the "use the whole panel" theme, all six inks on screen at once:
+#   black       the alley itself.
+#   blue        the night haze above the roofline, and the body text's bloom.
+#   white       the neon tube cores — the glass, which is always the brightest
+#               thing in a neon sign regardless of the gas colour.
+#   yellow      the matched phrase's tube core, hot against the cool body.
+#   red         the matched phrase's bloom, the paper lanterns, and two signs.
+#   green       two more sign columns (the sodium-green of a real alley).
+#
+# The hour rides the main lantern as a KANJI NUMERAL (一 … 十二) — paper lanterns
+# carry a shop's character, so a numeral there is the one place a digit belongs
+# without breaking the fuzzy-clock premise. ``time_str`` is therefore used, like
+# `lieder` and `tarot` and `vitrail`, and the matched phrase still carries the
+# readable time. Sign words are real, ordinary alley signage — 居酒屋 (izakaya),
+# 焼鳥 (yakitori), 酒 (sake), 横丁 (yokochō, "alley"), 喫茶 (coffee house),
+# 営業中 ("open for business") — set in the bundled Yuji Boku, the rotation's
+# Japanese brush face (shared with `kanagawa`, the only other Japanese-register
+# theme; kanagawa is a daylight woodblock seascape, this is a night street).
+# Deliberately kanji-only: katakana signage would want ー rotated in vertical
+# setting, and a wrongly-oriented glyph is worse than not using one.
+
+_IZAKAYA_SIGN_W = 58
+_IZAKAYA_SIGN_COLUMNS = (10, 732)     # left / right sign-board x origins
+_IZAKAYA_SIGN_TOP = 34
+_IZAKAYA_SIGN_H = 92
+_IZAKAYA_SIGN_GAP = 18
+_IZAKAYA_STREET_Y = 360               # wet asphalt begins here (below a kerb gap)
+                                      # Deep on purpose: a reflection needs to be
+                                      # taller than the column is wide before it
+                                      # reads as a vertical smear rather than a bar.
+_IZAKAYA_QUOTE_RECT = (108, 146, 692, 316)
+_IZAKAYA_HAZE_BOTTOM = 210            # night-haze wash fades out by this row
+# (word, glow ink). Six boards, three per side, cycling the chroma inks so the
+# alley reads as competing shopfronts rather than one tinted light source.
+_IZAKAYA_SIGNS = (
+    ("居酒屋", "red"),
+    ("焼鳥", "green"),
+    ("酒", "yellow"),
+    ("横丁", "blue"),
+    ("喫茶", "green"),
+    ("営業中", "red"),
+)
+_IZAKAYA_HOUR_KANJI = {
+    1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六",
+    7: "七", 8: "八", 9: "九", 10: "十", 11: "十一", 12: "十二",
+}
+_IZAKAYA_LANTERNS = ((168, 74, 26, 34), (632, 80, 24, 31))  # (cx, cy, rx, ry) side pair
+_IZAKAYA_MAIN_LANTERN = (400, 84, 33, 45)
+
+
+def _izakaya_hour(time_str: str) -> int:
+    """Hour 1..12 parsed defensively from ``HH:MM`` (12 on a bad parse)."""
+    try:
+        return int(time_str.split(":")[0]) % 12 or 12
+    except (AttributeError, ValueError):
+        return 12
+
+
+def _izakaya_ground() -> frozenset:
+    """Pixels a bloom is allowed to overwrite: the night ground and its haze.
+
+    Passing this as ``paint_neon_mask(ground=...)`` is what stops a later glow
+    pass from eating the tube cores, sign frames and lantern ribs an earlier
+    pass already painted — the halos of adjacent sign columns overlap heavily.
+    """
+    return frozenset({SPECTRA6["black"], SPECTRA6["blue"]})
+
+
+def _izakaya_paint_night(image: Image.Image) -> None:
+    """Black alley under a blue night haze that thins toward the roofline.
+
+    A gradient Bayer wash (the shape ``glacier``'s frost edge and ``chrono``'s
+    sky use): densest at the top of the frame and gone by ``_IZAKAYA_HAZE_BOTTOM``,
+    so the sky between the buildings reads as city light-pollution rather than
+    as flat black. Everything below is left black for the neon to sit against.
+
+    Kept deliberately faint (peak ~2.2/16 ≈ 14%). An earlier pass ran it at
+    5/16 and the sky became the brightest thing on the page, which is exactly
+    backwards for a theme whose subject is light sources in the dark. The
+    threshold stays a float on purpose — rounding it to an int quantises the
+    ramp into five visibly banded steps down the sky.
+    """
+    px = image.load()
+    width, height = image.size
+    span = max(1, _IZAKAYA_HAZE_BOTTOM)
+    for y in range(min(height, _IZAKAYA_HAZE_BOTTOM)):
+        threshold = 2.2 * (1.0 - y / span)
+        if threshold <= 0:
+            continue
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            if row[x % 4] < threshold:
+                px[x, y] = SPECTRA6["blue"]
+
+
+def _izakaya_sign_boxes() -> list[tuple[int, int, int, int, str, str]]:
+    """``(x0, y0, x1, y1, word, ink)`` for all six boards, left column first."""
+    boxes = []
+    for index, (word, ink) in enumerate(_IZAKAYA_SIGNS):
+        column = _IZAKAYA_SIGN_COLUMNS[index // 3]
+        slot = index % 3
+        y0 = _IZAKAYA_SIGN_TOP + slot * (_IZAKAYA_SIGN_H + _IZAKAYA_SIGN_GAP)
+        boxes.append((column, y0, column + _IZAKAYA_SIGN_W, y0 + _IZAKAYA_SIGN_H, word, ink))
+    return boxes
+
+
+def _izakaya_paint_signs(image: Image.Image, draw: ImageDraw.ImageDraw, boxes) -> None:
+    """Vertical shop boards: a glowing frame with kanji set down the middle.
+
+    One mask per board — frame plus characters together — so the board's outline
+    and its lettering share a single continuous bloom, the way a real sign's
+    tube and its housing wash into one another. Blooming them separately would
+    double-expose along the frame where the two halos meet.
+    """
+    ground = _izakaya_ground()
+    for x0, y0, x1, y1, word, ink in boxes:
+        glow = SPECTRA6[ink]
+        mask = Image.new("L", image.size, 0)
+        mdraw = ImageDraw.Draw(mask)
+        mdraw.rectangle((x0, y0, x1, y1), outline=255, width=2)
+        size = 30 if len(word) <= 2 else 24
+        font = load_font([YUJI_BOKU_REGULAR, *ORNAMENT_FONT_CANDIDATES], size=size)
+        step = size + 4
+        cy = (y0 + y1) // 2 - (len(word) - 1) * step // 2
+        for i, char in enumerate(word):
+            mdraw.text(((x0 + x1) // 2, cy + i * step), char, font=font, fill=255, anchor="mm")
+        # The board interior is the shop's own light box: the tube core paints
+        # the frame and glyphs white, the gas colour blooms outward from both.
+        paint_neon_mask(image, mask, SPECTRA6["white"], glow, radius=5, gamma=2.0, cap=0.62, ground=ground)
+        del mdraw
+    del draw
+
+
+def _izakaya_paint_lantern(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    rx: int,
+    ry: int,
+    text: str | None = None,
+) -> None:
+    """A red paper lantern (提灯) on a cord, optionally carrying a character.
+
+    Painted in three passes so the parts layer the way the object does: the
+    silhouette blooms first (``core=None`` — the body is drawn separately
+    below), then the red body with its black cap, base and ribs, then the
+    character. Ribs are horizontal chords clipped to the ellipse, which is what
+    gives a paper lantern its barrel look.
+    """
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    WHITE = SPECTRA6["white"]
+
+    draw.line((cx, 0, cx, cy - ry - 5), fill=WHITE, width=1)
+
+    silhouette = Image.new("L", image.size, 0)
+    ImageDraw.Draw(silhouette).ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
+    paint_neon_mask(image, silhouette, None, RED, radius=6, gamma=2.0, cap=0.6, ground=_izakaya_ground())
+
+    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=RED)
+    for ry_off in range(-ry + 4, ry - 2, 6):
+        half = int(rx * math.sqrt(max(0.0, 1.0 - (ry_off / float(ry)) ** 2)))
+        if half > 1:
+            draw.line((cx - half, cy + ry_off, cx + half, cy + ry_off), fill=BLACK, width=1)
+    cap_w = int(rx * 0.55)
+    draw.rectangle((cx - cap_w, cy - ry - 4, cx + cap_w, cy - ry + 1), fill=BLACK)
+    draw.rectangle((cx - cap_w, cy + ry - 1, cx + cap_w, cy + ry + 4), fill=BLACK)
+
+    if text:
+        font = load_font([YUJI_BOKU_REGULAR, *ORNAMENT_FONT_CANDIDATES], size=max(12, int(ry * 0.62)))
+        step = int(ry * 0.72)
+        top = cy - (len(text) - 1) * step // 2
+        for i, char in enumerate(text):
+            draw.text((cx, top + i * step), char, font=font, fill=BLACK, anchor="mm")
+
+
+def _izakaya_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
+    """The quote as bent neon tube. Returns the block's bottom y for the credits.
+
+    Two masks, not one: the body's chunks and the matched phrase's chunks are
+    accumulated separately so each can take its own gas colour — cool white/blue
+    for the prose, hot yellow/red for the sung time phrase. Each mask blooms in
+    a single pass, so overlapping halos inside a line expose once rather than
+    stacking into a solid block. The hot pass runs last and is allowed to
+    overwrite the cool halo, so the matched phrase's glow reads as nearer.
+    """
+    x0, y0, x1, y1 = _IZAKAYA_QUOTE_RECT
+    box_w, box_h = x1 - x0, y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, matched, box_w, box_h,
+        font_max=34, font_min=15, line_height_mult=1.42, theme="izakaya",
+    )
+    cool = Image.new("L", image.size, 0)
+    hot = Image.new("L", image.size, 0)
+    cool_draw, hot_draw = ImageDraw.Draw(cool), ImageDraw.Draw(hot)
+
+    block_h = len(wrapped) * line_height
+    y = y0 + max(0, (box_h - block_h) // 2)
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2] for c, b in segment)
+        x = x0 + max(0, (box_w - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            target = hot_draw if is_bold else cool_draw
+            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+
+    ground = _izakaya_ground()
+    paint_neon_mask(image, cool, SPECTRA6["white"], SPECTRA6["blue"], radius=6, gamma=2.0, cap=0.68, ground=ground)
+    paint_neon_mask(image, hot, SPECTRA6["yellow"], SPECTRA6["red"], radius=6, gamma=1.9, cap=0.72,
+                    ground=ground | {SPECTRA6["blue"]})
+    return y
+
+
+def _izakaya_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, top: int) -> None:
+    """author · title beneath the quote, unlit — a printed card, not a sign."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    text = "  ·  ".join(parts)
+    font = load_font(theme_font_candidates("izakaya", "quote_regular"), size=14)
+    width = image.size[0]
+    # Floor the budget and guard on length, not on emptiness: at a thumbnail
+    # width ``width - 240`` goes negative, and ``text[:-2] + "…"`` is a fixed
+    # point once the string is down to the ellipsis — together that spun
+    # forever on an 80 px preview render.
+    max_w = max(40, width - 240)
+    while len(text) > 1 and draw.textlength(text, font=font) > max_w:
+        text = text[:-2].rstrip(" ·") + "…"
+    y = min(max(top + 12, _IZAKAYA_QUOTE_RECT[3] - 4), _IZAKAYA_STREET_Y - 20)
+    draw.text((width // 2, y), text, font=font, fill=SPECTRA6["white"], anchor="ma")
+
+
+def _izakaya_paint_street(image: Image.Image, boxes) -> None:
+    """Wet asphalt: each sign column smeared back as a rippled vertical streak.
+
+    The single detail that turns a row of signs into a *place*. Each reflection
+    inherits its board's ink and x-range, fades with depth, and wobbles
+    horizontally on a sine so the column reads as broken by moving water, while
+    a second sine modulates its density where the ripple crests.
+
+    Both sines are phased **per column**. Sharing one phase across the whole
+    width made every column break on the same rows, which paints horizontal
+    bands across the street — the opposite of the vertical smear a wet road
+    actually produces. Lanterns reflect at a lower weight than the signs: they
+    hang high and small, so their contribution to the road is weaker.
+    """
+    px = image.load()
+    width, height = image.size
+    street = _IZAKAYA_STREET_Y
+    if street >= height:
+        return
+    depth = max(1, height - street)
+
+    columns = [(x0, x1, SPECTRA6[ink], 1.0) for x0, _, x1, _, _, ink in boxes]
+    columns += [(cx - rx, cx + rx, SPECTRA6["red"], 0.45) for cx, _, rx, _ in _IZAKAYA_LANTERNS]
+    columns.append((_IZAKAYA_MAIN_LANTERN[0] - _IZAKAYA_MAIN_LANTERN[2],
+                    _IZAKAYA_MAIN_LANTERN[0] + _IZAKAYA_MAIN_LANTERN[2], SPECTRA6["red"], 0.55))
+
+    # Faint blue sheen first, so the coloured streaks paint over it.
+    for y in range(street, height):
+        fade = max(0.0, (1.0 - (y - street) / depth) ** 1.6)
+        sheen = 1.6 * fade
+        if sheen <= 0:
+            continue
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            if row[x % 4] < sheen and px[x, y] == SPECTRA6["black"]:
+                px[x, y] = SPECTRA6["blue"]
+
+    for index, (x0, x1, ink, weight) in enumerate(columns):
+        phase = index * 1.7
+        for y in range(street, height):
+            fade = max(0.0, (1.0 - (y - street) / depth) ** 0.8)
+            # Ripple by MODULATING the density, not by cutting rows out. Skipping
+            # whole rows removes the reflection across the column's full width at
+            # once, which reads as stacked horizontal bricks; modulating keeps a
+            # single continuous smear that merely thins where the water crests.
+            ripple = 0.55 + 0.45 * math.sin(y * 0.42 + phase)
+            threshold = 5.5 * fade * weight * ripple
+            if threshold <= 0:
+                continue
+            # Distortion grows with depth: the near water is the most broken up.
+            swing = 1.0 + 2.2 * ((y - street) / depth)
+            wobble = int(round(swing * (4.0 * math.sin(y * 0.23 + phase) + 2.0 * math.sin(y * 0.61 + phase))))
+            row = BAYER_4x4[y % 4]
+            for x in range(max(0, x0 + wobble), min(width, x1 + wobble)):
+                if row[x % 4] < threshold:
+                    px[x, y] = ink
+
+
+def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Neon alley at night (see the module section comment above).
+
+    Laid out against the canonical 800×480; smaller canvases (the curator UI's
+    ``/api/preview`` thumbnails) crop the composition rather than reflowing it,
+    the same convention every other custom frame follows. Every raw pixel write
+    goes through a bounds-clipped helper, so a thumbnail render is safe.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    _izakaya_paint_night(image)
+    draw = ImageDraw.Draw(image)
+
+    boxes = _izakaya_sign_boxes()
+    _izakaya_paint_signs(image, draw, boxes)
+
+    for cx, cy, rx, ry in _IZAKAYA_LANTERNS:
+        _izakaya_paint_lantern(image, draw, cx, cy, rx, ry)
+    mcx, mcy, mrx, mry = _IZAKAYA_MAIN_LANTERN
+    _izakaya_paint_lantern(image, draw, mcx, mcy, mrx, mry, text=_IZAKAYA_HOUR_KANJI[_izakaya_hour(time_str)])
+
+    block_bottom = _izakaya_paint_quote(image, draw, quote_row)
+    _izakaya_paint_credits(image, draw, quote_row, block_bottom)
+    _izakaya_paint_street(image, boxes)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -17642,6 +19127,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_outrun_frame(time_str, quote_row, width, height)
     if theme == "sampler":
         return render_sampler_frame(time_str, quote_row, width, height)
+    if theme == "lieder":
+        return render_lieder_frame(time_str, quote_row, width, height)
+    if theme == "izakaya":
+        return render_izakaya_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

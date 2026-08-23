@@ -168,15 +168,16 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
-Forty-one themes ship today (`default`, `dark`, `swiss`, `scholar`,
+Forty-seven themes ship today (`default`, `dark`, `swiss`, `scholar`,
 `newsprint`, `nightvision`, `blueprint`, `illuminated`, … through the
 custom-render frames `astrarium`, `marquee`, `tarot`, `vinyl`, `vitrail`,
 `questline` (8-bit RPG dialogue), `chrono` (16-bit SNES JRPG cutscene),
-`outrun` (1980s synthwave sunset), the `circuit` printed-circuit-board theme,
-and the `diags` calibration panel — see the `THEME_ORDER` tuple for the
-canonical list). Some are simple palette + font swaps on the shared literary
-layout; others (the custom-render frames) own their whole composition. Adding another
-means wiring it into all of:
+`outrun` (1980s synthwave sunset), `sampler` (counted cross-stitch),
+`lieder` (engraved art song), `izakaya` (neon alley), the `circuit`
+printed-circuit-board theme, and the `diags` calibration panel — see the
+`THEME_ORDER` tuple for the canonical list). Some are simple palette + font
+swaps on the shared literary layout; others (the custom-render frames) own
+their whole composition. Adding another means wiring it into all of:
 
 - `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
 - `render_quote.THEME_ORDER` — append; this is what button B cycles through
@@ -187,15 +188,34 @@ means wiring it into all of:
 - `--theme` argparse `choices` in `run_clock.py` (the
   `TestActionThemeCycle::test_cli_theme_choices_match_theme_order` test
   pins this in lockstep with `THEME_ORDER`)
+- a golden fixture — the sweep in `tests/test_render_golden.py` generates a
+  `standard_<theme>_production` scenario for every registered theme, so a new
+  theme arrives with a *failing* test until you run
+  `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py` and commit the
+  PNG. Add a second hand-written scenario if the theme has a case that varies
+  in kind (e.g. `lieder` renders a different page shape at each hour)
+- a preview thumbnail at `idle_hours/assets/previews/<theme>.png` plus a row in
+  the README theme table, and a paragraph in `CLAUDE.md`'s themes section
+  describing the design decisions — not just the palette
+
+A **custom-render frame** (one that bypasses the shared literary layout and
+owns its whole composition) additionally needs:
+
+- a dispatch line in `render_quote.render`
+- `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`
+- `CUSTOM_THEMES` in `tests/test_render_quote_themes.py`
+- `_<theme>_paint_*` naming for its sub-painters — `TestCustomFrameCompositionPaints`
+  neuters them by that convention, and a rename empties the neuter set and turns
+  the fence into a vacuous pass
 
 Test visually with the contact sheet — re-render at least one light-ground
 and one dark-ground theme to catch palette / contrast regressions:
 
 ```bash
-python3 contact_sheet.py --theme default --output output/contact-default.png
-python3 contact_sheet.py --theme dark    --output output/contact-dark.png
+idle-hours contact-sheet --theme default --output output/contact-default.png
+idle-hours contact-sheet --theme dark    --output output/contact-dark.png
 # add the new theme:
-python3 contact_sheet.py --theme <new>   --output output/contact-<new>.png
+idle-hours contact-sheet --theme <new>   --output output/contact-<new>.png
 ```
 
 ## Testing

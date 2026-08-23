@@ -455,6 +455,52 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "sampler",
     },
+    # lieder — a custom-render frame (engraved art song). The generated sweep
+    # entry below covers it at 08:55; this second scenario pins a *small* hour
+    # on purpose, because lieder is the one theme whose composition changes
+    # shape with the hour: the time signature is hour/4 and the barlines fall
+    # every ``hour`` notes, so 3 o'clock engraves a densely barred staff where
+    # 12 o'clock engraves an open one. It also fences the minimum-bar-spacing
+    # guard, which only engages at the small hours.
+    {
+        "name": "lieder_meter_h3_production",
+        "time": "03:15",
+        "row": _row(
+            "It was a quarter past three, and the house had not yet begun "
+            "to stir, though the light was already on the stairs.",
+            "quarter past three",
+            author="Henry James",
+            title="The Portrait of a Lady",
+            bucket="h3_quarter_past",
+            resolved_bucket="h3_quarter_past",
+            quality_score=91,
+            source_id="2833",
+        ),
+        "mode": "production",
+        "theme": "lieder",
+    },
+    # izakaya — a custom-render frame (neon alley). The generated sweep entry
+    # below covers it at 08:55; this second scenario pins an hour whose lantern
+    # numeral is TWO kanji (十一), which is the only case where the lantern
+    # stacks its characters, and uses a long quote so the neon fit loop and the
+    # cool/hot dual-mask bloom are exercised across five wrapped lines.
+    {
+        "name": "izakaya_hour11_production",
+        "time": "11:50",
+        "row": _row(
+            "It was ten minutes to twelve, and the long corridor lay empty in "
+            "the winter light; somewhere below a door closed, and then another.",
+            "ten minutes to twelve",
+            author="Henry James",
+            title="The Portrait of a Lady",
+            bucket="h11_ten_to",
+            resolved_bucket="h11_ten_to",
+            quality_score=89,
+            source_id="2833",
+        ),
+        "mode": "production",
+        "theme": "izakaya",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",

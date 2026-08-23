@@ -19,7 +19,9 @@ render_script  = "render_quote.py"
 display_script = "display_inky.py"
 output         = "output/current.png"
 mode           = "production"         # production | debug
-theme          = "auto"               # default | dark | scholar | newsprint | nightvision | blueprint | illuminated | bauhaus | risograph | comic | auto | random
+theme          = "auto"               # any registered theme name, or "auto" / "random".
+                                      # `idle-hours run --help` prints the full list; the
+                                      # canonical order is render_quote.THEME_ORDER.
 # `theme = "random"` picks a fresh theme each time the displayed quote
 # changes; the pick is not persisted across restarts. Button B / the web
 # UI dropdown still overrides until midnight, same as for `auto`.

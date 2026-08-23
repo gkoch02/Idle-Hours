@@ -156,6 +156,21 @@ THEME_SATURATION: dict[str, float] = {
     # gentler white-ground 0.5 tier keeps the floss colours calibrated rather
     # than blown out.
     "sampler": 0.5,
+    # lieder — engraved art-song manuscript. White page under the 1-in-8 cream
+    # Layer-0 wash, black plate engraving, and red confined to the sung phrase
+    # (its lyric, noteheads and slur). Same chromatic-red-on-light profile as
+    # ``default`` / ``dispatch`` / ``saloon`` / ``roman`` / ``letter``, so the
+    # gentler 0.5 tier applies: the red is a small fraction of the page by
+    # design and pushing it harder would turn the sung phrase into a blot
+    # against the fine black staff rules it sits on.
+    "lieder": 0.5,
+    # izakaya — neon alley at night. Black ground, and every lit element is a
+    # bloom: one ink at a falling density rather than a solid fill. Those halos
+    # are exactly what a low saturation would flatten, so this takes the 0.7
+    # dark-ground tier alongside ``dark`` / ``outrun`` / ``questline``. The tube
+    # cores are white and yellow and carry legibility on their own, so the push
+    # lands on the coloured gas where it is wanted.
+    "izakaya": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
