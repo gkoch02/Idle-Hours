@@ -92,6 +92,7 @@ THEME_ORDER: tuple[str, ...] = (
     "grimdark",
     "sampler",
     "anna_atkins",
+    "lieder",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1159,6 +1160,20 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
+    # Engraved art-song manuscript. A custom-render frame, so these colours
+    # serve only the goodnight / source-card fall-through paths; the frame
+    # itself hardcodes its three-tier ink hierarchy (black plate / maroon
+    # editorial / red voice — see the lieder section comment).
+    "lieder": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Diagnostic / status panel. Not a literary frame — render() dispatches
     # the diags theme to a special status layout (clock + bucket / layout /
     # quality / source fields + a swatch grid showing the Spectra 6 palette
@@ -1599,6 +1614,21 @@ DANCINGSCRIPT_VARIABLE = str(BASE_DIR / "fonts/dancing-script/DancingScript-Vari
 # through Dancing Script Bold (the theme's own body face, so the marks
 # still read as a pen hand) before the shared ornament chain.
 PINYONSCRIPT_REGULAR = str(BASE_DIR / "fonts/pinyon-script/PinyonScript-Regular.ttf")
+
+# Alegreya (Huerta Tipográfica, OFL) — a humanist serif designed specifically
+# for long-form literary setting, with a markedly calligraphic italic. Carries
+# `lieder`: the roman for the sung lyrics (the poem), the bold for the matched
+# phrase, and the italic for the tempo / expression / composer chrome, which is
+# exactly the roman-vs-italic division a real engraved score uses.
+ALEGREYA_REGULAR = str(BASE_DIR / "fonts/alegreya/Alegreya-Regular.ttf")
+ALEGREYA_BOLD = str(BASE_DIR / "fonts/alegreya/Alegreya-Bold.ttf")
+ALEGREYA_ITALIC = str(BASE_DIR / "fonts/alegreya/Alegreya-Italic.ttf")
+# Noto Music (Google, OFL) — a *symbol* face, not a text face: the Unicode
+# Musical Symbols block (U+1D100..U+1D1FF) plus U+2669.. quarter/eighth notes.
+# `lieder` draws its G clef and noteheads from it because a treble clef's
+# spiral is precisely the shape that polygon approximation turns to mush. It is
+# engraved on the standard metric where a five-line staff is one em tall.
+NOTOMUSIC_REGULAR = str(BASE_DIR / "fonts/noto-music/NotoMusic-Regular.ttf")
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -2891,6 +2921,38 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             PINYONSCRIPT_REGULAR,
             (LIBRECASLON_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "lieder": {
+        # Alegreya: a literary-text serif for a poem set to music. Roman for
+        # the sung lyric, Bold for the matched phrase (a real weight step on
+        # top of the red voice ink), Italic for every editorial mark — tempo,
+        # expression, composer, plate line — which is the roman/italic split a
+        # real engraved score runs on. Falls back through the bundled EB
+        # Garamond and the system serifs before the Playfair chain so a missing
+        # install still lands on a book serif rather than a display face.
+        "quote_regular": [
+            ALEGREYA_REGULAR,
+            EBGARAMOND_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            ALEGREYA_BOLD,
+            EBGARAMOND_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        # The italic fills the ornament slot because this theme's "ornament" is
+        # the editorial apparatus, not an oversized quote mark.
+        "ornament": [
+            ALEGREYA_ITALIC,
+            IMFELLENGLISH_ITALIC,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -17619,6 +17681,491 @@ def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ─── lieder (engraved art-song manuscript) ───────────────────────────────────
+#
+# The quote as the vocal line of a Lied — a poem set to music. The words are
+# engraved as lyrics beneath a five-line stave, one notehead per word, and the
+# clock is carried by the score's own furniture rather than by digits:
+#
+#   * the TIME SIGNATURE is the hour over 4 (7 o'clock → 7/4), and because a
+#     time signature genuinely governs the measure length, the hour also decides
+#     where the barlines fall — a 3 o'clock page is busy with bars, a 12 o'clock
+#     page is wide open. The pun is the point of the theme.
+#   * the TEMPO MARK is the minute: an Italian tempo word plus a metronome mark
+#     of ``60 + minute`` BPM, which walks Larghetto → Allegro across the hour and
+#     stays inside a musically plausible range at every minute (a literal
+#     ``♩ = 3`` at three minutes past would be nonsense).
+#
+# The digital HH:MM is never printed as digits — the matched time phrase, sung
+# in red under its own slur, carries the readable time the way every other theme
+# in the rotation does. ``time_str`` IS used here (unlike questline / chrono /
+# outrun / marquee, which del-assert it), because that chrome derives from it.
+#
+# Ink discipline. The palette is the white/black/red shared with default /
+# dispatch / saloon / roman / letter / placard, but the *separation* is the one a
+# real engraving uses, and it is deliberately typographic before it is chromatic:
+#   roman black  — the plate proper: staves, clef, noteheads, stems, barlines,
+#                  the sung words, the title, the plate line.
+#   italic black — the editorial apparatus: tempo mark, expression word,
+#                  composer credit. Roman-vs-italic is exactly how a score
+#                  separates "what is printed on the plate" from "what the editor
+#                  tells you about it", and it survives the panel at 13px where a
+#                  synthesised two-ink tone would not: a 50/50 R+K maroon stipple
+#                  was tried here first and shattered Alegreya's italic hairlines
+#                  into speckle after ``snap_image_to_palette`` — the same
+#                  small-glyph failure documented for astrarium / tarot / vitrail.
+#   red          — the sung phrase alone: its lyric, its noteheads, its slur. One
+#                  gesture, unmistakable at panel distance.
+#
+# Layer 0 is the shared 1-in-8 yellow Bayer cream wash (via
+# ``_astrarium_paint_cream_wash``, the recipe dispatch / illuminated / herbarium
+# / mucha / astrarium / vinyl already use) so the page reads as warm manuscript
+# stock rather than the panel's flat white.
+#
+# Music glyphs (G clef, noteheads, the tempo mark's quarter note) come from the
+# bundled Noto Music face rather than hand-built polygons: a treble clef's
+# spiral is exactly the shape polygon approximation renders as mush. Noto Music
+# is engraved on the standard metric where the five-line staff is one em tall (so
+# a glyph drawn at ``size = 4 * gap`` matches a staff whose lines are ``gap``
+# apart) and the font's BASELINE sits on the BOTTOM staff line — measured, not
+# assumed: the barline glyph's ink spans exactly -4.00 .. 0.00 staff spaces about
+# the baseline, and the G clef's spans -5.30 .. +1.60, which is the canonical
+# treble-clef overhang. The clef is therefore drawn with ``anchor="ls"`` straight
+# onto the bottom line and lands correctly by construction; noteheads are
+# ink-bbox-centred on their pitch instead, because their glyph sits wholly above
+# the baseline and only the centring is unambiguous.
+
+_LIEDER_STAVE_GAP = 7            # px between adjacent staff lines (staff = 4×)
+_LIEDER_MARGIN_L = 46
+_LIEDER_MARGIN_R = 754
+_LIEDER_MAX_SYSTEMS = 3
+_LIEDER_BAND = (100, 446)        # vertical band the systems are laid out within
+_LIEDER_HEADROOM = 4.0           # staff spaces reserved above a staff (stems/slur)
+_LIEDER_LYRIC_OFFSET = 5.0       # staff spaces from staff bottom to lyric baseline
+                                 # (clears a down-stem, which hangs 3.4 spaces below a
+                                 #  middle-line notehead, by ~7px at the largest lyric)
+_LIEDER_STEM_LEN = 3.4           # staff spaces
+_LIEDER_PITCH_MIN = -2           # one ledger line below the staff
+_LIEDER_PITCH_MAX = 10           # one ledger line above the staff
+_LIEDER_FONT_MAX = 26
+_LIEDER_FONT_MIN = 13
+_LIEDER_SYSTEM_GAP = 6           # px between one system's lyric and the next staff's headroom
+_LIEDER_MIN_BAR_SPACING = 30     # px; see the barline comment in _lieder_paint_system
+# Melodic steps in staff positions (a "position" is a half-space: 1 = the next
+# line-or-space up). Weighted toward stepwise motion the way a singable vocal
+# line moves — a uniform choice over the range reads as random noise, not melody.
+_LIEDER_MELODY_STEPS = (-4, -3, -2, -2, -1, -1, -1, 0, 1, 1, 1, 2, 2, 3, 4)
+# Italian tempo words, one per 12-minute band; paired with ♩ = 60 + minute so
+# the word and the metronome figure always agree.
+_LIEDER_TEMPO_WORDS = ("Larghetto", "Andante", "Moderato", "Allegretto", "Allegro")
+# Expression marks for the second system, chosen by the per-quote seed.
+_LIEDER_EXPRESSION = ("dolce", "espressivo", "cantabile", "sotto voce", "teneramente", "con moto")
+_MUSIC_G_CLEF = "\U0001D11E"
+_MUSIC_NOTEHEAD = "\U0001D158"
+_MUSIC_QUARTER_NOTE = "♩"
+
+
+def _lieder_seed(quote_row: dict) -> int:
+    """Stable 32-bit seed for the melodic contour and expression mark.
+
+    ``hash()`` is PYTHONHASHSEED-salted, so a melody seeded from it would differ
+    between renders of the same quote — breaking both the golden-image fixture
+    and run_clock's "quote unchanged, skip the redraw" dedup. Uses an FNV-1a
+    walk over the row identity instead, which is stable across processes (the
+    same reason ``_vinyl_paint_spec_line`` derives its running time from an
+    ord() sum rather than from ``hash()``).
+    """
+    basis = f"{quote_row.get('source_id')}:{quote_row.get('line_number')}:{quote_row.get('display_quote')}"
+    digest = 2166136261
+    for ch in basis:
+        digest = ((digest ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    return digest
+
+
+def _lieder_clock(time_str: str) -> tuple[int, int]:
+    """``(hour 1..12, minute 0..59)`` parsed defensively from ``HH:MM``.
+
+    Preview and source-card renders can reach this with an odd string; a bad
+    parse falls back to 12/00 rather than raising into the render path.
+    """
+    try:
+        hh, mm = time_str.split(":")[:2]
+        hour = int(hh) % 12 or 12
+        minute = max(0, min(59, int(mm)))
+    except (AttributeError, ValueError):
+        return 12, 0
+    return hour, minute
+
+
+def _lieder_words(quote_row: dict) -> list[tuple[str, bool]]:
+    """Split the display quote into ``(word, is_matched)`` pairs.
+
+    Reuses ``tokenize_quote`` so the matched-phrase span resolves exactly the
+    way the shared literary layout resolves it; the three segments it returns
+    (pre / matched / post) are then split on whitespace because this frame lays
+    out per *word* — each word carries its own notehead.
+    """
+    text = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    words: list[tuple[str, bool]] = []
+    for chunk, is_matched in tokenize_quote(text, quote_row.get("matched_text") or ""):
+        for word in chunk.split():
+            words.append((word, is_matched))
+    return words
+
+
+def _lieder_wrap(draw, words, regular, bold, widths: list[int], min_gap: int) -> list[list[tuple[str, bool, int]]]:
+    """Greedy word wrap into systems, returning ``(word, matched, width)`` rows.
+
+    ``widths`` is per-system because system 1 is narrower — it carries the clef
+    *and* the time signature, while later systems carry only the clef.
+    """
+    lines: list[list[tuple[str, bool, int]]] = []
+    current: list[tuple[str, bool, int]] = []
+    current_w = 0
+    for word, matched in words:
+        font = bold if matched else regular
+        word_w = int(draw.textlength(word, font=font))
+        avail = widths[min(len(lines), len(widths) - 1)]
+        advance = word_w if not current else word_w + min_gap
+        if current and current_w + advance > avail:
+            lines.append(current)
+            current, current_w = [], 0
+            advance = word_w
+        current.append((word, matched, word_w))
+        current_w += advance
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _lieder_system_core(size: int, gap: int) -> int:
+    """Vertical extent of one system: headroom + staff + lyric descent."""
+    return int((_LIEDER_HEADROOM + 4 + _LIEDER_LYRIC_OFFSET) * gap) + size
+
+
+def _lieder_fit(draw, words, widths, gap: int) -> tuple:
+    """Shrink the lyric font until the words fit the page as engraved systems.
+
+    Two constraints, both checked per size: the words must wrap into at most
+    ``_LIEDER_MAX_SYSTEMS`` staves, and those staves must fit the vertical band.
+    The second matters because a system is much taller than a line of prose —
+    headroom for stems and the slur above, the staff itself, then the lyric
+    below — so a size that wraps to three lines can still overrun the page.
+
+    The lyric size is also capped in a narrow band rather than scaled freely the
+    way ``fit_quote`` scales the literary layout: in real engraving the lyric
+    size tracks the staff size, so letting a short quote balloon to 60pt over a
+    28px staff would read as a caption pasted onto a score. Variance is absorbed
+    by the *number* of systems instead.
+    """
+    regular_chain = theme_font_candidates("lieder", "quote_regular")
+    bold_chain = theme_font_candidates("lieder", "quote_bold")
+    band_height = _LIEDER_BAND[1] - _LIEDER_BAND[0]
+    lines: list = []
+    size = _LIEDER_FONT_MIN
+    regular = load_font(regular_chain, size=size)
+    bold = load_font(bold_chain, size=size)
+    min_gap = 0
+    for size in range(_LIEDER_FONT_MAX, _LIEDER_FONT_MIN - 1, -1):
+        regular = load_font(regular_chain, size=size)
+        bold = load_font(bold_chain, size=size)
+        min_gap = max(12, int(size * 0.55))
+        lines = _lieder_wrap(draw, words, regular, bold, widths, min_gap)
+        if len(lines) > _LIEDER_MAX_SYSTEMS:
+            continue
+        block = len(lines) * _lieder_system_core(size, gap) + (len(lines) - 1) * _LIEDER_SYSTEM_GAP
+        if block <= band_height:
+            return regular, bold, lines, size, min_gap
+    # Floor: keep the systems we can engrave and mark the elision, rather than
+    # silently running the last words off the bottom of the page.
+    if len(lines) > _LIEDER_MAX_SYSTEMS:
+        lines = lines[:_LIEDER_MAX_SYSTEMS]
+        if lines and lines[-1]:
+            word, matched, _ = lines[-1][-1]
+            word = word.rstrip(".,;:!?") + "…"
+            lines[-1][-1] = (word, matched, int(draw.textlength(word, font=bold if matched else regular)))
+    return regular, bold, lines, size, min_gap
+
+
+def _lieder_contour(seed: int, flags: list[bool]) -> list[int]:
+    """A singable pitch contour in staff positions, one entry per word.
+
+    A random walk weighted toward stepwise motion, clamped to one ledger line
+    either side of the staff. Words inside the matched phrase bias upward while
+    there is headroom, so the sung time phrase reads as the melodic peak of its
+    line — the expressive shape a composer would actually give the words the
+    song is about.
+    """
+    rng = random.Random(seed)
+    pitches: list[int] = []
+    pitch = 4  # middle line — a comfortable place for a voice to start
+    for matched in flags:
+        pitches.append(pitch)
+        step = rng.choice(_LIEDER_MELODY_STEPS)
+        if matched and step < 0 and pitch < 7:
+            step = -step  # the sung phrase rises toward its peak
+        # Restoring pull at either edge of the range. An unbiased walk drifts
+        # out to a clamp and sits against it for the rest of the page, which
+        # reads as a melody that has lost its way rather than one with a shape.
+        if pitch >= 8 and step > 0:
+            step = -step
+        elif pitch <= 0 and step < 0:
+            step = -step
+        pitch = max(_LIEDER_PITCH_MIN, min(_LIEDER_PITCH_MAX, pitch + step))
+    return pitches
+
+
+def _lieder_pitch_y(staff_top: float, pitch: int, gap: int) -> float:
+    """Staff position → y. Position 0 is the bottom line, 8 the top line."""
+    return staff_top + 4 * gap - pitch * (gap / 2.0)
+
+
+def _lieder_draw_glyph(draw, ch: str, font, cx: float, cy: float, fill) -> None:
+    """Draw a music glyph with its ink bbox centred on ``(cx, cy)``."""
+    x0, y0, x1, y1 = font.getbbox(ch, anchor="ls")
+    draw.text((cx - (x0 + x1) / 2.0, cy - (y0 + y1) / 2.0), ch, font=font, fill=fill, anchor="ls")
+
+
+def _lieder_paint_header(draw, quote_row: dict, time_str: str) -> None:
+    """Title (centred), composer credit and tempo mark — the head of a song.
+
+    Follows the standard engraved layout: title centred at the top, the composer
+    flush right below it, and the tempo mark flush left at the same height,
+    immediately above the first system.
+    """
+    BLACK = SPECTRA6["black"]
+    width = 800  # header is laid out against the canonical canvas; see render_lieder_frame
+    _, minute = _lieder_clock(time_str)
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    author = (quote_row.get("author") or "").strip()
+
+    if title:
+        font = load_font(theme_font_candidates("lieder", "card_quote_bold"), size=24)
+        text = title if len(title) <= 46 else title[:45].rstrip(" ,;:") + "…"
+        draw.text((width / 2, 44), text, font=font, fill=BLACK, anchor="ms")
+
+    italic = load_font(theme_font_candidates("lieder", "ornament"), size=16)
+    if author:
+        name = author if len(author) <= 34 else author[:33].rstrip(" ,;:") + "…"
+        draw.text((_LIEDER_MARGIN_R, 82), name, font=italic, fill=BLACK, anchor="rs")
+
+    # Tempo: Italian word + a real quarter-note glyph + the metronome figure.
+    word = _LIEDER_TEMPO_WORDS[min(len(_LIEDER_TEMPO_WORDS) - 1, minute // 12)]
+    x = _LIEDER_MARGIN_L
+    draw.text((x, 82), word, font=italic, fill=BLACK, anchor="ls")
+    x += draw.textlength(word, font=italic) + 12
+    note_font = load_font([NOTOMUSIC_REGULAR], size=24)
+    _lieder_draw_glyph(draw, _MUSIC_QUARTER_NOTE, note_font, x, 76, BLACK)
+    draw.text((x + 10, 82), f"= {60 + minute}", font=italic, fill=BLACK, anchor="ls")
+
+
+def _lieder_paint_clef_and_meter(draw, x: float, staff_top: float, gap: int, numerator: int, first: bool) -> float:
+    """Draw the G clef (and, on the first system, the time signature).
+
+    Returns the x at which the notes may begin. The clef is drawn with its
+    baseline on the bottom staff line — the metric Noto Music is engraved to —
+    so its spiral lands on the G line without any hand-tuned offset.
+    """
+    BLACK = SPECTRA6["black"]
+    staff_bottom = staff_top + 4 * gap
+    clef_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    cx0, _, cx1, _ = clef_font.getbbox(_MUSIC_G_CLEF, anchor="ls")
+    draw.text((x, staff_bottom), _MUSIC_G_CLEF, font=clef_font, fill=BLACK, anchor="ls")
+    x += (cx1 - cx0) + gap
+
+    if first:
+        # Numerator centred between the top and middle lines, denominator
+        # between the middle and bottom lines — the standard placement.
+        meter_font = load_font(theme_font_candidates("lieder", "card_quote_bold"), size=int(gap * 3.0))
+        widest = max(draw.textlength(str(numerator), font=meter_font), draw.textlength("4", font=meter_font))
+        for text, cy in ((str(numerator), staff_top + gap), ("4", staff_top + 3 * gap)):
+            draw.text((x + widest / 2.0, cy), text, font=meter_font, fill=BLACK, anchor="mm")
+        x += widest + gap * 1.6
+    return x
+
+
+def _lieder_paint_note(draw, cx: float, note_y: float, gap: int, pitch: int, fill) -> None:
+    """Notehead + stem + any ledger line, for one word."""
+    note_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    nx0, _, nx1, _ = note_font.getbbox(_MUSIC_NOTEHEAD, anchor="ls")
+    head_w = max(4.0, float(nx1 - nx0))
+    _lieder_draw_glyph(draw, _MUSIC_NOTEHEAD, note_font, cx, note_y, fill)
+
+    # Ledger line: only reachable at the clamped extremes, which are exactly the
+    # first ledger position either side of the staff.
+    if pitch <= _LIEDER_PITCH_MIN or pitch >= _LIEDER_PITCH_MAX:
+        half = head_w / 2.0 + 3
+        draw.line((cx - half, note_y, cx + half, note_y), fill=fill, width=1)
+
+    # Stems turn at the middle line, the way engraving does: notes on or above
+    # it hang their stem down on the left, notes below push it up on the right.
+    stem_h = _LIEDER_STEM_LEN * gap
+    if pitch >= 4:
+        sx = cx - head_w / 2.0 + 1
+        draw.line((sx, note_y, sx, note_y + stem_h), fill=fill, width=1)
+    else:
+        sx = cx + head_w / 2.0 - 1
+        draw.line((sx, note_y - stem_h, sx, note_y), fill=fill, width=1)
+
+
+def _lieder_paint_slur(draw, xs: list[float], ys: list[float], gap: int) -> None:
+    """Phrase slur arcing over the matched-phrase noteheads.
+
+    A slur needs two notes to bind, so a single-word phrase gets none. The arc
+    box is validated before drawing — ``draw.arc`` raises on an inverted box,
+    which a thumbnail-sized preview can produce.
+    """
+    if len(xs) < 2:
+        return
+    x0, x1 = min(xs), max(xs)
+    if x1 - x0 < 4:
+        return
+    rise = max(4, int(gap * 0.9))
+    top = min(ys) - gap * 2.2
+    box = (x0, top - rise, x1, top + rise)
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return
+    draw.arc(box, start=180, end=360, fill=SPECTRA6["red"], width=2)
+
+
+def _lieder_paint_system(draw, ctx: dict, index: int, line: list, pitches: list[int], note_offset: int) -> None:
+    """Engrave one staff: lines, clef/meter, barlines, notes, lyrics, slur."""
+    BLACK = SPECTRA6["black"]
+    RED = SPECTRA6["red"]
+    gap = ctx["gap"]
+    staff_top = ctx["staff_tops"][index]
+    staff_bottom = staff_top + 4 * gap
+    numerator = ctx["numerator"]
+    last_system = index == len(ctx["staff_tops"]) - 1
+
+    for i in range(5):
+        y = staff_top + i * gap
+        draw.line((_LIEDER_MARGIN_L, y, _LIEDER_MARGIN_R, y), fill=BLACK, width=1)
+
+    x = _lieder_paint_clef_and_meter(draw, _LIEDER_MARGIN_L + 5, staff_top, gap, numerator, index == 0)
+
+    # Justify the words across the remaining music area. The last system is
+    # capped so a two-word tail doesn't stretch across the whole page.
+    avail = _LIEDER_MARGIN_R - x - gap * 2
+    natural = sum(w for _, _, w in line)
+    count = len(line)
+    if count > 1:
+        word_gap = (avail - natural) / (count - 1)
+        ceiling = ctx["min_gap"] * (3.5 if last_system else 12)
+        word_gap = max(ctx["min_gap"], min(word_gap, ceiling))
+    else:
+        word_gap = ctx["min_gap"]
+
+    lyric_baseline = staff_bottom + _LIEDER_LYRIC_OFFSET * gap
+    matched_xs: list[float] = []
+    matched_ys: list[float] = []
+    last_bar_x = None
+    cursor = x
+    for i, (word, matched, word_w) in enumerate(line):
+        cx = cursor + word_w / 2.0
+        pitch = pitches[note_offset + i]
+        note_y = _lieder_pitch_y(staff_top, pitch, gap)
+
+        # Barlines fall wherever the measure fills up, and the measure length IS
+        # the hour — this is where the time signature stops being decoration.
+        # The one concession: at 1 and 2 o'clock a bar is only one or two notes
+        # long, so a strict reading would fence the staff with barlines closer
+        # together than a notehead is wide. Bars closer than
+        # ``_LIEDER_MIN_BAR_SPACING`` are therefore dropped, which thins the
+        # picket fence without moving any barline off its true beat.
+        measure_index = note_offset + i
+        if measure_index > 0 and measure_index % numerator == 0:
+            bar_x = cursor - word_gap / 2.0 if i > 0 else x - gap * 0.8
+            if _LIEDER_MARGIN_L < bar_x < _LIEDER_MARGIN_R and (last_bar_x is None or bar_x - last_bar_x >= _LIEDER_MIN_BAR_SPACING):
+                draw.line((bar_x, staff_top, bar_x, staff_bottom), fill=BLACK, width=1)
+                last_bar_x = bar_x
+
+        ink = RED if matched else BLACK
+        _lieder_paint_note(draw, cx, note_y, gap, pitch, ink)
+        if matched:
+            matched_xs.append(cx)
+            matched_ys.append(note_y)
+
+        # anchor="ms": centre on the note, and share one baseline across the
+        # whole line. Positioning by ink-bbox top instead would let a word with
+        # no ascender ("was", "away") float above its neighbours.
+        draw.text((cx, lyric_baseline), word, font=ctx["bold"] if matched else ctx["regular"], fill=ink, anchor="ms")
+        cursor += word_w + word_gap
+
+    _lieder_paint_slur(draw, matched_xs, matched_ys, gap)
+
+    if last_system:
+        # Final barline: thin, then thick, hard against the right margin.
+        draw.line((_LIEDER_MARGIN_R - 6, staff_top, _LIEDER_MARGIN_R - 6, staff_bottom), fill=BLACK, width=1)
+        draw.rectangle((_LIEDER_MARGIN_R - 3, staff_top, _LIEDER_MARGIN_R, staff_bottom), fill=BLACK)
+    if index == 1:
+        # Expression mark above the second staff — system 1's airspace already
+        # carries the tempo mark, so the editorial layer alternates down the page.
+        italic = load_font(theme_font_candidates("lieder", "ornament"), size=14)
+        draw.text((_LIEDER_MARGIN_L + 4, staff_top - gap * 1.4), ctx["expression"], font=italic, fill=BLACK, anchor="ls")
+
+
+def _lieder_paint_plate_line(draw, quote_row: dict, width: int, height: int) -> None:
+    """Engraver's plate number, centred at the foot — real scores carry one."""
+    source_id = str(quote_row.get("source_id") or "").strip()
+    text = f"Idle Hours Edition · Pl. {source_id}" if source_id else "Idle Hours Edition"
+    font = load_font(theme_font_candidates("lieder", "ornament"), size=13)
+    draw.text((width / 2, height - 22), text, font=font, fill=SPECTRA6["black"], anchor="ms")
+
+
+def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Engraved art-song manuscript (see the module section comment above).
+
+    Laid out against the canonical 800×480; smaller canvases (the curator UI's
+    ``/api/preview`` thumbnails) crop the composition rather than reflowing it,
+    the same convention every other custom frame follows. Every primitive here
+    is an ``ImageDraw`` call, which clips silently, so a thumbnail render is
+    safe without per-call bounds arithmetic.
+    """
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    _astrarium_paint_cream_wash(image)
+    draw = ImageDraw.Draw(image)
+
+    hour, _ = _lieder_clock(time_str)
+    seed = _lieder_seed(quote_row)
+    words = _lieder_words(quote_row) or [("—", False)]
+
+    gap = _LIEDER_STAVE_GAP
+    clef_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    cx0, _, cx1, _ = clef_font.getbbox(_MUSIC_G_CLEF, anchor="ls")
+    clef_w = (cx1 - cx0) + gap + 5
+    meter_w = gap * 4.6  # the first system also carries the time signature
+    span = _LIEDER_MARGIN_R - _LIEDER_MARGIN_L - gap * 2
+    widths = [int(span - clef_w - meter_w), int(span - clef_w)]
+
+    regular, bold, lines, size, min_gap = _lieder_fit(draw, words, widths, gap)
+    flags = [matched for line in lines for _, matched, _ in line]
+    pitches = _lieder_contour(seed, flags)
+
+    core = _lieder_system_core(size, gap)
+    band_top, band_bottom = _LIEDER_BAND
+    block = len(lines) * core + (len(lines) - 1) * _LIEDER_SYSTEM_GAP
+    # Slack goes 1/3 above, 2/3 below rather than centred: a one-system song
+    # centred in the band floats stranded between the header and the plate line,
+    # whereas engraved music hangs from the top of its type area. On a
+    # three-system page the slack is a few px, so this is a no-op there.
+    top = band_top + max(0, (band_bottom - band_top - block) // 3)
+    staff_tops = [top + int(_LIEDER_HEADROOM * gap) + i * (core + _LIEDER_SYSTEM_GAP) for i in range(len(lines))]
+
+    ctx = {
+        "gap": gap, "regular": regular, "bold": bold, "min_gap": min_gap,
+        "numerator": hour, "staff_tops": staff_tops,
+        "expression": _LIEDER_EXPRESSION[seed % len(_LIEDER_EXPRESSION)],
+    }
+    _lieder_paint_header(draw, quote_row, time_str)
+    note_offset = 0
+    for index, line in enumerate(lines):
+        _lieder_paint_system(draw, ctx, index, line, pitches, note_offset)
+        note_offset += len(line)
+    _lieder_paint_plate_line(draw, quote_row, width, height)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -17642,6 +18189,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_outrun_frame(time_str, quote_row, width, height)
     if theme == "sampler":
         return render_sampler_frame(time_str, quote_row, width, height)
+    if theme == "lieder":
+        return render_lieder_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

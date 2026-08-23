@@ -455,6 +455,30 @@ SCENARIOS: list[dict] = [
         "mode": "production",
         "theme": "sampler",
     },
+    # lieder — a custom-render frame (engraved art song). The generated sweep
+    # entry below covers it at 08:55; this second scenario pins a *small* hour
+    # on purpose, because lieder is the one theme whose composition changes
+    # shape with the hour: the time signature is hour/4 and the barlines fall
+    # every ``hour`` notes, so 3 o'clock engraves a densely barred staff where
+    # 12 o'clock engraves an open one. It also fences the minimum-bar-spacing
+    # guard, which only engages at the small hours.
+    {
+        "name": "lieder_meter_h3_production",
+        "time": "03:15",
+        "row": _row(
+            "It was a quarter past three, and the house had not yet begun "
+            "to stir, though the light was already on the stairs.",
+            "quarter past three",
+            author="Henry James",
+            title="The Portrait of a Lady",
+            bucket="h3_quarter_past",
+            resolved_bucket="h3_quarter_past",
+            quality_score=91,
+            source_id="2833",
+        ),
+        "mode": "production",
+        "theme": "lieder",
+    },
     {
         "name": "goodnight_default",
         "message": "Good night.",
