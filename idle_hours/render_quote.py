@@ -12689,7 +12689,7 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict) -> None:
 # exactly what the two inks are doing. Nothing else in the rotation gets to use
 # a synthesised colour for the reason the source material uses it.
 #
-# The time rides the **validity stamp**, ``VALID 1630 UTC``. Every real chart
+# The time rides the **validity stamp**, ``VALID 1630 LT``. Every real chart
 # carries the observation time it analyses, so this is a place a number
 # genuinely belongs — the same category of solution as ``izakaya``'s lantern
 # numeral rather than a digit bolted onto the frame.
@@ -12891,11 +12891,28 @@ def _synoptic_paint_stations(draw: ImageDraw.ImageDraw, width: int, height: int)
 
 
 def _synoptic_paint_stamp(draw: ImageDraw.ImageDraw, width: int, height: int, time_str: str) -> None:
-    """``VALID HHMM UTC`` — the chart's observation time, and the clock."""
+    """``VALID HHMM LT`` — the chart's observation time, and the clock.
+
+    Labelled **LT** (the meteorological / aviation abbreviation for local time),
+    not UTC, even though a real surface analysis is stamped in UTC. The clock
+    renders local wall time — ``run_clock.current_time_str`` is
+    ``datetime.now().strftime("%H:%M")``, naive and local — so a device in UTC-4
+    showing 12:30 would stamp ``VALID 1230 UTC`` for a moment that is actually
+    16:30 UTC. Printing a false claim is worse than printing a less common but
+    correct label.
+
+    Converting the value to UTC instead was the other option and is wrong here:
+    this stamp *is* the theme's time carrier, so a number that disagrees with
+    the quote and with the wall clock defeats the point. Reading the real zone
+    abbreviation (``datetime.now().astimezone().tzname()``) was also rejected —
+    it would make the frame depend on the host's timezone, which is exactly the
+    hazard ``CLOCK_DEPENDENT_THEMES`` exists for in the golden suite, and would
+    make this theme's fixtures machine-dependent.
+    """
     black, red = SPECTRA6["black"], SPECTRA6["red"]
     digits = (time_str or "").replace(":", "")[:4] or "0000"
     font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=13)
-    text = f"VALID {digits} UTC"
+    text = f"VALID {digits} LT"
     box = draw.textbbox((0, 0), text, font=font)
     pad = 6
     w, h = box[2] - box[0], box[3] - box[1]
