@@ -117,6 +117,8 @@ THEME_ORDER: tuple[str, ...] = (
     "synoptic",
     "vhs",
     "cardcatalog",
+    "tessera",
+    "memphis",
     "metro",
     "diags",
 )
@@ -1272,6 +1274,33 @@ THEMES = {
         "accent": SPECTRA6["blue"],
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
+    },
+    # 1980s Memphis Group postmodernism. A literary-layout theme with a heavy
+    # ``draw_memphis_border`` painter and a ``clear_rect`` knockout — the quote
+    # wants the standard fit/wrap pipeline and the chrome lives in the margins.
+    "memphis": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
+    # Byzantine gold-ground mosaic. A custom-render frame
+    # (``render_tessera_frame``) that tessellates the entire canvas on one grid
+    # — the body text IS mosaic, which is the whole idea. The palette below
+    # serves only the goodnight / source-card fall-through paths.
+    "tessera": {
+        "page_bg": SPECTRA6["yellow"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
     # Worn VHS tape under a camcorder OSD. A custom-render frame
@@ -3301,6 +3330,56 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             SPECIALELITE_REGULAR,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # memphis uses Rubik rather than the Jost #216 suggested. Jost is the
+    # obvious bundled geometric sans, but it is ``bauhaus``'s face, and bauhaus
+    # is precisely the theme memphis has to stay distinct from — rendered side
+    # by side on white grounds with primary shapes they read as siblings.
+    # Rubik's rounded terminals are both period-correct (Memphis furniture is
+    # rounded plastic laminate) and enough to separate them. Shared with
+    # ``risograph``, whose two-ink print register is in no danger of collision.
+    # Variable font whose axis default is Light, so both instances are pinned.
+    "memphis": {
+        "quote_regular": [
+            (RUBIK_VARIABLE, "Regular"),
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (RUBIK_VARIABLE, "Bold"),
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (RUBIK_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # tessera's body is Inter, chosen by measurement rather than register.
+    # Legibility under quantization tracks cap-height/tile, and at the ratios a
+    # literary quote can afford, an even-weight grotesque with generous counters
+    # survives where a high-contrast face does not — #213 suspected Cinzel
+    # Decorative would be too contrasty once tiled, and it is. Cinzel is not
+    # dropped though: it carries the medallion numeral (loaded inline in
+    # ``_tessera_paint``), which is short enough to earn the ratio at which its
+    # Roman capitals read as a genuine mosaic inscription. Same "period display
+    # chrome, legible body" split ``illuminated`` and ``tarot`` use. Shared with
+    # ``swiss``, which is in no danger of being confused with a gold mosaic.
+    "tessera": {
+        "quote_regular": [
+            (INTER_VARIABLE, "Bold"),
+            ARCHIVO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (INTER_VARIABLE, "Bold"),
+            ARCHIVO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CINZELDECORATIVE_BLACK,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -13158,6 +13237,231 @@ def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time
             draw.line((x0 + 8, y1 - 8, x1 - 8, y1 - 8), fill=SPECTRA6["blue"], width=1)
 
 
+# ---------------------------------------------------------------------------
+# memphis — 1980s postmodern design (issue #216)
+#
+# Three themes in the rotation reach for bold primaries, so the distinction has
+# to come from *composition*, and it does: ``bauhaus`` is sober and axial —
+# circle, square, triangle, concentric rings, everything square to the page.
+# ``fillmore`` is psychedelic — free-form blobs and warped organic silhouettes.
+# Memphis is neither: hard-edged shapes in deliberate disarray, squiggles and
+# zigzags as first-class elements, and a terrazzo ground neither of the others
+# has.
+#
+# **Terrazzo chip size was measured, not chosen.** #216 flagged the risk that a
+# chip scatter would average into flat grey noise at panel distance, and it
+# does — but only below a threshold. Swept at 1:1 and again box-averaged to
+# simulate 1-3 m, 4 px chips read as confetti at any density, while 7-10 px
+# chips at 5-12% coverage read as real terrazzo. So the chips are large and
+# sparse rather than small and dense, exactly the fallback the issue predicted
+# would be needed. They are irregular polygons rather than squares for the same
+# reason: a field of aligned squares reads as a checker pattern, and the whole
+# point of terrazzo is that no two chips are the same shape.
+#
+# **A custom frame, against the issue's own note.** #216 guessed a
+# literary-layout theme with a border painter, on the reasoning that the quote
+# wants the standard pipeline and the chrome lives in the margins. Measured,
+# the second half defeats the first: the shared layout centres its block over
+# the page and leaves roughly a 30 px margin, so terrazzo, squiggle and confetti
+# all end up crushed into strips where the chips are indistinguishable from the
+# confetti and the squiggle is clipped by the text panel. The composition then
+# reads as "confetti border around a white box" — precisely the *merely busy*
+# failure mode the issue named. The frame therefore sets its own quote card at
+# roughly the middle half of the page and keeps real margin around it. Same
+# measurement that moved ``cardcatalog`` off the shared layout.
+#
+# **Why the type is not Jost.** Sharing the geometric sans with ``bauhaus`` —
+# the one theme memphis most needs to be distinct from — was the obvious move
+# and the wrong one: rendered side by side they read as siblings, since both are
+# then a geometric sans on a white ground with primary shapes. Rubik carries it
+# instead. Its rounded terminals are period-correct (Memphis furniture is all
+# rounded plastic laminate) and they put visible daylight between the two.
+# ---------------------------------------------------------------------------
+_MEMPHIS_CHIP_SEED = 0x3E77
+_MEMPHIS_CHIP_SIZE = 7
+_MEMPHIS_CHIP_DENSITY = 0.045
+# Confetti has to be several times the chip size or the two techniques collide:
+# at overlapping scales the eye reads one field of coloured bits and neither the
+# terrazzo nor the shapes register as themselves.
+_MEMPHIS_CONFETTI_SIZE = (20, 40)
+_MEMPHIS_CARD = (150, 128, 650, 356)
+_MEMPHIS_CONFETTI_SEED = 0xC0FE
+# Weighted toward black. An even split across all five inks was tried first and
+# the ground read as a burst party popper rather than as terrazzo — real
+# terrazzo is mostly dark aggregate with occasional colour, and it is the
+# colour being *occasional* that keeps the chips from competing with the
+# confetti shapes for the same job.
+_MEMPHIS_INKS = ("black", "black", "black", "red", "yellow", "blue", "green")
+
+
+def _memphis_chip_inks() -> tuple:
+    return tuple(SPECTRA6[name] for name in _MEMPHIS_INKS)
+
+
+def _memphis_paint_terrazzo(image: Image.Image, clear_rect=None) -> None:
+    """Sparse irregular chips over the white ground — see the section comment."""
+    width, height = image.size
+    draw = ImageDraw.Draw(image)
+    inks = _memphis_chip_inks()
+    rng = random.Random(_MEMPHIS_CHIP_SEED)
+    chip = _MEMPHIS_CHIP_SIZE
+    count = int(width * height * _MEMPHIS_CHIP_DENSITY / (chip * chip))
+    for _ in range(count):
+        cx, cy = rng.randrange(width), rng.randrange(height)
+        ink = inks[rng.randrange(len(inks))]
+        sides = rng.randrange(3, 6)
+        lean = rng.uniform(0.0, math.tau)
+        points = []
+        for i in range(sides):
+            angle = lean + math.tau * i / sides + rng.uniform(-0.35, 0.35)
+            radius = chip * rng.uniform(0.42, 1.0)
+            points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+        draw.polygon(points, fill=ink)
+    del clear_rect
+
+
+def _memphis_paint_squiggle(image: Image.Image) -> None:
+    """The wandering heavy line — the single most Memphis element there is.
+
+    Drawn as a polyline through control points with round joins, then thickened,
+    because PIL has no variable-width stroke. It runs down the left margin and
+    across the foot so it frames the quote rather than crossing it: the failure
+    mode this theme has is a page that is merely busy.
+    """
+    draw = ImageDraw.Draw(image)
+    blue, black = SPECTRA6["blue"], SPECTRA6["black"]
+    for points, ink, w in (
+        ([(26, 96), (58, 60), (30, 24), (74, 18)], blue, 7),
+        ([(20, 250), (54, 296), (22, 344), (60, 392), (26, 436)], black, 6),
+    ):
+        draw.line(points, fill=ink, width=w, joint="curve")
+
+
+def _memphis_paint_confetti(image: Image.Image) -> None:
+    """Triangles, half-circles and zigzags scattered off-grid at varied angles."""
+    width, height = image.size
+    draw = ImageDraw.Draw(image)
+    red, yellow, blue, green, black = (
+        SPECTRA6[k] for k in ("red", "yellow", "blue", "green", "black"))
+    rng = random.Random(_MEMPHIS_CONFETTI_SEED)
+    # Kept to the margins by construction: the quote block owns the middle, and
+    # a confetti shape landing on it is the difference between framing and
+    # clutter.
+    zones = [(20, 20, 130, 460), (670, 20, 780, 460), (150, 18, 650, 96), (150, 384, 650, 462)]
+    palette = (red, yellow, blue, green, black)
+    for index in range(18):
+        zx0, zy0, zx1, zy1 = zones[index % len(zones)]
+        cx = rng.randrange(zx0, max(zx0 + 1, zx1 - 20))
+        cy = rng.randrange(zy0, max(zy0 + 1, zy1 - 20))
+        ink = palette[rng.randrange(len(palette))]
+        size = rng.randrange(*_MEMPHIS_CONFETTI_SIZE)
+        kind = index % 3
+        if kind == 0:                                    # triangle, off-axis
+            lean = rng.uniform(0, math.tau)
+            pts = [(cx + size * math.cos(lean + math.tau * i / 3),
+                    cy + size * math.sin(lean + math.tau * i / 3)) for i in range(3)]
+            draw.polygon(pts, fill=ink)
+        elif kind == 1:                                  # half-circle
+            start = rng.randrange(0, 360)
+            draw.pieslice((cx - size, cy - size, cx + size, cy + size),
+                          start, start + 180, fill=ink)
+        else:                                            # zigzag
+            step = max(4, size // 2)
+            pts = [(cx + i * step, cy + (0 if i % 2 else step)) for i in range(4)]
+            draw.line(pts, fill=ink, width=3, joint="curve")
+    del width, height
+
+
+def _memphis_paint_bars(image: Image.Image) -> None:
+    """Two bold bars crossing at slight angles, refusing to parallel the edges.
+
+    The refusal is the point — a bar square to the page reads as a rule, and
+    Memphis composition is built on things that just miss alignment.
+    """
+    width, height = image.size
+    draw = ImageDraw.Draw(image)
+    draw.line([(0, 78), (width, 58)], fill=SPECTRA6["red"], width=9)
+    draw.line([(0, 404), (width, 430)], fill=SPECTRA6["yellow"], width=11)
+
+
+def _memphis_paint_card(image: Image.Image, quote_row: dict) -> None:
+    """The quote on a laminate panel — white, keylined, with an offset shadow.
+
+    A plain knockout reads as a hole punched in the terrazzo; the offset bar
+    makes it a panel *lying on* the ground, which is the Memphis object.
+    """
+    x0, y0, x1, y1 = _MEMPHIS_CARD
+    width, height = image.size
+    if x1 - x0 < 60 or y1 - y0 < 50:
+        return
+    draw = ImageDraw.Draw(image)
+    black, white, red, blue = (SPECTRA6[k] for k in ("black", "white", "red", "blue"))
+    draw.rectangle((x0 + 9, y0 + 11, x1 + 9, y1 + 11), fill=blue)
+    draw.rectangle((x0, y0, x1, y1), fill=white)
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=3)
+
+    pad = 22
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    credit = " · ".join(part for part in (
+        (quote_row.get("author") or "").strip(),
+        (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or ""),
+    ) if part)
+    credit_h = 22 if credit else 0
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        (x1 - x0) - 2 * pad, (y1 - y0) - 2 * pad - credit_h,
+        font_max=34, font_min=14, line_height_mult=1.26, theme="memphis",
+    )
+    block = len(wrapped) * line_height
+    y = y0 + pad + max(0, ((y1 - y0) - 2 * pad - credit_h - block) // 2)
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        widths = []
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            box = draw.textbbox((0, 0), chunk, font=font)
+            widths.append(box[2] - box[0])
+        x = x0 + max(pad, ((x1 - x0) - sum(widths)) // 2)
+        for (chunk, is_bold), chunk_w in zip(line, widths):
+            font = quote_font_bold if is_bold else quote_font
+            draw.text((x, y + (ascent - _font_ascent(font))), chunk, font=font,
+                      fill=red if is_bold else black)
+            x += chunk_w
+        y += line_height
+    if credit:
+        cfont = load_font(META_FONT_CANDIDATES, size=14)
+        while len(credit) > 4 and draw.textlength(credit, font=cfont) > (x1 - x0) - 2 * pad:
+            credit = credit[:-2] + "…"
+        draw.text(((x0 + x1) // 2, y1 - pad + 2), credit, font=cfont, fill=black, anchor="md")
+    del width, height
+
+
+def render_memphis_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """1980s Memphis postmodernism (see the module section comment above).
+
+    The digital HH:MM is never surfaced — nothing in the Memphis vocabulary
+    suggests a numeral device, and inventing one would read as bolted on, so the
+    matched phrase carries the time as it does in ``questline`` / ``outrun`` /
+    ``pride``. ``time_str`` is retained for dispatch uniformity only.
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the ``metro`` convention: the card and the confetti zones are
+    absolute panel coordinates.
+    """
+    assert time_str is not None or True
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _memphis_paint_terrazzo(image)
+    _memphis_paint_bars(image)
+    _memphis_paint_squiggle(image)
+    _memphis_paint_confetti(image)
+    _memphis_paint_card(image, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 _BORDER_PAINTERS = {
     "synoptic": draw_synoptic_border,
     "bauhaus": draw_bauhaus_border,
@@ -21764,6 +22068,338 @@ def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height:
     return image
 
 
+# ---------------------------------------------------------------------------
+# tessera — a Byzantine gold-ground mosaic (issue #213)
+#
+# The distinguishing move is that **the text itself is quantized to tiles**.
+# ``vitrail`` already does leaded glass, but its text is ordinary glyphs sitting
+# in a clear cartouche and only the surrounding field is tiled; here the body
+# text *is* mosaic, which is what keeps the two from being the same theme twice.
+#
+# **One grid, not two.** The obvious build — stamp tiled glyphs onto a flat gold
+# page — was tried first and reads as pixel-art text on a yellow sheet, because
+# the ground has no tesserae of its own for the letters to sit among. The frame
+# instead tessellates the *whole canvas* on a single global grid and chooses an
+# ink per cell: dark for the text, cream for the nimbus, deep tones for the
+# border field, gold everywhere else. Every cell is inset by a grout gap, so the
+# dark ground showing between tiles is the mortar. Text and ground therefore
+# share one grid by construction and cannot drift out of alignment.
+#
+# **Tile size is derived, not fixed, and the ratio is what matters.** Measured
+# against the committed corpus at a fixed tile, legibility tracks cap-height /
+# tile almost exactly and not tile size at all: at 6.0 the text is mush, 7.8
+# leaves "past" ambiguous, 9.8 is clean, and 15 is crisp enough to carry flared
+# serifs. So the tile is derived from the fitted cap height to hold that ratio
+# near ``_TESSERA_CAP_PER_TILE``, which also produces the right visual
+# behaviour: a short quote sets large and gets big dramatic tesserae, a dense
+# one sets small and gets fine ones. Real mosaics work exactly this way — an
+# inscription is laid in coarser tesserae than the fine modelling around it.
+#
+# **Why the body is not Cinzel Decorative.** #213 suspected the Roman-capital
+# face would be too high-contrast once tiled, and it is: at the ratios a
+# literary quote can afford it disintegrates into ambiguous clusters, along with
+# the rest of the Garamond-adjacent family. At ratio 15 it is genuinely superb —
+# but 15 fits about three words on the page. Cinzel therefore carries the
+# medallion numeral, which is short enough to earn that ratio, and Inter carries
+# the body: an even-weight grotesque with generous counters survives
+# quantization better than anything else in the bundle. Same "period display
+# chrome, legible body" split ``illuminated`` and ``tarot`` already use.
+# ---------------------------------------------------------------------------
+_TESSERA_CAP_PER_TILE = 9.0        # legibility floor measured at ~8; 9 leaves headroom
+# Capped at 5, not because a larger stone looks wrong but because everything
+# else on the page has to survive the same grid. A short quote fits at 60 pt and
+# would pull the tile to 7, at which the *byline* — necessarily smaller than the
+# body — drops to a cap height of five stones and quantizes into mush. The tile
+# is set by the largest text on the page but has to be legible for the smallest.
+_TESSERA_TILE_RANGE = (4, 5)
+_TESSERA_BODY = (76, 188, 724, 366)
+_TESSERA_MEDALLION = (400, 104, 44)  # centre x, centre y, radius
+_TESSERA_CREDIT_Y = 380
+_TESSERA_CREDIT_MAX = 34
+_TESSERA_NIMBUS_R = 70
+_TESSERA_GLITTER_SEED = 0x7E55A
+# Deep-tone border field, so the gold reads as *ground* rather than as the whole
+# page. All three are documented recipes: navy B+K, plum R+B+K, forest G+K.
+# Border depth in CELLS, grouped into bands of _TESSERA_FIELD_BAND. A one-cell
+# ring is ~4 px at the usual tile and reads as a coloured dash rather than as a
+# deep-tone band, so each recipe gets several cells before the next takes over.
+# The border is laid in COARSER stones than the field, at
+# ``_TESSERA_BORDER_SCALE`` times the body tile. This is not a convenience: a
+# deep tone is a two- or three-ink mix, and a mix only reads as one colour when
+# the eye cannot resolve its inks. A body-scale tessera is about three pixels
+# on a side — smaller than the Bayer period itself — so a navy stone at that
+# size stays visibly blue-and-black however the mix is phased, and a plum band
+# comes out as red / blue / black confetti. Doubling the border stone gives the
+# mix enough pixels to average. Byzantine mosaics do exactly this for the same
+# optical reason: borders and grounds are set in larger tesserae than figures,
+# where the fine modelling needs the resolution and the band only needs colour.
+_TESSERA_BORDER_SCALE = 2
+_TESSERA_FIELD_DEPTH = 3          # border rings, counted in COARSE stones
+_TESSERA_FIELD_BAND = 1
+
+
+def _tessera_tile_for(cap_height: int) -> tuple[int, int]:
+    """``(tile, grout)`` for a fitted cap height — see the section comment."""
+    tile = int(round(cap_height / _TESSERA_CAP_PER_TILE))
+    tile = max(_TESSERA_TILE_RANGE[0], min(_TESSERA_TILE_RANGE[1], tile))
+    return tile, (1 if tile <= 5 else 2)
+
+
+def _tessera_gold(col: int, row: int):
+    """Gold ground ink for one cell, with an irregular glitter scatter.
+
+    Real gold tesserae were set at deliberately varied angles so the surface
+    catches light unevenly; a flat field of one ink reads as painted card. The
+    ground is mostly a Y+W cream mix with roughly a fifth of cells flipped to
+    solid yellow and a few to white, chosen by a cheap integer hash so the
+    scatter is irregular rather than striped — a modulus alone lays the glitter
+    on visible diagonals, the same aliasing that killed ``cardcatalog``'s first
+    foxing pass.
+    """
+    h = (col * 73856093) ^ (row * 19349663) ^ _TESSERA_GLITTER_SEED
+    h = (h * 2654435761) & 0xFFFFFFFF
+    # Predominantly gold with a scatter of pale facets. An even Y+W split was
+    # tried first and reads as cream paper rather than gilding — the ground has
+    # to be mostly yellow for the white to register as *glint* rather than as
+    # the base tone. No parity fallback: a modulus or a checkerboard lays the
+    # pale tesserae on visible diagonals, the aliasing that killed
+    # ``cardcatalog``'s first foxing pass.
+    return SPECTRA6["white"] if (h >> 13) % 100 < 26 else SPECTRA6["yellow"]
+
+
+# One documented deep-tone recipe per border band, outermost first: navy (B+K),
+# plum (R+B+K), forest (G+K).
+#
+# **The recipe has to be mixed inside a tessera, not across tesserae.** Every
+# two- and three-ink recipe in the catalogue assumes the mixed inks land on
+# adjacent *pixels*, which the eye integrates at panel distance. A mosaic moves
+# the atom: the smallest unit is a whole tile, several pixels on a side, which
+# the eye resolves individually. Scattering blue and black tesserae therefore
+# does not read as navy — it reads as a blue tile next to a black one, and a
+# three-ink plum band comes out as visible red / blue / black confetti. That was
+# the first build and it looked like a string of fairy lights. Each tessera now
+# carries the whole mix within itself, so it reads as one deep-tone stone.
+_TESSERA_FIELD_RINGS = (
+    (SPECTRA6["blue"], SPECTRA6["black"], None),
+    (SPECTRA6["red"], SPECTRA6["blue"], SPECTRA6["black"]),
+    (SPECTRA6["green"], SPECTRA6["black"], None),
+    (SPECTRA6["blue"], SPECTRA6["black"], None),
+)
+
+
+def _tessera_field(col: int, row: int, cols: int, rows: int):
+    """Deep-tone recipe for a border cell, or ``None`` when the cell is interior.
+
+    Returns the ink triple rather than a single ink; ``_tessera_paint`` mixes it
+    across the tile's own pixels. See the comment above ``_TESSERA_FIELD_RINGS``.
+    """
+    depth = min(col, row, cols - 1 - col, rows - 1 - row)
+    if depth >= _TESSERA_FIELD_DEPTH:
+        return None
+    band = depth // _TESSERA_FIELD_BAND
+    return _TESSERA_FIELD_RINGS[band % len(_TESSERA_FIELD_RINGS)]
+
+
+def _tessera_stone(recipe, x: int, y: int):
+    """One pixel of a deep-tone tessera, mixed on absolute coordinates.
+
+    Absolute rather than tile-local so the Bayer phase stays continuous across
+    the whole band — phase-resetting per tile makes every stone carry the same
+    little pattern, which reads as a printed texture rather than as stone.
+    """
+    a, b, c = recipe
+    if c is None:
+        return a if BAYER_4x4[y % 4][x % 4] < 8 else b
+    cell = BAYER_4x4[y % 4][x % 4]
+    return a if cell < 5 else (b if cell < 11 else c)
+
+
+def _tessera_text_mask(quote_row: dict, width: int, height: int):
+    """Full-canvas masks for the body and the matched phrase, plus the tile size.
+
+    Two masks rather than one so the matched phrase can take its own ink without
+    a second quantization pass — both are sampled on the same global grid.
+    """
+    x0, y0, x1, y1 = _TESSERA_BODY
+    body = Image.new("L", (width, height), 0)
+    accent = Image.new("L", (width, height), 0)
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return body, accent, _tessera_tile_for(20)
+    bd, ad = ImageDraw.Draw(body), ImageDraw.Draw(accent)
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, size = fit_quote(
+        bd, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=60, font_min=26, line_height_mult=1.34,
+        theme="tessera",
+    )
+    tile, grout = _tessera_tile_for(max(1, quote_font.getbbox("H")[3]))
+    y = y0 + max(0, ((y1 - y0) - len(wrapped) * line_height) // 2)
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        widths = []
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            box = bd.textbbox((0, 0), chunk, font=font)
+            widths.append(box[2] - box[0])
+        x = x0 + max(0, ((x1 - x0) - sum(widths)) // 2)
+        for (chunk, is_bold), chunk_w in zip(line, widths):
+            font = quote_font_bold if is_bold else quote_font
+            target = ad if is_bold else bd
+            target.text((x, y + (ascent - _font_ascent(font))), chunk, font=font, fill=255)
+            x += chunk_w
+        y += line_height
+    # Attribution, set on the same grid. It has to stay large — at a normal
+    # byline size the cap height is only three or four tesserae and the name
+    # quantizes into unreadable clusters. A mosaicist facing the same problem
+    # used *smaller* tesserae for fine work, but a second grid would break the
+    # one-grid invariant the whole frame rests on, so the byline is simply set
+    # big instead, which is also what a real dedicatory inscription looks like.
+    credit = " · ".join(part for part in (
+        (quote_row.get("author") or "").strip(),
+        (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or ""),
+    ) if part)
+    if credit:
+        # Capped independently of the body size and placed well inside the
+        # coarse border band: the first build sized it at ``body - 8`` and put
+        # it at y=412, where a short quote's 52 pt byline ran its lower half
+        # into the border stones and came out shredded.
+        cfont = load_font(THEME_FONTS["tessera"]["quote_regular"],
+                          size=min(_TESSERA_CREDIT_MAX, max(22, size - 10)))
+        while len(credit) > 4 and bd.textlength(credit, font=cfont) > (x1 - x0):
+            credit = credit[:-2] + "…"
+        bd.text(((x0 + x1) // 2, _TESSERA_CREDIT_Y), credit, font=cfont, fill=255, anchor="ma")
+    return body, accent, (tile, grout)
+
+
+def _tessera_paint_border(px, width: int, height: int, coarse: int, grout: int) -> None:
+    """Lay the deep-tone border in coarse stones — see ``_TESSERA_FIELD_RINGS``."""
+    ccols, crows = width // coarse, height // coarse
+    side = coarse - grout - 1
+    for row in range(crows):
+        cy = row * coarse
+        for col in range(ccols):
+            recipe = _tessera_field(col, row, ccols, crows)
+            if recipe is None:
+                continue
+            cx = col * coarse
+            for dy in range(side):
+                y = cy + dy
+                if y >= height:
+                    break
+                for dx in range(side):
+                    x = cx + dx
+                    if x < width:
+                        px[x, y] = _tessera_stone(recipe, x, y)
+
+
+def _tessera_paint_mosaic(image: Image.Image, quote_row: dict, time_str: str) -> None:
+    """Lay the whole canvas as one tessellated field on a single grid."""
+    width, height = image.size
+    body_mask, accent_mask, (tile, grout) = _tessera_text_mask(quote_row, width, height)
+
+    # Nimbus behind the medallion — the single most recognisable Byzantine
+    # device, and the reason the hour roundel reads as an inscription rather
+    # than as a sticker.
+    # A ring, not a disc. Filled, the nimbus swallowed the whole upper page and
+    # read as a white cloud; a real nimbus is a band of pale tesserae *around*
+    # the figure, and leaving the interior to the roundel is what makes it read
+    # as a halo rather than as a hole in the gold.
+    nimbus = Image.new("L", (width, height), 0)
+    mx, my, mr = _TESSERA_MEDALLION
+    nd = ImageDraw.Draw(nimbus)
+    nd.ellipse((mx - _TESSERA_NIMBUS_R, my - _TESSERA_NIMBUS_R,
+                mx + _TESSERA_NIMBUS_R, my + _TESSERA_NIMBUS_R), fill=255)
+    nd.ellipse((mx - mr - 2, my - mr - 2, mx + mr + 2, my + mr + 2), fill=0)
+
+    roundel = Image.new("L", (width, height), 0)
+    rd = ImageDraw.Draw(roundel)
+    rd.ellipse((mx - mr, my - mr, mx + mr, my + mr), fill=255)
+
+    numeral = Image.new("L", (width, height), 0)
+    hour = _cardcatalog_due_hour(time_str)[0]
+    nfont = load_font([CINZELDECORATIVE_BLACK, *ORNAMENT_FONT_CANDIDATES], size=int(mr * 1.15))
+    ImageDraw.Draw(numeral).text((mx, my), _TAROT_ROMAN_NUMERALS.get(hour, "XII"),
+                                 font=nfont, fill=255, anchor="mm")
+
+    bp, ap, np_, rp, up = (m.load() for m in (body_mask, accent_mask, nimbus, roundel, numeral))
+    px = image.load()
+    dark, cream, red = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"]
+
+    def covered(sampler, cx: int, cy: int, side: int) -> bool:
+        """Is this cell more than a third inked in the given mask?
+
+        Sampling the cell centre alone drops thin strokes whose ink misses the
+        exact midpoint; an area test keeps hairlines that a real mosaicist would
+        still have laid a tessera for.
+        """
+        hits = total = 0
+        step = max(1, side // 3)
+        for dy in range(0, side, step):
+            for dx in range(0, side, step):
+                x, y = cx + dx, cy + dy
+                total += 1
+                if x < width and y < height and sampler[x, y] > 110:
+                    hits += 1
+        return bool(total) and hits * 3 >= total
+
+    def lay(cx: int, cy: int, side: int, ink, recipe) -> None:
+        for dy in range(side):
+            y = cy + dy
+            if y >= height:
+                break
+            for dx in range(side):
+                x = cx + dx
+                if x < width:
+                    px[x, y] = ink if ink is not None else _tessera_stone(recipe, x, y)
+
+    coarse = tile * _TESSERA_BORDER_SCALE
+    border_px = _TESSERA_FIELD_DEPTH * coarse
+    _tessera_paint_border(px, width, height, coarse, grout)
+
+    cols, rows = width // tile, height // tile
+    side = tile - grout
+    for row in range(rows):
+        cy = row * tile
+        for col in range(cols):
+            cx = col * tile
+            # Interior only — the coarse border owns its band.
+            if (cx < border_px or cy < border_px
+                    or cx >= width - border_px or cy >= height - border_px):
+                continue
+            if covered(up, cx, cy, side):
+                ink = red            # rubricated numeral, the inscription ink
+            elif covered(rp, cx, cy, side):
+                ink = dark           # the roundel's own dark bed
+            elif covered(ap, cx, cy, side):
+                ink = red            # matched phrase
+            elif covered(bp, cx, cy, side):
+                ink = dark           # body
+            elif covered(np_, cx, cy, side):
+                ink = cream          # nimbus
+            else:
+                ink = _tessera_gold(col, row)
+            lay(cx, cy, side, ink, None)
+    for m in (body_mask, accent_mask, nimbus, roundel, numeral):
+        m.close()
+
+
+def render_tessera_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A Byzantine gold-ground mosaic (see the module section comment above).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the convention ``metro`` established: the grid, the body rect and
+    the medallion are absolute panel coordinates, and NEAREST specifically
+    because every cell is a hard-edged tessera an interpolating filter would
+    smear into off-palette mortar.
+    """
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    _tessera_paint_mosaic(image, quote_row, time_str)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -21801,6 +22437,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_vhs_frame(time_str, quote_row, width, height)
     if theme == "cardcatalog":
         return render_cardcatalog_frame(time_str, quote_row, width, height)
+    if theme == "memphis":
+        return render_memphis_frame(time_str, quote_row, width, height)
+    if theme == "tessera":
+        return render_tessera_frame(time_str, quote_row, width, height)
     if theme == "metro":
         return render_metro_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]

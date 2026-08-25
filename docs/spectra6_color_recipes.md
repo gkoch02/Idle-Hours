@@ -108,6 +108,18 @@ Two things worth knowing before reaching for it:
 
 **Distinguish it from plate misregistration.** `pulp` paints its cover title's red plate at a *fixed offset in one direction* and drops black on top, which is a printing fault — a sheet slipping through a press. This is symmetric about the glyph because it models a *signal* splitting into its records, not a sheet moving. The two look different and mean different things; picking the wrong one gives a period-wrong result.
 
+### When the atom is not a pixel
+
+Every recipe in this catalogue assumes its inks land on adjacent **pixels**, because that is what the eye integrates at panel distance. A technique that makes the smallest unit *larger* than a pixel breaks that assumption, and the recipes stop working — silently, since the ink ratios are still exactly right.
+
+`tessera` hit this first. It lays the page as a mosaic whose smallest unit is a tessera several pixels on a side, and at 1–3 m the eye resolves individual tesserae — that is the whole point of a mosaic. Scattering blue and black *tesserae* in a 1:1 ratio therefore does not read as navy; it reads as a blue tile beside a black one. A three-ink plum band comes out as visible red / blue / black confetti, which is what the first build looked like: a string of fairy lights rather than a deep-tone border.
+
+Two rules follow, and they generalise to any future theme with a super-pixel atom:
+
+**Mix inside the atom, not across atoms.** Each tessera carries its whole recipe within its own pixels, so it reads as one stone of one colour. Phase the mix on **absolute** coordinates rather than atom-local ones — resetting the Bayer phase per atom stamps the same little pattern into every one, which reads as a printed texture rather than as stone.
+
+**The atom must be big enough to hold the mix.** A three-pixel-square tessera is smaller than the 4×4 Bayer period, so a two-ink mix inside it cannot average however it is phased. `tessera` lays its deep-tone border in stones twice the body's tile for exactly this reason — which is also, satisfyingly, what real Byzantine mosaics do: borders and grounds are set in larger tesserae than figures, where the fine modelling needs the resolution and the band only needs colour.
+
 ## Two-ink recipes
 
 Single combined catalogue: recipes the codebase pulls today plus the unused-but-reachable recipes upstream literature consistently recommends. The **In use** column flags themes that currently invoke each recipe; rows marked "not in use" are forward references for future themes — they're listed because someone considering an ocean / winter / parchment / forest theme will want a starting point rather than re-deriving the recipe.

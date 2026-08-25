@@ -183,6 +183,8 @@ THEME_SATURATION: dict[str, float] = {
     "cardcatalog": 0.5,
     # White map stock with four native route inks. The lighter tier keeps the
     # yellow line visible without blowing out the red/blue interchange marks.
+    "tessera": 0.7,
+    "memphis": 0.5,
     "metro": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /

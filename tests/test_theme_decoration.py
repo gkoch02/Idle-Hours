@@ -89,6 +89,8 @@ CUSTOM_FRAME_THEMES = (
     "pulp",
     "vhs",
     "cardcatalog",
+    "tessera",
+    "memphis",
     "metro",
 )
 

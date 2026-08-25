@@ -29,7 +29,7 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "vhs", "cardcatalog", "tessera", "memphis", "metro")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -1511,7 +1511,7 @@ class TestFixedGeometryFramesDownscale:
     and palette-subset, both of which a cropped fragment satisfies.
     """
 
-    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro")
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "tessera", "memphis", "metro")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -1544,4 +1544,182 @@ class TestFixedGeometryFramesDownscale:
         assert not off_palette, (
             f"{theme} thumbnail carries off-palette colours {sorted(off_palette)} — "
             "the resample filter is blending inks instead of picking them"
+        )
+
+
+class TestTesseraOneGrid:
+    """Text and ground must share a single tile grid — the frame's whole premise.
+
+    The first build stamped tiled glyphs onto a flat gold page, which reads as
+    pixel-art text on a yellow sheet because the ground has no tesserae for the
+    letters to sit among. Everything is now chosen per cell on one global grid,
+    and that is exactly what these assert: sample the interior and require each
+    cell to be a single flat ink over its whole face. Un-quantized text drawn on
+    top would break cell uniformity immediately.
+    """
+
+    def _frame(self):
+        row = make_row(display_quote="At half past two Mr. and Mrs. Irving left the house.",
+                       matched_text="half past two", author="L. M. Montgomery",
+                       title="Anne of Avonlea")
+        image = rq.render("14:30", row, 800, 480, mode="production", theme="tessera")
+        _, _, (tile, grout) = rq._tessera_text_mask(row, 800, 480)
+        return image, tile, grout
+
+    def test_every_interior_cell_is_one_flat_ink(self):
+        image, tile, grout = self._frame()
+        px = image.load()
+        side = tile - grout
+        border = rq._TESSERA_FIELD_DEPTH * tile * rq._TESSERA_BORDER_SCALE
+        ragged = 0
+        checked = 0
+        for row_i in range(border // tile + 1, (480 - border) // tile - 1):
+            for col in range(border // tile + 1, (800 - border) // tile - 1):
+                cx, cy = col * tile, row_i * tile
+                inks = {px[cx + dx, cy + dy] for dy in range(side) for dx in range(side)}
+                checked += 1
+                if len(inks) != 1:
+                    ragged += 1
+        assert checked > 500, "sampled too little of the interior to mean anything"
+        assert ragged == 0, (
+            f"{ragged} of {checked} interior cells carry more than one ink — text "
+            "and ground are no longer sharing the tile grid, which is the whole "
+            "premise of the frame"
+        )
+
+    def test_grout_separates_the_stones(self):
+        """There must be mortar between tesserae, or it is not a mosaic."""
+        image, tile, grout = self._frame()
+        assert grout >= 1
+        px = image.load()
+        border = rq._TESSERA_FIELD_DEPTH * tile * rq._TESSERA_BORDER_SCALE
+        # The column just before each cell boundary is grout and must be the
+        # dark setting bed, not a continuation of the stone.
+        seam = 0
+        for row_i in range(border // tile + 2, (480 - border) // tile - 2):
+            for col in range(border // tile + 2, (800 - border) // tile - 2):
+                x = col * tile + tile - 1
+                y = row_i * tile + tile - 1
+                if px[x, y] == rq.SPECTRA6["black"]:
+                    seam += 1
+        assert seam > 400, (
+            f"only {seam} cell seams carry the dark setting bed — without grout "
+            "between the stones the field reads as a flat colour block"
+        )
+
+    @pytest.mark.parametrize("cap,expected_in_range", [(20, True), (40, True), (200, True), (4, True)])
+    def test_tile_stays_inside_its_range(self, cap, expected_in_range):
+        tile, grout = rq._tessera_tile_for(cap)
+        low, high = rq._TESSERA_TILE_RANGE
+        assert low <= tile <= high and expected_in_range
+        assert grout >= 1
+
+    def test_tile_grows_with_cap_height(self):
+        """Bigger text gets bigger stones — the ratio is what stays constant."""
+        small = rq._tessera_tile_for(30)[0]
+        large = rq._tessera_tile_for(60)[0]
+        assert large >= small, (
+            "a larger cap height produced a smaller or equal tile; the tile is "
+            "derived to hold cap/tile near constant, so it must be monotone"
+        )
+
+
+class TestTesseraDeepToneStones:
+    """A deep tone must be mixed INSIDE a stone, not across neighbouring stones.
+
+    Every recipe in the catalogue assumes its inks land on adjacent *pixels*. A
+    mosaic moves the atom to a whole tile, which the eye resolves individually,
+    so scattering blue and black tesserae reads as a blue tile beside a black
+    one rather than as navy. The first build did that and the border came out as
+    red / blue / black confetti.
+    """
+
+    def test_a_border_stone_carries_its_whole_mix(self):
+        row = make_row(display_quote="It was nine o'clock.", matched_text="nine o'clock",
+                       author="E. Nesbit", title="The Railway Children")
+        image = rq.render("09:00", row, 800, 480, mode="production", theme="tessera")
+        _, _, (tile, grout) = rq._tessera_text_mask(row, 800, 480)
+        coarse = tile * rq._TESSERA_BORDER_SCALE
+        side = coarse - grout - 1
+        px = image.load()
+        mixed = 0
+        for index in range(2, 12):
+            cx, cy = index * coarse, 0
+            inks = {px[cx + dx, cy + dy] for dy in range(side) for dx in range(side)}
+            if len(inks) >= 2:
+                mixed += 1
+        assert mixed >= 8, (
+            f"only {mixed} of 10 sampled border stones carry more than one ink — "
+            "the deep-tone recipe is being scattered across stones instead of "
+            "mixed within them, which reads as confetti rather than as navy"
+        )
+
+
+class TestMemphisGround:
+    """Terrazzo must stay sparse, and the card must leave the ground room."""
+
+    def _frame(self):
+        row = make_row(display_quote="At half past two Mr. and Mrs. Irving left the house.",
+                       matched_text="half past two", author="L. M. Montgomery",
+                       title="Anne of Avonlea")
+        return rq.render("14:30", row, 800, 480, mode="production", theme="memphis")
+
+    def test_terrazzo_stays_a_scatter_not_a_field(self):
+        """Chips cover a small fraction of the ground, or it reads as confetti.
+
+        #216 warned this could average into flat noise; measured, the failure is
+        the other way round — too *dense* and the ground reads as a burst party
+        popper rather than as aggregate in resin.
+        """
+        image = self._frame()
+        px = image.load()
+        white = rq.SPECTRA6["white"]
+        x0, y0, x1, y1 = rq._MEMPHIS_CARD
+        ground = inked = 0
+        for y in range(0, 480, 3):
+            for x in range(0, 800, 3):
+                if x0 <= x <= x1 and y0 <= y <= y1:
+                    continue          # the card is not ground
+                ground += 1
+                if px[x, y] != white:
+                    inked += 1
+        share = inked / max(1, ground)
+        assert 0.02 < share < 0.30, (
+            f"terrazzo and chrome cover {share:.0%} of the ground; below ~2% the "
+            "surface is bare and above ~30% the chips stop reading as aggregate"
+        )
+
+    def test_the_card_leaves_the_ground_room(self):
+        """The regression that moved this off the shared literary layout.
+
+        A literary-layout body block spans nearly the whole page, which crushes
+        terrazzo, squiggle and confetti into strips and produces the "merely
+        busy" frame #216 warned about.
+        """
+        x0, y0, x1, y1 = rq._MEMPHIS_CARD
+        share = ((x1 - x0) * (y1 - y0)) / (800 * 480)
+        assert share < 0.55, (
+            f"the quote card occupies {share:.0%} of the canvas — the Memphis "
+            "chrome needs real margin to read as composition rather than as a "
+            "border around a box"
+        )
+
+    def test_chips_and_confetti_do_not_compete_at_one_scale(self):
+        assert rq._MEMPHIS_CONFETTI_SIZE[0] >= 2 * rq._MEMPHIS_CHIP_SIZE, (
+            "confetti shapes must be several times the terrazzo chip size, or "
+            "the eye reads one undifferentiated field of coloured bits"
+        )
+
+    def test_no_digital_clock_is_surfaced(self):
+        """The matched phrase carries the time; nothing Memphis suggests a numeral."""
+        row = make_row(display_quote="At half past two the bell rang.",
+                       matched_text="half past two", author="A", title="B")
+        frames = {
+            pixel_bytes(rq.render(f"14:{minute:02d}", row, 800, 480,
+                                  mode="production", theme="memphis"))
+            for minute in (0, 17, 30, 44, 59)
+        }
+        assert len(frames) == 1, (
+            "the memphis frame changes with the clock — it should render purely "
+            "from the quote, with the matched phrase carrying the time"
         )
