@@ -87,6 +87,8 @@ CUSTOM_FRAME_THEMES = (
     "abyssal",
     "pride",
     "pulp",
+    "vhs",
+    "cardcatalog",
     "metro",
 )
 

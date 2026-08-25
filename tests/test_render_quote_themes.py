@@ -27,9 +27,9 @@ from PIL import Image, ImageDraw
 from idle_hours import render_quote as rq
 
 from .conftest import make_row
-from .pixel_helpers import distinct_inks, pixel_bytes
+from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "metro")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -1199,3 +1199,349 @@ class TestSynopticValidityStamp:
                 os.environ["TZ"] = original
             if hasattr(_time, "tzset"):
                 _time.tzset()
+
+
+class TestCardcatalogManila:
+    """The manila ground must actually carry both halves of the sepia recipe.
+
+    The first implementation sampled foxing positions on a lattice that aliased
+    with the 4-pixel Bayer period of the cream wash painted just above it: every
+    candidate position forced ``x % 4 == y % 4``, both surviving diagonal cells
+    of the tile sit below the cream threshold, and so all 8000 candidates had
+    already been claimed and the foxing pass painted exactly nothing. Nothing
+    caught it — the frame still rendered, still snapped on-palette, and still
+    passed the preview sweep. Only the eye did.
+    """
+
+    def _manila(self):
+        image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        rq._cardcatalog_paint_manila(image)
+        return ink_counts(image)
+
+    def test_cream_wash_is_present_and_stays_a_wash(self):
+        counts = self._manila()
+        yellow = counts.get(rq.SPECTRA6["yellow"], 0) / 384000.0
+        assert 0.08 < yellow < 0.20, (
+            f"cream wash covers {yellow:.1%} of the card; the Y+W recipe wants "
+            "roughly an eighth — much more reads as a yellow card, much less as white"
+        )
+
+    def test_foxing_paints_both_sepia_inks(self):
+        counts = self._manila()
+        red = counts.get(rq.SPECTRA6["red"], 0)
+        green = counts.get(rq.SPECTRA6["green"], 0)
+        assert red > 0 and green > 0, (
+            f"foxing painted red={red} green={green}; sepia is R+G averaged at "
+            "panel distance, so a pass that emits only one ink (or neither) is "
+            "not painting sepia at all"
+        )
+
+    def test_foxing_stays_sparse(self):
+        counts = self._manila()
+        sepia = (counts.get(rq.SPECTRA6["red"], 0) + counts.get(rq.SPECTRA6["green"], 0)) / 384000.0
+        assert sepia < 0.05, (
+            f"foxing covers {sepia:.1%} of the card — a handled catalogue card, "
+            "not centuries-old vellum"
+        )
+
+
+class TestCardcatalogDueStamp:
+    """The freshest stamp is the theme's time carrier."""
+
+    @pytest.mark.parametrize("time_str,expected", [
+        ("00:00", (12, "AM")), ("00:30", (12, "AM")), ("01:00", (1, "AM")),
+        ("11:59", (11, "AM")), ("12:00", (12, "PM")), ("12:45", (12, "PM")),
+        ("13:00", (1, "PM")), ("14:30", (2, "PM")), ("23:59", (11, "PM")),
+    ])
+    def test_due_hour_maps_to_twelve_hour_clock(self, time_str, expected):
+        assert rq._cardcatalog_due_hour(time_str) == expected
+
+    @pytest.mark.parametrize("bad", ["", "  ", "nonsense", ":", "ab:cd", None])
+    def test_due_hour_survives_junk(self, bad):
+        hour, meridiem = rq._cardcatalog_due_hour(bad)
+        assert 1 <= hour <= 12 and meridiem in ("AM", "PM")
+
+    def test_no_minute_reaches_the_card(self):
+        """Only the hour is stamped — a stamped minute would be a digital clock.
+
+        Every minute of an hour must produce the same card, or the stamp has
+        started carrying more of the time than a reserve-desk due stamp can.
+        """
+        row = make_row(display_quote="It was half past two.", matched_text="half past two",
+                       author="Joseph Conrad", title="Typhoon")
+        frames = {
+            pixel_bytes(rq.render(f"14:{minute:02d}", row, 800, 480,
+                                  mode="production", theme="cardcatalog"))
+            for minute in (0, 15, 30, 45, 59)
+        }
+        assert len(frames) == 1, (
+            "the cardcatalog frame changes with the minute — the due stamp is "
+            "meant to carry the hour only, with the minute left to the quote"
+        )
+
+    def test_history_always_leaves_room_for_the_due_stamp(self):
+        """The current impression must never be pushed off the card.
+
+        The history length is drawn from the row digest, so a bad bound would
+        only show up on whichever corpus rows happened to hash high.
+        """
+        top = rq._CARDCATALOG_STAMP_TOP
+        step = rq._CARDCATALOG_STAMP_STEP
+        for history in range(3, 2 * (rq._CARDCATALOG_STAMP_ROWS - 1) - 2 + 3):
+            row_index = (history + 1) // 2
+            bottom = top + row_index * step + rq._CARDCATALOG_STAMP_SIZE[1] + 20
+            assert bottom <= 480, (
+                f"a {history}-stamp history puts the DUE impression at y={bottom}, "
+                "off an 800x480 card"
+            )
+
+
+class TestVhsTapeDate:
+    """The burn-in date must come from the quote, never from the machine clock.
+
+    ``synoptic`` shipped a validity stamp labelled UTC while the clock renders
+    naive local time; the same class of mistake here — reading ``datetime.now()``
+    for the "recorded on" date — would make every vhs golden fixture expire
+    overnight and differ between appliances. It is also the wrong reading: the
+    date on a camcorder burn-in is when the tape was recorded, not when it is
+    being played, so a different quote is a different tape.
+    """
+
+    def _row(self, **kwargs):
+        return make_row(display_quote="It was half past two.", matched_text="half past two",
+                        author="Joseph Conrad", title="Typhoon", **kwargs)
+
+    def test_date_is_a_pure_function_of_the_row(self):
+        row = self._row()
+        assert rq._vhs_tape_date(row) == rq._vhs_tape_date(dict(row))
+
+    def test_different_quotes_get_different_tapes(self):
+        dates = {
+            rq._vhs_tape_date(make_row(display_quote=f"It was {word} o'clock.",
+                                       matched_text=f"{word} o'clock",
+                                       source_id=str(index), line_number=index))
+            for index, word in enumerate(
+                ("one", "two", "three", "four", "five", "six",
+                 "seven", "eight", "nine", "ten", "eleven", "twelve"))
+        }
+        assert len(dates) > 6, (
+            f"twelve distinct quotes produced only {len(dates)} tape dates — the "
+            "date is barely varying with the row"
+        )
+
+    def test_frame_ignores_the_system_date(self):
+        """The regression this class exists for."""
+        import datetime as _dt
+
+        row = self._row()
+        before = pixel_bytes(rq.render("14:30", row, 800, 480,
+                                       mode="production", theme="vhs"))
+
+        class FrozenFuture(_dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2031, 12, 25, 3, 4, 5)
+
+            @classmethod
+            def today(cls):
+                return cls(2031, 12, 25)
+
+        original = rq.datetime
+        try:
+            rq.datetime = FrozenFuture
+            after = pixel_bytes(rq.render("14:30", row, 800, 480,
+                                          mode="production", theme="vhs"))
+        finally:
+            rq.datetime = original
+        assert before == after, (
+            "the vhs frame changed when the system date moved — something in it "
+            "is reading the machine clock, which would expire its golden fixture "
+            "overnight and make the frame differ between appliances"
+        )
+
+
+class TestVhsChromaBleed:
+    """Both chroma records must actually separate, and the tears must spare the text."""
+
+    def _row(self):
+        return make_row(display_quote="At half past two Mr. and Mrs. Irving left the house.",
+                        matched_text="half past two", author="L. M. Montgomery",
+                        title="Anne of Avonlea")
+
+    def test_both_ghosts_reach_the_page(self):
+        """Compared against a baseline with the shift disabled, not an absolute count.
+
+        An absolute "is there red / blue on the page" threshold is useless here:
+        the tape ground is itself a blue-and-white noise field, so blue clears
+        any fixed bar whether or not a single glyph bled. The measurement has to
+        be differential.
+        """
+        row = self._row()
+        real = ink_counts(rq.render("14:30", row, 800, 480,
+                                    mode="production", theme="vhs"))
+
+        def flat(image, xy, text, font, *, core=None, left=None, right=None,
+                 offset=2, ground=None):
+            ImageDraw.Draw(image).text(xy, text, font=font, fill=core)
+
+        original = rq.draw_text_chroma_shift
+        try:
+            rq.draw_text_chroma_shift = flat
+            base = ink_counts(rq.render("14:30", row, 800, 480,
+                                        mode="production", theme="vhs"))
+        finally:
+            rq.draw_text_chroma_shift = original
+
+        for ink, side in ((rq.SPECTRA6["red"], "left"), (rq.SPECTRA6["blue"], "right")):
+            gained = real.get(ink, 0) - base.get(ink, 0)
+            assert gained > 400, (
+                f"the {side} chroma ghost added only {gained} pixels over a frame "
+                "rendered with the shift disabled — the text is not bleeding, "
+                "which is the entire effect"
+            )
+
+    def test_core_survives_the_tears(self):
+        """A tear must look like the picture slipping, not like the quote deleting.
+
+        Measured as the fraction of scanlines the tears disturb, not as ink lost:
+        a tear *shifts* a row rather than erasing it, so pixel counts barely move
+        however violent it is — the first version of this test compared white ink
+        against an untorn baseline and sat green through a tear pool fourteen
+        times too strong.
+        """
+        row = self._row()
+        torn = rq.render("14:30", row, 800, 480, mode="production", theme="vhs")
+        original = rq._vhs_apply_tears
+        try:
+            rq._vhs_apply_tears = lambda image: None
+            clean = rq.render("14:30", row, 800, 480, mode="production", theme="vhs")
+        finally:
+            rq._vhs_apply_tears = original
+
+        top, bottom = 96, 372
+        torn_px, clean_px = torn.load(), clean.load()
+        disturbed = sum(
+            1
+            for y in range(top, bottom)
+            if any(torn_px[x, y] != clean_px[x, y] for x in range(0, 800, 4))
+        )
+        fraction = disturbed / (bottom - top)
+        assert fraction < 0.2, (
+            f"tears disturb {fraction:.0%} of the scanlines crossing the quote; "
+            "past a fifth the picture stops reading as slipping and starts "
+            "reading as shredded"
+        )
+
+    def test_no_chunk_ghost_eats_a_neighbours_core(self):
+        """The clean-letterform-centre invariant must hold ACROSS chunk seams.
+
+        A matched phrase splits a line into adjacent styled chunks. Painting
+        ghost-then-core per chunk only holds the invariant *within* a chunk: the
+        next chunk's left ghost lands on the previous chunk's tail, and the
+        ``ground`` guard cannot reject it, because ``ground`` necessarily lists
+        every ink the frame paints — the white core included.
+
+        Drives the real ``_vhs_paint_quote`` and compares its cores against the
+        same call with the ghosts suppressed; anything the ghost pass ate shows
+        up as a core pixel present in the baseline and missing from the render.
+        Reimplementing the pass order inside the test would make it a tautology
+        that passes against the very bug it guards.
+
+        Swept across offsets rather than pinned at the shipped 2/3, because at
+        those the glyph side bearings absorb the reach and the bug is invisible.
+        It starts eating cores around 5, so a future "make the bleed stronger"
+        tweak is exactly what this guards.
+        """
+        white = rq.SPECTRA6["white"]
+        row = make_row(
+            display_quote="At half past two the mm ll bell rang and everybody left.",
+            matched_text="half past two", author="L. M. Montgomery", title="Anne of Avonlea")
+
+        def paint(offset, ghosts):
+            image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+            draw = ImageDraw.Draw(image)
+            real = rq.draw_text_chroma_shift
+
+            def maybe_ghostless(img, xy, text, font, *, core=None, left=None,
+                                right=None, offset=2, ground=None):
+                if not ghosts:
+                    left = right = None
+                return real(img, xy, text, font, core=core, left=left, right=right,
+                            offset=offset, ground=ground)
+
+            original_offset = rq._VHS_CHROMA_OFFSET
+            try:
+                rq._VHS_CHROMA_OFFSET = offset
+                rq.draw_text_chroma_shift = maybe_ghostless
+                rq._vhs_paint_quote(image, draw, row)
+            finally:
+                rq.draw_text_chroma_shift = real
+                rq._VHS_CHROMA_OFFSET = original_offset
+            return image.load()
+
+        for offset in (2, 3, 5, 8, 12):
+            got = paint(offset, ghosts=True)
+            want = paint(offset, ghosts=False)
+            eaten = sum(
+                1
+                for y in range(480)
+                for x in range(800)
+                if want[x, y] == white and got[x, y] != white
+            )
+            assert eaten == 0, (
+                f"at offset={offset}, {eaten} core pixels were overwritten by a "
+                "neighbouring chunk's chroma ghost — every ghost on a line must "
+                "be laid down before any core, or the letterform centres are "
+                "not clean"
+            )
+
+
+class TestFixedGeometryFramesDownscale:
+    """Frames built on fixed panel coordinates must downscale, not crop.
+
+    The curator theme grid and the setup wizard both request every theme from
+    ``/api/preview`` at 320x192. A frame whose composition is written in
+    absolute 800x480 coordinates renders a cropped top-left fragment at that
+    size — for ``cardcatalog`` that put the entire stamp column (x=582..770,
+    and the theme's time carrier) off the canvas, so the thumbnail could not
+    represent the theme at all. ``metro`` established the fix: compose at the
+    canonical size, then resample.
+
+    The pre-existing preview sweep cannot see this — it asserts only ``img.size``
+    and palette-subset, both of which a cropped fragment satisfies.
+    """
+
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro")
+
+    @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
+    @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
+    def test_thumbnail_is_a_downscale_of_the_canonical_frame(self, theme, size):
+        row = make_row(display_quote="At half past two Mr. and Mrs. Irving left the house.",
+                       matched_text="half past two", author="L. M. Montgomery",
+                       title="Anne of Avonlea")
+        canonical = rq.render("14:30", row, 800, 480, mode="production", theme=theme)
+        expected = canonical.resize(size, Image.Resampling.NEAREST)
+        actual = rq.render("14:30", row, *size, mode="production", theme=theme)
+        assert pixel_bytes(actual) == pixel_bytes(expected), (
+            f"{theme} at {size[0]}x{size[1]} is not a downscale of its 800x480 "
+            "composition — a frame written in absolute panel coordinates must "
+            "compose at the canonical size and resample, or the curator "
+            "thumbnail is a cropped fragment"
+        )
+
+    @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
+    def test_resampling_keeps_the_thumbnail_on_palette(self, theme):
+        """NEAREST specifically: an interpolating filter averages adjacent inks.
+
+        Every one of these frames is built from per-pixel stipples, so BILINEAR
+        or LANCZOS would invent colours the panel cannot print — and the final
+        ``snap_image_to_palette`` runs before the resize, not after.
+        """
+        row = make_row(display_quote="It was nine o'clock.", matched_text="nine o'clock",
+                       author="E. Nesbit", title="The Railway Children")
+        thumb = rq.render("09:00", row, 320, 192, mode="production", theme=theme)
+        off_palette = distinct_inks(thumb) - set(rq.SPECTRA6.values())
+        assert not off_palette, (
+            f"{theme} thumbnail carries off-palette colours {sorted(off_palette)} — "
+            "the resample filter is blending inks instead of picking them"
+        )
