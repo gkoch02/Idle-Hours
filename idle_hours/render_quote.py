@@ -115,6 +115,8 @@ THEME_ORDER: tuple[str, ...] = (
     "pride",
     "pulp",
     "synoptic",
+    "vhs",
+    "cardcatalog",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1255,6 +1257,37 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
+    },
+    # Library catalogue card. A custom-render frame (``render_cardcatalog_frame``)
+    # — the stamp column needs a right margin the shared literary layout does not
+    # leave, see that frame's section comment. The palette below serves only the
+    # goodnight / source-card fall-through paths; the card itself is manila
+    # (cream + sepia foxing) with violet library ink.
+    "cardcatalog": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["blue"],
+        "source": SPECTRA6["black"],
+    },
+    # Worn VHS tape under a camcorder OSD. A custom-render frame
+    # (``render_vhs_frame``) that owns the canvas — the quote is composite-video
+    # text over tape noise, not prose in a layout — so the palette below serves
+    # only the goodnight / source-card fall-through paths. Red and blue are the
+    # two chroma records that drift apart in ``draw_text_chroma_shift``; the
+    # body itself is white.
+    "vhs": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
     },
     # Meteorological surface analysis. A literary-layout theme (NOT a custom
     # frame): the chart is a ground the quote sits on, so the shared layout runs
@@ -3208,6 +3241,58 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
+    # cardcatalog reuses ``dispatch``'s Special Elite for the card body: real
+    # catalogue cards were typed, and this is the bundle's typewriter. #210 asked
+    # whether the two themes stay distinct once they share a face — they do,
+    # because the *objects* differ completely (a manila card with violet library
+    # ink, a call number and a rod punch-hole versus a white dossier sheet with
+    # tractor-feed perforations and a maroon archival stamp), and the shared face
+    # is the correct one for both. Space Mono carries the call number and the
+    # stamp faces, which on real cards came off a metal type wheel rather than a
+    # typewriter, so the register shift is period-correct rather than arbitrary.
+    "cardcatalog": {
+        "quote_regular": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPECIALELITE_REGULAR,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # vhs uses Antonio for the body — its first appearance as a body face
+    # rather than as poster chrome. A camcorder character generator draws in a
+    # tall narrow cell, and the condensed proportions are also what lets the
+    # chroma ghosts read: on a wide face the +/-2 px separation is a fraction of
+    # the stem width and disappears into it, where on a narrow one it clears the
+    # stem and the letterform visibly comes apart. Variable Weight axis, so the
+    # matched phrase gets a real Bold step underneath the wider chroma offset.
+    # The OSD chrome is loaded inline in ``_vhs_paint_osd`` from Pixelify Sans,
+    # a pixel face — which is literally what an OSD generator was.
+    "vhs": {
+        "quote_regular": [
+            (ANTONIO_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (ANTONIO_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (ANTONIO_VARIABLE, "Bold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
     # sampler stitches text from a Silkscreen pixel-font mask — Regular for the
     # body floss, Bold for the matched-phrase / ornament floss. The fallbacks
     # are a safety net only (non-grid glyphs read wrong as stitches).
@@ -3992,6 +4077,86 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
                 if mx[x, y] >= 128:
                     ax = x + x0
                     px[ax, ay] = light if BAYER_4x4[(ay + oy) % 4][(ax + ox) % 4] < threshold else dark
+
+
+
+def draw_text_chroma_shift(
+    image: Image.Image,
+    xy,
+    text: str,
+    font,
+    *,
+    core=None,
+    left=None,
+    right=None,
+    offset: int = 2,
+    ground=None,
+) -> None:
+    """Paint ``text`` with its colour channels separated, as bled composite video.
+
+    The third named text treatment in the renderer, after ``draw_text_dithered``
+    (constant-density two-ink mixing) and ``draw_faux_gray_text``. Where those
+    synthesise a *colour*, this synthesises a *defect*: the red and blue records
+    of an analogue signal drifting out of registration, which is what makes a
+    worn tape look worn.
+
+    Three passes, and the order is load-bearing. The two chroma ghosts go down
+    first at opposite horizontal offsets, then the core covers the middle — so
+    what survives is a red fringe on one edge and a blue fringe on the other,
+    with clean text between. Painting the core first and the ghosts after would
+    put colour *over* the letterform and read as a coloured outline, not as a
+    signal that has come apart.
+
+    This is a cousin of ``pulp``'s misregistration, and the difference is worth
+    keeping straight: there, two *ink plates* miss each other by a fixed offset
+    in one direction, so the fringe is a printing fault. Here the separation is
+    symmetric about the glyph because it is a *signal* splitting, not a sheet
+    slipping.
+
+    ``ground`` restricts the ghosts to the inks they may overwrite, so a later
+    line's fringe cannot eat an earlier line's core — the same guard
+    ``paint_neon_mask`` takes for the same reason.
+    """
+    x, y = int(xy[0]), int(xy[1])
+    if not text.strip():
+        return
+    box = font.getbbox(text)
+    pad = offset + 2
+    w = box[2] - box[0] + 2 * pad
+    h = box[3] - box[1] + 2 * pad
+    if w <= 0 or h <= 0:
+        return
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).text((pad - box[0], pad - box[1]), text, font=font, fill=255)
+    mp = mask.load()
+    px = image.load()
+    width, height = image.size
+    base_x, base_y = x + box[0] - pad, y + box[1] - pad
+
+    for ink, dx in ((left, -offset), (right, offset)):
+        if ink is None:
+            continue
+        for my in range(h):
+            iy = base_y + my
+            if not 0 <= iy < height:
+                continue
+            for mx in range(w):
+                if mp[mx, my] <= 128:
+                    continue
+                ix = base_x + mx + dx
+                if 0 <= ix < width and (ground is None or px[ix, iy] in ground):
+                    px[ix, iy] = ink
+    if core is not None:
+        for my in range(h):
+            iy = base_y + my
+            if not 0 <= iy < height:
+                continue
+            for mx in range(w):
+                if mp[mx, my] > 128:
+                    ix = base_x + mx
+                    if 0 <= ix < width:
+                        px[ix, iy] = core
+    mask.close()
 
 
 def paint_neon_mask(
@@ -18421,21 +18586,36 @@ _MUSIC_RESTS = ((4.0, "\U0001D13B"), (2.0, "\U0001D13C"), (1.0, "\U0001D13D"), (
 _MUSIC_QUARTER_NOTE = "♩"
 
 
+def _row_digest(quote_row: dict) -> int:
+    """Stable 32-bit FNV-1a digest of a corpus row's identity.
+
+    The single seam for "seed something from the quote". ``hash()`` is
+    PYTHONHASHSEED-salted, so anything seeded from it differs between renders of
+    the same quote — which breaks both the golden-image fixtures and run_clock's
+    "quote unchanged, skip the redraw" dedup. Three themes had grown their own
+    near-identical copy of this walk (``lieder``'s melody, ``vhs``'s tape date,
+    ``cardcatalog``'s call number and stamp history); a shared helper is what
+    keeps the "never hash()" rule enforceable rather than re-argued per theme.
+
+    Walks the UTF-8 bytes, not ``ord()`` code points: the two agree on ASCII but
+    diverge on the em-dashes and curly quotes the corpus is full of, and the
+    byte walk is the actual FNV-1a definition.
+    """
+    basis = f"{quote_row.get('source_id')}:{quote_row.get('line_number')}:{quote_row.get('display_quote')}"
+    digest = 0x811C9DC5
+    for byte in basis.encode("utf-8", "replace"):
+        digest = ((digest ^ byte) * 0x01000193) & 0xFFFFFFFF
+    return digest
+
+
 def _lieder_seed(quote_row: dict) -> int:
     """Stable 32-bit seed for the melodic contour and expression mark.
 
     ``hash()`` is PYTHONHASHSEED-salted, so a melody seeded from it would differ
     between renders of the same quote — breaking both the golden-image fixture
-    and run_clock's "quote unchanged, skip the redraw" dedup. Uses an FNV-1a
-    walk over the row identity instead, which is stable across processes (the
-    same reason ``_vinyl_paint_spec_line`` derives its running time from an
-    ord() sum rather than from ``hash()``).
+    and run_clock's "quote unchanged, skip the redraw" dedup. See ``_row_digest``.
     """
-    basis = f"{quote_row.get('source_id')}:{quote_row.get('line_number')}:{quote_row.get('display_quote')}"
-    digest = 2166136261
-    for ch in basis:
-        digest = ((digest ^ ord(ch)) * 16777619) & 0xFFFFFFFF
-    return digest
+    return _row_digest(quote_row)
 
 
 def _lieder_clock(time_str: str) -> tuple[int, int]:
@@ -20697,6 +20877,658 @@ def render_pulp_frame(time_str: str, quote_row: dict, width: int, height: int) -
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# ---------------------------------------------------------------------------
+# vhs — a camcorder OSD over a degraded tape (issue #211).
+#
+# The rotation had no *broken* register. ``nightvision`` is a clean terminal,
+# ``chrono`` a pristine SNES window, ``outrun`` a crisp poster — nothing was
+# damaged, and damage is a rich vocabulary a six-ink panel can actually render,
+# because most tape artefacts ARE quantisation artefacts.
+#
+# The identity is ``draw_text_chroma_shift`` (see that primitive's docstring):
+# the body is painted three times, red ghost left, blue ghost right, white core
+# on top, so every glyph fringes the way bled composite video does. It is the
+# third named text treatment here and the first that synthesises a *defect*
+# rather than a colour.
+#
+# Four layers of wear underneath it, all deterministic:
+#
+#   * **Video noise** rising from the bottom. Tape wear is worst at the head
+#     sweep, so the density ramps toward the foot rather than sitting uniform.
+#   * **Tracking tears** — a few horizontal bands whose rows are shifted
+#     sideways. Implemented as a real row-shift of the pixels already painted,
+#     not as a drawn rectangle, so whatever the tear crosses comes apart with
+#     it. This is why the tears are applied AFTER the text: a tear that only
+#     displaced the background would read as a stripe, not as damage.
+#   * **Scanlines**, deliberately fainter than ``nightvision``'s. That is a
+#     terminal being scanned; this is tape, where the line structure is softer.
+#   * **Dropout flecks** — short white horizontal dashes where the oxide has
+#     shed. Sparse, because past a handful they read as snow rather than damage.
+#
+# **The time carrier is a camcorder burn-in**, and this is the one theme where
+# surfacing digits is authentic rather than a violation of the fuzzy-clock
+# premise: a camcorder OSD *is* a clock, and the burn-in is the thing a viewer
+# of such a tape actually reads the time off. The issue left open whether to
+# show wall time or a tape-position timecode; wall time wins, because a
+# tape-position counter is not a clock and the theme's whole justification is
+# that this OSD is one.
+#
+# The **date** stamp is deliberately NOT today's date. Deriving it from the
+# clock would make the frame machine-dependent — the hazard
+# ``CLOCK_DEPENDENT_THEMES`` exists for, and the same trap ``synoptic``'s
+# validity stamp fell into — so it is derived from the quote instead, via an
+# FNV-1a digest of the row identity. That is also the more honest reading: the
+# date on a camcorder burn-in is when the tape was *recorded*, not when it is
+# being played, so a different quote is a different tape.
+# ---------------------------------------------------------------------------
+_VHS_CHROMA_OFFSET = 2
+_VHS_QUOTE_RECT = (86, 96, 714, 372)
+_VHS_CREDIT_GAP = 20
+_VHS_NOISE_SEED = 0x5648
+_VHS_NOISE_COUNT = 2600
+_VHS_TEAR_SEED = 0x7EA2
+_VHS_TEARS = 3
+# Tear magnitude is bounded well below the body cap height on purpose. The
+# first draft allowed an 11 px band shifted 26 px, which on a ~34 px face
+# displaced a third of a line far enough sideways that the line stopped being
+# readable at all. A tear has to look like the picture slipping, not like the
+# quote being deleted — the clock's job survives the effect, not the reverse.
+_VHS_TEAR_BAND = (2, 8)
+_VHS_TEAR_SHIFT = (5, 17)
+# Head-switching noise: the torn band of static across the last few scanlines
+# of a real VHS picture, where the video heads swap mid-field. It is the single
+# most recognisable playback artifact and it is always at the very bottom, so
+# it is painted deterministically rather than left to the random tear pool.
+_VHS_HEAD_SWITCH_H = 9
+_VHS_DROPOUT_COUNT = 26
+_VHS_SCANLINE_STEP = 4
+# Tape-recorded date pool. The burn-in shows when the tape was made, so it is
+# derived from the quote rather than the clock — see the section comment.
+_VHS_TAPE_YEARS = (1984, 1987, 1989, 1991, 1993, 1996, 1998)
+
+
+def _vhs_seed(quote_row: dict) -> int:
+    """Stable 32-bit seed for the tape date. See ``_row_digest``."""
+    return _row_digest(quote_row)
+
+
+def _vhs_tape_date(quote_row: dict) -> str:
+    """``JUN 14 1991`` — the date this tape was recorded, stable per quote."""
+    months = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+    seed = _vhs_seed(quote_row)
+    year = _VHS_TAPE_YEARS[seed % len(_VHS_TAPE_YEARS)]
+    month = months[(seed >> 4) % 12]
+    day = 1 + (seed >> 8) % 28
+    return f"{month} {day:02d} {year}"
+
+
+def _vhs_paint_tape(image: Image.Image) -> None:
+    """Near-black ground, scanlines, and noise rising toward the head sweep."""
+    width, height = image.size
+    px = image.load()
+    black, blue, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["white"]
+    # Faint scanline modulation. Softer than nightvision's: that is a terminal
+    # being scanned, this is tape, where the line structure smears.
+    for y in range(0, height, _VHS_SCANLINE_STEP):
+        for x in range(0, width, 2):
+            px[x, y] = blue if (x + y) % 8 == 0 else black
+    rng = random.Random(_VHS_NOISE_SEED)
+    for _ in range(_VHS_NOISE_COUNT):
+        # Bias toward the foot: two samples, keep the lower. Tape wear is worst
+        # at the head sweep, so uniform noise reads as a clean digital dither
+        # rather than as a worn tape.
+        y = max(rng.randrange(height), rng.randrange(height))
+        x = rng.randrange(width)
+        px[x, y] = white if rng.random() < 0.35 else blue
+
+
+def _vhs_paint_dropouts(image: Image.Image) -> None:
+    """Short white dashes where the oxide has shed off the tape."""
+    width, height = image.size
+    px = image.load()
+    white = SPECTRA6["white"]
+    rng = random.Random(_VHS_NOISE_SEED ^ 0xD0)
+    for _ in range(_VHS_DROPOUT_COUNT):
+        y = max(rng.randrange(height), rng.randrange(height))
+        x = rng.randrange(max(1, width - 40))
+        for dx in range(rng.randrange(6, 34)):
+            if x + dx < width:
+                px[x + dx, y] = white
+
+
+def _vhs_apply_tears(image: Image.Image) -> None:
+    """Shift bands of rows sideways — the tracking error the theme is named for.
+
+    Applied *after* everything else, and on the pixels already painted, so a
+    tear cuts through the quote and the OSD as well as the ground. A tear that
+    only displaced the background would read as a decorative stripe rather than
+    as the picture coming apart.
+    """
+    width, height = image.size
+    px = image.load()
+    black = SPECTRA6["black"]
+
+    def shift_row(y: int, shift: int) -> None:
+        row = [px[x, y] for x in range(width)]
+        for x in range(width):
+            src = x - shift
+            px[x, y] = row[src] if 0 <= src < width else black
+
+    rng = random.Random(_VHS_TEAR_SEED)
+    for _ in range(_VHS_TEARS):
+        top = rng.randrange(height)
+        band = rng.randrange(*_VHS_TEAR_BAND)
+        shift = rng.choice((-1, 1)) * rng.randrange(*_VHS_TEAR_SHIFT)
+        for y in range(top, min(height, top + band)):
+            shift_row(y, shift)
+
+    # Head-switching noise across the last few scanlines. Shifting the existing
+    # rows is not enough on its own: the ground down there is already noise, so
+    # sliding it sideways just produces more of the same. The band has to be
+    # repainted as bright static first — that is what a real head switch looks
+    # like — and only then torn, each row by a different amount.
+    white, blue = SPECTRA6["white"], SPECTRA6["blue"]
+    for index, y in enumerate(range(max(0, height - _VHS_HEAD_SWITCH_H), height)):
+        for x in range(width):
+            roll = rng.random()
+            if roll < 0.34:
+                px[x, y] = white
+            elif roll < 0.6:
+                px[x, y] = blue
+            elif roll < 0.66:
+                px[x, y] = black
+        shift_row(y, rng.randrange(8, 30) * (1 if index % 2 else -1))
+
+
+def _vhs_credit_lines(quote_row: dict) -> list[tuple[str, int]]:
+    """Author + title, uppercased author first, at their chrome sizes."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
+    return [(text, size) for text, size in ((author.upper(), 17), (title, 15)) if text]
+
+
+def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
+    """The quote as chroma-bled OSD text; returns the block's bottom edge.
+
+    The matched phrase gets a wider chroma offset rather than a different
+    colour: on a tape, the thing that stands out is the thing that has degraded
+    most, so pushing the separation is the register-correct way to emphasise it.
+
+    Quote and credits are centred *together* over the band between the two OSD
+    strips, which is why this returns a y rather than painting to a fixed rect.
+    Centring the quote alone and hanging the byline off its foot left the block
+    riding high with a dead strip above the footer.
+    """
+    x0, y0, x1, y1 = _VHS_QUOTE_RECT
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return y0
+    white, red, blue = SPECTRA6["white"], SPECTRA6["red"], SPECTRA6["blue"]
+    ground = frozenset({SPECTRA6["black"], blue, white, red})
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+
+    credits = _vhs_credit_lines(quote_row)
+    credit_h = sum(size + 6 for _, size in credits)
+    budget = (y1 - y0) - (credit_h + _VHS_CREDIT_GAP if credits else 0)
+
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, matched, x1 - x0, budget,
+        font_max=34, font_min=14, line_height_mult=1.26, theme="vhs",
+    )
+    block_h = len(wrapped) * line_height
+    total = block_h + (credit_h + _VHS_CREDIT_GAP if credits else 0)
+    y = y0 + max(0, ((y1 - y0) - total) // 2)
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        drawable = line[start:end]
+        widths = []
+        for chunk, is_bold in drawable:
+            font = quote_font_bold if is_bold else quote_font
+            box = draw.textbbox((0, 0), chunk, font=font)
+            widths.append(box[2] - box[0])
+        x = x0 + max(0, ((x1 - x0) - sum(widths)) // 2)
+        for (chunk, is_bold), chunk_w in zip(drawable, widths):
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (ascent - _font_ascent(font))
+            draw_text_chroma_shift(
+                image, (x, chunk_y), chunk, font,
+                core=white, left=red, right=blue,
+                offset=_VHS_CHROMA_OFFSET + (1 if is_bold else 0),
+                ground=ground,
+            )
+            x += chunk_w
+        y += line_height
+    return y
+
+
+def _vhs_paint_osd(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict,
+                   width: int, height: int, time_str: str) -> None:
+    """Camcorder chrome: REC indicator, tape date, and the time burn-in.
+
+    Set in Pixelify Sans — a pixel face, which is what a real OSD character
+    generator was. The burn-in is the theme's time carrier and the one place in
+    the rotation where plain digits are authentic rather than a violation of the
+    premise: a camcorder OSD is a clock.
+    """
+    if width < 200 or height < 120:
+        return
+    white, red = SPECTRA6["white"], SPECTRA6["red"]
+    chrome = load_font([(PIXELIFYSANS_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=17)
+    small = load_font([(PIXELIFYSANS_VARIABLE, "Regular"), *META_FONT_CANDIDATES], size=15)
+    # REC + a solid red dot, top-left.
+    draw.text((30, 26), "REC", font=chrome, fill=white)
+    dot = draw.textlength("REC", font=chrome)
+    draw.ellipse((30 + dot + 8, 30, 30 + dot + 20, 42), fill=red)
+    # SP is the standard-play tape speed every camcorder stamped in the corner.
+    draw.text((width - 30, 26), "SP", font=chrome, fill=white, anchor="ra")
+    draw.text((30, height - 52), _vhs_tape_date(quote_row), font=small, fill=white)
+    burn = (time_str or "").strip() or "00:00"
+    draw.text((width - 30, height - 54), f"{burn}:00", font=chrome, fill=white, anchor="ra")
+
+
+def _vhs_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict,
+                       width: int, top: int) -> None:
+    """Author + title below the quote, bled like the body but at chrome size."""
+    white, red, blue = SPECTRA6["white"], SPECTRA6["red"], SPECTRA6["blue"]
+    ground = frozenset({SPECTRA6["black"], blue, white, red})
+    y = top + _VHS_CREDIT_GAP
+    for text, size in _vhs_credit_lines(quote_row):
+        font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=size)
+        while len(text) > 1 and draw.textlength(text, font=font) > width - 140:
+            text = text[:-1]
+        box = draw.textbbox((0, 0), text, font=font)
+        draw_text_chroma_shift(
+            image, ((width - (box[2] - box[0])) // 2 - box[0], y - box[1]), text, font,
+            core=white, left=red, right=blue, offset=1, ground=ground,
+        )
+        y += size + 6
+
+
+def render_vhs_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A camcorder OSD over a worn tape (see the module section comment above)."""
+    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    _vhs_paint_tape(image)
+    draw = ImageDraw.Draw(image)
+    block_bottom = _vhs_paint_quote(image, draw, quote_row)
+    _vhs_paint_credits(image, draw, quote_row, width, block_bottom)
+    _vhs_paint_osd(image, draw, quote_row, width, height, time_str)
+    _vhs_paint_dropouts(image)
+    # Tears go last, over the finished picture — see _vhs_apply_tears.
+    _vhs_apply_tears(image)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+
+# ---------------------------------------------------------------------------
+# cardcatalog — a library catalogue card with a date-due stamp grid
+# ---------------------------------------------------------------------------
+# The most on-brand object in the rotation: the one theme that is *about books
+# being borrowed*. A manila card carries a call number, a typed author/title
+# header, the quote as the card's annotation, and a grid of date-due stamps
+# down the right margin.
+#
+# **A custom frame, against the issue's own note.** #210 proposed this as a
+# literary-layout theme with a border painter and a ``clear_rect`` knockout, the
+# ``kanagawa`` / ``cartograph`` / ``letter`` pattern. Measured, that does not
+# work: the shared layout centres its block over the page and at 800x480 the
+# body rect runs 34..766 horizontally and 54..425 vertically, which leaves no
+# right margin at all. The stamp column *is* the theme — it is the composition
+# and the time carrier both — so the frame owns the canvas instead and the quote
+# is laid into an annotation column beside the stamps.
+#
+# **The panel is exactly a card.** 800/480 reduces to 5/3, the ratio of a 3x5
+# index card, which is the standard catalogue card stock. So the page is the
+# card face at full bleed rather than a card drawn inside a drawer.
+#
+# **The time carrier is the freshest stamp.** Earlier impressions sit faded and
+# askew with the ink density varying per stamp (a pad that has dried between
+# borrowers); the current one is crisp, solid, square to the card, spans both
+# stamp columns, and reads ``DUE`` over the hour. A due *hour* rather than a
+# due date is not a liberty: reserve and reading-room collections ran two-hour
+# loans and stamped exactly that. The minute stays with the matched phrase, the
+# way ``lieder`` leaves it to the quote and puts only the hour in the meter.
+#
+# **Distinct from ``dispatch``** despite sharing Special Elite. dispatch is a
+# dossier — white ground, black frame, tractor-feed perforations, one crisp
+# maroon archival stamp, "FILE COPY". This is manila-and-sepia with violet
+# library ink, a call-number block, a rod punch-hole and a grid of overlapping
+# impressions. Same typewriter, different object.
+# ---------------------------------------------------------------------------
+_CARDCATALOG_EDGE = 12
+_CARDCATALOG_CALL_X = 36
+_CARDCATALOG_COL_X = 168              # annotation column left edge
+_CARDCATALOG_COL_RIGHT = 556          # annotation column right edge
+_CARDCATALOG_DIVIDER_X = 568          # rule between annotation and stamps
+_CARDCATALOG_HEADER_TOP = 44
+_CARDCATALOG_HEADER_RULE = 118
+_CARDCATALOG_BODY = (168, 136, 556, 374)
+_CARDCATALOG_STAMP_X = (582, 770)
+_CARDCATALOG_STAMP_TOP = 84
+_CARDCATALOG_STAMP_SIZE = (88, 34)
+_CARDCATALOG_STAMP_STEP = 42
+_CARDCATALOG_STAMP_ROWS = 7
+_CARDCATALOG_PUNCH = (400, 452, 10)   # centre x, centre y, radius
+# Foxing density on the manila: 2 hits per modulus, so ~1.2% of the card. Kept
+# deliberately sparser than ``tarot``'s vellum — a catalogue card is decades old
+# and handled, not centuries old and archival. The modulus is prime, which is
+# what keeps the scatter from aliasing with the 4-pixel cream Bayer tile; see
+# ``_cardcatalog_paint_manila``.
+_CARDCATALOG_FOXING_MOD = 167
+
+
+def _cardcatalog_paint_manila(image: Image.Image) -> None:
+    """Cream base wash plus a sparse sepia foxing scatter — aged card stock.
+
+    The two-layer aged-paper recipe ``tarot`` uses (Y+W cream under R+G sepia),
+    run lighter. Both passes only touch white ground pixels, so the painter is
+    idempotent and cannot re-tint furniture drawn over it.
+    """
+    width, height = image.size
+    px = image.load()
+    white, yellow, red, green = (
+        SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], SPECTRA6["green"],
+    )
+    for y in range(height):
+        row = BAYER_4x4[y % 4]
+        for x in range(width):
+            if px[x, y] == white and row[x % 4] < 2:
+                px[x, y] = yellow
+    # Sepia foxing: adjacent red and green flecks average to rust-brown at panel
+    # distance, the R+G recipe ``newsprint`` and ``tarot`` use for the same
+    # effect. Foxing is painted over the cream as well as the bare white —
+    # a spot of oxidation does not dodge the paper's own tone.
+    #
+    # The modulus must stay coprime with the 4-pixel Bayer period. The first
+    # draft sampled every other pixel at ``(7x + 13y) % 24 == 0``, which forces
+    # ``x % 4 == y % 4`` on every hit; both surviving diagonal cells of the
+    # Bayer tile are below the cream threshold, so every candidate had already
+    # been claimed by the wash above and the foxing pass painted exactly nothing
+    # across all 8000 of them. Two lattices sampling the same pixels will alias
+    # unless their periods are chosen not to.
+    for y in range(height):
+        for x in range(width):
+            if (x * 31 + y * 17) % _CARDCATALOG_FOXING_MOD >= 2:
+                continue
+            if px[x, y] not in (white, yellow):
+                continue
+            px[x, y] = red if (x * 5 + y * 3) % 7 < 4 else green
+
+
+def _cardcatalog_call_number(quote_row: dict) -> list[str]:
+    """The call-number block: a Dewey class, a cutter, a date, a copy mark.
+
+    Derived from the row rather than invented per render — a catalogue card's
+    call number is the one thing on it that is genuinely arbitrary, so it has to
+    at least be *stable* for a given book or the card stops being an object and
+    becomes noise. Dewey 800-819 keeps it inside literature, which is where
+    every book in this corpus actually belongs.
+    """
+    digest = _row_digest(quote_row)
+    author = (quote_row.get("author") or "").strip()
+    surname = author.split(",")[0].split()[-1] if author else "ANON"
+    cutter = "".join(ch for ch in surname.upper() if ch.isalpha())[:3] or "ANO"
+    dewey = 800 + digest % 20
+    decimal = (digest >> 6) % 100
+    year = 1890 + (digest >> 12) % 40
+    copy = 1 + (digest >> 20) % 3
+    return [f"{dewey}.{decimal:02d}", cutter, str(year), f"c.{copy}"]
+
+
+def _cardcatalog_header(quote_row: dict) -> tuple[str, str]:
+    """``(author in catalogue inversion, title)``.
+
+    Catalogue cards file on the surname, so the main entry is inverted:
+    "L. M. Montgomery" is filed as "Montgomery, L. M." An author already stored
+    inverted (containing a comma) is passed through untouched.
+    """
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
+    if author and "," not in author:
+        parts = author.split()
+        if len(parts) > 1:
+            author = f"{parts[-1]}, {' '.join(parts[:-1])}"
+    return author or "Anonymous", title
+
+
+def _cardcatalog_stamp_mask(size: tuple[int, int], lines: list[tuple[str, int]],
+                            *, boxed: bool) -> Image.Image:
+    """An ``L`` mask of one stamp impression: optional box rule plus its lines."""
+    w, h = size
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+    if boxed:
+        draw.rectangle((0, 0, w - 1, h - 1), outline=255, width=2)
+    total = sum(size for _, size in lines) + 2 * (len(lines) - 1)
+    y = max(0, (h - total) // 2)
+    for text, font_size in lines:
+        font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=font_size)
+        draw.text((w // 2, y), text, font=font, fill=255, anchor="ma")
+        y += font_size + 2
+    return mask
+
+
+def _cardcatalog_stamp(image: Image.Image, origin: tuple[int, int],
+                       mask: Image.Image, *, angle: float, coverage: float,
+                       rng: random.Random) -> None:
+    """Paste one impression in violet library ink at a given angle and density.
+
+    Violet is R+B 1:1 — the documented Tyrian recipe — because library date
+    stamps really were purple, and it keeps the theme off the white/black/red
+    pile the rotation already has plenty of.
+
+    ``coverage`` is what makes the grid read as a *history* rather than as a
+    printed table: each impression drops a different fraction of its ink, so the
+    older stamps look like a pad that dried out between borrowers. Rotation is
+    binary-thresholded after resampling for the same reason ``pulp``'s corner
+    banner is — an antialiased edge would leave off-palette fringe for the final
+    snap to guess at.
+    """
+    if angle:
+        mask = mask.rotate(angle, resample=Image.BICUBIC, expand=True)
+    mp = mask.load()
+    px = image.load()
+    width, height = image.size
+    red, blue = SPECTRA6["red"], SPECTRA6["blue"]
+    ox, oy = origin
+    for my in range(mask.size[1]):
+        iy = oy + my
+        if not 0 <= iy < height:
+            continue
+        for mx in range(mask.size[0]):
+            ix = ox + mx
+            if not 0 <= ix < width:
+                continue
+            if mp[mx, my] < 128:
+                continue
+            if coverage < 1.0 and rng.random() > coverage:
+                continue
+            px[ix, iy] = red if (ix + iy) & 1 else blue
+
+
+def _cardcatalog_paint_stamps(image: Image.Image, quote_row: dict, time_str: str) -> None:
+    """The date-due grid: a faded borrowing history, then today's impression."""
+    months = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+    digest = _row_digest(quote_row)
+    rng = random.Random(digest)
+    left, right = _CARDCATALOG_STAMP_X
+    sw, sh = _CARDCATALOG_STAMP_SIZE
+    col_step = (right - left) // 2
+    # Leave at least one whole row for the current impression, which spans both
+    # columns, so a long history can never push it off the card.
+    history = 3 + digest % (2 * (_CARDCATALOG_STAMP_ROWS - 1) - 2)
+    year = 1948 + (digest >> 8) % 30
+    for index in range(history):
+        row, col = divmod(index, 2)
+        month = months[(digest >> (index % 12)) % 12]
+        day = 1 + (digest >> (index + 3)) % 28
+        mask = _cardcatalog_stamp_mask(
+            (sw, sh), [(f"{month} {day:2d}", 13), (f"{year + row}", 12)], boxed=False,
+        )
+        _cardcatalog_stamp(
+            image,
+            (left + col * col_step + rng.randint(-3, 3),
+             _CARDCATALOG_STAMP_TOP + row * _CARDCATALOG_STAMP_STEP + rng.randint(-2, 2)),
+            mask,
+            angle=rng.uniform(-4.5, 4.5),
+            coverage=rng.uniform(0.62, 0.92),
+            rng=rng,
+        )
+    # The current impression: crisp, square to the card, spanning both columns,
+    # and carrying the hour. This is the theme's time carrier.
+    row = (history + 1) // 2
+    hour, meridiem = _cardcatalog_due_hour(time_str)
+    mask = _cardcatalog_stamp_mask(
+        (right - left, sh + 20), [("DUE", 12), (f"{hour} {meridiem}", 26)], boxed=True,
+    )
+    _cardcatalog_stamp(
+        image,
+        (left, _CARDCATALOG_STAMP_TOP + row * _CARDCATALOG_STAMP_STEP),
+        mask, angle=0.0, coverage=1.0, rng=rng,
+    )
+
+
+def _cardcatalog_due_hour(time_str: str) -> tuple[int, str]:
+    """``(1..12, "AM"|"PM")`` parsed defensively from ``HH:MM``.
+
+    Only the hour reaches the stamp. A reserve-desk loan was due back on the
+    hour, so a stamped hour is period furniture; stamping a minute alongside it
+    would turn the card into a digital clock, which is the thing this whole
+    rotation exists not to be.
+    """
+    try:
+        hour = int((time_str or "").split(":")[0]) % 24
+    except (ValueError, IndexError):
+        hour = 12
+    meridiem = "PM" if hour >= 12 else "AM"
+    return (hour % 12) or 12, meridiem
+
+
+def _cardcatalog_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw,
+                              quote_row: dict, width: int, height: int) -> None:
+    """Card edge, call number, typed header, column rule, and the rod hole."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    edge = _CARDCATALOG_EDGE
+    draw.rectangle((edge, edge, width - edge - 1, height - edge - 1), outline=black, width=1)
+
+    call = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=15)
+    y = _CARDCATALOG_HEADER_TOP
+    for line in _cardcatalog_call_number(quote_row):
+        draw.text((_CARDCATALOG_CALL_X, y), line, font=call, fill=black)
+        y += 20
+
+    author, title = _cardcatalog_header(quote_row)
+    column = _CARDCATALOG_COL_RIGHT - _CARDCATALOG_COL_X
+    main = load_font([SPECIALELITE_REGULAR, *META_FONT_BOLD_CANDIDATES], size=19)
+    sub = load_font([SPECIALELITE_REGULAR, *META_FONT_CANDIDATES], size=16)
+    y = _CARDCATALOG_HEADER_TOP
+    for text, font in ((author, main), (title, sub)):
+        if not text:
+            continue
+        while len(text) > 1 and draw.textlength(text, font=font) > column:
+            text = text[:-2] + "…"
+        draw.text((_CARDCATALOG_COL_X, y), text, font=font, fill=black)
+        y += 30
+    # Rule under the main entry, and the column rule holding the stamps off the
+    # annotation — both are ruled on real card stock, not decoration.
+    draw.line((_CARDCATALOG_COL_X, _CARDCATALOG_HEADER_RULE,
+               _CARDCATALOG_COL_RIGHT, _CARDCATALOG_HEADER_RULE), fill=black, width=1)
+    draw.line((_CARDCATALOG_DIVIDER_X, _CARDCATALOG_HEADER_TOP - 8,
+               _CARDCATALOG_DIVIDER_X, height - 56), fill=black, width=1)
+
+    heading = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=13)
+    centre = (_CARDCATALOG_STAMP_X[0] + _CARDCATALOG_STAMP_X[1]) // 2
+    draw.text((centre, _CARDCATALOG_HEADER_TOP), "DATE DUE", font=heading, fill=black, anchor="ma")
+    draw.line((_CARDCATALOG_STAMP_X[0], _CARDCATALOG_HEADER_TOP + 22,
+               _CARDCATALOG_STAMP_X[1], _CARDCATALOG_HEADER_TOP + 22), fill=black, width=1)
+
+    # The rod hole every drawer card is punched for. Painted as a filled hole
+    # with a red rim, so it reads as a hole through card stock rather than as a
+    # printed dot: the rim is the exposed fibre where the punch tore through.
+    cx, cy, r = _CARDCATALOG_PUNCH
+    if cy + r < height:
+        draw.ellipse((cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1), outline=red, width=1)
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=black)
+
+
+def _cardcatalog_paint_annotation(image: Image.Image, draw: ImageDraw.ImageDraw,
+                                  quote_row: dict) -> None:
+    """The quote, typed into the card's annotation column.
+
+    The matched time phrase takes the same violet as the stamps rather than an
+    accent of its own, which ties the readable time to the stamped one — the two
+    are the same fact recorded twice, once by the cataloguer and once by the
+    desk.
+    """
+    x0, y0, x1, y1 = _CARDCATALOG_BODY
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return
+    black, red, blue = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["blue"]
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=26, font_min=12, line_height_mult=1.34,
+        theme="cardcatalog",
+    )
+    # Top-aligned, not centred: a real card's annotation begins directly under
+    # the main-entry rule. Centring it left the text floating in the column with
+    # dead card above and below, which the tracing block at the foot now fills.
+    y = y0
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (ascent - _font_ascent(font))
+            if is_bold:
+                draw_text_dithered(image, (x, chunk_y), chunk, font, red, blue)
+            else:
+                draw.text((x, chunk_y), chunk, font=font, fill=black)
+            x += int(round(draw.textlength(chunk, font=font)))
+        y += line_height
+
+
+def _cardcatalog_paint_tracing(draw: ImageDraw.ImageDraw, quote_row: dict, height: int) -> None:
+    """The added-entries tracing and accession mark at the foot of the card.
+
+    Every catalogue card ends with a numbered tracing — the list of the other
+    cards filed for the same book — and this one invents nothing to draw it.
+    A title added entry exists for every work, the holding collection is this
+    appliance, and the accession number is the row's real Gutenberg ID. Filling
+    the foot with plausible *subject* headings would have meant fabricating
+    bibliographic data about a real book, which is not a thing to do for the
+    sake of a nice-looking card.
+    """
+    black = SPECTRA6["black"]
+    x0 = _CARDCATALOG_COL_X
+    x1 = _CARDCATALOG_COL_RIGHT
+    y = height - 96
+    draw.line((x0, y, x0 + 120, y), fill=black, width=1)
+    body = load_font([SPECIALELITE_REGULAR, *META_FONT_CANDIDATES], size=14)
+    draw.text((x0, y + 10), "I. Title.   II. Idle Hours Collection.", font=body, fill=black)
+    source_id = str(quote_row.get("source_id") or "").strip()
+    if source_id:
+        mono = load_font([SPACEMONO_REGULAR, *META_FONT_CANDIDATES], size=12)
+        draw.text((x1, y + 12), f"ACC. PG-{source_id}", font=mono, fill=black, anchor="ra")
+
+
+def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A library catalogue card (see the module section comment above)."""
+    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    _cardcatalog_paint_manila(image)
+    draw = ImageDraw.Draw(image)
+    _cardcatalog_paint_chrome(image, draw, quote_row, width, height)
+    _cardcatalog_paint_annotation(image, draw, quote_row)
+    _cardcatalog_paint_tracing(draw, quote_row, height)
+    _cardcatalog_paint_stamps(image, quote_row, time_str)
+    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
@@ -20731,6 +21563,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_pride_frame(time_str, quote_row, width, height)
     if theme == "pulp":
         return render_pulp_frame(time_str, quote_row, width, height)
+    if theme == "vhs":
+        return render_vhs_frame(time_str, quote_row, width, height)
+    if theme == "cardcatalog":
+        return render_cardcatalog_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

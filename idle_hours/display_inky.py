@@ -179,6 +179,8 @@ THEME_SATURATION: dict[str, float] = {
     "pride": 0.5,
     "pulp": 0.7,
     "synoptic": 0.5,
+    "vhs": 0.7,
+    "cardcatalog": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
