@@ -21286,17 +21286,32 @@ def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: d
             font = quote_font_bold if is_bold else quote_font
             box = draw.textbbox((0, 0), chunk, font=font)
             widths.append(box[2] - box[0])
-        x = x0 + max(0, ((x1 - x0) - sum(widths)) // 2)
-        for (chunk, is_bold), chunk_w in zip(drawable, widths):
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (ascent - _font_ascent(font))
-            draw_text_chroma_shift(
-                image, (x, chunk_y), chunk, font,
-                core=white, left=red, right=blue,
-                offset=_VHS_CHROMA_OFFSET + (1 if is_bold else 0),
-                ground=ground,
-            )
-            x += chunk_w
+        start_x = x0 + max(0, ((x1 - x0) - sum(widths)) // 2)
+        # Two passes over the line: every ghost, then every core. Per-chunk
+        # ghost-then-core only holds the "clean letterform centre" invariant
+        # *within* a chunk — a matched phrase splits a line into adjacent
+        # chunks, and the next chunk's left ghost lands on the previous
+        # chunk's tail. The ``ground`` guard cannot catch that, because it
+        # necessarily lists every ink the frame paints, white core included.
+        # At the shipped offsets (2 regular, 3 bold) the side bearings happen
+        # to absorb the reach and nothing is overwritten, but it starts eating
+        # cores from about 5 — so this is a latent trap for anyone widening
+        # the bleed, not a live defect. Splitting the passes makes the
+        # documented invariant actually true instead of incidentally true.
+        for pass_core in (False, True):
+            x = start_x
+            for (chunk, is_bold), chunk_w in zip(drawable, widths):
+                font = quote_font_bold if is_bold else quote_font
+                chunk_y = y + (ascent - _font_ascent(font))
+                draw_text_chroma_shift(
+                    image, (x, chunk_y), chunk, font,
+                    core=white if pass_core else None,
+                    left=None if pass_core else red,
+                    right=None if pass_core else blue,
+                    offset=_VHS_CHROMA_OFFSET + (1 if is_bold else 0),
+                    ground=ground,
+                )
+                x += chunk_w
         y += line_height
     return y
 
@@ -21345,17 +21360,29 @@ def _vhs_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row:
 
 
 def render_vhs_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A camcorder OSD over a worn tape (see the module section comment above)."""
-    image = Image.new("RGB", (width, height), color=SPECTRA6["black"])
+    """A camcorder OSD over a worn tape (see the module section comment above).
+
+    Always composed at the canonical 800x480 and downsampled with NEAREST for a
+    non-native request, the convention ``metro`` established. The quote rect and
+    the tear/noise geometry are fixed panel coordinates, so a direct render at
+    the curator grid's 320x192 pushed the quote block off the bottom of the
+    canvas and left the thumbnail a cropped fragment. NEAREST specifically:
+    every artefact here is a per-pixel stipple, and an interpolating filter
+    would average adjacent inks into colours the panel cannot print.
+    """
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     _vhs_paint_tape(image)
     draw = ImageDraw.Draw(image)
     block_bottom = _vhs_paint_quote(image, draw, quote_row)
-    _vhs_paint_credits(image, draw, quote_row, width, block_bottom)
-    _vhs_paint_osd(image, draw, quote_row, width, height, time_str)
+    _vhs_paint_credits(image, draw, quote_row, 800, block_bottom)
+    _vhs_paint_osd(image, draw, quote_row, 800, 480, time_str)
     _vhs_paint_dropouts(image)
     # Tears go last, over the finished picture — see _vhs_apply_tears.
     _vhs_apply_tears(image)
-    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
 
 
 
@@ -21713,15 +21740,28 @@ def _cardcatalog_paint_tracing(draw: ImageDraw.ImageDraw, quote_row: dict, heigh
 
 
 def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A library catalogue card (see the module section comment above)."""
-    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    """A library catalogue card (see the module section comment above).
+
+    Always composed at the canonical 800x480 and downsampled with NEAREST for a
+    non-native request, the convention ``metro`` established. Every rectangle on
+    the card is a fixed panel coordinate — the card is a physical object with
+    fixed proportions, not a fluid layout — so a direct render at the curator
+    grid's 320x192 put the whole stamp column (x=582..770, and the theme's time
+    carrier) off the canvas and returned a cropped top-left fragment. NEAREST
+    specifically: the manila ground is a per-pixel cream-and-foxing stipple, and
+    an interpolating filter would average it into off-palette colours.
+    """
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
     _cardcatalog_paint_manila(image)
     draw = ImageDraw.Draw(image)
-    _cardcatalog_paint_chrome(image, draw, quote_row, width, height)
+    _cardcatalog_paint_chrome(image, draw, quote_row, 800, 480)
     _cardcatalog_paint_annotation(image, draw, quote_row)
-    _cardcatalog_paint_tracing(draw, quote_row, height)
+    _cardcatalog_paint_tracing(draw, quote_row, 480)
     _cardcatalog_paint_stamps(image, quote_row, time_str)
-    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
 
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:

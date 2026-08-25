@@ -1431,3 +1431,117 @@ class TestVhsChromaBleed:
             "past a fifth the picture stops reading as slipping and starts "
             "reading as shredded"
         )
+
+    def test_no_chunk_ghost_eats_a_neighbours_core(self):
+        """The clean-letterform-centre invariant must hold ACROSS chunk seams.
+
+        A matched phrase splits a line into adjacent styled chunks. Painting
+        ghost-then-core per chunk only holds the invariant *within* a chunk: the
+        next chunk's left ghost lands on the previous chunk's tail, and the
+        ``ground`` guard cannot reject it, because ``ground`` necessarily lists
+        every ink the frame paints — the white core included.
+
+        Drives the real ``_vhs_paint_quote`` and compares its cores against the
+        same call with the ghosts suppressed; anything the ghost pass ate shows
+        up as a core pixel present in the baseline and missing from the render.
+        Reimplementing the pass order inside the test would make it a tautology
+        that passes against the very bug it guards.
+
+        Swept across offsets rather than pinned at the shipped 2/3, because at
+        those the glyph side bearings absorb the reach and the bug is invisible.
+        It starts eating cores around 5, so a future "make the bleed stronger"
+        tweak is exactly what this guards.
+        """
+        white = rq.SPECTRA6["white"]
+        row = make_row(
+            display_quote="At half past two the mm ll bell rang and everybody left.",
+            matched_text="half past two", author="L. M. Montgomery", title="Anne of Avonlea")
+
+        def paint(offset, ghosts):
+            image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+            draw = ImageDraw.Draw(image)
+            real = rq.draw_text_chroma_shift
+
+            def maybe_ghostless(img, xy, text, font, *, core=None, left=None,
+                                right=None, offset=2, ground=None):
+                if not ghosts:
+                    left = right = None
+                return real(img, xy, text, font, core=core, left=left, right=right,
+                            offset=offset, ground=ground)
+
+            original_offset = rq._VHS_CHROMA_OFFSET
+            try:
+                rq._VHS_CHROMA_OFFSET = offset
+                rq.draw_text_chroma_shift = maybe_ghostless
+                rq._vhs_paint_quote(image, draw, row)
+            finally:
+                rq.draw_text_chroma_shift = real
+                rq._VHS_CHROMA_OFFSET = original_offset
+            return image.load()
+
+        for offset in (2, 3, 5, 8, 12):
+            got = paint(offset, ghosts=True)
+            want = paint(offset, ghosts=False)
+            eaten = sum(
+                1
+                for y in range(480)
+                for x in range(800)
+                if want[x, y] == white and got[x, y] != white
+            )
+            assert eaten == 0, (
+                f"at offset={offset}, {eaten} core pixels were overwritten by a "
+                "neighbouring chunk's chroma ghost — every ghost on a line must "
+                "be laid down before any core, or the letterform centres are "
+                "not clean"
+            )
+
+
+class TestFixedGeometryFramesDownscale:
+    """Frames built on fixed panel coordinates must downscale, not crop.
+
+    The curator theme grid and the setup wizard both request every theme from
+    ``/api/preview`` at 320x192. A frame whose composition is written in
+    absolute 800x480 coordinates renders a cropped top-left fragment at that
+    size — for ``cardcatalog`` that put the entire stamp column (x=582..770,
+    and the theme's time carrier) off the canvas, so the thumbnail could not
+    represent the theme at all. ``metro`` established the fix: compose at the
+    canonical size, then resample.
+
+    The pre-existing preview sweep cannot see this — it asserts only ``img.size``
+    and palette-subset, both of which a cropped fragment satisfies.
+    """
+
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro")
+
+    @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
+    @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
+    def test_thumbnail_is_a_downscale_of_the_canonical_frame(self, theme, size):
+        row = make_row(display_quote="At half past two Mr. and Mrs. Irving left the house.",
+                       matched_text="half past two", author="L. M. Montgomery",
+                       title="Anne of Avonlea")
+        canonical = rq.render("14:30", row, 800, 480, mode="production", theme=theme)
+        expected = canonical.resize(size, Image.Resampling.NEAREST)
+        actual = rq.render("14:30", row, *size, mode="production", theme=theme)
+        assert pixel_bytes(actual) == pixel_bytes(expected), (
+            f"{theme} at {size[0]}x{size[1]} is not a downscale of its 800x480 "
+            "composition — a frame written in absolute panel coordinates must "
+            "compose at the canonical size and resample, or the curator "
+            "thumbnail is a cropped fragment"
+        )
+
+    @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
+    def test_resampling_keeps_the_thumbnail_on_palette(self, theme):
+        """NEAREST specifically: an interpolating filter averages adjacent inks.
+
+        Every one of these frames is built from per-pixel stipples, so BILINEAR
+        or LANCZOS would invent colours the panel cannot print — and the final
+        ``snap_image_to_palette`` runs before the resize, not after.
+        """
+        row = make_row(display_quote="It was nine o'clock.", matched_text="nine o'clock",
+                       author="E. Nesbit", title="The Railway Children")
+        thumb = rq.render("09:00", row, 320, 192, mode="production", theme=theme)
+        off_palette = distinct_inks(thumb) - set(rq.SPECTRA6.values())
+        assert not off_palette, (
+            f"{theme} thumbnail carries off-palette colours {sorted(off_palette)} — "
+            "the resample filter is blending inks instead of picking them"
+        )
