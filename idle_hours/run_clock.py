@@ -211,6 +211,7 @@ def parse_args() -> argparse.Namespace:
         "synoptic",
         "vhs",
         "cardcatalog",
+        "metro",
         "diags",
     ]
     parser.add_argument(
