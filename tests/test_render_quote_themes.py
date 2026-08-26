@@ -1742,6 +1742,38 @@ class TestBakeliteTube:
             "the tube's centre is not meaningfully brighter than its corner"
         )
 
+    def test_every_masked_pixel_is_tube_ink(self):
+        """The mask is authoritative: whatever it calls screen must be painted.
+
+        PIL's ``rounded_rectangle`` fills *both* endpoints of its bounding box,
+        but the paint loop ran ``range(x0, x1)`` — so the mask's last column and
+        row were classified as screen and never painted. The bevel pass then
+        skipped them for exactly the same reason, and every render carried a
+        1 px line of moulding *inside* the CRT along its right and bottom edges.
+
+        The complement test below could not see it: it checks that nothing
+        paints outside the screen, and this is the opposite mistake. Nor could
+        the eye at panel distance — the stray line sits precisely where the
+        recess bevel puts its white highlight, so it read as part of the
+        moulding. Found by review on #225; fenced here in the strongest form,
+        over the whole mask rather than at sampled points.
+        """
+        image = self._tube()
+        pixels = image.load()
+        mask = rq._bakelite_screen_mask().load()
+        tube_inks = {rq.SPECTRA6[name] for name in ("black", "red", "green")}
+        stray = [
+            (x, y)
+            for y in range(480)
+            for x in range(800)
+            if mask[x, y] >= 128 and pixels[x, y] not in tube_inks
+        ]
+        assert not stray, (
+            f"{len(stray)} pixels inside the screen mask were never painted "
+            f"(first at {stray[0]}) — they keep the moulding underneath, which "
+            "draws a line of slab colour inside the CRT"
+        )
+
     def test_nothing_paints_outside_the_rounded_screen(self):
         pixels = self._tube().load()
         for x, y in ((0, 0), (799, 0), (0, 479), (799, 479), (48, 38), (400, 20)):

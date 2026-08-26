@@ -22131,9 +22131,17 @@ def _bakelite_paint_tube(image: Image.Image, screen: Image.Image) -> None:
     # what makes the line structure legible, and it also lets the red:green
     # ratio land exactly where the tube is brightest. The vignette is then
     # carried entirely by thinning those rows toward the rim.
-    for y in range(y0, y1):
+    #
+    # Both ranges are inclusive of the far bound, because ``_BAKELITE_SCREEN``
+    # is an inclusive rect: PIL's ``rounded_rectangle`` fills both endpoints of
+    # its bounding box, and ``_bakelite_bevel_face`` measures depth outward from
+    # ``x1`` / ``y1`` on the same assumption. A half-open ``range(x0, x1)`` left
+    # the mask's last column and row unpainted while still classifying them as
+    # screen — so the bevel pass skipped them too, and every render carried a
+    # 1 px line of moulding inside the CRT along its right and bottom edges.
+    for y in range(y0, y1 + 1):
         lit = (y - y0) % _BAKELITE_PITCH == 0
-        for x in range(x0, x1):
+        for x in range(x0, x1 + 1):
             if sc_px[x, y] < 128:
                 continue
             pixels[x, y] = black
