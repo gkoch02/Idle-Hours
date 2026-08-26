@@ -180,6 +180,13 @@ THEME_SATURATION: dict[str, float] = {
     "pulp": 0.7,
     "synoptic": 0.5,
     "vhs": 0.7,
+    # Bakelite console — black CRT glass under a warm scanline field, and
+    # every lit glyph is a falling-density red halo around a yellow or white
+    # core. A bloom is exactly what the gentler tier flattens, so this takes
+    # the dark-ground 0.7 alongside ``izakaya`` / ``abyssal`` for the same
+    # reason; the butterscotch moulding around it also needs the push to stay
+    # a caramel rather than reading as bare paper.
+    "bakelite": 0.7,
     "cardcatalog": 0.5,
     # White map stock with four native route inks. The lighter tier keeps the
     # yellow line visible without blowing out the red/blue interchange marks.

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import bisect
 import json
+import math
 import threading
 
 import pytest
@@ -1511,7 +1512,7 @@ class TestFixedGeometryFramesDownscale:
     and palette-subset, both of which a cropped fragment satisfies.
     """
 
-    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro")
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -1545,3 +1546,287 @@ class TestFixedGeometryFramesDownscale:
             f"{theme} thumbnail carries off-palette colours {sorted(off_palette)} — "
             "the resample filter is blending inks instead of picking them"
         )
+
+
+class TestBakeliteHourIndex:
+    """The console's ``HOUR n/12`` readout carries the hour and only the hour.
+
+    ``bakelite`` surfaces a number, which the rotation's default posture forbids
+    — the matched phrase is supposed to be the time carrier. It earns the
+    exception the way ``cardcatalog``'s due stamp and ``abyssal``'s depth gauge
+    do, by showing a *setting index* rather than a clock reading, and the way to
+    keep that honest is mechanical: if a minute could reach the frame, the
+    readout would be a clock. So every minute of an hour must render identically
+    for a fixed row, and the twelve hours must all differ.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    def _frame(self, time_str):
+        return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="bakelite"))
+
+    def test_no_minute_reaches_the_console(self):
+        frames = {self._frame(f"09:{minute:02d}") for minute in range(60)}
+        assert len(frames) == 1, (
+            "the minute is reaching the bakelite frame — the console shows an hour "
+            "index, not a clock reading, and the matched phrase is the time carrier"
+        )
+
+    def test_every_hour_renders_differently(self):
+        frames = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
+        assert len(frames) == 12, "two hours render the same console"
+
+    @pytest.mark.parametrize("time_str, expected", [
+        ("00:30", 12), ("12:05", 12), ("13:00", 1), ("09:45", 9), ("23:59", 11),
+    ])
+    def test_hour_index_is_twelve_hour(self, time_str, expected):
+        assert rq._bakelite_hour(time_str) == expected
+
+    @pytest.mark.parametrize("value", ["", "nonsense", "::", None])
+    def test_a_malformed_time_falls_back_rather_than_raising(self, value):
+        assert rq._bakelite_hour(value) == 12
+
+
+class TestBakelitePhosphorHalo:
+    """The glow must hold one hue while its density falls.
+
+    This is the invariant the theme exists to demonstrate and the one that broke
+    twice while it was being built: an amber halo is a *synthesised* colour, so
+    the ratio between its two inks has to stay put across the whole falloff. Key
+    the ratio off anything the density is also keyed off and it collapses — the
+    tail goes one colour and the bright ring the other, so the glow changes hue
+    as it fades rather than dimming.
+
+    Measured in annular bands out from the stroke, because that is exactly the
+    axis the bug runs along; a single figure over the whole halo averages the
+    two ends together and comes out at the target while looking wrong.
+    """
+
+    YELLOW_SHARE = rq._BAKELITE_HALO_YELLOW
+
+    def _halo_bands(self):
+        """Bloom a disc on a black field; return per-annulus (yellow, red) counts.
+
+        A *disc* in *circular* annuli, and both halves of that matter. Blooming
+        a rectangle and binning by distance from its edge — the first version of
+        this test — samples each band along a straight run at one fixed
+        ``y % 8``, so the measurement aliases against the Bayer tile: it reported
+        alternating empty bands and shares swinging between 0.14 and 1.00 for a
+        halo that was in fact fine. A curved edge crosses every phase of the
+        tile, and a 5 px band is wide enough to contain whole tiles.
+        """
+        image = Image.new("RGB", (200, 200), rq.SPECTRA6["black"])
+        mask = Image.new("L", image.size, 0)
+        ImageDraw.Draw(mask).ellipse((70, 70, 130, 130), fill=255)
+        rq._bakelite_paint_phosphor(image, mask, rq.SPECTRA6["white"], radius=14, cap=0.85)
+        pixels = image.load()
+        bands: dict[int, list[int]] = {}
+        for y in range(200):
+            for x in range(200):
+                distance = math.hypot(x - 100, y - 100)
+                if distance < 32:                     # inside the disc and its rim
+                    continue
+                band = bands.setdefault(int(distance) // 5, [0, 0])
+                if pixels[x, y] == rq.SPECTRA6["yellow"]:
+                    band[0] += 1
+                elif pixels[x, y] == rq.SPECTRA6["red"]:
+                    band[1] += 1
+        return bands
+
+    # Wide enough to permit the documented drift in the faintest annulus, where
+    # the lit run is too short to hold the fraction exactly (measured 0.47),
+    # and still narrow enough to discriminate: the two rejected one-read rules
+    # reach 0.51 and 0.33 in this same geometry, and the original two-read bug
+    # ran the tail to 1.00.
+    TOLERANCE = 0.11
+
+    def test_the_ratio_holds_at_every_distance(self):
+        measured = [(d, y, r) for d, (y, r) in sorted(self._halo_bands().items()) if y + r >= 80]
+        assert len(measured) >= 3, "too few populated annuli to say anything about drift"
+        for distance, yellow, red in measured:
+            total = yellow + red
+            share = yellow / total
+            assert abs(share - self.YELLOW_SHARE) < self.TOLERANCE, (
+                f"in annulus {distance} the halo is {share:.2f} yellow "
+                f"against a target of {self.YELLOW_SHARE:.3f} — the ink ratio is "
+                "tracking the density instead of holding steady, so the glow "
+                "changes hue as it fades"
+            )
+
+    def test_the_halo_actually_falls_off(self):
+        """A ratio test alone passes against a halo that is a solid slab."""
+        bands = self._halo_bands()
+        populated = sorted(d for d, counts in bands.items() if sum(counts))
+        near, far = sum(bands[populated[0]]), sum(bands[populated[-1]])
+        assert far < near, f"halo is not fading: {near} px at the stroke, {far} px at the rim"
+
+    def test_the_default_core_is_a_warmer_amber_than_the_halo(self):
+        """Core and halo must differ, or a character is just a fat halo."""
+        image = Image.new("RGB", (120, 80), rq.SPECTRA6["black"])
+        mask = Image.new("L", image.size, 0)
+        ImageDraw.Draw(mask).rectangle((40, 30, 80, 50), fill=255)
+        rq._bakelite_paint_phosphor(image, mask, radius=6)
+        pixels = image.load()
+        core = [pixels[x, y] for y in range(31, 50) for x in range(41, 80)]
+        share = core.count(rq.SPECTRA6["yellow"]) / len(core)
+        assert 0.55 < share < 0.70, (
+            f"the amber core is {share:.2f} yellow, expected ~5/8 — solid yellow "
+            "reads as pale citrus on this panel and pure halo reads as unlit"
+        )
+
+
+class TestBakeliteTube:
+    """The CRT face has to be brown, and brown here is made of scanlines."""
+
+    ROW = make_row(display_quote="At half past two the bell rang.", matched_text="half past two")
+
+    def _tube(self):
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        rq._bakelite_paint_tube(image, rq._bakelite_screen_mask())
+        return image
+
+    # Bright centre and vignetted rim. Sampling only the centre is what let the
+    # first version of this test pass against a deliberately reintroduced
+    # zero-green bug: the tube runs at full density there, so a position-keyed
+    # ratio still emits both inks. The defect lives wherever the density is
+    # *partial*, which is the whole rim, so a ratio test has to sample it.
+    REGIONS = {"centre": (340, 210, 460, 270),
+               "lower rim": (60, 380, 190, 435),
+               "upper rim": (600, 50, 740, 110)}
+
+    @pytest.mark.parametrize("region", sorted(REGIONS))
+    def test_the_field_carries_both_sepia_inks(self, region):
+        """The zero-green build rendered maroon under a comment saying brown.
+
+        Keying the green on ``x & 3`` selected the Bayer column the density
+        threshold had already rejected, so the two conditions were rarely true
+        together and the mix lost most of its second ink wherever the vignette
+        bit. Nothing else could see it — the frame still rendered and still
+        snapped on-palette.
+        """
+        counts = ink_counts(self._tube().crop(self.REGIONS[region]))
+        red = counts.get(rq.SPECTRA6["red"], 0)
+        green = counts.get(rq.SPECTRA6["green"], 0)
+        assert green > 0, f"{region}: the tube paints no green at all — maroon, not brown"
+        assert 2.0 < red / green < 4.2, (
+            f"{region}: tube red:green is {red / green:.1f}:1, expected about 3:1 — "
+            "the ratio is tracking the Bayer density instead of holding"
+        )
+
+    def test_the_tube_is_scanned_and_not_washed(self):
+        """The line structure is the theme's name; a solid brown wash is not it.
+
+        The spacing is asserted as a literal 3 rather than against
+        ``_BAKELITE_PITCH``. Deriving it from the constant is what the first
+        version did, and that test passes cleanly with the pitch set to 1 — the
+        tube fully washed, every row lit, no scanlines at all — because the
+        assertion is then vacuously true. A test that reads the value it is
+        fencing is not fencing it.
+        """
+        pixels = self._tube().load()
+        lit = sorted(y for y in range(200, 260)
+                     if any(pixels[x, y] != rq.SPECTRA6["black"] for x in range(360, 440)))
+        assert lit, "no scanlines at all in the middle of the tube"
+        assert set(y - x for x, y in zip(lit, lit[1:])) == {3}, (
+            f"lit rows {lit} are not on a 3-row pitch — the tube is washed, not scanned"
+        )
+
+    def test_the_vignette_darkens_the_rim(self):
+        pixels = self._tube().load()
+        def lit_share(x0, y0):
+            cells = [pixels[x, y] for y in range(y0, y0 + 40) for x in range(x0, x0 + 60)]
+            return 1 - cells.count(rq.SPECTRA6["black"]) / len(cells)
+        assert lit_share(370, 220) > lit_share(52, 42) * 1.4, (
+            "the tube's centre is not meaningfully brighter than its corner"
+        )
+
+    def test_every_masked_pixel_is_tube_ink(self):
+        """The mask is authoritative: whatever it calls screen must be painted.
+
+        PIL's ``rounded_rectangle`` fills *both* endpoints of its bounding box,
+        but the paint loop ran ``range(x0, x1)`` — so the mask's last column and
+        row were classified as screen and never painted. The bevel pass then
+        skipped them for exactly the same reason, and every render carried a
+        1 px line of moulding *inside* the CRT along its right and bottom edges.
+
+        The complement test below could not see it: it checks that nothing
+        paints outside the screen, and this is the opposite mistake. Nor could
+        the eye at panel distance — the stray line sits precisely where the
+        recess bevel puts its white highlight, so it read as part of the
+        moulding. Found by review on #225; fenced here in the strongest form,
+        over the whole mask rather than at sampled points.
+        """
+        image = self._tube()
+        pixels = image.load()
+        mask = rq._bakelite_screen_mask().load()
+        tube_inks = {rq.SPECTRA6[name] for name in ("black", "red", "green")}
+        stray = [
+            (x, y)
+            for y in range(480)
+            for x in range(800)
+            if mask[x, y] >= 128 and pixels[x, y] not in tube_inks
+        ]
+        assert not stray, (
+            f"{len(stray)} pixels inside the screen mask were never painted "
+            f"(first at {stray[0]}) — they keep the moulding underneath, which "
+            "draws a line of slab colour inside the CRT"
+        )
+
+    def test_nothing_paints_outside_the_rounded_screen(self):
+        pixels = self._tube().load()
+        for x, y in ((0, 0), (799, 0), (0, 479), (799, 479), (48, 38), (400, 20)):
+            assert pixels[x, y] == rq.SPECTRA6["white"], (
+                f"the tube painted over the moulding at ({x}, {y})"
+            )
+
+
+class TestBakeliteMoulding:
+    """The slab is a jittered ordered dither, not a plain Bayer lattice."""
+
+    def _slab(self):
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+        rq._bakelite_paint_moulding(image)
+        return image
+
+    def test_the_jitter_is_actually_applied(self):
+        """Without it each Bayer residue maps to exactly one ink — the lattice.
+
+        Dropping the hash term is an easy 'simplification' to make while reading
+        this painter, and the result still renders, still snaps on-palette and
+        still averages to the right tan; it only reveals itself as a visible
+        screen-door texture on the finished panel. So the fence is structural:
+        under a plain ordered partition every pixel sharing a residue class
+        carries essentially one ink, and under a jittered one most classes carry
+        more than one.
+
+        The floor is calibrated against a measured baseline rather than guessed:
+        over this window the marbling alone mixes 4 of the 16 classes (a slow
+        threshold sweep does cross a boundary here and there), and the shipped
+        jitter mixes 11. The classes that stay pure are the extreme ranks, which
+        no jitter of this amplitude can carry across a threshold — so the fence
+        sits at 8, comfortably above the swirl-only case and below the real one.
+        """
+        pixels = self._slab().load()
+        classes = {}
+        for y in range(120, 380):
+            for x in range(0, 40):
+                classes.setdefault((x % 4, y % 4), set()).add(pixels[x, y])
+        mixed = sum(1 for inks in classes.values() if len(inks) > 1)
+        assert mixed >= 8, (
+            f"only {mixed} of {len(classes)} Bayer residue classes carry more than one "
+            "ink — the moulding has fallen back to a plain ordered lattice, which "
+            "reads as a screen door on the panel"
+        )
+
+    def test_the_slab_is_a_warm_three_ink_tan(self):
+        counts = ink_counts(self._slab().crop((0, 100, 40, 400)))
+        total = sum(counts.values())
+        share = {ink: counts.get(rq.SPECTRA6[ink], 0) / total for ink in ("white", "yellow", "red")}
+        assert share["white"] > share["yellow"] > share["red"] > 0.05, (
+            f"moulding mix is {share} — white must lead (or the slab reads as a flat "
+            "lemon) and red must be present (or it lands on khaki, because the "
+            "panel's yellow is a green one)"
+        )
+        assert counts.get(rq.SPECTRA6["black"], 0) == 0, "the slab is painting black"
