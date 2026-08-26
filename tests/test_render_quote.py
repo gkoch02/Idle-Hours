@@ -4123,3 +4123,103 @@ class TestParsePinQuote:
         assert rq.parse_pin_quote("141:xx") is None
         assert rq.parse_pin_quote(":42") is None
         assert "malformed --pin-quote" in capsys.readouterr().err
+
+
+class TestPaintNeonMask:
+    """The shared glow primitive, including the split-band mix ``bakelite`` added.
+
+    It had no direct coverage at all before that — it was reached only through
+    ``izakaya`` and ``abyssal``, whose golden fixtures catch a change in what
+    those two themes look like but say nothing about the primitive's contract.
+    Now that a third theme drives it through new parameters, the contract needs
+    fencing in its own right: chiefly that the single-ink path is untouched, so
+    growing the primitive cannot quietly restyle the two themes that were using
+    it first.
+    """
+
+    SIZE = (160, 120)
+
+    def _blot(self, **kwargs):
+        image = Image.new("RGB", self.SIZE, rq.SPECTRA6["black"])
+        mask = Image.new("L", self.SIZE, 0)
+        ImageDraw.Draw(mask).ellipse((60, 40, 100, 80), fill=255)
+        rq.paint_neon_mask(image, mask, rq.SPECTRA6["white"], rq.SPECTRA6["blue"], **kwargs)
+        return image, mask
+
+    def test_the_single_ink_default_paints_two_inks_and_the_ground(self):
+        """izakaya / abyssal's path: core, glow, ground — nothing else."""
+        image, _ = self._blot(radius=6, gamma=2.0, cap=0.6)
+        assert distinct_inks(image) == {
+            rq.SPECTRA6["white"], rq.SPECTRA6["blue"], rq.SPECTRA6["black"]
+        }
+
+    def test_a_minor_ink_appears_only_when_asked_for(self):
+        plain, _ = self._blot(radius=6)
+        split, _ = self._blot(radius=6, tile=rq.BAYER_8x8,
+                              glow_minor=rq.SPECTRA6["green"], glow_minor_share=0.375)
+        assert rq.SPECTRA6["green"] not in distinct_inks(plain)
+        assert rq.SPECTRA6["green"] in distinct_inks(split)
+
+    @pytest.mark.parametrize("share, expected", [(0.25, 0.33), (0.375, 0.43), (0.5, 0.58)])
+    def test_the_glow_split_tracks_its_share(self, share, expected):
+        """The share parameter does what it says, over the halo as a whole.
+
+        The measured figure sits consistently *above* the requested one, and
+        that is the primitive's documented low-density drift rather than a bug:
+        the minor set is the lowest ``share`` of a run of integer ranks, so a
+        short run rounds up. A halo is mostly tail by area — the faint outer
+        rings hold far more pixels than the bright inner ones — so an unweighted
+        average over the whole thing is dominated by exactly the region where
+        the drift lives, and lands ~0.06 high.
+
+        This fences the contract at the level the whole-halo view can actually
+        support: the parameter is honoured, and it moves monotonically. The
+        precision fence lives in ``TestBakelitePhosphorHalo``, which bins by
+        distance so every part of the falloff weighs the same and can therefore
+        hold the ratio to a much tighter tolerance.
+        """
+        image, _ = self._blot(radius=10, gamma=1.4, cap=0.8, tile=rq.BAYER_8x8,
+                              glow_minor=rq.SPECTRA6["green"], glow_minor_share=share)
+        counts = ink_counts(image)
+        major = counts.get(rq.SPECTRA6["blue"], 0)
+        minor = counts.get(rq.SPECTRA6["green"], 0)
+        assert major + minor > 200, "not enough halo painted to measure"
+        assert abs(minor / (major + minor) - expected) < 0.04
+
+    def test_more_share_means_more_minor_ink(self):
+        """Monotonicity, stated independently of any absolute figure."""
+        def measured(share):
+            image, _ = self._blot(radius=10, gamma=1.4, cap=0.8, tile=rq.BAYER_8x8,
+                                  glow_minor=rq.SPECTRA6["green"], glow_minor_share=share)
+            counts = ink_counts(image)
+            major = counts.get(rq.SPECTRA6["blue"], 0)
+            minor = counts.get(rq.SPECTRA6["green"], 0)
+            return minor / (major + minor)
+        shares = [measured(s) for s in (0.0, 0.25, 0.375, 0.5, 1.0)]
+        assert shares == sorted(shares), f"share is not monotone: {shares}"
+        assert shares[0] == 0.0 and shares[-1] == 1.0, "the endpoints should be pure"
+
+    def test_the_core_split_stipples_the_stroke_not_the_halo(self):
+        """``core_minor`` is what gives ``bakelite`` its gold stroke."""
+        image, mask = self._blot(radius=6, tile=rq.BAYER_8x8,
+                                 core_minor=rq.SPECTRA6["yellow"], core_minor_share=0.625)
+        pixels, mask_px = image.load(), mask.load()
+        inside = [pixels[x, y] for y in range(120) for x in range(160) if mask_px[x, y] > 128]
+        share = inside.count(rq.SPECTRA6["yellow"]) / len(inside)
+        assert abs(share - 0.625) < 0.05, f"core is {share:.2f} minor ink, expected 5/8"
+        assert rq.SPECTRA6["yellow"] not in {
+            pixels[x, y] for y in range(120) for x in range(160) if mask_px[x, y] <= 128
+        }, "the core's minor ink leaked into the halo"
+
+    def test_the_ground_still_gates_the_split_halo(self):
+        """A restricted ground must hold for both inks, or a later glow eats
+        the cores an earlier pass lit — the reason the parameter exists."""
+        image = Image.new("RGB", self.SIZE, rq.SPECTRA6["red"])
+        mask = Image.new("L", self.SIZE, 0)
+        ImageDraw.Draw(mask).ellipse((60, 40, 100, 80), fill=255)
+        rq.paint_neon_mask(image, mask, rq.SPECTRA6["white"], rq.SPECTRA6["blue"],
+                           radius=8, tile=rq.BAYER_8x8, ground=frozenset({rq.SPECTRA6["black"]}),
+                           glow_minor=rq.SPECTRA6["green"], glow_minor_share=0.375)
+        assert distinct_inks(image) == {rq.SPECTRA6["red"], rq.SPECTRA6["white"]}, (
+            "the halo painted over a ground it was not permitted to touch"
+        )

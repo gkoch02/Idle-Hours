@@ -4251,6 +4251,11 @@ def paint_neon_mask(
     gamma: float = 2.4,
     cap: float = 0.5,
     ground=None,
+    tile=BAYER_4x4,
+    glow_minor=None,
+    glow_minor_share: float = 0.0,
+    core_minor=None,
+    core_minor_share: float = 0.0,
 ) -> None:
     """Paint a glyph/shape mask as a lit neon tube: solid ``core`` strokes
     wrapped in a ``glow`` bloom stippled onto the surrounding ground.
@@ -4283,6 +4288,30 @@ def paint_neon_mask(
     ``ground`` optionally restricts the halo to pixels currently holding one of
     those colours, so a later glow can't eat the core strokes or decoration a
     previous pass already laid down. ``None`` means "paint over anything".
+
+    **Synthesised glows.** ``glow`` and ``core`` are normally one of the six
+    inks, which is enough whenever the panel *has* the colour being lit — blue
+    for ``izakaya``'s cool tubes, mint for ``abyssal``'s bioluminescence. When it
+    does not (``bakelite``'s amber), pass ``glow_minor`` and ``glow_minor_share``
+    to mix a second ink in at a constant ratio: the lit pixels at any point are
+    the consecutive tile ranks ``0..n-1``, and the lowest ``glow_minor_share`` of
+    that run take the minor ink. Density still carries the glow, the ratio now
+    carries the hue, and the two do not interfere — a *fixed fraction* of a
+    consecutive run is that fraction however long the run is, so the halo holds
+    one colour all the way down its falloff. ``core_minor`` does the same for the
+    stroke itself.
+
+    That the ratio rides the density's own read is the load-bearing part, and
+    ``pride``'s rank partition is the same trick for the same reason. A second
+    read of a Bayer tile is perfectly correlated with the first — the tile has a
+    fixed cell count, so any second read merely selects a subset — and keying a
+    ratio on one measured the halo's tail pure minor ink and its bright ring pure
+    major, a glow that changed hue as it faded rather than dimming.
+
+    ``tile`` selects the ordered matrix. The 4x4 default is right for a solid
+    glow, where 17 density levels is plenty; a *split* glow wants ``BAYER_8x8``,
+    because the minor share is a fraction of the lit run and a short run cannot
+    hold one accurately. Existing callers are unaffected by either addition.
     """
     bbox = mask.getbbox()
     if bbox is None:
@@ -4299,19 +4328,82 @@ def paint_neon_mask(
     px = image.load()
     mp = mask.load()
     hp = halo.load()
+    size = len(tile)
+    levels = size * size
+    core_cut = levels * core_minor_share
     for y in range(y0, y1):
-        row = BAYER_4x4[y % 4]
+        row = tile[y % size]
         for x in range(x0, x1):
+            rank = row[x % size]
             if mp[x, y] > 128:
                 if core is not None:
-                    px[x, y] = core
+                    px[x, y] = core_minor if core_minor is not None and rank < core_cut else core
                 continue
             level = hp[x, y] / 255.0
             if level <= 0.02:
                 continue
-            density = min(cap, level ** gamma)
-            if row[x % 4] < density * 16 and (ground is None or px[x, y] in ground):
-                px[x, y] = glow
+            lit = min(cap, level ** gamma) * levels
+            if rank < lit and (ground is None or px[x, y] in ground):
+                px[x, y] = glow_minor if glow_minor is not None and rank < lit * glow_minor_share else glow
+
+
+def wrap_quote_into_masks(draw, size, quote_row: dict, rect, *, theme: str,
+                         font_max: int = 34, font_min: int = 15,
+                         line_height_mult: float = 1.4) -> tuple[Image.Image, Image.Image, int]:
+    """Lay a quote out into two ``"L"`` masks — prose and matched phrase — and
+    return them with the block's bottom y.
+
+    The shared front half of every *lit* frame. ``izakaya``, ``abyssal`` and
+    ``bakelite`` all present the quote as light rather than as ink, and light on
+    this panel is a bloom: the mask has to exist before anything is painted, and
+    the prose and the time phrase need separate ones so each can take its own
+    colour and falloff. Accumulating both into one mask gives the time phrase the
+    prose's glow; blooming per *chunk* double-exposes wherever two halos meet
+    inside a line, which is the artefact ``izakaya``'s sign frames were built to
+    avoid.
+
+    Everything downstream of here differs per theme — cool-vs-hot gas colours in
+    ``izakaya``, blue-vs-mint water in ``abyssal``, one amber phosphor at two
+    brightnesses in ``bakelite`` — so this returns the masks rather than painting
+    them, and the caller makes its own ``paint_neon_mask`` calls.
+
+    Lines are centred on the block, and each is measured with leading and
+    trailing whitespace chunks trimmed so a wrapped line's centring is not thrown
+    off by the space that ended the previous one. Chunks are baseline-aligned via
+    ``_font_ascent`` rather than sharing a top edge, so the bold matched phrase
+    sits on the same line as the prose around it even when the two faces report
+    different ascents.
+    """
+    x0, y0, x1, y1 = rect
+    box_w, box_h = x1 - x0, y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "", box_w, box_h,
+        font_max=font_max, font_min=font_min, line_height_mult=line_height_mult, theme=theme,
+    )
+    prose = Image.new("L", size, 0)
+    hot = Image.new("L", size, 0)
+    prose_draw, hot_draw = ImageDraw.Draw(prose), ImageDraw.Draw(hot)
+
+    y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
+                       for c, b in segment)
+        x = x0 + max(0, (box_w - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            target = hot_draw if is_bold else prose_draw
+            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+    return prose, hot, y
 
 
 def draw_text_neon(
@@ -19721,48 +19813,20 @@ def _izakaya_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
     """The quote as bent neon tube. Returns the block's bottom y for the credits.
 
     Two masks, not one: the body's chunks and the matched phrase's chunks are
-    accumulated separately so each can take its own gas colour — cool white/blue
-    for the prose, hot yellow/red for the sung time phrase. Each mask blooms in
-    a single pass, so overlapping halos inside a line expose once rather than
-    stacking into a solid block. The hot pass runs last and is allowed to
-    overwrite the cool halo, so the matched phrase's glow reads as nearer.
+    accumulated separately by ``wrap_quote_into_masks`` so each can take its own
+    gas colour — cool white/blue for the prose, hot yellow/red for the sung time
+    phrase. The hot pass runs last and is allowed to overwrite the cool halo, so
+    the matched phrase's glow reads as nearer.
     """
-    x0, y0, x1, y1 = _IZAKAYA_QUOTE_RECT
-    box_w, box_h = x1 - x0, y1 - y0
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    matched = quote_row.get("matched_text") or ""
-    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, matched, box_w, box_h,
-        font_max=34, font_min=15, line_height_mult=1.42, theme="izakaya",
+    cool, hot, bottom = wrap_quote_into_masks(
+        draw, image.size, quote_row, _IZAKAYA_QUOTE_RECT,
+        theme="izakaya", line_height_mult=1.42,
     )
-    cool = Image.new("L", image.size, 0)
-    hot = Image.new("L", image.size, 0)
-    cool_draw, hot_draw = ImageDraw.Draw(cool), ImageDraw.Draw(hot)
-
-    block_h = len(wrapped) * line_height
-    y = y0 + max(0, (box_h - block_h) // 2)
-    body_ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
-        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2] for c, b in segment)
-        x = x0 + max(0, (box_w - width_px) // 2)
-        for chunk, is_bold in segment:
-            font = quote_font_bold if is_bold else quote_font
-            target = hot_draw if is_bold else cool_draw
-            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
-            x += draw.textbbox((0, 0), chunk, font=font)[2]
-        y += line_height
-
     ground = _izakaya_ground()
     paint_neon_mask(image, cool, SPECTRA6["white"], SPECTRA6["blue"], radius=6, gamma=2.0, cap=0.68, ground=ground)
     paint_neon_mask(image, hot, SPECTRA6["yellow"], SPECTRA6["red"], radius=6, gamma=1.9, cap=0.72,
                     ground=ground | {SPECTRA6["blue"]})
-    return y
+    return bottom
 
 
 def _izakaya_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, top: int) -> None:
@@ -20611,42 +20675,16 @@ def _abyssal_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
     bloom on the body so it sits *in* the medium, and a mint-green bloom on the
     matched phrase so the time reads as the one living light on the page.
     """
-    x0, y0, x1, y1 = _ABYSSAL_QUOTE_RECT
-    box_w, box_h = x1 - x0, y1 - y0
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "", box_w, box_h,
-        font_max=34, font_min=15, line_height_mult=1.38, theme="abyssal",
+    cool, hot, bottom = wrap_quote_into_masks(
+        draw, image.size, quote_row, _ABYSSAL_QUOTE_RECT,
+        theme="abyssal", line_height_mult=1.38,
     )
-    cool = Image.new("L", image.size, 0)
-    hot = Image.new("L", image.size, 0)
-    cool_draw, hot_draw = ImageDraw.Draw(cool), ImageDraw.Draw(hot)
-
-    y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
-    body_ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
-        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
-                       for c, b in segment)
-        x = x0 + max(0, (box_w - width_px) // 2)
-        for chunk, is_bold in segment:
-            font = quote_font_bold if is_bold else quote_font
-            target = hot_draw if is_bold else cool_draw
-            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
-            x += draw.textbbox((0, 0), chunk, font=font)[2]
-        y += line_height
-
     ground = _abyssal_water_ground()
     paint_neon_mask(image, cool, SPECTRA6["white"], SPECTRA6["blue"],
                     radius=6, gamma=2.1, cap=0.55, ground=ground)
     paint_neon_mask(image, hot, SPECTRA6["white"], SPECTRA6["green"],
                     radius=6, gamma=1.9, cap=0.7, ground=ground)
-    return y
+    return bottom
 
 
 def _abyssal_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw,
@@ -21847,14 +21885,17 @@ def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height:
 # is a markedly green one. The halo has to be a *synthesised* tangerine, which
 # means composing the two techniques this codebase had so far kept apart —
 # falling density for the glow, a constant two-ink ratio for the hue — inside a
-# single pass. ``_bakelite_paint_phosphor`` is that pass, and its docstring
-# carries the one detail that makes it work: the density key and the ratio key
-# must be structurally unrelated patterns, or the glow changes colour as it
-# fades.
+# single pass. That capability belongs in ``paint_neon_mask`` rather than here —
+# a synthesised glow is a general want, not a bakelite one — so the primitive
+# grew ``glow_minor`` / ``core_minor`` and an optional finer tile, and
+# ``_bakelite_paint_phosphor`` is a thin wrapper supplying this theme's inks.
+# The primitive's docstring carries the detail that makes it work: the ratio has
+# to ride the density's own Bayer read as a split band, because a second read of
+# the same tile is perfectly correlated with the first.
 #
 # **Two brightness tiers on that shared recipe.** ``_bakelite_paint_phosphor``
-# takes a core ink and a scale: prose gets a yellow core at scale 1, the matched
-# time phrase a white core at a wider one. That is how a real display shows an
+# takes a core ink and a radius: the prose gets the default gold stipple, the
+# matched time phrase a solid white core and a wider, denser bloom. That is how a real display shows an
 # over-driven character — the core saturates toward white and the halo spreads —
 # so the time reads as the brightest thing on the tube without leaving the
 # single-phosphor colour story. Compare ``izakaya``, which splits *cool vs hot*
@@ -22170,75 +22211,31 @@ def _bakelite_paint_phosphor(image: Image.Image, mask: Image.Image, core=None,
                              *, radius: int = 7, gamma: float = 1.5, cap: float = 0.68) -> None:
     """Bloom one glyph mask as lit amber phosphor (see the section comment).
 
-    ``paint_neon_mask`` is the model — blur the mask, read the blurred field
-    back as a per-pixel Bayer density — but the halo ink here is a *synthesised*
-    tangerine rather than one of the six, so the two techniques have to compose:
-    falling density carries the glow, a constant R+Y 5/8:3/8 mix carries the
-    hue. Every tuning note in that primitive's docstring still applies (tight
-    radius, gamma above 1, capped peak) and is not repeated here.
+    A thin wrapper over ``paint_neon_mask`` that supplies this theme's inks and
+    tuning. The primitive's own docstring carries the mechanism — the split-band
+    mix, why the ratio has to ride the density's own Bayer read, and why a split
+    glow wants the 8x8 tile. What belongs here is only what is specific to a CRT:
 
-    **The ratio rides the same read as the density**, as a *split band* — the
-    lit set is the consecutive ranks ``0..n-1``, and its lowest 3/8 take the
-    yellow. That is ``pride``'s rank partition applied to two inks instead of
-    three, and it is exact by construction at every density, because a fixed
-    fraction of a consecutive run is a fixed fraction however long the run is.
+    ``core=None`` — the default, and what the prose and every chrome readout use
+    — strokes the glyph as a *yellow*-dominant amber, 5/8 against the halo's 3/8,
+    so a lit character steps gold at the stroke, orange through the halo and
+    brown into the tube. Solid yellow was the first build and it was wrong: the
+    panel's yellow (#C1BB1E) is a lemon, so every character read as pale citrus
+    with an orange fringe pasted round it rather than as one hot amber. Passing
+    an explicit ink instead pins the core solid, which is how the matched phrase
+    gets its over-driven white centre.
 
-    Two *separate* reads cannot promise that. A Bayer tile has a fixed cell
-    count, so any second read of it is perfectly correlated with the first and
-    merely selects a subset — measured that way the halo's near-black tail came
-    out pure yellow and its bright ring pure red, so the glow changed hue as it
-    faded rather than dimming. Two other one-read rules were built and measured
-    against this one, in annuli out from a blurred disc so the sample crosses
-    every phase of the tile: ``rank % 8 < 3`` is exactly 3/8 over a whole tile
-    but drifts 0.39 -> 0.51 across the falloff, and ``(rank * 3) % 8 < 3`` swings
-    0.36 -> 0.44 -> 0.33. Both fail for the same reason — a residue class of the
-    8x8 tile is not spatially neutral, since the construction encodes the cell's
-    quadrant in its low bits. The split band holds 0.38 -> 0.41, because Bayer
-    already disperses its low ranks and the complementary band inherits that.
-
-    It drifts only in the last few ranks of the tail, where ``n`` is too small to
-    hold the fraction; that is the faintest ink on the page and the error is one
-    pixel in a tile.
-
-    ``core=None`` — the default, and what the prose and every chrome readout
-    use — strokes the glyph itself as a *yellow*-dominant amber, 5/8 against the
-    halo's 3/8, so a lit character steps gold at the stroke, orange through the
-    halo and brown into the tube. Solid yellow was the first build and it was
-    wrong: the panel's yellow (#C1BB1E) is a lemon, so every character read as
-    pale citrus with an orange fringe pasted round it rather than as one hot
-    amber. Passing an explicit ink instead pins the core solid, which is how the
-    matched phrase gets its over-driven white centre.
-
-    The ground excludes yellow and white, so a later call cannot dim the halo or
+    The ground is the tube's own inks, so a later call cannot dim the halo or
     core an earlier one already lit.
     """
-    bbox = mask.getbbox()
-    if bbox is None:
-        return
-    width, height = image.size
-    pad = max(2, radius * 3)
-    x0, y0 = max(0, bbox[0] - pad), max(0, bbox[1] - pad)
-    x1, y1 = min(width, bbox[2] + pad), min(height, bbox[3] + pad)
-    if x1 <= x0 or y1 <= y0:
-        return
-    halo = mask.filter(ImageFilter.GaussianBlur(radius))
-    pixels, mask_px, halo_px = image.load(), mask.load(), halo.load()
-    ground = _bakelite_screen_inks()
-    red, yellow = SPECTRA6["red"], SPECTRA6["yellow"]
-    for y in range(y0, y1):
-        row = BAYER_8x8[y % 8]
-        for x in range(x0, x1):
-            if mask_px[x, y] > 128:
-                pixels[x, y] = core if core is not None else (
-                    yellow if row[x % 8] < 64 * _BAKELITE_CORE_YELLOW else red)
-                continue
-            level = halo_px[x, y] / 255.0
-            if level <= 0.02 or pixels[x, y] not in ground:
-                continue
-            lit = min(cap, level ** gamma) * 64
-            rank = row[x % 8]
-            if rank < lit:
-                pixels[x, y] = yellow if rank < lit * _BAKELITE_HALO_YELLOW else red
+    paint_neon_mask(
+        image, mask,
+        core if core is not None else SPECTRA6["red"], SPECTRA6["red"],
+        radius=radius, gamma=gamma, cap=cap, ground=_bakelite_screen_inks(), tile=BAYER_8x8,
+        glow_minor=SPECTRA6["yellow"], glow_minor_share=_BAKELITE_HALO_YELLOW,
+        core_minor=None if core is not None else SPECTRA6["yellow"],
+        core_minor_share=_BAKELITE_CORE_YELLOW,
+    )
 
 
 def _bakelite_paint_rule(image: Image.Image, y: int, x0: int, x1: int) -> None:
@@ -22318,44 +22315,15 @@ def _bakelite_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw,
 def _bakelite_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """The quote as lit phosphor: prose amber, matched phrase over-driven.
 
-    Two masks so each tier blooms exactly once — accumulating both into one pass
-    would give the time phrase the prose's halo, and blooming per chunk would
-    double-expose wherever two halos meet inside a line (the lesson ``izakaya``'s
-    sign frames taught). The hot pass runs last so its wider halo reads as
-    nearer; ``_bakelite_paint_phosphor``'s ground keeps it off the prose's
-    already-lit halo and cores.
+    Two masks from ``wrap_quote_into_masks`` so each tier blooms exactly once.
+    The hot pass runs last so its wider halo reads as nearer;
+    ``_bakelite_paint_phosphor``'s ground keeps it off the prose's already-lit
+    halo and cores.
     """
-    x0, y0, x1, y1 = _BAKELITE_QUOTE_RECT
-    box_w, box_h = x1 - x0, y1 - y0
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    matched = quote_row.get("matched_text") or ""
-    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, matched, box_w, box_h,
-        font_max=34, font_min=15, line_height_mult=1.46, theme="bakelite",
+    prose, hot, _ = wrap_quote_into_masks(
+        draw, image.size, quote_row, _BAKELITE_QUOTE_RECT,
+        theme="bakelite", line_height_mult=1.46,
     )
-    prose = Image.new("L", image.size, 0)
-    hot = Image.new("L", image.size, 0)
-    prose_draw, hot_draw = ImageDraw.Draw(prose), ImageDraw.Draw(hot)
-
-    y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
-    body_ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
-        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
-                       for c, b in segment)
-        x = x0 + max(0, (box_w - width_px) // 2)
-        for chunk, is_bold in segment:
-            font = quote_font_bold if is_bold else quote_font
-            target = hot_draw if is_bold else prose_draw
-            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
-            x += draw.textbbox((0, 0), chunk, font=font)[2]
-        y += line_height
-
     _bakelite_paint_phosphor(image, prose)
     _bakelite_paint_phosphor(image, hot, SPECTRA6["white"], radius=11, gamma=1.3, cap=0.78)
 
