@@ -210,6 +210,7 @@ def parse_args() -> argparse.Namespace:
         "pulp",
         "synoptic",
         "vhs",
+        "bakelite",
         "cardcatalog",
         "metro",
         "diags",

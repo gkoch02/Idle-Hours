@@ -116,6 +116,7 @@ THEME_ORDER: tuple[str, ...] = (
     "pulp",
     "synoptic",
     "vhs",
+    "bakelite",
     "cardcatalog",
     "metro",
     "diags",
@@ -1259,6 +1260,22 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
+    # Bakelite console — an amber-phosphor CRT set into a moulded butterscotch
+    # slab (see the ``render_bakelite_frame`` section comment). A custom frame,
+    # so these values are consumed only by the goodnight / source-card
+    # fall-through paths; the frame itself hardcodes its inks. ``text`` is the
+    # yellow phosphor core, ``accent`` the red halo that surrounds every lit
+    # glyph, and ``page_bg`` the black glass the tube sits behind.
+    "bakelite": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["red"],
+    },
     # Library catalogue card. A custom-render frame (``render_cardcatalog_frame``)
     # — the stamp column needs a right margin the shared literary layout does not
     # leave, see that frame's section comment. The palette below serves only the
@@ -1842,6 +1859,35 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             (INTER_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Jost's geometric, near-monoline strokes are what let this theme bloom:
+    # ``paint_neon_mask`` reads a blurred glyph mask back as a halo density, so a
+    # high-contrast face haloes unevenly — thick stems flare while hairlines
+    # vanish — and the letterform stops reading as a lit tube. It also matches
+    # the flat-terminal geometric numerals of the period's instrument faces.
+    # Shared with ``bauhaus``, ``pride`` and ``metro``; no collision, since a
+    # white-ground grid, a flag and a route map are in no danger of being
+    # confused with a CRT in a plastic slab. Space Mono Bold carries the
+    # letterspaced silkscreen legend — a readout's labels came off a stencil,
+    # not off the display face — the same chrome split ``metro`` uses.
+    "bakelite": {
+        "quote_regular": [
+            (JOST_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (JOST_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -21764,6 +21810,582 @@ def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height:
     return image
 
 
+# ---------------------------------------------------------------------------
+# bakelite — an amber-phosphor CRT readout in a moulded bakelite console.
+#
+# The rotation had no *appliance*. ``nightvision`` is a green terminal and
+# ``lcars`` a starship console, but both are screens filling the whole canvas
+# with no housing around them — and the housing is most of what makes a piece of
+# mid-century instrumentation read as an object rather than as a UI. Here the
+# panel is a moulded butterscotch slab with a sunken CRT face cut into it, and
+# the quote is what the tube is displaying.
+#
+# **The screen's brown is the scanlines, not a wash.** Spectra 6 has no brown,
+# and the usual move — a constant-density R+G sepia stipple over the ground —
+# would have produced a flat brown rectangle that reads as paper, not as a lit
+# tube. Instead only every third row is painted at all (``_BAKELITE_PITCH``),
+# solid, alternating red and green along its length so adjacent pixels average
+# to sepia; the two unpainted rows between stay pure black. The eye integrates
+# that into a dark warm brown *with visible line structure*, which is what a
+# shadow-mask tube actually looks like. The same mechanism then carries the
+# vignette for free: dropping the lit rows' density toward the screen edges
+# darkens the corners the way a real tube falls off, with a mild lift toward the
+# upper left standing in for the ambient reflection in the glass.
+#
+# **The glow needs two falloff stages, and finding that out is the theme.**
+# ``paint_neon_mask`` blooms one ink at a falling density, which is all
+# ``izakaya`` and ``abyssal`` ever need because their halos (blue, mint) are far
+# brighter than the grounds they spill onto. Amber has no such ink. Ranked by
+# the panel's *measured* luminance the six are white 195, yellow 180, green 70,
+# red 53, black 31 — so a red halo, the obvious choice for orange, is within a
+# few points of the brown screen it is supposed to glow against — and worse,
+# that screen's brown is *made of* red, so a red halo is not merely dim against
+# it but indistinguishable from it. Two single-ink builds were measured and
+# discarded before the answer was clear: red at a cap of 0.7 vanished into the
+# scanline field, and yellow alone (the only ink bright enough to carry a
+# falloff on its own) reads olive rather than amber, because the panel's yellow
+# is a markedly green one. The halo has to be a *synthesised* tangerine, which
+# means composing the two techniques this codebase had so far kept apart —
+# falling density for the glow, a constant two-ink ratio for the hue — inside a
+# single pass. ``_bakelite_paint_phosphor`` is that pass, and its docstring
+# carries the one detail that makes it work: the density key and the ratio key
+# must be structurally unrelated patterns, or the glow changes colour as it
+# fades.
+#
+# **Two brightness tiers on that shared recipe.** ``_bakelite_paint_phosphor``
+# takes a core ink and a scale: prose gets a yellow core at scale 1, the matched
+# time phrase a white core at a wider one. That is how a real display shows an
+# over-driven character — the core saturates toward white and the halo spreads —
+# so the time reads as the brightest thing on the tube without leaving the
+# single-phosphor colour story. Compare ``izakaya``, which splits *cool vs hot*
+# across two gas colours: this frame is deliberately monochromatic, because a
+# CRT has one phosphor.
+#
+# **The chrome is unlit, and that is the whole hierarchy.** Labels paint as flat
+# solid yellow with no bloom whatsoever, so the silkscreened legend on the
+# bezel side of the glass sits clearly behind the emissive readout it names —
+# the separation is bloom-vs-no-bloom, not size. Two dimmer inks were tried
+# first and both failed on the panel rather than on screen: solid red is the
+# closest thing here to an unlit amber, but red-on-black is the lowest-contrast
+# pair the six inks can produce and 11 px letterspaced caps disappeared into the
+# scanlines; the R+Y tangerine stipple that would have split the difference
+# shreds a letterform that small, the same hairline-at-byline-size failure
+# documented for ``astrarium`` and ``vitrail``. The horizontal rules are wider
+# than a glyph stem, so they *can* carry the tangerine, and do.
+#
+# **The hour rides a setting index**, ``HOUR 2/12``, the way the reference
+# instrument shows a fan speed as a discrete step out of its range. Hour only:
+# the minute stays with the matched phrase, so every minute of an hour renders
+# byte-identically for a given row (pinned by ``TestBakeliteHourIndex``). That
+# puts it with ``cardcatalog``'s due stamp and ``abyssal``'s depth gauge rather
+# than with the frames that ``del``-assert ``time_str``.
+_BAKELITE_SCREEN = (46, 36, 754, 444)          # the CRT face, inset into the slab
+_BAKELITE_SCREEN_RADIUS = 26
+_BAKELITE_PITCH = 3                            # one lit scanline in every three
+_BAKELITE_SCAN_PEAK = 1.0                      # lit-row density at the tube centre
+_BAKELITE_SCAN_EDGE = 0.28                     # ... and out at its rim
+_BAKELITE_BEVEL = 7                            # moulded-edge band width, both faces
+_BAKELITE_RULE_TOP = 150
+_BAKELITE_RULE_BOTTOM = 382
+_BAKELITE_QUOTE_RECT = (88, 168, 712, 368)
+_BAKELITE_MARGIN = 34                          # chrome inset from the screen edge
+_BAKELITE_TRACKING = 3.6                       # letterspacing on the small labels
+# Split-band fractions: the share of each lit run's lowest ranks that takes the
+# minority ink. See ``_bakelite_paint_phosphor`` for why the ratio has to ride
+# the density's own read rather than a second key.
+_BAKELITE_HALO_YELLOW = 0.375                  # R+Y 5/8:3/8 tangerine, the halo
+_BAKELITE_CORE_YELLOW = 0.625                  # Y+R 5/8:3/8 gold, the lit stroke
+_BAKELITE_TUBE_GREEN = 0.25                    # R+G 3:1 warm brown, the scanlines
+_BAKELITE_HOUR_WORDS = {
+    "twelve": 12, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+}
+
+
+def _bakelite_screen_inks() -> frozenset:
+    """Inks a text bloom may overwrite: the tube's own ground, nothing else.
+
+    Excluding white and yellow keeps a later halo off the cores an earlier pass
+    already lit, and excluding the bezel's tan mix stops any bloom from bleeding
+    out through the screen's rounded edge onto the moulding.
+    """
+    return frozenset({SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["green"]})
+
+
+def _bakelite_hour(time_str: str) -> int:
+    """The 12-hour setting index this frame is showing."""
+    try:
+        hour = int(time_str.split(":")[0]) % 12
+    except (ValueError, IndexError, AttributeError):
+        return 12
+    return hour or 12
+
+
+def _bakelite_screen_mask() -> Image.Image:
+    mask = Image.new("L", (800, 480), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        _BAKELITE_SCREEN, radius=_BAKELITE_SCREEN_RADIUS, fill=255
+    )
+    return mask
+
+
+def _bakelite_grain(x: int, y: int) -> float:
+    """A deterministic 0..1 value per pixel — the moulding's own fine grain.
+
+    An integer hash rather than ``random``: the frame has to re-render
+    byte-identically, and seeding a generator per row is both slower and harder
+    to reason about than a pure function of position.
+    """
+    h = (x * 0x1F1F1F1F) ^ (y * 0x2545F491)
+    h = ((h ^ (h >> 13)) * 0x27D4EB2D) & 0xFFFFFFFF
+    return ((h ^ (h >> 15)) & 0xFFFF) / 65535.0
+
+
+def _bakelite_paint_moulding(image: Image.Image) -> None:
+    """Layer 0: the butterscotch slab the tube is set into.
+
+    A three-way partition across white, yellow and red rather than the usual
+    two-ink cream (Y+W): real bakelite is a caramel, and a straight cream reads
+    as paper stock.
+
+    The roughly 9:4:3 white:yellow:red split was measured against the panel's
+    calibrated inks rather than eyeballed in an RGB preview, and both of the
+    obvious mixes fail there. Yellow-dominant snaps to a flat lemon that reads
+    as a colour field rather than as plastic, and leaves the raised lip's white
+    highlight nothing to contrast against. Straight Y+W cream lands on khaki,
+    because the panel's yellow (#C1BB1E) is markedly green — it is red that
+    pulls the average off that axis and onto the warm sand a bakelite moulding
+    actually is. White leading at 9/16 is what keeps the slab clearly lighter
+    than the maroon bevel shadow cut into it.
+
+    **This is the frame's one large flat field, and the ink is chosen by a
+    jittered ordered dither** — the Bayer rank with a positional hash added at
+    about 40% of a cell. All three candidates were built and compared at panel
+    inks and viewing blur, because the choice is not obvious from the code:
+
+    * *Ordered alone* is smooth, which is its whole purpose, but lays a visible
+      regular lattice of yellow and red dots that reads as a screen door rather
+      than a surface — the artefact ``kanagawa`` documents for its cream wash
+      and ``grimdark`` for its gunmetal plate. It also quantises the marbling
+      below into hard-edged blobs, ``pride``'s contour-banding failure again: 17
+      threshold levels cannot render a swing of half a cell as a gradient.
+    * *Hash alone* has no period to lattice, but white noise across a large pale
+      field reads as sandpaper.
+    * *Ordered plus jitter* keeps the ordered pattern's low local variance while
+      dissolving both the lattice and the contour bands, because the noise is
+      large enough to cross a threshold near the boundary and nowhere else.
+
+    Rolling the ordered *thresholds* with sines was tried before any of this and
+    is worth naming as a trap: two periodic patterns beat, and the slab came out
+    in a regular diagonal plaid, which is a worse artefact than the lattice it
+    was meant to fix. The jitter is what makes the sines safe here.
+
+    Bakelite is a marbled material; a slab of it that was one flat tone would be
+    the anachronism. Both terms are deterministic, so a re-render stays
+    byte-identical.
+    """
+    pixels = image.load()
+    yellow, white, red = SPECTRA6["yellow"], SPECTRA6["white"], SPECTRA6["red"]
+    for y in range(480):
+        row = BAYER_4x4[y % 4]
+        for x in range(800):
+            # Two incommensurate low frequencies: a single one corrugates. The
+            # swing is kept to about one part in sixteen — enough to see as
+            # marbling, not so much that a patch reads as its own colour.
+            swirl = 0.035 * (math.sin(x * 0.021 + y * 0.013) + math.sin(x * 0.0075 - y * 0.019))
+            level = (row[x % 4] + 0.5) / 16.0 + (_bakelite_grain(x, y) - 0.5) * 0.42
+            pale = 0.5625 + swirl
+            pixels[x, y] = white if level < pale else (yellow if level < pale + 0.25 else red)
+
+
+def _bakelite_bevel_face(x: int, y: int, rect: tuple[int, int, int, int]) -> tuple[str, int]:
+    """Which face of a moulded edge a band pixel sits on, and how deep into it.
+
+    Whichever of the four edges the pixel has travelled furthest past wins, so
+    the corners resolve to the nearer face rather than to an arbitrary one. The
+    caller maps ``"near"`` (top / left) and ``"far"`` (bottom / right) onto
+    highlight or shadow depending on whether the feature is raised or sunken —
+    light comes from the upper left throughout, the same convention
+    ``vitrail``'s came and ``kanagawa``'s paper ledge use. The depth is what
+    lets the caller fade the ink out across the band instead of laying a hard
+    stripe; it is measured against the straight edges, so along a rounded corner
+    it is an approximation, which is invisible at a 7 px band.
+    """
+    x0, y0, x1, y1 = rect
+    return max((x0 - x, "near"), (y0 - y, "near"), (x - x1, "far"), (y - y1, "far"))[::-1]
+
+
+def _bakelite_paint_bevels(image: Image.Image) -> None:
+    """The two moulded edges: a raised outer lip and the sunken screen recess.
+
+    Both are painted per-pixel from ring masks because PIL strokes a rounded
+    rectangle in one colour, and the whole point of a bevel is that its two
+    faces differ. White is the highlight; the shadow ink is R+K maroon rather
+    than the R+G brown used elsewhere on this frame, because it has to read as
+    *dark* against a moulding that measures #A69E7A — the brown sat barely below
+    the slab and the edges looked drawn rather than moulded.
+
+    Neither edge is a solid stripe. The ink is laid at a Bayer density that
+    falls from full at the feature's own edge to nothing at the outer lip of the
+    band, so the moulding shows through progressively and the two faces read as
+    a curved surface turning away from the light. At full density the same
+    geometry produced two hard concentric outlines — legible, but flat, and the
+    bottom-right highlight in particular read as a drawn white rule rather than
+    as a lit shoulder.
+    """
+    pixels = image.load()
+    shadow = (SPECTRA6["red"], SPECTRA6["black"])
+    white = SPECTRA6["white"]
+
+    # The slab's own edge is square, not rounded: the canvas *is* the moulding,
+    # so there is no page behind it for a rounded corner to reveal. Rounding it
+    # anyway (radius 30, the first build) left the four corners entirely outside
+    # the band shape, turning them into wedges of solid highlight and solid
+    # shadow rather than a lip.
+    outer = (_BAKELITE_BEVEL, _BAKELITE_BEVEL, 799 - _BAKELITE_BEVEL, 479 - _BAKELITE_BEVEL)
+
+    screen = _bakelite_screen_mask()
+    recess = Image.new("L", (800, 480), 0)
+    ImageDraw.Draw(recess).rounded_rectangle(
+        (_BAKELITE_SCREEN[0] - _BAKELITE_BEVEL, _BAKELITE_SCREEN[1] - _BAKELITE_BEVEL,
+         _BAKELITE_SCREEN[2] + _BAKELITE_BEVEL, _BAKELITE_SCREEN[3] + _BAKELITE_BEVEL),
+        radius=_BAKELITE_SCREEN_RADIUS + _BAKELITE_BEVEL, fill=255,
+    )
+    rc_px, sc_px = recess.load(), screen.load()
+
+    for y in range(480):
+        row = BAYER_8x8[y % 8]
+        for x in range(800):
+            if x < outer[0] or y < outer[1] or x > outer[2] or y > outer[3]:
+                # The raised outer lip: lit on the near faces, shadowed on the far.
+                side, depth = _bakelite_bevel_face(x, y, outer)
+                rect_edge = 0
+            elif rc_px[x, y] >= 128 and sc_px[x, y] < 128:
+                # The ring between moulding and glass. Sunken, so the polarity
+                # of the outer lip inverts.
+                side, depth = _bakelite_bevel_face(x, y, _BAKELITE_SCREEN)
+                side = "far" if side == "near" else "near"
+                rect_edge = 1
+            else:
+                continue
+            # Depth runs outward from the feature's edge on the recess and
+            # inward from the canvas edge on the lip, so the fade is anchored on
+            # whichever edge the eye reads as the fold.
+            travelled = depth if rect_edge else _BAKELITE_BEVEL - depth
+            weight = max(0.0, 1.0 - travelled / (_BAKELITE_BEVEL + 1.0))
+            if row[x % 8] < weight * 64:
+                pixels[x, y] = white if side == "near" else shadow[(x + y) & 1]
+
+
+def _bakelite_paint_tube(image: Image.Image, screen: Image.Image) -> None:
+    """The CRT face: black glass carrying warm scanlines (see section comment)."""
+    pixels = image.load()
+    sc_px = screen.load()
+    black, red, green = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["green"]
+    x0, y0, x1, y1 = _BAKELITE_SCREEN
+    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    half_w, half_h = max(1.0, (x1 - x0) / 2.0), max(1.0, (y1 - y0) / 2.0)
+
+    # Peak density is 1.0 by design, not by rounding up: a solid lit row is
+    # what makes the line structure legible, and it also lets the red:green
+    # ratio land exactly where the tube is brightest. The vignette is then
+    # carried entirely by thinning those rows toward the rim.
+    for y in range(y0, y1):
+        lit = (y - y0) % _BAKELITE_PITCH == 0
+        for x in range(x0, x1):
+            if sc_px[x, y] < 128:
+                continue
+            pixels[x, y] = black
+            if not lit:
+                continue
+            # Radial falloff, lifted toward the upper left for the ambient
+            # reflection real glass carries.
+            radial = min(1.0, (((x - cx) / half_w) ** 2 + ((y - cy) / half_h) ** 2) ** 0.5)
+            sheen = 0.10 * max(0.0, 1.0 - ((x - x0) / half_w + (y - y0) / half_h) / 1.4)
+            # A high exponent keeps most of the tube at full brightness and
+            # confines the falloff to the corners; at 1.6 the vignette reached a
+            # third of the way in and the screen measured a flat neutral grey
+            # rather than a brown with dark corners.
+            density = _BAKELITE_SCAN_EDGE + (_BAKELITE_SCAN_PEAK - _BAKELITE_SCAN_EDGE) * (1.0 - radial ** 3.0)
+            lit = (density + sheen) * 64
+            rank = BAYER_8x8[y % 8][x % 8]
+            if rank < lit:
+                # 3:1 red:green, not the even 1:1 the sepia recipe calls for.
+                # Sepia is the right *hue*, but the panel's green (#35563A) is a
+                # cool one and at 1:1 the tube measured a grey green rather than
+                # a brown; weighting red (#62201E) three to one drags it onto
+                # the warm dark brown of unlit phosphor while keeping enough
+                # green to stop it reading as maroon.
+                #
+                # Green comes off the same read as the density, as the split
+                # band ``_bakelite_paint_phosphor`` documents. Keying it on
+                # position instead is what the first two builds did and both
+                # collapsed: ``x & 3 == 3`` selects the Bayer matrix's
+                # high-ranked column, which the threshold has already rejected,
+                # and emitted precisely zero green over the tube's empty lower
+                # half — a maroon screen under a comment claiming it was brown.
+                # ``(x + y) % 4`` then over-selected, landing on 35% green
+                # against a 25% target.
+                pixels[x, y] = green if rank < lit * _BAKELITE_TUBE_GREEN else red
+
+
+def _bakelite_tracked_width(draw, text: str, font) -> float:
+    if not text:
+        return 0.0
+    return sum(draw.textlength(ch, font=font) for ch in text) + _BAKELITE_TRACKING * (len(text) - 1)
+
+
+def _bakelite_draw_tracked(draw, x: float, y: int, text: str, font, fill) -> None:
+    """Letterspaced caps — the wide silkscreened legend of an instrument panel.
+
+    PIL has no tracking, so the string is stepped a glyph at a time. Works
+    against an ``"L"`` bloom mask as readily as against the image.
+    """
+    for ch in text:
+        draw.text((x, y), ch, font=font, fill=fill)
+        x += draw.textlength(ch, font=font) + _BAKELITE_TRACKING
+
+
+def _bakelite_fit_text(draw, text: str, size: int, max_width: int, floor: int = 17):
+    """Shrink a chrome readout until it fits its cell, then ellipsise.
+
+    The floor matters more than the shrink. Allowed to keep stepping down, a
+    long book title reaches a size at which it technically fits and is no longer
+    readable across a room — which for a clock is the same as not rendering it.
+    Below ``floor`` the value is truncated instead, so the cell always carries
+    something a reader can actually take in.
+    """
+    while size > floor:
+        font = load_font(theme_font_candidates("bakelite", "quote_regular"), size=size)
+        if draw.textlength(text, font=font) <= max_width:
+            return font, text
+        size -= 2
+    font = load_font(theme_font_candidates("bakelite", "quote_regular"), size=floor)
+    while len(text) > 1 and draw.textlength(text, font=font) > max_width:
+        text = text[:-2].rstrip(" ,.;:") + "…"
+    return font, text
+
+
+def _bakelite_paint_phosphor(image: Image.Image, mask: Image.Image, core=None,
+                             *, radius: int = 7, gamma: float = 1.5, cap: float = 0.68) -> None:
+    """Bloom one glyph mask as lit amber phosphor (see the section comment).
+
+    ``paint_neon_mask`` is the model — blur the mask, read the blurred field
+    back as a per-pixel Bayer density — but the halo ink here is a *synthesised*
+    tangerine rather than one of the six, so the two techniques have to compose:
+    falling density carries the glow, a constant R+Y 5/8:3/8 mix carries the
+    hue. Every tuning note in that primitive's docstring still applies (tight
+    radius, gamma above 1, capped peak) and is not repeated here.
+
+    **The ratio rides the same read as the density**, as a *split band* — the
+    lit set is the consecutive ranks ``0..n-1``, and its lowest 3/8 take the
+    yellow. That is ``pride``'s rank partition applied to two inks instead of
+    three, and it is exact by construction at every density, because a fixed
+    fraction of a consecutive run is a fixed fraction however long the run is.
+
+    Two *separate* reads cannot promise that. A Bayer tile has a fixed cell
+    count, so any second read of it is perfectly correlated with the first and
+    merely selects a subset — measured that way the halo's near-black tail came
+    out pure yellow and its bright ring pure red, so the glow changed hue as it
+    faded rather than dimming. Two other one-read rules were built and measured
+    against this one, in annuli out from a blurred disc so the sample crosses
+    every phase of the tile: ``rank % 8 < 3`` is exactly 3/8 over a whole tile
+    but drifts 0.39 -> 0.51 across the falloff, and ``(rank * 3) % 8 < 3`` swings
+    0.36 -> 0.44 -> 0.33. Both fail for the same reason — a residue class of the
+    8x8 tile is not spatially neutral, since the construction encodes the cell's
+    quadrant in its low bits. The split band holds 0.38 -> 0.41, because Bayer
+    already disperses its low ranks and the complementary band inherits that.
+
+    It drifts only in the last few ranks of the tail, where ``n`` is too small to
+    hold the fraction; that is the faintest ink on the page and the error is one
+    pixel in a tile.
+
+    ``core=None`` — the default, and what the prose and every chrome readout
+    use — strokes the glyph itself as a *yellow*-dominant amber, 5/8 against the
+    halo's 3/8, so a lit character steps gold at the stroke, orange through the
+    halo and brown into the tube. Solid yellow was the first build and it was
+    wrong: the panel's yellow (#C1BB1E) is a lemon, so every character read as
+    pale citrus with an orange fringe pasted round it rather than as one hot
+    amber. Passing an explicit ink instead pins the core solid, which is how the
+    matched phrase gets its over-driven white centre.
+
+    The ground excludes yellow and white, so a later call cannot dim the halo or
+    core an earlier one already lit.
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    width, height = image.size
+    pad = max(2, radius * 3)
+    x0, y0 = max(0, bbox[0] - pad), max(0, bbox[1] - pad)
+    x1, y1 = min(width, bbox[2] + pad), min(height, bbox[3] + pad)
+    if x1 <= x0 or y1 <= y0:
+        return
+    halo = mask.filter(ImageFilter.GaussianBlur(radius))
+    pixels, mask_px, halo_px = image.load(), mask.load(), halo.load()
+    ground = _bakelite_screen_inks()
+    red, yellow = SPECTRA6["red"], SPECTRA6["yellow"]
+    for y in range(y0, y1):
+        row = BAYER_8x8[y % 8]
+        for x in range(x0, x1):
+            if mask_px[x, y] > 128:
+                pixels[x, y] = core if core is not None else (
+                    yellow if row[x % 8] < 64 * _BAKELITE_CORE_YELLOW else red)
+                continue
+            level = halo_px[x, y] / 255.0
+            if level <= 0.02 or pixels[x, y] not in ground:
+                continue
+            lit = min(cap, level ** gamma) * 64
+            rank = row[x % 8]
+            if rank < lit:
+                pixels[x, y] = yellow if rank < lit * _BAKELITE_HALO_YELLOW else red
+
+
+def _bakelite_paint_rule(image: Image.Image, y: int, x0: int, x1: int) -> None:
+    """A dim tangerine divider — the unlit rules a panel's legend is ruled with.
+
+    Red laid down and 3/8 of it flipped to yellow on the shared Bayer threshold:
+    the documented R+Y 5/8:3/8 tangerine, biased toward red because yellow
+    out-luminates it and an even mix would read as a lit element competing with
+    the readouts. A rule is several pixels of run at a time, so unlike the small
+    labels it has room to carry a stipple without breaking up.
+    """
+    pixels = image.load()
+    red, yellow = SPECTRA6["red"], SPECTRA6["yellow"]
+    for x in range(max(0, x0), min(image.size[0], x1)):
+        pixels[x, y] = yellow if BAYER_4x4[y % 4][x % 4] < 6 else red
+
+
+def _bakelite_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw,
+                           quote_row: dict, time_str: str) -> None:
+    """Labels, rules and readouts — the instrument furniture around the quote.
+
+    Labels are flat solid yellow and rules a dim tangerine stipple; every
+    *value* is bloomed. The hierarchy on the tube is therefore emissive versus
+    silkscreened rather than merely large versus small, which is what keeps the
+    legend from competing with the readout it names.
+
+    All four values accumulate into one mask and bloom in a single pass — a
+    per-value bloom would double-expose nothing here (they are far apart) but
+    would allocate four full-canvas masks to say the same thing.
+    """
+    label_ink = SPECTRA6["yellow"]
+    x0, _, x1, _ = _BAKELITE_SCREEN
+    left = x0 + _BAKELITE_MARGIN
+    right = x1 - _BAKELITE_MARGIN
+    label_font = load_font(theme_font_candidates("bakelite", "ornament"), size=11)
+    glow = Image.new("L", image.size, 0)
+    glow_draw = ImageDraw.Draw(glow)
+
+    for rule_y in (_BAKELITE_RULE_TOP, _BAKELITE_RULE_BOTTOM):
+        _bakelite_paint_rule(image, rule_y, left, right)
+
+    # Top left: the hour as a discrete setting index out of twelve.
+    _bakelite_draw_tracked(draw, left, 66, "HOUR", label_font, label_ink)
+    hour_font = load_font(theme_font_candidates("bakelite", "quote_regular"), size=62)
+    scale_font = load_font(theme_font_candidates("bakelite", "quote_regular"), size=24)
+    hour_text = str(_bakelite_hour(time_str))
+    glow_draw.text((left, 84), hour_text, font=hour_font, fill=255)
+    hour_w = draw.textlength(hour_text, font=hour_font)
+    glow_draw.text((left + hour_w + 10, 122), f"/{len(_BAKELITE_HOUR_WORDS)}",
+                   font=scale_font, fill=255)
+
+    # Top right: the book, as the tube's secondary readout. Bottom left: its
+    # author. Neither cell is dropped when the corpus row has no value for it —
+    # the reference instrument prints an em dash against a sensor it cannot
+    # reach, and a labelled cell reading "—" is how a readout says "no data".
+    # Skipping the label instead would leave the panel looking half-built, and a
+    # bare corpus row is common enough (the miner fills title and author only
+    # when the Gutenberg header carried them) to be worth designing for.
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    label_w = _bakelite_tracked_width(draw, "NOW READING", label_font)
+    _bakelite_draw_tracked(draw, right - label_w, 66, "NOW READING", label_font, label_ink)
+    title_font, title_text = _bakelite_fit_text(draw, title or "—", 28, 330)
+    glow_draw.text((right, 96), title_text, font=title_font, fill=255, anchor="ra")
+
+    author = (quote_row.get("author") or "").strip()
+    _bakelite_draw_tracked(draw, left, 396, "AUTHOR", label_font, label_ink)
+    author_font, author_text = _bakelite_fit_text(draw, author or "—", 24, 400, floor=16)
+    glow_draw.text((left, 410), author_text, font=author_font, fill=255, anchor="la")
+
+    # Right: an unlit maker's mark, silkscreened on the bezel side of the glass.
+    mark_w = _bakelite_tracked_width(draw, "IDLE HOURS", label_font)
+    _bakelite_draw_tracked(draw, right - mark_w, 416, "IDLE HOURS", label_font, label_ink)
+
+    _bakelite_paint_phosphor(image, glow)
+
+
+def _bakelite_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The quote as lit phosphor: prose amber, matched phrase over-driven.
+
+    Two masks so each tier blooms exactly once — accumulating both into one pass
+    would give the time phrase the prose's halo, and blooming per chunk would
+    double-expose wherever two halos meet inside a line (the lesson ``izakaya``'s
+    sign frames taught). The hot pass runs last so its wider halo reads as
+    nearer; ``_bakelite_paint_phosphor``'s ground keeps it off the prose's
+    already-lit halo and cores.
+    """
+    x0, y0, x1, y1 = _BAKELITE_QUOTE_RECT
+    box_w, box_h = x1 - x0, y1 - y0
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    matched = quote_row.get("matched_text") or ""
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, matched, box_w, box_h,
+        font_max=34, font_min=15, line_height_mult=1.46, theme="bakelite",
+    )
+    prose = Image.new("L", image.size, 0)
+    hot = Image.new("L", image.size, 0)
+    prose_draw, hot_draw = ImageDraw.Draw(prose), ImageDraw.Draw(hot)
+
+    y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
+                       for c, b in segment)
+        x = x0 + max(0, (box_w - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            target = hot_draw if is_bold else prose_draw
+            target.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=255)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+
+    _bakelite_paint_phosphor(image, prose)
+    _bakelite_paint_phosphor(image, hot, SPECTRA6["white"], radius=11, gamma=1.3, cap=0.78)
+
+
+def render_bakelite_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """An amber-phosphor CRT in a bakelite console (see the section comment).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the convention ``metro`` established: the slab, its two bevels and
+    the tube's rounded cut-out are absolute panel coordinates — a console is a
+    physical object with fixed proportions, not a fluid layout — so a direct
+    render at the curator grid's 320x192 would return a cropped fragment of the
+    moulding with no screen in it. NEAREST specifically, because the whole frame
+    is per-pixel stipple and an interpolating filter would average adjacent inks
+    into colours the panel cannot print.
+    """
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _bakelite_paint_moulding(image)
+    _bakelite_paint_bevels(image)
+    screen = _bakelite_screen_mask()
+    _bakelite_paint_tube(image, screen)
+    draw = ImageDraw.Draw(image)
+    _bakelite_paint_chrome(image, draw, quote_row, time_str)
+    _bakelite_paint_quote(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -21803,6 +22425,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_cardcatalog_frame(time_str, quote_row, width, height)
     if theme == "metro":
         return render_metro_frame(time_str, quote_row, width, height)
+    if theme == "bakelite":
+        return render_bakelite_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
