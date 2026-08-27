@@ -833,7 +833,7 @@ class TestGoldenStructure:
         missing = set(rq.THEMES) - pinned
         assert not missing, f"themes with no golden scenario: {sorted(missing)}"
 
-    def test_clock_dependent_theme_list_is_accurate(self):
+    def test_clock_dependent_theme_list_is_accurate(self, monkeypatch):
         """``CLOCK_DEPENDENT_THEMES`` must match what the renderer actually does.
 
         Wrong in one direction (a theme reads the clock but isn't listed) and
@@ -842,7 +842,20 @@ class TestGoldenStructure:
         clock) and the freeze silently hides a real dependency change. Both are
         cheap to detect: render every theme at two well-separated instants and
         see which frames move.
+
+        The sysinfo strip is pinned because it is the one live input the
+        datetime freeze does not cover: ``diags`` renders ``/proc/uptime`` at
+        minute granularity, and when the machine's uptime minute ticks between
+        a theme's two back-to-back renders the strip moves a few pixels and
+        this fence flags ``diags`` as clock-dependent — a real CI flake
+        (PR #229's first run), reproduced by feeding two uptime strings into
+        consecutive renders. Uptime is machine state, not the wall-clock
+        dependency this test measures, so pinning it here narrows nothing.
         """
+        monkeypatch.setattr(
+            rq, "_diags_system_info",
+            lambda: {"host": "golden", "ip": "0.0.0.0", "uptime": "1h 0m"},
+        )
         far_future = datetime.datetime(2031, 11, 3, 9, 5, 0)
         row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
         drifted = set()
