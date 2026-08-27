@@ -215,6 +215,8 @@ def parse_args() -> argparse.Namespace:
         "metro",
         "intaglio",
         "nocturne",
+        "plaque",
+        "daguerreotype",
         "diags",
     ]
     parser.add_argument(

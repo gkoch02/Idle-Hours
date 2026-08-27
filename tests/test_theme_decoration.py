@@ -93,6 +93,8 @@ CUSTOM_FRAME_THEMES = (
     "bakelite",
     "intaglio",
     "nocturne",
+    "plaque",
+    "daguerreotype",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

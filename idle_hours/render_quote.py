@@ -121,6 +121,8 @@ THEME_ORDER: tuple[str, ...] = (
     "metro",
     "intaglio",
     "nocturne",
+    "plaque",
+    "daguerreotype",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1307,6 +1309,34 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["blue"],
     },
+    # Patinated bronze memorial plaque. A custom-render frame
+    # (``render_plaque_frame``); the palette below serves only the goodnight /
+    # source-card fall-through paths. The tablet itself is forest-teal
+    # verdigris carrying relief-lit gold lettering.
+    "plaque": {
+        "page_bg": SPECTRA6["green"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["yellow"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["yellow"],
+    },
+    # Cased 1850s daguerreotype. A custom-render frame
+    # (``render_daguerreotype_frame``); the palette below serves only the
+    # goodnight / source-card fall-through paths. The case itself is a brass
+    # mat around an Atkinson-dithered monochrome plate.
+    "daguerreotype": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["yellow"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
     # Library catalogue card. A custom-render frame (``render_cardcatalog_frame``)
     # — the stamp column needs a right margin the shared literary layout does not
     # leave, see that frame's section comment. The palette below serves only the
@@ -1969,6 +1999,51 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             (CORMORANT_VARIABLE, "SemiBold"),
             EBGARAMOND_BOLD,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Plaque casts its inscription in Cinzel Decorative — the Trajan-column
+    # capitalis revival is THE letterform of cast bronze tablets (shared with
+    # ``roman`` / ``tarot`` / ``grimdark``, safe on the usual object-difference
+    # grounds). The whole chain steps one weight heavier than usual — Bold for
+    # the body, Black for the matched phrase — because a relief face needs
+    # stroke mass to live in: Regular's 2 px hairlines left nothing for the
+    # gold after the rim light claimed the edges, and cast metal is heavy
+    # lettering anyway. Fallbacks stay heavy serifs for the same reason.
+    "plaque": {
+        "quote_regular": [
+            CINZELDECORATIVE_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            CINZELDECORATIVE_BLACK,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CINZELDECORATIVE_BLACK,
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Daguerreotype sets its caption slip in Libre Caslon Text — the Caslon
+    # revival ``anna_atkins`` already bundles is the printed register of the
+    # 1850s studio, and the two photographic themes sharing a face is the
+    # cyanotype/daguerreotype kinship made literal. Space Mono is loaded
+    # directly by the frame for the studio's small plate label.
+    "daguerreotype": {
+        "quote_regular": [
+            (LIBRECASLON_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (LIBRECASLON_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (LIBRECASLON_VARIABLE, "SemiBold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -4575,6 +4650,98 @@ def paint_hatched_tone(
             delta = abs(u - round(u / spacing) * spacing)
             if delta < half * duty and (ground is None or px[x, y] in ground):
                 px[x, y] = ink
+
+
+def paint_relief_mask(
+    image: Image.Image,
+    mask: Image.Image,
+    *,
+    highlight,
+    shadow,
+    face=None,
+    face_minor=None,
+    face_minor_share: float = 0.0,
+    radius: int = 3,
+    strength: float = 4.0,
+    cap: float = 0.65,
+    ground=None,
+    tile=BAYER_8x8,
+    shade_face: bool = True,
+) -> None:
+    """Paint a glyph/shape mask as a *raised* (or sunken) surface lit from the
+    upper left — the inverse of ``paint_neon_mask``: light falling ON the mask
+    instead of radiating from it.
+
+    ``shade_face`` selects between the two relief registers. ``True`` (the
+    default) lights the mask's own surface — right for *large* shapes (a cast
+    bead, a bolt head) whose faces are wide enough to keep their fill under
+    the bevel stipple. ``False`` confines the lighting to the *exterior* —
+    solid face, white rim light on the upper-left outside, core shadow on the
+    lower-right outside — which is what thin letterforms need: shading a
+    2-3 px stroke's own face leaves no face at all, and the glyph decays into
+    a grey ghost (the first plaque build, and why this switch exists).
+
+    The blurred mask is read as a height field; its per-pixel gradient is the
+    surface normal's tilt, and the Lambert term against the house light
+    direction (upper-left, the convention ``vitrail``'s came bevels and
+    ``kanagawa``'s paper ledge already use) decides which side of every edge
+    is lit and which is shadowed: faces tilting toward the light take
+    ``highlight`` at a density proportional to their slope, faces tilting away
+    take ``shadow``. Density rides the slope, so a soft blur reads as a
+    rounded cast bevel and a tight one as a crisp chisel edge — ``radius`` is
+    the die's fillet, ``strength`` the depth of the relief, and ``cap`` keeps
+    even the steepest face stippled rather than solid (a saturated face reads
+    as an outline, the same failure ``paint_neon_mask``'s cap guards).
+
+    ``face`` optionally fills the mask's interior first (the metal itself),
+    with ``face_minor`` / ``face_minor_share`` mixing a second ink on the
+    tile's own rank read — the split-band rule from ``paint_neon_mask``: a
+    fixed fraction of a consecutive rank run holds its ratio at any density,
+    where a second read of the same tile would not. Pass ``face=None`` for
+    shapes whose interior an earlier pass already painted.
+
+    Swap ``highlight`` and ``shadow`` to turn emboss into deboss — the
+    lighting maths is direction-agnostic. ``ground`` restricts *exterior*
+    writes (the shading that falls just outside the mask edge) so relief never
+    eats neighbouring decoration; interior pixels belong to the mask.
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        return
+    width, height = image.size
+    pad = max(2, radius * 3)
+    x0 = max(1, bbox[0] - pad)
+    y0 = max(1, bbox[1] - pad)
+    x1 = min(width - 1, bbox[2] + pad)
+    y1 = min(height - 1, bbox[3] + pad)
+    if x1 <= x0 or y1 <= y0:
+        return
+    halo = mask.filter(ImageFilter.GaussianBlur(radius))
+    px = image.load()
+    mp = mask.load()
+    hp = halo.load()
+    size = len(tile)
+    levels = size * size
+    face_cut = levels * face_minor_share
+    inv = 1.0 / 510.0  # central difference over 2 px of an 8-bit field
+    for y in range(y0, y1):
+        row = tile[y % size]
+        for x in range(x0, x1):
+            rank = row[x % size]
+            inside = mp[x, y] > 128
+            if inside and face is not None:
+                px[x, y] = face_minor if face_minor is not None and rank < face_cut else face
+            if inside and not shade_face:
+                continue
+            gx = (hp[x + 1, y] - hp[x - 1, y]) * inv
+            gy = (hp[x, y + 1] - hp[x, y - 1]) * inv
+            shade = (gx + gy) * 0.7071  # Lambert term against upper-left light
+            lit = min(cap, abs(shade) * strength) * levels
+            if rank >= lit:
+                continue
+            if not inside and ground is not None and px[x, y] not in ground:
+                continue
+            px[x, y] = highlight if shade > 0 else shadow
 
 
 def _flow_stroke_hash(cx: int, cy: int, salt: int) -> float:
@@ -13822,6 +13989,12 @@ _GUNMETAL_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 # across clean paper; blue is excluded so foxing can't drift cool.
 LETTER_PLATE = BASE_DIR / "assets" / "letter_aged_paper.png"
 _AGED_PAPER_PALETTE = [SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], SPECTRA6["green"]]
+# The daguerreotype landscape (scripts/generate_daguerreotype_plate.py) dithers
+# against white+black ONLY, with Atkinson diffusion — the plate is the silver
+# image itself, and any chroma belongs to the case (brass mat, sepia tarnish),
+# painted as primitives on top.
+DAGUERREOTYPE_PLATE = BASE_DIR / "assets" / "daguerreotype_plate.png"
+_SILVER_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
 # Dithered results are deterministic per (source, size, method) and re-used
 # across the 144-frame contact sheet and the golden suite, so memoise them.
@@ -13851,6 +14024,18 @@ def dither_image_to_palette(
       tile-positioned threshold before snapping to the nearest ink. Cross-hatch
       texture rather than organic grain; useful when a stable, tileable pattern
       is wanted over error diffusion's content-dependent noise.
+    * ``"atkinson"`` — Bill Atkinson's error diffusion (the original Macintosh
+      dither), long forward-referenced by ``docs/spectra6_color_recipes.md`` as
+      the preferred choice for photographic plates. It differs from
+      Floyd-Steinberg in one load-bearing way: only **6/8 of the quantisation
+      error** is diffused (1/8 to each of six neighbours), so the remainder is
+      deliberately *discarded*. Highlights blow toward clean paper and shadows
+      crush toward solid ink instead of being speckled back toward mid-grey —
+      exactly the silvered, high-key look of a real daguerreotype plate, and
+      the property ``daguerreotype``'s mechanism test measures. Pure Python
+      (Pillow's C quantiser only implements FS), so reserve it for plates that
+      go through ``_load_dithered_plate``'s memo cache rather than per-glyph
+      work.
 
     Output is pure on-palette RGB, so a subsequent ``snap_image_to_palette`` pass
     over the composited frame is a no-op on these pixels and won't undo the
@@ -13896,6 +14081,42 @@ def dither_image_to_palette(
                     )
                     cache[key] = nearest
                 op[x, y] = nearest
+        return out
+    if method == "atkinson":
+        out = Image.new("RGB", src.size)
+        sp = src.load()
+        op = out.load()
+        w, h = src.size
+        # Three rolling error rows (y, y+1, y+2) — Atkinson's kernel reaches
+        # two rows down, one further than Floyd-Steinberg's.
+        cur = [[0.0, 0.0, 0.0] for _ in range(w)]
+        nxt = [[0.0, 0.0, 0.0] for _ in range(w)]
+        after = [[0.0, 0.0, 0.0] for _ in range(w)]
+        for y in range(h):
+            for x in range(w):
+                r, g, b = sp[x, y]
+                err = cur[x]
+                vr, vg, vb = r + err[0], g + err[1], b + err[2]
+                nearest = min(
+                    palette,
+                    key=lambda c: (vr - c[0]) ** 2 + (vg - c[1]) ** 2 + (vb - c[2]) ** 2,
+                )
+                op[x, y] = nearest
+                # An eighth to each of six neighbours; the remaining quarter is
+                # dropped on purpose — that loss IS the Atkinson look.
+                er = (vr - nearest[0]) / 8.0
+                eg = (vg - nearest[1]) / 8.0
+                eb = (vb - nearest[2]) / 8.0
+                for tx, row in ((x + 1, cur), (x + 2, cur), (x - 1, nxt),
+                                (x, nxt), (x + 1, nxt), (x, after)):
+                    if 0 <= tx < w:
+                        cell = row[tx]
+                        cell[0] += er
+                        cell[1] += eg
+                        cell[2] += eb
+            cur, nxt, after = nxt, after, cur
+            for cell in after:
+                cell[0] = cell[1] = cell[2] = 0.0
         return out
     raise ValueError(f"unknown dither method: {method!r}")
 
@@ -23281,6 +23502,413 @@ def render_nocturne_frame(time_str: str, quote_row: dict, width: int, height: in
     return image
 
 
+# ---------------------------------------------------------------------------
+# plaque — a patinated bronze memorial plaque
+#
+# A cast-bronze dedication tablet — the memorial plate on a park bench or a
+# library wall, which is the most natural physical home a literary quote has —
+# and the theme that introduces **relief lighting** (``paint_relief_mask``):
+# text as a *surface*, embossed and lit, where every earlier treatment is flat
+# ink, a stipple, or a glow. The primitive reads the blurred glyph mask as a
+# height field and lights its gradient from the upper left, so each letter
+# takes a white highlight on its lit bevels and a black core shadow on the far
+# ones; the mechanism lives in the primitive's docstring, the plaque supplies
+# the metallurgy.
+#
+# **The patina claims forest-teal.** The ground is the G+B+Y 40/40/20 3-ink
+# mix the recipes doc has carried as "not in use" since the catalogue was
+# written — verdigris is exactly that colour. It is not laid flat: two
+# incommensurate low-frequency fields swing the green/blue balance (corrosion
+# is weather, and weather is uneven) and a hash term jitters the partition so
+# the tile never lattices (the bakelite moulding lesson); sparse black pits
+# complete the cast surface. On an RGB preview the field reads lime — trust
+# the panel's muted inks (#35563A green / #233F8E blue), not the screenshot,
+# the same warning ``pride``'s brown carries.
+#
+# **Two metals, one light.** The prose is raised bronze: gold faces (Y+R
+# 5/8:3/8, the documented gold, on the face's own rank read per the split-band
+# rule) under the shared upper-left light. The matched phrase is the passage
+# every thumb has kept polished: its face mixes white into the gold and its
+# relief is cut deeper, so the time reads as the brightest metal on the tablet
+# without changing colour story. The border bead, corner bolts, dedication and
+# foundry lines all share the same light direction — one object, one sun.
+#
+# **The hour is the dedication year.** ``ERECTED · ANNO XI`` at the tablet's
+# foot carries the hour as a Roman numeral — a plaque genuinely bears its
+# erection date, so the device is in-fiction (the tarot / vitrail Roman-hour
+# precedent), and it is hour-only: every minute of an hour renders
+# byte-identically (pinned by ``TestPlaqueRelief``), the minute staying with
+# the matched phrase as everywhere else. The dedication and attribution are
+# *incised* rather than raised — painted as maroon recesses (R+K parity), the
+# canonical engraved-and-patina-filled small text of a real tablet — so the
+# raised/incised split mirrors how real plaques cast their display line and
+# engrave their fine print.
+_PLAQUE_RIM = (12, 12, 787, 467)               # outer edge of the cast bead
+_PLAQUE_RIM_WIDTH = 7
+_PLAQUE_QUOTE_RECT = (84, 96, 716, 330)
+_PLAQUE_BOLT_R = 9
+_PLAQUE_BOLTS = ((38, 38), (762, 38), (38, 442), (762, 442))
+_PLAQUE_GOLD_RED = 0.375                       # Y+R 5/8:3/8 — the documented gold
+_PLAQUE_POLISH_WHITE = 0.375                   # matched-phrase face: gold cut with white
+
+
+def _plaque_hour(time_str: str) -> int:
+    try:
+        hour = int(time_str.split(":")[0]) % 12
+    except (ValueError, IndexError, AttributeError):
+        return 12
+    return hour or 12
+
+
+def _plaque_ground() -> frozenset:
+    """Inks exterior relief shading may overwrite: the patina's own colours."""
+    return frozenset({SPECTRA6["green"], SPECTRA6["blue"], SPECTRA6["yellow"], SPECTRA6["black"]})
+
+
+def _plaque_paint_patina(image: Image.Image) -> None:
+    """Layer 0: weathered verdigris — the forest-teal 3-ink recipe, animated.
+
+    Base allocation 40/40/20 G/B/Y of each 8x8 tile, with the green/blue
+    boundary swung by two slow sine fields (corrosion pools and streaks) and
+    the whole read jittered by the position hash so the ordered tile cannot
+    lattice. Sparse black pits (hash-gated, ~1.5%) give the casting its grain.
+    """
+    px = image.load()
+    green, blue, yellow, black = (SPECTRA6[c] for c in ("green", "blue", "yellow", "black"))
+    for y in range(480):
+        row = BAYER_8x8[y % 8]
+        for x in range(800):
+            h = _flow_stroke_hash(x, y, 5)
+            if h > 0.985:
+                px[x, y] = black
+                continue
+            swing = 9.0 * (math.sin(x / 97.0 + y / 61.0) + math.sin(x / 41.0 - y / 149.0))
+            rank = (row[x % 8] + (h - 0.5) * 3.0) % 64
+            green_cut = 25.6 + swing
+            if rank < green_cut:
+                px[x, y] = green
+            elif rank < green_cut + 25.6:
+                px[x, y] = blue
+            else:
+                px[x, y] = yellow
+
+
+def _plaque_paint_rim(image: Image.Image) -> None:
+    """The cast border bead: a raised bronze ring under the shared light."""
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle(_PLAQUE_RIM, radius=18, outline=255, width=_PLAQUE_RIM_WIDTH)
+    paint_relief_mask(image, mask, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["red"],
+                      face_minor_share=_PLAQUE_GOLD_RED,
+                      radius=2, strength=3.2, cap=0.6, ground=_plaque_ground())
+
+
+def _plaque_paint_bolts(image: Image.Image) -> None:
+    """Four bolt heads pinning the tablet, each with its own specular tick."""
+    draw = ImageDraw.Draw(image)
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    r = _PLAQUE_BOLT_R
+    for cx, cy in _PLAQUE_BOLTS:
+        mask_draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+    paint_relief_mask(image, mask, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["red"],
+                      face_minor_share=_PLAQUE_GOLD_RED,
+                      radius=2, strength=3.6, cap=0.65, ground=_plaque_ground())
+    for cx, cy in _PLAQUE_BOLTS:
+        draw.ellipse((cx - r + 2, cy - r + 2, cx - r + 4, cy - r + 4), fill=SPECTRA6["white"])
+
+
+def _plaque_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The inscription: raised bronze prose, polished matched phrase.
+
+    Two masks from ``wrap_quote_into_masks``, each relief-lit once. The hot
+    pass cuts deeper (higher strength) and its face carries white in the gold,
+    so the time phrase reads as the tablet's brightest metal under the same
+    upper-left sun rather than as a different ink.
+    """
+    prose, hot, _ = wrap_quote_into_masks(
+        draw, image.size, quote_row, _PLAQUE_QUOTE_RECT,
+        theme="plaque", font_max=40, font_min=17, line_height_mult=1.42,
+    )
+    paint_relief_mask(image, prose, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["red"],
+                      face_minor_share=0.3,
+                      radius=2, strength=3.4, cap=0.6, ground=_plaque_ground(),
+                      shade_face=False)
+    paint_relief_mask(image, hot, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["white"],
+                      face_minor_share=_PLAQUE_POLISH_WHITE,
+                      radius=2, strength=3.4, cap=0.7, ground=_plaque_ground(),
+                      shade_face=False)
+
+
+def _plaque_paint_incised(image: Image.Image, draw: ImageDraw.ImageDraw, text: str, y: int, size: int) -> None:
+    """A line of engraved small text: solid black recess, no relief.
+
+    The raised/incised split mirrors a real tablet — cast the display line,
+    engrave the fine print. A maroon R+K parity fill was tried first and
+    shredded at these sizes (the hairline-at-small-size failure ``astrarium``
+    and ``vitrail`` document); solid black reads as the patina-filled voids of
+    genuine engraving and stays legible.
+    """
+    font = load_font(theme_font_candidates("plaque", "quote_regular"), size=size)
+    while draw.textlength(text, font=font) > 560 and len(text) > 8:
+        text = text[:-2].rstrip(" ,.;:") + "…"
+    draw.text((400, y), text, font=font, fill=SPECTRA6["black"], anchor="ma")
+
+
+def _plaque_paint_dedication(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int) -> None:
+    numeral = _TAROT_ROMAN_NUMERALS[hour]
+    _plaque_paint_incised(image, draw, f"ERECTED · ANNO {numeral}", 414, 17)
+
+
+def _plaque_paint_attribution(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = " — ".join(p for p in (author, title) if p)
+    if not parts:
+        return
+    _plaque_paint_incised(image, draw, parts, 382, 16)
+
+
+def render_plaque_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A patinated bronze tablet with relief-lit lettering (see the section
+    comment).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the ``metro`` convention: the bead, bolts and relief radii are
+    absolute panel geometry, and an interpolating filter would average the
+    patina's three inks into colours the panel cannot print.
+    """
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["green"])
+    _plaque_paint_patina(image)
+    _plaque_paint_rim(image)
+    _plaque_paint_bolts(image)
+    draw = ImageDraw.Draw(image)
+    _plaque_paint_quote(image, draw, quote_row)
+    _plaque_paint_attribution(image, draw, quote_row)
+    _plaque_paint_dedication(image, draw, _plaque_hour(time_str))
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# daguerreotype — a cased monochrome photograph
+#
+# An 1850s daguerreotype in its case: ornate brass mat, oval window, a
+# silvered monochrome plate, and the quote on the cream caption slip tucked
+# under the glass. The theme claims BOTH forward references the recipes doc
+# has carried since the catalogue was written: **Atkinson dithering** (added
+# to ``dither_image_to_palette`` as its third method — see its docstring for
+# why the deliberately-discarded 2/8 of error is the whole look: highlights
+# blow to clean silver, shadows crush to solid ink, exactly a daguerreotype's
+# tonal signature and measurably unlike Floyd-Steinberg on the same plate)
+# and the **K+W 50/50 gray** ("engineering monochrome"), which here carries
+# the pewter case rim around the brass.
+#
+# **The plate is the gray photographic theme.** ``anna_atkins`` is the blue
+# one; this is the panel's first actual monochrome photograph, a committed
+# continuous-tone landscape (``scripts/generate_daguerreotype_plate.py`` — an
+# original work in the idiom, the anna_atkins reasoning) dithered at render
+# time against white+black ONLY, so error diffusion cannot scatter chroma
+# into the silver. All colour belongs to the case: the R+G parity **tarnish
+# ring** creeping in from the oval rim (density rising toward the edge, so it
+# doubles as the plate's vignette) is the signature ageing of a real
+# daguerreotype and the detail that sells the object.
+#
+# **The mat reuses the relief primitive.** The pressed double ring around the
+# oval window is ``paint_relief_mask`` — the capability ``plaque`` introduced,
+# here at its second consumer, embossing brass instead of bronze under the
+# same upper-left light. A missing plate asset degrades to a synthesised
+# horizon (``_daguerreotype_paint_plate_fallback``) per the house
+# graceful-fallback convention.
+#
+# **A photograph carries no clock: ``time_str`` is del-asserted.** The
+# matched phrase carries the time alone, set in solid red on the slip — the
+# studio's ink annotation — because an R+K maroon at caption size shreds (the
+# documented hairline failure) and gold on cream goes pale. Pinned by
+# ``TestDaguerreotypePlate``.
+_DAG_OVAL = (58, 40, 482, 440)                 # the mat's window, bbox
+_DAG_RING_GAP = 7                              # pressed ring offset outside the oval
+_DAG_RIM = 16                                  # pewter case band width
+_DAG_SLIP = (508, 86, 766, 394)                # the caption slip
+_DAG_TARNISH_START = 0.80                      # radial fraction where tarnish begins
+_DAG_GOLD_RED = 0.375                          # Y+R 5/8:3/8 — the documented gold
+
+
+def _daguerreotype_oval_radial(x: float, y: float) -> float:
+    """Normalised radial position inside the oval window: 0 centre, 1 rim."""
+    x0, y0, x1, y1 = _DAG_OVAL
+    nx = (x - (x0 + x1) / 2) / ((x1 - x0) / 2)
+    ny = (y - (y0 + y1) / 2) / ((y1 - y0) / 2)
+    return math.hypot(nx, ny)
+
+
+def _daguerreotype_paint_mat(image: Image.Image) -> None:
+    """The case: brass mat field inside a pewter rim.
+
+    The mat is the documented Y+R gold on the tile's own read; the rim is the
+    K+W 50/50 gray the recipes doc has held open as "engineering monochrome" —
+    pewter is exactly that mix, and the checkerboard's coarse sparkle reads as
+    brushed metal next to the warmer brass.
+    """
+    px = image.load()
+    yellow, red, white, black = (SPECTRA6[c] for c in ("yellow", "red", "white", "black"))
+    gold_cut = 64 * _DAG_GOLD_RED
+    for y in range(480):
+        row = BAYER_8x8[y % 8]
+        for x in range(800):
+            if x < _DAG_RIM or y < _DAG_RIM or x >= 800 - _DAG_RIM or y >= 480 - _DAG_RIM:
+                px[x, y] = white if (x + y) & 1 else black
+            else:
+                px[x, y] = red if row[x % 8] < gold_cut else yellow
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((_DAG_RIM, _DAG_RIM, 799 - _DAG_RIM, 479 - _DAG_RIM),
+                   outline=black, width=1)
+
+
+def _daguerreotype_paint_plate(image: Image.Image) -> None:
+    """The silver image: the committed landscape, Atkinson-dithered W/K,
+    clipped to the oval window."""
+    x0, y0, x1, y1 = _DAG_OVAL
+    ow, oh = x1 - x0, y1 - y0
+    plate = _load_dithered_plate(DAGUERREOTYPE_PLATE, ow, oh,
+                                 method="atkinson", palette=_SILVER_PALETTE)
+    px = image.load()
+    if plate is None:
+        _daguerreotype_paint_plate_fallback(image)
+        return
+    pp = plate.load()
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if _daguerreotype_oval_radial(x, y) <= 1.0:
+                px[x, y] = pp[x - x0, y - y0]
+
+
+def _daguerreotype_paint_plate_fallback(image: Image.Image) -> None:
+    """A stripped install still gets a photograph-shaped silver image: sky
+    blowing to white, a Bayer-graded mid band, a crushed dark foreground."""
+    px = image.load()
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    x0, y0, x1, y1 = _DAG_OVAL
+    for y in range(y0, y1):
+        t = (y - y0) / (y1 - y0)
+        row = BAYER_8x8[y % 8]
+        threshold = 0.0 if t < 0.45 else (t - 0.45) * 150.0
+        for x in range(x0, x1):
+            if _daguerreotype_oval_radial(x, y) <= 1.0:
+                px[x, y] = black if row[x % 8] < threshold else white
+
+
+def _daguerreotype_paint_tarnish(image: Image.Image) -> None:
+    """The sepia bloom creeping in from the oval's rim: R+G on pixel parity
+    (the documented sepia), hash-gated at a density that rises toward the
+    edge so it is also the plate's vignette."""
+    px = image.load()
+    red, green = SPECTRA6["red"], SPECTRA6["green"]
+    x0, y0, x1, y1 = _DAG_OVAL
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            radial = _daguerreotype_oval_radial(x, y)
+            if radial > 1.0 or radial < _DAG_TARNISH_START:
+                continue
+            reach = (radial - _DAG_TARNISH_START) / (1.0 - _DAG_TARNISH_START)
+            if _flow_stroke_hash(x, y, 7) < reach * reach * 0.85:
+                px[x, y] = red if (x + y) & 1 else green
+
+
+def _daguerreotype_paint_ring(image: Image.Image) -> None:
+    """The mat's pressed double ring: ``paint_relief_mask``'s second consumer,
+    embossing brass around the window under the shared upper-left light."""
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    g = _DAG_RING_GAP
+    x0, y0, x1, y1 = _DAG_OVAL
+    mask_draw.ellipse((x0 - g, y0 - g, x1 + g, y1 + g), outline=255, width=3)
+    mask_draw.ellipse((x0 - g - 8, y0 - g - 8, x1 + g + 8, y1 + g + 8), outline=255, width=2)
+    paint_relief_mask(image, mask, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["red"],
+                      face_minor_share=_DAG_GOLD_RED,
+                      radius=2, strength=3.4, cap=0.6,
+                      ground=frozenset({SPECTRA6["yellow"], SPECTRA6["red"]}))
+
+
+def _daguerreotype_paint_slip(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The caption slip: cream stock lifted on a shadow ledge, the quote in
+    Libre Caslon with the matched phrase in the studio's red ink."""
+    x0, y0, x1, y1 = _DAG_SLIP
+    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
+    draw.rectangle((x0 + 3, y0 + 3, x1 + 3, y1 + 3), fill=black)  # the ledge
+    draw.rectangle((x0, y0, x1, y1), fill=white)
+    px = image.load()
+    for y in range(y0, y1 + 1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1 + 1):
+            if row[x % 4] < 2:
+                px[x, y] = yellow
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0 - 36, y1 - y0 - 88, font_max=26, font_min=14,
+        line_height_mult=1.32, theme="daguerreotype",
+    )
+    y = y0 + 26
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
+                       for c, b in segment)
+        x = x0 + max(18, ((x1 - x0) - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            fill = SPECTRA6["red"] if is_bold else black
+            draw.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=fill)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = " — ".join(p for p in (author, title) if p)
+    if parts:
+        font = load_font(theme_font_candidates("daguerreotype", "quote_regular"), size=13)
+        while draw.textlength(parts, font=font) > (x1 - x0 - 30) and len(parts) > 8:
+            parts = parts[:-2].rstrip(" ,.;:") + "…"
+        draw.text(((x0 + x1) // 2, y1 - 20), parts, font=font, fill=black, anchor="ms")
+
+
+def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A cased daguerreotype (see the section comment).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the ``metro`` convention: the oval, rings and rim are absolute
+    case geometry, and an interpolating filter would average the silver
+    stipple into greys the panel cannot print.
+    """
+    del time_str  # see the section comment; deliberately unused.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _daguerreotype_paint_mat(image)
+    _daguerreotype_paint_plate(image)
+    _daguerreotype_paint_tarnish(image)
+    _daguerreotype_paint_ring(image)
+    draw = ImageDraw.Draw(image)
+    _daguerreotype_paint_slip(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -23326,6 +23954,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_intaglio_frame(time_str, quote_row, width, height)
     if theme == "nocturne":
         return render_nocturne_frame(time_str, quote_row, width, height)
+    if theme == "plaque":
+        return render_plaque_frame(time_str, quote_row, width, height)
+    if theme == "daguerreotype":
+        return render_daguerreotype_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
