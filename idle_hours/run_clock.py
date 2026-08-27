@@ -213,6 +213,8 @@ def parse_args() -> argparse.Namespace:
         "bakelite",
         "cardcatalog",
         "metro",
+        "intaglio",
+        "nocturne",
         "diags",
     ]
     parser.add_argument(
