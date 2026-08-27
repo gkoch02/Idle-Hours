@@ -203,6 +203,15 @@ THEME_SATURATION: dict[str, float] = {
     # flattens. Takes the dark-ground 0.7 alongside ``izakaya`` / ``abyssal``
     # / ``bakelite`` for the same reason.
     "nocturne": 0.7,
+    # Patinated bronze plaque — a saturated forest-teal 3-ink ground whose
+    # whole story is chroma (verdigris vs gold), the same coloured-ground
+    # argument as ``atomic`` / ``circuit``. The relief highlights are white
+    # and carry legibility on their own, so the push lands on the metals.
+    "plaque": 0.7,
+    # Cased daguerreotype — the silver plate is achromatic and the brass mat
+    # already saturated; the gentler tier keeps the R+G tarnish a soft sepia
+    # instead of a hard speckle, the same light-ground argument as ``tarot``.
+    "daguerreotype": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

@@ -31,7 +31,8 @@ from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
 
 CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya",
-                 "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne")
+                 "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro", "bakelite", "intaglio",
+                 "nocturne", "plaque", "daguerreotype")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -1513,7 +1514,8 @@ class TestFixedGeometryFramesDownscale:
     and palette-subset, both of which a cropped fragment satisfies.
     """
 
-    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne")
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
+                             "plaque", "daguerreotype")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -2026,4 +2028,180 @@ class TestNocturneBrushwork:
         assert pixel_bytes(lit.crop(box)) == pixel_bytes(bare.crop(box)), (
             "painting the quote changed the rocket's sparks — the ground fence on the "
             "gold blooms is broken"
+        )
+
+
+class TestPlaqueRelief:
+    """The relief-lighting mechanism and the tablet's contracts.
+
+    ``paint_relief_mask`` is the theme's reason to exist — the #226 kill
+    criterion was "letters must read as lit metal, not outlined" — so the
+    fences are on the lighting geometry (highlight on the lit side, shadow on
+    the far side, one light for the whole object), on the ``shade_face``
+    lesson, on the claimed forest-teal patina mix, and on the hour-only
+    dedication.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    def _frame(self, time_str):
+        return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="plaque"))
+
+    def test_relief_lights_the_correct_sides(self):
+        img = Image.new("RGB", (120, 120), rq.SPECTRA6["green"])
+        mask = Image.new("L", img.size, 0)
+        ImageDraw.Draw(mask).rectangle((40, 40, 79, 79), fill=255)
+        rq.paint_relief_mask(img, mask, highlight=rq.SPECTRA6["white"], shadow=rq.SPECTRA6["black"],
+                             face=rq.SPECTRA6["yellow"], radius=3, strength=4.0)
+        px = img.load()
+        white_tl = black_tl = white_br = black_br = 0
+        for y in range(120):
+            for x in range(120):
+                if px[x, y] == rq.SPECTRA6["white"]:
+                    if x + y < 120:
+                        white_tl += 1
+                    else:
+                        white_br += 1
+                elif px[x, y] == rq.SPECTRA6["black"]:
+                    if x + y < 120:
+                        black_tl += 1
+                    else:
+                        black_br += 1
+        assert white_tl > 4 * max(1, white_br), (white_tl, white_br)
+        assert black_br > 4 * max(1, black_tl), (black_br, black_tl)
+
+    def test_shade_face_false_keeps_the_face_solid(self):
+        def interior_inks(shade_face):
+            img = Image.new("RGB", (80, 80), rq.SPECTRA6["green"])
+            mask = Image.new("L", img.size, 0)
+            ImageDraw.Draw(mask).rectangle((30, 10, 49, 69), fill=255)
+            rq.paint_relief_mask(img, mask, highlight=rq.SPECTRA6["white"], shadow=rq.SPECTRA6["black"],
+                                 face=rq.SPECTRA6["yellow"], radius=2, strength=5.0,
+                                 shade_face=shade_face)
+            return distinct_inks(img.crop((32, 30, 48, 50)))
+        assert interior_inks(False) == {rq.SPECTRA6["yellow"]}, (
+            "shade_face=False must leave a thin stroke's interior pure face ink — "
+            "shading it is what decayed the first plaque build into grey ghosts"
+        )
+        assert len(interior_inks(True)) > 1, "shade_face=True should bevel the face"
+
+    def test_relief_respects_ground(self):
+        img = Image.new("RGB", (80, 80), rq.SPECTRA6["green"])
+        ImageDraw.Draw(img).rectangle((0, 0, 79, 20), fill=rq.SPECTRA6["red"])
+        mask = Image.new("L", img.size, 0)
+        ImageDraw.Draw(mask).rectangle((20, 24, 59, 59), fill=255)
+        rq.paint_relief_mask(img, mask, highlight=rq.SPECTRA6["white"], shadow=rq.SPECTRA6["black"],
+                             face=rq.SPECTRA6["yellow"], radius=3, strength=5.0,
+                             ground=frozenset({rq.SPECTRA6["green"]}))
+        counts = ink_counts(img.crop((0, 0, 80, 21)))
+        assert counts == {rq.SPECTRA6["red"]: 80 * 21}, "exterior relief painted over a non-ground ink"
+
+    def test_patina_is_forest_teal(self):
+        img = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
+        rq._plaque_paint_patina(img)
+        counts = ink_counts(img)
+        total = sum(counts.values())
+        share = {ink: counts.get(rq.SPECTRA6[ink], 0) / total for ink in ("green", "blue", "yellow")}
+        assert 0.30 < share["green"] < 0.50, share
+        assert 0.30 < share["blue"] < 0.50, share
+        assert 0.10 < share["yellow"] < 0.30, share
+        assert counts.get(rq.SPECTRA6["black"], 0) / total < 0.05, "the pits took over"
+
+    def test_dedication_tracks_hour_only(self):
+        frames = {self._frame(f"04:{minute:02d}") for minute in (0, 9, 17, 30, 48, 59)}
+        assert len(frames) == 1, (
+            "two minutes of the same hour rendered differently — a minute is reaching "
+            "the plaque, whose only time device is the ERECTED year's Roman hour"
+        )
+        hours = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
+        assert len(hours) == 12, "two different hours produced the same tablet"
+
+
+class TestDaguerreotypePlate:
+    """The Atkinson mechanism (the #227 kill criterion) and the case's rules.
+
+    Atkinson must be *measurably* different from Floyd-Steinberg on the 2-ink
+    sub-palette — blown highlights, crushed shadows — or the dithering half of
+    the theme's pitch collapses. The case rules: the silver stays achromatic,
+    the tarnish stays in its rim annulus, no clock reaches the canvas, and a
+    stripped install still gets a photograph-shaped fallback.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    def _render(self, time_str="14:15"):
+        return rq.render(time_str, self.ROW, 800, 480, mode="production", theme="daguerreotype")
+
+    @staticmethod
+    def _ramp():
+        img = Image.new("RGB", (256, 64))
+        px = img.load()
+        for y in range(64):
+            for x in range(256):
+                px[x, y] = (x, x, x)
+        return img
+
+    def _white_frac(self, img, x0, x1):
+        counts = ink_counts(img.crop((x0, 0, x1, 64)))
+        return counts.get(rq.SPECTRA6["white"], 0) / (64 * (x1 - x0))
+
+    def test_atkinson_blows_highlights_and_crushes_shadows_vs_fs(self):
+        ramp = self._ramp()
+        pal = [rq.SPECTRA6["white"], rq.SPECTRA6["black"]]
+        atk = rq.dither_image_to_palette(ramp, pal, method="atkinson")
+        fs = rq.dither_image_to_palette(ramp, pal, method="floyd-steinberg")
+        assert self._white_frac(atk, 192, 240) > self._white_frac(fs, 192, 240) + 0.03, (
+            "Atkinson's bright end is no whiter than Floyd-Steinberg's — the "
+            "discarded-error signature is missing and the theme's pitch collapses"
+        )
+        assert self._white_frac(atk, 16, 64) < self._white_frac(fs, 16, 64) - 0.03, (
+            "Atkinson's dark end is no blacker than Floyd-Steinberg's"
+        )
+
+    def test_atkinson_is_deterministic_and_on_palette(self):
+        ramp = self._ramp()
+        pal = [rq.SPECTRA6["white"], rq.SPECTRA6["black"]]
+        a = rq.dither_image_to_palette(ramp, pal, method="atkinson")
+        b = rq.dither_image_to_palette(ramp, pal, method="atkinson")
+        assert pixel_bytes(a) == pixel_bytes(b)
+        assert distinct_inks(a) <= set(pal)
+
+    def test_the_silver_stays_achromatic(self):
+        px = self._render().load()
+        x0, y0, x1, y1 = rq._DAG_OVAL
+        allowed = {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}
+        for y in range(y0, y1, 3):
+            for x in range(x0, x1, 3):
+                if rq._daguerreotype_oval_radial(x, y) < rq._DAG_TARNISH_START - 0.02:
+                    assert px[x, y] in allowed, (
+                        f"chroma at ({x}, {y}) inside the silver — dithering must run "
+                        "against white+black only"
+                    )
+
+    def test_tarnish_stays_in_its_annulus(self):
+        px = self._render().load()
+        for y in range(480):
+            for x in range(800):
+                if px[x, y] == rq.SPECTRA6["green"]:
+                    radial = rq._daguerreotype_oval_radial(x, y)
+                    assert rq._DAG_TARNISH_START - 0.02 <= radial <= 1.02, (
+                        f"tarnish green at ({x}, {y}), radial {radial:.2f} — outside the rim annulus"
+                    )
+
+    def test_time_never_reaches_the_canvas(self):
+        frames = {pixel_bytes(self._render(t)) for t in ("03:07", "03:52", "12:00", "23:59")}
+        assert len(frames) == 1, (
+            "two clock times rendered differently — daguerreotype del-asserts time_str"
+        )
+
+    def test_missing_plate_falls_back_gracefully(self, monkeypatch):
+        monkeypatch.setattr(rq, "DAGUERREOTYPE_PLATE", rq.BASE_DIR / "assets" / "no_such_plate.png")
+        img = self._render()
+        counts = ink_counts(img.crop((200, 100, 340, 380)))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 0 and counts.get(rq.SPECTRA6["black"], 0) > 0, (
+            "the fallback did not paint a photograph-shaped silver image"
         )
