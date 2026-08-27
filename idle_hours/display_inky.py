@@ -191,6 +191,18 @@ THEME_SATURATION: dict[str, float] = {
     # White map stock with four native route inks. The lighter tier keeps the
     # yellow line visible without blowing out the red/blue interchange marks.
     "metro": 0.5,
+    # Banknote engraving — white paper, black intaglio line-work, green tint
+    # plate, red serial. Same chromatic-on-light profile as ``default`` /
+    # ``dispatch``, and the whole face is 1 px line-work: pushing the
+    # saturation harder gains nothing on a page whose tone is carried by line
+    # weight, so the gentler tier applies.
+    "intaglio": 0.5,
+    # Whistler nocturne — black night ground, and every lit element (shore
+    # lights, reflections, the rocket's sparks, the matched phrase) is a
+    # falling-density synthesised-gold bloom, exactly what the gentler tier
+    # flattens. Takes the dark-ground 0.7 alongside ``izakaya`` / ``abyssal``
+    # / ``bakelite`` for the same reason.
+    "nocturne": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

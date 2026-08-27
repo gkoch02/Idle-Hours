@@ -119,6 +119,8 @@ THEME_ORDER: tuple[str, ...] = (
     "bakelite",
     "cardcatalog",
     "metro",
+    "intaglio",
+    "nocturne",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1276,6 +1278,35 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
+    # Banknote / security engraving. A custom-render frame
+    # (``render_intaglio_frame``) — the palette below serves only the goodnight /
+    # source-card fall-through paths. The face itself is the three-plate
+    # structure of a real note: black intaglio, green tint lathework, red
+    # numbering press, on white paper.
+    "intaglio": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["green"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["green"],
+        "source": SPECTRA6["black"],
+    },
+    # Whistler nocturne — blue-and-gold night river. A custom-render frame
+    # (``render_nocturne_frame``); the palette below serves only the goodnight /
+    # source-card fall-through paths. The canvas itself is flow-field blue
+    # brushwork over black with synthesised-gold light.
+    "nocturne": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["blue"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["blue"],
+    },
     # Library catalogue card. A custom-render frame (``render_cardcatalog_frame``)
     # — the stamp column needs a right margin the shared literary layout does not
     # leave, see that frame's section comment. The palette below serves only the
@@ -1888,6 +1919,56 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             SPACEMONO_BOLD,
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Intaglio sets its legend in Old Standard TT — the 19th-century Didone
+    # nearest the engraved currency register (shared with ``newsprint``, which
+    # is safe: a broadsheet and a banknote won't be confused). Cinzel
+    # Decorative carries the masthead and the corner denominations in the
+    # ornament slot; the frame loads Pinyon Script (the promise line) and
+    # Space Mono (serial, microprint) directly, the bakelite pattern.
+    "intaglio": {
+        "quote_regular": [
+            OLDSTANDARD_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            OLDSTANDARD_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            CINZELDECORATIVE_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Nocturne blooms its body text, and the Jost lesson (see ``bakelite``'s
+    # font note) says a high-contrast face haloes unevenly — thick stems flare
+    # while hairlines vanish. Cormorant Garamond is the right Aesthetic-
+    # Movement register, so instead of swapping family the body pins the
+    # **Medium** instance: enough stem weight to survive a faint halo that
+    # Regular's hairlines would shred. Sharing the family with ``mucha`` /
+    # ``astrarium`` / ``vinyl`` is safe — a poster, a dial, a sleeve and a
+    # night river are in no danger of being confused.
+    "nocturne": {
+        "quote_regular": [
+            (CORMORANT_VARIABLE, "Medium"),
+            EBGARAMOND_REGULAR,
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (CORMORANT_VARIABLE, "Bold"),
+            EBGARAMOND_BOLD,
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (CORMORANT_VARIABLE, "SemiBold"),
+            EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -4427,6 +4508,162 @@ def draw_text_neon(
     mask = Image.new("L", image.size, 0)
     ImageDraw.Draw(mask).text(xy, text, font=font, fill=255, anchor=anchor)
     paint_neon_mask(image, mask, core, glow, **kwargs)
+
+
+def paint_hatched_tone(
+    image: Image.Image,
+    rect: tuple[int, int, int, int],
+    tone,
+    angle_deg: float,
+    spacing: float,
+    ink,
+    *,
+    ground=None,
+    phase: float = 0.0,
+    max_duty: float = 0.85,
+    gamma: float = 1.0,
+) -> None:
+    """Paint continuous tone as line-work — the engraver's alternative to the
+    pixel stipple.
+
+    Every other synthesised tone in this renderer mixes inks per-*pixel* under
+    a Bayer key; this one modulates the **weight** of a parallel line family
+    under a tone field, so the grey is built from marks the eye can resolve as
+    *drawing* at panel distance. It is the tone mechanism of intaglio printing:
+    an engraver cannot half-ink a point, so darkness is carried by how much of
+    each line's pitch the burin cut open, at constant spacing. Spacing that
+    varied with tone was tried first and read as scanlines with noise — the
+    constant pitch is what makes the family read as a plate.
+
+    ``tone`` is a callable ``(x, y) -> float`` in 0..1, sampled in panel
+    coordinates. Per pixel, the perpendicular coordinate of the hatch family is
+    ``u = -x*sin(a) + y*cos(a) + phase``; the pixel takes ``ink`` when its
+    distance to the nearest line centre is under half the pitch times the local
+    duty ``min(max_duty, tone**gamma)``. Everything is computed in continuous
+    coordinates so any angle carries even weight.
+
+    Cross-hatching is deliberately not a parameter: it is a second call at a
+    second angle with a shadows-only tone (``max(0, t - 0.5) * 2``), which is
+    exactly how a real engraver adds the second family — only where the first
+    can no longer darken the passage alone.
+
+    ``max_duty`` is this primitive's analogue of ``paint_neon_mask``'s ``cap``:
+    at tone 1.0 the darkest passage still shows paper between the lines,
+    because a saturated hatch is indistinguishable from a solid fill and the
+    capability collapses back to flat ink. ``ground`` restricts painting to
+    pixels currently holding one of those colours, same contract as the bloom.
+
+    Two grid interactions to design around, learned for the intaglio theme:
+    keep ``spacing >= 4`` and the angle off 0/45/90 degrees, or the family
+    beats against the pixel lattice and the even weight this function promises
+    turns into visible thick-thin banding.
+    """
+    a = math.radians(angle_deg)
+    sin_a, cos_a = math.sin(a), math.cos(a)
+    x0, y0, x1, y1 = rect
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(image.size[0], x1), min(image.size[1], y1)
+    px = image.load()
+    half = 0.5 * spacing
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            t = tone(x, y)
+            if t <= 0.0:
+                continue
+            duty = min(max_duty, t ** gamma if gamma != 1.0 else t)
+            u = -x * sin_a + y * cos_a + phase
+            delta = abs(u - round(u / spacing) * spacing)
+            if delta < half * duty and (ground is None or px[x, y] in ground):
+                px[x, y] = ink
+
+
+def _flow_stroke_hash(cx: int, cy: int, salt: int) -> float:
+    """Deterministic 0..1 value per stroke cell — ``_bakelite_grain``'s hash
+    with a ``salt`` term so multiple passes over one canvas decorrelate."""
+    h = (cx * 0x1F1F1F1F) ^ (cy * 0x2545F491) ^ (salt * 0x9E3779B9)
+    h = ((h ^ (h >> 13)) * 0x27D4EB2D) & 0xFFFFFFFF
+    return ((h ^ (h >> 15)) & 0xFFFF) / 65535.0
+
+
+def paint_flow_strokes(
+    image: Image.Image,
+    rect: tuple[int, int, int, int],
+    direction,
+    ink_at,
+    *,
+    cell: int = 11,
+    length: int = 18,
+    width: int = 2,
+    steps: int = 3,
+    ground=None,
+    salt: int = 0,
+) -> None:
+    """The painterly pass: short streamline strokes advected through a
+    caller-supplied direction field, each stroke a single ink chosen at its
+    origin.
+
+    The stipple primitives fake *tone* at pixel scale; this fakes *facture* at
+    stroke scale. Partial coverage of blue strokes over black reads as brushed
+    night water rather than as a dither pattern, because the marks are long
+    enough (15-25 px) and coherent enough for the eye to read direction at
+    panel distance — which needs the field's wavelengths to sit well above the
+    placement pitch (>= 80 px against a 10-13 px ``cell`` in the first
+    consumer, ``nocturne``). A field that turns faster than that shreds the
+    strokes back into noise, and the capability buys nothing over a stipple.
+
+    One stroke candidate per ``cell x cell`` grid square inside ``rect``; the
+    origin is jittered inside its square by an integer position hash (never
+    ``random`` — the frame must re-render byte-identically), and the same hash
+    is handed to ``ink_at(x, y, r)`` as ``r`` so the caller can vary ink or
+    thin the field per stroke. ``ink_at`` returning ``None`` skips the stroke
+    entirely — that is how the caller carries density and tone, and it keeps
+    this primitive free of any opinion about either. The stroke is then
+    *integrated along the field*: ``steps`` segments, each advancing
+    ``length/steps`` in the direction sampled at the current point, so strokes
+    bend with the field instead of stamping one global angle.
+
+    Strokes render through a scratch mask and land only on ``ground`` pixels —
+    the ``paint_neon_mask`` ground discipline — so a stroke pass can never eat
+    cores, sparks, or text an earlier pass already lit. ``salt`` decorrelates
+    multiple passes sharing one canvas (sky vs water vs reflections).
+    """
+    x0, y0, x1, y1 = rect
+    scratch = Image.new("L", image.size, 0)
+    scratch_draw = ImageDraw.Draw(scratch)
+    sp = scratch.load()
+    px = image.load()
+    w, h = image.size
+    seg = max(1.0, length / steps)
+    for cy in range(y0, y1, cell):
+        for cx in range(x0, x1, cell):
+            r = _flow_stroke_hash(cx, cy, salt)
+            jx = _flow_stroke_hash(cx, cy, salt ^ 0x5BD1E995)
+            jy = _flow_stroke_hash(cx, cy, salt ^ 0x85EBCA6B)
+            ox = cx + jx * cell
+            oy = cy + jy * cell
+            ink = ink_at(int(ox), int(oy), r)
+            if ink is None:
+                continue
+            points = [(ox, oy)]
+            sx, sy = ox, oy
+            reach = seg * (0.6 + 0.4 * r)
+            for _ in range(steps):
+                ang = direction(sx, sy)
+                sx += math.cos(ang) * reach
+                sy += math.sin(ang) * reach
+                points.append((sx, sy))
+            scratch_draw.line(points, fill=255, width=width)
+            bx0 = max(0, int(min(p[0] for p in points)) - width)
+            by0 = max(0, int(min(p[1] for p in points)) - width)
+            bx1 = min(w - 1, int(max(p[0] for p in points)) + width)
+            by1 = min(h - 1, int(max(p[1] for p in points)) + width)
+            for yy in range(by0, by1 + 1):
+                for xx in range(bx0, bx1 + 1):
+                    if sp[xx, yy] == 0:
+                        continue
+                    if ground is None or px[xx, yy] in ground:
+                        px[xx, yy] = ink
+                    sp[xx, yy] = 0
 
 
 def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
@@ -22362,6 +22599,688 @@ def render_bakelite_frame(time_str: str, quote_row: dict, width: int, height: in
     return image
 
 
+# ---------------------------------------------------------------------------
+# intaglio — a banknote face, engraved
+#
+# A promissory note at 800x480, and the theme that introduces the renderer's
+# fourth tone mechanism. Constant two-ink mixes fake a *colour*; a falling
+# density fakes a *glow*; pride's rank partition fakes *shading*; this frame
+# renders tone as **line-work** (``paint_hatched_tone``): parallel engraved
+# lines whose weight carries the grey at constant pitch, plus guilloché — the
+# parametric roulette curves security printers have cut since the 1820s
+# precisely because a lathe's geometry is impossible to redraw freehand. Both
+# read as *drawing* at panel distance, where every stipple in the codebase
+# reads as tone. No committed raster plate, deliberately: guilloché exists
+# because it is parametric, so the whole face is procedural and exact.
+#
+# **Three plates, three inks — the structure of a real note.** Black is the
+# intaglio plate (masthead, quote, rules, medallion rings), green the tint
+# plate (lathework band, rosettes, safety tint, the matched-phrase ribbon),
+# red the numbering press (serial only, the one thing on a real note printed
+# in a third pass by a different machine). White is the paper. Nothing is
+# synthesised — the banknote palette is the one register where the panel's
+# own saturated inks are period-correct, so this theme claims no recipe.
+#
+# **The time carrier is the denomination.** The four corner medallions carry
+# the hour spelled as a face value — SEVEN, TWELVE — the way every note carries
+# its denomination in every corner. Hour only, and as a *word*: a note's face
+# value is a discrete step out of a fixed set, not a reading, so it cannot be
+# mistaken for a clock (the bakelite ``HOUR 2/12`` / cardcatalog due-stamp
+# posture; pinned by ``TestIntaglioEngraving``). The minute stays with the
+# matched phrase, set in bold with a green lathework ribbon beneath it — green
+# *glyphs* were tried and rejected: the panel's green measures ~70 luminance
+# against white's ~195, and bold serif strokes at body size went pale. The
+# serial number is derived from ``_row_digest``, never from the clock — a
+# serial that encoded the minute would put readable digits of the time on the
+# panel, which is the whole thing the fuzzy-clock premise forbids (the pulp
+# issue-line exception is not taken here).
+#
+# **Moiré is the risk the constants manage.** The final palette snap is
+# nearest-ink (no dithering underneath), so the only beat frequencies are
+# hatch-vs-pixel-grid: spacing stays >= 4 (chosen 5) and the two hatch
+# families sit at 33/123 degrees — off the pixel axes and off 45, and 90 apart
+# so their own interference is a stable square lattice rather than a drift.
+# The cartouche interior is pure white with no wash beneath, for the same
+# reason. Guilloché polylines are stepped so no segment exceeds ~1.5 px — a
+# coarse polyline leaves dotted gaps on shallow arcs — and each closed curve
+# is drawn in ONE ``draw.line`` call, because per-segment calls drop corner
+# pixels at width 1.
+_INTAGLIO_BORDER = (14, 14, 786, 466)          # outer rule of the lathework frame
+_INTAGLIO_INNER = (44, 44, 756, 436)           # inner rule; the band lies between
+_INTAGLIO_MEDALLION_R = 34
+_INTAGLIO_ROSETTE = (400, 250, 190)            # cx, cy, R of the ground rosette
+_INTAGLIO_CARTOUCHE = (128, 148, 672, 372)
+_INTAGLIO_QUOTE_RECT = (162, 168, 638, 314)
+_INTAGLIO_HATCH_ANGLES = (33.0, 123.0)         # off-axis, off-45; families 90 apart
+_INTAGLIO_HATCH_SPACING = 5.0
+_INTAGLIO_TINT_PERIOD = 14                     # safety-tint wave pitch
+_INTAGLIO_HOUR_WORDS = {
+    1: "ONE", 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX",
+    7: "SEVEN", 8: "EIGHT", 9: "NINE", 10: "TEN", 11: "ELEVEN", 12: "TWELVE",
+}
+
+
+def _intaglio_hour(time_str: str) -> int:
+    """The face value this note is denominated in."""
+    try:
+        hour = int(time_str.split(":")[0]) % 12
+    except (ValueError, IndexError, AttributeError):
+        return 12
+    return hour or 12
+
+
+def _intaglio_serial(quote_row: dict) -> str:
+    """Numbering-press serial: prefix letter, seven digits, suffix letter.
+
+    Derived from ``_row_digest`` so it is stable per quote and carries no trace
+    of the clock — see the section comment for why it must not.
+    """
+    digest = _row_digest(quote_row)
+    prefix = chr(65 + digest % 26)
+    suffix = chr(65 + (digest >> 8) % 26)
+    return f"{prefix} {(digest >> 5) % 10_000_000:07d} {suffix}"
+
+
+def _intaglio_roulette_points(cx: float, cy: float, big_r: int, small_r: int, pen_d: float,
+                              *, phase: float = 0.0, squash: float = 1.0) -> list[tuple[float, float]]:
+    """Sample one closed hypotrochoid — the spirograph curve of a rose lathe.
+
+    ``x = (R-r)cos t + d cos(((R-r)/r) t)``, ``y = (R-r)sin t - d sin(...)``.
+    The curve closes after ``q`` revolutions where ``(R-r)/r = p/q`` in lowest
+    terms, so both radii are ints and the closure is computed, not eyeballed.
+    Step count is scaled to the curve's arc-length estimate so no polyline
+    segment exceeds ~1.5 px — the anti-gap discipline the section comment
+    describes. ``squash`` flattens y for the oval medallion hubs.
+    """
+    g = math.gcd(big_r - small_r, small_r)
+    revolutions = small_r // g
+    t_max = 2 * math.pi * revolutions
+    # The divisor is the target segment length; the pen's own epicycle makes
+    # the true arc longer than t_max * reach, so it errs on the dense side.
+    reach = (big_r - small_r) + pen_d
+    steps = max(64, int(t_max * reach))
+    k = (big_r - small_r) / small_r
+    points = []
+    for i in range(steps + 1):
+        t = t_max * i / steps
+        x = (big_r - small_r) * math.cos(t) + pen_d * math.cos(k * t)
+        y = (big_r - small_r) * math.sin(t) - pen_d * math.sin(k * t)
+        c, s = math.cos(phase), math.sin(phase)
+        points.append((cx + x * c - y * s, cy + (x * s + y * c) * squash))
+    return points
+
+
+def _intaglio_cartouche_tone(x: int, y: int) -> float:
+    """The engraved pillow: 0 across the cartouche's interior, rising through
+    a thin rim band at its edge.
+
+    Clipped to a superellipse (exponent 4, the classic rounded-panel bulge) so
+    the hatch never escapes onto the rosette behind, but *graded* by straight
+    distance-to-edge so the band is a uniform ~26 px on every side — grading by
+    the superellipse norm made the side bands twice as deep as the top ones.
+    The first build ran the band from half-way out at full duty and the pillow
+    swallowed the legend's outer words; the rim is deliberately shallow (peak
+    0.55) so it reads as an engraved bevel, not a vignette.
+    """
+    x0, y0, x1, y1 = _INTAGLIO_CARTOUCHE
+    nx = abs((x - (x0 + x1) / 2) / ((x1 - x0) / 2))
+    ny = abs((y - (y0 + y1) / 2) / ((y1 - y0) / 2))
+    if (nx ** 4 + ny ** 4) ** 0.25 > 1.0:
+        return 0.0
+    edge = min(x - x0, x1 - x, y - y0, y1 - y)
+    return 0.55 * max(0.0, 1.0 - edge / 26.0) ** 1.3
+
+
+def _intaglio_paint_tint(image: Image.Image) -> None:
+    """The protectographic safety tint: faint green waves across the paper.
+
+    Half-density along each wave (every other pixel) so the field reads as a
+    tint rather than as ruling; everything later paints over it.
+    """
+    px = image.load()
+    green = SPECTRA6["green"]
+    x0, y0, x1, y1 = _INTAGLIO_INNER
+    row = y0 + _INTAGLIO_TINT_PERIOD // 2
+    band = 0
+    while row < y1 - 2:
+        for x in range(x0, x1):
+            y = int(row + 3.0 * math.sin(x * 0.05 + band * 1.7))
+            if y0 <= y < y1 and x % 3 == 0:
+                px[x, y] = green
+        row += _INTAGLIO_TINT_PERIOD
+        band += 1
+
+
+def _intaglio_paint_lathework_band(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The border frame: black rules enclosing a woven green cycloid band.
+
+    Two mirrored sinusoid trains per edge — the braid a straight-line lathe
+    cuts — with the corner miters covered by the medallions painted after.
+    """
+    black, green = SPECTRA6["black"], SPECTRA6["green"]
+    draw.rectangle(_INTAGLIO_BORDER, outline=black, width=2)
+    draw.rectangle(_INTAGLIO_INNER, outline=black, width=1)
+    bx0, by0, bx1, by1 = _INTAGLIO_BORDER
+    mid_top = (by0 + _INTAGLIO_INNER[1]) // 2
+    mid_bottom = (by1 + _INTAGLIO_INNER[3]) // 2
+    mid_left = (bx0 + _INTAGLIO_INNER[0]) // 2
+    mid_right = (bx1 + _INTAGLIO_INNER[2]) // 2
+    amp = 9.0
+    freq = 0.22
+    for sign in (1.0, -1.0):
+        for mid, horizontal in ((mid_top, True), (mid_bottom, True)):
+            pts = [(x, mid + sign * amp * math.sin(x * freq)) for x in range(bx0 + 2, bx1 - 1)]
+            draw.line(pts, fill=green, width=1)
+        for mid in (mid_left, mid_right):
+            pts = [(mid + sign * amp * math.sin(y * freq), y) for y in range(by0 + 2, by1 - 1)]
+            draw.line(pts, fill=green, width=1)
+
+
+def _intaglio_paint_rosette(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The ground rosette: one large faint guilloché rose behind the cartouche.
+
+    Petal spacing stays >= 6 px so black text over its exposed ring never loses
+    a stroke to a green line crossing it.
+    """
+    cx, cy, big_r = _INTAGLIO_ROSETTE
+    green = SPECTRA6["green"]
+    draw.line(_intaglio_roulette_points(cx, cy, big_r, 130, 52.0), fill=green, width=1)
+    draw.line(_intaglio_roulette_points(cx, cy, big_r - 26, 112, 40.0, phase=0.26), fill=green, width=1)
+    draw.line(_intaglio_roulette_points(cx, cy, big_r - 10, 144, 34.0, phase=0.55), fill=green, width=1)
+
+
+def _intaglio_paint_medallions(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """Corner denomination medallions: a dense rosette, an oval hub, the word.
+
+    The hub is wiped white before the word goes down — a real medallion's
+    centre is burnished clear so the counter can overprint the value — and the
+    word shrinks to fit the oval, since SEVEN and TWELVE differ by half.
+    """
+    black, green, white = SPECTRA6["black"], SPECTRA6["green"], SPECTRA6["white"]
+    word = _INTAGLIO_HOUR_WORDS[hour]
+    ix0, iy0, ix1, iy1 = _INTAGLIO_INNER
+    for cx, cy in ((ix0, iy0), (ix1, iy0), (ix0, iy1), (ix1, iy1)):
+        draw.line(_intaglio_roulette_points(cx, cy, _INTAGLIO_MEDALLION_R, 10, 8.0), fill=green, width=1)
+        draw.line(_intaglio_roulette_points(cx, cy, _INTAGLIO_MEDALLION_R, 12, 10.0, phase=0.4), fill=green, width=1)
+        hub = (cx - 27, cy - 12, cx + 27, cy + 12)
+        draw.ellipse(hub, fill=white, outline=black, width=1)
+        for size in (11, 10, 9, 8):
+            font = load_font(theme_font_candidates("intaglio", "ornament"), size=size)
+            if draw.textlength(word, font=font) <= 48:
+                break
+        draw.text((cx, cy - 1), word, font=font, fill=black, anchor="mm")
+
+
+def _intaglio_paint_cartouche(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The quote panel: a white superellipse pillow shaded by engraved hatching.
+
+    The capability showcase. One family carries the full tone, the second lays
+    cross-hatch only into the deepest half — see ``paint_hatched_tone`` for why
+    that split is the engraver's own — and both stop below saturation so paper
+    always shows between the lines.
+    """
+    x0, y0, x1, y1 = _INTAGLIO_CARTOUCHE
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    px = image.load()
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            nx = abs((x - (x0 + x1) / 2) / ((x1 - x0) / 2))
+            ny = abs((y - (y0 + y1) / 2) / ((y1 - y0) / 2))
+            if (nx ** 4 + ny ** 4) ** 0.25 <= 1.0:
+                px[x, y] = white
+    # The panel's own fine frame: the superellipse contour as a polyline.
+    # Parametrised as X = a*sgn(cos)|cos|^(1/2) (the exponent-4 curve's exact
+    # parameter form), dense enough that no segment gaps at 1 px.
+    a, b = (x1 - x0) / 2, (y1 - y0) / 2
+    ccx, ccy = (x0 + x1) / 2, (y0 + y1) / 2
+    outline = []
+    for i in range(721):
+        t = 2 * math.pi * i / 720
+        c, s = math.cos(t), math.sin(t)
+        outline.append((ccx + a * math.copysign(abs(c) ** 0.5, c),
+                        ccy + b * math.copysign(abs(s) ** 0.5, s)))
+    draw.line(outline, fill=black, width=1)
+    pad = (x0 - 2, y0 - 2, x1 + 2, y1 + 2)
+    paint_hatched_tone(image, pad, _intaglio_cartouche_tone,
+                       _INTAGLIO_HATCH_ANGLES[0], _INTAGLIO_HATCH_SPACING, black,
+                       ground=frozenset({white}))
+    paint_hatched_tone(image, pad,
+                       lambda x, y: max(0.0, _intaglio_cartouche_tone(x, y) - 0.5) * 2.0,
+                       _INTAGLIO_HATCH_ANGLES[1], _INTAGLIO_HATCH_SPACING, black,
+                       ground=frozenset({white}))
+
+
+def _intaglio_paint_masthead(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Bank-title chrome: letterspaced Cinzel caps over a script promise line."""
+    black = SPECTRA6["black"]
+    title_font = load_font(theme_font_candidates("intaglio", "ornament"), size=27)
+    title = "THE IDLE HOURS"
+    tracking = 5.0
+    width_px = sum(draw.textlength(ch, font=title_font) for ch in title) + tracking * (len(title) - 1)
+    x = (800 - width_px) / 2
+    for ch in title:
+        draw.text((x, 52), ch, font=title_font, fill=black)
+        x += draw.textlength(ch, font=title_font) + tracking
+    script_font = load_font([PINYONSCRIPT_REGULAR, *ORNAMENT_FONT_CANDIDATES], size=21)
+    draw.text((400, 108), "Promises to pay the bearer on demand", font=script_font,
+              fill=black, anchor="mm")
+
+
+def _intaglio_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The engraved legend: solid black prose, bold matched phrase over a
+    green lathework ribbon.
+
+    Reuses ``fit_quote`` / ``wrap_styled_text`` directly rather than the mask
+    pipeline — this is an *ink* theme, and drawn text keeps its antialiased
+    edges through the palette snap where a thresholded mask would not. The
+    ribbon is two phase-mirrored sinusoids under each bold run: the same braid
+    vocabulary as the border band, which is what marks the phrase as a
+    security feature rather than an underline.
+    """
+    x0, y0, x1, y1 = _INTAGLIO_QUOTE_RECT
+    box_w, box_h = x1 - x0, y1 - y0
+    black, green = SPECTRA6["black"], SPECTRA6["green"]
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "", box_w, box_h,
+        font_max=30, font_min=15, line_height_mult=1.3, theme="intaglio",
+    )
+    y = y0 + max(0, (box_h - len(wrapped) * line_height) // 2)
+    body_ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
+                       for c, b in segment)
+        x = x0 + max(0, (box_w - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = quote_font_bold if is_bold else quote_font
+            draw.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=black)
+            advance = draw.textbbox((0, 0), chunk, font=font)[2]
+            if is_bold and chunk.strip():
+                ry = y + body_ascent + 4
+                for sign in (1.0, -1.0):
+                    pts = [(rx, ry + sign * 1.6 * math.sin(rx * 0.55))
+                           for rx in range(int(x), int(x + advance))]
+                    if len(pts) >= 2:
+                        draw.line(pts, fill=green, width=1)
+            x += advance
+        y += line_height
+
+
+def _intaglio_paint_microprint_rule(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The rule under the legend is microprint: IDLEHOURS· repeated at 6 px.
+
+    Reads as a hairline at panel distance and resolves as text at arm's length
+    — the canonical security feature, essentially free to print.
+    """
+    font = load_font([SPACEMONO_REGULAR, *META_FONT_CANDIDATES], size=6)
+    unit = "IDLEHOURS·"
+    x0, x1 = _INTAGLIO_CARTOUCHE[0] + 60, _INTAGLIO_CARTOUCHE[2] - 60
+    text = unit * (int((x1 - x0) / max(1.0, draw.textlength(unit, font=font))) + 1)
+    while text and draw.textlength(text, font=font) > (x1 - x0):
+        text = text[:-1]
+    draw.text((x0, 322), text, font=font, fill=SPECTRA6["black"])
+
+
+def _intaglio_paint_serial(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The numbering press: the same red serial twice, as on a real note."""
+    serial = _intaglio_serial(quote_row)
+    font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=15)
+    red = SPECTRA6["red"]
+    draw.text((62, 54), serial, font=font, fill=red, anchor="la")
+    draw.text((738, 408), serial, font=font, fill=red, anchor="ra")
+
+
+def _intaglio_paint_attribution(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Attribution as the note's imprint line, letterspaced inside the panel."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = " — ".join(p for p in (author, title) if p)
+    if not parts:
+        return
+    font = load_font(theme_font_candidates("intaglio", "quote_regular"), size=14)
+    while draw.textlength(parts, font=font) > 480 and len(parts) > 8:
+        parts = parts[:-2].rstrip(" ,.;:") + "…"
+    draw.text((400, 334), parts, font=font, fill=SPECTRA6["black"], anchor="ma")
+
+
+def render_intaglio_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A banknote face in engraved line-work (see the section comment).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the convention ``metro`` established: the lathework band, the
+    medallions and the hatch pitch are absolute panel geometry, and an
+    interpolating filter would average the line-work into greys the panel
+    cannot print.
+    """
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    draw = ImageDraw.Draw(image)
+    _intaglio_paint_tint(image)
+    _intaglio_paint_lathework_band(image, draw)
+    _intaglio_paint_rosette(image, draw)
+    _intaglio_paint_medallions(image, draw, _intaglio_hour(time_str))
+    _intaglio_paint_cartouche(image, draw)
+    _intaglio_paint_masthead(image, draw)
+    _intaglio_paint_quote(image, draw, quote_row)
+    _intaglio_paint_microprint_rule(image, draw)
+    _intaglio_paint_serial(image, draw, quote_row)
+    _intaglio_paint_attribution(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# nocturne — Whistler, Nocturne in Blue and Gold
+#
+# The Thames at Battersea as Whistler painted it around 1875: a night so blue
+# it is nearly black, in which everything — sky, water, shore — is *brushwork*,
+# punctured by gold. The theme that introduces flow-field stroke rendering
+# (``paint_flow_strokes``): where every other ground in this codebase is a
+# per-pixel stipple, this one is built from short streamline strokes advected
+# through a direction field, so at panel distance the water reads as *painted*
+# — marks with direction and rhythm — rather than as tone. The primitive's
+# docstring carries the mechanism; what belongs here is the composition.
+#
+# **Two fields, one vocabulary.** The sky's strokes are sparse, thin and
+# near-horizontal, thinning with altitude the way Whistler dragged an almost
+# dry brush across the upper canvas; the water's are denser, wider and carry a
+# shimmer term, with roughly one stroke in seven flipped to green in the
+# mid-water — the verdigris glaze the Nocturnes are famous for. The shore is
+# painted *after* the strokes as a solid silhouette band (plus the Battersea
+# tower and a chimney), so land reads as the absence of light and cleanly
+# crops any stroke overhang.
+#
+# **The gold is bakelite's recipe, reused as reused capability.** Shore
+# lights, their reflections, the falling-rocket spark shower, the matched
+# phrase and the butterfly monogram all bloom through the split-band
+# synthesised gold ``paint_neon_mask`` grew for ``bakelite`` — red-major
+# tangerine halo (Y 3/8), yellow-major gold core (Y 5/8), on the 8x8 tile.
+# The reflections are a third ``paint_flow_strokes`` pass with a near-vertical
+# swaying field, which is the argument for the primitive being shared: facture
+# and reflection are the same operation pointed at different fields. Each gold
+# tier accumulates into ONE mask and blooms once — the izakaya
+# no-double-expose rule — and every bloom and stroke pass takes
+# ``ground=_nocturne_ground()`` so later light can never eat earlier light.
+#
+# **The quote sits IN the night, not on it.** Prose gets solid white cores
+# with a faint cold blue halo (radius 3, cap 0.35 — the abyssal posture, a
+# breath of atmosphere rather than a sign's glare); the matched phrase blooms
+# as the brightest gold on the canvas after the rocket, which is the exact
+# hierarchy of the painting: the fireworks first, then their echo. The block
+# is deliberately set left-of-centre so the spark shower owns the upper right
+# — Whistler composed the Falling Rocket off-axis, and a centred block would
+# put text through the fireworks.
+#
+# **No dial, no gauge, no stamp: ``time_str`` is del-asserted.** A nocturne is
+# a painting of one suspended moment, and unlike ``bakelite`` (a console) or
+# ``cardcatalog`` (a due stamp) there is no in-fiction instrument to hang an
+# hour on. The matched phrase carries the time alone, so every render of a
+# given row is byte-identical at any clock time — pinned by
+# ``TestNocturneBrushwork``.
+_NOCTURNE_SKY_BOTTOM = 238
+_NOCTURNE_SHORE = (238, 272)
+_NOCTURNE_TOWER = (588, 196, 610, 238)         # the Battersea shot tower
+_NOCTURNE_CHIMNEY = (636, 212, 644, 238)
+_NOCTURNE_QUOTE_RECT = (72, 70, 556, 232)
+_NOCTURNE_ROCKET_APEX = (668, 62)
+_NOCTURNE_LIGHTS = ((58, 268), (150, 266), (232, 269), (335, 267), (452, 268),
+                    (540, 266), (622, 269), (700, 267), (762, 268))
+_NOCTURNE_GOLD_HALO_YELLOW = 0.375             # R+Y 5/8:3/8 tangerine, the halo
+_NOCTURNE_GOLD_CORE_YELLOW = 0.625             # Y+R 5/8:3/8 gold, the lit stroke
+_NOCTURNE_SKY_CELL = 13
+_NOCTURNE_WATER_CELL = 8
+
+
+def _nocturne_ground() -> frozenset:
+    """Inks a stroke pass or bloom may overwrite: the night's own colours.
+
+    White, yellow and red are excluded so no later pass can dim a core, a
+    spark or a reflection an earlier one already lit.
+    """
+    return frozenset({SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["green"]})
+
+
+def _nocturne_field_sky(x: float, y: float) -> float:
+    """Direction of the sky's brushwork: near-horizontal, gently arcing.
+
+    Wavelengths sit far above the stroke pitch (140 / 220 px against a 13 px
+    cell) so neighbouring strokes agree and the eye reads a swept sky rather
+    than scattered dashes — the coherence rule in ``paint_flow_strokes``'s
+    docstring.
+    """
+    return 0.06 * math.sin(x / 140.0) + 0.05 * math.sin((x + y) / 220.0)
+
+
+def _nocturne_field_water(x: float, y: float) -> float:
+    """Direction of the water: horizontal with a shimmer that calms with depth."""
+    depth = max(0.0, y - _NOCTURNE_SHORE[1])
+    return 0.07 * math.sin(x / 70.0 + y / 45.0) * max(0.35, 1.0 - depth / 300.0)
+
+
+def _nocturne_sky_ink(x: int, y: int, r: float):
+    """Sky stroke acceptance: near-empty at the zenith, quarter-cover at the
+    horizon, all blue."""
+    density = 0.05 + 0.30 * (y / _NOCTURNE_SKY_BOTTOM) ** 2
+    return SPECTRA6["blue"] if r < density else None
+
+
+def _nocturne_water_ink(x: int, y: int, r: float):
+    """Water stroke acceptance: ~45% cover, one stroke in seven green in the
+    mid-water — Whistler's verdigris glaze."""
+    depth = max(0.0, y - _NOCTURNE_SHORE[1]) / 208.0
+    if r > 0.85 - 0.38 * depth:
+        return None
+    if 300 <= y <= 400 and int(r * 997) % 17 == 0:
+        return SPECTRA6["green"]
+    return SPECTRA6["blue"]
+
+
+def _nocturne_paint_gold(image: Image.Image, mask: Image.Image, core=None,
+                         *, radius: int = 4, gamma: float = 1.6, cap: float = 0.55) -> None:
+    """Bloom a mask as Whistler's gold — the bakelite amber recipe on the
+    night's ground.
+
+    Thin wrapper over ``paint_neon_mask`` supplying this theme's inks: red
+    halo carrying 3/8 yellow, gold core carrying 5/8 (solid yellow reads lemon
+    on this panel — the lesson ``_bakelite_paint_phosphor`` documents). Pass an
+    explicit ``core`` ink to pin it (the butterfly's solid seal).
+    """
+    paint_neon_mask(
+        image, mask,
+        core if core is not None else SPECTRA6["red"], SPECTRA6["red"],
+        radius=radius, gamma=gamma, cap=cap, ground=_nocturne_ground(), tile=BAYER_8x8,
+        glow_minor=SPECTRA6["yellow"], glow_minor_share=_NOCTURNE_GOLD_HALO_YELLOW,
+        core_minor=None if core is not None else SPECTRA6["yellow"],
+        core_minor_share=_NOCTURNE_GOLD_CORE_YELLOW,
+    )
+
+
+def _nocturne_paint_night(image: Image.Image) -> None:
+    """Layer 0: the black night, with a whisper of blue haze at the horizon.
+
+    Peak density 2/16 — the izakaya light-pollution shape, kept faint because
+    the subject of this canvas is light sources in the dark, and a bright sky
+    would out-shine them.
+    """
+    ImageDraw.Draw(image).rectangle((0, 0, 799, 479), fill=SPECTRA6["black"])
+    px = image.load()
+    blue = SPECTRA6["blue"]
+    # BAYER_8x8, not 4x4: a ramp on the 17-level tile jumps visibly from
+    # nothing to its first rank and the haze read as a hard-edged halftone
+    # stripe — the gradient rule the recipes doc states, relearned here. The
+    # rank is jittered by the position hash at about half a cell (the bakelite
+    # moulding lesson) so the ramp doesn't lay a visible dot lattice.
+    for y in range(_NOCTURNE_SKY_BOTTOM - 90, _NOCTURNE_SKY_BOTTOM):
+        lift = (y - (_NOCTURNE_SKY_BOTTOM - 90)) / 90.0
+        row = BAYER_8x8[y % 8]
+        threshold = lift * lift * 7.0
+        for x in range(800):
+            rank = row[x % 8] + (_flow_stroke_hash(x, y, 11) - 0.5) * 30.0
+            if rank < threshold:
+                px[x, y] = blue
+
+
+def _nocturne_paint_strokes(image: Image.Image) -> None:
+    """The capability showcase: sky and water as advected brushwork."""
+    ground = _nocturne_ground()
+    paint_flow_strokes(image, (0, 0, 800, _NOCTURNE_SKY_BOTTOM),
+                       _nocturne_field_sky, _nocturne_sky_ink,
+                       cell=_NOCTURNE_SKY_CELL, length=16, width=1, ground=ground, salt=1)
+    paint_flow_strokes(image, (0, _NOCTURNE_SHORE[1], 800, 480),
+                       _nocturne_field_water, _nocturne_water_ink,
+                       cell=_NOCTURNE_WATER_CELL, length=30, width=2, ground=ground, salt=2)
+
+
+def _nocturne_paint_shore(image: Image.Image) -> None:
+    """The far bank as absence of light: a solid band, the tower, a chimney.
+
+    Painted after the strokes so it crops their overhang, which is also what
+    makes its edge read as a horizon rather than a drawn line.
+    """
+    draw = ImageDraw.Draw(image)
+    black = SPECTRA6["black"]
+    draw.rectangle((0, _NOCTURNE_SHORE[0], 799, _NOCTURNE_SHORE[1]), fill=black)
+    draw.rectangle(_NOCTURNE_TOWER, fill=black)
+    tx0, ty0, tx1, _ = _NOCTURNE_TOWER
+    draw.polygon([(tx0, ty0), (tx1, ty0), ((tx0 + tx1) // 2, ty0 - 14)], fill=black)
+    draw.rectangle(_NOCTURNE_CHIMNEY, fill=black)
+
+
+def _nocturne_paint_lights(image: Image.Image) -> None:
+    """Gold pinpoints along the far bank, and their smeared reflections.
+
+    The lights accumulate into one mask and bloom once. The reflections are a
+    third ``paint_flow_strokes`` pass — near-vertical, swaying, thinning with
+    depth — confined by its ``ink_at`` to narrow columns under each light, so
+    the same primitive that painted the water also breaks its surface.
+    """
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    for lx, ly in _NOCTURNE_LIGHTS:
+        mask_draw.rectangle((lx, ly, lx + 1, ly + 1), fill=255)
+    _nocturne_paint_gold(image, mask, radius=4, gamma=1.5, cap=0.6)
+
+    columns = tuple(lx for lx, _ in _NOCTURNE_LIGHTS)
+
+    def reflection_ink(x: int, y: int, r: float):
+        depth = (y - _NOCTURNE_SHORE[1]) / 160.0
+        if depth > 1.0 or r > max(0.15, 0.85 - depth):
+            return None
+        sway = 3.0 * math.sin(y / 22.0 + x)
+        if min(abs(x + sway - c) for c in columns) > 2.5:
+            return None
+        return SPECTRA6["yellow"] if int(r * 991) % 3 else SPECTRA6["red"]
+
+    paint_flow_strokes(image, (0, _NOCTURNE_SHORE[1] + 2, 800, _NOCTURNE_SHORE[1] + 164),
+                       lambda x, y: math.pi / 2 + 0.28 * math.sin(y / 30.0 + x / 90.0),
+                       reflection_ink, cell=5, length=11, width=1,
+                       ground=_nocturne_ground(), salt=3)
+
+
+def _nocturne_spark_points() -> list[tuple[int, int, int]]:
+    """The Falling Rocket's spark shower: a fan of parabolic arcs, jittered
+    deterministically. Returns ``(x, y, size)`` triples."""
+    ax, ay = _NOCTURNE_ROCKET_APEX
+    sparks = []
+    for j in range(11):
+        vx = -1.1 + 2.2 * j / 10.0
+        for k in range(10):
+            t = (k + 1) / 10.0
+            jx = (_flow_stroke_hash(j, k, 41) - 0.5) * 12.0
+            jy = (_flow_stroke_hash(j, k, 43) - 0.5) * 14.0
+            x = int(ax + vx * 112.0 * t + jx)
+            y = int(ay + (0.22 * t + 1.05 * t * t) * 170.0 + jy)
+            if 8 <= x <= 792 and 4 <= y <= 256:
+                sparks.append((x, y, 3 if t > 0.72 else 2))
+    return sparks
+
+
+def _nocturne_paint_rocket(image: Image.Image) -> None:
+    """The Falling Rocket: gold sparks raining down the upper right.
+
+    One mask, one bloom — brighter heads lower down the fall, the way burnt
+    charges flare before they die.
+    """
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    for x, y, size in _nocturne_spark_points():
+        mask_draw.rectangle((x, y, x + size - 1, y + size - 1), fill=255)
+    _nocturne_paint_gold(image, mask, radius=4, gamma=1.6, cap=0.55)
+
+
+def _nocturne_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The quote in the night sky: white prose in cold halo, gold time phrase."""
+    prose, hot, _ = wrap_quote_into_masks(
+        draw, image.size, quote_row, _NOCTURNE_QUOTE_RECT,
+        theme="nocturne", font_max=32, font_min=16, line_height_mult=1.5,
+    )
+    paint_neon_mask(image, prose, SPECTRA6["white"], SPECTRA6["blue"],
+                    radius=3, gamma=2.0, cap=0.35, ground=_nocturne_ground())
+    _nocturne_paint_gold(image, hot, radius=5, gamma=1.5, cap=0.55)
+
+
+def _nocturne_paint_butterfly(image: Image.Image) -> None:
+    """Whistler's butterfly monogram, bottom-right: the signature cartouche.
+
+    Two wing silhouettes and a dropped sting, drawn small and bloomed at the
+    tightest radius so it reads as a pressed gold seal rather than a light.
+    """
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    bx, by = 754, 430
+    mask_draw.polygon([(bx, by), (bx - 12, by - 9), (bx - 11, by + 7)], fill=255)
+    mask_draw.polygon([(bx + 3, by), (bx + 14, by - 10), (bx + 14, by + 6)], fill=255)
+    mask_draw.line([(bx + 1, by + 2), (bx - 2, by + 14)], fill=255, width=1)
+    _nocturne_paint_gold(image, mask, radius=2, gamma=1.8, cap=0.4)
+
+
+def _nocturne_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Attribution, small and solid in the darkest water: unlit by design —
+    bloom-vs-no-bloom is the hierarchy, per ``bakelite``."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = " — ".join(p for p in (author, title) if p)
+    if not parts:
+        return
+    font = load_font(theme_font_candidates("nocturne", "quote_regular"), size=14)
+    while draw.textlength(parts, font=font) > 470 and len(parts) > 8:
+        parts = parts[:-2].rstrip(" ,.;:") + "…"
+    draw.text((24, 452), parts, font=font, fill=SPECTRA6["white"], anchor="ls",
+              stroke_width=2, stroke_fill=SPECTRA6["black"])
+
+
+def render_nocturne_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """Whistler's blue-and-gold night river (see the section comment).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the ``metro`` convention: the shore bands, light columns and spark
+    arcs are absolute panel geometry, and an interpolating filter would average
+    the strokework into blues the panel cannot print.
+    """
+    del time_str  # see the section comment; deliberately unused.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    _nocturne_paint_night(image)
+    _nocturne_paint_strokes(image)
+    _nocturne_paint_shore(image)
+    _nocturne_paint_lights(image)
+    _nocturne_paint_rocket(image)
+    draw = ImageDraw.Draw(image)
+    _nocturne_paint_quote(image, draw, quote_row)
+    _nocturne_paint_butterfly(image)
+    _nocturne_paint_credits(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
@@ -22403,6 +23322,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_metro_frame(time_str, quote_row, width, height)
     if theme == "bakelite":
         return render_bakelite_frame(time_str, quote_row, width, height)
+    if theme == "intaglio":
+        return render_intaglio_frame(time_str, quote_row, width, height)
+    if theme == "nocturne":
+        return render_nocturne_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

@@ -30,7 +30,8 @@ from idle_hours import render_quote as rq
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
 
-CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya", "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro")
+CUSTOM_THEMES = ("marquee", "tarot", "vinyl", "vitrail", "outrun", "sampler", "lieder", "izakaya",
+                 "abyssal", "pride", "pulp", "vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne")
 
 
 def _on_palette(image: Image.Image) -> bool:
@@ -1512,7 +1513,7 @@ class TestFixedGeometryFramesDownscale:
     and palette-subset, both of which a cropped fragment satisfies.
     """
 
-    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite")
+    FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -1830,3 +1831,199 @@ class TestBakeliteMoulding:
             "panel's yellow is a green one)"
         )
         assert counts.get(rq.SPECTRA6["black"], 0) == 0, "the slab is painting black"
+
+
+class TestIntaglioEngraving:
+    """The line-work tone mechanism and the banknote's time-carrier contract.
+
+    ``paint_hatched_tone`` is the theme's reason to exist — tone carried by
+    line *weight* at constant pitch — so the fences here are on the mechanism
+    (weight tracks the tone field, the darkest passage never saturates, the
+    ground guard holds) plus the two premise rules: the denomination carries
+    the hour and only the hour, and the serial never derives from the clock.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    def _frame(self, time_str):
+        return pixel_bytes(rq.render(time_str, self.ROW, 800, 480, mode="production", theme="intaglio"))
+
+    def test_hatch_weight_tracks_tone(self):
+        img = Image.new("RGB", (300, 100), rq.SPECTRA6["white"])
+        rq.paint_hatched_tone(img, (0, 0, 300, 100), lambda x, y: x / 300.0,
+                              33.0, 5.0, rq.SPECTRA6["black"])
+        px = img.load()
+        thirds = [0, 0, 0]
+        for y in range(100):
+            for x in range(300):
+                if px[x, y] == rq.SPECTRA6["black"]:
+                    thirds[x // 100] += 1
+        assert thirds[0] < thirds[1] < thirds[2], (
+            f"hatch ink per tone third is {thirds} — line weight is not tracking the tone field"
+        )
+        # The mean tones of the outer thirds are 1/6 and 5/6; the painted-ink
+        # ratio should sit in that neighbourhood, not merely be ordered.
+        assert thirds[2] > 3 * thirds[0], f"tone contrast collapsed: {thirds}"
+
+    def test_hatch_never_saturates(self):
+        img = Image.new("RGB", (120, 120), rq.SPECTRA6["white"])
+        rq.paint_hatched_tone(img, (0, 0, 120, 120), lambda x, y: 1.0,
+                              33.0, 5.0, rq.SPECTRA6["black"])
+        black = ink_counts(img).get(rq.SPECTRA6["black"], 0)
+        assert black / (120 * 120) <= 0.85 + 0.05, (
+            "a full-tone hatch filled past max_duty — paper must survive between the "
+            "lines or the mechanism collapses to flat ink"
+        )
+        assert ink_counts(img).get(rq.SPECTRA6["white"], 0) > 0
+
+    def test_hatch_respects_ground(self):
+        img = Image.new("RGB", (60, 60), rq.SPECTRA6["white"])
+        ImageDraw.Draw(img).rectangle((20, 20, 39, 39), fill=rq.SPECTRA6["red"])
+        rq.paint_hatched_tone(img, (0, 0, 60, 60), lambda x, y: 1.0,
+                              33.0, 5.0, rq.SPECTRA6["black"],
+                              ground=frozenset({rq.SPECTRA6["white"]}))
+        counts = ink_counts(img.crop((20, 20, 40, 40)))
+        assert counts == {rq.SPECTRA6["red"]: 400}, "hatch painted over a non-ground ink"
+
+    def test_roulette_curve_closes_and_stays_dense(self):
+        pts = rq._intaglio_roulette_points(0.0, 0.0, 34, 10, 8.0)
+        assert abs(pts[0][0] - pts[-1][0]) < 0.01 and abs(pts[0][1] - pts[-1][1]) < 0.01, (
+            "the hypotrochoid did not close — the lcm-derived revolution count is wrong"
+        )
+        reach = (34 - 10) + 8.0 + 0.01
+        assert all(x * x + y * y <= reach * reach for x, y in pts), "curve escaped its bound"
+        worst = max(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+        assert worst <= 1.6, (
+            f"max polyline segment is {worst:.2f} px — a coarse roulette leaves dotted "
+            "gaps on shallow arcs at width 1"
+        )
+
+    def test_denomination_tracks_hour_only(self):
+        frames = {self._frame(f"09:{minute:02d}") for minute in (0, 7, 15, 29, 30, 44, 55, 59)}
+        assert len(frames) == 1, (
+            "two minutes of the same hour rendered differently — a minute is reaching "
+            "the intaglio frame, whose only time carrier is the hour denomination"
+        )
+        hours = {self._frame(f"{hour:02d}:15") for hour in range(1, 13)}
+        assert len(hours) == 12, "two different hours produced the same note face"
+
+    def test_serial_is_row_stable_and_never_time_derived(self):
+        import re as _re
+        serial = rq._intaglio_serial(self.ROW)
+        assert _re.fullmatch(r"[A-Z] \d{7} [A-Z]", serial), serial
+        assert serial == rq._intaglio_serial(dict(self.ROW)), "serial is not row-stable"
+        other = make_row(display_quote="Different row entirely.", matched_text="",
+                         source_id="999", line_number=123)
+        assert rq._intaglio_serial(other) != serial, "two rows share a serial"
+
+
+class TestNocturneBrushwork:
+    """The flow-field stroke mechanism and the frame's suspended-moment contract.
+
+    Strokes must actually follow the field (or the pass is an expensive
+    stipple), the pass must be deterministic (the golden fixture and run_clock's
+    dedup depend on it), the gold must stay confined to the lit elements, and —
+    the premise rule — no part of ``time_str`` may reach the canvas.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    def _render(self, time_str="21:30"):
+        return rq.render(time_str, self.ROW, 800, 480, mode="production", theme="nocturne")
+
+    @staticmethod
+    def _mean_run(img, ink, axis):
+        """Mean length of consecutive painted runs along rows (axis=0) or columns."""
+        px = img.load()
+        w, h = img.size
+        runs, total = 0, 0
+        outer, inner = (h, w) if axis == 0 else (w, h)
+        for o in range(outer):
+            run = 0
+            for i in range(inner):
+                x, y = (i, o) if axis == 0 else (o, i)
+                if px[x, y] == ink:
+                    run += 1
+                elif run:
+                    runs += 1
+                    total += run
+                    run = 0
+            if run:
+                runs += 1
+                total += run
+        return (total / runs) if runs else 0.0
+
+    def test_strokes_follow_the_field(self):
+        blue = rq.SPECTRA6["blue"]
+        horizontal = Image.new("RGB", (240, 240), rq.SPECTRA6["black"])
+        rq.paint_flow_strokes(horizontal, (0, 0, 240, 240), lambda x, y: 0.0,
+                              lambda x, y, r: blue if r < 0.5 else None,
+                              cell=10, length=20, width=1)
+        assert self._mean_run(horizontal, blue, axis=0) >= 3.0 * self._mean_run(horizontal, blue, axis=1), (
+            "strokes under a horizontal field are not elongated along it"
+        )
+        vertical = Image.new("RGB", (240, 240), rq.SPECTRA6["black"])
+        rq.paint_flow_strokes(vertical, (0, 0, 240, 240), lambda x, y: math.pi / 2,
+                              lambda x, y, r: blue if r < 0.5 else None,
+                              cell=10, length=20, width=1)
+        assert self._mean_run(vertical, blue, axis=1) >= 3.0 * self._mean_run(vertical, blue, axis=0), (
+            "strokes under a vertical field are not elongated along it"
+        )
+
+    def test_stroke_pass_is_deterministic_and_salt_decorrelates(self):
+        def paint(salt):
+            img = Image.new("RGB", (200, 200), rq.SPECTRA6["black"])
+            rq.paint_flow_strokes(img, (0, 0, 200, 200), lambda x, y: 0.0,
+                                  lambda x, y, r: rq.SPECTRA6["blue"] if r < 0.5 else None,
+                                  cell=10, length=20, width=2, salt=salt)
+            return pixel_bytes(img)
+        assert paint(1) == paint(1), "the stroke pass is not byte-deterministic"
+        assert paint(1) != paint(2), "salt does not decorrelate passes"
+
+    def test_water_carries_the_brushwork(self):
+        img = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+        rq._nocturne_paint_strokes(img)
+        counts = ink_counts(img.crop((0, rq._NOCTURNE_SHORE[1], 800, 480)))
+        painted = counts.get(rq.SPECTRA6["blue"], 0) + counts.get(rq.SPECTRA6["green"], 0)
+        assert painted >= 20_000, f"the water pass painted only {painted} px — it has gone sparse"
+        sky = ink_counts(img.crop((0, 0, 800, 120))).get(rq.SPECTRA6["blue"], 0) / (800 * 120)
+        water = counts.get(rq.SPECTRA6["blue"], 0) / (800 * (480 - rq._NOCTURNE_SHORE[1]))
+        assert water > sky, "the water is no denser than the upper sky"
+
+    def test_gold_stays_confined_to_the_lit_elements(self):
+        img = self._render()
+        px = img.load()
+        qx0, qy0, qx1, qy1 = rq._NOCTURNE_QUOTE_RECT
+        strays = []
+        for y in range(480):
+            for x in range(800):
+                if px[x, y] not in (rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]):
+                    continue
+                in_quote = qx0 - 16 <= x <= qx1 + 16 and qy0 - 16 <= y <= qy1 + 16
+                in_rocket = 520 <= x <= 800 and 0 <= y <= 262
+                in_water = y >= rq._NOCTURNE_SHORE[0] - 6
+                in_butterfly = 728 <= x <= 780 and 408 <= y <= 452
+                if not (in_quote or in_rocket or in_water or in_butterfly):
+                    strays.append((x, y))
+        assert not strays, f"gold ink leaked outside the lit elements: {strays[:10]}"
+
+    def test_time_never_reaches_the_canvas(self):
+        frames = {pixel_bytes(self._render(t)) for t in ("03:07", "03:52", "09:30", "23:59")}
+        assert len(frames) == 1, (
+            "two clock times rendered differently — nocturne del-asserts time_str and "
+            "the matched phrase alone carries the time"
+        )
+
+    def test_quote_bloom_cannot_eat_the_rocket(self, monkeypatch):
+        lit = self._render()
+        monkeypatch.setattr(rq, "_nocturne_paint_quote", lambda *a, **k: None)
+        bare = self._render()
+        box = (580, 4, 792, 258)
+        assert pixel_bytes(lit.crop(box)) == pixel_bytes(bare.crop(box)), (
+            "painting the quote changed the rocket's sparks — the ground fence on the "
+            "gold blooms is broken"
+        )
