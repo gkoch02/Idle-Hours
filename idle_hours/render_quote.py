@@ -23582,7 +23582,24 @@ _PLAQUE_QUOTE_RECT = (84, 96, 716, 330)
 _PLAQUE_BOLT_R = 9
 _PLAQUE_BOLTS = ((38, 38), (762, 38), (38, 442), (762, 442))
 _PLAQUE_GOLD_RED = 0.375                       # Y+R 5/8:3/8 — the documented gold
-_PLAQUE_POLISH_WHITE = 0.375                   # matched-phrase face: gold cut with white
+# Ground: 32 of the 64 tile cells go to green+blue, the rest to black. Every
+# ink share here is load-bearing for legibility, not decoration — see
+# _plaque_paint_patina.
+_PLAQUE_PATINA_CELLS = 32.0                    # cells of 64 that are NOT black
+# Green takes two thirds of the non-black cells, not half. An even split reads
+# navy, because the panel's blue (#233F8E) is far more chromatic than its
+# desaturated green (#35563A) and wins the perceived hue at equal share —
+# verdigris needs green to lead. Costs nothing: the face still clears 6.1:1
+# against the greenest patch.
+_PLAQUE_GREEN_BASE = 21.0                      # cells of the 32, before the swing
+_PLAQUE_SWING = 8.0                            # green<->blue sine amplitude, in cells
+# Letter faces, as the white share of a Y+W mix. The documented Y+R gold is
+# too dark to carry text on any ground this panel can make (3.3:1 at best), so
+# it stays on the bead and bolts — decoration, with no contrast to earn — and
+# the inscription is burnished brass instead: 6.28:1 for the prose, 6.60:1 for
+# the matched phrase, against 2.04:1 before.
+_PLAQUE_PROSE_WHITE = 0.25                     # pale burnished brass
+_PLAQUE_POLISH_WHITE = 0.60                    # rubbed to bright bare metal
 # Occlusion crease width, as a floor on the radius-2 halo. Read off the halo
 # profile of a *stroke*, not of a large shape: one pixel outside a 3 px stem the
 # halo is only ~93 and two pixels out ~57, so a cut of 96 — which looks like a
@@ -23606,12 +23623,28 @@ def _plaque_ground() -> frozenset:
 
 
 def _plaque_paint_patina(image: Image.Image) -> None:
-    """Layer 0: weathered verdigris — the forest-teal 3-ink recipe, animated.
+    """Layer 0: verdigris over dark bronze — half black, half green/blue.
 
-    Base allocation 40/40/20 G/B/Y of each 8x8 tile, with the green/blue
+    Base allocation 50/25/25 K/G/B of each 8x8 tile, with the green/blue
     boundary swung by two slow sine fields (corrosion pools and streaks) and
     the whole read jittered by the position hash so the ordered tile cannot
-    lattice. Sparse black pits (hash-gated, ~1.5%) give the casting its grain.
+    lattice.
+
+    **This ground is dark because no lighter one can carry text.** It began as
+    the catalogue's forest-teal (G+B+Y 40/40/20), a mid-tone the theme existed
+    to claim — and against that ground the inscription measured **2.04:1**,
+    where WCAG asks 4.5:1 for body text and 3:1 even for large. The ceiling is
+    the damning number: *pure white*, the brightest thing the panel can
+    produce, reaches only **3.85:1** on forest-teal, so no ink and no stipple
+    could have fixed it. A mid-tone ground simply cannot hold text on six
+    inks; the ground had to go dark, and forest-teal is released back to the
+    catalogue's unused list with that finding recorded against it.
+
+    Trading the yellow fifth for black is also the truer object. A weathered
+    bronze tablet is not a bright green plate: the recessed field goes dark
+    with corrosion and grime while the raised letters stay burnished, which is
+    exactly the figure/ground split this theme needs. Verdigris survives as
+    the green/blue bloom *in* that dark field.
 
     **The swing moves both cuts together, and must.** The first build moved
     only the green cut, which pins blue at 40% and spends the entire swing on
@@ -23631,25 +23664,25 @@ def _plaque_paint_patina(image: Image.Image) -> None:
     straight back out to a passing 40/40/20.
     """
     px = image.load()
-    green, blue, yellow, black = (SPECTRA6[c] for c in ("green", "blue", "yellow", "black"))
+    green, blue, black = (SPECTRA6[c] for c in ("green", "blue", "black"))
     for y in range(480):
         row = BAYER_8x8[y % 8]
         for x in range(800):
             h = _flow_stroke_hash(x, y, 5)
-            if h > 0.985:
-                px[x, y] = black
-                continue
-            swing = 9.0 * (math.sin(x / 97.0 + y / 61.0) + math.sin(x / 41.0 - y / 149.0))
+            swing = _PLAQUE_SWING * (math.sin(x / 97.0 + y / 61.0) + math.sin(x / 41.0 - y / 149.0))
             rank = (row[x % 8] + (h - 0.5) * 3.0) % 64
-            # Both cuts move as one, so the swing trades green against blue and
-            # yellow keeps its fixed 20% — see the docstring.
-            green_cut = min(51.2, max(0.0, 25.6 + swing))
+            # Both cuts move as one, so the swing trades green against blue
+            # while black keeps its fixed half. Spending a swing on the
+            # brightest ink in the mix is what made the first two builds
+            # illegible; here the darkest is pinned instead, and the face
+            # contrast holds 6.1-6.4:1 across the whole sweep.
+            green_cut = min(_PLAQUE_PATINA_CELLS, max(0.0, _PLAQUE_GREEN_BASE + swing))
             if rank < green_cut:
                 px[x, y] = green
-            elif rank < 51.2:
+            elif rank < _PLAQUE_PATINA_CELLS:
                 px[x, y] = blue
             else:
-                px[x, y] = yellow
+                px[x, y] = black
 
 
 def _plaque_paint_rim(image: Image.Image) -> None:
@@ -23688,73 +23721,71 @@ def _plaque_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
     upper-left sun rather than as a different ink.
 
     Both passes lay a ``contact`` crease — the occlusion line where a raised
-    letter meets the plate. It is what closes the letterform's contour on the
-    two arcs the raking light leaves unshaded, and it is doing the legibility
-    work the ground fix cannot: the face is a Y+R stipple, so roughly a third
-    of every stroke's pixels are *red*, which the panel renders darker (~46)
-    than the patina around it (~91). Those pixels read as holes punched
-    through the letter, and on a 2-3 px stroke there is not much letter left
-    around them. The crease means the eye no longer has to resolve the glyph
-    from its speckled interior — it locks onto a continuous dark contour — so
-    the gold keeps the red that makes it gold instead of being bleached
-    toward yellow to survive. Cast bronze genuinely looks like this: a bright
-    rim where the light rakes the bevel, a heavy shadow opposite, and a thin
-    dark line closing the shape all the way round.
+    letter meets the plate — which closes the letterform's contour on the two
+    arcs the raking light leaves unshaded. It was introduced to carry the
+    legibility of the old Y+R gold face, roughly a third of whose pixels are
+    red and therefore *darker* than the mid-tone ground they sat on, reading
+    as holes punched through a 2-3 px stem. That job is gone with the red.
+    Against the dark ground the crease is now a modest gain rather than the
+    load-bearing one — it darkens the ground's brighter green and blue pixels
+    immediately around each letter, about 1.16% of the canvas — and it is
+    kept because it is cheap, physically right and still adds edge contrast,
+    not because the text depends on it. Cast bronze genuinely looks like
+    this: a bright rim where the light rakes the bevel, a heavy shadow
+    opposite, and a thin dark line closing the shape all the way round.
     """
     prose, hot, _ = wrap_quote_into_masks(
         draw, image.size, quote_row, _PLAQUE_QUOTE_RECT,
         theme="plaque", font_max=40, font_min=17, line_height_mult=1.42,
     )
     paint_relief_mask(image, prose, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
-                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["red"],
-                      face_minor_share=0.3,
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["white"],
+                      face_minor_share=_PLAQUE_PROSE_WHITE,
                       radius=2, strength=3.4, cap=0.6, ground=_plaque_ground(),
                       shade_face=False,
                       contact=SPECTRA6["black"], contact_cut=_PLAQUE_CONTACT_CUT)
     paint_relief_mask(image, hot, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
                       face=SPECTRA6["yellow"], face_minor=SPECTRA6["white"],
                       face_minor_share=_PLAQUE_POLISH_WHITE,
-                      radius=2, strength=3.4, cap=0.7, ground=_plaque_ground(),
+                      radius=2, strength=4.2, cap=0.75, ground=_plaque_ground(),
                       shade_face=False,
                       contact=SPECTRA6["black"], contact_cut=_PLAQUE_CONTACT_CUT)
 
 
-def _plaque_paint_incised(image: Image.Image, draw: ImageDraw.ImageDraw, text: str, y: int, size: int) -> None:
-    """A line of engraved small text: a black recess with a lit far lip.
+def _plaque_paint_cast_line(image: Image.Image, draw: ImageDraw.ImageDraw, text: str, y: int, size: int) -> None:
+    """A line of small cast text, raised and lit like the inscription above it.
 
-    The raised/incised split mirrors a real tablet — cast the display line,
-    engrave the fine print. A maroon R+K parity fill was tried first and
-    shredded at these sizes (the hairline-at-small-size failure ``astrarium``
-    and ``vitrail`` document); solid black reads as the patina-filled voids of
-    genuine engraving.
+    This was engraved rather than raised for two builds — a black recess, then
+    a recess with a lit far lip — on the reasoning that a real tablet casts its
+    display line and engraves its fine print. That split is true of tablets and
+    was the wrong call here, for a reason that only appears once the ground goes
+    dark: **an incised groove has no contrast left to give.** Black on the dark
+    patina measures 1.3:1, which is not dim but *invisible*, and the lit-lip
+    variant only reads as a 1 px bright outline around each letter — which is
+    precisely the "letters must read as outlined, not as lit metal" failure this
+    theme was built to avoid, now applied to the text least able to survive it.
 
-    Solid black *alone* was the second build, and it is legible only in the
-    abstract: black (~34) against the patina (~91) is a fine contrast on
-    paper, but the ground here is a three-ink stipple carrying its own black
-    casting pits, so at 16 px a Cinzel hairline is competing with speckle of
-    the same colour at the same scale and loses. The groove is therefore cut
-    with ``paint_relief_mask`` under the tablet's own light with
-    ``highlight`` and ``shadow`` swapped — the deboss the primitive documents
-    — which lays a white lip along the groove's far wall. That lip is the
-    brightest thing anywhere near this text and no part of the patina can
-    imitate it, so the line separates from the stipple by *luminance* rather
-    than by hue, and it separates as an engraving rather than as ink sitting
-    on top of one.
+    So the fine print is cast too. It stays subordinate the way a real tablet's
+    secondary lines do — smaller, and set in the same brass under the same
+    upper-left light — rather than by being a different kind of mark. One light,
+    one metal, two sizes.
     """
     font = load_font(theme_font_candidates("plaque", "quote_regular"), size=size)
     while draw.textlength(text, font=font) > 560 and len(text) > 8:
         text = text[:-2].rstrip(" ,.;:") + "…"
     mask = Image.new("L", image.size, 0)
     ImageDraw.Draw(mask).text((400, y), text, font=font, fill=255, anchor="ma")
-    # Swapped highlight/shadow = deboss: the far wall of the cut catches the light.
-    paint_relief_mask(image, mask, highlight=SPECTRA6["black"], shadow=SPECTRA6["white"],
-                      face=SPECTRA6["black"], radius=1, strength=5.0, cap=0.85,
-                      ground=_plaque_ground(), shade_face=False)
+    paint_relief_mask(image, mask, highlight=SPECTRA6["white"], shadow=SPECTRA6["black"],
+                      face=SPECTRA6["yellow"], face_minor=SPECTRA6["white"],
+                      face_minor_share=_PLAQUE_PROSE_WHITE,
+                      radius=1, strength=3.0, cap=0.55,
+                      ground=_plaque_ground(), shade_face=False,
+                      contact=SPECTRA6["black"], contact_cut=_PLAQUE_CONTACT_CUT)
 
 
 def _plaque_paint_dedication(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int) -> None:
     numeral = _TAROT_ROMAN_NUMERALS[hour]
-    _plaque_paint_incised(image, draw, f"ERECTED · ANNO {numeral}", 412, 20)
+    _plaque_paint_cast_line(image, draw, f"ERECTED · ANNO {numeral}", 412, 20)
 
 
 def _plaque_paint_attribution(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -23763,7 +23794,7 @@ def _plaque_paint_attribution(image: Image.Image, draw: ImageDraw.ImageDraw, quo
     parts = " — ".join(p for p in (author, title) if p)
     if not parts:
         return
-    _plaque_paint_incised(image, draw, parts, 376, 19)
+    _plaque_paint_cast_line(image, draw, parts, 376, 19)
 
 
 def render_plaque_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
