@@ -2732,6 +2732,112 @@ class TestQuietGoodnightOnTheFly:
         assert any(entry.get("mode") == "quiet" and "error" in entry for entry in captured)
 
 
+class TestQuietRenderTime:
+    """Which time reaches the renderer when quiet hours begin.
+
+    ``enter_quiet`` serves two triggers with one body, and they want
+    different frames. The scheduled rising edge renders ``--quiet-start``
+    — that IS the documented "last quote of the night" contract for
+    ``--quiet-image ""``. A manual button-D toggle must render *now*:
+    ``--quiet-start`` is unrelated to the moment the operator pressed the
+    button, and hardcoding it painted a 22:00 quote onto the panel at two
+    in the afternoon.
+
+    The bucket handed to ``render_now`` is asserted alongside the time
+    because the two feed the same telemetry entry — a render logged under
+    a bucket the frame doesn't belong to is how "which quote was up?"
+    stops being answerable from the sidecar.
+    """
+
+    def _args(self, tmp_path, **overrides):
+        defaults = dict(
+            render_script="render_quote.py",
+            output=str(tmp_path / "current.png"),
+            width=800, height=480, display_script=None,
+            mode="debug", theme="default",
+            auto_day_theme="default", auto_night_theme="dark",
+            history_path="", history_days=7, telemetry_path="",
+            state_path="", quiet_start="22:00", quiet_end="06:00",
+            quiet_off=False, quiet_image="",
+        )
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def _render_call(self, tmp_path, time_str, *, manual_only, **overrides):
+        args = self._args(tmp_path, **overrides)
+        state = run_clock.RuntimeState(args.theme)
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.append_telemetry"):
+            from idle_hours.runtime_quiet import enter_quiet
+            enter_quiet(args, state, time_str, manual_only=manual_only)
+        assert mock_render.called
+        return mock_render.call_args.kwargs
+
+    @pytest.mark.parametrize("quiet_image", ["", "auto"])
+    def test_manual_toggle_renders_the_current_time(self, tmp_path, quiet_image):
+        """Button D at 14:07 renders 14:07, not --quiet-start."""
+        kwargs = self._render_call(
+            tmp_path, "14:07", manual_only=True, quiet_image=quiet_image,
+        )
+        assert kwargs["time_str"] == "14:07"
+        assert kwargs["bucket"] == "h2_five_past"
+
+    @pytest.mark.parametrize("quiet_image", ["", "auto"])
+    def test_scheduled_edge_still_renders_quiet_start(self, tmp_path, quiet_image):
+        """The documented last-quote-of-the-night contract is unchanged."""
+        kwargs = self._render_call(
+            tmp_path, "22:00", manual_only=False, quiet_image=quiet_image,
+        )
+        assert kwargs["time_str"] == "22:00"
+        assert kwargs["bucket"] == "h10_exact"
+
+    def test_late_scheduled_entry_renders_quiet_start(self, tmp_path):
+        """A restart at 01:00 inside a 22:00–06:00 window is still a
+        scheduled entry, so it renders the window's start time."""
+        kwargs = self._render_call(tmp_path, "01:00", manual_only=False)
+        assert kwargs["time_str"] == "22:00"
+        assert kwargs["bucket"] == "h10_exact"
+
+    def test_manual_toggle_with_quiet_off_has_no_quiet_start_to_fall_back_on(self, tmp_path):
+        """``--quiet-off`` can leave ``--quiet-start`` unset entirely; a
+        manual toggle must still render a real time rather than ``None``."""
+        kwargs = self._render_call(
+            tmp_path, "09:45", manual_only=True,
+            quiet_off=True, quiet_start=None, quiet_end=None,
+        )
+        assert kwargs["time_str"] == "09:45"
+        assert kwargs["bucket"] == "h9_quarter_to"
+
+    def test_manual_toggle_keeps_the_daytime_auto_theme(self, tmp_path):
+        """Theme resolution reads the *entry* time, not the render time —
+        a 14:07 manual toggle under ``--theme auto`` must not flip the
+        panel to the night theme just because ``--quiet-start`` is 22:00.
+        """
+        args = self._args(tmp_path, theme="auto", quiet_image="auto")
+        state = run_clock.RuntimeState("auto")
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.append_telemetry"):
+            from idle_hours.runtime_quiet import enter_quiet
+            enter_quiet(args, state, "14:07", manual_only=True)
+        # render_now signature: theme is positional[6].
+        assert mock_render.call_args.args[6] == "default"
+
+    def test_entry_marker_records_when_we_entered_not_what_we_painted(self, tmp_path):
+        """``quiet_enter`` answers "when did the silence start?", so it keeps
+        the entry-time bucket even on a late scheduled entry that renders
+        the window's start time."""
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState(args.theme)
+        captured = []
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.append_telemetry",
+                   side_effect=lambda *a, **kw: captured.append(a[1])):
+            from idle_hours.runtime_quiet import enter_quiet
+            enter_quiet(args, state, "01:00", manual_only=False)
+        enters = [e for e in captured if e.get("mode") == "quiet_enter"]
+        assert enters and enters[0]["bucket"] == "h1_exact"
+
+
 class TestButtonRenderGate:
     """Rapid presses must not queue behind an in-flight render.
 

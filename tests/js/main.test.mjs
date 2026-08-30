@@ -430,6 +430,46 @@ describe("escapeHtml — corpus text is interpolated into innerHTML", () => {
   });
 });
 
+describe("rowIdLine — the corpus identity span", () => {
+  // This line is built into innerHTML by both the bucket inspector and the
+  // search results, and for a long time it was the one place corpus fields
+  // reached the DOM unescaped. The fields are numeric in any corpus the
+  // pipeline produces, so these cases stand in for a hand-edited or
+  // externally-merged JSONL — the input that made the gap worth closing.
+  it("renders the ordinary numeric case", async () => {
+    const { api } = await loadMainJs({});
+    assert.equal(
+      api.rowIdLine({ source_id: "141", line_number: 482, quality_score: 95 }),
+      "source 141 · line 482 · q=95",
+    );
+  });
+
+  it("escapes markup in every field it interpolates", async () => {
+    const { api } = await loadMainJs({});
+    const line = api.rowIdLine({
+      source_id: `<img src=x onerror="alert(1)">`,
+      line_number: "<script>",
+      quality_score: "'>",
+    });
+    assert.ok(!line.includes("<"), `raw '<' survived: ${line}`);
+    assert.ok(!line.includes(`"`), `raw '"' survived: ${line}`);
+    assert.ok(line.includes("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"));
+    assert.ok(line.includes("&lt;script&gt;"));
+    assert.ok(line.includes("&#39;&gt;"));
+  });
+
+  it("falls back to a question mark for absent fields", async () => {
+    const { api } = await loadMainJs({});
+    // Rows dropped by a re-bake reach the UI with bare ids, and source_id is
+    // null for every locally-mined (non-Gutenberg) row.
+    assert.equal(api.rowIdLine({}), "source ? · line ? · q=?");
+    assert.equal(
+      api.rowIdLine({ source_id: null, line_number: 0, quality_score: 0 }),
+      "source ? · line 0 · q=0",
+    );
+  });
+});
+
 describe("small formatters", () => {
   it("renders a missing latency as an em dash, not 'undefined ms'", async () => {
     const { api } = await loadMainJs({});

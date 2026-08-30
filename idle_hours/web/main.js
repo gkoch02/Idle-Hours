@@ -72,6 +72,21 @@ function promptForToken() {
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Corpus row identity line, shared verbatim by the bucket inspector and the
+// search results. Factored out because it was duplicated byte-for-byte in both
+// renderers and both copies were the only unescaped interpolations in the file.
+//
+// These three fields are numeric in every corpus the pipeline produces — the
+// miner only ever sets source_id to a Gutenberg ID or null, and the curator
+// API range-checks quality_score to an int in [0, 100]. But "everything from
+// the corpus is escaped before it reaches innerHTML" is a far cheaper
+// invariant to audit than "everything except the three fields we reasoned are
+// always numeric", and a hand-edited or externally-merged JSONL is a supported
+// input to this UI. escapeHtml stringifies, so the ?? fallbacks pass through.
+const rowIdLine = (row) =>
+  `source ${escapeHtml(row.source_id ?? "?")} · line ${escapeHtml(row.line_number ?? "?")}`
+  + ` · q=${escapeHtml(row.quality_score ?? "?")}`;
+
 const fmtMs = (v) => (v == null ? "—" : `${v} ms`);
 
 // ------- Tab nav ------------------------------------------------------------
@@ -281,7 +296,7 @@ function renderCandidate(entry, idx) {
   el.innerHTML = `
     <div class="candidate-head">
       <strong>#${idx + 1} ${entry.is_winner ? "★ winner" : ""}</strong>
-      <span>source ${row.source_id ?? "?"} · line ${row.line_number ?? "?"} · q=${row.quality_score ?? "?"}</span>
+      <span>${rowIdLine(row)}</span>
     </div>
     <div class="candidate-quote">${escapeHtml(row.display_quote || "—")}</div>
     <div class="candidate-meta">${escapeHtml(title)}</div>
@@ -342,7 +357,7 @@ async function runSearch(event) {
     el.innerHTML = `
       <div class="candidate-head">
         <strong>${escapeHtml(row.fuzzy_bucket || row.normalized_time || "—")}</strong>
-        <span>source ${row.source_id ?? "?"} · line ${row.line_number ?? "?"} · q=${row.quality_score ?? "?"}</span>
+        <span>${rowIdLine(row)}</span>
       </div>
       <div class="candidate-quote">${escapeHtml(row.display_quote || "—")}</div>
       <div class="candidate-meta">${escapeHtml(title)}</div>
