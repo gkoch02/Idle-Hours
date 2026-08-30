@@ -40,6 +40,23 @@ def _on_palette(image: Image.Image) -> bool:
     return distinct_inks(image).issubset(palette)
 
 
+# Perceived luminance of each ink as the panel actually reflects it, from the
+# epdoptimize calibration in docs/spectra6_color_recipes.md. Assertions about
+# how bright something *reads* have to use these: the saturated palette IDs are
+# addresses, not colours, and predicting tone from them is the mistake the
+# pride brown documents. Panels drift unit to unit, so this is a guide — the
+# thresholds it feeds are loose bands, not measurements.
+_PANEL_INK = {
+    "white": (0xB9, 0xC7, 0xC9), "black": (0x1F, 0x22, 0x26),
+    "red": (0x62, 0x20, 0x1E), "yellow": (0xC1, 0xBB, 0x1E),
+    "blue": (0x23, 0x3F, 0x8E), "green": (0x35, 0x56, 0x3A),
+}
+_PANEL_LUM = {
+    rq.SPECTRA6[name]: 0.2126 * r + 0.7152 * g + 0.0722 * b
+    for name, (r, g, b) in _PANEL_INK.items()
+}
+
+
 @pytest.mark.parametrize("theme", CUSTOM_THEMES)
 class TestCustomRenderContract:
     """Every custom-render theme must satisfy the four-clause contract above."""
@@ -2108,6 +2125,125 @@ class TestPlaqueRelief:
         assert 0.30 < share["blue"] < 0.50, share
         assert 0.10 < share["yellow"] < 0.30, share
         assert counts.get(rq.SPECTRA6["black"], 0) / total < 0.05, "the pits took over"
+
+    def test_patina_swing_is_hue_not_luminance(self):
+        """The corrosion must pool in *colour*, never in brightness.
+
+        This is the fence the whole-canvas mix above cannot be: the first build
+        moved only the green cut, which spends the entire sine swing on yellow
+        (0% in a pooled patch, 48% in a bare one) rather than on blue. Yellow is
+        the brightest ink the panel has, so the ground swung from ~71 to ~133
+        against a ~138 gold inscription and the letters disappeared into the
+        plate wherever the mottle ran bright. Averaged over the whole canvas
+        that fault is *invisible* — the yellow share still comes back to its
+        20% and ``test_patina_is_forest_teal`` passes clean — so the property
+        has to be measured locally, in panel inks, on the one axis that
+        actually carries legibility.
+
+        Tiles are measured at the calibrated panel values rather than the
+        saturated palette IDs, for the reason the pride brown carries: the
+        inks are muted, and predicting perceived tone from ``(255, 255, 0)``
+        is the standard way to get this wrong.
+        """
+        img = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
+        rq._plaque_paint_patina(img)
+        px = img.load()
+        # Whole 16x16 blocks: a stipple only has a tone at the scale the eye
+        # integrates it over, and a single pixel has no luminance to speak of.
+        step = 16
+        tones = []
+        for by in range(0, 480, step):
+            for bx in range(0, 800, step):
+                total = 0.0
+                for y in range(by, by + step):
+                    for x in range(bx, bx + step):
+                        total += _PANEL_LUM[px[x, y]]
+                tones.append(total / (step * step))
+        tones.sort()
+        lo, hi = tones[len(tones) // 20], tones[-1]
+        assert hi - lo <= 25, (
+            f"the patina spans {hi - lo:.0f} luminance units (p5 {lo:.0f}, max {hi:.0f}); "
+            "the swing is being spent on yellow again instead of on blue, which is what "
+            "made the inscription vanish in the bright patches"
+        )
+        # The brightest patch of plate must stay clear of the gold it carries,
+        # or the letters have nothing to be legible against.
+        gold = 0.625 * _PANEL_LUM[rq.SPECTRA6["yellow"]] + 0.375 * _PANEL_LUM[rq.SPECTRA6["red"]]
+        assert gold - hi >= 15, (
+            f"brightest patina {hi:.0f} against a {gold:.0f} gold face — the inscription "
+            "is the same brightness as the tablet"
+        )
+
+    def test_contact_crease_closes_the_glyph_contour(self):
+        """Lambert alone leaves the edges *along* the light unshaded.
+
+        A raised form's upper-right and lower-left arcs run parallel to an
+        upper-left light, so their gradient is ~0 and the directional pass
+        paints nothing there — the form touches the ground with no boundary
+        between them. On a mottled ground that is where a letter bleeds into
+        the plate. The contact crease is the occlusion line a real relief
+        carries all the way round, and this asserts it reaches the corners the
+        raking light cannot.
+        """
+        cx = cy = 45
+        radius = 20
+
+        def bare_arc_fraction(contact):
+            """How much of the ring just outside a disc keeps the bare ground."""
+            img = Image.new("RGB", (90, 90), rq.SPECTRA6["green"])
+            mask = Image.new("L", img.size, 0)
+            ImageDraw.Draw(mask).ellipse((cx - radius, cy - radius, cx + radius, cy + radius),
+                                         fill=255)
+            rq.paint_relief_mask(img, mask, highlight=rq.SPECTRA6["white"],
+                                 shadow=rq.SPECTRA6["black"], face=rq.SPECTRA6["yellow"],
+                                 radius=2, strength=3.4, cap=0.6, shade_face=False,
+                                 contact=contact, contact_cut=rq._PLAQUE_CONTACT_CUT)
+            px = img.load()
+            bare = 0
+            steps = 360
+            for i in range(steps):
+                theta = 2 * math.pi * i / steps
+                # Walk outward along the ray rather than sampling one rounded
+                # radius: the question is whether the contour is closed in this
+                # direction, and a single sample answers where the rasteriser
+                # put a pixel instead.
+                closed = False
+                for d in (1.0, 1.5, 2.0, 2.5):
+                    x = int(round(cx + (radius + d) * math.cos(theta)))
+                    y = int(round(cy + (radius + d) * math.sin(theta)))
+                    if px[x, y] != rq.SPECTRA6["green"]:
+                        closed = True
+                        break
+                if not closed:
+                    bare += 1
+            return bare / steps
+
+        lambert_only = bare_arc_fraction(None)
+        creased = bare_arc_fraction(rq.SPECTRA6["black"])
+        assert lambert_only > 0.15, (
+            f"premise moved: Lambert alone left only {lambert_only:.0%} of the contour open, "
+            "so the null arcs this crease exists to close are no longer there"
+        )
+        assert creased < 0.02, (
+            f"the crease left {creased:.0%} of the contour open (Lambert alone: "
+            f"{lambert_only:.0%}) — the form still touches the ground somewhere"
+        )
+
+    def test_contact_is_off_by_default(self):
+        """``contact=None`` must be a byte-level no-op.
+
+        ``paint_relief_mask`` is shared with ``daguerreotype``'s pressed mat
+        rings, which want pure Lambert; the crease is a plaque opt-in.
+        """
+        def render(**kwargs):
+            img = Image.new("RGB", (90, 90), rq.SPECTRA6["green"])
+            mask = Image.new("L", img.size, 0)
+            ImageDraw.Draw(mask).ellipse((25, 25, 64, 64), fill=255)
+            rq.paint_relief_mask(img, mask, highlight=rq.SPECTRA6["white"],
+                                 shadow=rq.SPECTRA6["black"], face=rq.SPECTRA6["yellow"],
+                                 radius=3, strength=4.0, **kwargs)
+            return pixel_bytes(img)
+        assert render() == render(contact=None), "the default grew a side effect"
 
     def test_dedication_tracks_hour_only(self):
         frames = {self._frame(f"04:{minute:02d}") for minute in (0, 9, 17, 30, 48, 59)}
