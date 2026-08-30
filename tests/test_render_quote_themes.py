@@ -55,6 +55,33 @@ _PANEL_LUM = {
     rq.SPECTRA6[name]: 0.2126 * r + 0.7152 * g + 0.0722 * b
     for name, (r, g, b) in _PANEL_INK.items()
 }
+_PANEL_INK_BY_RGB = {rq.SPECTRA6[name]: ink for name, ink in _PANEL_INK.items()}
+
+
+def _panel_mix(shares: dict) -> tuple:
+    """Blend calibrated inks by share — what a stipple averages to by eye."""
+    total = sum(shares.values())
+    return tuple(sum(_PANEL_INK[n][i] * w for n, w in shares.items()) / total
+                 for i in range(3))
+
+
+def _wcag_contrast(a: tuple, b: tuple) -> float:
+    """WCAG 2.x contrast ratio between two panel colours.
+
+    Defined for sRGB emissive displays rather than reflective e-ink, so treat
+    it as a calibrated relative yardstick, not an absolute. It is still the
+    right yardstick: it is the only one that puts a *number* on the quantity
+    two builds of this theme failed on while every other assertion passed.
+    """
+    def rel_lum(rgb):
+        chan = []
+        for v in rgb:
+            v /= 255.0
+            chan.append(v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2]
+    la, lb = rel_lum(a), rel_lum(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
 
 
 @pytest.mark.parametrize("theme", CUSTOM_THEMES)
@@ -2115,63 +2142,98 @@ class TestPlaqueRelief:
         counts = ink_counts(img.crop((0, 0, 80, 21)))
         assert counts == {rq.SPECTRA6["red"]: 80 * 21}, "exterior relief painted over a non-ground ink"
 
-    def test_patina_is_forest_teal(self):
+    def test_patina_is_dark_verdigris(self):
+        """Half black, the rest green-led blue — verdigris over dark bronze.
+
+        The ground was the catalogue's forest-teal (G+B+Y 40/40/20) for two
+        builds. It is dark now because *no* lighter ground can carry text on
+        six inks — see ``test_inscription_clears_the_contrast_floor``, which
+        is the fence that matters; this one just pins the recipe.
+        """
         img = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
         rq._plaque_paint_patina(img)
         counts = ink_counts(img)
         total = sum(counts.values())
-        share = {ink: counts.get(rq.SPECTRA6[ink], 0) / total for ink in ("green", "blue", "yellow")}
-        assert 0.30 < share["green"] < 0.50, share
-        assert 0.30 < share["blue"] < 0.50, share
-        assert 0.10 < share["yellow"] < 0.30, share
-        assert counts.get(rq.SPECTRA6["black"], 0) / total < 0.05, "the pits took over"
-
-    def test_patina_swing_is_hue_not_luminance(self):
-        """The corrosion must pool in *colour*, never in brightness.
-
-        This is the fence the whole-canvas mix above cannot be: the first build
-        moved only the green cut, which spends the entire sine swing on yellow
-        (0% in a pooled patch, 48% in a bare one) rather than on blue. Yellow is
-        the brightest ink the panel has, so the ground swung from ~71 to ~133
-        against a ~138 gold inscription and the letters disappeared into the
-        plate wherever the mottle ran bright. Averaged over the whole canvas
-        that fault is *invisible* — the yellow share still comes back to its
-        20% and ``test_patina_is_forest_teal`` passes clean — so the property
-        has to be measured locally, in panel inks, on the one axis that
-        actually carries legibility.
-
-        Tiles are measured at the calibrated panel values rather than the
-        saturated palette IDs, for the reason the pride brown carries: the
-        inks are muted, and predicting perceived tone from ``(255, 255, 0)``
-        is the standard way to get this wrong.
-        """
-        img = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
-        rq._plaque_paint_patina(img)
-        px = img.load()
-        # Whole 16x16 blocks: a stipple only has a tone at the scale the eye
-        # integrates it over, and a single pixel has no luminance to speak of.
-        step = 16
-        tones = []
-        for by in range(0, 480, step):
-            for bx in range(0, 800, step):
-                total = 0.0
-                for y in range(by, by + step):
-                    for x in range(bx, bx + step):
-                        total += _PANEL_LUM[px[x, y]]
-                tones.append(total / (step * step))
-        tones.sort()
-        lo, hi = tones[len(tones) // 20], tones[-1]
-        assert hi - lo <= 25, (
-            f"the patina spans {hi - lo:.0f} luminance units (p5 {lo:.0f}, max {hi:.0f}); "
-            "the swing is being spent on yellow again instead of on blue, which is what "
-            "made the inscription vanish in the bright patches"
+        share = {ink: counts.get(rq.SPECTRA6[ink], 0) / total
+                 for ink in ("green", "blue", "yellow", "black")}
+        assert 0.45 < share["black"] < 0.55, f"the field is no longer half dark: {share}"
+        assert share["green"] > share["blue"], (
+            f"blue overtook green: {share} — an even split reads navy rather than "
+            "verdigris, because the panel's blue is far more chromatic than its green"
         )
-        # The brightest patch of plate must stay clear of the gold it carries,
-        # or the letters have nothing to be legible against.
-        gold = 0.625 * _PANEL_LUM[rq.SPECTRA6["yellow"]] + 0.375 * _PANEL_LUM[rq.SPECTRA6["red"]]
-        assert gold - hi >= 15, (
-            f"brightest patina {hi:.0f} against a {gold:.0f} gold face — the inscription "
-            "is the same brightness as the tablet"
+        assert 0.25 < share["green"] < 0.42, share
+        assert 0.08 < share["blue"] < 0.25, share
+        assert share["yellow"] == 0.0, (
+            "yellow is the inscription's ink on this theme; putting it in the ground "
+            "is what made the first two builds illegible"
+        )
+
+    def test_inscription_clears_the_contrast_floor(self):
+        """The fence that matters: the quote must actually be readable.
+
+        Both earlier builds passed every assertion in this class and were still
+        hard to read across a room, because nothing measured the one quantity
+        legibility is made of. Shipped, the inscription sat at 3.33:1 against
+        its ground where WCAG asks 4.5:1 for body text and 3:1 even for large —
+        and the ceiling is what makes it decisive: against the old mid-tone
+        forest-teal ground, *pure white* reaches only 3.85:1, so no ink and no
+        stipple could have rescued it. The ground had to go dark.
+
+        Measured by diffing the frame against a text-free render of the same
+        composition, because the inks cannot classify themselves: the old
+        ground contained yellow, the same ink as the face, so an ink-based
+        split counts ground as text and reports a flattering number. Of the
+        differing pixels, the bright ones are the glyph face and the dark ones
+        are its relief boundary — crease and core shadow, which aid legibility
+        rather than cost it, so the ratio is face against ground.
+        """
+        row = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                       matched_text="half past two", author="L. M. Montgomery",
+                       title="Anne of Avonlea")
+        full = rq.render("02:30", row, 800, 480, mode="production", theme="plaque")
+
+        bare = Image.new("RGB", (800, 480), rq.SPECTRA6["green"])
+        rq._plaque_paint_patina(bare)
+        rq._plaque_paint_rim(bare)
+        rq._plaque_paint_bolts(bare)
+        bare = rq.snap_image_to_palette(bare, rq.SPECTRA6_PALETTE)
+
+        fs, bs = full.load(), bare.load()
+        bright = {rq.SPECTRA6["yellow"], rq.SPECTRA6["white"]}
+        face, ground = [], []
+        x0, y0, x1, y1 = rq._PLAQUE_QUOTE_RECT
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if fs[x, y] != bs[x, y]:
+                    if fs[x, y] in bright:
+                        face.append(_PANEL_INK_BY_RGB[fs[x, y]])
+                elif True:
+                    ground.append(_PANEL_INK_BY_RGB[bs[x, y]])
+        assert len(face) > 5000, f"only {len(face)} face pixels — the quote did not render"
+
+        def mean(px):
+            return tuple(sum(q[i] for q in px) / len(px) for i in range(3))
+
+        got = _wcag_contrast(mean(face), mean(ground))
+        assert got >= 4.5, (
+            f"the inscription reads at {got:.2f}:1 against its ground; WCAG asks 4.5:1 "
+            "for body text and this panel is read across a room. Raising the face will "
+            "not save a light ground — check the ground's own luminance first."
+        )
+
+    def test_no_ink_can_rescue_a_mid_tone_ground(self):
+        """Pins *why* the ground is dark, so nobody lightens it back.
+
+        Against the forest-teal this theme used to stand on, the brightest ink
+        the panel has still lands under the 4.5:1 floor. The lesson generalises
+        past this theme: on six inks a mid-tone ground cannot hold text, and no
+        amount of work on the letters changes that.
+        """
+        teal = _panel_mix({"green": 0.40, "blue": 0.40, "yellow": 0.20})
+        best = max(_wcag_contrast(_PANEL_INK[ink], teal) for ink in _PANEL_INK)
+        assert best < 4.5, (
+            f"the old forest-teal ground now supports {best:.2f}:1 — if the calibration "
+            "moved this much, revisit the whole plaque palette rather than trusting it"
         )
 
     def test_contact_crease_closes_the_glyph_contour(self):
