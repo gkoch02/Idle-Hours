@@ -32,6 +32,7 @@ const EXPORTED = [
   "getToken",
   "setToken",
   "escapeHtml",
+  "rowIdLine",
   "fmtMs",
   "jsonFetch",
   "promptForToken",

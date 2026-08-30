@@ -101,7 +101,7 @@ USER idlehours
 # tokenless 0.0.0.0 bind).
 EXPOSE 8080
 
-# Default command runs `--once` so an unconfigured `docker run` produces
-# something visible (the rendered PNG lands at /app/output/current.png).
-# Override with `idle-hours run …` for the loop.
+# Default command renders a single fixed-time frame so an unconfigured
+# `docker run` produces something visible (the PNG lands at
+# /app/output/current.png). Override with `idle-hours run …` for the loop.
 CMD ["idle-hours", "render", "--time", "14:30", "--mode", "production"]

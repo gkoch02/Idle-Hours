@@ -158,6 +158,17 @@ def enter_quiet(
     can't interleave their own render. A display failure is logged, traced,
     and recorded to the telemetry sidecar as ``mode="quiet"`` but never
     propagated — the loop's next tick will retry.
+
+    Two distinct times are in play and they are deliberately not the same
+    value. ``time_str`` is *when we entered quiet* and is what the
+    ``quiet_enter`` marker records. ``render_time`` is *what the rendered
+    frame should say*: on the scheduled rising edge that's ``--quiet-start``
+    (the documented "last quote of the night" contract for
+    ``--quiet-image ""``), but on a manual button-D toggle it must be the
+    current time — ``--quiet-start`` is unrelated to the moment the operator
+    pressed the button, and using it painted a 22:00 quote onto the panel at
+    two in the afternoon. ``or time_str`` covers a ``--quiet-off`` install
+    where ``--quiet-start`` is unset entirely.
     """
     from idle_hours import run_clock  # lazy: avoids circular import, and keeps test patches on
                       # run_clock._display_quiet_image / run_clock.render_now working.
@@ -166,6 +177,13 @@ def enter_quiet(
     # bucket_for_time(time_str) rather than current_bucket() so tests that
     # only patch current_time_str don't also have to patch the wall clock.
     quiet_bucket = bucket_for_time(time_str)
+    render_time = time_str if manual_only else (args.quiet_start or time_str)
+    # The render's telemetry entry must describe the frame we actually
+    # painted, so it takes the bucket of ``render_time`` rather than the
+    # entry-time bucket above. The two coincide on the normal scheduled
+    # edge; they diverge when the loop enters quiet late (a restart at 01:00
+    # inside a 22:00–06:00 window) or on a manual toggle.
+    render_bucket = bucket_for_time(render_time)
     trigger = "manual" if manual_only else f"{args.quiet_start}–{args.quiet_end}"
     _log(f"quiet hours start ({trigger})")
     # Structured rising-edge marker so idle_hours_health can tell
@@ -190,9 +208,9 @@ def enter_quiet(
             with state.render_lock:
                 run_clock.render_now(
                     args.render_script, args.output, args.width, args.height, args.display_script,
-                    "goodnight", effective_theme, time_str=args.quiet_start,
+                    "goodnight", effective_theme, time_str=render_time,
                     history_path=history_path, history_days=args.history_days,
-                    telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                    telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
                     **run_clock._corpus_kwargs(args),
                 )
         elif args.quiet_image:
@@ -210,9 +228,9 @@ def enter_quiet(
             with state.render_lock:
                 run_clock.render_now(
                     args.render_script, args.output, args.width, args.height, args.display_script,
-                    args.mode, effective_theme, time_str=args.quiet_start,
+                    args.mode, effective_theme, time_str=render_time,
                     history_path=history_path, history_days=args.history_days,
-                    telemetry_path=telemetry_path, bucket=quiet_bucket, quote_id=None,
+                    telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
                     **run_clock._corpus_kwargs(args),
                 )
     except Exception as exc:
