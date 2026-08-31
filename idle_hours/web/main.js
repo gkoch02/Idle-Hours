@@ -35,6 +35,8 @@ async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   const headers = { ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers["X-Idle-Hours-Token"] = token;
+  // Remember which token this request used, so a 401 handler can tell "nobody
+  // has a working token yet" from "a sibling request already fixed it".
   const resp = await fetch(url, { ...opts, headers });
   const text = await resp.text();
   let data = null;
@@ -45,7 +47,7 @@ async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   // binds never 401 (server ignores tokens), so this only fires on LAN
   // deployments where the operator must supply the configured value.
   if (resp.status === 401 && retryAfterAuth) {
-    const entered = promptForToken();
+    const entered = promptForToken(token);
     if (entered) {
       return jsonFetch(url, opts, false);
     }
@@ -53,13 +55,22 @@ async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   return { status: resp.status, ok: resp.ok, data };
 }
 
-function promptForToken() {
+function promptForToken(staleToken) {
   // Browser prompt is intentionally minimal — operators don't need a fancy
   // modal for a one-time token paste. The README's LAN deploy section
   // documents that they'll be asked. Returning the trimmed value (or "")
   // lets the caller decide whether to retry the failed request.
+  //
+  // `staleToken` is the value the caller's request actually failed with. If
+  // storage now holds something different, another concurrent 401 handler has
+  // already prompted and stored a fresh token, so we adopt it instead of
+  // asking again. Without this, `refreshAll()`'s five parallel GETs plus the
+  // wizard's /api/setup each raised their own dialog — six stacked prompts on
+  // a single first page load, once GETs became token-gated (#233).
+  const current = getToken();
+  if (current && current !== staleToken) return current;
   const value = window.prompt(
-    "This Idle Hours instance requires a token for write operations.\n" +
+    "This Idle Hours instance requires a token.\n" +
     "Paste the contents of --web-token-file:",
     "",
   );

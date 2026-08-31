@@ -235,6 +235,26 @@ def summarise(entries: list[dict]) -> dict:
     quiet_active = last_quiet_mode == "quiet_enter"
     quiet_since = last_quiet_ts if quiet_active else None
     last_quiet_exit_ts = last_quiet_ts if last_quiet_mode == "quiet_exit" else None
+    # The edge markers alone are not sufficient, and this is the half that
+    # matters in practice. They are single points in time, so a window
+    # narrower than the blackout sees NEITHER edge: the README's own cron
+    # (``--hours 1 --fail-if-no-renders``) run at 03:00 inside a 22:00-06:00
+    # window found no markers, read quiet_active=False, and exited 2 — the
+    # exact nightly false positive #232 is about, merely narrowed rather than
+    # fixed. ``run_clock`` therefore stamps the quiet state onto every
+    # heartbeat (~60 s), which is legible in any window long enough to hold
+    # one. The newest stamped heartbeat wins; the edge markers remain the
+    # fallback for ledgers written before the stamp existed.
+    stamped = [e for e in heartbeats if isinstance(e.get("quiet"), bool)]
+    if stamped:
+        newest = stamped[-1]
+        quiet_active = bool(newest["quiet"])
+        if quiet_active:
+            # Prefer the rising edge's timestamp when we have it — it is the
+            # true "asleep since", where the heartbeat only says "asleep now".
+            quiet_since = last_quiet_ts if last_quiet_mode == "quiet_enter" else newest.get("ts")
+        else:
+            quiet_since = None
     # Positively identify renders by the ``render_ms`` field — only set by
     # ``run_clock.render_now`` on a successful render subprocess. Defining
     # renders as "anything without an error" miscategorises modes like

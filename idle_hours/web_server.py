@@ -133,6 +133,15 @@ BUCKET_PATH_RE = re.compile(r"^/api/bucket/(?P<bucket>h(?:[1-9]|1[0-2])_[a-z_]+)
 # positive int. Matches what ``apply_content_overrides.row_key`` produces.
 CONTENT_OVERRIDE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+:\d+$")
 LOCALHOST_HOSTS = {"", "127.0.0.1", "localhost", "::1"}
+# The Host-header check needs its own set. LOCALHOST_HOSTS carries ``""``
+# because ``_parse_bind`` normalises an empty *bind* host to 127.0.0.1 — an
+# unrelated meaning that, reused here, silently let a Host-less HTTP/1.0
+# request through both guards (``_authority_hostname("")`` is ``""``, which
+# was a member). Not reachable from a browser, which always sends Host, so it
+# was never a CSRF hole — but it is an accidental bypass resting on a set
+# whose ``""`` is there for something else, and the coupling would break in
+# whichever direction that member was later changed.
+LOOPBACK_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "::1"})
 # Bind addresses that name no particular host, so the Host header can't be
 # validated against them.
 WILDCARD_BIND_HOSTS = {"0.0.0.0", "::", "*"}
@@ -333,10 +342,16 @@ class WebContext:
         ``localStorage`` — so it has no token to replay.
         """
         name = _authority_hostname(host_header)
+        # An absent or empty Host is rejected outright rather than treated as
+        # "no opinion": HTTP/1.1 requires the header, every browser and every
+        # ordinary client sends it, and accepting it would leave a trivially
+        # crafted raw request outside the guard.
+        if not name:
+            return False
         if name in self.allowed_hosts:
             return True
         if self.bind_is_loopback:
-            return name in LOCALHOST_HOSTS
+            return name in LOOPBACK_HOST_NAMES
         # A concrete (non-wildcard) bind address is always its own valid Host.
         if self.bind_host and self.bind_host not in WILDCARD_BIND_HOSTS:
             if name == _authority_hostname(self.bind_host):

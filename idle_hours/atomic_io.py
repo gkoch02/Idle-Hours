@@ -27,6 +27,13 @@ intended files" — the guarantee callers already believe they have. It also
 makes the ``except OSError`` cleanup honest: it can no longer unlink another
 writer's staging file.
 
+The one thing unique names cost is the old scheme's accidental self-limiting
+property: a deterministic name meant a process killed mid-write left exactly
+one orphan, which the next write reused. Nothing reclaims a uniquely-named
+one, and no ``except`` block runs when the process is killed outright, so
+``_sweep_stale_tmp`` reaps siblings older than an hour after each successful
+write.
+
 Note the deliberate ``os.open(..., 0o666)`` rather than ``tempfile.mkstemp``:
 mkstemp hardcodes 0600, which would silently tighten the mode of every file
 written through here (the rendered PNG, the baked corpus). Passing 0o666 and
@@ -42,6 +49,7 @@ from __future__ import annotations
 import contextlib
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import IO, Callable, Iterable
 
@@ -49,6 +57,18 @@ from typing import IO, Callable, Iterable
 # collides; the retry loop then picks a fresh one.
 _TMP_OPEN_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL
 _TMP_CREATE_ATTEMPTS = 8
+# Age past which an abandoned staging file is swept. Unique names cost us the
+# self-limiting property the old deterministic name had for free: there, a
+# process killed mid-write left one orphan and the *next* write reused that
+# exact name. Now nothing ever reclaims it, and the cleanup handler cannot
+# help — a SIGKILL, a power cut, or ``subprocess.run(timeout=...)`` killing
+# the render child unwinds no ``except`` block at all. ``render_quote`` writes
+# ``output/current.png`` through here on every render and ``run_clock`` kills
+# that child at RENDER_TIMEOUT_SECONDS, so an appliance stuck in the
+# render-timeout backoff loop would accrete a PNG-sized orphan per failure.
+# An hour is far beyond any plausible write duration, so the sweep cannot
+# race a live writer's staging file.
+_TMP_SWEEP_AGE_SECONDS = 3600
 
 
 def _fsync_dir(path: Path) -> None:
@@ -87,6 +107,31 @@ def _open_tmp(path: Path) -> tuple[int, Path]:
     raise last_exc or OSError(f"could not create a staging file for {path}")
 
 
+def _sweep_stale_tmp(path: Path, keep: Path) -> None:
+    """Best-effort removal of long-abandoned staging siblings of ``path``.
+
+    Only files older than :data:`_TMP_SWEEP_AGE_SECONDS` are touched, so a
+    concurrent writer's in-flight staging file is never at risk — that margin
+    is three orders of magnitude beyond a normal write. ``keep`` is our own
+    file, excluded defensively even though it is always younger than the
+    threshold. Every failure is swallowed: this is hygiene, not correctness,
+    and it must never turn a successful write into an exception.
+    """
+    cutoff = time.time() - _TMP_SWEEP_AGE_SECONDS
+    try:
+        candidates = list(path.parent.glob(f"{path.name}.*.tmp"))
+    except OSError:
+        return
+    for candidate in candidates:
+        if candidate == keep:
+            continue
+        with contextlib.suppress(OSError):
+            # A clock stepped backwards makes mtime look like the future,
+            # which reads as "too young to sweep" — the safe direction.
+            if candidate.stat().st_mtime < cutoff:
+                candidate.unlink()
+
+
 def _atomic_write(path: Path, mode: str, writer: Callable[[IO], None], **open_kwargs) -> None:
     """Shared tmp → fsync → replace → dir-fsync body for the three public helpers."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +151,7 @@ def _atomic_write(path: Path, mode: str, writer: Callable[[IO], None], **open_kw
             tmp_path.unlink()
         raise
     _fsync_dir(path.parent)
+    _sweep_stale_tmp(path, tmp_path)
 
 
 def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> None:

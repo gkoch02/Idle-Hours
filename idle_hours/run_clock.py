@@ -1419,7 +1419,13 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
         # off" is free.
         state.last_heartbeat_monotonic = now
     if telemetry_path:
-        append_heartbeat(telemetry_path)
+        # ``state.was_quiet`` is the previous tick's decision: this runs at the
+        # top of the tick, before ``compute_quiet``, and it has to stay there so
+        # the backoff-skip branch (which ``continue``s earlier) still pings.
+        # The stamp is therefore up to one tick stale across a transition,
+        # which is immaterial to a staleness gate whose thresholds are in tens
+        # of minutes.
+        append_heartbeat(telemetry_path, quiet=state.was_quiet)
     sd_notify.notify_watchdog()
 
 

@@ -3209,6 +3209,47 @@ class TestCsrfDefences:
             status, _ = _raw_get(server, path, headers={"Host": f"attacker.test:{port}"})
             assert status == 403, f"{path} answered a rebound Host"
 
+    def test_absent_host_header_is_rejected(self, live_server):
+        """An HTTP/1.0 request with no Host used to pass both guards and mutate
+        state: ``_authority_hostname("")`` is ``""``, which was a member of
+        LOCALHOST_HOSTS — a set that carries ``""`` for ``_parse_bind``'s
+        empty-*bind*-host normalisation, an unrelated meaning. Not reachable
+        from a browser (which always sends Host), so never a CSRF hole, but an
+        accidental bypass resting on a coincidence."""
+        server, state, _args = live_server
+        before = state.manual_quiet
+        # http.client always sends Host, so this has to go out over a raw
+        # socket — which is also the only way an attacker could produce it.
+        import socket as _socket
+        for verb, extra in (("GET /api/history", ""),
+                            ("POST /api/action/quiet",
+                             "Content-Type: application/json\r\nContent-Length: 0\r\n")):
+            raw = _socket.create_connection(server.server_address, timeout=10)
+            raw.sendall(f"{verb} HTTP/1.0\r\n{extra}\r\n".encode())
+            status_line = raw.recv(256).split(b"\r\n")[0].decode()
+            raw.close()
+            assert " 403 " in status_line, f"{verb} without a Host: {status_line}"
+        assert state.manual_quiet == before
+
+    def test_absent_host_rejected_on_a_non_loopback_bind_too(self, tmp_path):
+        """This is where the explicit empty-Host guard is load-bearing. On a
+        loopback bind an empty name simply isn't in LOOPBACK_HOST_NAMES, so it
+        falls out anyway; a permissive non-loopback bind ends at
+        ``return not self.allowed_hosts``, which is True — so without the
+        guard a Host-less request would be waved through there."""
+        import socket as _socket
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            raw = _socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=10)
+            raw.sendall(b"GET /api/history HTTP/1.0\r\nX-Idle-Hours-Token: secret\r\n\r\n")
+            status_line = raw.recv(256).split(b"\r\n")[0].decode()
+            raw.close()
+            assert " 403 " in status_line, status_line
+        finally:
+            run_clock.stop_web_server((server, thread))
+
     def test_loopback_names_are_accepted(self, live_server):
         server, _state, _args = live_server
         port = server.server_address[1]

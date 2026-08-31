@@ -987,6 +987,108 @@ class TestQuietAwareRenderStaleness:
             {"last_render_ts": "not-a-date", "last_quiet_exit_ts": None}, 30
         ) is True
 
+    # -- the heartbeat stamp, which is what makes short windows work ---------
+
+    def _stamped_night(self, *, entered_minutes_ago=300, window_minutes=None):
+        """Quiet entered N minutes ago, heartbeats stamped ``quiet: true`` since.
+
+        ``window_minutes`` truncates the ledger to only the entries a narrower
+        ``--hours`` window would actually load, which is how the rising edge
+        disappears from view.
+        """
+        entries = [
+            {"ts": _ts(entered_minutes_ago + 1), "render_ms": 900, "display_ms": 12000},
+            {"ts": _ts(entered_minutes_ago), "mode": "quiet_enter", "manual": False},
+        ]
+        entries += [
+            {"ts": _ts(m), "type": "heartbeat", "quiet": True}
+            for m in range(entered_minutes_ago - 1, 0, -1)
+        ]
+        if window_minutes is not None:
+            entries = [e for e in entries
+                       if dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(e["ts"])
+                       <= dt.timedelta(minutes=window_minutes)]
+        return entries
+
+    def test_short_window_sees_no_edge_marker_at_all(self):
+        """Precondition for the next test — if this stops holding, the test
+        below stops proving anything."""
+        entries = self._stamped_night(window_minutes=60)
+        assert not [e for e in entries if e.get("mode") in ("quiet_enter", "quiet_exit")]
+
+    def test_heartbeat_stamp_carries_the_state_into_a_short_window(self):
+        """The edge markers are single points in time, so a window narrower
+        than the blackout sees neither. The README's own cron
+        (``--hours 1 --fail-if-no-renders``) run at 03:00 inside a 22:00-06:00
+        window found nothing, read not-quiet, and exited 2 — the exact nightly
+        false positive, merely narrowed."""
+        summary = idle_hours_health.summarise(self._stamped_night(window_minutes=60))
+        assert summary["quiet_active"] is True
+        assert idle_hours_health.is_render_stale(summary, 90) is False
+
+    def test_stamp_wins_over_a_stale_edge_marker(self):
+        """A quiet_enter still in a wide window, but the loop has since woken:
+        the newest heartbeat is authoritative."""
+        entries = [
+            {"ts": _ts(300), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(200), "type": "heartbeat", "quiet": True},
+            {"ts": _ts(2), "type": "heartbeat", "quiet": False},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is False
+        assert summary["quiet_since"] is None
+
+    def test_quiet_since_prefers_the_rising_edge_over_the_stamp(self):
+        """The heartbeat only says 'asleep now'; the edge says 'asleep since'."""
+        entries = [
+            {"ts": _ts(300), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(1), "type": "heartbeat", "quiet": True},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_since"] == entries[0]["ts"]
+
+    def test_stamp_supplies_quiet_since_when_the_edge_is_out_of_window(self):
+        entries = [{"ts": _ts(30), "type": "heartbeat", "quiet": True}]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is True
+        assert summary["quiet_since"] == entries[0]["ts"]
+
+    def test_unstamped_heartbeats_fall_back_to_the_edge_markers(self):
+        """Ledgers written before the stamp existed must keep working."""
+        entries = [
+            {"ts": _ts(300), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is True
+
+    def test_non_bool_stamp_is_ignored(self):
+        """A malformed entry must not be able to assert a state."""
+        entries = [
+            {"ts": _ts(300), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(1), "type": "heartbeat", "quiet": "yes"},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is True
+
+    def test_short_window_cron_exits_zero(self, tmp_path):
+        path = _ledger(tmp_path, self._stamped_night(window_minutes=60))
+        for extra in (["--max-render-age-minutes", "90"], ["--fail-if-no-renders"]):
+            argv = ["idle_hours_health.py", "--telemetry-path", str(path),
+                    "--hours", "1", *extra]
+            with patch("sys.argv", argv):
+                assert idle_hours_health.main() == 0, f"{extra} still false-positives"
+
+    def test_short_window_still_catches_a_wedge(self, tmp_path):
+        """Suppression must not extend to a loop that stopped heartbeating."""
+        entries = [{"ts": _ts(m), "type": "heartbeat", "quiet": True}
+                   for m in range(59, 30, -1)]
+        path = _ledger(tmp_path, entries)
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "1",
+                "--max-heartbeat-age-minutes", "5"]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 2
+
     # -- exit codes ---------------------------------------------------------
 
     def test_nightly_cron_exits_zero_during_quiet_hours(self, tmp_path):

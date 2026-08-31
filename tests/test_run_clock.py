@@ -4707,6 +4707,38 @@ class TestHeartbeat:
         hb = [e for e in entries if e.get("type") == "heartbeat"]
         assert len(hb) == 1
 
+    def test_heartbeat_carries_the_quiet_stamp(self, tmp_path):
+        """#232: the edge markers are single points in time, so a health window
+        narrower than the blackout sees neither and can't tell 'asleep on
+        purpose' from 'wedged'. A ~60s heartbeat makes the state legible in any
+        window."""
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        run_clock._maybe_emit_heartbeat(state, str(telemetry_base))
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(ln) for ln in daily.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        hb = [e for e in entries if e.get("type") == "heartbeat"]
+        assert hb and hb[-1]["quiet"] is True
+
+    def test_heartbeat_stamp_is_false_when_awake(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        assert state.was_quiet is False
+        telemetry_base = tmp_path / "telemetry.jsonl"
+        run_clock._maybe_emit_heartbeat(state, str(telemetry_base))
+        daily = run_clock.daily_telemetry_path(telemetry_base)
+        entries = [json.loads(ln) for ln in daily.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        assert [e for e in entries if e.get("type") == "heartbeat"][-1]["quiet"] is False
+
+    def test_heartbeat_omits_the_stamp_when_not_supplied(self, tmp_path):
+        """``append_heartbeat`` must not assert a state it wasn't told."""
+        from idle_hours import runtime_telemetry
+        base = tmp_path / "telemetry.jsonl"
+        runtime_telemetry.append_heartbeat(str(base))
+        daily = run_clock.daily_telemetry_path(base)
+        entry = json.loads(daily.read_text(encoding="utf-8").splitlines()[0])
+        assert "quiet" not in entry
+
     def test_heartbeat_disabled_when_no_telemetry(self, tmp_path):
         state = run_clock.RuntimeState("default")
         # No telemetry path → no-op, no file created.
@@ -4828,9 +4860,17 @@ class TestWatchdogPingsOutsideTheHeartbeat:
         def stop_after_one(_state, _sec):
             raise KeyboardInterrupt
 
+        # ``_maybe_emit_heartbeat`` is stubbed out so the pre-acquire ping is
+        # the ONLY ping source left in the tick. Without this the assertion is
+        # vacuous in two different ways: the heartbeat pings at the top of
+        # every tick, so both "a pet exists" and "a pet precedes the acquire
+        # in this list" stay true with the pre-acquire ping deleted — ``order``
+        # holds only these two event kinds, so adjacency in the list says
+        # nothing about adjacency in time.
         with patch("sys.argv", argv), \
              patch("idle_hours.run_clock.RuntimeState.__init__", init_with_recording_lock), \
              patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock._maybe_emit_heartbeat"), \
              patch("idle_hours.run_clock.peek_quote_id",
                    return_value=("141", 482, "quote", "three")), \
              patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
@@ -4841,7 +4881,9 @@ class TestWatchdogPingsOutsideTheHeartbeat:
                 run_clock.main()
 
         assert "acquire" in order, "the loop never reached its blocking acquire"
-        assert order.index("pet") < order.index("acquire")
+        assert order[:order.index("acquire")] == ["pet"], (
+            f"no ping immediately before the blocking acquire: {order}"
+        )
 
 
 class TestSourceCardTimerCancellation:

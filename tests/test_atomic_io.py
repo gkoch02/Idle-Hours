@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -233,3 +234,62 @@ class TestUniqueStagingFile:
         target = tmp_path / "written"
         atomic_io.atomic_write_text(target, "x")
         assert (target.stat().st_mode & 0o777) == (reference.stat().st_mode & 0o777)
+
+
+class TestStaleStagingSweep:
+    """Unique names cost the old scheme's accidental self-limiting property: a
+    deterministic name meant a process killed mid-write left one orphan and the
+    next write reused it. Nothing reclaims a unique one, and no ``except`` runs
+    when a process is killed outright — a SIGKILL, a power cut, or
+    ``subprocess.run(timeout=...)`` killing the render child mid-PNG-write.
+    """
+
+    def _abandon(self, target: Path, age_seconds: float) -> Path:
+        """Create an orphan the way a hard-killed writer would leave one."""
+        fd, tmp = atomic_io._open_tmp(target)
+        os.close(fd)
+        stamp = time.time() - age_seconds
+        os.utime(tmp, (stamp, stamp))
+        return tmp
+
+    def test_old_orphans_are_reaped_after_a_successful_write(self, tmp_path: Path) -> None:
+        target = tmp_path / "current.png"
+        orphans = [self._abandon(target, atomic_io._TMP_SWEEP_AGE_SECONDS + 60)
+                   for _ in range(5)]
+        atomic_io.atomic_write_bytes(target, b"payload")
+        assert not any(o.exists() for o in orphans)
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_recent_orphans_are_left_alone(self, tmp_path: Path) -> None:
+        """The age margin is what makes the sweep safe against a concurrent
+        writer — its staging file is seconds old, not an hour."""
+        target = tmp_path / "current.png"
+        fresh = self._abandon(target, 5)
+        atomic_io.atomic_write_bytes(target, b"payload")
+        assert fresh.exists()
+
+    def test_other_targets_are_untouched(self, tmp_path: Path) -> None:
+        target = tmp_path / "current.png"
+        other = tmp_path / "quote_database.jsonl"
+        other_orphan = self._abandon(other, atomic_io._TMP_SWEEP_AGE_SECONDS + 60)
+        atomic_io.atomic_write_bytes(target, b"payload")
+        assert other_orphan.exists(), "the sweep must be scoped to its own target"
+
+    def test_sweep_failure_never_fails_the_write(self, tmp_path: Path,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+        """Hygiene, not correctness — it must not turn a good write into an error."""
+        target = tmp_path / "current.png"
+        monkeypatch.setattr(
+            atomic_io.Path, "glob",
+            lambda self, pattern: (_ for _ in ()).throw(OSError("no dir")),
+        )
+        atomic_io.atomic_write_bytes(target, b"payload")
+        assert target.read_bytes() == b"payload"
+
+    def test_a_future_mtime_is_not_swept(self, tmp_path: Path) -> None:
+        """A clock stepped backwards makes mtime look like the future; that
+        must read as 'too young', which is the safe direction."""
+        target = tmp_path / "current.png"
+        future = self._abandon(target, -3600)
+        atomic_io.atomic_write_bytes(target, b"payload")
+        assert future.exists()

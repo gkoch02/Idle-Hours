@@ -197,6 +197,43 @@ describe("jsonFetch — token handling and 401 recovery", () => {
     assert.equal(res.status, 401);
   });
 
+  it("raises ONE prompt when several concurrent requests 401", async () => {
+    // Gating JSON GETs (#233) made this reachable on a LAN bind's very first
+    // load: refreshAll() fires five GETs through Promise.all and the wizard
+    // adds /api/setup, so six independent 401 handlers each raised their own
+    // window.prompt. The operator saw six stacked dialogs.
+    const { api, calls } = await loadMainJs({
+      promptResult: "the-token",
+      fetch: async (url, init = {}) => {
+        const token = (init.headers || {})["X-Idle-Hours-Token"];
+        return token === "the-token"
+          ? { status: 200, ok: true, text: async () => "{}" }
+          : { status: 401, ok: false, text: async () => "" };
+      },
+    });
+    const results = await Promise.all([
+      api.jsonFetch("/api/current"), api.jsonFetch("/api/telemetry"),
+      api.jsonFetch("/api/coverage"), api.jsonFetch("/api/history"),
+      api.jsonFetch("/api/themes"), api.jsonFetch("/api/setup"),
+    ]);
+    assert.equal(calls.prompts.length, 1, "one dialog per page load, not one per request");
+    // The five that skipped the prompt must still have recovered.
+    assert.ok(results.every((r) => r.ok), "a request that skipped the prompt must still retry");
+  });
+
+  it("prompts again when the stored token is itself the one that failed", async () => {
+    // The dedup must key on "storage changed", not "storage is non-empty" —
+    // otherwise a stale saved token would suppress the prompt forever and the
+    // operator could never correct it.
+    const { api, calls, storage } = await loadMainJs({
+      promptResult: "fresh",
+      fetch: async () => ({ status: 401, ok: false, text: async () => "" }),
+    });
+    storage.set("idle-hours.web.token", "stale");  // raw Map behind the localStorage shim
+    await api.jsonFetch("/api/current");
+    assert.equal(calls.prompts.length, 1);
+  });
+
   it("retries at most once so a persistent 401 cannot loop", async () => {
     // jsonFetch recurses; a missing retryAfterAuth=false on the inner call
     // would prompt-and-retry forever against a wrong token.

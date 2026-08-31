@@ -431,6 +431,8 @@ idle-hours health --hours 1 --json --fail-if-no-renders
 # Exit 2 if the panel hasn't repainted recently (a loop can heartbeat while stuck in backoff).
 # Stands down while quiet hours are open — the loop is supposed to be silent then — and
 # resumes measuring from the window's close, so a failure to wake up is still caught.
+# Works for any window width: the loop stamps the quiet state onto every heartbeat,
+# so a --hours 1 cron run at 03:00 sees it even though the 22:00 edge is long out of view.
 idle-hours health --hours 24 --max-render-age-minutes 90
 
 # systemd installs relocate telemetry under /var/lib/idle-hours; read the path from the same
@@ -438,7 +440,7 @@ idle-hours health --hours 24 --max-render-age-minutes 90
 idle-hours health --config /var/lib/idle-hours/config.toml --hours 24
 ```
 
-Every file the next tick or boot reads is written atomically (`unique tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger. The staging file is uniquely named per write, so two writers of one target (an `idle-hours bake` racing the curator UI's "Bake now", say) each publish a whole payload rather than a blend of both — last writer wins, which is a lost edit, not a corrupt corpus.
+Every file the next tick or boot reads is written atomically (`unique tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger. The staging file is uniquely named per write, so two writers of one target (an `idle-hours bake` racing the curator UI's "Bake now", say) each publish a whole payload rather than a blend of both — last writer wins, which is a lost edit, not a corrupt corpus. Staging files abandoned by a hard kill (power cut, or a render subprocess killed at its timeout) are swept on the next successful write to the same target, once they are an hour old.
 
 `SIGTERM` and `SIGINT` are handled gracefully: `systemctl restart idle-hours.service` flips a shared event that the main loop observes between ticks, drains any in-flight render via `state.render_lock`, stops the curator web server, closes GPIO buttons, and persists runtime state one last time before the process exits. `--once` keeps strict-exit behaviour for cron callers.
 

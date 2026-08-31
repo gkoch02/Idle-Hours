@@ -1783,6 +1783,24 @@ class TestDegradationWarningsAreOneShot:
         assert verdict == pq.BAKED_SCORE_SCHEMA_VERSION + 3
         assert computed_now is True
 
+    def test_bad_schema_intermediate_also_clears_the_missing_latch(self, tmp_path, capsys):
+        """The docstring promises missing -> restored -> missing warns each
+        time. Only the *healthy* intermediate cleared the latch, so a restore
+        that was itself a bad bake left the 'missing' latch set and the third
+        step went silent."""
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = tmp_path / "db.jsonl"
+        pq.clear_corpus_cache()
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("not found") == 1
+        # Reappears, but stamped with a schema this picker can't read.
+        self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 7)
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("schema_version") == 1
+        db.unlink()
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("not found") == 1
+
     def test_schema_scan_is_not_repeated_per_pick(self, tmp_path, monkeypatch):
         """The healthy path walked the whole row list on every pick for an answer
         that can't change while the file doesn't."""

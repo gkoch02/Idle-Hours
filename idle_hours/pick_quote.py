@@ -990,6 +990,12 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
             rows = _load_rows_cached(path)
             stale, computed_now = _schema_mismatch_cached(path, rows)
             if stale is not None:
+                # The file EXISTS, so any latched "missing" / "empty" warning
+                # for this path is now stale. Clearing it here as well as on
+                # the healthy path is what makes the documented
+                # missing -> restored -> missing sequence warn each time even
+                # when the middle state was a bad bake rather than a good one.
+                _clear_degraded_latch(key)
                 if computed_now:
                     print(
                         f"warning: baked database {path} has schema_version={stale!r} "
