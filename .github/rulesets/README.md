@@ -8,30 +8,38 @@ runs the sync command.
 
 ## Applying it
 
-```bash
-# First time (creates the ruleset):
-gh api --method POST /repos/gkoch02/Idle-Hours/rulesets \
-  --input .github/rulesets/main-branch.json
+First time (creates the ruleset):
 
-# Subsequent edits (replaces the existing ruleset in place):
-gh api /repos/gkoch02/Idle-Hours/rulesets --jq '.[] | select(.name=="Protect main") | .id'
-gh api --method PUT /repos/gkoch02/Idle-Hours/rulesets/<id> \
+```bash
+gh api --method POST /repos/gkoch02/Idle-Hours/rulesets \
   --input .github/rulesets/main-branch.json
 ```
 
-Verify afterwards with:
+Subsequent edits (replaces the existing ruleset in place). Note the ruleset is
+addressed by numeric id, not by name, so look it up first:
 
 ```bash
-gh api /repos/gkoch02/Idle-Hours/rulesets/<id> --jq \
-  '.rules[] | select(.type=="required_status_checks") | .parameters'
+RULESET_ID=$(gh api /repos/gkoch02/Idle-Hours/rulesets \
+  --jq '.[] | select(.name=="Protect main") | .id')
+
+gh api --method PUT "/repos/gkoch02/Idle-Hours/rulesets/$RULESET_ID" \
+  --input .github/rulesets/main-branch.json
+```
+
+Verify afterwards — this should list the same contexts as the JSON:
+
+```bash
+gh api "/repos/gkoch02/Idle-Hours/rulesets/$RULESET_ID" \
+  --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
 ```
 
 ## Which checks are required, and why all of them are
 
-Every job in `.github/workflows/ci.yml` that runs unconditionally on a pull
-request is a required status check. `tests/test_ci_required_checks.py` fences
-that as a set equality, so adding a CI job without deciding what it gates fails
-the suite rather than landing silently as an advisory job.
+Every job in `.github/workflows/ci.yml` is either a required status check or an
+explicit entry in `tests/test_ci_required_checks.py`'s `ADVISORY_JOBS` map, with
+a reason. That test fences the two files against each other as a set equality,
+so adding a CI job without deciding what it gates fails the suite rather than
+landing silently as an advisory job.
 
 That rule exists because the repo had drifted the other way (issue #241). Only
 `lint` and the two `test` legs were required, which left the three jobs that
