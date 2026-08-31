@@ -53,14 +53,23 @@ catch* unable to block anything:
   leakage at import). Every other job installs with `pip install -e .`, which
   cannot see any of them.
 - **`coverage`** — the `--cov-fail-under=95` line+branch floor. It was also
-  `if: github.event_name == 'push'`, so it did not run on pull requests at all;
-  a required context that reports `skipped` is never satisfied, so making it
-  required and making it run on PRs are one decision. See the comment on the
-  job.
+  `if: github.event_name == 'push'`, so it did not run on pull requests at all.
+  Making it required and making it run on PRs are one decision, though not for
+  the reason you might expect: GitHub reports a job skipped by its `if:` with
+  conclusion `skipped`, and **a skipped check counts as success** for a
+  required status check. Requiring it while it stayed conditional would not
+  have deadlocked merges — it would have produced a gate that went green on
+  every pull request without measuring a line, which is worse than leaving it
+  advisory, because it looks enforced.
 
-`release-version` is deliberately **not** required: it is tag-only
-(`if: startsWith(github.ref, 'refs/tags/v')`) and never reports on a pull
-request.
+`release-version` is deliberately **not** required. It is tag-only
+(`if: startsWith(github.ref, 'refs/tags/v')`), so on a pull request it reports
+`skipped` → success: requiring it would add a context that is vacuously green,
+not a gate. Note this means a job-level `if:` is *not* by itself grounds for
+leaving a job advisory — a future job conditioned on something that can be true
+on a pull request (a path filter, a label, a non-fork head) would really run and
+could really fail. `tests/test_ci_required_checks.py` therefore classifies every
+job by hand rather than excusing conditional ones automatically.
 
 ## `strict_required_status_checks_policy`
 

@@ -106,11 +106,18 @@ jobs:
     #     path excluding it was ``test (3.12)`` at 1m50s; PR #240's critical
     #     path was that same job at 3m17s (runner variance is ~±1.5 min). So
     #     PR feedback moves from roughly 2-3.5 min to roughly 4.2 min.
-    #   * A required status check has to actually run on the pull request:
-    #     GitHub never treats a context reported as ``skipped`` as satisfied.
-    #     So listing ``coverage`` in .github/rulesets/main-branch.json — which
-    #     is what makes the "blocks the merge" sentence above true — and
-    #     dropping the ``if`` here are inseparable.
+    #   * A required status check has to actually run on the pull request,
+    #     and the reason is the opposite of the obvious one. GitHub reports a
+    #     job skipped by its ``if:`` with conclusion ``skipped``, and a skipped
+    #     check *counts as success* for a required status check. So adding
+    #     ``coverage`` to .github/rulesets/main-branch.json while keeping the
+    #     ``if:`` here would not have deadlocked anything — it would have been
+    #     worse: a required gate reporting green on every pull request without
+    #     measuring a line. Listing it in the ruleset (which is what makes the
+    #     "blocks the merge" sentence above true) and dropping the ``if`` are
+    #     inseparable. (The genuinely merge-blocking case is a whole *workflow*
+    #     skipped by path or branch filtering, where the check never reports at
+    #     all and stays pending; ci.yml has no such filter on ``pull_request``.)
     #
     # tests/test_ci_required_checks.py fences both halves.
     runs-on: ubuntu-latest
