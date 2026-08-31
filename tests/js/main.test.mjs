@@ -221,6 +221,36 @@ describe("jsonFetch — token handling and 401 recovery", () => {
     assert.ok(results.every((r) => r.ok), "a request that skipped the prompt must still retry");
   });
 
+  it("raises ONE prompt even when the operator cancels it", async () => {
+    // Storage being unchanged is not proof that nobody asked. Cancelling (or
+    // submitting empty) stores nothing, so keying the dedup only on "a new
+    // non-empty token appeared" put all six dialogs back — precisely when the
+    // operator does not have the token to hand.
+    const { api, calls } = await loadMainJs({
+      promptResult: null,               // Cancel
+      fetch: async () => ({ status: 401, ok: false, text: async () => "" }),
+    });
+    await Promise.all([
+      api.jsonFetch("/api/current"), api.jsonFetch("/api/telemetry"),
+      api.jsonFetch("/api/coverage"), api.jsonFetch("/api/history"),
+      api.jsonFetch("/api/themes"), api.jsonFetch("/api/setup"),
+    ]);
+    assert.equal(calls.prompts.length, 1, "one dialog per burst even on cancel");
+  });
+
+  it("prompts again on a later request after a cancelled burst", async () => {
+    // The memo must not silence the operator for the life of the page: a
+    // request that starts when nothing else is in flight begins a new burst.
+    const { api, calls } = await loadMainJs({
+      promptResult: null,
+      fetch: async () => ({ status: 401, ok: false, text: async () => "" }),
+    });
+    await Promise.all([api.jsonFetch("/api/current"), api.jsonFetch("/api/themes")]);
+    assert.equal(calls.prompts.length, 1);
+    await api.jsonFetch("/api/current");   // the operator clicks something later
+    assert.equal(calls.prompts.length, 2, "a later attempt must be able to prompt");
+  });
+
   it("prompts again when the stored token is itself the one that failed", async () => {
     // The dedup must key on "storage changed", not "storage is non-empty" —
     // otherwise a stale saved token would suppress the prompt forever and the

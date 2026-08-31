@@ -452,3 +452,45 @@ class TestShippedDefaultsFile:
             f"idle_hours/assets/config.toml.defaults missing schema keys with "
             f"non-None argparse defaults: {sorted(missing)}"
         )
+
+
+class TestAllowedHostsPrecedence:
+    """#242 review: ``action="append"`` copies the config-supplied default and
+    appends to it, so a CLI flag could only widen the DNS-rebinding allowlist.
+
+    That breaks the CLI > config > argparse-default precedence every other key
+    follows, and on a security allowlist it means an operator tightening the
+    set on the command line cannot drop a configured host — the name they
+    meant to revoke stays authorised.
+    """
+
+    def _cfg(self, tmp_path, body):
+        path = tmp_path / "cfg.toml"
+        path.write_text(body, encoding="utf-8")
+        return str(path)
+
+    def test_cli_replaces_the_configured_list(self, tmp_path, monkeypatch):
+        cfg = self._cfg(tmp_path, 'web_allowed_hosts = ["old.local"]\n')
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", cfg,
+                                         "--web-allowed-host", "new.local"])
+        assert run_clock.parse_args().web_allowed_hosts == ["new.local"]
+
+    def test_repeated_cli_flags_still_accumulate(self, tmp_path, monkeypatch):
+        cfg = self._cfg(tmp_path, 'web_allowed_hosts = ["old.local"]\n')
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", cfg,
+                                         "--web-allowed-host", "a",
+                                         "--web-allowed-host", "b"])
+        assert run_clock.parse_args().web_allowed_hosts == ["a", "b"]
+
+    def test_config_alone_is_honoured(self, tmp_path, monkeypatch):
+        cfg = self._cfg(tmp_path, 'web_allowed_hosts = ["old.local", "two.local"]\n')
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--config", cfg])
+        assert run_clock.parse_args().web_allowed_hosts == ["old.local", "two.local"]
+
+    def test_cli_alone_is_honoured(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["run_clock.py", "--web-allowed-host", "solo.local"])
+        assert run_clock.parse_args().web_allowed_hosts == ["solo.local"]
+
+    def test_neither_leaves_it_unset(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["run_clock.py"])
+        assert run_clock.parse_args().web_allowed_hosts is None

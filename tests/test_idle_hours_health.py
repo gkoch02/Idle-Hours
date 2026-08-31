@@ -1026,6 +1026,36 @@ class TestQuietAwareRenderStaleness:
         assert summary["quiet_active"] is True
         assert idle_hours_health.is_render_stale(summary, 90) is False
 
+    def test_edge_marker_newer_than_the_stamp_wins(self):
+        """The loop emits the heartbeat at the top of the tick, BEFORE
+        compute_quiet — so on the tick that leaves quiet hours the heartbeat
+        still says quiet=true and `quiet_exit` is appended after it. Letting
+        the heartbeat override unconditionally reports an appliance that woke
+        and then died as 'asleep on purpose', suppressing the very gate that
+        should catch it."""
+        entries = [
+            {"ts": _ts(400), "render_ms": 900, "display_ms": 50},
+            {"ts": _ts(390), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(121), "type": "heartbeat", "quiet": True},
+            {"ts": _ts(120), "mode": "quiet_exit"},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is False
+        assert idle_hours_health.is_render_stale(summary, 90) is True
+
+    def test_rising_edge_newer_than_the_stamp_wins_too(self):
+        """The mirror case at quiet entry — a false alarm rather than a missed
+        failure, but wrong in the same way."""
+        entries = [
+            {"ts": _ts(400), "render_ms": 900, "display_ms": 50},
+            {"ts": _ts(121), "type": "heartbeat", "quiet": False},
+            {"ts": _ts(120), "mode": "quiet_enter", "manual": False},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is True
+        assert summary["quiet_since"] == entries[-1]["ts"]
+        assert idle_hours_health.is_render_stale(summary, 90) is False
+
     def test_stamp_wins_over_a_stale_edge_marker(self):
         """A quiet_enter still in a wide window, but the loop has since woken:
         the newest heartbeat is authoritative."""

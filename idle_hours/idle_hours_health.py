@@ -232,8 +232,6 @@ def summarise(entries: list[dict]) -> dict:
         if mode in ("quiet_enter", "quiet_exit"):
             last_quiet_mode = mode
             last_quiet_ts = entry.get("ts")
-    quiet_active = last_quiet_mode == "quiet_enter"
-    quiet_since = last_quiet_ts if quiet_active else None
     last_quiet_exit_ts = last_quiet_ts if last_quiet_mode == "quiet_exit" else None
     # The edge markers alone are not sufficient, and this is the half that
     # matters in practice. They are single points in time, so a window
@@ -245,16 +243,42 @@ def summarise(entries: list[dict]) -> dict:
     # heartbeat (~60 s), which is legible in any window long enough to hold
     # one. The newest stamped heartbeat wins; the edge markers remain the
     # fallback for ledgers written before the stamp existed.
-    stamped = [e for e in heartbeats if isinstance(e.get("quiet"), bool)]
-    if stamped:
-        newest = stamped[-1]
-        quiet_active = bool(newest["quiet"])
-        if quiet_active:
-            # Prefer the rising edge's timestamp when we have it — it is the
-            # true "asleep since", where the heartbeat only says "asleep now".
-            quiet_since = last_quiet_ts if last_quiet_mode == "quiet_enter" else newest.get("ts")
-        else:
-            quiet_since = None
+    # Whichever quiet signal is NEWEST wins, edge marker or stamped heartbeat
+    # alike — a single interleaved pass rather than letting the heartbeat
+    # override unconditionally. The ordering matters because
+    # ``_maybe_emit_heartbeat`` runs at the top of the tick, before
+    # ``compute_quiet``: on the tick that LEAVES quiet hours the heartbeat
+    # still carries the previous tick's ``quiet=true`` and the ``quiet_exit``
+    # marker is appended after it. Preferring the heartbeat there reports an
+    # appliance that woke and then died as "asleep on purpose" and suppresses
+    # the render-staleness gate — the gate hiding a real failure, which is the
+    # worse direction to be wrong in. (The mirror case at quiet entry produces
+    # a false alarm instead.) Both self-correct on the next heartbeat, so this
+    # only bites when the process stops inside that one-tick window — which is
+    # exactly the failure the gate exists to catch.
+    #
+    # Comparing by position in the append-ordered stream, not by parsing the
+    # two timestamps, keeps the malformed-``ts`` robustness the edge scan
+    # above already had.
+    quiet_active = False
+    quiet_since: str | None = None
+    for entry in entries:
+        if entry.get("type") == "heartbeat":
+            stamp = entry.get("quiet")
+            if isinstance(stamp, bool):
+                quiet_active = stamp
+                # A heartbeat only says "asleep now"; the rising edge says
+                # "asleep since", so keep the edge's timestamp when it is the
+                # one that opened the window we are still inside.
+                quiet_since = (
+                    last_quiet_ts if last_quiet_mode == "quiet_enter" else entry.get("ts")
+                ) if stamp else None
+            continue
+        mode = entry.get("mode")
+        if mode == "quiet_enter":
+            quiet_active, quiet_since = True, entry.get("ts")
+        elif mode == "quiet_exit":
+            quiet_active, quiet_since = False, None
     # Positively identify renders by the ``render_ms`` field — only set by
     # ``run_clock.render_now`` on a successful render subprocess. Defining
     # renders as "anything without an error" miscategorises modes like

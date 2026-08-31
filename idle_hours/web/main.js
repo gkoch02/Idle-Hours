@@ -31,7 +31,26 @@ const log = (msg, cls = "") => {
   while (el.children.length > 8) el.removeChild(el.lastChild);
 };
 
+// One token prompt per burst of concurrent 401s. `inFlightRequests` is what
+// distinguishes "five siblings from the same page load" from "the operator
+// clicked something a minute later": a jsonFetch that starts while nothing
+// else is in flight begins a new burst and clears the memo, so a prompt the
+// operator cancelled does not suppress every later attempt for the lifetime
+// of the page.
+let tokenPromptAttempt = null;
+let inFlightRequests = 0;
+
 async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
+  if (inFlightRequests === 0) tokenPromptAttempt = null;
+  inFlightRequests += 1;
+  try {
+    return await jsonFetchInner(url, opts, retryAfterAuth);
+  } finally {
+    inFlightRequests -= 1;
+  }
+}
+
+async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
   const headers = { ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers["X-Idle-Hours-Token"] = token;
@@ -49,7 +68,7 @@ async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   if (resp.status === 401 && retryAfterAuth) {
     const entered = promptForToken(token);
     if (entered) {
-      return jsonFetch(url, opts, false);
+      return jsonFetchInner(url, opts, false);
     }
   }
   return { status: resp.status, ok: resp.ok, data };
@@ -69,13 +88,21 @@ function promptForToken(staleToken) {
   // a single first page load, once GETs became token-gated (#233).
   const current = getToken();
   if (current && current !== staleToken) return current;
+  // Storage being unchanged is NOT proof that nobody has asked: if the
+  // operator cancelled the dialog or submitted an empty value there is
+  // nothing to store, and every sibling handler would prompt in turn —
+  // stacking six dialogs precisely when the operator does not have the token
+  // to hand. Remember the attempt itself, not just its stored outcome.
+  if (tokenPromptAttempt && tokenPromptAttempt.stale === staleToken) {
+    return tokenPromptAttempt.value;
+  }
   const value = window.prompt(
     "This Idle Hours instance requires a token.\n" +
     "Paste the contents of --web-token-file:",
     "",
   );
-  if (value == null) return "";
-  const trimmed = value.trim();
+  const trimmed = value == null ? "" : value.trim();
+  tokenPromptAttempt = { stale: staleToken, value: trimmed };
   if (trimmed) setToken(trimmed);
   return trimmed;
 }

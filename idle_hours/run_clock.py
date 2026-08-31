@@ -100,6 +100,33 @@ def _valid_hhmm(value: str) -> str:
         raise argparse.ArgumentTypeError(str(exc)) from None
 
 
+class _ReplaceConfigDefaultAppend(argparse.Action):
+    """``append``, except the first CLI occurrence discards a config-supplied default.
+
+    Plain ``action="append"`` copies whatever ``parser.set_defaults`` put on the
+    namespace and appends to it, so a config carrying
+    ``web_allowed_hosts = ["old.local"]`` plus ``--web-allowed-host new.local``
+    yields *both*. That breaks the documented CLI > config > argparse-default
+    precedence every other key follows, and on a security allowlist it is worse
+    than untidy: an operator tightening the DNS-rebinding set on the command
+    line cannot drop a configured host, so the name they meant to revoke stays
+    authorised.
+
+    Later occurrences of the same flag still append, so ``--web-allowed-host a
+    --web-allowed-host b`` gives ``["a", "b"]``.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        seen_attr = f"_{self.dest}_seen_on_cli"
+        if getattr(namespace, seen_attr, False):
+            items = list(getattr(namespace, self.dest, None) or [])
+        else:
+            items = []
+            setattr(namespace, seen_attr, True)
+        items.append(values)
+        setattr(namespace, self.dest, items)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the literary clock render loop.")
     parser.add_argument(
@@ -410,7 +437,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--web-allowed-host",
         dest="web_allowed_hosts",
-        action="append",
+        action=_ReplaceConfigDefaultAppend,
         metavar="HOST",
         help=(
             "Extra hostname accepted in the request's Host header (repeatable). "
@@ -420,7 +447,9 @@ def parse_args() -> argparse.Namespace:
             "Loopback binds accept 127.0.0.1 / localhost / ::1 without this flag; "
             "add an entry when reaching the UI through a reverse proxy or an "
             "mDNS name (e.g. --web-allowed-host idle-hours.local). Hostname only "
-            "— the port is not compared, so a port-rewriting proxy still works."
+            "— the port is not compared, so a port-rewriting proxy still works. "
+            "Passing this on the CLI REPLACES any web_allowed_hosts set in the "
+            "config file, so the allowlist can be tightened without editing it."
         ),
     )
     parser.add_argument(
