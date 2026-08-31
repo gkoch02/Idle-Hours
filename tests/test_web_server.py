@@ -82,9 +82,12 @@ def _post(server, path: str, payload: dict | None = None, headers: dict | None =
     conn = _client(server)
     data = b""
     h = dict(headers or {})
+    # Every POST carries the JSON content type, body or not (#233): a bodyless
+    # POST with no Content-Type is a CORS *simple* request and would sail
+    # through cross-origin, so the server now requires it unconditionally.
+    h.setdefault("Content-Type", "application/json")
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
-        h.setdefault("Content-Type", "application/json")
         h["Content-Length"] = str(len(data))
     else:
         h.setdefault("Content-Length", "0")
@@ -1268,7 +1271,9 @@ class TestOverrideValidation:
         # Send an oversized body via raw bytes with Content-Length that trips the cap.
         conn = _client(server)
         huge = b"x" * (web_server.MAX_BODY_BYTES + 1)
-        conn.request("POST", "/api/overrides", body=huge, headers={"Content-Length": str(len(huge))})
+        conn.request("POST", "/api/overrides", body=huge,
+                     headers={"Content-Length": str(len(huge)),
+                              "Content-Type": "application/json"})
         resp = conn.getresponse()
         body = resp.read()
         conn.close()
@@ -1324,13 +1329,75 @@ class TestAuth:
         finally:
             run_clock.stop_web_server((server, thread))
 
-    def test_token_required_gets_stay_open(self, tmp_path):
+    def test_token_gates_json_gets(self, tmp_path):
+        """#233: GETs used to be open on every bind, so anyone on the LAN could
+        read display history (reading habits), the whole corpus via
+        /api/search and /api/bucket/*, and both override sidecars — no token
+        needed. ``main.js`` already attaches the header to all of these, so
+        gating them costs the UI nothing."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        gated = [
+            "/api/current", "/api/telemetry", "/api/coverage", "/api/gaps",
+            "/api/themes", "/api/setup", "/api/overrides",
+            "/api/content-overrides", "/api/search?q=time", "/api/history",
+            "/api/bucket/h3_exact",
+        ]
+        try:
+            for path in gated:
+                status, _ = _get(server, path)
+                assert status == 401, f"{path} should require the token"
+                status, _ = _get(server, path, headers={"X-Idle-Hours-Token": "secret"})
+                assert status == 200, f"{path} should pass with the token"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_browser_loaded_routes_stay_open(self, tmp_path):
+        """The exemptions are mechanical, not editorial: a <script src> or
+        <img src> cannot attach a request header, so gating these would simply
+        break the page rather than protect anything."""
         args = _make_args(tmp_path, web_bind="0.0.0.0:0")
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            status, _ = _get(server, "/api/current")
+            for path in ("/", "/main.js", "/style.css"):
+                status, _ = _get(server, path)
+                assert status == 200, f"{path} must stay reachable without a token"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_metrics_open_by_default_and_gated_by_flag(self, tmp_path):
+        """Off by default so an existing Prometheus scrape keeps working."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            status, _ = _get(server, "/metrics")
             assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        args.web_metrics_token = True
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            assert _get(server, "/metrics")[0] == 401
+            status, _ = _get(server, "/metrics", headers={"X-Idle-Hours-Token": "secret"})
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_unknown_get_route_returns_404_before_401(self, tmp_path):
+        """Same rule the POST surface follows — a wrong-token probe against a
+        random URL must not reveal that the service exists."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        try:
+            status, _ = _get(server, "/api/definitely-not-a-route")
+            assert status == 404
         finally:
             run_clock.stop_web_server((server, thread))
 
@@ -1542,7 +1609,8 @@ class TestWebAuthFailTelemetry:
             # Deliberately embed a "secret" in the query to simulate misuse.
             conn = _client(server)
             conn.request("POST", "/api/action/theme?token=leaked", body=b"",
-                         headers={"Content-Length": "0"})
+                         headers={"Content-Length": "0",
+                                  "Content-Type": "application/json"})
             resp = conn.getresponse()
             resp.read()
             conn.close()
@@ -1778,7 +1846,8 @@ class TestContentLengthEdges:
         try:
             conn = _client(server)
             conn.request("POST", "/api/overrides", body=b"",
-                         headers={"Content-Length": "-1"})
+                         headers={"Content-Length": "-1",
+                                  "Content-Type": "application/json"})
             resp = conn.getresponse()
             body = resp.read()
             conn.close()
@@ -1795,7 +1864,8 @@ class TestContentLengthEdges:
         try:
             conn = _client(server)
             conn.request("POST", "/api/overrides", body=b"",
-                         headers={"Content-Length": "not-a-number"})
+                         headers={"Content-Length": "not-a-number",
+                                  "Content-Type": "application/json"})
             resp = conn.getresponse()
             resp.read()
             conn.close()
@@ -2422,6 +2492,46 @@ class TestMetricsEndpoint:
         # Telemetry was written moments ago, so the age is a small non-negative int.
         assert 0 <= int(sample[0].split()[1]) < 120
 
+    def test_metrics_exposes_quiet_active(self, live_server):
+        """#232: without this gauge, an alert rule on render age fires nightly.
+
+        The loop renders nothing between quiet_enter and quiet_exit, so render
+        age climbs to the width of the window on a perfectly healthy
+        appliance. The rule has to AND itself against this.
+        """
+        server, _state, args = live_server
+        self._write_telemetry(args, [
+            {"render_ms": 120, "display_ms": 15000, "bucket": "h3_exact", "mode": "debug"},
+            {"mode": "quiet_enter", "manual": False, "bucket": "h10_exact"},
+        ])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        assert "# TYPE idle_hours_quiet_active gauge" in text
+        assert "idle_hours_quiet_active 1" in text
+
+    def test_metrics_quiet_active_is_zero_once_the_window_closes(self, live_server):
+        server, _state, args = live_server
+        self._write_telemetry(args, [
+            {"mode": "quiet_enter", "manual": False, "bucket": "h10_exact"},
+            {"mode": "quiet_exit"},
+        ])
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        assert "idle_hours_quiet_active 0" in body.decode("utf-8")
+
+    def test_metrics_quiet_active_present_without_telemetry(self, tmp_path):
+        """Zero-fill path: the series must not vanish on a fresh appliance."""
+        args = _make_args(tmp_path, telemetry_path="")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state)
+        try:
+            status, body = _get(server, "/metrics")
+            assert status == 200
+            assert "idle_hours_quiet_active 0" in body.decode("utf-8")
+        finally:
+            run_clock.stop_web_server((server, thread))
+
     def test_metrics_omits_render_age_when_no_renders(self, live_server):
         """Missing-value convention: HELP/TYPE stay, the sample line goes."""
         server, _state, args = live_server
@@ -2849,3 +2959,344 @@ class TestPreviewCache:
             )
             _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
         assert calls["n"] == 2
+
+
+def _raw_post(server, path, *, headers, body=b""):
+    """POST with fully explicit headers — no helper defaults, so a test can
+    reproduce exactly what a hostile page would put on the wire."""
+    conn = _client(server)
+    h = dict(headers)
+    h.setdefault("Content-Length", str(len(body)))
+    conn.request("POST", path, body=body, headers=h)
+    resp = conn.getresponse()
+    payload = resp.read()
+    conn.close()
+    return resp.status, payload
+
+
+def _raw_get(server, path, *, headers):
+    conn = _client(server)
+    conn.request("GET", path, headers=dict(headers))
+    resp = conn.getresponse()
+    payload = resp.read()
+    conn.close()
+    return resp.status, payload
+
+
+class TestAuthorityHostname:
+    """The normaliser both the Host and Origin checks are built on."""
+
+    def test_strips_port(self):
+        assert web_server._authority_hostname("127.0.0.1:8080") == "127.0.0.1"
+
+    def test_lowercases(self):
+        assert web_server._authority_hostname("Idle-Hours.Local:80") == "idle-hours.local"
+
+    def test_ipv6_literal_keeps_all_its_colons(self):
+        """A bare IPv6 address has several colons and no port; truncating at the
+        first one would turn ``::1`` into ``""`` and match everything."""
+        assert web_server._authority_hostname("::1") == "::1"
+        assert web_server._authority_hostname("[::1]:8080") == "::1"
+        assert web_server._authority_hostname("[fe80::1]") == "fe80::1"
+
+    def test_empty(self):
+        assert web_server._authority_hostname("") == ""
+
+
+class TestHostPolicy:
+    """``WebContext.host_is_allowed`` in isolation — the branches that need a
+    bind address a test process can't actually listen on."""
+
+    def _ctx(self, tmp_path, bind, allowed=None):
+        args = _make_args(tmp_path, web_bind=bind)
+        args.web_allowed_hosts = allowed
+        return web_server.WebContext(args, run_clock.RuntimeState(args.theme))
+
+    def test_concrete_non_loopback_bind_answers_for_its_own_address(self, tmp_path):
+        ctx = self._ctx(tmp_path, "192.168.1.50:8080", allowed=["idle-hours.local"])
+        assert ctx.host_is_allowed("192.168.1.50:8080") is True
+        assert ctx.host_is_allowed("idle-hours.local") is True
+        assert ctx.host_is_allowed("attacker.test") is False
+
+    def test_wildcard_bind_has_no_address_of_its_own_to_match(self, tmp_path):
+        ctx = self._ctx(tmp_path, "0.0.0.0:8080", allowed=["idle-hours.local"])
+        assert ctx.host_is_allowed("0.0.0.0:8080") is False
+        assert ctx.host_is_allowed("idle-hours.local") is True
+
+    def test_unparseable_bind_degrades_to_no_bind_known(self, tmp_path):
+        """WebContext is constructed directly in tests and by any embedder;
+        ``start_web_server`` would have raised first on the run_clock path, so
+        this must degrade rather than blow up at construction."""
+        ctx = self._ctx(tmp_path, "not-a-bind")
+        assert ctx.bind_host == ""
+        assert ctx.bind_port == 0
+        # An empty bind host reads as loopback, so the strict rule applies.
+        assert ctx.bind_is_loopback is True
+        assert ctx.host_is_allowed("attacker.test") is False
+
+    def test_missing_web_bind_attribute_degrades_too(self, tmp_path):
+        args = _make_args(tmp_path)
+        del args.web_bind
+        args.web_allowed_hosts = None
+        ctx = web_server.WebContext(args, run_clock.RuntimeState(args.theme))
+        assert (ctx.bind_host, ctx.bind_port) == ("", 0)
+
+    def test_blank_and_non_string_allowlist_entries_are_dropped(self, tmp_path):
+        ctx = self._ctx(tmp_path, "127.0.0.1:8080", allowed=["", "   ", 42, "Ok.Local"])
+        assert ctx.allowed_hosts == frozenset({"ok.local"})
+
+
+class TestCsrfDefences:
+    """#233: on the recommended ``--web-bind 127.0.0.1:8080`` — where loopback
+    binds skip auth entirely — any page the operator visited could drive the
+    appliance: flip quiet mode, ban the displayed quote, rewrite both override
+    sidecars, trigger a bake, each burning a 10-20 s Spectra 6 refresh.
+
+    The token is CSRF-resistant where it applies (a custom header forces a
+    preflight), but a loopback bind has no token and the body parser accepted
+    any Content-Type — so a cross-site *simple* request had nothing to
+    preflight and went straight through.
+    """
+
+    def _loopback(self, tmp_path):
+        return _start(tmp_path)
+
+    def _origin(self, server):
+        return f"http://127.0.0.1:{server.server_address[1]}"
+
+    def _host(self, server):
+        return f"127.0.0.1:{server.server_address[1]}"
+
+    # -- layer 1: Content-Type ---------------------------------------------
+
+    def test_simple_request_content_type_is_rejected(self, live_server):
+        """text/plain is CORS-safelisted, so this shape needs no preflight."""
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/setup",
+                              headers={"Content-Type": "text/plain;charset=UTF-8",
+                                       "Host": self._host(server)},
+                              body=b'{"theme": "dark"}')
+        assert status == 415
+
+    def test_form_content_type_is_rejected(self, live_server):
+        """The other shape a plain <form> can produce."""
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/action/skip",
+                              headers={"Content-Type": "application/x-www-form-urlencoded",
+                                       "Host": self._host(server)})
+        assert status == 415
+
+    def test_bodyless_post_with_no_content_type_is_rejected(self, live_server):
+        """``POST /api/bake`` was reachable this way: fetch() with no body sends
+        no Content-Type, which is a simple request."""
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/bake", headers={"Host": self._host(server)})
+        assert status == 415
+
+    def test_charset_parameter_is_accepted(self, live_server):
+        """Don't reject the UI's own header if a browser appends a parameter."""
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/setup",
+                              headers={"Content-Type": "application/json; charset=utf-8",
+                                       "Host": self._host(server)},
+                              body=b"{}")
+        assert status == 200
+
+    def test_every_mutating_route_enforces_content_type(self, live_server):
+        server, _state, _args = live_server
+        routes = ["/api/overrides", "/api/content-overrides", "/api/bake", "/api/setup",
+                  "/api/action/skip", "/api/action/unskip", "/api/action/theme",
+                  "/api/action/quiet", "/api/action/rerender"]
+        for path in routes:
+            status, _ = _raw_post(server, path,
+                                  headers={"Content-Type": "text/plain",
+                                           "Host": self._host(server)})
+            assert status == 415, f"{path} accepted a simple-request Content-Type"
+
+    # -- layer 2: Origin vs Host -------------------------------------------
+
+    def test_cross_site_origin_is_rejected(self, live_server):
+        server, _state, _args = live_server
+        status, body = _raw_post(server, "/api/setup",
+                                 headers={"Content-Type": "application/json",
+                                          "Origin": "https://evil.example",
+                                          "Referer": "https://evil.example/",
+                                          "Host": self._host(server)},
+                                 body=b'{"theme": "dark"}')
+        assert status == 403
+        assert "origin" in _json_body(body)["error"]
+
+    def test_null_origin_is_rejected(self, live_server):
+        """A sandboxed iframe or file:// document. Never our UI."""
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/action/rerender",
+                              headers={"Content-Type": "application/json",
+                                       "Origin": "null",
+                                       "Host": self._host(server)})
+        assert status == 403
+
+    def test_same_origin_is_accepted(self, live_server):
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/setup",
+                              headers={"Content-Type": "application/json",
+                                       "Origin": self._origin(server),
+                                       "Host": self._host(server)},
+                              body=b"{}")
+        assert status == 200
+
+    def test_absent_origin_is_accepted(self, live_server):
+        """curl, the health cron, and same-origin GETs never send one."""
+        server, _state, _args = live_server
+        status, _ = _raw_post(server, "/api/setup",
+                              headers={"Content-Type": "application/json",
+                                       "Host": self._host(server)},
+                              body=b"{}")
+        assert status == 200
+
+    def test_origin_is_compared_to_the_request_host_not_a_fixed_name(self, tmp_path):
+        """The load-bearing detail: an operator may reach a LAN bind by IP, mDNS
+        name, or reverse-proxied name and we cannot enumerate those. Comparing
+        the two headers against each other accepts all of them while still
+        catching every genuine cross-site request."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        port = server.server_address[1]
+        try:
+            for name in ("raspberrypi.local", "192.168.1.50", "idle.example.com"):
+                status, _ = _raw_post(
+                    server, "/api/setup",
+                    headers={"Content-Type": "application/json",
+                             "Origin": f"http://{name}:{port}",
+                             "Host": f"{name}:{port}",
+                             "X-Idle-Hours-Token": "secret"},
+                    body=b"{}")
+                assert status == 200, f"self-consistent Host/Origin for {name} was rejected"
+            # ...but a mismatch between them is still cross-site.
+            status, _ = _raw_post(
+                server, "/api/setup",
+                headers={"Content-Type": "application/json",
+                         "Origin": "https://evil.example",
+                         "Host": f"raspberrypi.local:{port}",
+                         "X-Idle-Hours-Token": "secret"},
+                body=b"{}")
+            assert status == 403
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    # -- layer 3: Host (DNS rebinding) --------------------------------------
+
+    def test_rebound_host_is_rejected_on_a_loopback_bind(self, live_server):
+        """An attacker-controlled name resolving to 127.0.0.1 arrives as a
+        *same-origin* page, which defeats layers 1 and 2 outright."""
+        server, _state, _args = live_server
+        port = server.server_address[1]
+        status, body = _raw_post(server, "/api/action/skip",
+                                 headers={"Content-Type": "application/json",
+                                          "Origin": f"http://attacker.test:{port}",
+                                          "Host": f"attacker.test:{port}"})
+        assert status == 403
+        assert "host" in _json_body(body)["error"]
+
+    def test_host_check_also_protects_the_read_surface(self, live_server):
+        """The only layer that does — rebinding's payoff here is as much
+        'read the operator's corpus and display history' as it is 'drive the
+        panel'."""
+        server, _state, _args = live_server
+        port = server.server_address[1]
+        for path in ("/api/history", "/api/search?q=time", "/api/bucket/h3_exact",
+                     "/api/overrides", "/current.png", "/metrics"):
+            status, _ = _raw_get(server, path, headers={"Host": f"attacker.test:{port}"})
+            assert status == 403, f"{path} answered a rebound Host"
+
+    def test_loopback_names_are_accepted(self, live_server):
+        server, _state, _args = live_server
+        port = server.server_address[1]
+        for host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
+            status, _ = _raw_get(server, "/api/themes", headers={"Host": host})
+            assert status == 200, f"{host} was rejected on a loopback bind"
+
+    def test_allowed_host_flag_widens_the_set(self, tmp_path):
+        """The escape hatch for a reverse proxy or an mDNS name."""
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0")
+        args.web_allowed_hosts = ["idle-hours.local"]
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state)
+        port = server.server_address[1]
+        try:
+            status, _ = _raw_get(server, "/api/themes",
+                                 headers={"Host": f"idle-hours.local:{port}"})
+            assert status == 200
+            # Still not a free-for-all.
+            status, _ = _raw_get(server, "/api/themes",
+                                 headers={"Host": f"attacker.test:{port}"})
+            assert status == 403
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_non_loopback_bind_stays_permissive_without_an_allowlist(self, tmp_path):
+        """We can't enumerate the names an operator uses to reach 0.0.0.0, and
+        rejecting them would break every existing LAN install on upgrade.
+        Those binds require a token anyway, and a rebound origin has its own
+        localStorage — so no token to replay."""
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        port = server.server_address[1]
+        try:
+            status, _ = _raw_get(server, "/api/themes",
+                                 headers={"Host": f"whatever.local:{port}",
+                                          "X-Idle-Hours-Token": "secret"})
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_non_loopback_bind_with_an_allowlist_is_enforced(self, tmp_path):
+        args = _make_args(tmp_path, web_bind="0.0.0.0:0")
+        args.web_allowed_hosts = ["idle-hours.local"]
+        state = run_clock.RuntimeState(args.theme)
+        server, thread = web_server.start_web_server(args, state, token="secret")
+        port = server.server_address[1]
+        try:
+            assert _raw_get(server, "/api/themes",
+                            headers={"Host": f"idle-hours.local:{port}",
+                                     "X-Idle-Hours-Token": "secret"})[0] == 200
+            assert _raw_get(server, "/api/themes",
+                            headers={"Host": f"attacker.test:{port}",
+                                     "X-Idle-Hours-Token": "secret"})[0] == 403
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    # -- end to end ---------------------------------------------------------
+
+    def test_the_issues_reproduction_no_longer_mutates_state(self, live_server):
+        """The exact shape from #233: simple request + hostile Origin +
+        spoofed Host, against a tokenless loopback bind."""
+        server, state, _args = live_server
+        port = server.server_address[1]
+        before = state.manual_theme
+        status, _ = _raw_post(server, "/api/setup",
+                              headers={"Content-Type": "text/plain;charset=UTF-8",
+                                       "Origin": "https://evil.example",
+                                       "Referer": "https://evil.example/",
+                                       "Host": f"attacker.test:{port}"},
+                              body=b'{"theme": "dark"}')
+        assert status in (403, 415)
+        assert state.manual_theme == before
+        assert state.setup_complete is False
+
+    def test_rejections_are_telemetrised(self, tmp_path):
+        """An operator should be able to see a page probing their appliance."""
+        server, thread, _state, _args = _start(tmp_path)
+        port = server.server_address[1]
+        try:
+            _raw_post(server, "/api/action/skip",
+                      headers={"Content-Type": "application/json",
+                               "Origin": "https://evil.example",
+                               "Host": f"127.0.0.1:{port}"})
+        finally:
+            run_clock.stop_web_server((server, thread))
+        entries = _read_web_telemetry(tmp_path)
+        rejects = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 403]
+        assert rejects, f"no web_error 403 marker in {entries}"
+        assert rejects[-1]["path"] == "/api/action/skip"

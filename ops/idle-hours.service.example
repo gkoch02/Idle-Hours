@@ -5,12 +5,20 @@ Wants=network-online.target
 
 [Service]
 # Type=notify pairs with sd_notify("READY=1") at end of run_clock.main()
-# startup and sd_notify("WATCHDOG=1") from every heartbeat. With WatchdogSec
+# startup and sd_notify("WATCHDOG=1") from the heartbeat. With WatchdogSec
 # set, systemd restarts the service when the watchdog ping goes silent for
 # longer than the interval — i.e. a wedged-but-breathing loop that plain
-# Type=simple would never notice. The 180s cap is 3× the 60s heartbeat
-# interval so a single slow tick (a stall in Pillow font load, a long Spectra 6
-# refresh) doesn't trigger a spurious restart.
+# Type=simple would never notice.
+#
+# The 180s cap is 3x the 60s heartbeat interval. That margin only holds
+# because the ping is decoupled from tick duration (#236): run_clock also
+# pings at every render/display subprocess boundary and immediately before
+# the main loop's blocking render-lock acquire, so the worst-case gap between
+# two pings is ONE subprocess timeout (DISPLAY_TIMEOUT_SECONDS, 60s) or the
+# inter-tick sleep (60s) — not their sum, and not plus a lock wait. With a
+# tick-top-only ping the true worst case was a lock wait behind another
+# render plus this loop's own render+display plus the sleep (~270s), which
+# would have had systemd kill a working appliance.
 Type=notify
 WatchdogSec=180s
 

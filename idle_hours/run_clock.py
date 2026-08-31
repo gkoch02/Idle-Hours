@@ -388,9 +388,39 @@ def parse_args() -> argparse.Namespace:
         "--web-token",
         default="",
         help=(
-            "Shared token required on POSTs when --web-bind exposes the UI beyond "
-            "127.0.0.1. Sent by clients as 'X-Idle-Hours-Token: <token>'. GETs remain "
-            "open (telemetry / coverage / current.png are not sensitive)."
+            "Shared token required when --web-bind exposes the UI beyond "
+            "127.0.0.1. Sent by clients as 'X-Idle-Hours-Token: <token>'. Gates "
+            "every POST and every JSON GET (/api/history, /api/search, "
+            "/api/bucket/*, /api/overrides, ...). The static shell (/, /main.js, "
+            "/style.css), /current.png, /api/preview and /metrics stay open "
+            "because browsers load them via <img>/<script> tags (or a scraper "
+            "does), neither of which can attach a request header."
+        ),
+    )
+    parser.add_argument(
+        "--web-metrics-token",
+        action="store_true",
+        help=(
+            "Also require --web-token on GET /metrics. Off by default so an "
+            "existing Prometheus scrape keeps working; turn it on and configure "
+            "the scraper with an Authorization-style header if the LAN is not "
+            "trusted."
+        ),
+    )
+    parser.add_argument(
+        "--web-allowed-host",
+        dest="web_allowed_hosts",
+        action="append",
+        metavar="HOST",
+        help=(
+            "Extra hostname accepted in the request's Host header (repeatable). "
+            "The server rejects a Host it does not recognise, which is what stops "
+            "DNS rebinding — an attacker-controlled name resolving to 127.0.0.1 "
+            "would otherwise reach a loopback bind as a same-origin page. "
+            "Loopback binds accept 127.0.0.1 / localhost / ::1 without this flag; "
+            "add an entry when reaching the UI through a reverse proxy or an "
+            "mDNS name (e.g. --web-allowed-host idle-hours.local). Hostname only "
+            "— the port is not compared, so a port-rewriting proxy still works."
         ),
     )
     parser.add_argument(
@@ -749,6 +779,7 @@ def render_now(
         # subprocess.run has already killed the child before re-raising; we
         # only need to telemetrise and re-raise so the main loop's error
         # handler logs + keeps last_bucket stale for retry next tick.
+        sd_notify.notify_watchdog()
         _log(
             f"render subprocess timed out after {RENDER_TIMEOUT_SECONDS}s for {time_str}",
             err=True,
@@ -764,6 +795,18 @@ def render_now(
         )
         raise
     render_ms = int((time.monotonic() - render_start) * 1000)
+    # Pet the watchdog at every subprocess boundary, not only from the tick-top
+    # heartbeat (#236). ``WatchdogSec`` is meant to ask "is this process still
+    # executing", but a tick-only ping made it measure "did a tick complete" —
+    # and a tick can also spend up to a full render+display waiting on
+    # ``render_lock`` behind the source-card restore timer or a quiet-hours
+    # entry, a term the old 165 s budget never included. Pinging here (and
+    # before the loop's blocking acquire) bounds the gap between pings by a
+    # single subprocess timeout rather than by a whole tick, so a slow-but-
+    # working appliance is never killed by the supervisor that exists to
+    # prevent downtime. Cheap and safe from any thread: a no-op datagram when
+    # ``$NOTIFY_SOCKET`` is unset.
+    sd_notify.notify_watchdog()
     _log(f"Rendered {time_str} -> {output_path_resolved} ({render_ms} ms)")
     display_ms: int | None = None
     if display_script:
@@ -776,6 +819,7 @@ def render_now(
                 timeout=DISPLAY_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired as exc:
+            sd_notify.notify_watchdog()
             _log(
                 f"display subprocess timed out after {DISPLAY_TIMEOUT_SECONDS}s for {output_path_resolved}",
                 err=True,
@@ -791,6 +835,7 @@ def render_now(
             )
             raise
         display_ms = int((time.monotonic() - display_start) * 1000)
+        sd_notify.notify_watchdog()
         _log(f"Displayed {output_path_resolved} via {display_script_path} ({display_ms} ms)")
     if telemetry_path:
         append_telemetry(
@@ -1337,14 +1382,31 @@ def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> No
     throttle gate so the watchdog cadence tracks the heartbeat cadence
     exactly.
 
-    WatchdogSec budget: the nominal cadence is 60s (``HEARTBEAT_INTERVAL_SECONDS``)
-    but the *worst-case* interval between two pings is bounded by how long a
-    single tick can take before returning to this function: up to
-    ``RENDER_TIMEOUT_SECONDS (45) + DISPLAY_TIMEOUT_SECONDS (60) +
-    interval_seconds (60) = 165s``. ``idle-hours.service.example`` ships
-    ``WatchdogSec=180s`` which leaves ~15s margin on that pathological case —
-    enough for real-world wobble but not much more. Raise ``WatchdogSec`` or
-    lower the render/display timeouts if your appliance sees tighter margins.
+    WatchdogSec budget: this function is NOT the only thing that pings. An
+    earlier revision bounded the worst-case ping interval by how long a single
+    tick could take before returning here — ``RENDER_TIMEOUT_SECONDS (45) +
+    DISPLAY_TIMEOUT_SECONDS (60) + interval_seconds (60) = 165s``, against a
+    shipped ``WatchdogSec=180s``. That arithmetic was wrong in a way the ~15s
+    margin hid (#236): it counted the loop *performing* a render but not the
+    loop *waiting* for someone else's. The main loop takes ``render_lock``
+    blocking, and three paths can hold it for a full render-plus-display — the
+    button-C source-card restore timer (deliberately blocking, so the card is
+    always taken down), ``runtime_quiet.enter_quiet``, and any web/button
+    action that won ``_button_render_gate`` a moment earlier. The real bound
+    was ``wait (≤105s) + 45 + 60 + 60 = 270s``, i.e. systemd killing a working
+    appliance — costing a cold-start frame and ~20s of visible downtime on a
+    Spectra 6 panel.
+
+    So the ping is now decoupled from tick duration: ``render_now`` pings at
+    each subprocess boundary (success *and* timeout), ``runtime_quiet``'s
+    quiet-image push does the same, and the main loop pings immediately before
+    its blocking acquire. The worst-case interval between two pings is then a
+    single subprocess timeout (``DISPLAY_TIMEOUT_SECONDS``, 60s) or the
+    inter-tick sleep (``interval_seconds``, 60s) — whichever is larger, not
+    their sum — leaving ``WatchdogSec=180s`` a comfortable ~3x margin that no
+    longer degrades under lock contention. This function keeps its own ping so
+    a quiet-hours night, a dedup-skipped tick, or a backoff window (none of
+    which render at all) still pet the timer.
     """
     now = time.monotonic()
     with state.lock:
@@ -1863,6 +1925,14 @@ def main() -> int:
                             state.consecutive_render_failures = 0
                             state.backoff_skip_until = 0.0
                     else:
+                        # The acquire below is *blocking*: the source-card
+                        # restore timer, a quiet-hours entry, or a web/button
+                        # action that won the gate a moment ago can each hold
+                        # this lock for a full render-plus-display. Ping first
+                        # so the wait starts from a fresh watchdog deadline
+                        # (#236); the holder's own boundary pings cover the
+                        # wait itself.
+                        sd_notify.notify_watchdog()
                         with state.render_lock:
                             render_now(
                                 args.render_script, args.output, args.width, args.height, args.display_script,

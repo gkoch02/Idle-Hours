@@ -19,8 +19,43 @@ Design notes:
 * Token is checked via the ``X-Idle-Hours-Token`` header only, never a query string,
   since ``BaseHTTPRequestHandler`` logs request paths — a token in the URL would
   leak into journald.
-* GETs are never token-gated (telemetry/coverage/current.png aren't sensitive);
-  POSTs are gated whenever a token is configured.
+* When a token is configured it gates every POST **and** every JSON GET
+  (``/api/history``, ``/api/search``, ``/api/bucket/*``, ``/api/overrides``,
+  ``/api/content-overrides``, ...). Those all reach the browser through
+  ``main.js``'s ``jsonFetch``, which already attaches the header, so this is
+  invisible to the UI. Four routes stay open by necessity, not by judgement:
+  the static shell (``/``, ``/main.js``, ``/style.css``), ``/current.png`` and
+  ``/api/preview`` — the browser loads the last two as ``<img src>``, and a tag
+  cannot attach a request header — and ``/metrics``, for the scraper; pass
+  ``--web-metrics-token`` to gate that one too.
+
+CSRF / DNS-rebinding defence (#233). On the deployment the docs recommend —
+``--web-bind 127.0.0.1:8080``, where loopback binds skip auth entirely — any
+page the operator visits could otherwise drive the appliance: flip quiet mode,
+ban the displayed quote, rewrite both override sidecars, trigger a bake, each
+burning a 10–20 s Spectra 6 refresh. The token is CSRF-resistant *where it
+applies* (a custom header forces a preflight an attacker can't answer), but on
+a loopback bind there is no token, and the body parser used to accept any
+``Content-Type`` — so a cross-site *simple* request went straight through with
+nothing to preflight. Three independent server-side layers close it:
+
+1. **Content-Type.** Every POST must send ``application/json``. That is not a
+   CORS-safelisted media type, so a cross-origin POST now requires a preflight,
+   and we answer no ``OPTIONS`` — the browser never sends the real request.
+2. **Origin vs Host.** A present ``Origin`` whose hostname differs from the
+   request's own ``Host`` is a cross-site request; reject it. Comparing the two
+   headers against *each other* rather than against a configured name is what
+   keeps this from breaking LAN operators who reach the UI by mDNS name,
+   reverse proxy, or bare IP — all of which we have no way to enumerate.
+3. **Host.** A loopback bind accepts only loopback names (plus
+   ``--web-allowed-host`` entries). This is the layer that closes DNS
+   rebinding, where an attacker-controlled name resolving to 127.0.0.1 arrives
+   as a *same-origin* page and so defeats layers 1 and 2 outright. It is also
+   the only layer that protects the read surface. A non-loopback bind can't be
+   checked this way (we don't know which names the operator uses), so it stays
+   permissive unless an allowlist is configured — those binds require a token
+   anyway, and a rebound origin has its own ``localStorage`` and therefore no
+   token to replay.
 """
 from __future__ import annotations
 
@@ -98,6 +133,20 @@ BUCKET_PATH_RE = re.compile(r"^/api/bucket/(?P<bucket>h(?:[1-9]|1[0-2])_[a-z_]+)
 # positive int. Matches what ``apply_content_overrides.row_key`` produces.
 CONTENT_OVERRIDE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+:\d+$")
 LOCALHOST_HOSTS = {"", "127.0.0.1", "localhost", "::1"}
+# Bind addresses that name no particular host, so the Host header can't be
+# validated against them.
+WILDCARD_BIND_HOSTS = {"0.0.0.0", "::", "*"}
+# POST bodies must arrive as JSON. ``application/json`` is not a CORS-safelisted
+# media type, so requiring it forces a preflight on any cross-origin POST — and
+# we answer no OPTIONS, so the real request is never sent. This is the layer
+# that closes localhost CSRF on a tokenless loopback bind.
+JSON_CONTENT_TYPE = "application/json"
+# GET routes that stay reachable without a token even when one is configured.
+# Not a judgement about sensitivity — the browser loads /current.png and
+# /api/preview through <img src>, and the static shell through the navigation
+# itself; none of those can attach a request header. /metrics is for the
+# scraper and is gated by --web-metrics-token instead.
+UNGATED_GET_PATHS = frozenset({"/", "/main.js", "/style.css", "/current.png", "/api/preview"})
 
 
 def _parse_bind(bind_str: str) -> tuple[str, int]:
@@ -120,6 +169,25 @@ def _parse_bind(bind_str: str) -> tuple[str, int]:
 
 def _is_non_localhost_host(host: str) -> bool:
     return host not in LOCALHOST_HOSTS
+
+
+def _authority_hostname(authority: str) -> str:
+    """Extract the lowercased hostname from a ``Host``/``Origin`` authority.
+
+    Strips any ``:port`` and the brackets around an IPv6 literal, so
+    ``"[::1]:8080"`` and ``"::1"`` both normalise to ``"::1"``. The port is
+    deliberately not returned: a reverse proxy commonly rewrites it, and no
+    check here is made safer by comparing it.
+    """
+    value = (authority or "").strip().lower()
+    if value.startswith("["):
+        end = value.find("]")
+        return value[1:end] if end > 0 else value[1:]
+    # Only strip a trailing ``:port`` — a bare IPv6 literal has several colons
+    # and no port, and must not be truncated at the first one.
+    if value.count(":") == 1:
+        value = value.split(":", 1)[0]
+    return value
 
 
 def _history_join_key(obj: dict) -> tuple[str, int] | None:
@@ -161,6 +229,21 @@ class WebContext:
     ):
         self.args = args
         self.state = state
+        # Bind identity, used by the Host check (#233). A malformed or absent
+        # --web-bind can't happen on the run_clock path (start_web_server
+        # parses it first and raises), but WebContext is also constructed
+        # directly in tests, so degrade to "no bind known" rather than raise.
+        try:
+            self.bind_host, self.bind_port = _parse_bind(args.web_bind)
+        except (AttributeError, ValueError):
+            self.bind_host, self.bind_port = "", 0
+        self.bind_is_loopback = not _is_non_localhost_host(self.bind_host)
+        self.allowed_hosts = frozenset(
+            _authority_hostname(h)
+            for h in (getattr(args, "web_allowed_hosts", None) or [])
+            if isinstance(h, str) and h.strip()
+        )
+        self.require_metrics_token = bool(getattr(args, "web_metrics_token", False))
         self._inline_token = (token or "").strip()
         self._token_file: Path | None = Path(token_file).expanduser() if token_file else None
         self._cached_token: str = self._inline_token
@@ -230,6 +313,35 @@ class WebContext:
         self._cached_token_mtime = stat.st_mtime
         if not initial:
             _log(f"--web-token-file {self._token_file!s} reloaded (mtime changed)")
+
+    def host_is_allowed(self, host_header: str) -> bool:
+        """Return True when ``host_header`` names an authority we answer for.
+
+        This is the DNS-rebinding guard. An attacker-controlled name that
+        resolves to 127.0.0.1 reaches a loopback bind as a *same-origin* page,
+        which defeats both the Content-Type and the Origin-vs-Host layers and
+        exposes the read surface too — so the Host itself has to be checked.
+
+        A loopback bind knows exactly which names are legitimate (the loopback
+        ones, plus whatever ``--web-allowed-host`` adds), so it is strict. A
+        non-loopback bind does not: the operator may reach ``0.0.0.0:8080`` by
+        LAN IP, mDNS name, or through a reverse proxy, none of which we can
+        enumerate, and rejecting those would break every existing LAN install
+        on upgrade. So it stays permissive until an allowlist is configured,
+        at which point the operator has told us the full set. Those binds
+        require a token regardless, and a rebound origin gets its own
+        ``localStorage`` — so it has no token to replay.
+        """
+        name = _authority_hostname(host_header)
+        if name in self.allowed_hosts:
+            return True
+        if self.bind_is_loopback:
+            return name in LOCALHOST_HOSTS
+        # A concrete (non-wildcard) bind address is always its own valid Host.
+        if self.bind_host and self.bind_host not in WILDCARD_BIND_HOSTS:
+            if name == _authority_hostname(self.bind_host):
+                return True
+        return not self.allowed_hosts
 
     def current_token(self) -> str:
         """Return the live token, reloading from ``--web-token-file`` if it changed.
@@ -507,6 +619,79 @@ class CuratorHandler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _reject(self, status: int, message: str) -> bool:
+        """Emit a structured web_error marker and the JSON error body. Returns False."""
+        self._emit_web_telemetry({
+            "mode": "web_error",
+            "status": int(status),
+            "path": urllib.parse.urlparse(self.path).path,
+            "error": message,
+        })
+        self._json(status, {"error": message})
+        return False
+
+    def _check_host(self) -> bool:
+        """Reject a request whose ``Host`` header we don't answer for (#233).
+
+        Applies to reads as well as writes — rebinding's payoff against this
+        service is as much "read the operator's whole corpus and display
+        history" as it is "drive the panel".
+        """
+        host = self.headers.get("Host", "")
+        if self._ctx().host_is_allowed(host):
+            return True
+        # Don't echo the attacker-supplied value back into the response body;
+        # it is in the telemetry entry (and journald) for the operator.
+        return self._reject(HTTPStatus.FORBIDDEN, "host not allowed")
+
+    def _check_origin(self) -> bool:
+        """Reject a POST whose ``Origin`` disagrees with its own ``Host`` (#233).
+
+        An absent Origin is allowed: browsers omit it on same-origin GETs, and
+        non-browser clients (curl, the health cron, a test) never send it. A
+        *present* Origin naming a different host is by definition cross-site,
+        which is the whole signal we want.
+
+        Comparing the two request headers against each other — rather than
+        against a configured hostname — is deliberate. The operator may reach a
+        LAN bind by IP, mDNS name, or reverse-proxied name, and we cannot
+        enumerate those; any of them still produces Origin.host == Host, while
+        a genuine cross-site page cannot.
+        """
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return True
+        # "null" is what a sandboxed iframe / file:// document sends. Our UI is
+        # never either of those.
+        if origin.strip().lower() == "null":
+            return self._reject(HTTPStatus.FORBIDDEN, "cross-site origin rejected")
+        origin_host = _authority_hostname(urllib.parse.urlsplit(origin).netloc)
+        if origin_host and origin_host == _authority_hostname(self.headers.get("Host", "")):
+            return True
+        return self._reject(HTTPStatus.FORBIDDEN, "cross-site origin rejected")
+
+    def _check_json_content_type(self) -> bool:
+        """Require ``Content-Type: application/json`` on every POST (#233).
+
+        Enforced even for an empty body: a bodyless ``fetch`` with no
+        Content-Type is a CORS *simple* request and sails through cross-origin,
+        which is exactly how ``POST /api/bake`` was reachable from any page the
+        operator happened to have open. Requiring a non-safelisted media type
+        is what forces the preflight.
+
+        Note for anyone driving this with curl: ``-X POST`` alone now returns
+        415; add ``-H 'Content-Type: application/json'``.
+        """
+        raw = self.headers.get("Content-Type", "")
+        # Strip parameters: "application/json; charset=utf-8" is fine.
+        media_type = raw.split(";", 1)[0].strip().lower()
+        if media_type == JSON_CONTENT_TYPE:
+            return True
+        return self._reject(
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+            f"Content-Type must be {JSON_CONTENT_TYPE}",
+        )
+
     def _emit_web_telemetry(self, payload: dict) -> None:
         """Emit one structured web-activity entry via the run_clock telemetry sink.
 
@@ -539,45 +724,80 @@ class CuratorHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
         try:
-            if path == "/":
-                return self._serve_static(WEB_ROOT / "index.html", "text/html; charset=utf-8")
-            if path == "/main.js":
-                return self._serve_static(WEB_ROOT / "main.js", "application/javascript; charset=utf-8")
-            if path == "/style.css":
-                return self._serve_static(WEB_ROOT / "style.css", "text/css; charset=utf-8")
-            if path == "/current.png":
-                return self._serve_static(self._ctx().output_path, "image/png")
-            if path == "/metrics":
-                return self._api_metrics()
-            if path == "/api/current":
-                return self._api_current()
-            if path == "/api/telemetry":
-                return self._api_telemetry(query)
-            if path == "/api/coverage":
-                return self._api_coverage()
-            if path == "/api/gaps":
-                return self._api_gaps(query)
-            if path == "/api/themes":
-                return self._api_themes()
-            if path == "/api/setup":
-                return self._api_setup_get()
-            if path == "/api/overrides":
-                return self._api_overrides_get()
-            if path == "/api/content-overrides":
-                return self._api_content_overrides_get()
-            if path == "/api/search":
-                return self._api_search(query)
-            if path == "/api/preview":
-                return self._api_preview(query)
-            if path == "/api/history":
-                return self._api_history(query)
-            m = BUCKET_PATH_RE.match(path)
-            if m:
-                return self._api_bucket(m.group("bucket"), query)
-            return self._not_found()
+            # Host first: a rebound request must not reach a handler at all,
+            # and this is the only guard that covers the read surface.
+            if not self._check_host():
+                return
+            # Resolve the route BEFORE asking for a token, for the same reason
+            # do_POST does — a scanner hitting random URLs should get 404, not
+            # "401 token required", which would tell it the service exists.
+            handler = self._resolve_get_route(path, query)
+            if handler is None:
+                return self._not_found()
+            if self._get_route_needs_token(path) and not self._check_token():
+                return
+            return handler()
         except Exception as exc:  # noqa: BLE001
             _log(f"web GET {path}: {exc!r}", err=True)
             return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
+
+    def _resolve_get_route(self, path: str, query: dict):
+        """Return a zero-arg callable for ``path``, or ``None`` for 404."""
+        if path == "/":
+            return lambda: self._serve_static(WEB_ROOT / "index.html", "text/html; charset=utf-8")
+        if path == "/main.js":
+            return lambda: self._serve_static(WEB_ROOT / "main.js", "application/javascript; charset=utf-8")
+        if path == "/style.css":
+            return lambda: self._serve_static(WEB_ROOT / "style.css", "text/css; charset=utf-8")
+        if path == "/current.png":
+            return lambda: self._serve_static(self._ctx().output_path, "image/png")
+        if path == "/metrics":
+            return self._api_metrics
+        if path == "/api/current":
+            return self._api_current
+        if path == "/api/telemetry":
+            return lambda: self._api_telemetry(query)
+        if path == "/api/coverage":
+            return self._api_coverage
+        if path == "/api/gaps":
+            return lambda: self._api_gaps(query)
+        if path == "/api/themes":
+            return self._api_themes
+        if path == "/api/setup":
+            return self._api_setup_get
+        if path == "/api/overrides":
+            return self._api_overrides_get
+        if path == "/api/content-overrides":
+            return self._api_content_overrides_get
+        if path == "/api/search":
+            return lambda: self._api_search(query)
+        if path == "/api/preview":
+            return lambda: self._api_preview(query)
+        if path == "/api/history":
+            return lambda: self._api_history(query)
+        m = BUCKET_PATH_RE.match(path)
+        if m:
+            bucket = m.group("bucket")
+            return lambda: self._api_bucket(bucket, query)
+        return None
+
+    def _get_route_needs_token(self, path: str) -> bool:
+        """Whether a configured token gates this GET (#233).
+
+        The JSON reads do — ``main.js`` fetches all of them through
+        ``jsonFetch``, which already attaches the header, so gating them costs
+        the UI nothing while closing the LAN read leak (display history is
+        reading habits; ``/api/search`` and ``/api/bucket/*`` are the whole
+        corpus; the two override endpoints are the curator's own edits).
+
+        The exceptions in ``UNGATED_GET_PATHS`` are mechanical, not editorial:
+        a ``<script src>`` / ``<img src>`` cannot set a request header, so
+        gating the shell or the two image routes would simply break the page.
+        ``/metrics`` is a scraper's, and opts in via ``--web-metrics-token``.
+        """
+        if path == "/metrics":
+            return self._ctx().require_metrics_token
+        return path not in UNGATED_GET_PATHS
 
     def do_POST(self):  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
@@ -599,6 +819,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         handler = routes.get(path)
         if handler is None:
             return self._not_found()
+        # CSRF layers, cheapest and least informative first. All three run
+        # before the token so a cross-site probe learns nothing from the
+        # difference between "wrong token" and "no token".
+        if not self._check_host():
+            return
+        if not self._check_origin():
+            return
+        if not self._check_json_content_type():
+            return
         if not self._check_token():
             return
         try:
@@ -711,6 +940,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 "render_p50_ms": None, "render_p95_ms": None,
                 "display_p50_ms": None, "display_p95_ms": None,
                 "last_heartbeat_ts": None, "last_render_ts": None,
+                "quiet_active": False, "quiet_since": None,
+                "last_quiet_exit_ts": None,
             }
 
         def metric(name: str, value: float | int | None, help_text: str, mtype: str = "gauge") -> None:
@@ -740,6 +971,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
                "Quiet-hours rising-edge transitions in the last 24 hours.", mtype="gauge")
         metric("idle_hours_quiet_exit_total", summary.get("quiet_exit_count", 0),
                "Quiet-hours falling-edge transitions in the last 24 hours.", mtype="gauge")
+        # The gate that makes idle_hours_last_render_age_seconds interpretable
+        # (#232). The loop renders nothing between quiet_enter and quiet_exit,
+        # so render age climbs to the width of the window every night on a
+        # perfectly healthy appliance. An alert rule on render age must AND
+        # itself against `idle_hours_quiet_active == 0`, exactly as
+        # `idle-hours health --max-render-age-minutes` now does internally.
+        metric("idle_hours_quiet_active", 1 if summary.get("quiet_active") else 0,
+               "1 while the quiet-hours window is open (the panel is asleep on purpose).")
         metric("idle_hours_render_p50_ms", summary.get("render_p50_ms"),
                "Median render subprocess duration over the last 24 hours.")
         metric("idle_hours_render_p95_ms", summary.get("render_p95_ms"),
@@ -778,7 +1017,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         age_metric(summary.get("last_heartbeat_ts"), "idle_hours_last_heartbeat_age_seconds",
                    "Seconds since the last loop heartbeat. Alerts fire on rising edges.")
         age_metric(summary.get("last_render_ts"), "idle_hours_last_render_age_seconds",
-                   "Seconds since the panel last rendered. The 'panel is stale' alert.")
+                   "Seconds since the panel last rendered. The 'panel is stale' alert "
+                   "— gate it on idle_hours_quiet_active == 0.")
 
         body = ("\n".join(lines) + "\n").encode("utf-8")
         self.send_response(HTTPStatus.OK)

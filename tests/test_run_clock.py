@@ -1291,17 +1291,39 @@ class TestRuntimeStatePersistence:
         assert not (tmp_path / "state.json.tmp").exists()
 
     def test_save_writes_via_tmp_file(self, tmp_path):
-        """Verify the tmp+rename path is actually used (not a direct write)."""
+        """Verify the tmp+rename path is actually used (not a direct write).
+
+        The staging name is unique per write (#235) rather than a fixed
+        ``state.json.tmp``, so assert the *shape* — a sibling of the target,
+        prefixed with the target's own name and suffixed ``.tmp`` — instead of
+        an exact filename.
+        """
         path = tmp_path / "state.json"
         with patch("idle_hours.atomic_io.os.replace") as mock_replace:
             run_clock.save_runtime_state(str(path), {"manual_theme": "dark"})
             assert mock_replace.called
             src, dst = mock_replace.call_args[0]
-            assert str(src).endswith(".json.tmp")
+            src_path = Path(src)
+            assert src_path.parent == tmp_path
+            assert src_path.name.startswith("state.json.")
+            assert src_path.name.endswith(".tmp")
             assert str(dst).endswith(".json")
         # The tmp file is left behind because we patched replace; clean up.
-        tmp_path_file = tmp_path / "state.json.tmp"
-        assert tmp_path_file.exists()
+        assert [p.name for p in tmp_path.glob("*.tmp")] == [src_path.name]
+
+    def test_concurrent_writers_do_not_share_a_staging_file(self, tmp_path):
+        """Two writers of one target must never stage through the same sibling.
+
+        Before #235 the staging path was derived from the target name, so two
+        processes baking ``quote_database.jsonl`` interleaved their payloads
+        into one ``.tmp`` file and each published the blend. Assert the names
+        differ, which is what makes that impossible.
+        """
+        from idle_hours import atomic_io as _atomic_io
+
+        path = tmp_path / "quote_database.jsonl"
+        names = {_atomic_io._tmp_path_for(path).name for _ in range(50)}
+        assert len(names) == 50
 
     def test_save_fsyncs_parent_directory_after_replace(self, tmp_path):
         """Without a dirent fsync the rename itself isn't durable on ext4.
@@ -1326,7 +1348,7 @@ class TestRuntimeStatePersistence:
         real_open = _atomic_io.os.open
         real_fsync = _atomic_io.os.fsync
 
-        def flaky_open(pth, flags):
+        def flaky_open(pth, flags, *args):
             # Fail only for the directory handle; let the file-fd path through.
             if str(pth) == str(tmp_path):
                 raise OSError("simulated no-op dir fsync")
@@ -4690,6 +4712,136 @@ class TestHeartbeat:
         # No telemetry path → no-op, no file created.
         run_clock._maybe_emit_heartbeat(state, None)
         assert list(tmp_path.iterdir()) == []
+
+
+class TestWatchdogPingsOutsideTheHeartbeat:
+    """#236: the WatchdogSec budget must not be a function of tick duration.
+
+    A tick-top-only ping made ``WatchdogSec`` measure "did a tick complete"
+    rather than "is this process executing". The main loop takes
+    ``render_lock`` *blocking*, so a tick's real worst case included waiting
+    out someone else's full render+display (the source-card restore timer,
+    ``enter_quiet``, or an action that won the gate) before doing its own —
+    ~270s against a 180s watchdog, i.e. systemd killing a healthy appliance.
+    """
+
+    def _render(self, tmp_path, **kwargs):
+        run_clock.render_now(
+            render_script="render_quote.py",
+            output_path=str(tmp_path / "current.png"),
+            width=800,
+            height=480,
+            **kwargs,
+        )
+
+    def test_render_subprocess_boundary_pings(self, tmp_path):
+        with patch("subprocess.run"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.sd_notify.notify_watchdog") as pet:
+            self._render(tmp_path)
+        assert pet.call_count >= 1
+
+    def test_display_subprocess_boundary_pings_too(self, tmp_path):
+        """Two subprocesses, two pings — so a 45s render followed by a 60s
+        display is two 60s-bounded gaps, not one 105s gap."""
+        with patch("subprocess.run"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.sd_notify.notify_watchdog") as pet:
+            self._render(tmp_path, display_script="display_inky.py")
+        assert pet.call_count >= 2
+
+    def test_render_timeout_still_pings(self, tmp_path):
+        """The timeout path is exactly when the gap is longest, so it is exactly
+        when a missing ping hurts."""
+        boom = subprocess.TimeoutExpired(cmd="render_quote.py", timeout=45)
+        with patch("subprocess.run", side_effect=boom), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.sd_notify.notify_watchdog") as pet:
+            with pytest.raises(subprocess.TimeoutExpired):
+                self._render(tmp_path)
+        assert pet.call_count >= 1
+
+    def test_display_timeout_still_pings(self, tmp_path):
+        calls = {"n": 0}
+
+        def flaky(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise subprocess.TimeoutExpired(cmd="display_inky.py", timeout=60)
+            return None
+
+        with patch("subprocess.run", side_effect=flaky), \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
+             patch("idle_hours.run_clock.sd_notify.notify_watchdog") as pet:
+            with pytest.raises(subprocess.TimeoutExpired):
+                self._render(tmp_path, display_script="display_inky.py")
+        assert pet.call_count >= 2
+
+    def test_quiet_image_push_pings(self, tmp_path):
+        from idle_hours import runtime_quiet
+
+        image = tmp_path / "goodnight.png"
+        image.write_bytes(b"png")
+        with patch("subprocess.run"), \
+             patch("idle_hours.runtime_quiet.sd_notify.notify_watchdog") as pet:
+            runtime_quiet._display_quiet_image(
+                str(image), str(tmp_path / "current.png"), "display_inky.py",
+            )
+        assert pet.call_count >= 1
+
+    def test_loop_pings_before_the_blocking_lock_acquire(self, tmp_path):
+        """The wait itself is covered by the holder's boundary pings; this ping
+        is what guarantees the wait *starts* from a fresh deadline."""
+        import threading
+
+        argv = ["run_clock.py", "--output", str(tmp_path / "current.png"),
+                "--interval-seconds", "0", "--quiet-off",
+                "--state-path", "", "--history-path", "", "--telemetry-path", "",
+                "--pidfile", "", "--buttons-off", "--skip-preflight"]
+        order = []
+
+        class RecordingLock:
+            """Stands in for ``render_lock`` and notes when it is entered."""
+
+            def __init__(self):
+                self._lock = threading.Lock()
+
+            def __enter__(self):
+                order.append("acquire")
+                return self._lock.__enter__()
+
+            def __exit__(self, *exc):
+                return self._lock.__exit__(*exc)
+
+            def acquire(self, *a, **kw):
+                return self._lock.acquire(*a, **kw)
+
+            def release(self):
+                return self._lock.release()
+
+        real_init = run_clock.RuntimeState.__init__
+
+        def init_with_recording_lock(self, theme_arg, persisted=None):
+            real_init(self, theme_arg, persisted=persisted)
+            self.render_lock = RecordingLock()
+
+        def stop_after_one(_state, _sec):
+            raise KeyboardInterrupt
+
+        with patch("sys.argv", argv), \
+             patch("idle_hours.run_clock.RuntimeState.__init__", init_with_recording_lock), \
+             patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock.peek_quote_id",
+                   return_value=("141", 482, "quote", "three")), \
+             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.run_clock.sd_notify.notify_watchdog",
+                   side_effect=lambda: order.append("pet")), \
+             patch("idle_hours.run_clock._loop_sleep", side_effect=stop_after_one):
+            with pytest.raises(KeyboardInterrupt):
+                run_clock.main()
+
+        assert "acquire" in order, "the loop never reached its blocking acquire"
+        assert order.index("pet") < order.index("acquire")
 
 
 class TestSourceCardTimerCancellation:

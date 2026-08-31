@@ -876,3 +876,178 @@ class TestLastRenderAge:
         with patch("sys.argv", argv):
             idle_hours_health.main()
         assert "last render is stale" in capsys.readouterr().out
+
+
+class TestQuietAwareRenderStaleness:
+    """#232: the render-age gate fired every night on a healthy appliance.
+
+    With the shipped 22:00–06:00 quiet window and the documented
+    ``--max-render-age-minutes 90``, the check exited 2 from ~23:30 to 06:00
+    nightly — and an operator who also wired ``--webhook-url`` got paged for
+    it. The ``quiet_enter`` / ``quiet_exit`` markers needed to disambiguate
+    already existed (``runtime_quiet`` emits them saying so in a comment) and
+    ``summarise`` already counted them; nothing consumed them for the decision.
+    """
+
+    def _quiet_night(self, *, entered_minutes_ago=180, heartbeats=True):
+        """A render, then quiet entry, then healthy heartbeats ever since."""
+        entries = [
+            {"ts": _ts(entered_minutes_ago + 1), "render_ms": 900, "display_ms": 12000,
+             "mode": "production", "theme": "default"},
+            {"ts": _ts(entered_minutes_ago), "mode": "quiet_enter", "manual": False},
+        ]
+        if heartbeats:
+            # Append-ordered (oldest first) — ``summarise`` takes the last
+            # heartbeat as the most recent, which is only true of a stream
+            # written in the order the loop emits it.
+            entries += [
+                {"ts": _ts(minutes), "type": "heartbeat"}
+                for minutes in range(entered_minutes_ago - 1, 0, -1)
+            ]
+        return entries
+
+    # -- summarise carries the window state ---------------------------------
+
+    def test_summarise_reports_open_window(self):
+        summary = idle_hours_health.summarise(self._quiet_night())
+        assert summary["quiet_active"] is True
+        assert summary["quiet_since"] is not None
+        assert summary["last_quiet_exit_ts"] is None
+
+    def test_summarise_reports_closed_window(self):
+        entries = self._quiet_night() + [{"ts": _ts(5), "mode": "quiet_exit"}]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is False
+        assert summary["quiet_since"] is None
+        assert summary["last_quiet_exit_ts"] == entries[-1]["ts"]
+
+    def test_window_state_follows_the_last_marker_not_the_counts(self):
+        """Two enters and one exit across the window still means 'open'."""
+        entries = [
+            {"ts": _ts(500), "mode": "quiet_enter"},
+            {"ts": _ts(400), "mode": "quiet_exit"},
+            {"ts": _ts(100), "mode": "quiet_enter"},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is True
+        assert summary["quiet_enter_count"] == 2
+        assert summary["quiet_exit_count"] == 1
+
+    def test_no_quiet_markers_means_not_quiet(self):
+        summary = idle_hours_health.summarise([{"ts": _ts(5), "render_ms": 100}])
+        assert summary["quiet_active"] is False
+
+    # -- the gate itself ----------------------------------------------------
+
+    def test_gate_is_suppressed_while_the_window_is_open(self):
+        summary = idle_hours_health.summarise(self._quiet_night())
+        # The loop is demonstrably alive...
+        assert idle_hours_health.is_heartbeat_stale(summary, 5) is False
+        # ...and the panel being 3h stale is correct, not a fault.
+        assert idle_hours_health.is_render_stale(summary, 90) is False
+
+    def test_wedge_during_quiet_hours_is_still_caught_by_the_heartbeat_gate(self):
+        """Suppressing the render gate must not create a blind spot."""
+        summary = idle_hours_health.summarise(self._quiet_night(heartbeats=False))
+        assert summary["quiet_active"] is True
+        assert idle_hours_health.is_heartbeat_stale(summary, 5) is True
+
+    def test_gate_stands_down_briefly_after_the_window_closes(self):
+        """At quiet exit the last render is a whole window old through no fault
+        of the appliance; the age clock restarts at the exit marker."""
+        entries = self._quiet_night() + [{"ts": _ts(2), "mode": "quiet_exit"}]
+        summary = idle_hours_health.summarise(entries)
+        assert idle_hours_health.is_render_stale(summary, 90) is False
+
+    def test_failure_to_resume_after_the_window_is_caught(self):
+        """The window closed hours ago and the panel still hasn't repainted —
+        that is a real wedge and must fire."""
+        entries = self._quiet_night(entered_minutes_ago=600) + [
+            {"ts": _ts(200), "mode": "quiet_exit"},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert summary["quiet_active"] is False
+        assert idle_hours_health.is_render_stale(summary, 90) is True
+
+    def test_a_fresh_render_beats_an_older_quiet_exit(self):
+        """Once normal rendering resumes the reference is the render again, so
+        a later stall is caught on the usual schedule."""
+        entries = [
+            {"ts": _ts(400), "mode": "quiet_exit"},
+            {"ts": _ts(300), "render_ms": 100, "display_ms": 50},
+        ]
+        summary = idle_hours_health.summarise(entries)
+        assert idle_hours_health.render_staleness_reference(summary) == entries[1]["ts"]
+        assert idle_hours_health.is_render_stale(summary, 90) is True
+
+    def test_missing_everything_is_still_stale(self):
+        assert idle_hours_health.is_render_stale({}, 30) is True
+        assert idle_hours_health.is_render_stale(
+            {"last_render_ts": "not-a-date", "last_quiet_exit_ts": None}, 30
+        ) is True
+
+    # -- exit codes ---------------------------------------------------------
+
+    def test_nightly_cron_exits_zero_during_quiet_hours(self, tmp_path):
+        """The end-to-end shape from the issue: the documented flags, run at
+        03:00, against an appliance doing exactly what it should."""
+        path = _ledger(tmp_path, self._quiet_night())
+        argv = [
+            "idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24",
+            "--max-render-age-minutes", "90", "--max-heartbeat-age-minutes", "5",
+        ]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 0
+
+    def test_fail_if_no_renders_also_stands_down_during_quiet_hours(self, tmp_path):
+        """A window landing entirely inside the blackout is supposed to be silent."""
+        entries = [
+            {"ts": _ts(90), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(1), "type": "heartbeat"},
+        ]
+        path = _ledger(tmp_path, entries)
+        argv = [
+            "idle_hours_health.py", "--telemetry-path", str(path), "--hours", "2",
+            "--fail-if-no-renders",
+        ]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 0
+
+    def test_fail_if_no_renders_still_fires_outside_quiet_hours(self, tmp_path):
+        path = _ledger(tmp_path, [{"ts": _ts(1), "type": "heartbeat"}])
+        argv = [
+            "idle_hours_health.py", "--telemetry-path", str(path), "--hours", "2",
+            "--fail-if-no-renders",
+        ]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 2
+
+    def test_errors_during_quiet_hours_still_fail(self, tmp_path):
+        """Standing down on silence must not stand down on actual failures."""
+        entries = [
+            {"ts": _ts(180), "mode": "quiet_enter", "manual": False},
+            {"ts": _ts(30), "mode": "quiet", "error": "RuntimeError('panel gone')"},
+        ]
+        path = _ledger(tmp_path, entries)
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24"]
+        with patch("sys.argv", argv):
+            assert idle_hours_health.main() == 2
+
+    # -- reporting ----------------------------------------------------------
+
+    def test_human_summary_says_quiet_hours_are_active(self, tmp_path, capsys):
+        path = _ledger(tmp_path, self._quiet_night())
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24"]
+        with patch("sys.argv", argv):
+            idle_hours_health.main()
+        assert "quiet hours ACTIVE since" in capsys.readouterr().out
+
+    def test_json_carries_the_window_state(self, tmp_path, capsys):
+        path = _ledger(tmp_path, self._quiet_night())
+        argv = ["idle_hours_health.py", "--telemetry-path", str(path), "--hours", "24", "--json"]
+        with patch("sys.argv", argv):
+            idle_hours_health.main()
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["quiet_active"] is True
+        assert payload["quiet_since"]

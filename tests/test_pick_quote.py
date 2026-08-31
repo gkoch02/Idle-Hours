@@ -1683,3 +1683,142 @@ class TestPickBestBucketIndex:
         picks = {pq.pick_best(rows, "h3_exact", seed=7, min_quality=60, overrides={})[0]["source_id"]
                  for _ in range(5)}
         assert len(picks) == 1  # deterministic for a fixed seed
+
+
+class TestDegradationWarningsAreOneShot:
+    """#234: ``_resolve_corpus``'s fallback warnings fire once per version of the
+    file, not once per pick.
+
+    The appliance picks twice per tick (``peek_quote_id`` in-process plus the
+    ``render_quote.py`` subprocess), so an unlatched warning wrote ~2,900
+    identical lines a day into journald on a stale bake. The latch is keyed on
+    file identity rather than being permanent, so a re-bake that is still wrong
+    warns again.
+    """
+
+    def _raw_corpus(self, path):
+        rows = [make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100,
+                         quality_score=90,
+                         display_quote="It was three o'clock and all was well in the town.")]
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        return path
+
+    def _baked_corpus(self, path, *, schema_version):
+        row = make_row(fuzzy_bucket="h3_exact", source_id="1", line_number=100,
+                       quality_score=90,
+                       display_quote="It was three o'clock and all was well in the town.")
+        row["baked_score"] = [0] * len(pq.BAKED_SCORE_COMPONENTS)
+        row["inferred_quote_minute"] = 0
+        row["baked_rank"] = 0
+        row["schema_version"] = schema_version
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        return path
+
+    def _pick(self, db, raw):
+        return pq.select_quote(time_str="03:00", database_path=str(db),
+                               input_path=str(raw), overrides={})
+
+    def test_missing_database_warns_once(self, tmp_path, capsys):
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        missing = tmp_path / "absent.jsonl"
+        pq.clear_corpus_cache()
+        for _ in range(4):
+            self._pick(missing, raw)
+        assert capsys.readouterr().err.count("not found") == 1
+
+    def test_empty_database_warns_once(self, tmp_path, capsys):
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        empty = tmp_path / "empty.jsonl"
+        empty.write_text("", encoding="utf-8")
+        pq.clear_corpus_cache()
+        for _ in range(4):
+            self._pick(empty, raw)
+        assert capsys.readouterr().err.count("is empty") == 1
+
+    def test_schema_mismatch_warns_once(self, tmp_path, capsys):
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = self._baked_corpus(tmp_path / "db.jsonl",
+                                schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 7)
+        pq.clear_corpus_cache()
+        for _ in range(4):
+            result = self._pick(db, raw)
+        assert result["source_id"] == "1"  # still served, from the raw corpus
+        assert capsys.readouterr().err.count("schema_version") == 1
+
+    def test_rebake_that_is_still_wrong_warns_again(self, tmp_path, capsys):
+        """The latch is on file identity, not forever — an operator who re-bakes
+        and gets it wrong again must hear about it."""
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = self._baked_corpus(tmp_path / "db.jsonl",
+                                schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 7)
+        pq.clear_corpus_cache()
+        self._pick(db, raw)
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("schema_version") == 1
+        # Re-bake, still stamped wrong (different size so the stat stamp moves).
+        self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 1000)
+        self._pick(db, raw)
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("schema_version") == 1
+
+    def test_healthy_database_clears_the_missing_latch(self, tmp_path, capsys):
+        """A file that goes missing, is restored, then goes missing again warns twice."""
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = tmp_path / "db.jsonl"
+        pq.clear_corpus_cache()
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("not found") == 1
+        self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION)
+        self._pick(db, raw)
+        db.unlink()
+        self._pick(db, raw)
+        assert capsys.readouterr().err.count("not found") == 1
+
+    def test_unstattable_path_falls_back_to_an_uncached_scan(self, tmp_path):
+        """Mirrors ``_load_rows_cached``'s own missing-file passthrough: with no
+        stat stamp there is nothing to key the memo on, so the verdict is
+        recomputed rather than cached under a stale key."""
+        rows = [{"baked_score": [0], "schema_version": pq.BAKED_SCORE_SCHEMA_VERSION + 3}]
+        verdict, computed_now = pq._schema_mismatch_cached(tmp_path / "gone.jsonl", rows)
+        assert verdict == pq.BAKED_SCORE_SCHEMA_VERSION + 3
+        assert computed_now is True
+
+    def test_schema_scan_is_not_repeated_per_pick(self, tmp_path, monkeypatch):
+        """The healthy path walked the whole row list on every pick for an answer
+        that can't change while the file doesn't."""
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = self._baked_corpus(tmp_path / "db.jsonl",
+                                schema_version=pq.BAKED_SCORE_SCHEMA_VERSION)
+        calls = {"n": 0}
+        real = pq._rows_schema_mismatch
+
+        def counting(rows):
+            calls["n"] += 1
+            return real(rows)
+
+        monkeypatch.setattr(pq, "_rows_schema_mismatch", counting)
+        pq.clear_corpus_cache()
+        for _ in range(5):
+            self._pick(db, raw)
+        assert calls["n"] == 1
+
+    def test_schema_scan_reruns_after_the_file_changes(self, tmp_path, monkeypatch):
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = self._baked_corpus(tmp_path / "db.jsonl",
+                                schema_version=pq.BAKED_SCORE_SCHEMA_VERSION)
+        calls = {"n": 0}
+        real = pq._rows_schema_mismatch
+
+        def counting(rows):
+            calls["n"] += 1
+            return real(rows)
+
+        monkeypatch.setattr(pq, "_rows_schema_mismatch", counting)
+        pq.clear_corpus_cache()
+        self._pick(db, raw)
+        self._pick(db, raw)
+        assert calls["n"] == 1
+        # A re-bake changes (mtime_ns, size) and must re-run the verdict.
+        self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 1000)
+        self._pick(db, raw)
+        assert calls["n"] == 2

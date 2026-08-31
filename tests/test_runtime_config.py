@@ -65,6 +65,8 @@ class TestLoadConfigHappyPath:
             'web_bind = "127.0.0.1:8080"',
             'web_token = ""',
             'web_token_file = "/var/lib/idle-hours/web.token"',
+            "web_metrics_token = false",
+            'web_allowed_hosts = ["idle-hours.local", "pi.lan"]',
             'pidfile = "/var/lib/idle-hours/run_clock.pid"',
             'webhook_url = "https://example.test/hook"',
             "webhook_all_events = false",

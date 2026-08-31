@@ -5,8 +5,8 @@
 const $ = (id) => document.getElementById(id);
 
 // Token storage. Loopback binds need no token (server ignores the header);
-// LAN binds reject every POST with 401 unless `X-Idle-Hours-Token` matches the
-// configured value. We persist the operator's token in localStorage so a
+// LAN binds reject every POST — and every JSON GET (#233) — with 401 unless
+// `X-Idle-Hours-Token` matches the configured value. We persist the operator's token in localStorage so a
 // page reload doesn't re-prompt, and reactively recover from 401 by asking
 // the operator to paste the current token. No token is ever embedded in
 // the served HTML — that would leak it into shoulder-surf and HTTP caches.
@@ -538,7 +538,13 @@ async function bakeNow() {
   const btn = $("bake-now");
   btn.disabled = true;
   setStatus("bake-status", "Baking…", "");
-  const { ok, status, data } = await jsonFetch("/api/bake", { method: "POST" });
+  // Content-Type is required on every POST, body or not (#233) — a bodyless
+  // POST with no Content-Type is a CORS simple request and would let any page
+  // the operator has open trigger a bake.
+  const { ok, status, data } = await jsonFetch("/api/bake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
   btn.disabled = false;
   if (status === 409) {
     setStatus("bake-status", "busy: render in flight, try again in a moment", "warn");
