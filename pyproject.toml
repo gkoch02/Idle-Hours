@@ -28,7 +28,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-xdist", "ruff"]
+# ``pyyaml`` is a test-only dependency: tests/test_ci_required_checks.py parses
+# .github/workflows/ci.yml to fence it against the required-status-check list
+# in .github/rulesets/main-branch.json. Imported hard rather than through
+# ``importorskip`` so a missing parser fails that fence instead of skipping it.
+dev = ["pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
 pi = ["inky", "gpiozero"]
 
 [project.scripts]

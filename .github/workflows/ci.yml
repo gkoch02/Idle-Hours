@@ -92,10 +92,34 @@ jobs:
     # as an artifact but nothing acts on it. Python 3.12 + COVERAGE_CORE=sysmon
     # uses sys.monitoring (PEP 669) for the lightest available tracer.
     #
-    # push-only (main): the tracer makes this the slowest job in the run
-    # (~4 min), so it's skipped on pull_request to keep PR feedback fast.
-    # The gate still catches regressions post-merge on main.
-    if: github.event_name == 'push'
+    # Runs on pull_request too, deliberately (issue #241). This job was
+    # ``if: github.event_name == 'push'`` on the reasoning that the tracer
+    # makes it the slowest job in the run (~4 min) and PR feedback should stay
+    # fast. But a gate that only runs after the merge cannot block one: it
+    # converts a change that should have been rejected into a red default
+    # branch somebody has to notice, and this repo has no scheduled or
+    # failure-triggered workflow to notice it. Two things follow, and they are
+    # one decision rather than two:
+    #
+    #   * The cost is smaller than ~4 min suggests, because the jobs run in
+    #     parallel. On run 32632086003 this job took 4m11s while the critical
+    #     path excluding it was ``test (3.12)`` at 1m50s; PR #240's critical
+    #     path was that same job at 3m17s (runner variance is ~±1.5 min). So
+    #     PR feedback moves from roughly 2-3.5 min to roughly 4.2 min.
+    #   * A required status check has to actually run on the pull request,
+    #     and the reason is the opposite of the obvious one. GitHub reports a
+    #     job skipped by its ``if:`` with conclusion ``skipped``, and a skipped
+    #     check *counts as success* for a required status check. So adding
+    #     ``coverage`` to .github/rulesets/main-branch.json while keeping the
+    #     ``if:`` here would not have deadlocked anything — it would have been
+    #     worse: a required gate reporting green on every pull request without
+    #     measuring a line. Listing it in the ruleset (which is what makes the
+    #     "blocks the merge" sentence above true) and dropping the ``if`` are
+    #     inseparable. (The genuinely merge-blocking case is a whole *workflow*
+    #     skipped by path or branch filtering, where the check never reports at
+    #     all and stays pending; ci.yml has no such filter on ``pull_request``.)
+    #
+    # tests/test_ci_required_checks.py fences both halves.
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
