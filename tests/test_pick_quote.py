@@ -1855,6 +1855,46 @@ class TestDegradationWarningsAreOneShot:
         self._pick(db, raw)
         assert capsys.readouterr().err.count("not found") == 1
 
+    def test_suppressed_child_stays_quiet_but_still_latches(self, tmp_path, capsys, monkeypatch):
+        """The latch is module-level, so it spans one process — and run_clock
+        forks a fresh render_quote.py per repaint, which starts with empty
+        globals and re-warns. The parent peeks first and has already warned for
+        this file version, so the child's copy is pure duplication."""
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        missing = tmp_path / "absent.jsonl"
+        monkeypatch.setenv(pq.SUPPRESS_WARNINGS_ENV, "1")
+        pq.clear_corpus_cache()
+        self._pick(missing, raw)
+        assert capsys.readouterr().err == ""
+        # Bookkeeping is unchanged — only the printing is suppressed.
+        assert pq._DEGRADED_WARNED.get(str(missing)) == "missing"
+
+    def test_suppressed_child_stays_quiet_about_a_schema_mismatch(self, tmp_path, capsys, monkeypatch):
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = self._baked_corpus(tmp_path / "db.jsonl",
+                                schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 7)
+        monkeypatch.setenv(pq.SUPPRESS_WARNINGS_ENV, "1")
+        pq.clear_corpus_cache()
+        result = self._pick(db, raw)
+        assert capsys.readouterr().err == ""
+        assert result["source_id"] == "1"   # still served from the raw corpus
+
+    def test_standalone_render_still_warns(self, tmp_path, capsys, monkeypatch):
+        """`idle-hours render` run by hand has no parent to have warned for it."""
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        monkeypatch.delenv(pq.SUPPRESS_WARNINGS_ENV, raising=False)
+        pq.clear_corpus_cache()
+        self._pick(tmp_path / "absent.jsonl", raw)
+        assert "not found" in capsys.readouterr().err
+
+    def test_only_the_exact_sentinel_suppresses(self, monkeypatch):
+        """Don't let a stray truthy-looking value silence the appliance."""
+        for value, expected in (("1", True), ("0", False), ("true", False), ("", False)):
+            monkeypatch.setenv(pq.SUPPRESS_WARNINGS_ENV, value)
+            assert pq._degradation_warnings_suppressed() is expected, value
+        monkeypatch.delenv(pq.SUPPRESS_WARNINGS_ENV, raising=False)
+        assert pq._degradation_warnings_suppressed() is False
+
     def test_schema_scan_is_not_repeated_per_pick(self, tmp_path, monkeypatch):
         """The healthy path walked the whole row list on every pick for an answer
         that can't change while the file doesn't."""

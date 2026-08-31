@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import os
 import shlex
 import signal
 import subprocess
@@ -803,6 +804,16 @@ def render_now(
             ],
             check=True,
             timeout=RENDER_TIMEOUT_SECONDS,
+            # Silence the child's corpus-degradation warnings: this process
+            # peeked the same corpus moments ago and has already emitted them,
+            # latched per file version. Without this a fresh child re-warns on
+            # every repaint, since the latch is module-level and it starts with
+            # empty globals. Passed as an environment variable rather than a
+            # flag because ``_corpus_render_args`` above documents why the
+            # subprocess argv must stay recognisable to an operator's own
+            # ``--render-script`` — an unknown env var is ignored, an unknown
+            # flag exits 2 and takes the appliance into backoff.
+            env={**os.environ, pick_quote_module.SUPPRESS_WARNINGS_ENV: "1"},
         )
     except subprocess.TimeoutExpired as exc:
         # subprocess.run has already killed the child before re-raising; we

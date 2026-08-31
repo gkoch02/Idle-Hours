@@ -251,6 +251,37 @@ _SCHEMA_VERDICT_CACHE: dict[str, tuple[tuple[int, int], int | None]] = {}
 # rather than being permanently suppressed by a stale entry.
 _DEGRADED_WARNED: dict[str, str] = {}
 
+# Set by ``run_clock.render_now`` in the render subprocess's environment.
+#
+# The latches above are module-level, so they only span one process — and
+# ``run_clock`` forks a fresh ``render_quote.py`` for every repaint, which
+# starts with empty globals and re-emits the same warning. That left a
+# persistently stale bake writing one warning per render (~200-290/day on the
+# appliance) despite the documented once-per-file-version behaviour: the
+# in-process ``peek_quote_id`` half was latched, the subprocess half was not.
+#
+# The parent is the long-lived process that owns the latch, and it peeks
+# before every render it spawns (the main loop's bucket-change branch and the
+# ``--once`` path both call ``peek_quote_id`` first), so it has already warned
+# for this version of the file. The child's warning is pure duplication.
+#
+# An environment variable rather than a CLI flag, deliberately:
+# ``run_clock._corpus_render_args`` documents that the subprocess argv may only
+# carry flags an operator's own ``--render-script`` would recognise, because an
+# unrecognised flag exits argparse with status 2 — failing every tick and
+# sliding the appliance into render backoff. An unknown env var is ignored by
+# any renderer, so this cannot break a custom one.
+SUPPRESS_WARNINGS_ENV = "IDLE_HOURS_SUPPRESS_CORPUS_WARNINGS"
+
+
+def _degradation_warnings_suppressed() -> bool:
+    """True when this process should stay quiet about corpus degradation.
+
+    Read at warn time rather than import time so a test (or an embedder) can
+    toggle it without reimporting the module.
+    """
+    return os.environ.get(SUPPRESS_WARNINGS_ENV, "") == "1"
+
 
 def clear_corpus_cache() -> None:
     """Drop all cached corpus rows, schema verdicts, and warning latches.
@@ -266,11 +297,17 @@ def clear_corpus_cache() -> None:
 
 
 def _warn_degraded_once(path_key: str, reason: str, message: str) -> None:
-    """Print ``message`` only when ``path_key`` isn't already latched at ``reason``."""
+    """Print ``message`` only when ``path_key`` isn't already latched at ``reason``.
+
+    The latch is recorded whether or not the message is printed, so the
+    bookkeeping stays identical in a suppressed child.
+    """
     with _CORPUS_CACHE_LOCK:
         if _DEGRADED_WARNED.get(path_key) == reason:
             return
         _DEGRADED_WARNED[path_key] = reason
+    if _degradation_warnings_suppressed():
+        return
     print(message, file=sys.stderr, flush=True)
 
 
@@ -1003,6 +1040,12 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
     identity rather than latching forever is deliberate — a re-bake that is
     still wrong warns again, which is the signal an operator is waiting for.
 
+    The latch spans one process, so ``run_clock`` sets
+    :data:`SUPPRESS_WARNINGS_ENV` in the render subprocess's environment — a
+    fresh child would otherwise start with empty globals and re-warn on every
+    repaint. The parent peeks before every render it spawns, so it has already
+    warned for this version of the file; see that constant's comment.
+
     A falsy ``database_path`` (empty string / ``None``) skips the baked path
     entirely without warning — the bake-equivalence tests use this to exercise
     the raw path on purpose.
@@ -1020,7 +1063,7 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
                 # missing -> restored -> missing sequence warn each time even
                 # when the middle state was a bad bake rather than a good one.
                 _clear_degraded_latch(key)
-                if computed_now:
+                if computed_now and not _degradation_warnings_suppressed():
                     print(
                         f"warning: baked database {path} has schema_version={stale!r} "
                         f"but this pick_quote expects {BAKED_SCORE_SCHEMA_VERSION}; "

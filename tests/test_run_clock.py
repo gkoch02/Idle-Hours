@@ -4746,6 +4746,47 @@ class TestHeartbeat:
         assert list(tmp_path.iterdir()) == []
 
 
+class TestRenderChildSuppressesCorpusWarnings:
+    """#242 review: the corpus-degradation latch is module-level, so each fresh
+    render subprocess re-warned — a persistently stale bake kept filling
+    journald despite the documented once-per-file-version behaviour."""
+
+    def _run(self, tmp_path, **kwargs):
+        with patch("subprocess.run") as mock_run, \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800, height=480, **kwargs,
+            )
+        return mock_run
+
+    def test_render_child_gets_the_suppression_env(self, tmp_path):
+        env = self._run(tmp_path).call_args.kwargs["env"]
+        assert env[run_clock.pick_quote_module.SUPPRESS_WARNINGS_ENV] == "1"
+
+    def test_the_rest_of_the_environment_is_inherited(self, tmp_path, monkeypatch):
+        """``subprocess.run(env=...)`` REPLACES the environment, so the child
+        would lose PATH, HOME and the venv wiring if we passed the sentinel
+        alone."""
+        monkeypatch.setenv("IDLE_HOURS_TEST_CANARY", "kept")
+        env = self._run(tmp_path).call_args.kwargs["env"]
+        assert env["IDLE_HOURS_TEST_CANARY"] == "kept"
+        assert "PATH" in env
+
+    def test_suppression_is_not_passed_as_argv(self, tmp_path):
+        """It must be an env var, not a flag: ``_corpus_render_args`` documents
+        that an unrecognised flag exits an operator's custom --render-script
+        with status 2, failing every tick into render backoff."""
+        cmd = self._run(tmp_path).call_args[0][0]
+        # Only inspect flag-shaped tokens: pytest derives tmp_path from the
+        # test's own name, so a bare substring scan matches the output path
+        # this very test passes in.
+        flags = [str(a) for a in cmd if str(a).startswith("--")]
+        assert not any("suppress" in f.lower() for f in flags), flags
+        assert run_clock.pick_quote_module.SUPPRESS_WARNINGS_ENV not in flags
+
+
 class TestWatchdogPingsOutsideTheHeartbeat:
     """#236: the WatchdogSec budget must not be a function of tick duration.
 
