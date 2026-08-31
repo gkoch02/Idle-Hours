@@ -1779,9 +1779,63 @@ class TestDegradationWarningsAreOneShot:
         stat stamp there is nothing to key the memo on, so the verdict is
         recomputed rather than cached under a stale key."""
         rows = [{"baked_score": [0], "schema_version": pq.BAKED_SCORE_SCHEMA_VERSION + 3}]
-        verdict, computed_now = pq._schema_mismatch_cached(tmp_path / "gone.jsonl", rows)
+        verdict, computed_now = pq._schema_mismatch_cached(tmp_path / "gone.jsonl", rows, None)
         assert verdict == pq.BAKED_SCORE_SCHEMA_VERSION + 3
         assert computed_now is True
+
+    def test_verdict_is_bound_to_the_stamp_the_rows_came_from(self, tmp_path, monkeypatch):
+        """A bake landing between the row load and the verdict must not cache a
+        verdict computed from the OLD rows under the NEW file's stamp.
+
+        Re-statting inside the verdict helper did exactly that, and because
+        both caches key the same way the mismatch then persisted: every later
+        pick reloaded the new rows, hit that stamp, and reused the stale
+        verdict — so a healthy bake sat on the raw fallback until the file
+        changed again, and *silently*, since the warning latch keys on the
+        same entry. The curator UI's "Bake now" while the loop is picking is
+        the documented workflow that opens the window.
+        """
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        db = tmp_path / "db.jsonl"
+        self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 7)
+        pq.clear_corpus_cache()
+
+        # Drive the race where it actually happens — inside _resolve_corpus.
+        # Patching load_rows to rewrite the file as a side effect places the
+        # bake precisely between the row read and any later stat, which is the
+        # window the re-stat opened. Poisoning the cache by hand instead would
+        # pass against the bug, because it supplies the *correct* stamp.
+        real_load_rows = pq.load_rows
+        raced = {"done": False}
+
+        def racing_load(path):
+            rows = real_load_rows(path)
+            if not raced["done"] and Path(path) == db:
+                raced["done"] = True
+                self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION)
+            return rows
+
+        monkeypatch.setattr(pq, "load_rows", racing_load)
+        pq._resolve_corpus(str(db), str(raw))
+        assert raced["done"], "the racing bake never fired; test proves nothing"
+        monkeypatch.setattr(pq, "load_rows", real_load_rows)
+
+        # Every later pick must see the healthy database, not a stale verdict.
+        for _ in range(3):
+            used = pq._resolve_corpus(str(db), str(raw))
+        assert "baked_score" in used[0], "healthy baked DB stuck on the raw fallback"
+
+    def test_load_rows_with_stamp_agrees_with_the_plain_alias(self, tmp_path):
+        raw = self._raw_corpus(tmp_path / "raw.jsonl")
+        pq.clear_corpus_cache()
+        rows, stamp = pq._load_rows_with_stamp(raw)
+        assert rows == pq._load_rows_cached(raw)
+        assert stamp == (raw.stat().st_mtime_ns, raw.stat().st_size)
+
+    def test_missing_path_reports_no_stamp(self, tmp_path):
+        pq.clear_corpus_cache()
+        with pytest.raises(OSError):
+            pq._load_rows_with_stamp(tmp_path / "nope.jsonl")
 
     def test_bad_schema_intermediate_also_clears_the_missing_latch(self, tmp_path, capsys):
         """The docstring promises missing -> restored -> missing warns each

@@ -286,6 +286,44 @@ class TestStaleStagingSweep:
         atomic_io.atomic_write_bytes(target, b"payload")
         assert target.read_bytes() == b"payload"
 
+    def test_an_operators_own_sibling_is_not_swept(self, tmp_path: Path) -> None:
+        """The sweep deletes files, so it must recognise its own output exactly
+        rather than approximately. A ``<target>.*.tmp`` glob reaped
+        ``current.png.notes.tmp`` an hour after the next render."""
+        target = tmp_path / "current.png"
+        for name in ("current.png.notes.tmp", "current.png.backup.tmp",
+                     "current.png.tmp", "current.png.12345.tmp",
+                     "current.png.abc.3920cc9be95f.tmp",      # non-numeric pid
+                     "current.png.123.nothexadecimal.tmp",    # not a hex token
+                     "current.png.123.3920cc9be95.tmp"):      # token one char short
+            victim = tmp_path / name
+            victim.write_text("not ours")
+            stamp = time.time() - (atomic_io._TMP_SWEEP_AGE_SECONDS + 60)
+            os.utime(victim, (stamp, stamp))
+        atomic_io.atomic_write_bytes(target, b"payload")
+        survivors = sorted(p.name for p in tmp_path.glob("*.tmp"))
+        assert len(survivors) == 7, f"swept a file it did not create: {survivors}"
+
+    def test_glob_metacharacters_in_the_target_name(self, tmp_path: Path) -> None:
+        """A target literally named ``foo[1].png`` produced the glob class
+        ``[1]``, whose pattern matches ``foo1.png.…`` — a *different* target's
+        staging files. Structural parsing needs no escaping rules."""
+        weird = tmp_path / "foo[1].png"
+        other = tmp_path / "foo1.png"
+        stranger = self._abandon(other, atomic_io._TMP_SWEEP_AGE_SECONDS + 60)
+        mine = self._abandon(weird, atomic_io._TMP_SWEEP_AGE_SECONDS + 60)
+        atomic_io.atomic_write_bytes(weird, b"payload")
+        assert stranger.exists(), "swept another target's staging file"
+        assert not mine.exists(), "failed to sweep its own staging file"
+
+    def test_is_staging_name_accepts_what_the_module_generates(self, tmp_path: Path) -> None:
+        """Fence the two halves against drift — if the name format changes and
+        the recogniser doesn't, the sweep silently stops reaping anything."""
+        for name in ("current.png", "quote_database.jsonl", "state.json", "no-suffix"):
+            target = tmp_path / name
+            generated = atomic_io._tmp_path_for(target)
+            assert atomic_io._is_staging_name(target.name, generated.name), generated.name
+
     def test_a_future_mtime_is_not_swept(self, tmp_path: Path) -> None:
         """A clock stepped backwards makes mtime look like the future; that
         must read as 'too young', which is the safe direction."""

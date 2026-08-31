@@ -280,23 +280,36 @@ def _clear_degraded_latch(path_key: str) -> None:
         _DEGRADED_WARNED.pop(path_key, None)
 
 
-def _load_rows_cached(path: Path) -> list[dict]:
+def _load_rows_with_stamp(path: Path) -> tuple[list[dict], tuple[int, int] | None]:
+    """Return ``(rows, stamp)`` — the rows and the stat stamp they were read under.
+
+    Handing the stamp back matters because anything else derived from these
+    rows and memoised per-file has to key on *this* stamp, not on a fresh
+    ``stat`` taken afterwards. Re-statting binds the derived value to a file
+    generation the rows may not have come from, and since both caches are
+    keyed the same way the mismatch then sticks until the next change rather
+    than self-correcting. ``None`` when the path can't be statted.
+    """
     key = str(path)
     try:
         st = os.stat(path)
     except OSError:
         # Missing/unreadable — take (and don't cache) the normal load path so
         # its behaviour (empty list / caller's fallback warnings) is unchanged.
-        return load_rows(path)
+        return load_rows(path), None
     stamp = (st.st_mtime_ns, st.st_size)
     with _CORPUS_CACHE_LOCK:
         hit = _CORPUS_CACHE.get(key)
         if hit is not None and hit[0] == stamp:
-            return hit[1]
+            return hit[1], stamp
     rows = load_rows(path)
     with _CORPUS_CACHE_LOCK:
         _CORPUS_CACHE[key] = (stamp, rows)
-    return rows
+    return rows, stamp
+
+
+def _load_rows_cached(path: Path) -> list[dict]:
+    return _load_rows_with_stamp(path)[0]
 
 
 # Public alias. Out-of-module readers (the curator UI's live coverage view)
@@ -925,7 +938,9 @@ def _rows_schema_mismatch(rows: list[dict]) -> int | None:
     return None
 
 
-def _schema_mismatch_cached(path: Path, rows: list[dict]) -> tuple[int | None, bool]:
+def _schema_mismatch_cached(
+    path: Path, rows: list[dict], stamp: tuple[int, int] | None
+) -> tuple[int | None, bool]:
     """Return ``(verdict, computed_now)`` for ``path``'s baked rows.
 
     ``verdict`` is what :func:`_rows_schema_mismatch` returns; ``computed_now``
@@ -934,15 +949,24 @@ def _schema_mismatch_cached(path: Path, rows: list[dict]) -> tuple[int | None, b
     whether to emit the degradation warning, which is what makes that warning
     genuinely one-shot per version of the file instead of per pick.
 
-    An unstattable path falls through to an uncached scan so behaviour matches
-    :func:`_load_rows_cached`'s own missing-file passthrough.
+    ``stamp`` MUST be the one the rows were loaded under
+    (:func:`_load_rows_with_stamp` returns both together) — never a fresh
+    ``stat`` taken here. Re-statting opens a window the curator UI's "Bake now"
+    walks straight into: a bake landing between the row load and the stat
+    caches a verdict computed from the *old* rows under the *new* file's
+    stamp. Every later pick then reloads the new rows, hits that stamp in this
+    cache, and reuses the mismatched verdict — so an incompatible schema gets
+    scored, or a healthy bake is forced onto the raw fallback, and because the
+    warning is latched on the same key it happens *silently*. It persists until
+    the file changes again rather than self-correcting on the next pick.
+
+    A ``None`` stamp (unstattable path) falls through to an uncached scan so
+    behaviour matches :func:`_load_rows_with_stamp`'s own missing-file
+    passthrough.
     """
-    key = str(path)
-    try:
-        st = os.stat(path)
-    except OSError:
+    if stamp is None:
         return _rows_schema_mismatch(rows), True
-    stamp = (st.st_mtime_ns, st.st_size)
+    key = str(path)
     with _CORPUS_CACHE_LOCK:
         hit = _SCHEMA_VERDICT_CACHE.get(key)
         if hit is not None and hit[0] == stamp:
@@ -987,8 +1011,8 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
         path = resolve_path(database_path)
         key = str(path)
         if path.exists() and path.stat().st_size > 0:
-            rows = _load_rows_cached(path)
-            stale, computed_now = _schema_mismatch_cached(path, rows)
+            rows, stamp = _load_rows_with_stamp(path)
+            stale, computed_now = _schema_mismatch_cached(path, rows, stamp)
             if stale is not None:
                 # The file EXISTS, so any latched "missing" / "empty" warning
                 # for this path is now stale. Clearing it here as well as on

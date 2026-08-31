@@ -57,6 +57,10 @@ from typing import IO, Callable, Iterable
 # collides; the retry loop then picks a fresh one.
 _TMP_OPEN_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL
 _TMP_CREATE_ATTEMPTS = 8
+# Random component of a staging name, in bytes; ``secrets.token_hex`` renders
+# it as twice as many hex characters. The sweep validates against this, so the
+# two cannot drift.
+_TMP_TOKEN_BYTES = 6
 # Age past which an abandoned staging file is swept. Unique names cost us the
 # self-limiting property the old deterministic name had for free: there, a
 # process killed mid-write left one orphan and the *next* write reused that
@@ -91,7 +95,7 @@ def _tmp_path_for(path: Path) -> Path:
     filesystem (and therefore atomic). The ``.tmp`` suffix is preserved from
     the original scheme so operator glob-based cleanup still finds debris.
     """
-    return path.parent / f"{path.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp"
+    return path.parent / f"{path.name}.{os.getpid()}.{secrets.token_hex(_TMP_TOKEN_BYTES)}.tmp"
 
 
 def _open_tmp(path: Path) -> tuple[int, Path]:
@@ -107,6 +111,29 @@ def _open_tmp(path: Path) -> tuple[int, Path]:
     raise last_exc or OSError(f"could not create a staging file for {path}")
 
 
+def _is_staging_name(target_name: str, candidate_name: str) -> bool:
+    """True only for a name this module could itself have generated for ``target_name``.
+
+    The sweep deletes files, so it must recognise its own output exactly rather
+    than approximately. A ``<target>.*.tmp`` glob is too loose in two ways: it
+    matches an operator's own sibling (``current.png.notes.tmp`` would be
+    reaped an hour after the next render), and glob metacharacters in the
+    target name reinterpret the pattern — a target literally named
+    ``foo[1].png`` produces the class ``[1]``, whose pattern matches
+    ``foo1.png.…``, i.e. a *different* target's staging files. Structural
+    parsing sidesteps both, and needs no escaping rules to be got right.
+    """
+    prefix = f"{target_name}."
+    suffix = ".tmp"
+    if not candidate_name.startswith(prefix) or not candidate_name.endswith(suffix):
+        return False
+    middle = candidate_name[len(prefix):-len(suffix)]
+    pid, sep, token = middle.partition(".")
+    if not sep or not pid.isdigit():
+        return False
+    return len(token) == _TMP_TOKEN_BYTES * 2 and all(c in "0123456789abcdef" for c in token)
+
+
 def _sweep_stale_tmp(path: Path, keep: Path) -> None:
     """Best-effort removal of long-abandoned staging siblings of ``path``.
 
@@ -116,20 +143,24 @@ def _sweep_stale_tmp(path: Path, keep: Path) -> None:
     file, excluded defensively even though it is always younger than the
     threshold. Every failure is swallowed: this is hygiene, not correctness,
     and it must never turn a successful write into an exception.
+
+    Candidates come from a plain directory scan filtered by
+    :func:`_is_staging_name` rather than from a glob, so a target name
+    containing glob metacharacters cannot widen the match.
     """
     cutoff = time.time() - _TMP_SWEEP_AGE_SECONDS
     try:
-        candidates = list(path.parent.glob(f"{path.name}.*.tmp"))
+        entries = list(os.scandir(path.parent))
     except OSError:
         return
-    for candidate in candidates:
-        if candidate == keep:
+    for entry in entries:
+        if entry.name == keep.name or not _is_staging_name(path.name, entry.name):
             continue
         with contextlib.suppress(OSError):
             # A clock stepped backwards makes mtime look like the future,
             # which reads as "too young to sweep" — the safe direction.
-            if candidate.stat().st_mtime < cutoff:
-                candidate.unlink()
+            if entry.stat().st_mtime < cutoff:
+                os.unlink(entry.path)
 
 
 def _atomic_write(path: Path, mode: str, writer: Callable[[IO], None], **open_kwargs) -> None:
