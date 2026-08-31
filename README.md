@@ -429,6 +429,10 @@ idle-hours health --hours 24
 idle-hours health --hours 1 --json --fail-if-no-renders
 
 # Exit 2 if the panel hasn't repainted recently (a loop can heartbeat while stuck in backoff).
+# Stands down while quiet hours are open — the loop is supposed to be silent then — and
+# resumes measuring from the window's close, so a failure to wake up is still caught.
+# Works for any window width: the loop stamps the quiet state onto every heartbeat,
+# so a --hours 1 cron run at 03:00 sees it even though the 22:00 edge is long out of view.
 idle-hours health --hours 24 --max-render-age-minutes 90
 
 # systemd installs relocate telemetry under /var/lib/idle-hours; read the path from the same
@@ -436,7 +440,7 @@ idle-hours health --hours 24 --max-render-age-minutes 90
 idle-hours health --config /var/lib/idle-hours/config.toml --hours 24
 ```
 
-Every file the next tick or boot reads is written atomically (`tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger.
+Every file the next tick or boot reads is written atomically (`unique tmp → fsync → rename → fsync dir`) via the shared `atomic_io` helpers — runtime state, the rendered `output/current.png`, the selection-overrides sidecar, the history-ledger rewrite path, and the `apply_content_overrides` corpus writeback. A power cut or `SIGKILL` mid-write leaves the previous-known-good file byte-identical; it never leaves a truncated PNG or an empty ledger. The staging file is uniquely named per write, so two writers of one target (an `idle-hours bake` racing the curator UI's "Bake now", say) each publish a whole payload rather than a blend of both — last writer wins, which is a lost edit, not a corrupt corpus. Staging files abandoned by a hard kill (power cut, or a render subprocess killed at its timeout) are swept on the next successful write to the same target, once they are an hour old.
 
 `SIGTERM` and `SIGINT` are handled gracefully: `systemctl restart idle-hours.service` flips a shared event that the main loop observes between ticks, drains any in-flight render via `state.render_lock`, stops the curator web server, closes GPIO buttons, and persists runtime state one last time before the process exits. `--once` keeps strict-exit behaviour for cron callers.
 
@@ -588,7 +592,15 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `POST /api/setup` | **v2** — mark first-run wizard complete; optional `{"theme": "<name>"}` body applies a theme before dismissing |
 | `POST /api/action/{skip,unskip,theme,quiet,rerender}` | Mirrors buttons A/A-hold/B/D/C. `theme` accepts an optional `{"theme": "<name>"}` body to jump directly; empty body / missing field cycles. Malformed JSON returns 400 without mutating state. |
 
-Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-Idle-Hours-Token` header only; query-string tokens would leak into journald via HTTP request logging. GETs remain open on all binds — telemetry and `current.png` are not sensitive and the UI needs them without credentials.
+Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-Idle-Hours-Token` header only; query-string tokens would leak into journald via HTTP request logging.
+
+A configured token gates every POST **and** every JSON GET (`/api/history`, `/api/search`, `/api/bucket/*`, both override endpoints, ...) — the UI already sends the header on all of them, so this costs it nothing. Four routes stay open because a browser loads them by tag and a tag cannot attach a request header: the static shell (`/`, `/main.js`, `/style.css`), `/current.png`, and `/api/preview`. `/metrics` stays open for scrapers unless you pass `--web-metrics-token`.
+
+Independently of the token, the server rejects cross-site and rebound requests on **every** bind, including the tokenless loopback one the quick-start recommends:
+
+- every POST must send `Content-Type: application/json` (415 otherwise), which forces a CORS preflight the server never answers — so a page the operator happens to have open can't POST here at all. **If you drive the API with curl, add `-H 'Content-Type: application/json'`** — a bare `curl -X POST .../api/bake` now returns 415;
+- a POST whose `Origin` names a different host than its own `Host` header is rejected (403);
+- a request whose `Host` isn't one we answer for is rejected (403) — this is the DNS-rebinding guard. Loopback binds accept `127.0.0.1` / `localhost` / `::1`; if you reach the UI by an mDNS name or through a reverse proxy, name it with `--web-allowed-host idle-hours.local` (repeatable; config key `web_allowed_hosts`). Only the hostname is compared, never the port, so a port-rewriting proxy still works. A non-loopback bind stays permissive here unless you configure an allowlist — those binds require a token anyway.
 
 ### Quiet hours
 

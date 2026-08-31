@@ -236,30 +236,117 @@ def load_rows(path: Path) -> list[dict]:
 _CORPUS_CACHE: dict[str, tuple[tuple[int, int], list[dict]]] = {}
 _CORPUS_CACHE_LOCK = threading.Lock()
 
+# Schema verdict for a baked corpus, memoised on the same (mtime_ns, size)
+# stamp the row cache uses (#234). ``_rows_schema_mismatch`` only returns
+# after walking the *entire* row list in the healthy case — ~3,200 dict
+# lookups per pick for an answer that cannot change while the file doesn't.
+# Keying the memo on the stat stamp also gives the degradation warning its
+# documented "one-shot" behaviour for free: we warn exactly when the verdict
+# is (re)computed, which is the first pick after the file changes — so a
+# re-bake that is *still* wrong warns again, which is what an operator wants.
+_SCHEMA_VERDICT_CACHE: dict[str, tuple[tuple[int, int], int | None]] = {}
+# Latch for the missing / empty branches, which have no cached row list to
+# hang a stamp on. Maps resolved path -> the reason last warned about, so a
+# file that goes missing → reappears → goes missing again warns each time
+# rather than being permanently suppressed by a stale entry.
+_DEGRADED_WARNED: dict[str, str] = {}
+
+# Set by ``run_clock.render_now`` in the render subprocess's environment.
+#
+# The latches above are module-level, so they only span one process — and
+# ``run_clock`` forks a fresh ``render_quote.py`` for every repaint, which
+# starts with empty globals and re-emits the same warning. That left a
+# persistently stale bake writing one warning per render (~200-290/day on the
+# appliance) despite the documented once-per-file-version behaviour: the
+# in-process ``peek_quote_id`` half was latched, the subprocess half was not.
+#
+# The parent is the long-lived process that owns the latch, and it peeks
+# before every render it spawns (the main loop's bucket-change branch and the
+# ``--once`` path both call ``peek_quote_id`` first), so it has already warned
+# for this version of the file. The child's warning is pure duplication.
+#
+# An environment variable rather than a CLI flag, deliberately:
+# ``run_clock._corpus_render_args`` documents that the subprocess argv may only
+# carry flags an operator's own ``--render-script`` would recognise, because an
+# unrecognised flag exits argparse with status 2 — failing every tick and
+# sliding the appliance into render backoff. An unknown env var is ignored by
+# any renderer, so this cannot break a custom one.
+SUPPRESS_WARNINGS_ENV = "IDLE_HOURS_SUPPRESS_CORPUS_WARNINGS"
+
+
+def _degradation_warnings_suppressed() -> bool:
+    """True when this process should stay quiet about corpus degradation.
+
+    Read at warn time rather than import time so a test (or an embedder) can
+    toggle it without reimporting the module.
+    """
+    return os.environ.get(SUPPRESS_WARNINGS_ENV, "") == "1"
+
 
 def clear_corpus_cache() -> None:
-    """Drop all cached corpus rows (test isolation / manual invalidation)."""
+    """Drop all cached corpus rows, schema verdicts, and warning latches.
+
+    Test isolation / manual invalidation. The warning latches are cleared
+    alongside the rows so a test asserting on a degradation warning isn't
+    silenced by a previous test having already tripped it.
+    """
     with _CORPUS_CACHE_LOCK:
         _CORPUS_CACHE.clear()
+        _SCHEMA_VERDICT_CACHE.clear()
+        _DEGRADED_WARNED.clear()
 
 
-def _load_rows_cached(path: Path) -> list[dict]:
+def _warn_degraded_once(path_key: str, reason: str, message: str) -> None:
+    """Print ``message`` only when ``path_key`` isn't already latched at ``reason``.
+
+    The latch is recorded whether or not the message is printed, so the
+    bookkeeping stays identical in a suppressed child.
+    """
+    with _CORPUS_CACHE_LOCK:
+        if _DEGRADED_WARNED.get(path_key) == reason:
+            return
+        _DEGRADED_WARNED[path_key] = reason
+    if _degradation_warnings_suppressed():
+        return
+    print(message, file=sys.stderr, flush=True)
+
+
+def _clear_degraded_latch(path_key: str) -> None:
+    """Forget any latched warning for ``path_key`` (the file is healthy again)."""
+    with _CORPUS_CACHE_LOCK:
+        _DEGRADED_WARNED.pop(path_key, None)
+
+
+def _load_rows_with_stamp(path: Path) -> tuple[list[dict], tuple[int, int] | None]:
+    """Return ``(rows, stamp)`` — the rows and the stat stamp they were read under.
+
+    Handing the stamp back matters because anything else derived from these
+    rows and memoised per-file has to key on *this* stamp, not on a fresh
+    ``stat`` taken afterwards. Re-statting binds the derived value to a file
+    generation the rows may not have come from, and since both caches are
+    keyed the same way the mismatch then sticks until the next change rather
+    than self-correcting. ``None`` when the path can't be statted.
+    """
     key = str(path)
     try:
         st = os.stat(path)
     except OSError:
         # Missing/unreadable — take (and don't cache) the normal load path so
         # its behaviour (empty list / caller's fallback warnings) is unchanged.
-        return load_rows(path)
+        return load_rows(path), None
     stamp = (st.st_mtime_ns, st.st_size)
     with _CORPUS_CACHE_LOCK:
         hit = _CORPUS_CACHE.get(key)
         if hit is not None and hit[0] == stamp:
-            return hit[1]
+            return hit[1], stamp
     rows = load_rows(path)
     with _CORPUS_CACHE_LOCK:
         _CORPUS_CACHE[key] = (stamp, rows)
-    return rows
+    return rows, stamp
+
+
+def _load_rows_cached(path: Path) -> list[dict]:
+    return _load_rows_with_stamp(path)[0]
 
 
 # Public alias. Out-of-module readers (the curator UI's live coverage view)
@@ -888,6 +975,45 @@ def _rows_schema_mismatch(rows: list[dict]) -> int | None:
     return None
 
 
+def _schema_mismatch_cached(
+    path: Path, rows: list[dict], stamp: tuple[int, int] | None
+) -> tuple[int | None, bool]:
+    """Return ``(verdict, computed_now)`` for ``path``'s baked rows.
+
+    ``verdict`` is what :func:`_rows_schema_mismatch` returns; ``computed_now``
+    is True only on the pick that actually ran the scan — i.e. the first pick
+    after the file's ``(mtime_ns, size)`` changed. Callers use it to decide
+    whether to emit the degradation warning, which is what makes that warning
+    genuinely one-shot per version of the file instead of per pick.
+
+    ``stamp`` MUST be the one the rows were loaded under
+    (:func:`_load_rows_with_stamp` returns both together) — never a fresh
+    ``stat`` taken here. Re-statting opens a window the curator UI's "Bake now"
+    walks straight into: a bake landing between the row load and the stat
+    caches a verdict computed from the *old* rows under the *new* file's
+    stamp. Every later pick then reloads the new rows, hits that stamp in this
+    cache, and reuses the mismatched verdict — so an incompatible schema gets
+    scored, or a healthy bake is forced onto the raw fallback, and because the
+    warning is latched on the same key it happens *silently*. It persists until
+    the file changes again rather than self-correcting on the next pick.
+
+    A ``None`` stamp (unstattable path) falls through to an uncached scan so
+    behaviour matches :func:`_load_rows_with_stamp`'s own missing-file
+    passthrough.
+    """
+    if stamp is None:
+        return _rows_schema_mismatch(rows), True
+    key = str(path)
+    with _CORPUS_CACHE_LOCK:
+        hit = _SCHEMA_VERDICT_CACHE.get(key)
+        if hit is not None and hit[0] == stamp:
+            return hit[1], False
+    verdict = _rows_schema_mismatch(rows)
+    with _CORPUS_CACHE_LOCK:
+        _SCHEMA_VERDICT_CACHE[key] = (stamp, verdict)
+    return verdict, True
+
+
 def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
     """Prefer the baked database; fall back to the raw corpus if missing or schema-mismatched.
 
@@ -905,37 +1031,62 @@ def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
       so scoring it would produce drifted picks without crashing.
 
     All three fall back to the raw corpus rather than crashing the loop, and
-    all three log a one-shot stderr warning so the operator notices they're
-    running on the slower raw-scoring path. A falsy ``database_path`` (empty
-    string / ``None``) skips the baked path entirely without warning — the
-    bake-equivalence tests use this to exercise the raw path on purpose.
+    all three log a stderr warning so the operator notices they're running on
+    the slower raw-scoring path. That warning is emitted **once per version of
+    the file**, not once per pick (#234): the appliance picks twice per tick
+    (the in-process ``peek_quote_id`` plus the ``render_quote.py`` subprocess),
+    so an unlatched warning wrote ~2,900 identical lines a day into the same
+    journald stream the loop uses for real events. Latching on the file's
+    identity rather than latching forever is deliberate — a re-bake that is
+    still wrong warns again, which is the signal an operator is waiting for.
+
+    The latch spans one process, so ``run_clock`` sets
+    :data:`SUPPRESS_WARNINGS_ENV` in the render subprocess's environment — a
+    fresh child would otherwise start with empty globals and re-warn on every
+    repaint. The parent peeks before every render it spawns, so it has already
+    warned for this version of the file; see that constant's comment.
+
+    A falsy ``database_path`` (empty string / ``None``) skips the baked path
+    entirely without warning — the bake-equivalence tests use this to exercise
+    the raw path on purpose.
     """
     if database_path:
         path = resolve_path(database_path)
+        key = str(path)
         if path.exists() and path.stat().st_size > 0:
-            rows = _load_rows_cached(path)
-            stale = _rows_schema_mismatch(rows)
+            rows, stamp = _load_rows_with_stamp(path)
+            stale, computed_now = _schema_mismatch_cached(path, rows, stamp)
             if stale is not None:
-                print(
-                    f"warning: baked database {path} has schema_version={stale!r} "
-                    f"but this pick_quote expects {BAKED_SCORE_SCHEMA_VERSION}; "
-                    f"falling back to raw corpus (re-run bake_quote_database.py)",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                # The file EXISTS, so any latched "missing" / "empty" warning
+                # for this path is now stale. Clearing it here as well as on
+                # the healthy path is what makes the documented
+                # missing -> restored -> missing sequence warn each time even
+                # when the middle state was a bad bake rather than a good one.
+                _clear_degraded_latch(key)
+                if computed_now and not _degradation_warnings_suppressed():
+                    print(
+                        f"warning: baked database {path} has schema_version={stale!r} "
+                        f"but this pick_quote expects {BAKED_SCORE_SCHEMA_VERSION}; "
+                        f"falling back to raw corpus (re-run bake_quote_database.py)",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 return _load_rows_cached(resolve_path(input_path))
+            # Healthy: drop any missing/empty latch so a later regression on
+            # this same path warns again instead of being suppressed.
+            _clear_degraded_latch(key)
             return rows
         if path.exists():
-            print(
+            _warn_degraded_once(
+                key,
+                "empty",
                 f"warning: baked database {path} is empty; falling back to raw corpus",
-                file=sys.stderr,
-                flush=True,
             )
         else:
-            print(
+            _warn_degraded_once(
+                key,
+                "missing",
                 f"warning: baked database {path} not found; falling back to raw corpus",
-                file=sys.stderr,
-                flush=True,
             )
     return _load_rows_cached(resolve_path(input_path))
 

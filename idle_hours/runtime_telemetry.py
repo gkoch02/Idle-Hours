@@ -46,7 +46,7 @@ def daily_telemetry_path(base: Path, today: dt.date | None = None) -> Path:
     return base.with_name(f"{base.stem}-{today.strftime('%Y%m%d')}{suffix}")
 
 
-def append_heartbeat(telemetry_path: str | None) -> None:
+def append_heartbeat(telemetry_path: str | None, *, quiet: bool | None = None) -> None:
     """Emit a lightweight liveness marker with ``type="heartbeat"``.
 
     Shares the rotation / fail-open / ``ts`` stamping with ``append_telemetry``;
@@ -64,8 +64,20 @@ def append_heartbeat(telemetry_path: str | None) -> None:
     amplification. Losing the last minute of "alive" pings to a power cut is
     recoverable; losing a render error or backoff event is not — that's why
     every other ``append_telemetry`` caller fsyncs.
+
+    ``quiet`` stamps whether the loop was in its quiet window when the ping
+    fired. The ``quiet_enter`` / ``quiet_exit`` edge markers alone are not
+    enough for the health summariser: they are single points in time, so a
+    check over a window narrower than the blackout (``--hours 1``, which the
+    README documents for cron) sees neither edge and cannot tell "asleep on
+    purpose" from "wedged". A heartbeat lands every ~60 s, so stamping the
+    state here makes it legible in *any* window. ``None`` omits the field, so
+    a caller with nothing to say doesn't assert something false.
     """
-    _append_entry(telemetry_path, {"type": "heartbeat"}, fsync=False)
+    entry: dict = {"type": "heartbeat"}
+    if quiet is not None:
+        entry["quiet"] = bool(quiet)
+    _append_entry(telemetry_path, entry, fsync=False)
 
 
 def append_telemetry(telemetry_path: str | None, entry: dict) -> None:

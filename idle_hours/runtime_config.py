@@ -70,6 +70,9 @@ CONFIG_SCHEMA: dict[str, object] = {
     "web_bind": str,
     "web_token": str,
     "web_token_file": str,
+    "web_metrics_token": bool,
+    # TOML array of hostnames, e.g. web_allowed_hosts = ["idle-hours.local"].
+    "web_allowed_hosts": (list, "strlist"),
     "pidfile": str,
     "webhook_url": str,
     "webhook_all_events": bool,
@@ -212,7 +215,15 @@ def load_config(
                     f"{allowed}; dropped"
                 )
                 continue
-        if kind == "hhmm":
+        if kind == "strlist":
+            # TOML gives us a list but says nothing about its elements; a
+            # ``["ok", 42]`` would otherwise reach the Host comparison as a
+            # non-string and never match anything, silently.
+            if not all(isinstance(item, str) for item in value):
+                _warn(f"{path}: {key!r} must be a list of strings; dropped")
+                continue
+            resolved[key] = list(value)
+        elif kind == "hhmm":
             try:
                 resolved[key] = (hhmm_validator or validate_hhmm)(value)
             except Exception as exc:

@@ -217,6 +217,68 @@ def summarise(entries: list[dict]) -> dict:
     web_errors = [e for e in non_heartbeats if e.get("mode") == "web_error"]
     quiet_enters = [e for e in non_heartbeats if e.get("mode") == "quiet_enter"]
     quiet_exits = [e for e in non_heartbeats if e.get("mode") == "quiet_exit"]
+    # Which side of the quiet window are we on? (#232) The loop deliberately
+    # renders nothing between ``quiet_enter`` and ``quiet_exit``, so render age
+    # is not a meaningful signal there — but the staleness gate had no way to
+    # know that and flagged every night of a healthy appliance. Entries are
+    # append-ordered, so the *last* quiet marker in the stream decides: an
+    # enter means the window is still open. Deciding by position rather than
+    # by parsing both timestamps keeps this working on an entry whose ``ts``
+    # is malformed.
+    last_quiet_mode: str | None = None
+    last_quiet_ts: str | None = None
+    for entry in non_heartbeats:
+        mode = entry.get("mode")
+        if mode in ("quiet_enter", "quiet_exit"):
+            last_quiet_mode = mode
+            last_quiet_ts = entry.get("ts")
+    last_quiet_exit_ts = last_quiet_ts if last_quiet_mode == "quiet_exit" else None
+    # The edge markers alone are not sufficient, and this is the half that
+    # matters in practice. They are single points in time, so a window
+    # narrower than the blackout sees NEITHER edge: the README's own cron
+    # (``--hours 1 --fail-if-no-renders``) run at 03:00 inside a 22:00-06:00
+    # window found no markers, read quiet_active=False, and exited 2 — the
+    # exact nightly false positive #232 is about, merely narrowed rather than
+    # fixed. ``run_clock`` therefore stamps the quiet state onto every
+    # heartbeat (~60 s), which is legible in any window long enough to hold
+    # one. The newest stamped heartbeat wins; the edge markers remain the
+    # fallback for ledgers written before the stamp existed.
+    # Whichever quiet signal is NEWEST wins, edge marker or stamped heartbeat
+    # alike — a single interleaved pass rather than letting the heartbeat
+    # override unconditionally. The ordering matters because
+    # ``_maybe_emit_heartbeat`` runs at the top of the tick, before
+    # ``compute_quiet``: on the tick that LEAVES quiet hours the heartbeat
+    # still carries the previous tick's ``quiet=true`` and the ``quiet_exit``
+    # marker is appended after it. Preferring the heartbeat there reports an
+    # appliance that woke and then died as "asleep on purpose" and suppresses
+    # the render-staleness gate — the gate hiding a real failure, which is the
+    # worse direction to be wrong in. (The mirror case at quiet entry produces
+    # a false alarm instead.) Both self-correct on the next heartbeat, so this
+    # only bites when the process stops inside that one-tick window — which is
+    # exactly the failure the gate exists to catch.
+    #
+    # Comparing by position in the append-ordered stream, not by parsing the
+    # two timestamps, keeps the malformed-``ts`` robustness the edge scan
+    # above already had.
+    quiet_active = False
+    quiet_since: str | None = None
+    for entry in entries:
+        if entry.get("type") == "heartbeat":
+            stamp = entry.get("quiet")
+            if isinstance(stamp, bool):
+                quiet_active = stamp
+                # A heartbeat only says "asleep now"; the rising edge says
+                # "asleep since", so keep the edge's timestamp when it is the
+                # one that opened the window we are still inside.
+                quiet_since = (
+                    last_quiet_ts if last_quiet_mode == "quiet_enter" else entry.get("ts")
+                ) if stamp else None
+            continue
+        mode = entry.get("mode")
+        if mode == "quiet_enter":
+            quiet_active, quiet_since = True, entry.get("ts")
+        elif mode == "quiet_exit":
+            quiet_active, quiet_since = False, None
     # Positively identify renders by the ``render_ms`` field — only set by
     # ``run_clock.render_now`` on a successful render subprocess. Defining
     # renders as "anything without an error" miscategorises modes like
@@ -279,6 +341,9 @@ def summarise(entries: list[dict]) -> dict:
         "web_error_count": len(web_errors),
         "quiet_enter_count": len(quiet_enters),
         "quiet_exit_count": len(quiet_exits),
+        "quiet_active": quiet_active,
+        "quiet_since": quiet_since,
+        "last_quiet_exit_ts": last_quiet_exit_ts,
     }
 
 
@@ -314,6 +379,11 @@ def format_summary(summary: dict, hours: int) -> str:
         parts.append(f"{summary['web_auth_fail_count']} web auth failures")
     if summary.get("web_error_count"):
         parts.append(f"{summary['web_error_count']} web POST errors")
+    if summary.get("quiet_active"):
+        # Say so explicitly: a reader seeing "0 renders" plus a stale-looking
+        # last-render timestamp should be told the appliance is asleep on
+        # purpose, not left to infer it from the enter/exit counts below.
+        parts.append(f"quiet hours ACTIVE since {summary.get('quiet_since') or '?'}")
     if summary.get("quiet_enter_count") or summary.get("quiet_exit_count"):
         parts.append(
             f"quiet hours: {summary.get('quiet_enter_count', 0)} enters, "
@@ -382,16 +452,74 @@ def is_heartbeat_stale(summary: dict, max_age_minutes: int, now: dt.datetime | N
     return _is_stale(summary, "last_heartbeat_ts", max_age_minutes, now)
 
 
+def _parse_ts(value: object) -> dt.datetime | None:
+    """Parse an ISO-8601 telemetry timestamp, normalising naive values to UTC."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed
+
+
+def render_staleness_reference(summary: dict) -> str | None:
+    """Return the timestamp render age should actually be measured from.
+
+    Normally that's the last render. But the loop is *entitled* not to render
+    across a quiet window, so the age clock effectively restarts when the
+    window closes: right after a 22:00–06:00 blackout the last render is 8
+    hours old through no fault of the appliance, and measuring from it would
+    trip the gate for the ~60s until the first post-quiet tick repaints.
+    Taking the later of the two closes that gap without blunting the check —
+    once a normal render lands, it is the later timestamp again.
+
+    Returns ``None`` when neither timestamp exists, which
+    :func:`is_render_stale` treats as stale (the pre-existing "missing counts
+    as stale" rule).
+    """
+    candidates = [
+        (_parse_ts(summary.get("last_render_ts")), summary.get("last_render_ts")),
+        (_parse_ts(summary.get("last_quiet_exit_ts")), summary.get("last_quiet_exit_ts")),
+    ]
+    usable = [(parsed, raw) for parsed, raw in candidates if parsed is not None]
+    if not usable:
+        # Preserve the raw value (possibly unparseable) so _is_stale keeps
+        # reporting "missing or unparseable → stale" for the render field.
+        return summary.get("last_render_ts")
+    return max(usable, key=lambda pair: pair[0])[1]
+
+
 def is_render_stale(summary: dict, max_age_minutes: int, now: dt.datetime | None = None) -> bool:
-    """Return True when the most recent successful render is older than ``max_age_minutes``.
+    """Return True when the panel has gone too long without a repaint.
 
     Distinct from heartbeat staleness: the loop can be perfectly alive —
     heartbeating every 60s — while stuck in render backoff or a dedup-skip
     branch that never repaints. That combination is invisible to the
     heartbeat gate and is exactly the "panel is showing an old frame"
     condition an operator wants paged on.
+
+    Quiet hours are the one case where *not* rendering is correct, and this
+    gate used to fire right through them (#232): with the shipped 22:00–06:00
+    defaults and the documented ``--max-render-age-minutes 90``, a healthy
+    appliance failed the check from ~23:30 to 06:00 every single night — and
+    an operator who also wired ``--webhook-url`` got paged for it. The
+    threshold can't be tuned around that (an 8-hour window would need ~500
+    minutes, which defeats the check by day), so the gate consults the
+    ``quiet_enter`` / ``quiet_exit`` markers ``runtime_quiet`` already emits
+    for exactly this purpose: while the window is open the gate is suppressed,
+    and once it closes the age is measured from the later of the last render
+    and the window's close.
+
+    A wedge *during* quiet hours is still caught — by ``is_heartbeat_stale``
+    while the window is open (heartbeats keep flowing through quiet hours,
+    which is the whole point of them), and by this gate once the window closes
+    and the appliance fails to resume rendering.
     """
-    return _is_stale(summary, "last_render_ts", max_age_minutes, now)
+    if summary.get("quiet_active"):
+        return False
+    reference = render_staleness_reference(summary)
+    return _is_stale({"_ref": reference}, "_ref", max_age_minutes, now)
 
 
 def evaluate_health(
@@ -410,10 +538,17 @@ def evaluate_health(
       is older than the cap (including the "never emitted" case); or
       ``--max-render-age-minutes`` was set and the panel hasn't rendered
       within the cap.
+
+    Both render-related gates stand down while quiet hours are open (#232) —
+    a window that lands inside the nightly blackout is *supposed* to be
+    silent, and flagging it pages an operator for a working appliance. The
+    heartbeat gate is unaffected: heartbeats keep flowing through quiet hours,
+    so it remains the live "loop is wedged" signal for the whole window.
     """
+    quiet_active = bool(summary.get("quiet_active"))
     if summary["error_count"] > 0 and summary["render_count"] == 0:
         return 2
-    if fail_if_no_renders and summary["render_count"] == 0:
+    if fail_if_no_renders and summary["render_count"] == 0 and not quiet_active:
         return 2
     if max_heartbeat_age_minutes is not None and is_heartbeat_stale(summary, max_heartbeat_age_minutes):
         return 2

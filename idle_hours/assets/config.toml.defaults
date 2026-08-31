@@ -71,6 +71,13 @@ shutdown_command = "sudo -n shutdown -h now"
 web_bind       = ""
 web_token      = ""
 web_token_file = ""
+# When true, GET /metrics also requires the token. Off by default so an
+# existing Prometheus scrape keeps working.
+web_metrics_token = false
+# Extra hostnames accepted in the Host header (the DNS-rebinding guard).
+# Loopback binds already accept 127.0.0.1 / localhost / ::1; add entries when
+# reaching the UI through a reverse proxy or an mDNS name. Default is unset.
+# web_allowed_hosts = ["idle-hours.local"]
 
 # ---- Webhook notifications -------------------------------------------------
 # Off by default (empty webhook_url). When set, an HTTP POST with a JSON

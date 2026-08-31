@@ -5,8 +5,8 @@
 const $ = (id) => document.getElementById(id);
 
 // Token storage. Loopback binds need no token (server ignores the header);
-// LAN binds reject every POST with 401 unless `X-Idle-Hours-Token` matches the
-// configured value. We persist the operator's token in localStorage so a
+// LAN binds reject every POST — and every JSON GET (#233) — with 401 unless
+// `X-Idle-Hours-Token` matches the configured value. We persist the operator's token in localStorage so a
 // page reload doesn't re-prompt, and reactively recover from 401 by asking
 // the operator to paste the current token. No token is ever embedded in
 // the served HTML — that would leak it into shoulder-surf and HTTP caches.
@@ -31,10 +31,31 @@ const log = (msg, cls = "") => {
   while (el.children.length > 8) el.removeChild(el.lastChild);
 };
 
+// One token prompt per burst of concurrent 401s. `inFlightRequests` is what
+// distinguishes "five siblings from the same page load" from "the operator
+// clicked something a minute later": a jsonFetch that starts while nothing
+// else is in flight begins a new burst and clears the memo, so a prompt the
+// operator cancelled does not suppress every later attempt for the lifetime
+// of the page.
+let tokenPromptAttempt = null;
+let inFlightRequests = 0;
+
 async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
+  if (inFlightRequests === 0) tokenPromptAttempt = null;
+  inFlightRequests += 1;
+  try {
+    return await jsonFetchInner(url, opts, retryAfterAuth);
+  } finally {
+    inFlightRequests -= 1;
+  }
+}
+
+async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
   const headers = { ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers["X-Idle-Hours-Token"] = token;
+  // Remember which token this request used, so a 401 handler can tell "nobody
+  // has a working token yet" from "a sibling request already fixed it".
   const resp = await fetch(url, { ...opts, headers });
   const text = await resp.text();
   let data = null;
@@ -45,26 +66,43 @@ async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   // binds never 401 (server ignores tokens), so this only fires on LAN
   // deployments where the operator must supply the configured value.
   if (resp.status === 401 && retryAfterAuth) {
-    const entered = promptForToken();
+    const entered = promptForToken(token);
     if (entered) {
-      return jsonFetch(url, opts, false);
+      return jsonFetchInner(url, opts, false);
     }
   }
   return { status: resp.status, ok: resp.ok, data };
 }
 
-function promptForToken() {
+function promptForToken(staleToken) {
   // Browser prompt is intentionally minimal — operators don't need a fancy
   // modal for a one-time token paste. The README's LAN deploy section
   // documents that they'll be asked. Returning the trimmed value (or "")
   // lets the caller decide whether to retry the failed request.
+  //
+  // `staleToken` is the value the caller's request actually failed with. If
+  // storage now holds something different, another concurrent 401 handler has
+  // already prompted and stored a fresh token, so we adopt it instead of
+  // asking again. Without this, `refreshAll()`'s five parallel GETs plus the
+  // wizard's /api/setup each raised their own dialog — six stacked prompts on
+  // a single first page load, once GETs became token-gated (#233).
+  const current = getToken();
+  if (current && current !== staleToken) return current;
+  // Storage being unchanged is NOT proof that nobody has asked: if the
+  // operator cancelled the dialog or submitted an empty value there is
+  // nothing to store, and every sibling handler would prompt in turn —
+  // stacking six dialogs precisely when the operator does not have the token
+  // to hand. Remember the attempt itself, not just its stored outcome.
+  if (tokenPromptAttempt && tokenPromptAttempt.stale === staleToken) {
+    return tokenPromptAttempt.value;
+  }
   const value = window.prompt(
-    "This Idle Hours instance requires a token for write operations.\n" +
+    "This Idle Hours instance requires a token.\n" +
     "Paste the contents of --web-token-file:",
     "",
   );
-  if (value == null) return "";
-  const trimmed = value.trim();
+  const trimmed = value == null ? "" : value.trim();
+  tokenPromptAttempt = { stale: staleToken, value: trimmed };
   if (trimmed) setToken(trimmed);
   return trimmed;
 }
@@ -538,7 +576,13 @@ async function bakeNow() {
   const btn = $("bake-now");
   btn.disabled = true;
   setStatus("bake-status", "Baking…", "");
-  const { ok, status, data } = await jsonFetch("/api/bake", { method: "POST" });
+  // Content-Type is required on every POST, body or not (#233) — a bodyless
+  // POST with no Content-Type is a CORS simple request and would let any page
+  // the operator has open trigger a bake.
+  const { ok, status, data } = await jsonFetch("/api/bake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
   btn.disabled = false;
   if (status === 409) {
     setStatus("bake-status", "busy: render in flight, try again in a moment", "warn");

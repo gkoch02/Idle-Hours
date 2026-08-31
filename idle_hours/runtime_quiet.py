@@ -30,6 +30,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from idle_hours import sd_notify
 from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import resolve_input_path
 from idle_hours.runtime_log import _log
@@ -105,6 +106,7 @@ def _display_quiet_image(
                 timeout=DISPLAY_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired as exc:
+            sd_notify.notify_watchdog()
             # ``subprocess.run`` killed the child before re-raising; surface
             # the timeout loudly but do not re-raise — the caller (quiet-hours
             # entry, startup frame, shutdown pre-frame) logs and moves on so
@@ -123,6 +125,12 @@ def _display_quiet_image(
                 },
             )
             return
+        # Watchdog ping at the subprocess boundary, mirroring
+        # ``run_clock.render_now`` (#236). ``enter_quiet`` holds
+        # ``state.render_lock`` across this call, so the main loop can be
+        # blocked behind it — without a ping here that wait is a silent gap in
+        # the ``WatchdogSec`` budget.
+        sd_notify.notify_watchdog()
         _log(f"Displayed {output_resolved} via {display_path}")
 
 
