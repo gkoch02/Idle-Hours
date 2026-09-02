@@ -209,6 +209,33 @@ their whole composition. Adding another means wiring it into all of:
   the README theme table, and a paragraph in `CLAUDE.md`'s themes section
   describing the design decisions — not just the palette
 
+### Adding a typeface
+
+A new face goes in its own subdirectory of `idle_hours/fonts/` **with its
+upstream licence text beside it** (`OFL.txt`, or `LICENSE.txt` for an
+Apache-licensed face). This is a licence condition rather than housekeeping:
+SIL OFL 1.1 §2 and Apache-2.0 §4(a) both require the licence to travel with
+the work, and the wheel ships `fonts/**/*` as package-data, so a face bundled
+without its licence is redistributed out of compliance to every user.
+
+`tests/test_font_licenses.py` enforces this in both directions, and the second
+check is the one that matters: it reads the font's own `name` table and fails a
+face that asserts no copyright, licence description, or licence URL of its own.
+A sibling `OFL.txt` only proves someone put a file in the directory — the
+embedded record is the font's own claim about its terms. That check is what
+would have caught `TFoust.ttf`, which shipped for several releases declaring
+`© 2025 myfont All rights reserved` with no grant of any kind, and which had to
+be replaced rather than documented. **A face found on a design-portfolio site
+will look every bit as good as an OFL one and is usually silent here.** If you
+cannot point at a licence, the font cannot ship, however well it suits the
+theme.
+
+Also add the family to the **Third-party content** section of `LICENSE`, and if
+it is a variable font, pin the weight explicitly in its `THEME_FONTS` chain —
+several default to a thin axis instance (Rubik's is Light, Oxanium's is
+ExtraLight) and an unpinned chain renders as near-invisible hairlines on the
+panel.
+
 A **custom-render frame** (one that bypasses the shared literary layout and
 owns its whole composition) additionally needs:
 
