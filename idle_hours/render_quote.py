@@ -500,10 +500,10 @@ THEMES = {
     # of John Fell's 17th-century Oxford University Press types — the
     # deliberate inking irregularities of the metal-type letterpress
     # survive on every glyph so the page reads as a genuine antique
-    # tome), with a red TFoustScript matched phrase glowing through it
+    # tome), with an Eagle Lake matched phrase glowing through it
     # like a magic-circle inscription scrawled by a phantom hand — the
-    # hollow-outline shaggy silhouette of TFoust reads as occult
-    # sigil-work against the dignified vintage-press body. The
+    # thorny, spiked calligraphic silhouette of Eagle Lake reads as
+    # occult sigil-work against the dignified vintage-press body. The
     # matched-phrase red is stippled with a sparse 1-in-4 white-on-red
     # dither (25% white / 75% red — see ``_draw_text_body``), so the
     # phrase shimmers like a candle-lit rubric against the black ground
@@ -512,7 +512,7 @@ THEMES = {
     # the black/white/red palette shape with ``gothic`` but is
     # iconographically unrelated: gothic uses UnifrakturMaguntia
     # blackletter plus cathedral-tracery quatrefoils, grimoire uses
-    # TFoustScript hollow-display plus *inscribed* pentagrams and the
+    # Eagle Lake's arcane hand plus *inscribed* pentagrams and the
     # four classical planetary alchemical sigils on the mid-edges
     # (Sun ☉ top, Moon ☽ bottom, Mars ♂ left, Venus ♀ right). Shares
     # only the palette with ``alchemy`` above — alchemy is parchment-
@@ -1569,20 +1569,32 @@ RYE_REGULAR = str(BASE_DIR / "fonts/rye/Rye-Regular.ttf")
 CINZELDECORATIVE_REGULAR = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Regular.ttf")
 CINZELDECORATIVE_BOLD = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Bold.ttf")
 CINZELDECORATIVE_BLACK = str(BASE_DIR / "fonts/cinzel-decorative/CinzelDecorative-Black.ttf")
-# TFoustScript — single-weight hollow-outline display face with shaggy/spiky
-# edges; ASCII-only (95 glyphs, no smart quotes / em-dash / extended Latin).
-# Lives in the matched-phrase slot of the ``grimoire`` theme — short ASCII
-# time phrases ("half past two") render cleanly; never used in the body or
-# ornament slots where missing curly-quote / em-dash glyphs would draw
-# ``.notdef`` boxes (PIL fallback is file-level, not glyph-level).
-TFOUST_REGULAR = str(BASE_DIR / "fonts/TFoust.ttf")
+# Eagle Lake — Brian J. Bonislawsky / Astigmatic (OFL). An ornate calligraphic
+# display face whose thorny, spiked ascenders read as an arcane hand rather
+# than a formal one. Matched-phrase face for the ``grimoire`` theme.
+#
+# Replaces TFoustScript, which occupied this slot until it was found to carry
+# no licence: its name table declared "© 2025 myfont All rights reserved" with
+# no grant of any kind, so it could not be redistributed under this project's
+# MIT licence whatever it looked like. Eagle Lake keeps grimoire distinct from
+# both its siblings — it is neither gothic's UnifrakturMaguntia textura nor
+# alchemy's MedievalSharp broad-nib hand — and comes from the same foundry as
+# seven faces already in this bundle (Berkshire Swash, Righteous, Shojumaru,
+# Uncial Antiqua, Atomic Age, Special Elite, Permanent Marker).
+#
+# It also carries 404 glyphs against TFoust's 95, including curly quotes, the
+# em-dash and extended Latin. That retires a whole workaround: grimoire needed
+# a ``card_quote_bold`` override because PIL's font fallback is file-level, not
+# glyph-level, so the ASCII-only face printed ``.notdef`` tofu for the em-dash
+# and curly quotes ``render_source_card`` produces. The override is gone.
+EAGLELAKE_REGULAR = str(BASE_DIR / "fonts/eagle-lake/EagleLake-Regular.ttf")
 # IM Fell English — Igino Marini's digital revival of John Fell's
 # 17th-century Oxford University Press types (OFL). Visible ink character
 # on every glyph (the deliberate inking irregularities of metal type
 # letterpress) makes it read as a genuine antique book page rather than
 # a clean modern serif. 352-glyph cmap including curly quotes / em-dash
-# / extended Latin, so unlike TFoust it's safe in the body and ornament
-# slots. Body face for both ``alchemy`` (parchment ground) and
+# / extended Latin, so it is safe in the body and ornament slots where a
+# narrower cmap would tofu. Body face for both ``alchemy`` (parchment ground) and
 # ``grimoire`` (black ground) — the unmistakable "alchemical tome"
 # silhouette that distinguishes both occult themes from every other
 # serif theme.
@@ -2568,30 +2580,27 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # period-authentic Oxford-press silhouette, the silhouette
         # difference between the two coming from the ground (parchment
         # yellow vs. leather-bound black) and the matched-phrase face
-        # (MedievalSharp ritual hand vs. TFoust phantom scrawl). EB
-        # Garamond Regular sits behind it as the unicode-safe second
-        # rank in case the IM Fell file is missing on a host. TFoustScript
-        # carries the matched phrase: short ASCII time strings
-        # ("half past two") render in its signature hollow-outline
-        # shaggy silhouette, the "phantom scrawl" that defines the
-        # theme. EB Garamond Bold sits behind TFoust in the bold chain
-        # as a unicode-safe second rank — if the matched phrase ever
-        # contains a non-ASCII character (an em-dash inside
-        # ``shortly after dawn—at last``), PIL falls through to it
-        # because TFoust is missing the glyph at file level. The
-        # ornament slot is NEVER TFoust (it'd tofu the oversized curly
-        # quote marks); IM Fell English carries the oversized opening
-        # / closing quotation marks instead, so the ornament inherits
-        # the same vintage-press character as the body — visually
-        # unified rather than pairing the body with a contrasting
-        # heavier face.
+        # (MedievalSharp broad-nib ritual hand vs. Eagle Lake's thorny
+        # arcane one). EB Garamond Regular sits behind it as the second
+        # rank in case the IM Fell file is missing on a host. Eagle Lake
+        # carries the matched phrase: short time strings ("half past
+        # two") render in its spiked calligraphic silhouette, the
+        # "phantom scrawl" that defines the theme. EB Garamond Bold sits
+        # behind it in the bold chain purely as a missing-file fallback
+        # — unlike the ASCII-only face this replaced, Eagle Lake ships
+        # curly quotes, the em-dash and extended Latin, so there is no
+        # glyph-coverage reason to fall through. The ornament slot stays
+        # IM Fell English so the oversized opening / closing quotation
+        # marks inherit the same vintage-press character as the body —
+        # visually unified rather than pairing the body with a
+        # contrasting heavier face.
         "quote_regular": [
             IMFELLENGLISH_REGULAR,
             EBGARAMOND_REGULAR,
             *QUOTE_FONT_SEMIBOLD_CANDIDATES,
         ],
         "quote_bold": [
-            TFOUST_REGULAR,
+            EAGLELAKE_REGULAR,
             EBGARAMOND_BOLD,
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
@@ -2600,19 +2609,10 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
-        # Source-card seam: ``render_source_card`` runs the title and the
-        # matched phrase through ``normalize_dashes`` (which emits U+2014
-        # em-dashes) and wraps the matched phrase in U+201C / U+201D curly
-        # quotes — both glyphs TFoust does not ship, and PIL's fallback is
-        # file-level so the renderer otherwise prints ``.notdef`` tofu in
-        # the card. Routing the card's bold weight through EB Garamond Bold
-        # (the unicode-safe second rank in ``quote_bold``) keeps the card
-        # readable while leaving TFoust as the matched-phrase face in the
-        # main render, where the matched text is pure-ASCII time phrases.
-        "card_quote_bold": [
-            EBGARAMOND_BOLD,
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
+        # No ``card_quote_bold`` seam here any more: Eagle Lake ships the
+        # em-dash and curly quotes ``render_source_card`` emits, so the card
+        # can use the same matched-phrase face as the main render. TFoust,
+        # which this replaced, was ASCII-only and needed the override.
     },
     "deco": {
         # Righteous (Astigmatic, OFL) — 1930s geometric art-deco display
@@ -3586,14 +3586,19 @@ def theme_font_candidates(theme: str, role: str) -> list:
     ``card_<base>`` roles (e.g. ``card_quote_bold``, used by
     ``render_source_card``) follow a layered fallback: theme's
     ``card_<base>`` override → theme's ``<base>`` → default's
-    ``<base>``. This lets a theme whose ``quote_bold`` chain starts
-    with a deliberately-ASCII-only display face (TFoust on
-    ``grimoire``) override only the source-card seam, where the
-    rendered text passes through ``normalize_dashes`` (which produces
-    U+2014 em-dashes) and is wrapped in U+201C / U+201D curly quotes
-    — both glyphs the ASCII-only face cannot supply. PIL's font
-    fallback is file-level, not glyph-level, so without this seam
-    the source card would draw ``.notdef`` boxes for those characters.
+    ``<base>``. The seam exists for a theme whose ``quote_bold`` chain
+    starts with a display face that cannot supply every character the
+    card needs: ``render_source_card`` passes its text through
+    ``normalize_dashes`` (producing U+2014) and wraps the matched
+    phrase in U+201C / U+201D, and PIL's font fallback is file-level
+    rather than glyph-level, so a face missing those draws ``.notdef``
+    boxes for them rather than falling through per glyph.
+
+    No theme overrides it today — ``grimoire`` did while its
+    matched-phrase face was ASCII-only, and stopped needing to when
+    that face was replaced by one with full coverage. The layering is
+    kept because the hazard is a property of PIL, not of that font, and
+    the next ASCII-only display face added here will hit it again.
     """
     fonts = THEME_FONTS.get(theme) or THEME_FONTS["default"]
     chain = fonts.get(role)
@@ -4883,7 +4888,7 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
       viewing distance. The earlier candlelit-rubric (sparse 1-in-4
       white-on-red) sat the phrase at a half-density pink that read
       muddy on the black ground at typical viewing distance. The
-      TFoust hollow-display matched-phrase font + the bold weight
+      Eagle Lake calligraphic matched-phrase font + the bold weight
       provide the visual differentiation against the IM Fell English
       white body. The grimoire border still uses solid red for its
       pentagrams, outer rule, and Mars sigil (Mars is then bbox-
@@ -4947,7 +4952,7 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
         # Solid white — see docstring for the half-red-was-hard-to-read
         # rationale. The matched phrase stays visually distinct via the
-        # TFoust hollow-display face + bold weight.
+        # Eagle Lake calligraphic face + bold weight.
         draw.text(xy, text, font=font, fill=SPECTRA6["white"])
     elif theme == "gothic" and fill == SPECTRA6["red"]:
         # Amber (R+Y 1:1) — the same recipe the ``diags`` synth band
@@ -6072,8 +6077,8 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
     **Mid-edge sigils.** Each of the four classical "wandering star"
     symbols (Sun / Moon / Mars / Venus) is drawn deterministically
     from PIL primitives so the renderer doesn't depend on glyph
-    coverage in any font (TFoust, the body font, and the bundled
-    fallbacks all vary in their unicode support for ``U+2609``
+    coverage in any font (the matched-phrase face, the body font, and
+    the bundled fallbacks all vary in their unicode support for ``U+2609``
     onward). Positioned on the outer frame rule at each mid-edge so
     they punch through the line the way ``gothic``'s mid-edge diamonds
     do — keeping the frame from reading as an unbroken rectangular
@@ -13891,9 +13896,9 @@ _DEBUG_LABEL_RIGHT_INSET = {
 # evenly across them"; themes in this set treat the matched-phrase
 # spaces as *rigid* (kept at the bold face's natural space width) so
 # only the body's inter-word gaps absorb slack. Without the seam,
-# TFoust's "quarter past two" on a justified line in ``grimoire`` reads
-# as three disconnected ink-stained syllables rather than a single
-# inscription — the hollow / shaggy character of the face survives
+# Eagle Lake's "quarter past two" on a justified line in ``grimoire``
+# reads as three disconnected ink-stained syllables rather than a single
+# inscription — the thorny calligraphic character of the face survives
 # only at its natural inter-letter rhythm. Gothic shares the rigid
 # treatment because its UnifrakturMaguntia matched-phrase blackletter
 # has the same problem at scale — elastic spaces between blackletter
@@ -14225,11 +14230,11 @@ def render_source_card(quote_row: dict, width: int, height: int, theme: str = "d
 
     label_font = load_font(META_FONT_CANDIDATES, size=18)
     # ``card_quote_bold`` falls through to ``quote_bold`` for every theme
-    # that doesn't override it; the seam exists so themes whose bold
-    # chain starts with an ASCII-only display face (TFoust on grimoire)
-    # can route the card's title and matched phrase — both of which
-    # may contain em-dashes or curly quotes — through a unicode-safe
-    # face without changing their main-render typography.
+    # that doesn't override it — which today is all of them. The seam
+    # exists so a theme whose bold chain starts with an ASCII-only
+    # display face can route the card's title and matched phrase — both
+    # of which may contain em-dashes or curly quotes — through a
+    # unicode-safe face without changing its main-render typography.
     title_font = load_font(theme_font_candidates(theme, "card_quote_bold"), size=44)
     author_font = load_font(theme_font_candidates(theme, "quote_regular"), size=28)
     id_font = load_font(META_FONT_CANDIDATES, size=18)

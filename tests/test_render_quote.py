@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 try:
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -1635,7 +1635,7 @@ class TestGrimoireBorder:
     def test_grimoire_renders_differently_from_gothic_same_palette(self):
         """``grimoire`` and ``gothic`` share the black/white/red palette
         but must NOT produce identical frames — the silhouette difference
-        comes from the matched-phrase font (TFoust vs UnifrakturMaguntia)
+        comes from the matched-phrase font (Eagle Lake vs UnifrakturMaguntia)
         and the corner decoration (inscribed pentagram vs quatrefoil).
         A regression that pointed grimoire's painter at
         ``draw_gothic_border`` (or copied gothic's THEME_FONTS chain)
@@ -1701,38 +1701,78 @@ class TestGrimoireBorder:
             "moon overlay didn't carve with page_bg"
         )
 
-    def test_grimoire_source_card_uses_unicode_safe_bold(self):
-        """``render_source_card`` wraps the matched phrase in U+201C /
-        U+201D curly quotes and runs the title through ``normalize_dashes``
-        (which emits U+2014 em-dashes). TFoust ships ASCII only (U+0020 →
-        U+007E) and PIL's font fallback is file-level, not glyph-level,
-        so without a card-specific override the grimoire card would paint
-        ``.notdef`` boxes for every curly quote and em-dash.
+    @staticmethod
+    def _covers(font_path: str, char: str) -> bool:
+        """True when *font_path* has a real glyph for *char*.
 
-        Pin two layers of the contract:
-
-        * The ``card_quote_bold`` chain for grimoire must NOT start with
-          TFoust — every leading entry's path must be unicode-safe.
-        * Every other theme's ``card_quote_bold`` chain must be exactly
-          ``quote_bold`` (the fallback case) — the new role is a per-
-          theme escape hatch, not a renderer-wide change.
+        PIL exposes no glyph-index lookup, so this renders *char* and
+        compares against a codepoint no font assigns (U+FFFF). A missing
+        glyph draws ``.notdef``, so it comes back byte-identical; a real
+        glyph does not. Dependency-free on purpose — the suite should not
+        grow fontTools to assert a coverage invariant.
         """
-        # Grimoire's escape hatch: TFoust must NOT lead the card chain.
-        grimoire_card = rq.theme_font_candidates("grimoire", "card_quote_bold")
-        first = grimoire_card[0]
+        absent = "\uffff"
+
+        def bitmap(text: str) -> bytes:
+            font = ImageFont.truetype(font_path, 48)
+            image = Image.new("L", (90, 90), 0)
+            ImageDraw.Draw(image).text((10, 10), text, font=font, fill=255)
+            return image.tobytes()
+
+        return bitmap(char) != bitmap(absent)
+
+    def test_grimoire_source_card_font_covers_the_characters_the_card_emits(self):
+        """The card's face must carry the punctuation the card prints.
+
+        ``render_source_card`` wraps the matched phrase in U+201C / U+201D
+        curly quotes and runs the title through ``normalize_dashes`` (which
+        emits U+2014). PIL's font fallback is file-level rather than
+        glyph-level, so a face missing any of them paints ``.notdef`` boxes
+        for every one — which is what TFoust did (95 glyphs, ASCII only) and
+        why grimoire once carried a ``card_quote_bold`` override.
+
+        Eagle Lake covers all three, so the override is gone. This asserts
+        the *reason* it could go rather than the absence of a filename: a
+        name check would pass against any face at all now that TFoust is
+        not in the tree, including a future ASCII-only replacement.
+        """
+        chain = rq.theme_font_candidates("grimoire", "card_quote_bold")
+        first = chain[0]
         first_path = first[0] if isinstance(first, tuple) else first
-        assert "TFoust" not in first_path, (
-            f"grimoire card_quote_bold still starts with TFoust: {first_path}"
-        )
-        # Every other theme falls through unchanged.
-        for theme in ("default", "dark", "scholar", "newsprint", "nightvision",
-                      "blueprint", "illuminated", "gothic", "bauhaus",
-                      "risograph", "comic", "dispatch", "atomic", "marker",
-                      "saloon", "roman"):
+        assert Path(first_path).is_file(), f"card chain leads with a missing file: {first_path}"
+
+        for char, name in (
+            ("\u201c", "U+201C left curly quote"),
+            ("\u201d", "U+201D right curly quote"),
+            ("\u2014", "U+2014 em-dash"),
+        ):
+            assert self._covers(first_path, char), (
+                f"{Path(first_path).name} has no glyph for {name}; the grimoire "
+                f"source card would paint .notdef boxes. Either pick a face that "
+                f"covers it or restore a card_quote_bold override for grimoire."
+            )
+
+        # Negative control: the probe must be able to report absence, or the
+        # three assertions above would pass against any font whatsoever.
+        assert not self._covers(first_path, "\u3042"), "glyph-coverage probe reports every codepoint as present"
+
+    def test_no_theme_overrides_card_quote_bold(self):
+        """``card_quote_bold`` is a per-theme escape hatch nobody needs today.
+
+        It existed for grimoire alone, to keep TFoust off the source card;
+        that face is gone and its replacement is unicode-safe, so every
+        theme now falls through to ``quote_bold``. The seam stays because
+        the hazard is a property of PIL rather than of that one font — but
+        CLAUDE.md states no theme uses it, so this fails the moment that
+        stops being true and the doc needs updating with it.
+        """
+        for theme in sorted(rq.THEMES):
             bold = rq.theme_font_candidates(theme, "quote_bold")
             card = rq.theme_font_candidates(theme, "card_quote_bold")
             assert card == bold, (
-                f"theme {theme} silently diverged card_quote_bold from quote_bold"
+                f"theme {theme} overrides card_quote_bold. That is a supported "
+                f"escape hatch, but CLAUDE.md says no theme uses it — update the "
+                f"'no theme uses it today' note in the fonts section alongside it."
             )
 
     def test_card_role_fallback_chain_handles_unknown_themes(self):

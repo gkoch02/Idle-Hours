@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools>=68"]
+# >=77 for PEP 639 (`license` as an SPDX expression + `license-files`).
+# Below that the string form is not understood and the bundled font
+# licences would silently not ship in the wheel.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,6 +15,12 @@ name = "idle-hours"
 version = "2.5.0"
 description = "Idle Hours: a literary clock that harvests time phrases from Project Gutenberg and renders a matching quote on an Inky Impression eInk display."
 readme = "README.md"
+# The wheel ships ~42 third-party typefaces as package-data, so it must also
+# ship their licence texts: both SIL OFL 1.1 and Apache-2.0 require the
+# licence to travel with the work. Without `license-files` an installed copy
+# redistributes the fonts with no licence attached.
+license = "MIT"
+license-files = ["LICENSE", "idle_hours/fonts/**/OFL.txt", "idle_hours/fonts/**/LICENSE.txt"]
 requires-python = ">=3.11"
 dependencies = [
     # Floor, not a pin. The newest Pillow API the renderer calls is the
