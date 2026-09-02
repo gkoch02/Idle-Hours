@@ -14329,9 +14329,17 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
 # Synthesised two-ink stipple recipes documented in spectra6_color_recipes.md
 # (and summarised in CLAUDE.md). Each entry is (display name, dark ink, light
 # ink, light density, short label). The order here drives the two-row swatch
-# band at the bottom of the diagnostic frame; the four in-use recipes
-# (tangerine / candlelit / mint / coral) lead so they read as the active
-# palette before the reference / unused recipes. ``sage`` follows the doc's
+# band at the bottom of the diagnostic frame. The band mirrors the *whole*
+# catalogue rather than the in-use subset — the test
+# ``test_swatch_list_has_every_documented_recipe`` pins it against every
+# recipe in spectra6_color_recipes.md — so a swatch here means the recipe
+# is documented, never that a theme currently paints it. ``candlelit`` has no
+# theme consumer today, and the three-ink band below likewise carries
+# ``khaki`` / ``beige`` / ``forest-teal``, which no theme uses either. The
+# leading order dates from when tangerine / candlelit / mint / coral were
+# the in-use set; it is left alone because it carries no meaning beyond hue
+# grouping and reordering would churn the diags golden fixture for nothing.
+# ``sage`` follows the doc's
 # "for ratios above 50%, swap dark/light and pass the complementary density"
 # rule (75% white + 25% green → sparse-1-in-4 green on white). ``lime`` uses
 # the same 0.375 biased-Bayer recipe as ``tangerine`` but with the green/yellow
@@ -23553,15 +23561,18 @@ def render_nocturne_frame(time_str: str, quote_row: dict, width: int, height: in
 # ones; the mechanism lives in the primitive's docstring, the plaque supplies
 # the metallurgy.
 #
-# **The patina claims forest-teal.** The ground is the G+B+Y 40/40/20 3-ink
-# mix the recipes doc has carried as "not in use" since the catalogue was
-# written — verdigris is exactly that colour. It is not laid flat: two
-# incommensurate low-frequency fields swing the green/blue balance (corrosion
-# is weather, and weather is uneven) and a hash term jitters the partition so
-# the tile never lattices (the bakelite moulding lesson); sparse black pits
-# complete the cast surface. On an RGB preview the field reads lime — trust
-# the panel's muted inks (#35563A green / #233F8E blue), not the screenshot,
-# the same warning ``pride``'s brown carries.
+# **The patina is dark verdigris.** The ground is a G+B+K 3-ink mix
+# (~33/17/50). It began as the catalogue's forest-teal (G+B+Y 40/40/20), the
+# recipe this theme existed to claim, and that mid-tone could not carry text
+# on six inks at any ink or stipple — see ``_plaque_paint_patina`` for the
+# measured contrast that sent forest-teal back to the catalogue's unused
+# list. It is not laid flat: two incommensurate low-frequency fields swing
+# the green/blue balance (corrosion is weather, and weather is uneven) and a
+# hash term jitters the partition so the tile never lattices (the bakelite
+# moulding lesson); sparse black pits complete the cast surface. On an RGB
+# preview the field reads lime — trust the panel's muted inks (#35563A green
+# / #233F8E blue), not the screenshot, the same warning ``pride``'s brown
+# carries.
 #
 # **Two metals, one light.** The prose is raised bronze: gold faces (Y+R
 # 5/8:3/8, the documented gold, on the face's own rank read per the split-band
