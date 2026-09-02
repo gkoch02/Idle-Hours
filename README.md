@@ -386,14 +386,17 @@ Pass `--theme random` to pick a theme at random each time the displayed quote ch
 
 Button B cycles forward through the list and wraps; the curator web UI at `/api/themes` exposes the same cycle plus a dropdown that jumps directly to any named theme. Clicking Apply on an unchanged selection is a no-op — it won't burn a 10–20 s eInk refresh and won't silently disable `auto` / `random` mode.
 
-> Regenerate previews: the images under `idle_hours/assets/previews/` can be rebuilt by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI for a fixed time, e.g.:
+> Regenerate previews: the images under `idle_hours/assets/previews/` are built by looping over `render_quote.THEME_ORDER` and calling the `render_quote.py` CLI. **Pin the quote** — the table reads as one passage shown fifty-nine ways, so a preview rendered from a fresh pick would show a different quote from its neighbours, and the picker's answer for a given time moves as the corpus grows:
 >
 > ```bash
 > for theme in default dark swiss scholar herbarium newsprint nightvision blueprint illuminated gothic bauhaus risograph comic dispatch atomic marker saloon roman alchemy grimoire deco glacier mucha chalkboard placard chanbara lcars fillmore firmament astrarium kanagawa marquee tarot vinyl vitrail cartograph questline chrono outrun circuit letter grimdark sampler anna_atkins lieder izakaya abyssal pride pulp synoptic vhs bakelite cardcatalog metro intaglio nocturne plaque daguerreotype diags; do
->   idle-hours render --time 14:15 --theme "$theme" --mode production \
+>   idle-hours render --time 10:00 --theme "$theme" --mode production \
+>     --pin-quote 35:646 --pin-matched-text "ten o’clock" \
 >     --output "idle_hours/assets/previews/$theme.png"
 > done
 > ```
+>
+> That is H. G. Wells, *The Time Machine* — "It was at ten o’clock today that the first of all Time Machines began its career." — and the command above reproduces the checked-in image byte-for-byte for the themes whose frame carries no clock element. The set has been rebuilt per-theme as themes changed rather than all at once, so the themes that surface the hour or minute (`metro`, `astrarium`, `vinyl`, `cardcatalog`, `bakelite`, `intaglio`, `plaque`, `pulp`, `vhs`, `synoptic`, `tarot`, `vitrail`, `lieder`, `izakaya`, `abyssal` …) were rendered at other times and will shift if you re-run the whole loop. Regenerate the theme you changed, not the set.
 >
 > The PNGs are checked in so the README renders on GitHub without a build step. Every bundled typeface ships under `idle_hours/fonts/` (Playfair Display, Bitter, Old Standard TT, Space Mono, Archivo, EB Garamond, UnifrakturMaguntia, Jost, Rubik, Bangers, Special Elite, Atomic Age, Permanent Marker, Rye, Cinzel Decorative, IM Fell English, MedievalSharp, Eagle Lake, Righteous, Iceland, Playwrite GB J Guides, Patrick Hand SC, Shojumaru, Antonio, Inter, Cormorant Garamond, Berkshire Swash, Bungee Shade) so the previews are reproducible without any system-font install. All bundled faces are OFL-licensed except Special Elite and Permanent Marker, which ship under Apache 2.0 (see `idle_hours/fonts/special-elite/LICENSE.txt` and `idle_hours/fonts/permanent-marker/LICENSE.txt`). Every family ships its licence text beside it, which both licences require and `tests/test_font_licenses.py` enforces. A previous release bundled `idle_hours/fonts/TFoust.ttf` in the `grimoire` matched-phrase slot; its metadata recorded `© 2025 myfont All rights reserved` with no grant, so it was not ours to redistribute under the MIT licence and has been replaced by Eagle Lake (Astigmatic, OFL). See the **Third-party content** section of [LICENSE](LICENSE).
 
