@@ -62,9 +62,31 @@ def test_every_bundled_font_ships_its_licence(font: Path):
     )
 
 
+# Faces whose binary asserts no licence but whose grant has been verified at a
+# primary upstream source. Copyright ownership is not permission, so a font that
+# names only its owner cannot pass on its metadata alone — but a genuinely
+# OFL-licensed family whose build predates the convention of filling nameID
+# 13/14 should not be barred either. Each entry names where the grant was read.
+# Adding one is a deliberate act: check upstream yourself, and do not take a
+# sibling licence file's word for it.
+GRANT_VERIFIED_UPSTREAM: dict[str, str] = {}
+
+
+def _asserts_a_licence(declared: dict[int, str]) -> bool:
+    """True when the name table asserts a licence rather than only ownership.
+
+    A licence description (13) or URL (14) is the conventional place. Some
+    fonts instead state the grant inside the copyright string (nameID 0) — that
+    counts, because it is still the font declaring its own terms.
+    """
+    if declared.get(13) or declared.get(14):
+        return True
+    return "licen" in declared.get(0, "").lower()
+
+
 @pytest.mark.parametrize("font", _fonts(), ids=lambda p: str(p.relative_to(FONTS)))
 def test_every_bundled_font_declares_terms_in_its_own_metadata(font: Path):
-    """The font's own name table must assert terms, not just a sibling file.
+    """The font's own name table must assert a licence, not just a sibling file.
 
     This is the check that catches the real failure mode. A sibling ``OFL.txt``
     only proves someone put a file in the directory; the embedded record is the
@@ -72,21 +94,36 @@ def test_every_bundled_font_declares_terms_in_its_own_metadata(font: Path):
     ``All rights reserved``, no license description, no license URL. A face
     found on a design-portfolio site will look every bit as good as an OFL one
     and will usually be silent here.
+
+    The bar is a **licence**, not a copyright. An earlier revision accepted any
+    non-empty value across nameIDs 0/13/14, so an ordinary
+    ``Copyright (c) 2025 Foo`` passed with both licence fields blank —
+    certifying a font that grants nothing, which is the exact hole this test
+    exists to close. Ownership and permission are different claims.
     """
     names = _name_table(font)
     rel = font.relative_to(FONTS)
     declared = {nid: names.get(nid, "").strip() for nid in (0, 13, 14)}
+
+    if font.name in GRANT_VERIFIED_UPSTREAM:
+        # Recorded exception: the binary is silent, the grant is not.
+        return
+
     assert any(declared.values()), (
         f"{rel} carries no copyright, license description, or license URL in "
         f"its name table — the font asserts no terms about itself. Verify its "
         f"provenance before bundling it; do not rely on a sibling license file."
     )
-    combined = " ".join(declared.values()).lower()
-    assert "all rights reserved" not in combined or "licen" in combined, (
-        f"{rel} declares 'all rights reserved' with no accompanying licence "
-        f"grant in its metadata. That is a reservation of rights, not a "
-        f"permission — it cannot be redistributed under this project's MIT "
-        f"licence. This is exactly what TFoust declared."
+    assert _asserts_a_licence(declared), (
+        f"{rel} names a copyright holder but asserts no licence: nameID 13 "
+        f"(license description) and 14 (license URL) are both empty and the "
+        f"copyright string does not mention one. Copyright states ownership, "
+        f"not permission, so this font cannot be redistributed under this "
+        f"project's MIT licence on its own say-so. Its copyright reads: "
+        f"{declared.get(0, '')!r}. If the family really is OFL and merely has "
+        f"an old build, verify the grant at a primary upstream source and "
+        f"record it in GRANT_VERIFIED_UPSTREAM in this module, naming where "
+        f"you checked."
     )
 
 
@@ -139,4 +176,42 @@ def test_top_level_licence_covers_the_top_level_faces():
             f"{font.name} sits at the top level of fonts/, where the only "
             f"licence on offer is Playfair Display's. Give it its own "
             f"subdirectory with its own licence file."
+        )
+
+
+class TestAssertsALicence:
+    """The copyright-is-not-a-licence rule, tested independently of the bundle.
+
+    Every face shipped here happens to declare a licence, so the parametrized
+    sweep above cannot demonstrate that the rule rejects anything. These cases
+    pin the distinction directly, including the exact shape that slipped past
+    the earlier revision: a plain copyright with both licence fields empty.
+    """
+
+    def test_copyright_alone_is_not_a_licence(self):
+        assert not _asserts_a_licence({0: "Copyright (c) 2025 Foo", 13: "", 14: ""})
+
+    def test_reserved_rights_alone_is_not_a_licence(self):
+        # TFoust's own declaration, the face this suite was written for.
+        assert not _asserts_a_licence(
+            {0: "© 2025 myfont All rights reserved", 13: "", 14: ""}
+        )
+
+    def test_empty_metadata_is_not_a_licence(self):
+        assert not _asserts_a_licence({0: "", 13: "", 14: ""})
+
+    def test_licence_description_counts(self):
+        assert _asserts_a_licence(
+            {0: "Copyright (c) 2025 Foo", 13: "This Font Software is licensed under the SIL OFL", 14: ""}
+        )
+
+    def test_licence_url_counts(self):
+        assert _asserts_a_licence(
+            {0: "Copyright (c) 2025 Foo", 13: "", 14: "https://openfontlicense.org"}
+        )
+
+    def test_grant_stated_in_the_copyright_string_counts(self):
+        # Weather Icons puts its grant in nameID 0 and leaves 13/14 empty.
+        assert _asserts_a_licence(
+            {0: "Weather Icons licensed under SIL OFL 1.1", 13: "", 14: ""}
         )

@@ -220,15 +220,27 @@ without its licence is redistributed out of compliance to every user.
 
 `tests/test_font_licenses.py` enforces this in both directions, and the second
 check is the one that matters: it reads the font's own `name` table and fails a
-face that asserts no copyright, licence description, or licence URL of its own.
-A sibling `OFL.txt` only proves someone put a file in the directory — the
-embedded record is the font's own claim about its terms. That check is what
-would have caught `TFoust.ttf`, which shipped for several releases declaring
+face that asserts no *licence* of its own — a licence description (nameID 13),
+a licence URL (14), or a grant stated inside the copyright string. A sibling
+`OFL.txt` only proves someone put a file in the directory; the embedded record
+is the font's own claim about its terms. That check is what would have caught
+`TFoust.ttf`, which shipped for several releases declaring
 `© 2025 myfont All rights reserved` with no grant of any kind, and which had to
 be replaced rather than documented. **A face found on a design-portfolio site
 will look every bit as good as an OFL one and is usually silent here.** If you
 cannot point at a licence, the font cannot ship, however well it suits the
 theme.
+
+The bar is a licence and not a copyright, and the difference is the whole
+point: `Copyright (c) 2025 Foo` with both licence fields empty says who owns
+the font, not what anyone may do with it. Every face bundled here declares a
+real licence, so nothing currently needs the escape hatch — but if you add an
+OFL family whose build predates the convention of filling nameID 13/14, verify
+the grant at a primary upstream source (for a Google Fonts family, the
+`license:` field in its `METADATA.pb`) and record it in
+`GRANT_VERIFIED_UPSTREAM` in the test module, naming where you checked. That
+list is for grants you have confirmed yourself, not a way to quiet a font you
+have not.
 
 Also add the family to the **Third-party content** section of `LICENSE`, and if
 it is a variable font, pin the weight explicitly in its `THEME_FONTS` chain —
