@@ -4016,44 +4016,88 @@ def wrap_styled_text(draw, segments, regular_font, bold_font, max_width, bold_st
     bold tokens (see ``_BOLD_STROKE_BY_THEME``). Bold tokens are measured
     with this stroke so the wrap decisions match what the renderer
     actually paints; spaces stay at their natural advance regardless.
+
+    **A line may only break at whitespace.** ``tokenize_quote`` splits the
+    text into regular / bold / regular segments at the matched time
+    phrase, and that seam can land in the middle of a word:
+    ``door (at a quarter to seven) with`` arrives as ``"… (at a "`` /
+    ``"quarter to seven"`` / ``") with …"``. An earlier revision treated
+    every non-space token as a break opportunity, so a line could end on
+    ``seven`` and the next open with a bare ``)`` — a dangling
+    parenthetical on the panel — or strand an opening ``(`` / ``"`` at a
+    line end when the phrase starts the parenthetical. Segments are
+    therefore regrouped into *words* first — a run of non-space pieces,
+    glued across segment boundaries when neither side has a space at the
+    seam — and only whole words are placed. Each piece keeps its own
+    style, so ``seven)`` still paints ``seven`` bold and ``)`` regular.
+    A word wider than ``max_width`` goes on a line of its own, intact.
     """
-    lines = []
-    current = []
-    current_width = 0
     # Space width is the same for every inter-word position that uses the same
     # font object. fit_quote calls wrap_styled_text up to 18 times per render
     # with two distinct fonts (regular + bold); a 140-char quote has ~25 spaces,
     # so without this memo we'd run draw.textbbox(" ", …) ~450 times per render.
     space_widths: dict[int, int] = {}
 
+    def space_width_for(font) -> int:
+        font_id = id(font)
+        width = space_widths.get(font_id)
+        if width is None:
+            bbox = draw.textbbox((0, 0), " ", font=font)
+            width = bbox[2] - bbox[0]
+            space_widths[font_id] = width
+        return width
+
+    # Pass 1: regroup the segments into a flat item stream. An item is either
+    # a space token ``(" ", is_bold)`` or a word — a list of styled pieces
+    # with no whitespace between them. ``open_word`` is True while the last
+    # emitted piece was not followed by a space, so the next piece (even one
+    # from a differently-styled segment) extends that word instead of
+    # starting a new one.
+    items: list = []
+    open_word = False
     for text, is_bold in segments:
-        font = bold_font if is_bold else regular_font
-        stroke = bold_stroke if is_bold else 0
         parts = text.split(" ")
         for i, part in enumerate(parts):
             if part:
-                bbox = draw.textbbox((0, 0), part, font=font, stroke_width=stroke)
-                token_width = bbox[2] - bbox[0]
-                if current and current_width + token_width > max_width:
-                    lines.append(current)
-                    current = []
-                    current_width = 0
-                current.append((part, is_bold))
-                current_width += token_width
-            if i < len(parts) - 1:
-                font_id = id(font)
-                space_width = space_widths.get(font_id)
-                if space_width is None:
-                    bbox = draw.textbbox((0, 0), " ", font=font)
-                    space_width = bbox[2] - bbox[0]
-                    space_widths[font_id] = space_width
-                if current and current_width + space_width > max_width:
-                    lines.append(current)
-                    current = []
-                    current_width = 0
+                if open_word:
+                    items[-1].append((part, is_bold))
                 else:
-                    current.append((" ", is_bold))
-                    current_width += space_width
+                    items.append([(part, is_bold)])
+                open_word = True
+            if i < len(parts) - 1:
+                items.append((" ", is_bold))
+                open_word = False
+
+    # Pass 2: place whole words, breaking only at the space tokens.
+    lines = []
+    current = []
+    current_width = 0
+    for item in items:
+        if isinstance(item, tuple):
+            _, is_bold = item
+            font = bold_font if is_bold else regular_font
+            space_width = space_width_for(font)
+            if current and current_width + space_width > max_width:
+                lines.append(current)
+                current = []
+                current_width = 0
+            else:
+                current.append(item)
+                current_width += space_width
+            continue
+
+        word_width = 0
+        for piece, is_bold in item:
+            font = bold_font if is_bold else regular_font
+            stroke = bold_stroke if is_bold else 0
+            bbox = draw.textbbox((0, 0), piece, font=font, stroke_width=stroke)
+            word_width += bbox[2] - bbox[0]
+        if current and current_width + word_width > max_width:
+            lines.append(current)
+            current = []
+            current_width = 0
+        current.extend(item)
+        current_width += word_width
 
     if current:
         lines.append(current)

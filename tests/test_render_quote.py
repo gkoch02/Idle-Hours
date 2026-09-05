@@ -547,6 +547,105 @@ class TestWrapTextEmpty:
         assert lines == []
 
 
+def _drawable(line):
+    """Strip the leading / trailing space tokens the body draw loop discards."""
+    start = 0
+    while start < len(line) and line[start][0].strip() == "":
+        start += 1
+    end = len(line)
+    while end > start and line[end - 1][0].strip() == "":
+        end -= 1
+    return line[start:end]
+
+
+class TestWrapStyledTextNoBreakInsideWord:
+    """A line break is only ever legal at whitespace.
+
+    ``tokenize_quote`` splits the text into regular / bold / regular
+    segments at the matched time phrase, and that seam can fall in the
+    middle of a word: ``door (at a quarter to seven) with`` becomes the
+    segments ``"… (at a "`` / ``"quarter to seven"`` / ``") with …"``.
+    The wrapper used to treat every non-space token as a break
+    opportunity, so a line could end on ``seven`` and the next line open
+    with a bare ``)`` — the dangling parenthetical seen on the panel for
+    the Portrait of a Lady row (source 2833, line 1806). The mirror case
+    strands an opening ``(`` or ``"`` at the end of a line when the
+    phrase starts the parenthetical.
+    """
+
+    TOUCHETT = (
+        "Ralph Touchett was a philosopher, but nevertheless he knocked at his "
+        "mother\u2019s door (at a quarter to seven) with a good deal of eagerness."
+    )
+
+    @staticmethod
+    def _fonts(size=24):
+        img = Image.new("RGB", (800, 480), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        regular = rq.load_font(rq.QUOTE_FONT_SEMIBOLD_CANDIDATES, size=size)
+        bold = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=size)
+        return draw, regular, bold
+
+    @staticmethod
+    def _joined_words(lines):
+        """Re-join each wrapped line into its whitespace-separated words."""
+        words = []
+        for line in lines:
+            words.append("".join(chunk for chunk, _ in _drawable(line)).split(" "))
+        return words
+
+    def test_closing_paren_stays_glued_to_the_bold_phrase(self):
+        draw, regular, bold = self._fonts()
+        segments = rq.tokenize_quote(self.TOUCHETT, "quarter to seven")
+        assert [b for _, b in segments] == [False, True, False]
+        # Sweep the wrap width so the break lands at every possible word
+        # boundary, including the one right after ``seven``.
+        for max_width in range(120, 760, 7):
+            lines = rq.wrap_styled_text(draw, segments, regular, bold, max_width)
+            for line in lines:
+                first = _drawable(line)[0][0]
+                assert not first.startswith(")"), (max_width, line)
+            flat = [w for line in self._joined_words(lines) for w in line]
+            assert "seven)" in flat, (max_width, flat)
+
+    def test_opening_paren_stays_glued_to_the_bold_phrase(self):
+        draw, regular, bold = self._fonts()
+        text = "He knocked at his mother\u2019s door (quarter to seven) with a good deal of eagerness."
+        segments = rq.tokenize_quote(text, "quarter to seven")
+        assert [b for _, b in segments] == [False, True, False]
+        for max_width in range(120, 760, 7):
+            lines = rq.wrap_styled_text(draw, segments, regular, bold, max_width)
+            for line in lines:
+                last = _drawable(line)[-1][0]
+                assert not last.endswith("("), (max_width, line)
+            flat = [w for line in self._joined_words(lines) for w in line]
+            assert "(quarter" in flat, (max_width, flat)
+
+    def test_bold_pieces_keep_their_own_style_inside_a_glued_word(self):
+        draw, regular, bold = self._fonts()
+        segments = [("door (", False), ("quarter to seven", True), (") with", False)]
+        [line] = rq.wrap_styled_text(draw, segments, regular, bold, 10_000)
+        assert line == [
+            ("door", False), (" ", False), ("(", False), ("quarter", True), (" ", True),
+            ("to", True), (" ", True), ("seven", True), (")", False), (" ", False), ("with", False),
+        ]
+
+    def test_glued_word_wider_than_the_line_still_terminates(self):
+        draw, regular, bold = self._fonts()
+        segments = [("a ", False), ("x" * 60, True), (")", False), (" b", False)]
+        lines = rq.wrap_styled_text(draw, segments, regular, bold, 200)
+        # The oversized glued word goes on its own line, intact.
+        assert [_drawable(line) for line in lines][1] == [("x" * 60, True), (")", False)]
+        assert _drawable(lines[0]) == [("a", False)]
+        assert _drawable(lines[2]) == [("b", False)]
+
+    def test_space_tokens_carry_the_style_of_their_segment(self):
+        draw, regular, bold = self._fonts()
+        segments = [("a ", False), ("b", True), (" c", False)]
+        [line] = rq.wrap_styled_text(draw, segments, regular, bold, 10_000)
+        assert line == [("a", False), (" ", False), ("b", True), (" ", False), ("c", False)]
+
+
 class TestThemes:
     def test_dark_theme_palette_values(self):
         dark = rq.THEMES["dark"]
