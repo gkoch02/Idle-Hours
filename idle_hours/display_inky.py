@@ -212,6 +212,17 @@ THEME_SATURATION: dict[str, float] = {
     # already saturated; the gentler tier keeps the R+G tarnish a soft sepia
     # instead of a hard speckle, the same light-ground argument as ``tarot``.
     "daguerreotype": 0.5,
+    # Between Us, light — white paper with a faint cream wash, black Fraunces
+    # body, solid-red italic matched phrase and small stippled legend dots.
+    # Same chromatic-on-light profile as ``default`` / ``placard``; the
+    # gentler tier keeps the terracotta accent a warm brick rather than a
+    # fire-engine red against the cream.
+    "betweenus": 0.5,
+    # Between Us, dark — the app's warm brown-black paper on the panel's
+    # anchored black, with an R+Y amber matched phrase and white-lifted legend
+    # tints. Same chromatic-on-dark profile as ``dark`` / ``gothic``: push the
+    # amber so it reads as apricot rather than desaturating to mud.
+    "betweenus_dark": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

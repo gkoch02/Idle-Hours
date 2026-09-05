@@ -163,8 +163,9 @@ class TestBorderPainterActuallyPaints:
 
         # Both dispatch paths must be neutered. Most themes reach their
         # painter through ``_paint_theme_border``'s registry lookup, but the
-        # six ``_CLEAR_RECT_PADS`` themes (blueprint, kanagawa, cartograph,
-        # circuit, synoptic, letter) are called by name from ``render`` so the body-text
+        # eight ``_CLEAR_RECT_PADS`` themes (blueprint, kanagawa, cartograph,
+        # circuit, synoptic, letter, betweenus, betweenus_dark) are called by
+        # name from ``render`` so the body-text
         # knockout rect can be threaded through. Patching only the registry
         # made kanagawa and letter register a 0-pixel delta while their
         # painters were in fact still running.

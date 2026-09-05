@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time
+from idle_hours.gutenberg_time_miner import daypart_for_hour
 
 BASE_DIR = Path(__file__).resolve().parent
 _FONT_FALLBACK_WARNED = False
@@ -123,6 +124,8 @@ THEME_ORDER: tuple[str, ...] = (
     "nocturne",
     "plaque",
     "daguerreotype",
+    "betweenus",
+    "betweenus_dark",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -150,6 +153,41 @@ THEMES = {
         "accent": SPECTRA6["yellow"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # Between Us, light: the app's warm-paper card UI (see the section comment
+    # above ``draw_betweenus_border``). White ground carrying a cream gradient
+    # wash, black Fraunces body, the matched phrase in *italic* solid red —
+    # the panel's red is the app's ``love`` terracotta unmixed, and a solid
+    # ink keeps the italic's thin strokes whole. Both ornament slots take the
+    # page ground: the app has no quotation-mark ornaments and the marks are
+    # skipped outright in ``_paint_ornament_mark``.
+    "betweenus": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["white"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # Between Us, dark: the app's dark set is not an inversion of the light
+    # one — the same warm paper on a near-black ground, accents lightened so
+    # they stay readable. Black ground with a sparse red + white wash, white
+    # Fraunces body, and a yellow *sentinel* accent that ``_draw_text_body``
+    # reroutes to the R+Y 1:1 amber — the apricot the app's dark ``want``
+    # becomes on the panel. The sentinel only surfaces literally in the
+    # debug banner, where yellow-on-black is legible (the ``anna_atkins`` /
+    # ``firmament`` pattern). Ornaments skipped, as for the light variant.
+    "betweenus_dark": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["black"],
         "source": SPECTRA6["white"],
     },
     # Scholarly journal: blue body on cream-white, red accent for the matched
@@ -1707,6 +1745,17 @@ ANTONIO_VARIABLE = str(BASE_DIR / "fonts/antonio/Antonio-Variable.ttf")
 # theme's "type does all the work" identity even when the preferred
 # face is absent.
 INTER_VARIABLE = str(BASE_DIR / "fonts/inter/Inter-Variable.ttf")
+# Fraunces — Undercase Type (OFL). A variable "soft" old-style serif with
+# optical-size, softness, weight and wonk axes; the typeface of the Between
+# Us web app, whose iOS build substitutes the system New York. Used by the
+# ``betweenus`` / ``betweenus_dark`` themes. Its named instances (Regular /
+# SemiBold / Bold and the italic set) all sit at opsz 9, the sturdy text
+# cut. The file's DEFAULT axis instance is Black (wght 900), so every
+# candidate pins an instance by name — a missed variation call renders the
+# body as a display black rather than as the hairlines ``bitter``'s Thin
+# default would produce.
+FRAUNCES_VARIABLE = str(BASE_DIR / "fonts/fraunces/Fraunces-Variable.ttf")
+FRAUNCES_ITALIC_VARIABLE = str(BASE_DIR / "fonts/fraunces/Fraunces-Italic-Variable.ttf")
 # Cormorant Garamond — Christian Thalmann (OFL). High-contrast humanist
 # revival of the Claude Garamont types — sharper, more dramatic curves
 # than EB Garamond, in the editorial / poster typographic register that
@@ -1932,6 +1981,55 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             (INTER_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Between Us — Fraunces, the app's serif. The matched phrase is the
+    # *italic* cut, not a bold: "say *what you want.*" is the app's own
+    # gesture, and the accent colour plus the roman/italic split carry the
+    # differentiation (the ``cartograph`` / ``herbarium`` move). Light keeps
+    # the phrase at Italic 400 because it is painted solid; dark steps it to
+    # SemiBold Italic so the amber stipple has stroke mass to live in. The
+    # italic chain falls back through the system serif italics before the
+    # Playfair bold chain so a missing install still lands on a slanted
+    # serif rather than an upright one.
+    "betweenus": {
+        "quote_regular": [
+            (FRAUNCES_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (FRAUNCES_ITALIC_VARIABLE, "Italic"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Italic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (FRAUNCES_VARIABLE, "SemiBold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    "betweenus_dark": {
+        "quote_regular": [
+            (FRAUNCES_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (FRAUNCES_ITALIC_VARIABLE, "SemiBold Italic"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-BoldItalic.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (FRAUNCES_VARIABLE, "SemiBold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -4224,6 +4322,12 @@ def draw_faux_3way_text(
                     px[x, y] = ink_c
 
 
+# Themes whose layout draws no oversized quote marks at all. Distinct from
+# setting both ornament slots to ``page_bg`` (which still paints, invisibly on
+# a flat ground but visibly on a washed one).
+_THEMES_WITHOUT_ORNAMENT_MARKS: frozenset[str] = frozenset({"betweenus", "betweenus_dark"})
+
+
 def _paint_ornament_mark(image, xy, text, font, theme: str, colors: dict, pattern_offset=(0, 0)) -> None:
     """Dispatch the oversized opening / closing quote-mark painter.
 
@@ -4235,6 +4339,12 @@ def _paint_ornament_mark(image, xy, text, font, theme: str, colors: dict, patter
     weathered samurai-cinema title card rather than the fire-engine red
     a solid-red paint would produce.
     """
+    if theme in _THEMES_WITHOUT_ORNAMENT_MARKS:
+        # The Between Us card has no quotation-mark ornaments, and the marks
+        # paint OUTSIDE the body rect — on the stippled paper, not the clean
+        # card — where even a page_bg-coloured glyph would punch a ghost hole
+        # in the wash. Skipping the draw is the honest form of "no ornament".
+        return
     if theme == "chanbara":
         draw_faux_3way_text(
             image,
@@ -5185,6 +5295,14 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # otherwise paint. The yellow surfaces literally only in the debug-mode
         # banner, which paints outside this seam.
         draw_text_dithered(image, xy, text, font, dark=SPECTRA6["blue"], light=SPECTRA6["white"])
+    elif theme == "betweenus_dark" and fill == SPECTRA6["yellow"]:
+        # The yellow ``accent`` is a sentinel (see the THEMES entry): the
+        # matched phrase paints as the R+Y 1:1 amber ``gothic`` uses — the
+        # apricot the app's dark ``want`` (#DFA07C) lands on with these inks.
+        # On the black ground the mix's brightness is the point; the recipes
+        # doc's washed-out caveat is about white grounds. The body / legend
+        # white passes through solid via the ``else`` branch.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["red"], light=SPECTRA6["yellow"])
     else:
         draw.text(xy, text, font=font, fill=fill)
 
@@ -13782,8 +13900,436 @@ def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time
             draw.line((x0 + 8, y1 - 8, x1 - 8, y1 - 8), fill=SPECTRA6["blue"], width=1)
 
 
+# ---------------------------------------------------------------------------
+# betweenus / betweenus_dark — the *Between Us* app's card UI, light and dark.
+#
+# Between Us (github.com/gkoch02/BetweenUs) is a two-person checklist for
+# iPhone; its whole visual language is a warm paper ground, one rounded card
+# at a time, a serif wordmark whose second word is italic, and a serif
+# headline whose operative phrase is set in italic terracotta — "A quieter
+# way to say *what you want.*" That last gesture is exactly what this clock
+# does with a quote: body in the serif, matched time phrase in italic
+# accent. So the theme is not a skin bolted onto the layout; the app's own
+# typographic move is the layout's move, and the rest of the frame is the
+# app's furniture arranged around it.
+#
+# Composition (both variants share ``draw_betweenus_border``):
+#
+# * **Paper.** The app draws its screen as a top-to-bottom gradient from
+#   ``paper`` to ``paper2`` (light: #F0E9DF → #E7DDD0, a cream that warms
+#   toward the foot; dark: #231E18 → #1A1611, a warm brown-black). On six
+#   inks that is a *gradient* Bayer wash — ``BAYER_8x8`` so the ramp has 65
+#   levels rather than 17, with a small positional-hash jitter on the rank so
+#   the sparse dots read as paper fibre rather than as a printed lattice (the
+#   ``bakelite`` moulding lesson). Light: yellow on white, ~4% at the head
+#   rising to ~14% at the foot. Dark: red on black at ~11% fading to ~4%, plus
+#   a trace of white, so the ground reads as the app's warm charcoal rather
+#   than the panel's cool near-black. The wash is deterministic and quote-
+#   independent, so it is built once per ``(width, height, variant)`` and
+#   cached — ``render`` calls every border painter twice.
+# * **The card.** The quote sits in a rounded card (radius 18, the app's
+#   22 pt corner scaled to the panel) knocked out of the paper through the
+#   ``clear_rect`` dispatch ``kanagawa`` / ``cartograph`` / ``letter`` use,
+#   with a 1 px sepia (R+G parity) edge for the app's ``line`` token. Light
+#   floats it on a **soft** drop shadow — the app's ``cardShadow`` is a
+#   blurred warm 14% — painted as a falling-density black stipple read off a
+#   Gaussian-blurred offset silhouette (the ``paint_neon_mask`` idea with the
+#   sign flipped: a bloom of *dark*). Dark cannot cast black on near-black,
+#   so the same blurred silhouette instead *suppresses* the warm specks
+#   around the card, and the clean black halo reads as the shadow. The card
+#   itself is clean white / clean black — the app's card is a shade lighter
+#   than its paper, but on eInk a speckled ground under 24 px body text is
+#   noise, so the card is the one flat surface on the page and the paper
+#   texture stops at its edge.
+# * **Brand row.** "Between *Us*" top-left — Fraunces SemiBold for "Between",
+#   Fraunces Italic for "Us", the app's ``BrandMark`` — and a capsule pill
+#   top-right carrying the **daypart** (Morning / Afternoon / Dusk …) in
+#   Inter Medium. In the app that pill names whose sheet this is; here it is
+#   the category label the app prints in italic beside its progress count,
+#   and the vocabulary is the corpus's own daypart buckets.
+# * **Progress bar.** Under the brand row, the app's 5 px track with its
+#   ``curious → want`` gradient fill (ochre to terracotta). The fill length
+#   is the fraction of the day elapsed — the one thing on the page that
+#   moves with ``time_str`` — painted as a horizontal density ramp from
+#   Y-major gold to R-major tangerine on the 8x8 tile. No digits anywhere:
+#   the matched phrase carries the readable time, the bar and the daypart
+#   pill carry the shape of the day, the posture ``questline`` / ``outrun``
+#   take but without ``del``-asserting ``time_str``. The registry path (the
+#   button-C source card, the goodnight frame) has no time and draws an
+#   empty track, which is correct for a page that is not a reading.
+# * **Legend.** The app's five answer tiers along the foot — ● Love it ●
+#   Like it ● Neutral ● Curious ● Hard No — each dot in its tier colour,
+#   labels in Inter SemiBold. The tiers are the app's palette and they map
+#   onto documented recipes without inventing one: light = solid red (deep
+#   terracotta), R+Y 5/8:3/8 tangerine (warm terracotta), K+W gray (stone),
+#   Y+R 5/8:3/8 gold (ochre), solid green (slate green — the panel's own
+#   green is a muted cool one, which is exactly the app's ``limit``); dark
+#   lightens every tint with white or yellow the way ``Theme.swift`` does
+#   (coral, amber, gray, cream, mint). The row sits in the bottom margin the
+#   dense layout leaves free (block_bottom ≤ ~412, card foot ≤ ~436).
+#
+# Typography is the app's web-era pair, Fraunces + Inter (its iOS build uses
+# the system New York / SF equivalents). Fraunces is a variable "soft" serif
+# with an optical-size axis; its named instances sit at opsz 9, the sturdy
+# text cut, which is what a stippled matched phrase on eInk wants. Its
+# default axis instance is **Black** (wght 900), so every candidate pins an
+# instance by name — the ``bitter`` hazard in the other direction: a missed
+# variation call here renders the body as a display black, not as hairlines.
+#
+# The matched phrase is *italic*, not bold, and the light variant paints it
+# in solid red — the panel's red (~#62201E) is the app's ``love`` terracotta
+# without any mixing, and a solid ink keeps an italic's thin strokes whole
+# where a stipple would shred them. Dark reroutes its yellow sentinel to the
+# R+Y 1:1 amber ``gothic`` uses, the apricot the app's dark ``want``
+# (#DFA07C) becomes on the panel; on a black ground that brightness is what
+# makes the mix work (the recipes doc's caveat is about *white* grounds).
+#
+# The shared layout's oversized quote marks are skipped outright for both
+# variants (``_THEMES_WITHOUT_ORNAMENT_MARKS``): the app has none, and the
+# marks paint outside the body rect — on the paper, not the card — where a
+# ``page_bg``-coloured glyph would punch a ghost hole in the wash.
+# ---------------------------------------------------------------------------
+
+_BETWEENUS_THEMES: frozenset[str] = frozenset({"betweenus", "betweenus_dark"})
+# The app's 16 pt screen inset, scaled to the panel.
+_BETWEENUS_MARGIN = 28
+# The app's 22 pt card corner radius, scaled to the panel.
+_BETWEENUS_CARD_RADIUS = 18
+# Brand-row text baseline and the progress track's top edge. The dense
+# layout's body never starts above y=72 and the card pads it by 18, so the
+# card top is never above y=54 — the track sits at 44..48 and the count row the
+# app prints beneath it is folded into the pill rather than spent on a line
+# there is no room for.
+_BETWEENUS_BRAND_BASELINE = 34
+_BETWEENUS_BAR_TOP = 44
+_BETWEENUS_BAR_HEIGHT = 5
+# Where the legend's dot centres sit, measured up from the foot.
+_BETWEENUS_LEGEND_RISE = 24
+# Drop-shadow geometry: the card silhouette is offset down-right, blurred, and
+# read back as a density. Peak density is deliberately well below solid so the
+# ledge keeps stipple texture and reads as a soft shadow, not a black bar.
+_BETWEENUS_SHADOW_OFFSET = (3, 4)
+_BETWEENUS_SHADOW_BLUR = 5
+_BETWEENUS_SHADOW_PEAK = 0.45
+# Off-palette sentinels for shapes that take a two-ink recipe in a post-pass.
+_BETWEENUS_SENTINEL_LINE = (7, 7, 7)
+_BETWEENUS_SENTINEL_TRACK = (8, 8, 8)
+_BETWEENUS_SENTINEL_FILL = (9, 9, 9)
+_BETWEENUS_SENTINEL_DOTS = tuple((10 + i, 10 + i, 10 + i) for i in range(5))
+
+# The five answer tiers. Each recipe is ``(ink_a, ink_b, share_b)``: paint
+# ``ink_b`` where the 8x8 Bayer rank is below ``share_b * 64``, ``ink_a``
+# elsewhere; ``share_b == 0`` is a solid fill. Light column = the app's light
+# tints, dark column = its lightened dark tints.
+_BETWEENUS_LEGEND: tuple[tuple[str, tuple, tuple], ...] = (
+    ("Love it", ("red", None, 0.0), ("red", "white", 0.5)),          # deep terracotta → salmon
+    ("Like it", ("red", "yellow", 0.375), ("red", "yellow", 0.5)),   # warm terracotta → apricot
+    ("Neutral", ("black", "white", 0.5), ("black", "white", 0.5)),   # stone
+    ("Curious", ("yellow", "red", 0.375), ("yellow", "white", 0.5)), # ochre → pale gold
+    ("Hard No", ("green", None, 0.0), ("green", "white", 0.5)),      # slate green → mint
+)
+
+_BETWEENUS_DAYPART_LABELS = {
+    "midnight": "Midnight",
+    "night": "Night",
+    "dawn": "Dawn",
+    "morning": "Morning",
+    "noon": "Noon",
+    "afternoon": "Afternoon",
+    "dusk": "Dusk",
+    "evening": "Evening",
+}
+
+_BETWEENUS_PAPER_CACHE: dict[tuple[int, int, bool], Image.Image] = {}
+
+
+def _betweenus_is_dark(colors: dict) -> bool:
+    return colors.get("page_bg") == SPECTRA6["black"]
+
+
+def _betweenus_noise(x: int, y: int) -> int:
+    """A 0..255 positional hash — white noise, deterministic per pixel.
+
+    The paper wash thresholds this rather than a Bayer rank: at the 3-9%
+    densities involved an ordered tile lays a visible dot lattice (the "lemon
+    grid" ``kanagawa`` documents), where a hash scatter reads as paper fibre.
+    ``bakelite``'s warning that hash-alone reads as sandpaper is about a
+    *mid-density* field; a sparse one is exactly what fibre looks like.
+    """
+    h = (x * 374761393 + y * 668265263) & 0xFFFFFFFF
+    h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
+    return (h ^ (h >> 16)) & 0xFF
+
+
+def _betweenus_paper(width: int, height: int, dark: bool) -> Image.Image:
+    """The gradient paper wash, built once per canvas geometry and cached."""
+    key = (width, height, dark)
+    cached = _BETWEENUS_PAPER_CACHE.get(key)
+    if cached is not None:
+        return cached.copy()
+    white = SPECTRA6["white"]
+    black = SPECTRA6["black"]
+    red = SPECTRA6["red"]
+    yellow = SPECTRA6["yellow"]
+    paper = Image.new("RGB", (width, height), black if dark else white)
+    px = paper.load()
+    span = max(1, height - 1)
+    noise = _betweenus_noise
+    for y in range(height):
+        t = y / span
+        if dark:
+            # Warm at the head, settling toward the panel's own black at the
+            # foot (the app's dark paper → paper2 darkens downward too). The
+            # white trace sits at the opposite end of the noise range so the
+            # two specks never coincide.
+            red_cut = (0.06 - 0.035 * t) * 256
+            white_cut = 256 - (0.012 - 0.008 * t) * 256
+            for x in range(width):
+                n = noise(x, y)
+                if n < red_cut:
+                    px[x, y] = red
+                elif n >= white_cut:
+                    px[x, y] = white
+        else:
+            # Cream that warms toward the foot.
+            cut = (0.03 + 0.06 * t) * 256
+            for x in range(width):
+                if noise(x, y) < cut:
+                    px[x, y] = yellow
+    _BETWEENUS_PAPER_CACHE[key] = paper
+    return paper.copy()
+
+
+def _betweenus_clamp_rect(rect, width: int, height: int):
+    x0, y0, x1, y1 = rect
+    x0 = max(0, int(x0))
+    y0 = max(0, int(y0))
+    x1 = min(width - 1, int(x1))
+    y1 = min(height - 1, int(y1))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return (x0, y0, x1, y1)
+
+
+def _betweenus_post_pass(image: Image.Image, bbox, sentinel, recipe) -> None:
+    """Replace every ``sentinel`` pixel inside ``bbox`` with the two-ink
+    ``recipe`` on the 8x8 Bayer tile (a 50% share is exactly a checkerboard)."""
+    rect = _betweenus_clamp_rect(bbox, *image.size)
+    if rect is None:
+        return
+    x0, y0, x1, y1 = rect
+    ink_a = SPECTRA6[recipe[0]]
+    ink_b = SPECTRA6[recipe[1]] if recipe[1] else None
+    cut = round(recipe[2] * 64)
+    px = image.load()
+    for y in range(y0, y1 + 1):
+        row = BAYER_8x8[y & 7]
+        for x in range(x0, x1 + 1):
+            if px[x, y] == sentinel:
+                px[x, y] = ink_b if (ink_b is not None and row[x & 7] < cut) else ink_a
+
+
+def _betweenus_line_outline(image: Image.Image, draw, rect, radius: int, dark: bool) -> None:
+    """A 1 px rounded outline in the app's ``line`` token: R+G parity sepia on
+    the light paper; on black the red half of that vanishes and the line
+    reads as green, so dark uses a 3/8 white hairline — the faint warm-grey
+    edge the app's dark ``line`` (#453C31) is."""
+    draw.rounded_rectangle(rect, radius=radius, outline=_BETWEENUS_SENTINEL_LINE, width=1)
+    recipe = ("black", "white", 0.375) if dark else ("red", "green", 0.5)
+    _betweenus_post_pass(image, rect, _BETWEENUS_SENTINEL_LINE, recipe)
+
+
+def _betweenus_paint_shadow(image: Image.Image, rect, dark: bool) -> None:
+    """The card's soft drop shadow: a blurred, offset silhouette read back as a
+    Bayer density. Light paints black at that density onto the paper; dark
+    clears the paper's warm specks at it, so the halo of clean black *is* the
+    shadow. Pixels the card will cover are skipped — the fill lands on top."""
+    width, height = image.size
+    x0, y0, x1, y1 = rect
+    ox, oy = _BETWEENUS_SHADOW_OFFSET
+    reach = _BETWEENUS_SHADOW_BLUR * 2 + max(ox, oy) + 2
+    band = _betweenus_clamp_rect((x0 - reach, y0 - reach, x1 + reach, y1 + reach), width, height)
+    if band is None:
+        return
+    bx0, by0, bx1, by1 = band
+    mw, mh = bx1 - bx0 + 1, by1 - by0 + 1
+    mask = Image.new("L", (mw, mh), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (x0 + ox - bx0, y0 + oy - by0, x1 + ox - bx0, y1 + oy - by0),
+        radius=_BETWEENUS_CARD_RADIUS,
+        fill=255,
+    )
+    mask = mask.filter(ImageFilter.GaussianBlur(_BETWEENUS_SHADOW_BLUR))
+    mp = mask.load()
+    px = image.load()
+    black = SPECTRA6["black"]
+    r = _BETWEENUS_CARD_RADIUS
+    for y in range(by0, by1 + 1):
+        row = BAYER_8x8[y & 7]
+        mid_row = y0 + r <= y <= y1 - r
+        for x in range(bx0, bx1 + 1):
+            # Fully under the card (its rectangle minus the corner cut-outs).
+            if x0 <= x <= x1 and (mid_row or (x0 + r <= x <= x1 - r and y0 <= y <= y1)):
+                continue
+            s = mp[x - bx0, y - by0] / 255.0
+            if not s:
+                continue
+            if dark:
+                # Clear the warm specks outright where the silhouette is at
+                # least half-strong (the few pixels hugging the edge), then
+                # ramp the clearing out on the tile through the blur's tail.
+                if px[x, y] != black and (s >= 0.5 or row[x & 7] < s * 2 * 64):
+                    px[x, y] = black
+            elif row[x & 7] < s * _BETWEENUS_SHADOW_PEAK * 64:
+                px[x, y] = black
+
+
+def _betweenus_paint_card(image: Image.Image, draw, colors: dict, rect, dark: bool) -> None:
+    """Knock the body region out to a clean rounded card with the app's line
+    edge, floated on the shadow."""
+    _betweenus_paint_shadow(image, rect, dark)
+    draw.rounded_rectangle(rect, radius=_BETWEENUS_CARD_RADIUS, fill=colors["page_bg"])
+    _betweenus_line_outline(image, draw, rect, _BETWEENUS_CARD_RADIUS, dark)
+
+
+def _betweenus_daypart_label(time_str: str | None) -> str | None:
+    if not time_str:
+        return None
+    try:
+        hour = int(time_str.split(":")[0])
+    except (ValueError, IndexError):
+        return None
+    return _BETWEENUS_DAYPART_LABELS.get(daypart_for_hour(hour) or "")
+
+
+def _betweenus_day_fraction(time_str: str | None) -> float:
+    """Fraction of the day elapsed at ``time_str`` (0 at midnight), or 0."""
+    if not time_str:
+        return 0.0
+    try:
+        hour_text, minute_text = time_str.split(":")[:2]
+        minutes = int(hour_text) * 60 + int(minute_text)
+    except ValueError:
+        return 0.0
+    return max(0.0, min(1.0, minutes / 1440.0))
+
+
+def _betweenus_paint_brand_row(image: Image.Image, draw, colors: dict, dark: bool, label: str | None) -> None:
+    """"Between *Us*" top-left; the daypart capsule top-right."""
+    width, _ = image.size
+    ink = colors["text"]
+    baseline = _BETWEENUS_BRAND_BASELINE
+    word_font = load_font([(FRAUNCES_VARIABLE, "SemiBold"), *QUOTE_FONT_BOLD_CANDIDATES], size=21)
+    us_font = load_font([(FRAUNCES_ITALIC_VARIABLE, "Italic"), *QUOTE_FONT_SEMIBOLD_CANDIDATES], size=21)
+    x = _BETWEENUS_MARGIN
+    draw.text((x, baseline), "Between ", font=word_font, fill=ink, anchor="ls")
+    x += draw.textlength("Between ", font=word_font)
+    draw.text((x, baseline), "Us", font=us_font, fill=ink, anchor="ls")
+    if not label:
+        return
+    pill_font = load_font([(INTER_VARIABLE, "Medium"), *META_FONT_CANDIDATES], size=13)
+    text_w = draw.textlength(label, font=pill_font)
+    pill_h = 24
+    pill_w = int(text_w) + 26
+    px1 = width - _BETWEENUS_MARGIN
+    px0 = px1 - pill_w
+    py0 = baseline - 20
+    py1 = py0 + pill_h
+    if px0 <= x + 12 or py1 <= py0:
+        return
+    draw.rounded_rectangle((px0, py0, px1, py1), radius=pill_h // 2, fill=colors["page_bg"])
+    _betweenus_line_outline(image, draw, (px0, py0, px1, py1), pill_h // 2, dark)
+    draw.text(((px0 + px1) / 2, (py0 + py1) / 2 + 1), label, font=pill_font, fill=ink, anchor="mm")
+
+
+def _betweenus_paint_progress(image: Image.Image, draw, dark: bool, fraction: float) -> None:
+    """The app's progress track under the brand row, filled to the fraction of
+    the day elapsed with the ``curious → want`` gradient (gold → tangerine)."""
+    width, height = image.size
+    x0 = _BETWEENUS_MARGIN
+    x1 = width - _BETWEENUS_MARGIN
+    y0 = _BETWEENUS_BAR_TOP
+    y1 = y0 + _BETWEENUS_BAR_HEIGHT - 1
+    if x1 - x0 < 12 or y1 >= height:
+        return
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=2, fill=_BETWEENUS_SENTINEL_TRACK)
+    # Track: a faint grey — 25% black on the light paper, 12.5% white on dark.
+    _betweenus_post_pass(
+        image, (x0, y0, x1, y1), _BETWEENUS_SENTINEL_TRACK,
+        ("black", "white", 0.125) if dark else ("white", "black", 0.25),
+    )
+    if fraction <= 0:
+        return
+    fx1 = max(x0 + 5, x0 + round((x1 - x0) * fraction))
+    draw.rounded_rectangle((x0, y0, fx1, y1), radius=2, fill=_BETWEENUS_SENTINEL_FILL)
+    px = image.load()
+    red = SPECTRA6["red"]
+    yellow = SPECTRA6["yellow"]
+    # Yellow share falls along the fill: Y-major gold at the left end, R-major
+    # tangerine at the leading edge. Dark lifts both ends toward apricot.
+    left_share, right_share = (0.62, 0.48) if dark else (0.55, 0.30)
+    span = max(1, fx1 - x0)
+    for y in range(y0, y1 + 1):
+        row = BAYER_8x8[y & 7]
+        for x in range(x0, fx1 + 1):
+            if px[x, y] != _BETWEENUS_SENTINEL_FILL:
+                continue
+            share = left_share + (right_share - left_share) * ((x - x0) / span)
+            px[x, y] = yellow if row[x & 7] < share * 64 else red
+
+
+def _betweenus_paint_legend(image: Image.Image, draw, colors: dict, dark: bool) -> None:
+    """The five answer tiers along the foot, dot + label each."""
+    width, height = image.size
+    font = load_font([(INTER_VARIABLE, "SemiBold"), *META_FONT_BOLD_CANDIDATES], size=13)
+    radius = 4
+    dot_gap = 7
+    item_gap = 22
+    items = []
+    for label, light_recipe, dark_recipe in _BETWEENUS_LEGEND:
+        items.append((label, dark_recipe if dark else light_recipe, draw.textlength(label, font=font)))
+    total = sum(2 * radius + dot_gap + w for _, _, w in items) + item_gap * (len(items) - 1)
+    if total > width - 2 * _BETWEENUS_MARGIN:
+        return
+    cy = height - _BETWEENUS_LEGEND_RISE
+    if cy - radius < 0:
+        return
+    x = (width - total) / 2
+    for index, (label, recipe, text_w) in enumerate(items):
+        sentinel = _BETWEENUS_SENTINEL_DOTS[index]
+        dot = (x, cy - radius, x + 2 * radius, cy + radius)
+        draw.ellipse(dot, fill=sentinel)
+        _betweenus_post_pass(image, dot, sentinel, recipe)
+        draw.text((x + 2 * radius + dot_gap, cy), label, font=font, fill=colors["text"], anchor="lm")
+        x += 2 * radius + dot_gap + text_w + item_gap
+
+
+def draw_betweenus_border(image: Image.Image, colors: dict, clear_rect=None, time_str: str | None = None) -> None:
+    """Paint the Between Us page: paper, card, brand row, progress, legend.
+
+    Repaints the whole canvas from the cached paper wash first, so the two
+    calls ``render`` makes (registry, then by name with ``clear_rect`` and
+    ``time_str``) compose identically. ``time_str`` is optional for the same
+    reason as ``draw_synoptic_border``'s: the ``_BORDER_PAINTERS`` contract
+    passes only ``(image, colors, clear_rect)``, so the source card and the
+    goodnight frame get an empty track and no daypart pill.
+    """
+    width, height = image.size
+    dark = _betweenus_is_dark(colors)
+    image.paste(_betweenus_paper(width, height, dark))
+    draw = ImageDraw.Draw(image)
+    card = _betweenus_clamp_rect(clear_rect, width, height) if clear_rect is not None else None
+    if card is not None and card[2] - card[0] > 2 * _BETWEENUS_CARD_RADIUS and card[3] - card[1] > 2 * _BETWEENUS_CARD_RADIUS:
+        _betweenus_paint_card(image, draw, colors, card, dark)
+    _betweenus_paint_brand_row(image, draw, colors, dark, _betweenus_daypart_label(time_str))
+    _betweenus_paint_progress(image, draw, dark, _betweenus_day_fraction(time_str))
+    _betweenus_paint_legend(image, draw, colors, dark)
+
+
 _BORDER_PAINTERS = {
     "synoptic": draw_synoptic_border,
+    "betweenus": draw_betweenus_border,
+    "betweenus_dark": draw_betweenus_border,
     "bauhaus": draw_bauhaus_border,
     "blueprint": draw_blueprint_border,
     "comic": draw_comic_corner_stripes,
@@ -13858,6 +14404,13 @@ _BORDER_PAINTERS = {
 #     left of the label. So the default debug label clears every painted
 #     layer, same exemption as atomic / dispatch.
 _DEBUG_LABEL_RIGHT_INSET = {
+    # betweenus: the daypart capsule pill sits top-right at y=14..38,
+    # x from width-28 back by its text width + 26 px of padding. The
+    # widest label ("Afternoon" / "Midnight" in Inter Medium 13) makes a
+    # ~100 px pill, so 144 clears it plus a breathing gap for both
+    # variants.
+    "betweenus": 144,
+    "betweenus_dark": 144,
     "bauhaus": 38,      # past the 6+22px TR filled square
     "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
     "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
@@ -24277,6 +24830,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # speckle; a generous 26/18/18 pad leaves clean margin around the text
         # even after the 16 px feathered edge, with no drawn frame.
         "letter": (26, 18, 18),
+        # betweenus knocks the body out to a rounded card (radius 18) floated
+        # on a soft shadow; the pad is the app's card padding scaled up, and
+        # wide enough that the corner arcs never cut into a first / last line.
+        "betweenus": (28, 18, 24),
+        "betweenus_dark": (28, 18, 24),
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
         clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
@@ -24332,6 +24890,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # thin script reads without foxing speckle, then paints creases + the
         # wax seal on top.
         draw_letter_border(image, colors, clear_rect=clear_rect)
+    elif theme in _BETWEENUS_THEMES:
+        # Same single-call dispatch — the painter lays the paper, floats the
+        # quote card over it, and needs ``time_str`` for the day-progress bar
+        # and the daypart pill (the registry contract carries no clock).
+        draw_betweenus_border(image, colors, clear_rect=clear_rect, time_str=time_str)
     else:
         # anna_atkins falls through here too: it paints the dithered photogram +
         # ferns + labels via _paint_theme_border with no body-rect knockout, and
