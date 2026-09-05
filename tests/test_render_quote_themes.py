@@ -2403,3 +2403,345 @@ class TestDaguerreotypePlate:
         assert counts.get(rq.SPECTRA6["white"], 0) > 0 and counts.get(rq.SPECTRA6["black"], 0) > 0, (
             "the fallback did not paint a photograph-shaped silver image"
         )
+
+
+class TestBetweenUs:
+    """``betweenus`` / ``betweenus_dark`` — the Between Us app's paper card.
+
+    The two variants share one painter and differ only in ground, ink and
+    the recipes the legend and outline take, so most assertions run for both.
+    What is pinned here: the registration checklist, the ornament-skip, the
+    day-progress bar as the sole time carrier (fills with the clock, empty on
+    the registry path, never a digit), the daypart pill's vocabulary, the
+    card being the one clean surface on a stippled page, the shadow on each
+    ground, the legend's five tiers, the dark variant's amber reroute, and
+    the Fraunces instance pin — the file's default axis instance is Black, so
+    an unpinned load is a real regression, not a cosmetic one.
+    """
+
+    THEMES = ("betweenus", "betweenus_dark")
+
+    @staticmethod
+    def _row():
+        return make_row(
+            display_quote="Do you think I should be standing here at five minutes to nine "
+                          "looking for it if I had it in my pocket all the while?",
+            matched_text="five minutes to nine",
+            author="Arthur Conan Doyle",
+            title="The Adventures of Sherlock Holmes",
+            quality_score=90,
+            bucket="h9_five_to",
+            resolved_bucket="h9_five_to",
+        )
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_registered_everywhere(self, theme):
+        from idle_hours import display_inky
+        assert theme in rq.THEMES
+        assert theme in rq.THEME_ORDER
+        assert theme in rq.THEME_FONTS
+        assert rq._BORDER_PAINTERS.get(theme) is rq.draw_betweenus_border
+        assert theme in display_inky.THEME_SATURATION
+        assert theme in rq._DEBUG_LABEL_RIGHT_INSET
+        assert theme in rq._THEMES_WITHOUT_ORNAMENT_MARKS
+
+    def test_palette_shapes(self):
+        light = rq.THEMES["betweenus"]
+        dark = rq.THEMES["betweenus_dark"]
+        assert light["page_bg"] == rq.SPECTRA6["white"]
+        assert light["text"] == rq.SPECTRA6["black"]
+        assert light["accent"] == rq.SPECTRA6["red"], "light paints the italic phrase in solid terracotta red"
+        assert dark["page_bg"] == rq.SPECTRA6["black"]
+        assert dark["text"] == rq.SPECTRA6["white"]
+        assert dark["accent"] == rq.SPECTRA6["yellow"], "dark's accent is the amber sentinel"
+        from idle_hours import display_inky
+        assert display_inky.THEME_SATURATION["betweenus"] == 0.5
+        assert display_inky.THEME_SATURATION["betweenus_dark"] == 0.7
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_no_ornament_marks_are_painted(self, theme, monkeypatch):
+        """The app has no quotation-mark ornaments; the marks are skipped, not
+        painted invisibly (a page_bg glyph would ghost the paper wash)."""
+        def boom(*args, **kwargs):
+            raise AssertionError("an ornament mark was painted")
+        monkeypatch.setattr(rq, "draw_faux_gray_text", boom)
+        monkeypatch.setattr(rq, "draw_faux_3way_text", boom)
+        rq.render("08:55", self._row(), 800, 480, mode="production", theme=theme)
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_render_is_deterministic(self, theme):
+        a = pixel_bytes(rq.render("08:55", self._row(), 800, 480, mode="production", theme=theme))
+        b = pixel_bytes(rq.render("08:55", self._row(), 800, 480, mode="production", theme=theme))
+        assert a == b
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_frame_stays_on_palette_at_every_size(self, theme):
+        allowed = set(rq.SPECTRA6.values())
+        for size in ((80, 60), (240, 144), (320, 192), (800, 480)):
+            for mode in ("production", "debug", "card"):
+                img = rq.render("08:55", self._row(), *size, mode=mode, theme=theme)
+                assert img.size == size
+                assert distinct_inks(img) <= allowed, (theme, size, mode)
+
+    # -- the day-progress bar ------------------------------------------------
+
+    @pytest.mark.parametrize("time_str,expected", [
+        ("00:00", 0.0), ("06:00", 0.25), ("12:00", 0.5), ("18:00", 0.75), ("23:59", 1439 / 1440),
+    ])
+    def test_day_fraction(self, time_str, expected):
+        assert rq._betweenus_day_fraction(time_str) == pytest.approx(expected)
+
+    def test_day_fraction_is_defensive(self):
+        assert rq._betweenus_day_fraction(None) == 0.0
+        assert rq._betweenus_day_fraction("") == 0.0
+        assert rq._betweenus_day_fraction("nonsense") == 0.0
+
+    @staticmethod
+    def _bar_fill_width(image) -> int:
+        """Count columns of the track carrying fill ink (red / yellow).
+
+        Restricted to the track's own span, inset past its rounded ends — the
+        paper outside it carries yellow wash specks that are not fill."""
+        px = image.load()
+        y = rq._BETWEENUS_BAR_TOP + rq._BETWEENUS_BAR_HEIGHT // 2
+        fill = {rq.SPECTRA6["red"], rq.SPECTRA6["yellow"]}
+        x0 = rq._BETWEENUS_MARGIN + 3
+        x1 = image.width - rq._BETWEENUS_MARGIN - 3
+        return sum(1 for x in range(x0, x1) if px[x, y] in fill)
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_bar_fills_with_the_clock(self, theme):
+        """The fill length is the fraction of the day elapsed — the one thing
+        on the page that moves with ``time_str``."""
+        widths = [
+            self._bar_fill_width(rq.render(t, self._row(), 800, 480, mode="production", theme=theme))
+            for t in ("00:05", "06:00", "12:00", "18:00", "23:55")
+        ]
+        assert widths == sorted(widths) and widths[0] < widths[-1], widths
+        track = 800 - 2 * rq._BETWEENUS_MARGIN
+        assert abs(widths[2] - track / 2) < 12, f"noon should fill about half the track: {widths[2]} of {track}"
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_registry_path_draws_an_empty_track(self, theme):
+        """The ``_BORDER_PAINTERS`` contract carries no clock, so the source
+        card / goodnight frame get the track with no fill and no pill."""
+        image = Image.new("RGB", (800, 480), rq.THEMES[theme]["page_bg"])
+        rq._BORDER_PAINTERS[theme](image, rq.THEMES[theme])
+        assert self._bar_fill_width(image) == 0
+
+    def test_fill_is_gold_at_the_left_and_tangerine_at_the_leading_edge(self):
+        """The app's ``curious → want`` gradient: the yellow share of the fill
+        falls from the left end to the leading edge."""
+        image = rq.render("23:55", self._row(), 800, 480, mode="production", theme="betweenus")
+        px = image.load()
+        x0 = rq._BETWEENUS_MARGIN
+        x1 = 800 - rq._BETWEENUS_MARGIN
+        ys = range(rq._BETWEENUS_BAR_TOP, rq._BETWEENUS_BAR_TOP + rq._BETWEENUS_BAR_HEIGHT)
+
+        def yellow_share(xa, xb):
+            inks = [px[x, y] for x in range(xa, xb) for y in ys]
+            inks = [c for c in inks if c in (rq.SPECTRA6["red"], rq.SPECTRA6["yellow"])]
+            return sum(1 for c in inks if c == rq.SPECTRA6["yellow"]) / len(inks)
+
+        assert yellow_share(x0 + 8, x0 + 88) > yellow_share(x1 - 88, x1 - 8) + 0.12
+
+    # -- the daypart pill -----------------------------------------------------
+
+    @pytest.mark.parametrize("time_str,label", [
+        ("00:10", "Midnight"), ("02:00", "Night"), ("05:30", "Dawn"), ("09:00", "Morning"),
+        ("12:00", "Noon"), ("15:00", "Afternoon"), ("18:30", "Dusk"), ("21:00", "Evening"),
+        ("23:30", "Night"), (None, None), ("", None), ("bad", None),
+    ])
+    def test_daypart_label_uses_the_corpus_vocabulary(self, time_str, label):
+        assert rq._betweenus_daypart_label(time_str) == label
+
+    def test_pill_carries_the_daypart(self):
+        captured = []
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(image)
+        real_text = draw.text
+
+        def spy(xy, text="", *args, **kwargs):
+            captured.append(str(text))
+            return real_text(xy, text, *args, **kwargs)
+
+        draw.text = spy
+        rq._betweenus_paint_brand_row(image, draw, rq.THEMES["betweenus"], False, "Afternoon")
+        assert captured == ["Between ", "Us", "Afternoon"]
+
+    def test_debug_label_clears_the_pill(self):
+        """The pill sits in the y=14..38 band top-right, so the DEBUG MODE
+        banner is pushed inward past it. Pin the inset against the widest
+        label the pill can carry."""
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(image)
+        widest = max(rq._BETWEENUS_DAYPART_LABELS.values(), key=lambda s: draw.textlength(
+            s, font=rq.load_font([(rq.INTER_VARIABLE, "Medium"), *rq.META_FONT_CANDIDATES], size=13)))
+        rq._betweenus_paint_brand_row(image, draw, rq.THEMES["betweenus"], False, widest)
+        px = image.load()
+        pill_left = min(x for x in range(400, 800) for y in range(14, 39) if px[x, y] != rq.SPECTRA6["white"])
+        assert 800 - rq._DEBUG_LABEL_RIGHT_INSET["betweenus"] <= pill_left, (
+            f"pill starts at x={pill_left} but the debug label may run to "
+            f"x={800 - rq._DEBUG_LABEL_RIGHT_INSET['betweenus']}"
+        )
+
+    # -- card, shadow, paper --------------------------------------------------
+
+    @pytest.mark.parametrize("theme", THEMES)
+    def test_card_is_the_one_clean_surface(self, theme):
+        """Inside the body knockout the ground is flat page_bg (no wash
+        specks); outside it the paper carries its wash."""
+        ground = rq.THEMES[theme]["page_bg"]
+        image = Image.new("RGB", (800, 480), ground)
+        rq.draw_betweenus_border(image, rq.THEMES[theme], clear_rect=(100, 120, 700, 400), time_str="10:00")
+        px = image.load()
+        inside = {px[x, y] for x in range(140, 660, 3) for y in range(160, 360, 3)}
+        assert inside == {ground}, f"{theme}: card interior is not flat page_bg: {inside}"
+        margin = {px[x, y] for x in range(30, 770, 2) for y in range(60, 100, 2)}
+        assert margin - {ground}, f"{theme}: the paper above the card carries no wash"
+
+    def test_light_card_casts_a_soft_shadow_down_and_right(self):
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        rq.draw_betweenus_border(image, rq.THEMES["betweenus"], clear_rect=(100, 120, 700, 400))
+        px = image.load()
+        black = rq.SPECTRA6["black"]
+
+        def black_share(xa, xb, ya, yb):
+            cells = [(x, y) for x in range(xa, xb) for y in range(ya, yb)]
+            return sum(1 for x, y in cells if px[x, y] == black) / len(cells)
+
+        # The card's edge outline is R+G sepia, never black, so any black here is the shadow.
+        below = black_share(300, 500, 402, 409)
+        right = black_share(702, 709, 200, 300)
+        far = black_share(300, 500, 430, 440)
+        assert below > 0.12 and right > 0.12, (below, right)
+        assert far < below / 3, "the shadow should fall off within a few pixels"
+
+    def test_dark_card_sits_in_a_clean_halo(self):
+        """Dark cannot cast black on near-black, so the wash is cleared around
+        the card instead: the ring just outside the edge carries no specks."""
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
+        rq.draw_betweenus_border(image, rq.THEMES["betweenus_dark"], clear_rect=(100, 120, 700, 400))
+        px = image.load()
+        ring = {px[x, y] for x in range(300, 500) for y in range(402, 406)}
+        assert ring == {rq.SPECTRA6["black"]}, ring
+        far = {px[x, y] for x in range(300, 500) for y in range(440, 470)}
+        assert far - {rq.SPECTRA6["black"]}, "the wash should return past the halo"
+
+    def test_light_paper_warms_toward_the_foot(self):
+        """The app's paper → paper2 gradient: more cream at the bottom."""
+        paper = rq._betweenus_paper(800, 480, dark=False)
+        counts_top = ink_counts(paper.crop((0, 0, 800, 60)))
+        counts_bottom = ink_counts(paper.crop((0, 420, 800, 480)))
+        yellow = rq.SPECTRA6["yellow"]
+        assert counts_bottom.get(yellow, 0) > 2 * counts_top.get(yellow, 0)
+        assert set(counts_top) | set(counts_bottom) <= {rq.SPECTRA6["white"], yellow}
+
+    def test_dark_paper_is_warm_and_sparse(self):
+        paper = rq._betweenus_paper(800, 480, dark=True)
+        counts = ink_counts(paper)
+        total = 800 * 480
+        assert 0.02 < counts.get(rq.SPECTRA6["red"], 0) / total < 0.08
+        assert 0 < counts.get(rq.SPECTRA6["white"], 0) / total < 0.02
+        assert set(counts) <= {rq.SPECTRA6["black"], rq.SPECTRA6["red"], rq.SPECTRA6["white"]}
+
+    def test_paper_is_cached_per_geometry(self):
+        rq._BETWEENUS_PAPER_CACHE.clear()
+        a = rq._betweenus_paper(240, 144, dark=False)
+        b = rq._betweenus_paper(240, 144, dark=False)
+        assert a is not b, "callers get a copy, never the cached surface"
+        assert pixel_bytes(a) == pixel_bytes(b)
+        assert (240, 144, False) in rq._BETWEENUS_PAPER_CACHE
+
+    def test_paper_cache_is_bounded_lru(self):
+        """The geometry is caller-controlled — ``/api/preview`` is ungated and
+        takes any size up to 800x480 — so an unbounded cache is a memory sink
+        an unauthenticated client can fill at ~1.1 MB per distinct size. The
+        cache holds a few entries and evicts the least recently used."""
+        rq._BETWEENUS_PAPER_CACHE.clear()
+        limit = rq._BETWEENUS_PAPER_CACHE_MAX
+        native = (800, 480, False)
+        rq._betweenus_paper(*native)
+        for i in range(limit * 3):
+            rq._betweenus_paper(*native)               # keep the panel size hot
+            rq._betweenus_paper(80 + i, 60 + i, True)  # a stream of one-off sizes
+            assert len(rq._BETWEENUS_PAPER_CACHE) <= limit
+        assert native in rq._BETWEENUS_PAPER_CACHE, "a reused geometry must survive the churn"
+        assert (80, 60, True) not in rq._BETWEENUS_PAPER_CACHE, "the oldest one-off must be evicted"
+
+    # -- legend ---------------------------------------------------------------
+
+    def test_legend_surfaces_every_tier_ink(self):
+        """Five tiers: light = red, R+Y tangerine, K+W stone, Y+R gold, green."""
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        rq._betweenus_paint_legend(image, ImageDraw.Draw(image), rq.THEMES["betweenus"], False)
+        foot = image.crop((0, 480 - rq._BETWEENUS_LEGEND_RISE - 8, 800, 480 - rq._BETWEENUS_LEGEND_RISE + 8))
+        inks = distinct_inks(foot)
+        for name in ("red", "yellow", "green", "black", "white"):
+            assert rq.SPECTRA6[name] in inks, f"legend is missing {name}"
+
+    def test_legend_labels_are_the_apps_five_answers(self):
+        assert [label for label, _, _ in rq._BETWEENUS_LEGEND] == [
+            "Love it", "Like it", "Neutral", "Curious", "Hard No",
+        ]
+
+    def test_dark_legend_lifts_every_tint_with_white_or_yellow(self):
+        """The app's dark set lightens its accents rather than inverting them."""
+        for label, _light, dark in rq._BETWEENUS_LEGEND:
+            assert dark[1] in ("white", "yellow") and dark[2] >= 0.5, (label, dark)
+
+    # -- text -----------------------------------------------------------------
+
+    def test_dark_matched_phrase_is_amber(self):
+        """The yellow sentinel reroutes to R+Y 1:1 — roughly half red, half yellow."""
+        image = Image.new("RGB", (400, 100), rq.SPECTRA6["black"])
+        draw = ImageDraw.Draw(image)
+        font = rq.load_font(rq.theme_font_candidates("betweenus_dark", "quote_bold"), size=40)
+        rq._draw_text_body(image, draw, (10, 20), "five minutes to nine", font=font, fill=rq.SPECTRA6["yellow"], theme="betweenus_dark")
+        counts = ink_counts(image)
+        red = counts.get(rq.SPECTRA6["red"], 0)
+        yellow = counts.get(rq.SPECTRA6["yellow"], 0)
+        assert red and yellow
+        assert 0.35 < red / (red + yellow) < 0.65
+
+    def test_light_matched_phrase_is_solid_red(self, monkeypatch):
+        """Light paints the italic phrase solid — no stipple seam fires."""
+        def boom(*args, **kwargs):
+            raise AssertionError("light betweenus must not stipple its matched phrase")
+        monkeypatch.setattr(rq, "draw_text_dithered", boom)
+        image = Image.new("RGB", (400, 100), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(image)
+        font = rq.load_font(rq.theme_font_candidates("betweenus", "quote_bold"), size=40)
+        rq._draw_text_body(image, draw, (10, 20), "five minutes to nine", font=font, fill=rq.SPECTRA6["red"], theme="betweenus")
+        snapped = rq.snap_image_to_palette(image, rq.SPECTRA6_PALETTE)
+        assert ink_counts(snapped).get(rq.SPECTRA6["red"], 0) > 500
+
+    def test_matched_phrase_is_the_italic_cut(self):
+        """"say *what you want.*" — the app's accent is italic, not bold."""
+        for theme, instance in (("betweenus", "Italic"), ("betweenus_dark", "SemiBold Italic")):
+            entry = rq.THEME_FONTS[theme]["quote_bold"][0]
+            assert entry == (rq.FRAUNCES_ITALIC_VARIABLE, instance)
+            assert rq.THEME_FONTS[theme]["quote_regular"][0] == (rq.FRAUNCES_VARIABLE, "Regular")
+
+    def test_fraunces_instances_are_pinned_off_the_black_default(self):
+        """Fraunces' default axis instance is wght 900. An unpinned load renders
+        the body as a display black, so measure the Regular against the raw
+        default and require it to be visibly lighter."""
+        from PIL import ImageFont
+        rq._FONT_CACHE.clear()
+        pinned = rq.load_font([(rq.FRAUNCES_VARIABLE, "Regular")], size=48)
+        raw = ImageFont.truetype(rq.FRAUNCES_VARIABLE, size=48)
+
+        def coverage(font):
+            img = Image.new("L", (600, 80), 0)
+            ImageDraw.Draw(img).text((5, 5), "Between Us", font=font, fill=255)
+            return sum(img.histogram()[128:])
+
+        assert coverage(pinned) < 0.75 * coverage(raw), "Regular instance was not applied"
+        assert pinned.getname()[0].startswith("Fraunces")
+
+    def test_fraunces_files_and_licence_ship(self):
+        from pathlib import Path
+        for path in (rq.FRAUNCES_VARIABLE, rq.FRAUNCES_ITALIC_VARIABLE):
+            assert Path(path).exists(), path
+        assert (Path(rq.FRAUNCES_VARIABLE).parent / "OFL.txt").exists()

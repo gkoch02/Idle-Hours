@@ -245,6 +245,8 @@ def parse_args() -> argparse.Namespace:
         "nocturne",
         "plaque",
         "daguerreotype",
+        "betweenus",
+        "betweenus_dark",
         "diags",
     ]
     parser.add_argument(

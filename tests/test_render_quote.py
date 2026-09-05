@@ -852,6 +852,13 @@ class TestThemes:
         # rather than typography. A surface analysis has no decorative
         # quotation marks, so both ornament slots take the page ground.
         "synoptic",
+        # betweenus / betweenus_dark — the Between Us card has no quotation
+        # marks either, and the marks would land on the stippled paper outside
+        # the card, so ``_paint_ornament_mark`` skips them outright for these
+        # two (``_THEMES_WITHOUT_ORNAMENT_MARKS``). Both slots still take the
+        # page ground so the fence below stays honest.
+        "betweenus",
+        "betweenus_dark",
     })
 
     def test_every_theme_has_at_least_one_visible_ornament_colour(self):
