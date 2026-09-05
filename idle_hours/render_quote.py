@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import collections
 import datetime
 import io
 import math
@@ -13926,7 +13927,9 @@ def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time
 #   a trace of white, so the ground reads as the app's warm charcoal rather
 #   than the panel's cool near-black. The wash is deterministic and quote-
 #   independent, so it is built once per ``(width, height, variant)`` and
-#   cached — ``render`` calls every border painter twice.
+#   held in a small LRU — ``render`` calls every border painter twice, and
+#   the LRU is bounded because the geometry is caller-controlled via the
+#   ungated ``/api/preview``.
 # * **The card.** The quote sits in a rounded card (radius 18, the app's
 #   22 pt corner scaled to the panel) knocked out of the paper through the
 #   ``clear_rect`` dispatch ``kanagawa`` / ``cartograph`` / ``letter`` use,
@@ -14040,7 +14043,15 @@ _BETWEENUS_DAYPART_LABELS = {
     "evening": "Evening",
 }
 
-_BETWEENUS_PAPER_CACHE: dict[tuple[int, int, bool], Image.Image] = {}
+# The paper wash is quote-independent, so it is cached per canvas geometry —
+# but the geometry is caller-controlled: ``/api/preview`` is ungated and takes
+# any size up to 800x480, so an unbounded dict keyed on it is a memory sink an
+# unauthenticated client can fill at ~1.1 MB per distinct size. A small LRU
+# holds every geometry the appliance actually cycles through (the native panel
+# plus the curator UI's fixed thumbnail sizes) and caps the worst case at a
+# few MB.
+_BETWEENUS_PAPER_CACHE: "collections.OrderedDict[tuple[int, int, bool], Image.Image]" = collections.OrderedDict()
+_BETWEENUS_PAPER_CACHE_MAX = 4
 
 
 def _betweenus_is_dark(colors: dict) -> bool:
@@ -14066,6 +14077,7 @@ def _betweenus_paper(width: int, height: int, dark: bool) -> Image.Image:
     key = (width, height, dark)
     cached = _BETWEENUS_PAPER_CACHE.get(key)
     if cached is not None:
+        _BETWEENUS_PAPER_CACHE.move_to_end(key)
         return cached.copy()
     white = SPECTRA6["white"]
     black = SPECTRA6["black"]
@@ -14097,6 +14109,8 @@ def _betweenus_paper(width: int, height: int, dark: bool) -> Image.Image:
                 if noise(x, y) < cut:
                     px[x, y] = yellow
     _BETWEENUS_PAPER_CACHE[key] = paper
+    while len(_BETWEENUS_PAPER_CACHE) > _BETWEENUS_PAPER_CACHE_MAX:
+        _BETWEENUS_PAPER_CACHE.popitem(last=False)
     return paper.copy()
 
 

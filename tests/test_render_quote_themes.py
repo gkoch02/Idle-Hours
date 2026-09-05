@@ -2653,6 +2653,22 @@ class TestBetweenUs:
         assert pixel_bytes(a) == pixel_bytes(b)
         assert (240, 144, False) in rq._BETWEENUS_PAPER_CACHE
 
+    def test_paper_cache_is_bounded_lru(self):
+        """The geometry is caller-controlled — ``/api/preview`` is ungated and
+        takes any size up to 800x480 — so an unbounded cache is a memory sink
+        an unauthenticated client can fill at ~1.1 MB per distinct size. The
+        cache holds a few entries and evicts the least recently used."""
+        rq._BETWEENUS_PAPER_CACHE.clear()
+        limit = rq._BETWEENUS_PAPER_CACHE_MAX
+        native = (800, 480, False)
+        rq._betweenus_paper(*native)
+        for i in range(limit * 3):
+            rq._betweenus_paper(*native)               # keep the panel size hot
+            rq._betweenus_paper(80 + i, 60 + i, True)  # a stream of one-off sizes
+            assert len(rq._BETWEENUS_PAPER_CACHE) <= limit
+        assert native in rq._BETWEENUS_PAPER_CACHE, "a reused geometry must survive the churn"
+        assert (80, 60, True) not in rq._BETWEENUS_PAPER_CACHE, "the oldest one-off must be evicted"
+
     # -- legend ---------------------------------------------------------------
 
     def test_legend_surfaces_every_tier_ink(self):
