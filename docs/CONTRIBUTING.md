@@ -301,8 +301,9 @@ idle-hours contact-sheet --theme <new>   --output output/contact-<new>.png
   ("Add quiet-hours manual toggle", not "Added …"). Body explains the *why*
   if it's not obvious from the diff.
 - PRs: short summary of what changed and any intentional trade-offs. Link
-  relevant issues. If the change is corpus-only, the PR body is fine at one
-  line.
+  relevant issues. GitHub pre-fills the body from
+  `.github/pull_request_template.md`; fill in what applies and delete the
+  rest. If the change is corpus-only, the PR body is fine at one line.
 - CI runs on every push to `main` and every PR (lint + pytest matrix on
   Python 3.11/3.12). Green CI is a prerequisite for merge.
 
