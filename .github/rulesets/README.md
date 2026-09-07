@@ -33,7 +33,7 @@ gh api "/repos/gkoch02/Idle-Hours/rulesets/$RULESET_ID" \
   --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
 ```
 
-## Which checks are required, and why all of them are
+## Which checks are required
 
 Every job in `.github/workflows/ci.yml` is either a required status check or an
 explicit entry in `tests/test_ci_required_checks.py`'s `ADVISORY_JOBS` map, with
@@ -60,15 +60,11 @@ catch* unable to block anything:
   (`packages.find` misconfiguration, missing `package-data`, optional-dep
   leakage at import). Every other job installs with `pip install -e .`, which
   cannot see any of them.
-- **`coverage`** — the `--cov-fail-under=95` line+branch floor. It was also
-  `if: github.event_name == 'push'`, so it did not run on pull requests at all.
-  Making it required and making it run on PRs are one decision, though not for
-  the reason you might expect: GitHub reports a job skipped by its `if:` with
-  conclusion `skipped`, and **a skipped check counts as success** for a
-  required status check. Requiring it while it stayed conditional would not
-  have deadlocked merges — it would have produced a gate that went green on
-  every pull request without measuring a line, which is worse than leaving it
-  advisory, because it looks enforced.
+`coverage` still runs on pull requests and enforces the `--cov-fail-under=95`
+line-and-branch floor, but it is advisory: its tracer-heavy full-suite run can
+take roughly ten minutes and should not hold an otherwise-green merge. A red
+coverage result remains visible and should be investigated; it simply no
+longer disables the merge button.
 
 `release-version` is deliberately **not** required. It is tag-only
 (`if: startsWith(github.ref, 'refs/tags/v')`), so on a pull request it reports
