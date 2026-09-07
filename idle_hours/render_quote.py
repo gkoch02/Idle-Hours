@@ -5113,10 +5113,29 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
     if theme == "nightvision" and fill == SPECTRA6["green"]:
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["white"])
     elif theme == "grimoire" and fill == SPECTRA6["red"]:
-        # Solid white — see docstring for the half-red-was-hard-to-read
-        # rationale. The matched phrase stays visually distinct via the
-        # Eagle Lake calligraphic face + bold weight.
-        draw.text(xy, text, font=font, fill=SPECTRA6["white"])
+        # Sky blue (B+W 1:1) — the same recipe this theme's oversized quote
+        # marks already use via ``draw_faux_gray_text`` (``ornament_dark``
+        # blue + ``ornament_light`` white), so the matched phrase and the
+        # ornaments read as one cool moon-silver register against the black
+        # ground rather than the phrase being the only uncoloured text on a
+        # plate whose every other element is tinted.
+        #
+        # The red ``accent`` slot is a *sentinel* here, never painted: the
+        # phrase carries no red, which keeps it clear of the border's
+        # pentagrams, rules and planetary sigils (the ``gothic`` reasoning,
+        # reached by a different route). Hence ``dark=blue`` explicitly
+        # rather than ``dark=fill`` — the same sentinel shape ``anna_atkins``
+        # uses for its yellow accent.
+        #
+        # An earlier revision painted this solid white, having moved off a
+        # 3/4-red "candlelit" mix that read as dim rather than warm at panel
+        # distance. Solid white then left the phrase undifferentiated from
+        # the body except by face and weight. B+W is not a return to that
+        # failure: it is half *white* rather than three-quarters red, so it
+        # sits far brighter than the mix that failed — and it is already
+        # proven on this exact plate, at ornament scale, against this exact
+        # ground.
+        draw_text_dithered(image, xy, text, font, dark=SPECTRA6["blue"], light=SPECTRA6["white"])
     elif theme == "gothic" and fill == SPECTRA6["red"]:
         # Amber (R+Y 1:1) — the same recipe the ``diags`` synth band
         # labels "amber". Reads as warm candle-flame against the black
