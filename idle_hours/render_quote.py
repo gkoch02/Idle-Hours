@@ -138,7 +138,13 @@ THEME_ORDER: tuple[str, ...] = (
 # Mirrors RANDOM_EXCLUDED_THEMES (which only filters --theme random) but applies
 # to every rotation path. Keep entries here when the theme code is worth
 # preserving for opt-in but the visual isn't ready for unattended rotation.
-CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"tarot", "vinyl"})
+#
+# `tarot` graduated out of this set once the card stopped titling itself with
+# the time: the foot painted `matched_text`, so an unattended rotation would
+# have put a card reading TWENTY MINUTES PAST ONE — overrunning its own rule —
+# on the panel with nobody there to pick a different theme, which is exactly
+# what this set is for.
+CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"vinyl"})
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
