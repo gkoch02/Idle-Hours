@@ -315,14 +315,19 @@ class TestTarotEmblems:
     """All twelve trumps draw, and draw something different from each other.
 
     The golden suite pins exactly *one* tarot frame, at ``THEME_SWEEP_TIME``
-    (08:55), so eleven of the twelve hour-mapped emblems are outside it —
-    a rewrite of seven of them left every golden fixture byte-identical,
-    because hour 8 happened to be one of the four left alone. Twelve more
-    PNG fixtures would fence this, but the failures actually worth catching
+    (08:55), so eleven of the twelve hours are outside it — a rewrite of
+    seven emblems once left every golden fixture byte-identical, because
+    hour 8 happened to be one of the four left alone. Twelve more PNG
+    fixtures would fence this, but the failures actually worth catching
     are structural: an emblem that stops painting, and two hours that
-    resolve to the same figure (a typo in the ``_TAROT_EMBLEMS`` dispatch
-    maps an hour to its neighbour's painter, which no smoke test notices
-    because both still render).
+    resolve to the same figure (a mis-indexed sprite-sheet crop, or a typo
+    in the ``_TAROT_EMBLEMS`` dispatch, either of which no smoke test
+    notices because both hours still render).
+
+    These run against whichever source is live — the committed Dodal sprite
+    sheet when it is present, the polygon painters when it is not — so the
+    same three assertions fence both. ``TestTarotPlateFallback`` pins the
+    painter path explicitly so it cannot rot behind the plates.
     """
 
     @staticmethod
@@ -374,6 +379,46 @@ class TestTarotEmblems:
                         assert img.getpixel((x, y)) not in ink, (
                             f"hour {hour}: emblem ink at ({x}, {y}) is outside the keyline"
                         )
+
+
+class TestTarotPlateFallback:
+    """With no sprite sheet on disk, the polygon painters still draw all twelve.
+
+    Two things need fencing here. The degradation contract: a stripped
+    install, or one where the plates were never built, must still render a
+    card rather than an empty panel — the same graceful-fallback shape
+    ``_load_dithered_plate`` keeps for the dithered themes. And coverage:
+    once the plates are committed, every other tarot test exercises the
+    sheet, so ~740 lines of emblem painters would be reachable only through
+    a code path nothing runs. That is exactly how a fallback quietly stops
+    working before anyone needs it.
+    """
+
+    @staticmethod
+    def _panel(hour, monkeypatch):
+        monkeypatch.setattr(rq, "TAROT_PLATES", pathlib.Path("/nonexistent/tarot_plates.png"))
+        img = rq.render(f"{hour:02d}:30", make_row(), 800, 480, theme="tarot")
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        return img.crop((x0 + 20, y0 + 68, x1 - 20, y1 - 74))
+
+    def test_every_hour_still_paints_without_plates(self, monkeypatch):
+        for hour in range(1, 13):
+            counts = ink_counts(self._panel(hour, monkeypatch))
+            drawn = counts.get(rq.SPECTRA6["black"], 0) + counts.get(rq.SPECTRA6["red"], 0)
+            assert drawn > 600, f"hour {hour}: fallback painted only {drawn} px"
+
+    def test_fallback_hours_stay_distinct(self, monkeypatch):
+        seen = {}
+        for hour in range(1, 13):
+            data = pixel_bytes(self._panel(hour, monkeypatch))
+            assert data not in seen, f"hour {hour} falls back to the same figure as {seen[data]}"
+            seen[data] = hour
+
+    def test_fallback_differs_from_the_plates(self, monkeypatch):
+        """If these matched, the fallback would not be under test at all."""
+        plated = TestTarotEmblems._panel(9)
+        painted = self._panel(9, monkeypatch)
+        assert pixel_bytes(plated) != pixel_bytes(painted)
 
 
 class TestTarotFrame:
