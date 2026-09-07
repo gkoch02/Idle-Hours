@@ -18,7 +18,7 @@ from pathlib import Path
 from idle_hours import apply_content_overrides, atomic_io, pidfile, runtime_config, runtime_webhook, sd_notify
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import bucket_for_time
-from idle_hours.path_resolution import resolve_input_path
+from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     _button_render_gate,
     action_quiet,
@@ -249,6 +249,7 @@ def parse_args() -> argparse.Namespace:
         "plaque",
         "daguerreotype",
         "autochrome",
+        "photo",
         "betweenus",
         "betweenus_dark",
         "diags",
@@ -314,6 +315,18 @@ def parse_args() -> argparse.Namespace:
             "Optional PNG pushed to the display once at loop startup before the "
             "first quote render, so the panel doesn't ghost yesterday's frame "
             "during cold boot. Omit (default) to skip the startup frame."
+        ),
+    )
+    parser.add_argument(
+        "--photo-path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Image file or directory for the `photo` theme. A directory "
+            "rotates deterministically as the displayed quote changes. "
+            "Exported as IDLE_HOURS_PHOTO_PATH rather than passed to the "
+            "render subprocess as a flag, so an operator's own "
+            "--render-script cannot break on an unrecognised argument."
         ),
     )
     parser.add_argument(
@@ -1631,12 +1644,14 @@ _PREFLIGHT_PATH_FLAGS: tuple[tuple[str, bool], ...] = (
     ("display_script", False),
     ("quiet_image", False),
     ("startup_image", False),
+    # A directory is as valid as a file here, and Path.exists() covers both.
+    ("photo_path", False),
 )
 
 
 def _preflight_paths(args: argparse.Namespace) -> list[str]:
     """Return a list of human-readable errors for missing --render-script / --display-script /
-    --quiet-image / --startup-image paths.
+    --quiet-image / --startup-image / --photo-path paths.
 
     This catches the "typoed path in the systemd unit file" class of failure at
     startup instead of at first use (first bucket change, first quiet-hours
@@ -1801,6 +1816,17 @@ def main() -> int:
         output_target = output_target.resolve()
     output_target.parent.mkdir(parents=True, exist_ok=True)
     args.output = str(output_target)
+
+    # The `photo` theme's source reaches the renderer through the environment,
+    # not through the render subprocess's argv: ``_corpus_render_args`` explains
+    # why that argv may only carry flags an operator's own --render-script
+    # already knows, and an unrecognised flag exits 2 and takes the appliance
+    # into backoff. Exporting into THIS process's environment covers both
+    # consumers at once - children inherit it, and the in-process callers (the
+    # curator UI's /api/preview, contact_sheet) read the same value without
+    # needing a second mechanism.
+    if args.photo_path:
+        os.environ[PHOTO_PATH_ENV] = args.photo_path
 
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None

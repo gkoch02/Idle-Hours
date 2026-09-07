@@ -218,6 +218,11 @@ THEME_SATURATION: dict[str, float] = {
     # white-ground tier; pushing harder would harden the pastel grain the
     # process is known for into poster colour.
     "autochrome": 0.5,
+    # Operator photograph — an unknown picture conditioned into the pastel band
+    # that dithers to grain, so it lands in the same place autochrome does and
+    # takes the same gentler tier. A dark photograph is still mostly a
+    # full-palette stipple, not a flat dark ground.
+    "photo": 0.5,
     # Between Us, light — white paper with a faint cream wash, black Fraunces
     # body, solid-red italic matched phrase and small stippled legend dots.
     # Same chromatic-on-light profile as ``default`` / ``placard``; the

@@ -1721,7 +1721,7 @@ class TestFixedGeometryFramesDownscale:
     """
 
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
-                             "plaque", "daguerreotype", "autochrome", "tarot", "vinyl")
+                             "plaque", "daguerreotype", "autochrome", "photo", "tarot", "vinyl")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -3167,3 +3167,422 @@ class TestAutochromePlate:
         mid = rq._AUTOCHROME_TAPE // 2
         for x, y in ((400, mid), (400, 479 - mid), (mid, 240), (799 - mid, 240)):
             assert px[x, y] == black, f"binding tape missing at ({x}, {y})"
+
+
+class TestPhotoTheme:
+    """The open-ended theme: the art is a file the operator chooses.
+
+    Three things this theme has to do that no committed-plate theme does, and
+    each was a real bug before it was a test:
+
+    * **Condition an unknown photograph** into the band that dithers to grain,
+      measuring in the space the correction knob works in, and applying the two
+      corrections in an order where neither undoes the other.
+    * **Place the caption card from the picture's own content**, measured on the
+      continuous-tone image — a dither inverts the answer.
+    * **Survive anything an operator can point it at**, degrading to the bundled
+      plate rather than raising into the per-tick render path.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    @staticmethod
+    def _photo(path, size=(900, 600), bands=None, chroma_boost=1.0, mean=0.5):
+        """A synthetic photograph with controllable character."""
+        w, h = size
+        img = Image.new("RGB", size)
+        px = img.load()
+        base = int(mean * 255)
+        for y in range(h):
+            for x in range(w):
+                if bands == "left_busy":
+                    px[x, y] = ((60 + (x * 37 + y * 61) % 120, 120, 80) if x < w // 2
+                               else (base, base - 6, base - 18))
+                elif bands == "bright_blob":
+                    # Textured left half, and a SOFT radial glow on the right.
+                    # Both halves are load-bearing. The glow must be soft
+                    # because a hard rim carries edge energy that detail alone
+                    # already avoids, and the left must be textured so that
+                    # detail alone actively *prefers* the glow's half — with a
+                    # smooth left the cost map is near-uniform, the choice is
+                    # decided by noise, and the assertion passes against a
+                    # build with the salience term switched off. This models
+                    # the real case: a sun or a lit face, soft after the
+                    # conditioning blur, beside foliage.
+                    if x < w // 2:
+                        n = (x * 53 + y * 97) % 96
+                        px[x, y] = (60 + n, 90 + n // 2, 70 + n // 3)
+                    else:
+                        d2 = (x - int(w * 0.76)) ** 2 + (y - int(h * 0.3)) ** 2
+                        t = max(0.0, 1.0 - d2 / float((w // 5) ** 2))
+                        v = int(48 + 200 * t * t)
+                        px[x, y] = (v, v - 4, v - 12)
+                else:
+                    # ``mean`` names the BRIGHTEST channel, because that is what
+                    # ``_photo_measure`` reports as luminance — a fixture whose
+                    # chroma boost silently lifted its own mean made the
+                    # "gentle photograph is left alone" test assert against a
+                    # correction that was doing exactly the right thing.
+                    px[x, y] = (
+                        max(0, min(255, base)),
+                        max(0, min(255, int(base - 130 * chroma_boost))),
+                        max(0, min(255, int(base - 160 * chroma_boost))),
+                    )
+        img.save(path)
+        return path
+
+    def _render(self, time_str="14:15", size=(800, 480)):
+        return rq.render(time_str, self.ROW, *size, mode="production", theme="photo")
+
+    # -- conditioning --------------------------------------------------------
+
+    def test_a_lurid_photograph_is_pulled_into_the_band(self, tmp_path):
+        """Both corrections must land, which needs each measured in the space
+        its own knob works in and applied in an order that does not undo the
+        other. Two earlier versions failed this: one measured HSV saturation and
+        drove ``ImageEnhance.Color`` with the ratio (undershooting 0.86 to 0.67
+        against a 0.30 target), and one corrected levels before chroma, so
+        blending toward grey then dragged the corrected mean back down.
+        """
+        path = self._photo(tmp_path / "lurid.png", chroma_boost=1.9, mean=0.85)
+        with Image.open(path) as raw:
+            source = rq._photo_cover_crop(raw.convert("RGB"), 800, 480)
+        before = rq._photo_measure(source)
+        chroma, mean, _ = rq._photo_measure(rq._photo_condition(source))
+        assert before[0] > rq._PHOTO_TARGET_CHROMA * 1.5, "fixture is not lurid enough to test"
+        assert chroma <= rq._PHOTO_TARGET_CHROMA + 0.02, (
+            f"chroma landed at {chroma:.2f} against a {rq._PHOTO_TARGET_CHROMA} target — "
+            "the correction is being computed in a different space from the one "
+            "ImageEnhance.Color actually scales"
+        )
+        assert abs(mean - rq._PHOTO_TARGET_MEAN) <= rq._PHOTO_MEAN_TOLERANCE + 0.02, (
+            f"luminance landed at {mean:.2f} against a {rq._PHOTO_TARGET_MEAN} target — "
+            "a later correction is undoing an earlier one; levels must run last"
+        )
+
+    def test_a_gentle_photograph_is_left_alone(self, tmp_path):
+        """The reason the corrections are measured rather than fixed. A blanket
+        pastel pass would damage material that never needed it."""
+        path = self._photo(tmp_path / "gentle.png", chroma_boost=0.25,
+                           mean=rq._PHOTO_TARGET_MEAN)
+        with Image.open(path) as raw:
+            source = rq._photo_cover_crop(raw.convert("RGB"), 800, 480)
+        before = rq._photo_measure(source)
+        assert before[0] < rq._PHOTO_TARGET_CHROMA, "fixture is not gentle enough to test"
+        after = rq._photo_measure(rq._photo_condition(source))
+        assert abs(after[0] - before[0]) < 0.03 and abs(after[1] - before[1]) < 0.05, (
+            f"an in-band photograph was altered: {before} -> {after}"
+        )
+
+    def test_a_dark_photograph_is_lifted_into_view(self, tmp_path):
+        """The panel's ink range is narrow; an unlifted night photograph
+        dithers to near-solid black and shows nothing across a room."""
+        path = self._photo(tmp_path / "dark.png", chroma_boost=0.3, mean=0.12)
+        with Image.open(path) as raw:
+            source = rq._photo_cover_crop(raw.convert("RGB"), 800, 480)
+        assert rq._photo_measure(source)[1] < 0.25
+        assert rq._photo_measure(rq._photo_condition(source))[1] > 0.45
+
+    # -- card placement ------------------------------------------------------
+
+    def _card_side(self, path, monkeypatch):
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(path))
+        rq.clear_photo_cache()
+        _, rect = rq._photo_frame_for(self.ROW, 800, 480)
+        return "left" if rect[0] < 400 else "right"
+
+    def test_the_card_avoids_the_busy_side(self, tmp_path, monkeypatch):
+        """And it must follow the content when the content moves — otherwise
+        the assertion is satisfied by the tie-break default alone."""
+        busy_left = self._photo(tmp_path / "bl.png", bands="left_busy")
+        assert self._card_side(busy_left, monkeypatch) == "right"
+        with Image.open(busy_left) as im:
+            im.transpose(Image.FLIP_LEFT_RIGHT).save(tmp_path / "br.png")
+        assert self._card_side(tmp_path / "br.png", monkeypatch) == "left", (
+            "mirroring the photograph did not move the card — placement is not "
+            "actually reading the image"
+        )
+
+    def test_placement_is_measured_before_dithering(self, tmp_path, monkeypatch):
+        """The inversion this theme shipped with once. A dither turns a smooth
+        region into a stipple where every pixel differs from its neighbour, so
+        measured on the plate a flat wall scores *higher* edge energy than dark
+        foliage and the card lands on the subject.
+        """
+        photo = self._photo(tmp_path / "bl.png", bands="left_busy")
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
+        rq.clear_photo_cache()
+        plate, _ = rq._photo_frame_for(self.ROW, 800, 480)
+        with Image.open(photo) as raw:
+            conditioned = rq._photo_condition(rq._photo_cover_crop(raw.convert("RGB"), 800, 480))
+
+        def busy_half(image):
+            cost = rq._photo_cost_map(image)
+            cols = len(cost[0])
+            left = sum(sum(r[:cols // 2]) for r in cost)
+            return "left" if left > sum(sum(r[cols // 2:]) for r in cost) else "right"
+
+        assert busy_half(conditioned) == "left", "fixture's busy half moved"
+        assert busy_half(plate) == "right", (
+            "the dithered plate no longer inverts the busy-half measurement, so "
+            "this test can no longer prove the pre-dither measurement matters"
+        )
+
+    def test_the_card_avoids_a_smooth_bright_subject(self, tmp_path, monkeypatch):
+        """Detail alone rates a sun or a lit face as quiet — no edge energy
+        inside it — and puts the card squarely on the subject. The salience
+        term is what fixes that."""
+        photo = self._photo(tmp_path / "blob.png", bands="bright_blob")
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
+        rq.clear_photo_cache()
+        _, (x0, y0, x1, y1) = rq._photo_frame_for(self.ROW, 800, 480)
+        blob_cx, blob_cy = int(800 * 0.76), int(480 * 0.3)
+        assert not (x0 <= blob_cx <= x1 and y0 <= blob_cy <= y1), (
+            f"the card at {(x0, y0, x1, y1)} covers the bright subject at "
+            f"{(blob_cx, blob_cy)} — the salience term is not being applied"
+        )
+
+    # -- the source ----------------------------------------------------------
+
+    def test_a_directory_rotates_with_the_quote(self, tmp_path, monkeypatch):
+        """A picture frame that shows one photograph forever is a poster. The
+        pick is driven by the row digest, not the clock, so it is stable for a
+        given quote — which run_clock's 'quote unchanged, skip the redraw'
+        dedup depends on."""
+        for i in range(6):
+            self._photo(tmp_path / f"{i}.png", chroma_boost=0.2, mean=0.3 + i * 0.09)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(tmp_path))
+        chosen = set()
+        for i in range(24):
+            row = make_row(display_quote=f"At half past two, take {i}.",
+                           matched_text="half past two", line_number=i)
+            picked = rq._photo_for_row(row)
+            assert rq._photo_for_row(row) == picked, "the pick is not stable for a row"
+            chosen.add(picked)
+        assert len(chosen) > 1, "every quote chose the same photograph"
+
+    def test_a_directory_pick_does_not_depend_on_listing_order(self, tmp_path, monkeypatch):
+        """Directory order is filesystem-defined and not stable, so the
+        candidate list is sorted before the digest indexes into it."""
+        paths = [self._photo(tmp_path / f"{c}.png", chroma_boost=0.2) for c in "bdac"]
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(tmp_path))
+        assert rq._photo_candidates(str(tmp_path)) == sorted(paths)
+
+    def test_non_image_entries_in_a_directory_are_skipped(self, tmp_path, monkeypatch):
+        (tmp_path / "notes.txt").write_text("not a photograph")
+        (tmp_path / "clip.mp4").write_bytes(b"\x00\x01")
+        keep = self._photo(tmp_path / "real.png", chroma_boost=0.2)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(tmp_path))
+        assert rq._photo_candidates(str(tmp_path)) == [keep]
+
+    # -- robustness ----------------------------------------------------------
+
+    @pytest.mark.parametrize("kind", ["missing", "empty_dir", "truncated", "not_an_image", "zero_byte"])
+    def test_every_bad_source_degrades_to_the_bundled_plate(self, kind, tmp_path, monkeypatch, capsys):
+        """A theme that can crash the render loop because someone deleted a
+        file is not shippable on an appliance. Every failure must land on the
+        bundled plate, which is also what the unconfigured render produces."""
+        if kind == "missing":
+            source = tmp_path / "gone.jpg"
+        elif kind == "empty_dir":
+            source = tmp_path / "empty"
+            source.mkdir()
+        else:
+            source = tmp_path / "bad.jpg"
+            if kind == "truncated":
+                real = self._photo(tmp_path / "real.png", chroma_boost=0.4)
+                source.write_bytes(real.read_bytes()[:40])
+            elif kind == "not_an_image":
+                source.write_text("the operator dropped a text file in here")
+            else:
+                source.write_bytes(b"")
+        rq.clear_photo_cache()
+        unconfigured = pixel_bytes(self._render())
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(source))
+        rq.clear_photo_cache()
+        assert pixel_bytes(self._render()) == unconfigured, (
+            f"a {kind} source did not fall back to the bundled plate"
+        )
+        assert "photo theme" in capsys.readouterr().err, "the degradation was silent"
+
+    @pytest.mark.parametrize("mode,size", [("CMYK", (900, 600)), ("L", (700, 500)),
+                                           ("P", (640, 480)), ("RGBA", (800, 600)),
+                                           ("RGB", (13, 9)), ("RGB", (4000, 60))])
+    def test_awkward_but_valid_images_render(self, mode, size, tmp_path, monkeypatch):
+        """Colour modes and aspect ratios an operator's library really holds:
+        a CMYK scan, a greyscale, a palette PNG, a transparency, a thumbnail
+        and a panorama."""
+        # CMYK has no PNG encoding, so that leg round-trips through JPEG.
+        path = tmp_path / ("odd.jpg" if mode == "CMYK" else "odd.png")
+        fill = None if mode == "P" else 120 if mode == "L" else (120, 90, 60, 40)[:len(mode)]
+        Image.new(mode, size, fill).save(path)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(path))
+        rq.clear_photo_cache()
+        image = self._render()
+        assert image.size == (800, 480)
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+
+    def test_an_exif_rotation_is_honoured(self, tmp_path, monkeypatch):
+        """A phone stores a portrait photograph landscape with a rotate tag.
+
+        Asserted on the rendered content, not by calling ``exif_transpose`` in
+        the test — an earlier version did exactly that and so tested Pillow
+        rather than the renderer, passing cheerfully against a build with the
+        orientation handling deleted.
+
+        The fixture is a 600x900 portrait whose top third is black. Rotated 90
+        CW as the tag asks, that band lands on the RIGHT of a landscape frame;
+        ignored, it stays at the TOP. The two are trivially distinguishable.
+        """
+        portrait = Image.new("RGB", (600, 900), (170, 175, 180))
+        ImageDraw.Draw(portrait).rectangle((0, 0, 599, 299), fill=(20, 20, 24))
+        exif = portrait.getexif()
+        exif[274] = 6  # orientation: rotate 90 CW
+        path = tmp_path / "phone.jpg"
+        portrait.save(path, exif=exif)
+
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(path))
+        rq.clear_photo_cache()
+        conditioned = rq._photo_open(path, 800, 480)
+        assert conditioned is not None
+        grey = conditioned.convert("L")
+        left = sum(grey.crop((0, 0, 200, 480)).histogram()[i] * i for i in range(256))
+        right = sum(grey.crop((600, 0, 800, 480)).histogram()[i] * i for i in range(256))
+        top = sum(grey.crop((0, 0, 800, 120)).histogram()[i] * i for i in range(256))
+        bottom = sum(grey.crop((0, 360, 800, 480)).histogram()[i] * i for i in range(256))
+        assert right < left * 0.75, (
+            "the dark band is not on the right — the EXIF rotation was ignored, "
+            "so the photograph is being cropped on the wrong axis"
+        )
+        assert abs(top - bottom) < max(top, bottom) * 0.25, (
+            "the dark band is running across the top, which is the unrotated "
+            "interpretation"
+        )
+
+    # -- caching -------------------------------------------------------------
+
+    def test_the_cache_is_bounded(self, tmp_path, monkeypatch):
+        """A directory can hold thousands of files and each decoded frame is
+        ~1.1 MB — the ``betweenus`` paper-cache lesson."""
+        # Each source is pointed at directly rather than left to the digest to
+        # discover: with a directory, several rows can hash onto the same file,
+        # so the cache may never reach its bound and the assertion passes
+        # against an unbounded dict.
+        rq.clear_photo_cache()
+        total = rq._PHOTO_CACHE_MAX + 4
+        for i in range(total):
+            path = self._photo(tmp_path / f"{i}.png", chroma_boost=0.2, mean=0.25 + i * 0.05)
+            monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(path))
+            rq._photo_frame_for(self.ROW, 800, 480)
+            assert len(rq._PHOTO_CACHE) <= rq._PHOTO_CACHE_MAX, (
+                f"cache holds {len(rq._PHOTO_CACHE)} frames after {i + 1} distinct "
+                f"sources, over the {rq._PHOTO_CACHE_MAX} bound"
+            )
+        assert len(rq._PHOTO_CACHE) == rq._PHOTO_CACHE_MAX, (
+            "the cache never filled, so the bound was never actually exercised"
+        )
+
+    def test_editing_the_file_invalidates_the_cache(self, tmp_path, monkeypatch):
+        """The cache key carries mtime and size, so replacing the photograph at
+        a configured path shows the new one rather than the old one forever."""
+        path = self._photo(tmp_path / "p.png", chroma_boost=0.2, mean=0.35)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(path))
+        rq.clear_photo_cache()
+        first = pixel_bytes(self._render())
+        self._photo(path, bands="bright_blob")
+        assert pixel_bytes(self._render()) != first, (
+            "replacing the file at the configured path did not change the render"
+        )
+
+    def test_an_unreadable_directory_degrades(self, tmp_path, monkeypatch):
+        """A directory the appliance user cannot list — the wrong owner on a
+        mounted share is the ordinary way this happens."""
+        source = tmp_path / "locked"
+        source.mkdir()
+
+        def deny(self):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(pathlib.Path, "iterdir", deny)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(source))
+        rq.clear_photo_cache()
+        assert rq._photo_candidates(str(source)) == []
+        assert self._render().size == (800, 480)
+
+    def test_a_file_that_vanishes_after_listing_degrades(self, tmp_path, monkeypatch):
+        """The cache key is built from a ``stat`` taken after the candidate is
+        chosen, so a file removed in between must not raise — a rotating
+        directory an operator is actively editing hits this.
+
+        ``_photo_for_row`` is stubbed rather than letting the real listing run:
+        ``Path.is_file`` swallows ``OSError`` and returns False, so a globally
+        failing ``stat`` makes the candidate list come back empty and the
+        render never reaches the branch under test. An earlier version of this
+        test did exactly that and left the branch uncovered while passing.
+        """
+        photo = self._photo(tmp_path / "p.png", chroma_boost=0.4)
+        monkeypatch.setattr(rq, "_photo_for_row", lambda row: photo)
+        real_stat = pathlib.Path.stat
+
+        def vanish(self, *args, **kwargs):
+            if self == photo:
+                raise FileNotFoundError(2, "No such file or directory")
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(pathlib.Path, "stat", vanish)
+        rq.clear_photo_cache()
+        image = self._render()
+        assert image.size == (800, 480)
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert not rq._PHOTO_CACHE, (
+            "an un-stattable source was cached — the key would be wrong and "
+            "could never be invalidated"
+        )
+
+    def test_a_stripped_install_still_renders(self, tmp_path, monkeypatch):
+        """Fallback of the fallback: nothing configured *and* the bundled plate
+        gone. The synthesised garden keeps the theme a colour picture."""
+        monkeypatch.setattr(rq, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        rq.clear_photo_cache()
+        rq._DITHER_CACHE.clear()
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        counts = ink_counts(image)
+        total = 800 * 480
+        for ink in ("blue", "green"):
+            assert counts.get(rq.SPECTRA6[ink], 0) / total > 0.01, (
+                f"the synthesised fallback has almost no {ink}"
+            )
+        rq._DITHER_CACHE.clear()
+
+    # -- frame contracts -----------------------------------------------------
+
+    def test_no_clock_reaches_the_canvas(self, tmp_path, monkeypatch):
+        photo = self._photo(tmp_path / "p.png", chroma_boost=0.5, mean=0.4)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
+        rq.clear_photo_cache()
+        reference = pixel_bytes(self._render("03:00"))
+        for time_str in ("07:41", "11:59", "23:58"):
+            assert pixel_bytes(self._render(time_str)) == reference
+
+    def test_the_caption_card_stays_clean(self, tmp_path, monkeypatch):
+        """A dense quote sits on this card over an unknown picture, so the
+        knockout has to be complete."""
+        photo = self._photo(tmp_path / "p.png", chroma_boost=1.4, mean=0.4)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
+        rq.clear_photo_cache()
+        _, (x0, y0, x1, y1) = rq._photo_frame_for(self.ROW, 800, 480)
+        px = self._render().load()
+        allowed = {rq.SPECTRA6[c] for c in ("white", "yellow", "black", "red")}
+        for y in range(y0 + 3, y1 - 2, 3):
+            for x in range(x0 + 3, x1 - 2, 3):
+                assert px[x, y] in allowed, f"the photograph shows through the card at {(x, y)}"
+
+
+def ImageOps_exif_size(image):
+    """The size an EXIF-aware open would produce, for the rotation fixture."""
+    from PIL import ImageOps
+    transposed = ImageOps.exif_transpose(image)
+    return (transposed or image).size

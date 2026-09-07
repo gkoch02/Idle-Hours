@@ -58,6 +58,7 @@ CONFIG_SCHEMA: dict[str, object] = {
     "buttons_off": bool,
     "shutdown_command": str,
     "startup_image": str,
+    "photo_path": str,
     "state_path": str,
     "telemetry_path": str,
     "telemetry_retain_days": int,

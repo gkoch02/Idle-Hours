@@ -53,6 +53,7 @@ class TestLoadConfigHappyPath:
             "buttons_off = true",
             'shutdown_command = "systemctl poweroff"',
             'startup_image = "assets/goodnight.png"',
+            'photo_path = "/var/lib/idle-hours/photos"',
             'state_path = "/var/lib/idle-hours/state.json"',
             'telemetry_path = "/var/lib/idle-hours/telemetry.jsonl"',
             "telemetry_retain_days = 30",
