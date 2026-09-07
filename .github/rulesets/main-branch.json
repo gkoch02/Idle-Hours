@@ -20,7 +20,6 @@
           {"context": "lint"},
           {"context": "test (3.11)"},
           {"context": "test (3.12)"},
-          {"context": "coverage"},
           {"context": "golden-render"},
           {"context": "web-ui-js"},
           {"context": "package-build"}

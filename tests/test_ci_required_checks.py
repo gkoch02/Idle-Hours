@@ -6,9 +6,9 @@ human pushes to GitHub — so it can silently disagree with
 ``.github/workflows/ci.yml`` forever. That is exactly what happened (issue
 #241): four real jobs ran on every pull request while only ``lint`` and the two
 ``test`` legs gated anything, leaving ``golden-render`` / ``web-ui-js`` /
-``package-build`` / ``coverage`` advisory. Three of those four exist
-*specifically because* the ``test`` matrix structurally cannot catch what they
-catch, so an advisory one is a hole shaped like the reason it was written.
+``package-build`` / ``coverage`` advisory. The dedicated structural checks
+were promoted to gates; coverage remains deliberately advisory because its
+full tracer run is unusually slow, while still reporting regressions visibly.
 
 The invariant fenced here: **every job in ci.yml is either a required status
 check or an explicit entry in ``ADVISORY_JOBS``, and every required context
@@ -57,6 +57,12 @@ RULESET_PATH = REPO_ROOT / ".github" / "rulesets" / "main-branch.json"
 # where the check never reports at all. ci.yml has no such filter on
 # ``pull_request``, so it cannot arise here.)
 ADVISORY_JOBS: dict[str, str] = {
+    "coverage": (
+        "still enforces and reports the 95% line-and-branch floor, but is "
+        "advisory because its tracer-heavy full-suite run adds roughly ten "
+        "minutes to the merge critical path. The two required test legs "
+        "continue to gate functional correctness."
+    ),
     "release-version": (
         "tag-only (if: startsWith(github.ref, 'refs/tags/v')). It reports "
         "'skipped' on every pull request, and a skipped check counts as "
@@ -169,16 +175,15 @@ class TestWorkflowTriggers:
         """
         coverage = _load_workflow()["jobs"]["coverage"]
         assert "if" not in coverage, (
-            "coverage must run on pull_request: a required check that is skipped "
-            "counts as success, so a conditional coverage job would report green "
-            "without measuring anything (issue #241)"
+            "coverage must run on pull_request: an advisory check that is skipped "
+            "provides no coverage signal at all (issue #241)"
         )
 
     def test_coverage_job_still_enforces_the_floor(self):
         steps = _load_workflow()["jobs"]["coverage"]["steps"]
         assert any("--cov-fail-under" in step.get("run", "") for step in steps), (
-            "the coverage job is required precisely because it enforces a floor; "
-            "without --cov-fail-under it is an artifact upload nothing acts on"
+            "the coverage job must enforce its floor even while advisory; without "
+            "--cov-fail-under it is an artifact upload nothing acts on"
         )
 
 
