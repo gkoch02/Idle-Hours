@@ -286,11 +286,14 @@ class TestTarotFrame:
         solid colour."""
         row = make_row(matched_text="half past two")
         img = rq.render("14:30", row, 800, 480, theme="tarot")
-        # Card name band sits at y≈88..120 (y0=20, +68 offset, font ~22pt).
-        # Sample a stripe across the card centre.
+        # Derive the name band from the card geometry rather than
+        # hardcoding it: the name moved from the head to the foot when
+        # the card became portrait, and a literal y-range silently
+        # sampled bare card stock afterwards.
+        x0, _, x1, y1 = rq._TAROT_CARD_RECT
         counts = {}
-        for y in range(95, 115):
-            for x in range(280, 520):
+        for y in range(y1 - 62, y1 - 34):
+            for x in range(x0 + 6, x1 - 6):
                 c = img.getpixel((x, y))
                 counts[c] = counts.get(c, 0) + 1
         # Both red and blue pixels must be present (the 50/50 dither).
@@ -307,39 +310,77 @@ class TestTarotFrame:
 class TestVinylFrame:
     """Turntable + LP back-cover — tonearm angle math + catalog number."""
 
-    @pytest.mark.parametrize("minute,expected_axis", [
-        (0,  "up"),     # 0° = pointing up (12-o'-clock)
-        (15, "right"),  # 90° = pointing right
-        (30, "down"),   # 180° = pointing down
-        (45, "left"),   # 270° = pointing left
-    ])
-    def test_tonearm_cartridge_lands_at_expected_axis(self, minute, expected_axis):
-        """The pivoted tonearm's cartridge tip lands on the disk rim at
-        the current-minute angle (sweeping clockwise from 12-o'-clock).
-        The cartridge stylus pin is a small red filled circle at the
-        tip; sample around the expected cardinal point and assert red
-        ink appears."""
-        img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
-        cx, cy, r = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY, rq._VINYL_DISK_R
-        # Cardinal probe points just inside the rim.
-        probes = {
-            "up":    (cx, cy - r + 5),
-            "right": (cx + r - 5, cy),
-            "down":  (cx, cy + r - 5),
-            "left":  (cx - r + 5, cy),
-        }
-        x, y = probes[expected_axis]
-        # The expected axis should have a red pixel within a small window
-        # around the cartridge tip.
-        red_seen = False
-        for dy in range(-8, 9):
-            for dx in range(-8, 9):
-                if img.getpixel((x + dx, y + dy)) == rq.SPECTRA6["red"]:
-                    red_seen = True
-                    break
-            if red_seen:
-                break
-        assert red_seen, f"stylus did not paint red at expected {expected_axis} axis"
+    @staticmethod
+    def _stylus_centroid(img):
+        """Centroid of the red stylus pin, in disc-centre coordinates.
+
+        The only red inside the programme band is the cartridge's stylus
+        pin: the label is red but sits inside ``_VINYL_LABEL_R``, and the
+        counterweight ring is outside the disc entirely.
+        """
+        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
+        r_outer, r_label = rq._VINYL_DISK_R, rq._VINYL_LABEL_R
+        red = rq.SPECTRA6["red"]
+        xs, ys = [], []
+        for y in range(cy - r_outer, cy + r_outer + 1):
+            for x in range(cx - r_outer, cx + r_outer + 1):
+                r = math.hypot(x - cx, y - cy)
+                if not r_label + 4 < r <= r_outer:
+                    continue
+                if img.getpixel((x, y)) == red:
+                    xs.append(x)
+                    ys.append(y)
+        assert xs, "no stylus pin found on the programme band"
+        return sum(xs) / len(xs), sum(ys) / len(ys)
+
+    def test_stylus_tracks_inward_across_the_hour(self):
+        """The minute drives the stylus *radius*, outside-in.
+
+        A record plays from the outer edge toward the run-out, so the
+        stylus creeps inward over the hour. An earlier revision swept the
+        cartridge a full 360 degrees around the *rim* at the minute's
+        clock angle, which no tonearm does — it read as a scratch across
+        the record rather than as an arm — so this pins the direction of
+        travel, not a set of cardinal positions.
+        """
+        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
+        radii = []
+        for minute in (0, 15, 30, 45, 59):
+            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
+            sx, sy = self._stylus_centroid(img)
+            radii.append(math.hypot(sx - cx, sy - cy))
+        # Strictly decreasing, not merely non-increasing: a stylus pinned
+        # to the rim gives a constant radius, which "sorted(reverse=True)"
+        # accepts — and a rim-pinned stylus is precisely the bug here.
+        assert all(b < a for a, b in zip(radii, radii[1:])), f"stylus did not track inward: {radii}"
+        assert radii[0] - radii[-1] > 20, "stylus barely moved across the hour"
+
+    def test_stylus_stays_on_the_programme_band(self):
+        """Never off the edge of the record, never onto the label."""
+        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
+        for minute in range(0, 60, 7):
+            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
+            sx, sy = self._stylus_centroid(img)
+            r = math.hypot(sx - cx, sy - cy)
+            assert rq._VINYL_LABEL_R < r <= rq._VINYL_DISK_R, f"minute {minute}: r={r:.1f}"
+
+    def test_arm_length_is_constant(self):
+        """The stylus stays one arm's length from the bearing.
+
+        This is the invariant that separates a pivoted arm from a point
+        placed at an angle: the tip may swing, but its distance from the
+        pivot cannot change. Reading the two ratios off the module is
+        reading constants, not reimplementing the two-circle solve the
+        painter runs.
+        """
+        cx, cy, r_outer = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY, rq._VINYL_DISK_R
+        pivot_x, pivot_y = rq._vinyl_tonearm_pivot(cx, cy, r_outer)
+        expected = r_outer * rq._VINYL_ARM_LENGTH_RATIO
+        for minute in (0, 20, 40, 59):
+            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
+            sx, sy = self._stylus_centroid(img)
+            reach = math.hypot(sx - pivot_x, sy - pivot_y)
+            assert abs(reach - expected) < 6, f"minute {minute}: reach={reach:.1f} vs {expected:.1f}"
 
     def test_catalog_number_format(self):
         assert rq._vinyl_catalog_number("h2_half_past") == "IH-H2-30"
