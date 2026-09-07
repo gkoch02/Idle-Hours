@@ -17629,8 +17629,20 @@ def _tarot_paint_attribution(
     quote_row: dict,
     cx: int,
     y_top: int,
+    max_w: int,
 ) -> None:
-    """Author · title in Cinzel Decorative Regular 12, solid black, centred."""
+    """Author · title in Cinzel Decorative Regular 12, solid black, centred.
+
+    ``max_w`` is passed rather than hardcoded because the byline moved: it
+    used to sit on a 520 px-wide card and truncated against a literal 470,
+    and when the reading moved into its own 444 px panel that constant
+    stayed behind. Nine distinct shipped-corpus attributions land in the
+    445..470 band the old limit left alone — "Arthur Conan Doyle · The
+    Adventures of Sherlock Holmes" among them — so they crossed the
+    cartouche's red rule and painted onto the cloth; the ones past 470 were
+    truncated *to* 470 and overflowed anyway, so the target was wrong and
+    not merely the threshold.
+    """
     BLACK = SPECTRA6["black"]
     font = load_font(theme_font_candidates("tarot", "ornament"), size=12)
     author = quote_row.get("author") or ""
@@ -17641,8 +17653,6 @@ def _tarot_paint_attribution(
     text = " · ".join(parts)
     bbox = draw.textbbox((0, 0), text, font=font)
     w = bbox[2] - bbox[0]
-    # Truncate if too wide (card-inner is ~480 px).
-    max_w = 470
     if w > max_w:
         # Shorten title side first.
         while parts and w > max_w:
@@ -17715,7 +17725,16 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     carrying the quote in EB Garamond with a Tyrian-purple matched
     phrase, and the attribution at its foot.
     """
-    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    # Composed at the canonical 800x480 and NEAREST-downsampled for a
+    # non-native request, the convention ``metro`` established. Every
+    # rectangle here is an absolute panel coordinate — a tarot card has
+    # fixed proportions and the reading sits beside it — so a direct
+    # render at the curator grid's 320x192 put the whole reading panel
+    # (x=324..768) off the canvas and returned a cropped card corner with
+    # no quote on it at all. The pre-existing preview sweep cannot see
+    # that: it asserts only ``img.size`` and palette-subset, both of which
+    # a cropped fragment satisfies.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
     _tarot_paint_vellum(image)
     draw = ImageDraw.Draw(image)
 
@@ -17750,9 +17769,14 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _tarot_paint_body_panel(image, draw, (rx0, ry0, rx1, ry1))
     attribution_band = 30
     _tarot_paint_body(image, draw, quote_row, (rx0, ry0, rx1, ry1 - attribution_band))
-    _tarot_paint_attribution(image, draw, quote_row, (rx0 + rx1) // 2, ry1 - 22)
+    # The byline shares the body's inset from the panel rule, so it can
+    # never be wider than the text it attributes.
+    _tarot_paint_attribution(image, draw, quote_row, (rx0 + rx1) // 2, ry1 - 22, (rx1 - rx0) - 16)
 
-    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
 
 
 # ─── vinyl (turntable + record label) ────────────────────────────────────────
@@ -18398,7 +18422,13 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     bar (IDLE HOURS LITERARY RECORDINGS · CAT NO. · © year) and the
     author/title attribution. Includes the 33 RPM badge in the top-right.
     """
-    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    # Composed at the canonical 800x480 and NEAREST-downsampled for a
+    # non-native request, the convention ``metro`` established. The disc
+    # centre, radius, label and tonearm pivot are all absolute panel
+    # coordinates, so a direct render at the curator grid's 320x192
+    # returned a cropped corner — the top of the disc and a stray
+    # "33 RPM" badge, with no quote and no tonearm on it.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
     # Sleeve cream wash full-canvas — the disk will overpaint the left half.
     _astrarium_paint_cream_wash(image)
     # Daily-seeded wear marks on the sleeve (right half only).
@@ -18424,7 +18454,7 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
 
     # Right-half liner-notes chrome.
-    sleeve_x_left, sleeve_x_right = 420, width - 20
+    sleeve_x_left, sleeve_x_right = 420, 800 - 20
     # 33 RPM badge in the sleeve's top-right.
     _vinyl_paint_33rpm_badge(image, draw, x_right=sleeve_x_right, y_top=20)
     # TRACK ONE heading at the top of the liner-notes column.
@@ -18442,7 +18472,10 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _vinyl_paint_catalog_bar(image, draw, bucket, x_left=sleeve_x_left,
                              x_right=sleeve_x_right, y_top=450)
 
-    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
 
 
 # ─── vitrail (Gothic stained-glass cathedral window) ─────────────────────────

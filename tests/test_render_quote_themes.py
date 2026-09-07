@@ -20,12 +20,15 @@ from __future__ import annotations
 import bisect
 import json
 import math
+import pathlib
 import threading
 
 import pytest
 from PIL import Image, ImageDraw
 
+from idle_hours import pick_quote as pq
 from idle_hours import render_quote as rq
+from idle_hours.jsonl_io import iter_jsonl
 
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
@@ -253,6 +256,59 @@ class TestMarqueeFrame:
         row = make_row(author="", title="")
         img = rq.render("14:30", row, 800, 480, theme="marquee")
         assert img.size == (800, 480)
+
+
+class TestTarotAttributionFitsThePanel:
+    """The byline is truncated against the reading panel, not the old card.
+
+    ``_tarot_paint_attribution`` truncated against a literal 470 px, which
+    was the inner width of the 520 px card the reading used to sit on. The
+    reading is a 444 px panel now, so nine distinct shipped-corpus
+    attributions — "Arthur Conan Doyle · The Adventures of Sherlock Holmes"
+    among them — fell in the band the old limit left alone and painted
+    across the cartouche's red rule onto the cloth. Anything past 470 was
+    truncated *to* 470 and overflowed anyway, so the target was wrong and
+    not only the threshold.
+
+    Measured on the corpus rather than on invented strings: the failure was
+    a real-data one, and a synthetic byline could be picked to miss it.
+    """
+
+    @staticmethod
+    def _widest_corpus_attributions(limit=6):
+        img = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(img)
+        font = rq.load_font(rq.theme_font_candidates("tarot", "ornament"), size=12)
+        scored = []
+        for row in iter_jsonl(pathlib.Path(pq.DEFAULT_INPUT_PATH)):
+            parts = [p for p in (row.get("author") or "", row.get("title") or "") if p]
+            if not parts:
+                continue
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            scored.append((bbox[2] - bbox[0], row))
+        scored.sort(key=lambda kv: -kv[0])
+        return [row for _, row in scored[:limit]]
+
+    def test_widest_corpus_bylines_stay_inside_the_panel(self):
+        rx0, _, rx1, ry1 = rq._TAROT_READING_RECT
+        red = rq.SPECTRA6["red"]
+        for row in self._widest_corpus_attributions():
+            img = rq.render("14:30", dict(row), 800, 480, mode="production", theme="tarot")
+            # The panel's own red rule is the boundary. Sample the byline
+            # band just inside each vertical rule: only card stock belongs
+            # there, so any non-ground ink is the byline having overrun.
+            for x in (rx0 + 1, rx0 + 2, rx1 - 2, rx1 - 1):
+                for y in range(ry1 - 34, ry1 - 8):
+                    px = img.getpixel((x, y))
+                    assert px != rq.SPECTRA6["black"], (
+                        f"byline ink at ({x}, {y}) is on the panel rule for "
+                        f"{row.get('author')} / {row.get('title')}"
+                    )
+            # And the rule itself is still intact rather than overpainted.
+            assert any(
+                img.getpixel((rx0, y)) == red for y in range(ry1 - 34, ry1 - 8)
+            ), "the panel's left rule was overpainted by the byline"
 
 
 class TestTarotEmblems:
@@ -1665,7 +1721,7 @@ class TestFixedGeometryFramesDownscale:
     """
 
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
-                             "plaque", "daguerreotype")
+                             "plaque", "daguerreotype", "tarot", "vinyl")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
