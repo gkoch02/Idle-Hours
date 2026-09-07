@@ -8,16 +8,30 @@ dithering path (``dither_image_to_palette``) is the wrong tool: there is
 nothing for an error diffusion to preserve. What it wants is an ink
 SEPARATION, which is also sharper at this size.
 
-Separation order is load-bearing. The red flat on a Dodal card is about as
-dark as the line ink (measured on the fixture: red ~(176,52,40), ink
-~(28,24,20)), so a luminance threshold alone fuses them into one black
-mass. Classify by SATURATION and HUE first, darkness only as the
-tie-breaker:
+Finding the line work needs a LOCAL threshold, not a global one. The
+committed Dodal scans are photographs of 300-year-old hand-coloured cards:
+the paper is foxed and unevenly lit, and its luminance varies more across
+the card than the line-vs-paper difference does in places, so no single
+cut separates ink from paper everywhere. A global cut produced 7.5%-35.6%
+ink across the twelve (dark blue robes swallowed whole as "ink"); the same
+scans under a local threshold -- ink is what is darker than its OWN
+neighbourhood -- come out legible. ``--line-mode global`` keeps the old
+behaviour for a clean, evenly-lit source.
 
-    saturated + red hue      -> red
-    unsaturated + dark       -> black          (the line work)
-    saturated + other hue    -> white in 3-ink mode, own ink in 5-ink
-    everything else          -> white          (the paper)
+Colour is still classified by SATURATION and HUE, and the order matters:
+the red flat is about as dark as the line ink, so testing darkness first
+fuses them into one black mass.
+
+    darker than local mean by k  -> black      (the line work)
+    saturated + red hue          -> red
+    saturated + other hue        -> white in 3-ink mode, own ink in 5-ink
+    everything else              -> white      (the paper)
+
+3-ink is the default and beats 5-ink on these scans for a reason worth
+recording: aged cream paper is itself yellowish enough to pass the
+saturation test, so keeping the yellow flat floods most of every card with
+the panel's saturated yellow. Dropping blue/yellow to white also preserves
+the theme's rubricated black-and-red identity.
 
 Resize happens BEFORE classification, never after: downsampling an
 already-separated image blends inks and lands off-palette.
@@ -93,17 +107,28 @@ def illustration_rect(box, top_frac: float, bottom_frac: float, side_frac: float
 
 
 def separate(img: Image.Image, *, inks: int, sat_min: float, ink_max: int,
-             edge_max: int, red_light_max: int) -> tuple[Image.Image, dict]:
+             edge_max: int, red_light_max: int, line_mode: str = "adaptive",
+             line_k: int = 14, line_blur: int = 6) -> tuple[Image.Image, dict]:
     """Classify every pixel to one ink. Returns (image, histogram)."""
     out = Image.new("RGB", img.size)
     src, dst = img.load(), out.load()
+    grey = img.convert("L")
+    gp = grey.load()
+    # Local mean, for the adaptive line test. A Gaussian blur is the mean:
+    # comparing each pixel to its own neighbourhood is what makes the test
+    # immune to the paper's slow luminance drift across an aged scan.
+    lp = grey.filter(ImageFilter.GaussianBlur(line_blur)).load() if line_mode == "adaptive" else None
     hist: dict = {}
     for y in range(img.height):
         for x in range(img.width):
             r, g, b = src[x, y]
             lum = (r * 299 + g * 587 + b * 114) // 1000
             sat = _saturation(r, g, b)
-            if lum <= ink_max:
+            if lp is not None:
+                is_ink = gp[x, y] < lp[x, y] - line_k
+            else:
+                is_ink = lum <= ink_max
+            if is_ink:
                 # Tier 1 -- unconditionally ink. Set BELOW the darkest
                 # flat on the card, because a single cut above it turns
                 # every blue robe solid black: a scan's lighting falloff
@@ -126,7 +151,7 @@ def separate(img: Image.Image, *, inks: int, sat_min: float, ink_max: int,
                     # and buries the line work that is the point of a
                     # woodcut.
                     ink = WHITE
-            elif lum <= edge_max:
+            elif lp is None and lum <= edge_max:
                 # Tier 3 -- unsaturated and mid-dark: the antialiased
                 # skirt of a contour. Gating this on saturation is what
                 # keeps it from eating the flats.
@@ -187,14 +212,23 @@ def main(argv=None) -> int:
                    help="also write a contact sheet for eyeballing all 12 crops")
     p.add_argument("--inks", type=int, choices=(3, 5), default=3,
                    help="3 = theme's white/black/red; 5 adds yellow/blue/green")
-    p.add_argument("--top", type=float, default=0.14,
+    p.add_argument("--top", type=float, default=0.062,
                    help="fraction of card height to drop for the numeral band")
-    p.add_argument("--bottom", type=float, default=0.14,
+    p.add_argument("--bottom", type=float, default=0.075,
                    help="fraction to drop for the title band")
-    p.add_argument("--side", type=float, default=0.07,
+    p.add_argument("--side", type=float, default=0.062,
                    help="fraction of card width to drop for the printed frame")
-    p.add_argument("--no-trim", action="store_true",
-                   help="skip trimming the illustration's own paper margin")
+    p.add_argument("--line-mode", choices=("adaptive", "global"), default="adaptive",
+                   help="adaptive = darker than local mean (aged/uneven scans); "
+                        "global = single luminance cut (clean, evenly-lit sources)")
+    p.add_argument("--line-k", type=int, default=14,
+                   help="adaptive mode: how much darker than the local mean counts as ink")
+    p.add_argument("--line-blur", type=int, default=6,
+                   help="adaptive mode: radius of the local-mean neighbourhood")
+    p.add_argument("--trim", action="store_true",
+                   help="trim each illustration to its own ink bbox. Off by default: "
+                        "on a foxed scan the foxing IS content, so the bbox is the whole "
+                        "card and the trim either no-ops or eats into the figure")
     p.add_argument("--no-despeckle", action="store_true",
                    help="skip the 3x3 median pass applied before separation")
     p.add_argument("--sat-min", type=float, default=0.34)
@@ -222,14 +256,15 @@ def main(argv=None) -> int:
             # Before the resize, not after: sensor grain and JPEG ringing
             # want removing while they are still single pixels.
             crop = crop.filter(ImageFilter.MedianFilter(3))
-        if not a.no_trim:
+        if a.trim:
             crop = trim_to_content(crop, sat_min=a.sat_min, edge_max=a.edge_max)
         tile = fit_tile(crop)
         if contact is not None:
             contact.paste(tile, ((hour - 1) % COLS * TILE_W, (hour - 1) // COLS * TILE_H))
         flat, hist = separate(tile, inks=a.inks, sat_min=a.sat_min,
                               ink_max=a.ink_max, edge_max=a.edge_max,
-                              red_light_max=a.red_light_max)
+                              red_light_max=a.red_light_max, line_mode=a.line_mode,
+                              line_k=a.line_k, line_blur=a.line_blur)
         total = TILE_W * TILE_H
         parts = " ".join(f"{n}={hist.get(c,0)/total:5.1%}" for n, c in
                          (("K", BLACK), ("R", RED), ("W", WHITE)))
