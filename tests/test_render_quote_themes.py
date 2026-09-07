@@ -446,10 +446,10 @@ class TestTarotFrame:
         # without raising for an unmapped hour.
 
     def test_card_name_is_dithered_tyrian_purple(self):
-        """The matched-phrase card name paints via draw_text_dithered with
-        dark=red+light=blue at 0.5 density. Both inks must appear in the
-        name band — failing means the dither call regressed to a single
-        solid colour."""
+        """The card name paints via draw_text_dithered with dark=red +
+        light=blue at 0.5 density. Both inks must appear in the name band
+        — failing means the dither call regressed to a single solid
+        colour."""
         row = make_row(matched_text="half past two")
         img = rq.render("14:30", row, 800, 480, theme="tarot")
         # Derive the name band from the card geometry rather than
@@ -471,6 +471,114 @@ class TestTarotFrame:
         assert set(rq._TAROT_ROMAN_NUMERALS.keys()) == set(range(1, 13))
         for hour, numeral in rq._TAROT_ROMAN_NUMERALS.items():
             assert numeral and isinstance(numeral, str)
+
+    def test_trump_name_tables_are_complete(self):
+        """Both name tables cover every hour with a non-empty string.
+
+        Two tables because the emblem sources number the deck
+        differently — Marseille (the plates) against the Waite-ish
+        numbering the polygon painters were drawn to — and a missing
+        entry would title a card with the empty string, which paints
+        nothing and looks like a rendering fault rather than a bug.
+        """
+        for table in (rq._TAROT_TRUMP_NAMES, rq._TAROT_PAINTER_TRUMP_NAMES):
+            assert set(table) == set(range(1, 13))
+            for hour, name in table.items():
+                assert isinstance(name, str) and name.strip(), f"hour {hour}"
+
+    def test_the_two_tables_disagree_only_where_the_sources_do(self):
+        """Marseille numbers Justice VIII and La Force XI; Waite swaps
+        them, and the painters' hour 12 is the World where the plates
+        reach only Le Pendu. Those three hours are the whole difference —
+        if a fourth appears, one of the tables has drifted rather than
+        recording a real numbering difference."""
+        differ = {h for h in range(1, 13)
+                  if rq._TAROT_TRUMP_NAMES[h] != rq._TAROT_PAINTER_TRUMP_NAMES[h]}
+        assert differ == {8, 11, 12}
+
+    @pytest.mark.parametrize("hour", range(1, 13))
+    def test_the_emblem_call_names_the_figure_it_drew(self, hour, monkeypatch):
+        """``_tarot_paint_emblem`` returns the name of whichever source it
+        actually used, so the foot of the card cannot title a Marseille
+        plate with a Waite name (or the reverse). Both branches are
+        driven — the plate path as shipped, the painter path with the
+        sheet pointed at nothing."""
+        canvas = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(canvas)
+        assert rq._tarot_paint_emblem(canvas, draw, hour, 160, 240) == rq._TAROT_TRUMP_NAMES[hour]
+
+        # The sheet is memoised on a module-level dict, but the existence
+        # check runs first, so pointing TAROT_PLATES at nothing takes the
+        # fallback branch without touching that cache.
+        monkeypatch.setattr(rq, "TAROT_PLATES", pathlib.Path("/nonexistent/tarot_plates.png"))
+        canvas = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(canvas)
+        assert (rq._tarot_paint_emblem(canvas, draw, hour, 160, 240)
+                == rq._TAROT_PAINTER_TRUMP_NAMES[hour])
+
+    @pytest.mark.parametrize("hour", range(1, 13))
+    def test_the_foot_carries_the_emblems_own_name(self, hour, monkeypatch):
+        """The frame titles the card with whatever the emblem call
+        returned — not with a name it looked up for itself. Asserting the
+        wiring rather than the pixels is the point: a second lookup in the
+        frame would pass every visual check while being exactly the drift
+        the return value exists to prevent."""
+        seen = []
+        monkeypatch.setattr(
+            rq, "_tarot_paint_card_name",
+            lambda image, draw, name, rect, y_top: seen.append(name),
+        )
+        rq.render(f"{hour:02d}:20", make_row(), 800, 480, theme="tarot")
+        assert seen == [rq._TAROT_TRUMP_NAMES[hour]]
+
+    @pytest.mark.parametrize("hour", range(1, 13))
+    def test_no_trump_name_overruns_the_card(self, hour):
+        """Every name stays inside the card's inner rule.
+
+        The band held ``matched_text`` before this, and the longest time
+        phrases ran off the card entirely — "TWENTY MINUTES PAST ONE" was
+        the reported failure. The names are shorter but not short: "THE
+        WHEEL OF FORTUNE" is 300 px at the top size against a 260 px
+        card, so it is the fit loop and not the content that keeps this
+        true, and a widened size range would break it silently.
+
+        Measured in *blue* only. The vellum's foxing scatters red across
+        the whole cloth, so a red-inclusive sample reports the canvas
+        width for every hour and passes whatever the name does.
+        """
+        img = rq.render(f"{hour:02d}:20", make_row(), 800, 480, theme="tarot")
+        x0, _, x1, y1 = rq._TAROT_CARD_RECT
+        px = img.load()
+        xs = [x for x in range(0, x1 + 30)
+              for y in range(y1 - 66, y1 - 28)
+              if px[x, y] == rq.SPECTRA6["blue"]]
+        assert xs, f"hour {hour}: no card name painted"
+        assert min(xs) >= x0 + 6 and max(xs) <= x1 - 6, (
+            f"hour {hour}: name spans {min(xs)}..{max(xs)}, "
+            f"outside the card's {x0 + 6}..{x1 - 6}"
+        )
+
+    def test_nothing_from_the_quote_row_reaches_the_card(self):
+        """The card is a function of the hour alone.
+
+        This is the regression itself: the foot used to be painted from
+        ``matched_text``, so the card announced the time under a picture
+        of the Magician — a thing no trump does, and a second copy of
+        what the reading beside it already says. Comparing the whole card
+        region across two unrelated rows at the same hour fences the
+        principle rather than the one field, so a future "put the author
+        on the card" would fail here too.
+        """
+        a = make_row(matched_text="half past two", display_quote="One quote entirely.",
+                     author="A", title="B")
+        b = make_row(matched_text="twenty minutes past one",
+                     display_quote="A different quote entirely.", author="C", title="D")
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        crops = [
+            rq.render("14:30", row, 800, 480, theme="tarot").crop((x0, y0, x1 + 1, y1 + 1))
+            for row in (a, b)
+        ]
+        assert pixel_bytes(crops[0]) == pixel_bytes(crops[1])
 
 
 class TestVinylFrame:

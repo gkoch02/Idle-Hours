@@ -138,7 +138,13 @@ THEME_ORDER: tuple[str, ...] = (
 # Mirrors RANDOM_EXCLUDED_THEMES (which only filters --theme random) but applies
 # to every rotation path. Keep entries here when the theme code is worth
 # preserving for opt-in but the visual isn't ready for unattended rotation.
-CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"tarot", "vinyl"})
+#
+# `tarot` graduated out of this set once the card stopped titling itself with
+# the time: the foot painted `matched_text`, so an unattended rotation would
+# have put a card reading TWENTY MINUTES PAST ONE — overrunning its own rule —
+# on the panel with nobody there to pick a different theme, which is exactly
+# what this set is for.
+CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"vinyl"})
 THEMES = {
     "default": {
         "page_bg": SPECTRA6["white"],
@@ -16664,6 +16670,47 @@ _TAROT_ROMAN_NUMERALS = {
 }
 
 
+# The trump's name, which is what a card carries along its foot. This
+# slot used to hold ``matched_text`` — the time phrase — so the card
+# read "TWENTY MINUTES PAST ONE" under a picture of the Magician, which
+# is not a card: no trump names itself after the hour, and the phrase
+# was already in the reading beside it, so the panel stated the time
+# twice and the card said nothing about itself.
+#
+# There are TWO tables because the two emblem sources number the deck
+# differently, and the name has to agree with the figure actually drawn.
+# Marseille — the Dodal plates — numbers Justice VIII and La Force XI;
+# Waite swaps them, which is the numbering the polygon painters were
+# drawn to, and the painters' hour 12 is the World where the plates only
+# reach Le Pendu (trumps I–XII are all that is committed). Naming from
+# one table would mislabel three of the twelve whenever the other source
+# was live. Names are given in English rather than Dodal's French
+# because the reading beside them is in English, and the ingest crops
+# the card's own printed title band, so nothing on the plate contradicts
+# them.
+_TAROT_TRUMP_NAMES = {
+    1: "The Magician",
+    2: "The High Priestess",
+    3: "The Empress",
+    4: "The Emperor",
+    5: "The Hierophant",
+    6: "The Lovers",
+    7: "The Chariot",
+    8: "Justice",
+    9: "The Hermit",
+    10: "The Wheel of Fortune",
+    11: "Strength",
+    12: "The Hanged Man",
+}
+# Where the polygon painters disagree with the plates (see above).
+_TAROT_PAINTER_TRUMP_NAMES = {
+    **_TAROT_TRUMP_NAMES,
+    8: "Strength",
+    11: "Justice",
+    12: "The World",
+}
+
+
 # Card and reading-column geometry. The card used to be a 520x440
 # rectangle centred on the canvas, which left a margin of 20 px at the
 # top and none worth the name at the sides: it read as a *border around
@@ -16758,17 +16805,44 @@ def _tarot_paint_roman_numeral(
     draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), numeral, font=font, fill=BLACK)
 
 
+# The name band's type size is fitted rather than fixed. The twelve
+# names span "Justice" to "The Wheel of Fortune", which at 22pt runs
+# 300 px against a card only 260 px wide — so a single size either
+# clips the long names or sets the short ones far smaller than the
+# card can carry. A real trump does the same thing: the title is set to
+# the plate's width, so a long name is set smaller than a short one.
+_TAROT_NAME_SIZE_MAX = 22
+_TAROT_NAME_SIZE_MIN = 12
+# Inset from the card's outer edge. The inner black rule sits at 5 px;
+# this leaves a further 7 px of breathing room either side.
+_TAROT_NAME_INSET = 12
+
+
 def _tarot_paint_card_name(
-    image: Image.Image, draw: ImageDraw.ImageDraw, name: str, cx: int, y_top: int,
+    image: Image.Image, draw: ImageDraw.ImageDraw, name: str, rect: tuple[int, int, int, int], y_top: int,
 ) -> None:
-    """Card name (matched-phrase) in Tyrian purple, Cinzel Decorative Bold."""
+    """The trump's name in Tyrian purple, Cinzel Decorative Bold, along the foot.
+
+    Stepped down from ``_TAROT_NAME_SIZE_MAX`` until it fits the card's
+    inner width — see the note on the size constants. Below the floor
+    the name is drawn anyway rather than truncated: every committed name
+    fits well above it, so reaching the floor means the table grew an
+    entry nobody measured, and a name spilling its rule is a louder
+    signal than one silently cut to "THE WHEEL OF FORT…".
+    """
     RED = SPECTRA6["red"]
     BLUE = SPECTRA6["blue"]
-    font = load_font(theme_font_candidates("tarot", "quote_bold"), size=22)
     text = (name or "").upper().strip()
     if not text:
         return
-    bbox = draw.textbbox((0, 0), text, font=font)
+    x0, _, x1, _ = rect
+    cx = (x0 + x1) // 2
+    budget = (x1 - x0) - 2 * _TAROT_NAME_INSET
+    for size in range(_TAROT_NAME_SIZE_MAX, _TAROT_NAME_SIZE_MIN - 1, -1):
+        font = load_font(theme_font_candidates("tarot", "quote_bold"), size=size)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= budget:
+            break
     w = bbox[2] - bbox[0]
     # Re-anchor so left edge of the bbox lands at the intended start.
     draw_text_dithered(
@@ -17633,7 +17707,7 @@ def _tarot_paint_emblem(
     cx: int,
     cy: int,
     clip: tuple[int, int, int, int] | None = None,
-) -> None:
+) -> str:
     """Stamp the hour's trump: the committed Dodal plate, else the painter.
 
     The figure is drawn at native size onto a white tile, resampled up by
@@ -17648,11 +17722,17 @@ def _tarot_paint_emblem(
     a layout fault rather than as a bold composition — historical trumps
     keep the figure inside the rule. Clipping rather than shrinking the
     scale keeps the stroke weight the enlargement bought.
+
+    Returns the drawn trump's name, so the foot of the card is titled by
+    the same call that chose the figure. The two sources number the deck
+    differently for three of the twelve hours (see ``_TAROT_TRUMP_NAMES``),
+    and having the caller re-derive which source was live would let the
+    name and the picture disagree the moment either dispatch changed.
     """
     tile = _tarot_plate_tile(hour_int)
     if tile is not None:
         _tarot_stamp_tile(image, tile, cx, cy, clip)
-        return
+        return _TAROT_TRUMP_NAMES.get(hour_int, "")
 
     painter = _TAROT_EMBLEMS.get(hour_int, _tarot_emblem_default)
     size = _TAROT_EMBLEM_TILE
@@ -17663,6 +17743,7 @@ def _tarot_paint_emblem(
     tile = tile.resize((round(scaled), round(scaled)), Image.LANCZOS)
     tile = snap_image_to_palette(tile, _TAROT_EMBLEM_INKS)
     _tarot_stamp_tile(image, tile, cx, cy, clip)
+    return _TAROT_PAINTER_TRUMP_NAMES.get(hour_int, "")
 
 
 def _tarot_paint_body_panel(
@@ -17873,12 +17954,17 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     """A single trump laid on a reading cloth, interpretation beside it.
 
     Left: a portrait card on foxed vellum — doubled red+black rubricated
-    rule, playing-card corner numerals, Roman-numeral hour above a ruled
-    illustration panel, and the matched phrase as the card's name along
-    the foot. Numeral above / figure between / name below is the layout
-    every historical trump uses, and moving the name to the foot (it used
-    to sit under the numeral at the head) is what makes the card read as
-    one.
+    rule, corner lozenges, Roman-numeral hour above a ruled illustration
+    panel, and the trump's own name along the foot. Numeral above /
+    figure between / name below is the layout every historical trump
+    uses, and moving the name to the foot (it used to sit under the
+    numeral at the head) is what makes the card read as one.
+
+    The name band held ``matched_text`` until it was measured on the
+    panel: the card came out titled "TWENTY MINUTES PAST ONE" under the
+    Magician, overrunning its own rule, and saying nothing the reading
+    beside it did not already say. The time stays where it belongs — the
+    matched phrase in the quote.
 
     Right: the reading. A clean cream cartouche knocked out of the cloth
     carrying the quote in EB Garamond with a Tyrian-purple matched
@@ -17918,10 +18004,11 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     # trump happens to be tallest.
     panel = (x0 + 20, y0 + 68, x1 - 20, y1 - 74)
     _tarot_paint_emblem_panel(draw, panel)
-    _tarot_paint_emblem(image, draw, hour_int, card_cx, (panel[1] + panel[3]) // 2, clip=panel)
+    trump = _tarot_paint_emblem(image, draw, hour_int, card_cx, (panel[1] + panel[3]) // 2, clip=panel)
 
-    # Card name along the foot, where a trump carries it.
-    _tarot_paint_card_name(image, draw, quote_row.get("matched_text") or "", card_cx, y1 - 60)
+    # The trump's name along the foot, where a card carries it — titled
+    # by the emblem call itself so the name always names the figure.
+    _tarot_paint_card_name(image, draw, trump, card_rect, y1 - 60)
 
     # ── the reading ───────────────────────────────────────────────────
     rx0, ry0, rx1, ry1 = _TAROT_READING_RECT
