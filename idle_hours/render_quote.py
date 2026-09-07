@@ -125,6 +125,7 @@ THEME_ORDER: tuple[str, ...] = (
     "nocturne",
     "plaque",
     "daguerreotype",
+    "autochrome",
     "betweenus",
     "betweenus_dark",
     "diags",
@@ -1376,6 +1377,20 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
+    # Autochrome Lumiere colour plate in its passe-partout. A custom-render
+    # frame (``render_autochrome_frame``); the palette below serves only the
+    # goodnight / source-card fall-through paths. The frame itself is a
+    # six-ink-dithered photograph under black binding tape, quote on a cream card.
+    "autochrome": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Library catalogue card. A custom-render frame (``render_cardcatalog_frame``)
     # — the stamp column needs a right margin the shared literary layout does not
     # leave, see that frame's section comment. The palette below serves only the
@@ -2143,6 +2158,27 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     # cyanotype/daguerreotype kinship made literal. Space Mono is loaded
     # directly by the frame for the studio's small plate label.
     "daguerreotype": {
+        "quote_regular": [
+            (LIBRECASLON_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (LIBRECASLON_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (LIBRECASLON_VARIABLE, "SemiBold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Autochrome joins the other two photographic themes on Libre Caslon Text.
+    # Sharing the face is the point rather than a shortcut: the Caslon revival is
+    # the printed register all three plates would have been captioned in, and
+    # ``anna_atkins`` / ``daguerreotype`` already state the kinship — this makes
+    # it three. The sans mount chrome loads directly from the meta chain.
+    "autochrome": {
         "quote_regular": [
             (LIBRECASLON_VARIABLE, "Regular"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
@@ -14678,6 +14714,17 @@ _AGED_PAPER_PALETTE = [SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], S
 DAGUERREOTYPE_PLATE = BASE_DIR / "assets" / "daguerreotype_plate.png"
 _SILVER_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
+# The autochrome garden (scripts/generate_autochrome_plate.py) is the first
+# plate dithered against the FULL six-ink palette, and that is the theme's whole
+# pitch — see the ``autochrome`` section comment. Every other plate restricts to
+# a sub-palette so error diffusion cannot scatter chroma into a monochrome or
+# duotone ground; here the chroma IS the ground, and the six inks stand in for
+# the dyed starch grains of the real process. Passing no ``palette`` to
+# ``_load_dithered_plate`` defaults to ``SPECTRA6_PALETTE``; this constant exists
+# so the intent reads as a decision rather than an omission.
+AUTOCHROME_PLATE = BASE_DIR / "assets" / "autochrome_garden.png"
+_AUTOCHROME_PALETTE = SPECTRA6_PALETTE
+
 # Dithered results are deterministic per (source, size, method) and re-used
 # across the 144-frame contact sheet and the golden suite, so memoise them.
 _DITHER_CACHE: dict = {}
@@ -24990,6 +25037,96 @@ def render_plaque_frame(time_str: str, quote_row: dict, width: int, height: int)
 
 
 # ---------------------------------------------------------------------------
+# Shared mount furniture for the photographic frames.
+#
+# ``daguerreotype`` and ``autochrome`` present the same object in different
+# decades: a plate in a case, with the quote on a cream card beside it. The
+# card stock, the centred styled-line loop and the truncating byline were
+# verbatim identical between them, so they live here rather than twice.
+#
+# The line loop in particular is worth naming: four other frames (``pulp``,
+# ``vhs``, ``intaglio``, plus ``wrap_quote_into_masks``) carry their own near
+# copies, each differing in where the block is anchored, whether it draws to a
+# mask or a canvas, and how the matched phrase is coloured. Those are NOT
+# folded in here - unpicking them touches four golden fixtures for no
+# behaviour change - but a sixth copy was not worth adding either, which is
+# the line this extraction draws.
+
+
+def paint_mount_card(image: Image.Image, draw: ImageDraw.ImageDraw,
+                     rect: tuple[int, int, int, int], ledge: int) -> None:
+    """Cream card stock on a drop-shadow ledge, keylined in black.
+
+    The documented Y+W cream at the 12.5% density the aged-paper themes use,
+    over the black ledge ``kanagawa`` / ``tarot`` / ``pride`` lift their panels
+    with - without the ledge a light card on a light plate reads as a hole cut
+    in the picture rather than as paper resting on it.
+    """
+    x0, y0, x1, y1 = rect
+    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
+    draw.rectangle((x0 + ledge, y0 + ledge, x1 + ledge, y1 + ledge), fill=black)
+    draw.rectangle((x0, y0, x1, y1), fill=white)
+    px = image.load()
+    for y in range(y0, y1 + 1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1 + 1):
+            if row[x % 4] < 2:
+                px[x, y] = yellow
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+
+
+def draw_centred_styled_lines(draw: ImageDraw.ImageDraw, wrapped, *, x0: int, x1: int,
+                              top: int, line_height: int, regular, bold,
+                              fill, accent, min_inset: int = 18) -> int:
+    """Draw ``fit_quote``'s wrapped output centred in ``x0..x1``, returning the
+    y after the last line.
+
+    Leading and trailing whitespace chunks are trimmed off each line before it
+    is measured, or a wrapped line's trailing space shifts the centring; and
+    every chunk is aligned on the body font's ascent, so a size difference
+    between the regular and bold faces cannot make the matched phrase float.
+    """
+    body_ascent = _font_ascent(regular)
+    y = top
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=bold if b else regular)[2]
+                       for c, b in segment)
+        x = x0 + max(min_inset, ((x1 - x0) - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = bold if is_bold else regular
+            draw.text((x, y + (body_ascent - _font_ascent(font))), chunk,
+                      font=font, fill=accent if is_bold else fill)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+    return y
+
+
+def draw_truncated_centred_byline(draw: ImageDraw.ImageDraw, quote_row: dict, *,
+                                  centre: int, baseline: int, max_width: int,
+                                  font, fill) -> None:
+    """Author and title centred on a baseline, ellipsised to fit.
+
+    Truncation measures against the panel the byline actually sits in, passed
+    in rather than hardcoded: ``tarot`` shipped a literal inherited from an
+    earlier card size and painted nine shipped-corpus attributions off theirs.
+    """
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = " — ".join(p for p in (author, title) if p)
+    if not parts:
+        return
+    while draw.textlength(parts, font=font) > max_width and len(parts) > 8:
+        parts = parts[:-2].rstrip(" ,.;:") + "…"
+    draw.text((centre, baseline), parts, font=font, fill=fill, anchor="ms")
+
+
+# ---------------------------------------------------------------------------
 # daguerreotype — a cased monochrome photograph
 #
 # An 1850s daguerreotype in its case: ornate brass mat, oval window, a
@@ -25134,16 +25271,8 @@ def _daguerreotype_paint_slip(image: Image.Image, draw: ImageDraw.ImageDraw, quo
     """The caption slip: cream stock lifted on a shadow ledge, the quote in
     Libre Caslon with the matched phrase in the studio's red ink."""
     x0, y0, x1, y1 = _DAG_SLIP
-    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
-    draw.rectangle((x0 + 3, y0 + 3, x1 + 3, y1 + 3), fill=black)  # the ledge
-    draw.rectangle((x0, y0, x1, y1), fill=white)
-    px = image.load()
-    for y in range(y0, y1 + 1):
-        row = BAYER_4x4[y % 4]
-        for x in range(x0, x1 + 1):
-            if row[x % 4] < 2:
-                px[x, y] = yellow
-    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+    black = SPECTRA6["black"]
+    paint_mount_card(image, draw, _DAG_SLIP, ledge=3)
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
@@ -25151,33 +25280,16 @@ def _daguerreotype_paint_slip(image: Image.Image, draw: ImageDraw.ImageDraw, quo
         x1 - x0 - 36, y1 - y0 - 88, font_max=26, font_min=14,
         line_height_mult=1.32, theme="daguerreotype",
     )
-    y = y0 + 26
-    body_ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
-        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
-                       for c, b in segment)
-        x = x0 + max(18, ((x1 - x0) - width_px) // 2)
-        for chunk, is_bold in segment:
-            font = quote_font_bold if is_bold else quote_font
-            fill = SPECTRA6["red"] if is_bold else black
-            draw.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=fill)
-            x += draw.textbbox((0, 0), chunk, font=font)[2]
-        y += line_height
-
-    author = (quote_row.get("author") or "").strip()
-    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
-    parts = " — ".join(p for p in (author, title) if p)
-    if parts:
-        font = load_font(theme_font_candidates("daguerreotype", "quote_regular"), size=13)
-        while draw.textlength(parts, font=font) > (x1 - x0 - 30) and len(parts) > 8:
-            parts = parts[:-2].rstrip(" ,.;:") + "…"
-        draw.text(((x0 + x1) // 2, y1 - 20), parts, font=font, fill=black, anchor="ms")
+    draw_centred_styled_lines(
+        draw, wrapped, x0=x0, x1=x1, top=y0 + 26, line_height=line_height,
+        regular=quote_font, bold=quote_font_bold,
+        fill=black, accent=SPECTRA6["red"],
+    )
+    draw_truncated_centred_byline(
+        draw, quote_row, centre=(x0 + x1) // 2, baseline=y1 - 20,
+        max_width=x1 - x0 - 30, fill=black,
+        font=load_font(theme_font_candidates("daguerreotype", "quote_regular"), size=13),
+    )
 
 
 def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
@@ -25196,6 +25308,188 @@ def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, heigh
     _daguerreotype_paint_ring(image)
     draw = ImageDraw.Draw(image)
     _daguerreotype_paint_slip(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# autochrome — a colour photograph, in the panel's own idiom
+#
+# Autochrome Lumiere (1907-1930s) was the first practical colour process, and
+# it worked by a mechanism this panel already has. A glass plate carried a
+# mosaic of potato-starch grains dyed orange-red, green and blue-violet; the
+# emulsion behind was exposed and developed through that random colour filter.
+# What the viewer sees is therefore not continuous colour at all — it is a
+# **stochastic mosaic of three coloured grains** the eye integrates at viewing
+# distance. A dither to six inks is the same object. Every other synthesised
+# tone in this codebase approximates a colour the hardware lacks; here the
+# panel is not approximating the medium, it is doing what the medium did.
+#
+# **The first plate dithered against the full six-ink palette.** ``anna_atkins``
+# (W+K+B), ``grimdark`` (W+K), ``letter`` (W+Y+R+G) and ``daguerreotype`` (W+K)
+# all restrict the candidate set so error diffusion cannot scatter chroma into a
+# ground that should not carry it. That restriction is right for each of them
+# and wrong here: the chroma is the subject, and the six inks stand in for the
+# dyed grains.
+#
+# **Muted and high-key is a measurement, not a mood.** Run against the real
+# primitive, a saturated source quantises to a chunky blue/red/green mosaic that
+# reads as colour bars at 800x480, while a soft desaturated one breaks into a
+# fine grain with white carrying the tone. Autochrome's own character — pastel,
+# high-key, soft-focus, warm-biased, because the grain layer scatters light and
+# costs 2-3 stops — is the one photographic register that dithers *well* on
+# these inks, so the period style and the hardware constraint point the same
+# way. The committed plate is a garden (``scripts/generate_autochrome_plate.py``
+# — an original work in the idiom, the anna_atkins reasoning) because the long
+# exposures suited static subjects, which is why the Lumieres, Clementel and
+# Albert Kahn's operators all shot flower beds, and because a garden puts all
+# six inks on the page honestly: sky blue, foliage green, poppy red, bloom
+# yellow, path white, shadow black. ``TestAutochromePlate`` measures exactly
+# that — every ink present, none but white dominant — since it is the pitch.
+#
+# **The mount is a passe-partout**: two glass sheets bound at the edges with
+# black gummed tape, the way a plate was actually presented and stored. The
+# quote sits on a cream card laid on the plate, lifted by the black shadow ledge
+# ``kanagawa`` / ``tarot`` / ``pride`` use — without it the card reads as a hole
+# cut in the photograph rather than as paper resting on it.
+#
+# **This is the one theme whose colour work is entirely in the plate.** The
+# matched phrase is solid red, not a synthesised recipe, and that is deliberate
+# twice over: the orange-red grain is the dominant one in a real autochrome
+# mosaic and the panel's red is the nearest solid ink to it, while a two-ink
+# stipple at caption size shreds a serif (the documented hairline failure that
+# ``astrarium`` / ``vitrail`` / ``bakelite`` all record). Forcing an accent
+# recipe onto a theme whose whole argument is "the panel renders a real colour
+# photograph" would be answering the wrong question.
+#
+# **A photograph carries no clock**, so ``time_str`` is del-asserted — the rule
+# ``daguerreotype`` states for the same class of object, and the matched phrase
+# carries the time alone. Composed at the canonical 800x480 and
+# NEAREST-downsampled for a non-native request (the ``metro`` convention): the
+# tape and card are absolute mount geometry, and an interpolating filter would
+# average the grain into colours the panel cannot print.
+_AUTOCHROME_TAPE = 13                       # passe-partout binding tape, px
+_AUTOCHROME_CORNER = 7                      # extra reach where tape strips overlap
+_AUTOCHROME_CARD = (458, 56, 770, 424)      # the caption card
+_AUTOCHROME_LEDGE = 3                       # the card's drop shadow
+
+
+def _autochrome_paint_plate(image: Image.Image) -> None:
+    """The photograph: the committed garden, Floyd-Steinberg-dithered against
+    all six inks, full bleed."""
+    plate = _load_dithered_plate(AUTOCHROME_PLATE, 800, 480, palette=_AUTOCHROME_PALETTE)
+    if plate is None:
+        _autochrome_paint_garden_fallback(image)
+        return
+    image.paste(plate, (0, 0))
+
+
+def _autochrome_paint_garden_fallback(image: Image.Image) -> None:
+    """A stripped install still gets a garden-shaped colour field.
+
+    The same three bands the plate is composed of — a blue sky hazing to white,
+    a green tree line and lawn, a bloom-scattered bed — synthesised as density
+    ramps read off ``BAYER_8x8``. Coarser than the dithered photograph by
+    design; the point is that the theme still reads as a colour picture rather
+    than degrading to a blank ground.
+    """
+    px = image.load()
+    white, black, blue, green, yellow, red = (
+        SPECTRA6[c] for c in ("white", "black", "blue", "green", "yellow", "red"))
+    horizon, beds = 192, 250
+    for y in range(480):
+        row = BAYER_8x8[y % 8]
+        if y < horizon:
+            # Sky: blue density falling toward the horizon haze.
+            density = 0.42 * (1.0 - y / horizon) ** 0.8
+            ink, ground = blue, white
+        elif y < beds:
+            density = 0.34
+            ink, ground = green, white
+        else:
+            # Lawn deepening toward the viewer, warmed by the beds.
+            t = (y - beds) / (480 - beds)
+            density = 0.30 + 0.24 * t
+            ink, ground = green, yellow
+        cut = 64 * density
+        for x in range(800):
+            px[x, y] = ink if row[x % 8] < cut else ground
+    # A drift of blooms across the beds, and the shadow under them: painted
+    # from a positional hash so the fallback stays deterministic.
+    for y in range(beds, 480):
+        for x in range(800):
+            h = _flow_stroke_hash(x // 3, y // 3, 11)
+            if h < 0.020:
+                px[x, y] = red
+            elif h < 0.032:
+                px[x, y] = yellow
+            elif h < 0.044:
+                px[x, y] = black
+
+
+def _autochrome_paint_tape(draw: ImageDraw.ImageDraw) -> None:
+    """The passe-partout: black gummed tape binding the glass sandwich, with a
+    hairline of light at the paper mask's edge just inside it.
+
+    Real bound plates are thicker at the corners, where the four strips overlap
+    — cheap to reproduce and the detail that reads as tape rather than as a
+    drawn frame.
+    """
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    t = _AUTOCHROME_TAPE
+    draw.rectangle((0, 0, 799, t - 1), fill=black)
+    draw.rectangle((0, 480 - t, 799, 479), fill=black)
+    draw.rectangle((0, 0, t - 1, 479), fill=black)
+    draw.rectangle((800 - t, 0, 799, 479), fill=black)
+    c = t + _AUTOCHROME_CORNER
+    for x0, y0 in ((0, 0), (800 - c, 0), (0, 480 - c), (800 - c, 480 - c)):
+        draw.rectangle((x0, y0, x0 + c - 1, y0 + c - 1), fill=black)
+    draw.rectangle((t, t, 799 - t, 479 - t), outline=white, width=1)
+
+
+def _autochrome_paint_card(image: Image.Image, draw: ImageDraw.ImageDraw,
+                           quote_row: dict) -> None:
+    """The caption card: cream stock on a shadow ledge, carrying the quote in
+    Libre Caslon with the matched phrase in the studio's red ink."""
+    x0, y0, x1, y1 = _AUTOCHROME_CARD
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    paint_mount_card(image, draw, _AUTOCHROME_CARD, ledge=_AUTOCHROME_LEDGE)
+
+    # Mount chrome: the process name letterspaced under a hairline rule, in the
+    # sans the other custom frames use for metadata. Spaced by hand because the
+    # renderer has no tracking primitive and a caption this short does not earn
+    # one.
+    draw.text(((x0 + x1) // 2, y0 + 18), " ".join("AUTOCHROME"),
+              font=load_font(META_FONT_BOLD_CANDIDATES, size=10), fill=black, anchor="ms")
+    draw.line((x0 + 34, y0 + 26, x1 - 34, y0 + 26), fill=black, width=1)
+
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0 - 36, y1 - y0 - 92, font_max=26, font_min=13,
+        line_height_mult=1.34, theme="autochrome",
+    )
+    draw_centred_styled_lines(
+        draw, wrapped, x0=x0, x1=x1, top=y0 + 46, line_height=line_height,
+        regular=quote_font, bold=quote_font_bold, fill=black, accent=red,
+    )
+    draw_truncated_centred_byline(
+        draw, quote_row, centre=(x0 + x1) // 2, baseline=y1 - 18,
+        max_width=x1 - x0 - 30, fill=black,
+        font=load_font(theme_font_candidates("autochrome", "quote_regular"), size=13),
+    )
+
+
+def render_autochrome_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """An autochrome plate in its passe-partout (see the section comment)."""
+    del time_str  # a photograph carries no clock; see the section comment.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _autochrome_paint_plate(image)
+    draw = ImageDraw.Draw(image)
+    _autochrome_paint_tape(draw)
+    _autochrome_paint_card(image, draw, quote_row)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
@@ -25251,6 +25545,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_plaque_frame(time_str, quote_row, width, height)
     if theme == "daguerreotype":
         return render_daguerreotype_frame(time_str, quote_row, width, height)
+    if theme == "autochrome":
+        return render_autochrome_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

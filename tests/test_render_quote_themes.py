@@ -1721,7 +1721,7 @@ class TestFixedGeometryFramesDownscale:
     """
 
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
-                             "plaque", "daguerreotype", "tarot", "vinyl")
+                             "plaque", "daguerreotype", "autochrome", "tarot", "vinyl")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -2995,3 +2995,175 @@ class TestGrimoireMatchedPhrase:
     def test_full_frame_still_snaps_on_palette(self):
         image = rq.render("03:15", dict(self.ROW), 800, 480, mode="production", theme="grimoire")
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+
+
+class TestAutochromePlate:
+    """The full-palette dither is the theme's entire pitch, so it is measured.
+
+    ``autochrome`` is the first plate dithered against all six inks rather than
+    a restricted sub-palette, and the argument for it is that a soft, high-key,
+    desaturated source breaks into a fine grain the eye integrates — the way a
+    real autochrome's dyed starch grains do — where a saturated one quantises
+    into a chunky mosaic that reads as colour bars. Both halves of that are
+    properties of the committed plate, so both are fenced here: if someone
+    regenerates the art with punchier colour, or quietly narrows the palette
+    the way every other plate theme does, these fail.
+
+    The case rules follow: the caption card stays clean so a dense quote is
+    legible over a photograph, no clock reaches the canvas, and a stripped
+    install still gets a colour picture.
+    """
+
+    ROW = make_row(display_quote="At half past two the bell rang and nobody moved.",
+                   matched_text="half past two", author="L. M. Montgomery",
+                   title="Anne of Avonlea")
+
+    def _render(self, time_str="14:15"):
+        return rq.render(time_str, self.ROW, 800, 480, mode="production", theme="autochrome")
+
+    @staticmethod
+    def _plate():
+        rq._DITHER_CACHE.clear()
+        plate = rq._load_dithered_plate(rq.AUTOCHROME_PLATE, 800, 480,
+                                        palette=rq._AUTOCHROME_PALETTE)
+        assert plate is not None, "the committed autochrome plate is missing"
+        return plate
+
+    @staticmethod
+    def _shares(image):
+        total = image.width * image.height
+        counts = ink_counts(image)
+        return {name: counts.get(ink, 0) / total for name, ink in rq.SPECTRA6.items()}
+
+    # -- the full-palette claim ---------------------------------------------
+
+    def test_the_palette_is_not_restricted(self):
+        """Every other plate narrows the candidate set; this one must not.
+
+        A sub-palette here would not fail any other test — the frame would
+        still render and still snap on-palette — it would just quietly stop
+        being the thing the theme exists to be.
+        """
+        assert set(rq._AUTOCHROME_PALETTE) == set(rq.SPECTRA6.values()), (
+            "the autochrome plate is being dithered against a sub-palette — the "
+            "theme's whole claim is that the chroma IS the subject, so all six "
+            "inks must be candidates"
+        )
+
+    def test_the_plate_puts_every_ink_on_the_page(self):
+        shares = self._shares(self._plate())
+        thin = {name: round(share, 4) for name, share in shares.items() if share < 0.02}
+        assert not thin, (
+            f"inks barely present in the plate: {thin} — the subject is a garden "
+            "specifically so that sky, foliage, poppies, blooms, path and shadow "
+            "each claim an ink; one dropping out means the art no longer "
+            "demonstrates the full-palette dither"
+        )
+
+    def test_white_carries_the_tone_and_no_chroma_dominates(self):
+        """The 'colour bars' guard, and the reason the source is muted.
+
+        Measured against the real primitive, a saturated source quantises to a
+        chunky blue/red/green mosaic; a soft high-key one leaves white carrying
+        the luminance with the chroma dispersed as grain. That is a property of
+        the *art*, invisible to every other test, and it is what separates a
+        photograph from a test card.
+        """
+        shares = self._shares(self._plate())
+        assert shares["white"] > 0.30, (
+            f"white is only {shares['white']:.0%} of the plate — the source has "
+            "lost its high key, and a dithered photograph without a dominant "
+            "paper tone reads as a colour mosaic rather than as a picture"
+        )
+        loud = {name: round(share, 3) for name, share in shares.items()
+                if name != "white" and share > 0.28}
+        assert not loud, (
+            f"chromatic inks dominating the plate: {loud} — the source has been "
+            "saturated past what a six-ink dither can hold as grain"
+        )
+
+    def test_the_plate_is_a_photograph_not_a_texture(self):
+        """The composition has to survive the dither, not just the palette.
+
+        A first cut of this assertion counted how often adjacent pixels shared
+        an ink, on the theory that blocks mean a posterised source. That is
+        vacuous: Floyd-Steinberg disperses by construction, so it passes for
+        any source at all, flat fields included. What actually distinguishes a
+        photograph from a texture is that different parts of it differ - sky is
+        not beds - so the fence measures the distance between two bands' ink
+        distributions, and their sense.
+        """
+        plate = self._plate()
+        sky = self._shares(plate.crop((0, 0, 800, 170)))
+        beds = self._shares(plate.crop((0, 310, 800, 480)))
+        distance = sum(abs(sky[ink] - beds[ink]) for ink in rq.SPECTRA6) / 2
+        assert distance > 0.25, (
+            f"sky and beds differ by only {distance:.0%} of their ink mix - the "
+            "plate has flattened into a uniform texture, which dithers to noise "
+            "rather than to a picture"
+        )
+        assert sky["white"] > beds["white"] + 0.20, (
+            f"the sky ({sky['white']:.0%} white) is not meaningfully lighter than "
+            f"the beds ({beds['white']:.0%}) - the plate has lost the tonal "
+            "structure that reads as depth"
+        )
+
+    # -- the case ------------------------------------------------------------
+
+    def test_the_caption_card_stays_clean(self):
+        """A dense literary quote sits on this card over a photograph, so the
+        knockout has to be complete: only card stock, rule and ink inside it."""
+        px = self._render().load()
+        x0, y0, x1, y1 = rq._AUTOCHROME_CARD
+        allowed = {rq.SPECTRA6[c] for c in ("white", "yellow", "black", "red")}
+        for y in range(y0 + 2, y1 - 1, 3):
+            for x in range(x0 + 2, x1 - 1, 3):
+                assert px[x, y] in allowed, (
+                    f"photograph bleeding through the caption card at ({x}, {y}) — "
+                    "the card must be knocked out of the plate, not laid over it"
+                )
+
+    def test_the_card_is_lifted_off_the_plate(self):
+        """The shadow ledge, without which the card reads as a hole cut in the
+        photograph rather than as paper resting on it."""
+        px = self._render().load()
+        _, _, x1, y1 = rq._AUTOCHROME_CARD
+        ledge = rq._AUTOCHROME_LEDGE
+        for offset in range(1, ledge + 1):
+            assert px[x1 + offset, y1] == rq.SPECTRA6["black"], (
+                "the caption card's drop-shadow ledge is missing"
+            )
+
+    def test_no_clock_reaches_the_canvas(self):
+        """A photograph carries no clock — ``daguerreotype``'s rule, for the
+        same class of object. Every minute must render byte-identically."""
+        reference = pixel_bytes(self._render("03:00"))
+        for time_str in ("03:05", "07:41", "11:59", "19:20", "23:58"):
+            assert pixel_bytes(self._render(time_str)) == reference, (
+                f"{time_str} renders differently — something is surfacing the clock"
+            )
+
+    def test_a_stripped_install_still_renders_a_colour_garden(self, monkeypatch, tmp_path):
+        """The house graceful-fallback convention. The synthesised garden is
+        coarser than the plate by design, but it must still be a colour picture
+        — degrading to a blank ground would leave nothing of the theme."""
+        monkeypatch.setattr(rq, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        rq._DITHER_CACHE.clear()
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        shares = self._shares(image)
+        for ink in ("blue", "green", "yellow"):
+            assert shares[ink] > 0.01, (
+                f"the fallback garden has almost no {ink} — sky, foliage and "
+                f"blooms are what make it read as a colour photograph at all"
+            )
+        rq._DITHER_CACHE.clear()
+
+    def test_the_tape_binds_all_four_edges(self):
+        """The passe-partout: a bound plate is taped on every edge, and the
+        tape is also what stops the photograph running off the panel."""
+        px = self._render().load()
+        black = rq.SPECTRA6["black"]
+        mid = rq._AUTOCHROME_TAPE // 2
+        for x, y in ((400, mid), (400, 479 - mid), (mid, 240), (799 - mid, 240)):
+            assert px[x, y] == black, f"binding tape missing at ({x}, {y})"

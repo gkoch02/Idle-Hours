@@ -248,6 +248,7 @@ def parse_args() -> argparse.Namespace:
         "nocturne",
         "plaque",
         "daguerreotype",
+        "autochrome",
         "betweenus",
         "betweenus_dark",
         "diags",

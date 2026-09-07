@@ -212,6 +212,12 @@ THEME_SATURATION: dict[str, float] = {
     # already saturated; the gentler tier keeps the R+G tarnish a soft sepia
     # instead of a hard speckle, the same light-ground argument as ``tarot``.
     "daguerreotype": 0.5,
+    # Autochrome plate — a six-ink-dithered colour photograph on a white-ground
+    # mount. The plate's own grain is already a full-palette stipple and the
+    # cream caption card dominates the right third, so it takes the gentler
+    # white-ground tier; pushing harder would harden the pastel grain the
+    # process is known for into poster colour.
+    "autochrome": 0.5,
     # Between Us, light — white paper with a faint cream wash, black Fraunces
     # body, solid-red italic matched phrase and small stippled legend dots.
     # Same chromatic-on-light profile as ``default`` / ``placard``; the
