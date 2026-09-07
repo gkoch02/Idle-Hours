@@ -255,6 +255,71 @@ class TestMarqueeFrame:
         assert img.size == (800, 480)
 
 
+class TestTarotEmblems:
+    """All twelve trumps draw, and draw something different from each other.
+
+    The golden suite pins exactly *one* tarot frame, at ``THEME_SWEEP_TIME``
+    (08:55), so eleven of the twelve hour-mapped emblems are outside it —
+    a rewrite of seven of them left every golden fixture byte-identical,
+    because hour 8 happened to be one of the four left alone. Twelve more
+    PNG fixtures would fence this, but the failures actually worth catching
+    are structural: an emblem that stops painting, and two hours that
+    resolve to the same figure (a typo in the ``_TAROT_EMBLEMS`` dispatch
+    maps an hour to its neighbour's painter, which no smoke test notices
+    because both still render).
+    """
+
+    @staticmethod
+    def _panel(hour):
+        """The illustration panel's ink, cropped from a rendered card."""
+        img = rq.render(f"{hour:02d}:30", make_row(), 800, 480, theme="tarot")
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        return img.crop((x0 + 20, y0 + 68, x1 - 20, y1 - 74))
+
+    def test_every_hour_paints_an_emblem(self):
+        panels = {hour: self._panel(hour) for hour in range(1, 13)}
+        for hour, panel in panels.items():
+            counts = ink_counts(panel)
+            drawn = counts.get(rq.SPECTRA6["black"], 0) + counts.get(rq.SPECTRA6["red"], 0)
+            assert drawn > 600, f"hour {hour}: emblem painted only {drawn} px"
+
+    def test_every_hour_paints_a_distinct_emblem(self):
+        seen = {}
+        for hour in range(1, 13):
+            data = pixel_bytes(self._panel(hour))
+            assert data not in seen, f"hour {hour} renders the same emblem as hour {seen[data]}"
+            seen[data] = hour
+
+    def test_emblems_stay_inside_the_keyline(self):
+        """The clip is what keeps a widened figure off its own frame.
+
+        Six of the twelve reach past the panel once ``_TAROT_EMBLEM_SCALE``
+        enlarges them — the Wheel's rim by ~1770 px, as far as the card's
+        own border — and a figure crossing its rule reads as a layout
+        fault. The stamp is clipped rather than scaled down, so this pins
+        the clip and not any emblem's extent.
+
+        The sample band matters and was got wrong first: an earlier
+        version looked *below* the panel and only for red, where the
+        overflow is overwhelmingly black and sideways, so deleting the
+        clip left it green — a test passing against the exact bug it
+        guards. The side gutters between the card's inner rule and the
+        panel keyline are where the overflow actually lands, and nothing
+        else on the card paints there.
+        """
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        px0, py0, px1, py1 = x0 + 20, y0 + 68, x1 - 20, y1 - 74
+        ink = {rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+        for hour in range(1, 13):
+            img = rq.render(f"{hour:02d}:30", make_row(), 800, 480, theme="tarot")
+            for band in (range(x0 + 8, px0 - 1), range(px1 + 2, x1 - 7)):
+                for x in band:
+                    for y in range(py0 + 4, py1 - 4):
+                        assert img.getpixel((x, y)) not in ink, (
+                            f"hour {hour}: emblem ink at ({x}, {y}) is outside the keyline"
+                        )
+
+
 class TestTarotFrame:
     """Major-arcana card — renders for every hour without raising."""
 

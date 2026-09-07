@@ -16690,14 +16690,184 @@ def _tarot_paint_card_name(
 # by 1.5, so anything beyond that is clipped at the keyline.
 
 
+def _tarot_face(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    r: int,
+    *,
+    hair: str = "none",
+    gaze: int = 0,
+) -> None:
+    """Brows, eyes, nose and mouth inside a head circle.
+
+    The single highest-value mark on any of these emblems. An empty
+    circle over a trapezoid is a ball on a wedge; two eyes and a mouth
+    make the same two shapes read as a person, and every attribute the
+    trump carries then reads as *held* rather than as floating beside a
+    diagram.
+
+    Kept to five strokes because the head is only ~30 px across on the
+    panel: brows are drawn as well as eyes because at this size a lone
+    dot reads as a blemish, where a dot under a short bar reads as an
+    eye. ``gaze`` shifts both pupils sideways so a figure can look at
+    the attribute it holds — a free way to tie the two together.
+
+    ``hair`` is a coarse silhouette cue, not characterisation: the
+    twelve trumps are conventionally a mix of crowned, veiled, bearded
+    and bare figures, and without *some* differentiation above the brow
+    every emblem's head is identical.
+    """
+    BLACK = SPECTRA6["black"]
+    eye_dx = max(2, round(r * 0.36))
+    eye_r = max(1, r // 7)
+    eye_y = cy - max(1, r // 8)
+    if hair == "long":
+        # Two narrow falls either side of the face, drawn before the
+        # features so the face sits in front of them. Strokes rather
+        # than filled polygons: a mass this size beside a ~30 px head
+        # reads as a motorcycle helmet.
+        for side in (-1, 1):
+            draw.line(
+                [
+                    (cx + side * (r - 2), cy - r // 2),
+                    (cx + side * (r + 2), cy + r // 2),
+                    (cx + side * (r - 1), cy + r + 4),
+                ],
+                fill=BLACK, width=3, joint="curve",
+            )
+    if hair in ("long", "veil", "short"):
+        # A shallow cap across the brow — the mark that stops every head
+        # reading as a bare sphere. The arc endpoints matter: a chord
+        # from 190 to 350 cuts almost exactly the top half of the circle
+        # and fills it solid, which is a helmet and not a hairline. 215
+        # to 325 lands the chord high enough to leave a forehead.
+        draw.chord((cx - r, cy - r, cx + r, cy + r), 215, 325, fill=BLACK)
+    for side in (-1, 1):
+        ex = cx + side * eye_dx
+        draw.line((ex - eye_r - 1, eye_y - eye_r - 2, ex + eye_r + 1, eye_y - eye_r - 2), fill=BLACK, width=1)
+        draw.ellipse(
+            (ex - eye_r + gaze, eye_y - eye_r, ex + eye_r + gaze, eye_y + eye_r),
+            fill=BLACK,
+        )
+    draw.line((cx, eye_y + eye_r, cx, cy + r // 3), fill=BLACK, width=1)
+    draw.line((cx - r // 3, cy + r // 2, cx + r // 3, cy + r // 2), fill=BLACK, width=1)
+    if hair == "beard":
+        # Outline plus two interior strokes, not a solid wedge: filled,
+        # it swallows the mouth the face just spent three strokes
+        # establishing.
+        draw.polygon(
+            [
+                (cx - r + 3, cy + r // 2),
+                (cx + r - 3, cy + r // 2),
+                (cx + r // 3, cy + r + 8),
+                (cx - r // 3, cy + r + 8),
+            ],
+            outline=BLACK, width=2,
+        )
+        for side in (-1, 1):
+            draw.line(
+                (cx + side * r // 3, cy + r // 2 + 2, cx + side * r // 5, cy + r + 5),
+                fill=BLACK, width=1,
+            )
+
+
+def _tarot_drapery(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    shoulder_y: int,
+    hem_y: int,
+    half_top: int,
+    half_bot: int,
+    folds: int = 4,
+) -> None:
+    """Fold lines down the inside of a robe, at one third the outline weight.
+
+    A trapezoid is a wedge until something inside it says "cloth". The
+    folds are hairlines against the outline's 3 px so the eye reads a
+    hierarchy — contour, then interior detail — which is what separates
+    a drawing from a diagram; a uniform weight everywhere is most of why
+    the first version of these emblems looked like clip art.
+
+    Each fold fans from a point near the neck to its own place on the
+    hem, because parallel verticals read as stripes rather than as cloth
+    hanging off a body.
+    """
+    BLACK = SPECTRA6["black"]
+    # Fixed irrational-ish offsets rather than an RNG: the frame has to
+    # stay byte-deterministic, and evenly-spaced folds read as the
+    # pleats of an accordion skirt rather than as cloth hanging on a
+    # body. Four values cycled across any fold count is enough to break
+    # the symmetry without any per-emblem tuning.
+    jitter = (0.0, 0.13, -0.09, 0.06, -0.15)
+    for i in range(1, folds + 1):
+        t = i / (folds + 1) + jitter[i % len(jitter)] * 0.5
+        x_top = cx + round((t - 0.5) * 2 * half_top * 0.55)
+        x_bot = cx + round((t - 0.5) * 2 * half_bot * 0.88)
+        mid_y = shoulder_y + (hem_y - shoulder_y) * (0.5 + jitter[i % len(jitter)])
+        mid_x = x_top + (x_bot - x_top) * 0.45
+        draw.line(
+            [(x_top, shoulder_y + 4), (mid_x, mid_y), (x_bot, hem_y - 2)],
+            fill=BLACK, width=1, joint="curve",
+        )
+
+
+def _tarot_hand(draw: ImageDraw.ImageDraw, x: float, y: float, r: int = 4) -> None:
+    """A small filled disc terminating an arm.
+
+    Crude on purpose — at this scale a modelled hand is four ambiguous
+    pixels. What matters is that the arm *ends* in something rather than
+    stopping mid-air, so the attribute beyond it reads as gripped.
+    """
+    draw.ellipse((x - r, y - r, x + r, y + r), fill=SPECTRA6["black"])
+
+
+def _tarot_arm(
+    draw: ImageDraw.ImageDraw,
+    x0: float, y0: float, x1: float, y1: float,
+    *, elbow: float = 0.35, hand: bool = True,
+) -> tuple[float, float]:
+    """A two-segment arm from shoulder to hand. Returns the hand's centre.
+
+    A straight line from body to attribute reads as a stick; one bend
+    reads as a limb. ``elbow`` displaces the joint perpendicular to the
+    shoulder-to-hand line, so the direction of the bend follows the
+    reach instead of being hardcoded per emblem.
+    """
+    BLACK = SPECTRA6["black"]
+    mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+    dx, dy = x1 - x0, y1 - y0
+    span = math.hypot(dx, dy) or 1
+    ex, ey = mx - dy / span * span * elbow * 0.35, my + dx / span * span * elbow * 0.35
+    draw.line([(x0, y0), (ex, ey), (x1, y1)], fill=BLACK, width=3, joint="curve")
+    if hand:
+        _tarot_hand(draw, x1, y1)
+    return x1, y1
+
+
 def _tarot_robed_figure(
-    draw: ImageDraw.ImageDraw, cx: int, cy: int, top: int, bottom: int, half_w: int,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    top: int,
+    bottom: int,
+    half_w: int,
+    *,
+    hair: str = "none",
+    gaze: int = 0,
+    folds: int = 4,
 ) -> tuple[int, int]:
-    """Head circle over a trapezoid robe. Returns the head's (cx, cy).
+    """Head over a trapezoid robe, with a face and drapery. Returns (cx, cy) of the head.
 
     ``top`` is the crown of the head and ``bottom`` the hem, both
     relative to the emblem centre; the head is sized from the gap so a
     short figure does not end up all head.
+
+    This is the shape the eight legible emblems converged on, so the
+    four that failed were rebuilt onto it and four more that had grown
+    their own near-copies (Empress, Hierophant, Chariot, World) were
+    folded in as well — twelve hands drawing the same figure is why the
+    set read as inconsistent even where individual cards worked.
     """
     BLACK = SPECTRA6["black"]
     head_r = max(9, (bottom - top) // 7)
@@ -16706,16 +16876,19 @@ def _tarot_robed_figure(
         (cx - head_r, head_cy - head_r, cx + head_r, head_cy + head_r),
         outline=BLACK, width=3,
     )
+    _tarot_face(draw, cx, head_cy, head_r, hair=hair, gaze=gaze)
     shoulder = head_cy + head_r + 4
+    half_top = head_r + 6
     draw.polygon(
         [
-            (cx - head_r - 6, shoulder),
-            (cx + head_r + 6, shoulder),
+            (cx - half_top, shoulder),
+            (cx + half_top, shoulder),
             (cx + half_w, cy + bottom),
             (cx - half_w, cy + bottom),
         ],
         outline=BLACK, width=3,
     )
+    _tarot_drapery(draw, cx, shoulder, cy + bottom, half_top, half_w, folds=folds)
     return cx, head_cy
 
 
@@ -16935,52 +17108,39 @@ def _tarot_emblem_priestess(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None
 
 
 def _tarot_emblem_empress(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Empress (III): crowned figure on a throne with wheat at her feet.
+    """Empress (III): enthroned figure, twelve-star crown, wheat at her feet.
 
-    Compact silhouette: trapezoidal throne + a 12-star crown arc above
-    the head + a wheat-sheaf fan beneath the throne. The 12 stars are
-    the Empress's iconic ``corona stellarum duodecim`` (12-star crown,
-    Revelation 12 — also the crown of the Virgin Mary).
+    The throne used to *be* the figure — an outlined trapezoid with a
+    head balanced on its rim and a heart floating in the middle of it,
+    which read as a shield rather than as a woman on a seat. The throne
+    is a back behind her now and she sits in front of it.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Throne (trapezoidal, wider at the base).
-    throne = [
-        (cx - 60, cy + 60),
-        (cx - 40, cy - 20),
-        (cx + 40, cy - 20),
-        (cx + 60, cy + 60),
-    ]
-    draw.polygon(throne, outline=BLACK, width=3)
-    # Head (circle at top of throne back).
-    draw.ellipse((cx - 14, cy - 50, cx + 14, cy - 22), outline=BLACK, width=3)
-    # 12-star crown — arc of small red star dots above the head.
-    crown_r = 30
+    # Throne back rising behind her.
+    draw.polygon(
+        [(cx - 58, cy + 76), (cx - 46, cy - 34), (cx + 46, cy - 34), (cx + 58, cy + 76)],
+        outline=BLACK, width=3,
+    )
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-30, bottom=76, half_w=44, hair="long")
+    # Corona stellarum duodecim — the twelve-star crown of Revelation 12.
     for i in range(12):
-        # Half-circle arc from angle 200° to 340° (~140° sweep above the head).
         angle = math.radians(200 + i * (140 / 11))
-        sx = cx + crown_r * math.cos(angle)
-        sy = cy - 36 + crown_r * math.sin(angle)
+        sx = cx + 34 * math.cos(angle)
+        sy = head_cy + 34 * math.sin(angle)
         draw.ellipse((sx - 2, sy - 2, sx + 2, sy + 2), fill=RED)
-    # Heart-shield with Venus symbol on the empress's chest — simplified
-    # to a small red filled heart silhouette at chest height.
+    # Heart shield resting against the robe.
+    hy = cy + 18
     draw.polygon([
-        (cx, cy + 12),
-        (cx - 10, cy - 2),
-        (cx - 6, cy - 10),
-        (cx, cy - 4),
-        (cx + 6, cy - 10),
-        (cx + 10, cy - 2),
+        (cx, hy + 14), (cx - 11, hy), (cx - 7, hy - 9),
+        (cx, hy - 3), (cx + 7, hy - 9), (cx + 11, hy),
     ], fill=RED)
-    # Wheat sheaf fan beneath the throne — short black lines radiating
-    # from a centre point.
-    wheat_cy = cy + 78
+    # Wheat sheaf at her feet.
     for i in range(7):
         angle = math.radians(250 + i * 10)
-        x2 = cx + 26 * math.cos(angle)
-        y2 = wheat_cy + 26 * math.sin(angle)
-        draw.line((cx, wheat_cy, x2, y2), fill=BLACK, width=2)
-        # Wheat-head terminal dot.
+        x2 = cx + 24 * math.cos(angle)
+        y2 = cy + 86 + 24 * math.sin(angle)
+        draw.line((cx, cy + 86, x2, y2), fill=BLACK, width=2)
         draw.ellipse((x2 - 2, y2 - 2, x2 + 2, y2 + 2), fill=BLACK)
 
 
@@ -17010,46 +17170,39 @@ def _tarot_emblem_emperor(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
 
 
 def _tarot_emblem_hierophant(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Hierophant (V): triple-tiered papal tiara + crossed keys.
+    """Hierophant (V): bearded figure under the triregnum, hand raised in blessing.
 
-    Rider-Waite Hierophant wears the three-tier ``triregnum`` (papal
-    crown) and holds three crossed keys at his feet. The compact
-    silhouette here shows the stacked-trapezoid crown above the head
-    + crossed-keys below as the two anchoring motifs.
+    Was a bare circle under a stack of trapezoids with the keys lying
+    on the floor beneath a second, unrelated trapezoid. He holds the
+    keys now and the tiara sits on a head that has a face under it.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Head silhouette.
-    draw.ellipse((cx - 16, cy - 30, cx + 16, cy + 6), outline=BLACK, width=3)
-    # Triple tiara — three stacked trapezoids of decreasing width.
-    for i, (top_w, bot_w, top_y) in enumerate([
-        (28, 36, cy - 50),  # bottom tier
-        (22, 28, cy - 70),  # middle tier
-        (16, 22, cy - 88),  # top tier
-    ]):
-        bot_y = top_y + 14
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-24, bottom=74, half_w=42, hair="beard")
+    # Triple tiara stacked on the crown of the head.
+    # Three tiers with air between them. Stacked flush at 15 px each
+    # they merge into one tall solid trapezoid — a dunce cap, not a
+    # triregnum: the *bands* between the crowns are what make it read
+    # as three. Outlined rather than filled for the same reason the
+    # beard is.
+    base = head_cy - 14
+    for top_w, bot_w, depth in ((32, 40, 0), (24, 32, 17), (17, 24, 34)):
+        bot_y = base - depth
+        top_y = bot_y - 12
         draw.polygon([
-            (cx - bot_w // 2, bot_y),
-            (cx - top_w // 2, top_y),
-            (cx + top_w // 2, top_y),
-            (cx + bot_w // 2, bot_y),
-        ], fill=BLACK)
-    # Small cross on top of the highest tier.
-    draw.line((cx, cy - 88, cx, cy - 100), fill=BLACK, width=2)
-    draw.line((cx - 4, cy - 96, cx + 4, cy - 96), fill=BLACK, width=2)
-    # Vestment trapezoid below the head (suggests the figure's robe).
-    draw.polygon([
-        (cx - 18, cy + 6),
-        (cx + 18, cy + 6),
-        (cx + 42, cy + 60),
-        (cx - 42, cy + 60),
-    ], outline=BLACK, width=3)
-    # Crossed keys at his feet — two diagonal red lines with bow-handles.
-    draw.line((cx - 30, cy + 90, cx + 30, cy + 60), fill=RED, width=3)
-    draw.line((cx + 30, cy + 90, cx - 30, cy + 60), fill=RED, width=3)
-    # Bow handles at the upper ends.
-    draw.ellipse((cx + 24, cy + 54, cx + 38, cy + 68), outline=RED, width=2)
-    draw.ellipse((cx - 38, cy + 54, cx - 24, cy + 68), outline=RED, width=2)
+            (cx - bot_w // 2, bot_y), (cx - top_w // 2, top_y),
+            (cx + top_w // 2, top_y), (cx + bot_w // 2, bot_y),
+        ], outline=BLACK, width=2)
+        draw.rectangle((cx - bot_w // 2, bot_y - 3, cx + bot_w // 2, bot_y), fill=BLACK)
+    draw.line((cx, base - 46, cx, base - 58), fill=BLACK, width=2)
+    draw.line((cx - 4, base - 54, cx + 4, base - 54), fill=BLACK, width=2)
+    # Right hand raised in benediction, left holding the crossed keys.
+    _tarot_arm(draw, cx + 16, cy + 6, cx + 44, cy - 22)
+    _tarot_arm(draw, cx - 16, cy + 6, cx - 44, cy + 26)
+    for sign in (-1, 1):
+        draw.line((cx - 52, cy + 56 - sign * 12, cx - 22, cy + 26 + sign * 12), fill=RED, width=3)
+    draw.ellipse((cx - 58, cy + 38, cx - 44, cy + 52), outline=RED, width=2)
+    draw.ellipse((cx - 58, cy + 56, cx - 44, cy + 70), outline=RED, width=2)
 
 
 def _tarot_emblem_lovers(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
@@ -17088,38 +17241,29 @@ def _tarot_emblem_lovers(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
 
 
 def _tarot_emblem_chariot(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Chariot (VII): canopied chariot box on two wheels.
+    """Chariot (VII): crowned charioteer riding a canopied car.
 
-    Rider-Waite Chariot shows the charioteer in a starry blue canopy
-    drawn by a pair of sphinxes (black + white). The compact silhouette
-    here distils that to the chariot box (rectangular cab + canopy with
-    four star-spotted columns) on two wheels.
+    The charioteer was a small empty circle peeping over the cab rim,
+    so the card read as an unmanned cart. He is a figure standing in
+    the car now, which is what the trump is about.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Two wheels at the base.
-    for wheel_cx in (cx - 50, cx + 50):
-        draw.ellipse((wheel_cx - 18, cy + 50, wheel_cx + 18, cy + 86), outline=BLACK, width=3)
-        # 4-spoke wheel.
-        draw.line((wheel_cx, cy + 50, wheel_cx, cy + 86), fill=BLACK, width=2)
-        draw.line((wheel_cx - 18, cy + 68, wheel_cx + 18, cy + 68), fill=BLACK, width=2)
-        # Red hub.
-        draw.ellipse((wheel_cx - 4, cy + 64, wheel_cx + 4, cy + 72), fill=RED)
-    # Chariot box (cab) — solid rectangle resting on the wheel axles.
-    draw.rectangle((cx - 56, cy + 10, cx + 56, cy + 56), outline=BLACK, width=3)
-    # Starry canopy above — four columns and a roof.
-    # Roof.
-    draw.line((cx - 60, cy - 30, cx + 60, cy - 30), fill=BLACK, width=3)
-    # Four columns dropping from the roof to the box top.
-    for col_x in (cx - 50, cx - 18, cx + 18, cx + 50):
-        draw.line((col_x, cy - 30, col_x, cy + 10), fill=BLACK, width=2)
-    # Red star centred above the canopy peak.
-    _tarot_paint_pentagram(draw, cx, cy - 50, 12, RED)
-    # Charioteer's head peeking above the cab.
-    draw.ellipse((cx - 10, cy - 8, cx + 10, cy + 12), outline=BLACK, width=2)
-    # Crown points on the head.
-    for tip_x in (cx - 6, cx, cx + 6):
-        draw.polygon([(tip_x - 3, cy - 8), (tip_x, cy - 14), (tip_x + 3, cy - 8)], fill=BLACK)
+    # Canopy roof and its four columns, behind the rider.
+    draw.line((cx - 58, cy - 62, cx + 58, cy - 62), fill=BLACK, width=3)
+    for col_x in (cx - 50, cx + 50):
+        draw.line((col_x, cy - 62, col_x, cy + 26), fill=BLACK, width=2)
+    _tarot_paint_pentagram(draw, cx, cy - 76, 11, RED)
+    # The charioteer, hem hidden behind the car's front panel.
+    _tarot_robed_figure(draw, cx, cy, top=-50, bottom=30, half_w=30, folds=3)
+    # Car: front panel drawn after the figure so he stands *in* it.
+    draw.rectangle((cx - 58, cy + 26, cx + 58, cy + 62), fill=SPECTRA6["white"], outline=BLACK, width=3)
+    draw.line((cx - 58, cy + 34, cx + 58, cy + 34), fill=BLACK, width=1)
+    for wheel_cx in (cx - 44, cx + 44):
+        draw.ellipse((wheel_cx - 17, cy + 56, wheel_cx + 17, cy + 88), outline=BLACK, width=3)
+        draw.line((wheel_cx, cy + 56, wheel_cx, cy + 88), fill=BLACK, width=2)
+        draw.line((wheel_cx - 17, cy + 72, wheel_cx + 17, cy + 72), fill=BLACK, width=2)
+        draw.ellipse((wheel_cx - 4, cy + 68, wheel_cx + 4, cy + 76), fill=RED)
 
 
 def _tarot_emblem_strength(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
@@ -17235,32 +17379,39 @@ def _tarot_emblem_world(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
             ry = lx * math.sin(tangent) + ly * math.cos(tangent)
             leaf_pts.append((ox + rx, oy + ry))
         draw.polygon(leaf_pts, fill=BLACK)
-    # Dancing figure inside the wreath — stick figure with bent legs.
-    # Head.
-    draw.ellipse((cx - 8, cy - 36, cx + 8, cy - 20), fill=BLACK)
-    # Torso.
-    draw.line((cx, cy - 20, cx, cy + 10), fill=BLACK, width=4)
-    # Arms (one raised, one out).
-    draw.line((cx, cy - 12, cx - 20, cy - 26), fill=BLACK, width=3)
-    draw.line((cx, cy - 12, cx + 20, cy + 6), fill=BLACK, width=3)
-    # Legs (one straight, one bent — dancing pose).
-    draw.line((cx, cy + 10, cx - 14, cy + 40), fill=BLACK, width=3)
-    draw.line((cx, cy + 10, cx + 14, cy + 30), fill=BLACK, width=3)
-    draw.line((cx + 14, cy + 30, cx + 6, cy + 44), fill=BLACK, width=3)
+    # Dancing figure inside the wreath. The one trump whose figure is
+    # *not* robed — the dancer is conventionally bare with a floating
+    # scarf, so the shared robe skeleton would be wrong here — but the
+    # head still gets the face every other figure has, which is what
+    # separates a dancer from a stick.
+    head_r = 11
+    head_cy = cy - 30
+    draw.ellipse(
+        (cx - head_r, head_cy - head_r, cx + head_r, head_cy + head_r),
+        outline=BLACK, width=3,
+    )
+    _tarot_face(draw, cx, head_cy, head_r, hair="short")
+    draw.line((cx, head_cy + head_r, cx, cy + 12), fill=BLACK, width=4)
+    _tarot_arm(draw, cx, cy - 12, cx - 26, cy - 30, elbow=-0.4)
+    _tarot_arm(draw, cx, cy - 12, cx + 26, cy + 4, elbow=0.4)
+    # Legs, one straight and one bent — the crossed-leg dancing pose.
+    draw.line([(cx, cy + 12), (cx - 12, cy + 30), (cx - 18, cy + 48)], fill=BLACK, width=3, joint="curve")
+    draw.line([(cx, cy + 12), (cx + 15, cy + 28), (cx + 5, cy + 46)], fill=BLACK, width=3, joint="curve")
+    # The floating scarf, in the rubric red the rest of the card uses.
+    draw.line(
+        [(cx - 30, cy - 16), (cx - 8, cy - 4), (cx + 14, cy - 14), (cx + 32, cy - 2)],
+        fill=RED, width=3, joint="curve",
+    )
     # Wreath ribbons — two red bow-knots at top and bottom where the wreath ties.
     draw.ellipse((cx - 6, cy - 86, cx + 6, cy - 74), fill=RED)
     draw.ellipse((cx - 6, cy + 74, cx + 6, cy + 86), fill=RED)
     # Four corner creatures — tiny red filled triangles + black "creature" glyph.
     # Top-left bull, top-right eagle, bottom-left lion, bottom-right angel.
-    creature_r = 6
-    for (corner_cx, corner_cy, glyph) in [
-        (cx - 90, cy - 80, "♉"),  # bull → fall back to plain triangle if missing
-        (cx + 90, cy - 80, "♅"),  # eagle
-        (cx - 90, cy + 80, "♌"),  # lion
-        (cx + 90, cy + 80, "♍"),  # angel
-    ]:
-        # Small red star to anchor the corner.
-        _tarot_paint_pentagram(draw, corner_cx, corner_cy, creature_r, RED)
+    # Bull / eagle / lion / angel. Pulled in from ±90 x, which the
+    # illustration panel clips: they were painting nothing at all.
+    for corner_cx in (cx - 62, cx + 62):
+        for corner_cy in (cy - 66, cy + 66):
+            _tarot_paint_pentagram(draw, corner_cx, corner_cy, 7, RED)
 
 
 _TAROT_EMBLEMS = {
