@@ -2960,6 +2960,59 @@ class TestPreviewCache:
             _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
         assert calls["n"] == 2
 
+    def test_swapping_the_photo_source_invalidates(self, v2_server, tmp_path, monkeypatch):
+        """The `photo` theme's art is an operator-managed file, so the encoded-PNG
+        cache has to notice when it changes (a Codex review finding).
+
+        Nothing else in the key moves on a swap — same theme, time, quote,
+        dimensions and corpus — and this cache answers *before*
+        ``_photo_frame_for``, so its own mtime-aware key never gets consulted.
+        Without the stamp the operator replaces their picture and the preview
+        keeps showing the old one until the entry is evicted.
+        """
+        server, _state, _args = v2_server
+        from idle_hours import render_quote
+        web_server.clear_preview_cache()
+        render_quote.clear_photo_cache()
+
+        photo = tmp_path / "frame.png"
+
+        def write(rgb):
+            Image.new("RGB", (900, 600), rgb).save(photo)
+
+        write((40, 90, 160))
+        monkeypatch.setenv(render_quote.PHOTO_PATH_ENV, str(photo))
+        url = "/api/preview?theme=photo&time=03:00&width=400&height=240"
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)):
+            status_a, before = _get(server, url)
+            # Same everything except the bytes on disk the theme renders from.
+            write((190, 150, 60))
+            render_quote.clear_photo_cache()
+            status_b, after = _get(server, url)
+        assert status_a == status_b == 200
+        assert before != after, (
+            "swapping the photo at --photo-path returned the cached preview of "
+            "the old picture — the preview cache key is missing the photo stamp"
+        )
+
+    def test_a_non_photo_theme_pays_nothing_for_the_stamp(self, v2_server, monkeypatch):
+        """The stamp costs a directory listing plus a stat, so it is computed
+        only for the one theme that needs it."""
+        server, _state, _args = v2_server
+        from idle_hours import render_quote
+        web_server.clear_preview_cache()
+        calls = {"n": 0}
+        real = render_quote.photo_source_stamp
+
+        def counting(row):
+            calls["n"] += 1
+            return real(row)
+
+        monkeypatch.setattr(render_quote, "photo_source_stamp", counting)
+        with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)):
+            _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
+        assert calls["n"] == 0
+
 
 def _raw_post(server, path, *, headers, body=b""):
     """POST with fully explicit headers — no helper defaults, so a test can

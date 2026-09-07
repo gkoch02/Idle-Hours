@@ -3461,6 +3461,106 @@ class TestPhotoTheme:
             "interpretation"
         )
 
+    # -- decode bounds -------------------------------------------------------
+
+    def test_a_huge_undraftable_image_is_refused_not_decoded(self, tmp_path, monkeypatch):
+        """Pillow's own bomb guard does not cover this range (a Codex finding).
+
+        It raises only above ``MAX_IMAGE_PIXELS * 2`` (179 MP) and merely warns
+        between there and 89.5 MP, so an image well inside its limits still
+        decodes eagerly — a 56 MP PNG measures 212 MiB of RSS, enough to OOM
+        the render child on a 512 MB Pi. An OOM kill is not the graceful
+        fallback this theme advertises, so the cap turns it away instead.
+
+        Asserted by refusing to let the decoder run at all: ``load`` raising
+        would be caught and reported as an unreadable file, which is a
+        different (and much later) code path than the one under test.
+        """
+        photo = tmp_path / "huge.png"
+        Image.new("RGB", (16, 16), (10, 20, 30)).save(photo)
+        monkeypatch.setattr(rq, "_PHOTO_MAX_PIXELS", 100)  # 16x16 = 256 px, over it
+
+        def refuse(self, *a, **kw):
+            raise AssertionError("the decoder ran on an image over the cap")
+
+        monkeypatch.setattr(Image.Image, "load", refuse)
+        rq.clear_photo_cache()
+        assert rq._photo_open(photo, 800, 480) is None
+
+    def test_the_cap_is_checked_after_drafting_not_before(self, tmp_path, monkeypatch):
+        """Otherwise the cap rejects real cameras.
+
+        A 48 MP phone JPEG is over any Pi-safe limit as declared and
+        comfortably under it once the JPEG decoder has scaled it down during
+        the DCT pass, so drafting first is what keeps the cap aimed at
+        genuinely undecodable material rather than at ordinary photographs.
+        """
+        photo = tmp_path / "big.jpg"
+        Image.new("RGB", (4800, 3200), (150, 140, 120)).save(photo, quality=60)
+        declared = 4800 * 3200
+        monkeypatch.setattr(rq, "_PHOTO_MAX_PIXELS", declared // 4)
+        rq.clear_photo_cache()
+        assert rq._photo_open(photo, 800, 480) is not None, (
+            "a JPEG that drafts well under the cap was refused — the cap is "
+            "being checked against the declared size instead of the drafted one"
+        )
+
+    def test_drafting_shrinks_the_decode_for_a_large_jpeg(self, tmp_path):
+        """The mechanism itself: draft must reduce the size Pillow decodes,
+        before any pixels are materialised."""
+        photo = tmp_path / "pano.jpg"
+        Image.new("RGB", (6000, 4000), (120, 130, 140)).save(photo, quality=60)
+        with Image.open(photo) as raw:
+            assert raw.size == (6000, 4000)
+            raw.draft("RGB", (1600, 960))
+            assert raw.width * raw.height < 6000 * 4000 / 3, (
+                f"draft left the image at {raw.size} — a large JPEG would be "
+                "decoded at full resolution"
+            )
+
+    def test_an_oversized_source_degrades_to_the_bundled_plate(self, tmp_path, monkeypatch):
+        """End to end: the refusal reaches the same fallback every other bad
+        source does, rather than raising into the per-tick render path."""
+        rq.clear_photo_cache()
+        unconfigured = pixel_bytes(self._render())
+        photo = tmp_path / "huge.png"
+        Image.new("RGB", (64, 64), (10, 20, 30)).save(photo)
+        monkeypatch.setattr(rq, "_PHOTO_MAX_PIXELS", 100)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
+        rq.clear_photo_cache()
+        assert pixel_bytes(self._render()) == unconfigured
+
+    # -- the preview stamp ----------------------------------------------------
+
+    def test_the_source_stamp_moves_when_the_file_changes(self, tmp_path, monkeypatch):
+        """What the curator UI's preview cache keys on."""
+        photo = self._photo(tmp_path / "p.png", chroma_boost=0.3)
+        monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
+        rq.clear_photo_cache()
+        first = rq.photo_source_stamp(self.ROW)
+        assert first is not None and rq.photo_source_stamp(self.ROW) == first
+        self._photo(photo, bands="bright_blob")
+        assert rq.photo_source_stamp(self.ROW) != first
+
+    def test_the_source_stamp_is_none_when_unconfigured(self):
+        rq.clear_photo_cache()
+        assert rq.photo_source_stamp(self.ROW) is None
+
+    def test_the_source_stamp_survives_an_unstattable_file(self, tmp_path, monkeypatch):
+        """A stamp is a cache key, so it must not raise on a file that has
+        gone away between listing and stat."""
+        photo = self._photo(tmp_path / "p.png", chroma_boost=0.3)
+        monkeypatch.setattr(rq, "_photo_for_row", lambda row: photo)
+        real_stat = pathlib.Path.stat
+
+        def vanish(self, *a, **kw):
+            if self == photo:
+                raise FileNotFoundError(2, "No such file or directory")
+            return real_stat(self, *a, **kw)
+
+        monkeypatch.setattr(pathlib.Path, "stat", vanish)
+        assert rq.photo_source_stamp(self.ROW) == (str(photo), None, None)
+
     # -- caching -------------------------------------------------------------
 
     def test_the_cache_is_bounded(self, tmp_path, monkeypatch):

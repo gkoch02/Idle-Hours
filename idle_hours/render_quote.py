@@ -25614,6 +25614,12 @@ _PHOTO_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", "
 _PHOTO_CACHE: "collections.OrderedDict[tuple, tuple[Image.Image, tuple[int, int, int, int]]]" = (
     collections.OrderedDict())
 _PHOTO_CACHE_MAX = 6
+# Decode cap, measured rather than chosen: a 56 MP PNG costs 212 MiB of RSS,
+# so ~3.8 MiB per megapixel. 40 MP bounds a non-draftable decode at ~150 MiB,
+# which a 512 MB Pi survives alongside the main loop. JPEGs are drafted down
+# before this is checked, so in practice it only turns away a large image in a
+# format that cannot be scaled at decode time. See ``_photo_open``.
+_PHOTO_MAX_PIXELS = 40_000_000
 # Warnings latch per resolved source so a stale path does not write a line per
 # render — the ``_DEGRADED_WARNED`` pattern in ``pick_quote``, for the same
 # reason: on this hardware SD-card write amplification is a design concern.
@@ -25804,11 +25810,45 @@ def _photo_open(path: Path, width: int, height: int) -> Image.Image | None:
 
     Everything an operator can hand us is handled here rather than at the call
     site: EXIF rotation (a phone photo is stored landscape with a rotate tag),
-    palette / CMYK / alpha modes, and Pillow's decompression-bomb guard. Any
-    failure returns ``None`` and the caller falls back to the bundled plate.
+    palette / CMYK / alpha modes, and a size bound. Any failure returns
+    ``None`` and the caller falls back to the bundled plate.
+
+    **Draft first, then cap, then decode**, and the order is the whole point.
+    ``Image.open`` is lazy — it reads the header only — so both steps happen
+    before a single pixel is materialised:
+
+    * ``draft`` asks the JPEG decoder to scale down during the DCT pass. A
+      108 MP phone panorama arrives declaring 12000x9000 and comes out of the
+      draft call at 3000x2250, so the decode that follows is ~7 MP rather than
+      ~108. It is a no-op for PNG and every other format, which is why the cap
+      below is still needed.
+    * The cap then rejects what draft could not shrink. Pillow's own
+      decompression-bomb guard does not cover this: it *raises* only above
+      ``MAX_IMAGE_PIXELS * 2`` (179 MP) and merely *warns* between there and
+      89.5 MP, so an image well inside its limits still decodes eagerly.
+      Measured, a 56 MP PNG costs 212 MiB of RSS — enough to OOM the render
+      child on a 512 MB Pi Zero 2 W, which would kill the render rather than
+      reach the graceful fallback this theme promises. ``_PHOTO_MAX_PIXELS``
+      is set from that measurement.
+
+    Drafting before capping is what keeps the cap from rejecting real cameras:
+    a 48 MP phone JPEG is over the limit as declared and comfortably under it
+    once drafted, so the only thing the cap actually turns away is a large
+    image in a format that cannot be scaled at decode time.
     """
     try:
         with Image.open(path) as raw:
+            # Ask for twice the target box so the LANCZOS cover-crop still has
+            # resampling headroom; draft only ever overshoots upward.
+            raw.draft("RGB", (width * 2, height * 2))
+            pixels = raw.width * raw.height
+            if pixels > _PHOTO_MAX_PIXELS:
+                _photo_warn_once(
+                    f"toobig:{path}",
+                    f"{path} is {pixels / 1e6:.0f} MP after draft, over the "
+                    f"{_PHOTO_MAX_PIXELS / 1e6:.0f} MP decode cap; using the bundled plate",
+                )
+                return None
             raw.load()
             oriented = ImageOps.exif_transpose(raw) or raw
             rgb = oriented.convert("RGB")
@@ -25816,6 +25856,32 @@ def _photo_open(path: Path, width: int, height: int) -> Image.Image | None:
         _photo_warn_once(f"open:{path}", f"cannot read {path}: {exc!r}; using the bundled plate")
         return None
     return _photo_condition(_photo_cover_crop(rgb, width, height))
+
+
+def photo_source_stamp(quote_row: dict) -> tuple | None:
+    """A hashable stamp for the photograph this row would render, or ``None``.
+
+    Public because the curator UI's ``/api/preview`` caches encoded PNGs, and
+    its key is built from theme, time, quote identity and corpus stamps —
+    none of which move when an operator swaps the file at ``--photo-path``.
+    That cache returns before ``_photo_frame_for`` runs, so its own
+    mtime-aware key never gets consulted and the preview shows the old picture
+    indefinitely (a Codex review finding on the PR that added this theme).
+
+    The stamp resolves the row's own photograph, so it also covers a directory
+    whose membership changed: adding or removing a file can move which entry
+    the row digest lands on, and the resolved path is what is stamped.
+    """
+    path = _photo_for_row(quote_row)
+    if path is None:
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        # Still distinguishes one missing path from another, and from a
+        # readable one — which is all the cache key needs.
+        return (str(path), None, None)
+    return (str(path), stat.st_mtime_ns, stat.st_size)
 
 
 def _photo_frame_for(quote_row: dict, width: int, height: int) -> tuple[Image.Image, tuple[int, int, int, int]]:
