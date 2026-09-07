@@ -68,6 +68,33 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _roster_diff(found: list[str], expected: list[str]) -> str:
+    """Describe how an extracted roster differs from the registry it mirrors.
+
+    Four distinguishable faults, because a one-directional membership check
+    only catches the first: a theme missing from the doc, a stale entry left
+    behind after a rename or removal, a name listed twice, and the same names
+    in the wrong order.
+    """
+    missing = [t for t in expected if t not in found]
+    stale = [t for t in found if t not in expected]
+    dupes = sorted({t for t in found if found.count(t) > 1})
+    lines = []
+    if missing:
+        lines.append(f"  missing (in code, absent from the doc): {missing}")
+    if stale:
+        lines.append(f"  stale (in the doc, absent from code):   {stale}")
+    if dupes:
+        lines.append(f"  listed more than once:                  {dupes}")
+    if not lines:
+        i = next(i for i, (a, b) in enumerate(zip(found, expected)) if a != b)
+        lines.append(
+            f"  same names, wrong order — first divergence at index {i}: "
+            f"the doc has {found[i]!r}, code has {expected[i]!r}"
+        )
+    return "\n".join(lines)
+
+
 def _find(path: Path, pattern: str, sentence: str) -> re.Match:
     """Locate a fenced sentence, failing loudly rather than vacuously."""
     match = re.search(pattern, _read(path))
@@ -180,15 +207,11 @@ class TestDocumentedThemeRosters:
     """
 
     def test_readme_preview_table_matches_theme_order(self):
-        seen: list[str] = []
-        for name in re.findall(r"previews/([a-z_]+)\.png", _read(README_MD)):
-            if name not in seen:
-                seen.append(name)
-        assert seen, "README.md: no preview-table rows found."
-        assert seen == list(rq.THEME_ORDER), (
+        rows = re.findall(r"previews/([a-z_]+)\.png", _read(README_MD))
+        assert rows, "README.md: no preview-table rows found."
+        assert rows == list(rq.THEME_ORDER), (
             "README.md theme table is out of sync with THEME_ORDER.\n"
-            f"  missing: {[t for t in rq.THEME_ORDER if t not in seen]}\n"
-            f"  extra:   {[t for t in seen if t not in rq.THEME_ORDER]}"
+            + _roster_diff(rows, list(rq.THEME_ORDER))
         )
 
     def test_readme_regeneration_loop_matches_theme_order(self):
@@ -201,7 +224,7 @@ class TestDocumentedThemeRosters:
             "README.md preview-regeneration loop is out of sync with THEME_ORDER."
         )
 
-    def test_readme_reference_list_names_every_theme(self):
+    def test_readme_reference_list_matches_theme_order(self):
         line = next(
             (
                 ln
@@ -211,10 +234,13 @@ class TestDocumentedThemeRosters:
             None,
         )
         assert line, "README.md: no '- <N> themes ship built-in' reference bullet."
-        named = set(re.findall(r"`([a-z_]+)`", line))
-        assert not set(rq.THEME_ORDER) - named, (
-            "README.md reference list omits: "
-            f"{sorted(set(rq.THEME_ORDER) - named)}"
+        # Every backticked snake_case token on this line is a theme name: the
+        # parenthetical descriptions quote flags and paths, which carry hyphens,
+        # dots or slashes and so fall outside `[a-z_]+`.
+        named = re.findall(r"`([a-z_]+)`", line)
+        assert named == list(rq.THEME_ORDER), (
+            "README.md reference list is out of sync with THEME_ORDER.\n"
+            + _roster_diff(named, list(rq.THEME_ORDER))
         )
 
     def test_claude_md_button_b_cycle_matches_theme_cycle(self):
@@ -225,15 +251,14 @@ class TestDocumentedThemeRosters:
             r"advances one step through `render_quote\.THEME_ORDER` \(([^);]+)",
             "Cycle theme — advances one step through THEME_ORDER (<the chain>)",
         )
-        chain = [n for n in re.findall(r"[a-z_]+", m.group(1)) if n in rq.THEMES]
+        chain = re.findall(r"[a-z_]+", m.group(1))
         # The chain is written as a loop, closing on the theme it opened with.
         assert chain and chain[-1] == chain[0], (
             "CLAUDE.md button-B chain should close back on its first theme."
         )
         assert chain[:-1] == list(theme_cycle()), (
             "CLAUDE.md button-B chain is out of sync with theme_cycle().\n"
-            f"  missing: {[t for t in theme_cycle() if t not in chain]}\n"
-            f"  extra:   {[t for t in chain[:-1] if t not in theme_cycle()]}"
+            + _roster_diff(chain[:-1], list(theme_cycle()))
         )
 
 
