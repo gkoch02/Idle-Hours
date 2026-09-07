@@ -14085,14 +14085,20 @@ def _betweenus_is_dark(colors: dict) -> bool:
     return colors.get("page_bg") == SPECTRA6["black"]
 
 
-def _betweenus_noise(x: int, y: int) -> int:
+def position_noise(x: int, y: int) -> int:
     """A 0..255 positional hash — white noise, deterministic per pixel.
 
-    The paper wash thresholds this rather than a Bayer rank: at the 3-9%
-    densities involved an ordered tile lays a visible dot lattice (the "lemon
-    grid" ``kanagawa`` documents), where a hash scatter reads as paper fibre.
-    ``bakelite``'s warning that hash-alone reads as sandpaper is about a
-    *mid-density* field; a sparse one is exactly what fibre looks like.
+    A sparse *paper* wash thresholds this rather than a Bayer rank: at the
+    3-9% densities involved an ordered tile lays a visible dot lattice (the
+    "lemon grid" ``kanagawa`` documents), where a hash scatter reads as paper
+    fibre. ``bakelite``'s warning that hash-alone reads as sandpaper is about
+    a *mid-density* field; a sparse one is exactly what fibre looks like.
+
+    Used by ``betweenus``'s paper gradient, where the wash densities are low
+    enough that an ordered tile would lay a visible lattice. ``tarot``'s
+    vellum wants the same aperiodic character over a whole 800x480 ground,
+    which is too many pixels for a per-pixel Python call — see
+    :func:`_tarot_noise` for the C-speed equivalent.
     """
     h = (x * 374761393 + y * 668265263) & 0xFFFFFFFF
     h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
@@ -14113,7 +14119,7 @@ def _betweenus_paper(width: int, height: int, dark: bool) -> Image.Image:
     paper = Image.new("RGB", (width, height), black if dark else white)
     px = paper.load()
     span = max(1, height - 1)
-    noise = _betweenus_noise
+    noise = position_noise
     for y in range(height):
         t = y / span
         if dark:
@@ -16482,55 +16488,95 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
 
 # ─── tarot (major-arcana card) ───────────────────────────────────────────────
 
+# Vellum ground densities. Cream is the dominant tone; foxing is a
+# sparse accent — a card decades old and handled, not a confetti field.
+_TAROT_CREAM_DENSITY = 0.12
+_TAROT_FOXING_DENSITY = 0.035
+# Independent streams for the two layers. Sampling one stream twice
+# correlates them — the failure ``cardcatalog`` hit when its foxing
+# lattice shared a period with its cream wash and painted exactly
+# nothing.
+_TAROT_CREAM_SEED = 0x7A6017
+_TAROT_FOXING_SEED = 0x7A6018
+
+
+def _tarot_noise(width: int, height: int, seed: int) -> Image.Image:
+    """A deterministic ``L`` field of uniform noise, one byte per pixel.
+
+    The vellum needs an *aperiodic* scatter: the 4x4 Bayer tile this used
+    to be gated on has its cell-0 positions on a diagonal, so a wash at
+    ``cell < 2`` paints diagonal pinstripes — measured on the calibrated
+    panel inks the ground read as hard corduroy rather than parchment,
+    the "lemon grid" ``kanagawa`` documents. The defect was invisible in
+    an RGB preview, where the saturated yellow specks swamp the
+    structure; it only surfaced against the muted inks.
+
+    :func:`position_noise` gives the right character but is a Python call
+    per pixel, and this ground covers the whole 800x480 canvas twice
+    over — ~770k calls, which measured at 60% of the frame's total render
+    time. ``Random.randbytes`` is the same uniform white noise from a C
+    generator and is seeded, so the frame stays byte-identical across
+    runs and processes (``hash()`` would not: it is PYTHONHASHSEED-salted).
+    Compositing then happens through ``point`` LUTs and ``paste`` masks,
+    both C-speed, instead of a per-pixel Python loop.
+    """
+    return Image.frombytes("L", (width, height), random.Random(seed).randbytes(width * height))
+
+
 def _tarot_paint_vellum(image: Image.Image) -> None:
-    """Sparse R+G sepia foxing-stipple over a warm Y+W cream ground.
+    """Sparse R+G sepia foxing over a warm Y+W cream ground.
 
     Two-layer aged-paper recipe:
 
-    1. Cream Y+W base — same 1-in-8 yellow Bayer wash as
-       ``_astrarium_paint_cream_wash``. Gives the page a warm
-       parchment tone before any foxing lands.
-    2. Sparse R+G foxing — one red OR one green pixel per 4×4 Bayer
-       tile at cell value 0 (1-in-16 ≈ 6% density), with the
-       red-vs-green choice driven by tile-coordinate parity so the
-       foxing scatter looks random at panel distance rather than
-       grid-aligned. Adjacent R + G dots blend into the rust-brown
-       sepia tone real archival paper develops as the lignin
-       oxidises — the same chromatic-aging recipe ``newsprint``
-       uses for its foxing layer, but at half the density and
-       layered over cream rather than over a darker halftone.
+    1. Cream Y+W base at ``_TAROT_CREAM_DENSITY`` — warm parchment tone
+       before any foxing lands.
+    2. Sparse R+G foxing at ``_TAROT_FOXING_DENSITY``, split red/green by
+       the low bit of the same draw. Adjacent R + G dots blend into the
+       rust-brown sepia real archival paper develops as the lignin
+       oxidises — the chromatic-ageing recipe ``newsprint`` uses, at a
+       fraction of the density and over cream rather than a darker
+       halftone.
 
-    Reads as older, archival ritual-document card stock — distinct
-    from the cleaner gold-cream Y+W register the manuscript-themed
-    themes (illuminated / herbarium / mucha / astrarium) use.
+    Foxing is pasted first and cream over it, so a pixel that both layers
+    claim comes out cream. Paints the whole canvas unconditionally, so it
+    must be the first thing laid on the frame.
     """
-    px = image.load()
-    w, h = image.size
-    WHITE = SPECTRA6["white"]
-    YELLOW = SPECTRA6["yellow"]
-    RED = SPECTRA6["red"]
-    GREEN = SPECTRA6["green"]
-    for y in range(h):
-        row = BAYER_4x4[y % 4]
-        for x in range(w):
-            if px[x, y] != WHITE:
-                continue
-            cell = row[x % 4]
-            if cell < 2:
-                # Layer 1: cream Y+W base — 2-in-16 yellow wash.
-                px[x, y] = YELLOW
-            elif cell == 4 and (((x // 4) + (y // 4)) & 1):
-                # Layer 2a: sparse red foxing dot (1-in-32, parity-half).
-                px[x, y] = RED
-            elif cell == 5 and not (((x // 4) + (y // 4)) & 1):
-                # Layer 2b: sparse green foxing dot (1-in-32, opposite parity).
-                px[x, y] = GREEN
+    width, height = image.size
+    cream_cut = round(_TAROT_CREAM_DENSITY * 255)
+    fox_cut = round(_TAROT_FOXING_DENSITY * 255)
+    foxing = _tarot_noise(width, height, _TAROT_FOXING_SEED)
+    image.paste(SPECTRA6["red"], (0, 0), foxing.point(lambda v: 255 if v < fox_cut and v & 1 else 0))
+    image.paste(SPECTRA6["green"], (0, 0), foxing.point(lambda v: 255 if v < fox_cut and not v & 1 else 0))
+    cream = _tarot_noise(width, height, _TAROT_CREAM_SEED)
+    image.paste(SPECTRA6["yellow"], (0, 0), cream.point(lambda v: 255 if v < cream_cut else 0))
 
 
 _TAROT_ROMAN_NUMERALS = {
     1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
     7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII",
 }
+
+
+# Card and reading-column geometry. The card used to be a 520x440
+# rectangle centred on the canvas, which left a margin of 20 px at the
+# top and none worth the name at the sides: it read as a *border around
+# the page*, not as a card lying on something. It also forced the
+# emblem and the quote to share one narrow column, so the trump
+# illustration got ~140 px of height and the quote got a 92 px strip.
+#
+# A real card is portrait — a tarot card is 2.75 x 4.75 inches, ratio
+# 0.58 — and a real reading is a card laid on a cloth with the
+# interpretation written beside it. Splitting the canvas that way fixes
+# three things at once: the card reads as an object (portrait, shadowed,
+# with cloth visible on every side), the emblem gets a tall panel of its
+# own, and the quote gets a full column instead of a strip. It is the
+# same left-object / right-text composition ``vinyl`` and ``astrarium``
+# already use, and it is the only arrangement that lets the vellum
+# ground do any work at all — before, every pixel of it was hidden
+# under the card.
+_TAROT_CARD_RECT = (34, 24, 294, 456)  # 260 x 432 — ratio 0.602
+_TAROT_CARD_SHADOW = 4
+_TAROT_READING_RECT = (324, 54, 768, 426)
 
 
 def _tarot_paint_doubled_border(
@@ -16547,62 +16593,37 @@ def _tarot_paint_doubled_border(
     draw.rectangle((x0 + 5, y0 + 5, x1 - 5, y1 - 5), outline=BLACK)
 
 
-def _tarot_paint_corner_numerals(
-    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int], hour_int: int,
+def _tarot_paint_corner_pips(
+    draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
 ) -> None:
-    """Small Roman numerals in all four corners (bottom corners rotated 180°).
+    """Small rubricated lozenges in the card's four inner corners.
 
-    Playing-card convention: the rank glyph sits in every corner so the
-    hour reads regardless of orientation. Each numeral is rendered to a
-    small ``L``-mode mask, optionally rotated 180° for the bottom
-    corners, then painted into the card via a black solid fill — works
-    around PIL's lack of native ``draw.text(rotation=...)``.
+    This slot used to carry the hour as a Roman numeral in all four
+    corners, the bottom pair rotated 180° on the playing-card index
+    convention. It does not survive contact with Roman numerals: a
+    playing card's index is a glyph chosen to stay readable inverted,
+    where a rotated ``XI`` reads as ``IX`` — the *wrong hour*, stated
+    twice on the card — and a rotated ``VII`` is not a numeral at all.
+    Enlarging them made the failure legible rather than fixing it.
+
+    The convention was also imported from the wrong object. Marseille
+    and Rider-Waite trumps carry no corner indices; they carry the
+    numeral at the head and the name at the foot, which is what this
+    card now does — so the corner glyphs were redundant with the head
+    numeral even when they resolved. A red lozenge keeps the corners
+    from reading as empty and stays inside the rubricated vocabulary the
+    doubled border and the head asterism already use.
     """
-    BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
     x0, y0, x1, y1 = rect
-    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
-    font = load_font(theme_font_candidates("tarot", "ornament"), size=18)
-    # Render the glyph to a tight mask we can paint+rotate as a unit.
-    glyph_bbox = draw.textbbox((0, 0), numeral, font=font)
-    gw = glyph_bbox[2] - glyph_bbox[0]
-    gh = glyph_bbox[3] - glyph_bbox[1]
-    pad = 2
-    tile_w = gw + 2 * pad
-    tile_h = gh + 2 * pad
-    mask = Image.new("L", (tile_w, tile_h), 0)
-    ImageDraw.Draw(mask).text((pad - glyph_bbox[0], pad - glyph_bbox[1]), numeral, font=font, fill=255)
-
-    inset = 14
-    upright_positions = [
-        (x0 + inset, y0 + inset),               # top-left
-        (x1 - inset - tile_w, y0 + inset),      # top-right
-    ]
-    rotated_positions = [
-        (x0 + inset, y1 - inset - tile_h),      # bottom-left
-        (x1 - inset - tile_w, y1 - inset - tile_h),  # bottom-right
-    ]
-    # Upright corners: paint via the mask directly.
-    for (px_x, px_y) in upright_positions:
-        ink = Image.new("RGB", (tile_w, tile_h), BLACK)
-        image.paste(ink, (px_x, px_y), mask)
-    # Rotated corners: rotate the mask 180° before pasting.
-    rotated_mask = mask.rotate(180)
-    for (px_x, px_y) in rotated_positions:
-        ink = Image.new("RGB", (tile_w, tile_h), BLACK)
-        image.paste(ink, (px_x, px_y), rotated_mask)
-    # Tiny red dot underneath each upright numeral (and above each rotated
-    # one) as a "suit pip" — distinguishes the IH rank glyph from a real
-    # playing card without competing with the central illustration.
-    pip_r = 2
-    for (px_x, px_y) in upright_positions:
-        dot_cx = px_x + tile_w // 2
-        dot_cy = px_y + tile_h + 3
-        draw.ellipse((dot_cx - pip_r, dot_cy - pip_r, dot_cx + pip_r, dot_cy + pip_r), fill=RED)
-    for (px_x, px_y) in rotated_positions:
-        dot_cx = px_x + tile_w // 2
-        dot_cy = px_y - 3
-        draw.ellipse((dot_cx - pip_r, dot_cy - pip_r, dot_cx + pip_r, dot_cy + pip_r), fill=RED)
+    inset = 17
+    r = 4
+    for px_x in (x0 + inset, x1 - inset):
+        for px_y in (y0 + inset, y1 - inset):
+            draw.polygon(
+                [(px_x, px_y - r), (px_x + r, px_y), (px_x, px_y + r), (px_x - r, px_y)],
+                fill=RED,
+            )
 
 
 def _tarot_paint_pentagram(
@@ -16654,43 +16675,269 @@ def _tarot_paint_card_name(
     )
 
 
+# The four emblems below were rebuilt after all twelve were rendered
+# together and compared. The eight that read — Hierophant, Hermit,
+# Strength, Wheel, World and the rest — all resolve into a *figure*: a
+# trapezoid robe under a circle head, with the trump's attribute held
+# beside it. The four that did not read had attributes and no figure, so
+# the eye had nothing to assemble them onto: the Magician was a rod with
+# two beads, the Emperor an empty rectangle, Justice a trident over two
+# buckets, the Lovers a pair of overlapping discs that merged into one
+# blot. They are drawn to the same robe-and-head skeleton now.
+#
+# Native coordinates stay inside ±70 horizontally and ±88 vertically:
+# the illustration panel is 216 x 274 and _TAROT_EMBLEM_SCALE enlarges
+# by 1.5, so anything beyond that is clipped at the keyline.
+
+
+def _tarot_face(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    r: int,
+    *,
+    hair: str = "none",
+    gaze: int = 0,
+) -> None:
+    """Brows, eyes, nose and mouth inside a head circle.
+
+    The single highest-value mark on any of these emblems. An empty
+    circle over a trapezoid is a ball on a wedge; two eyes and a mouth
+    make the same two shapes read as a person, and every attribute the
+    trump carries then reads as *held* rather than as floating beside a
+    diagram.
+
+    Kept to five strokes because the head is only ~30 px across on the
+    panel: brows are drawn as well as eyes because at this size a lone
+    dot reads as a blemish, where a dot under a short bar reads as an
+    eye. ``gaze`` shifts both pupils sideways so a figure can look at
+    the attribute it holds — a free way to tie the two together.
+
+    ``hair`` is a coarse silhouette cue, not characterisation: the
+    twelve trumps are conventionally a mix of crowned, veiled, bearded
+    and bare figures, and without *some* differentiation above the brow
+    every emblem's head is identical.
+    """
+    BLACK = SPECTRA6["black"]
+    eye_dx = max(2, round(r * 0.36))
+    eye_r = max(1, r // 7)
+    eye_y = cy - max(1, r // 8)
+    if hair == "long":
+        # Two narrow falls either side of the face, drawn before the
+        # features so the face sits in front of them. Strokes rather
+        # than filled polygons: a mass this size beside a ~30 px head
+        # reads as a motorcycle helmet.
+        for side in (-1, 1):
+            draw.line(
+                [
+                    (cx + side * (r - 2), cy - r // 2),
+                    (cx + side * (r + 2), cy + r // 2),
+                    (cx + side * (r - 1), cy + r + 4),
+                ],
+                fill=BLACK, width=3, joint="curve",
+            )
+    if hair in ("long", "veil", "short"):
+        # A shallow cap across the brow — the mark that stops every head
+        # reading as a bare sphere. The arc endpoints matter: a chord
+        # from 190 to 350 cuts almost exactly the top half of the circle
+        # and fills it solid, which is a helmet and not a hairline. 215
+        # to 325 lands the chord high enough to leave a forehead.
+        draw.chord((cx - r, cy - r, cx + r, cy + r), 215, 325, fill=BLACK)
+    for side in (-1, 1):
+        ex = cx + side * eye_dx
+        draw.line((ex - eye_r - 1, eye_y - eye_r - 2, ex + eye_r + 1, eye_y - eye_r - 2), fill=BLACK, width=1)
+        draw.ellipse(
+            (ex - eye_r + gaze, eye_y - eye_r, ex + eye_r + gaze, eye_y + eye_r),
+            fill=BLACK,
+        )
+    draw.line((cx, eye_y + eye_r, cx, cy + r // 3), fill=BLACK, width=1)
+    draw.line((cx - r // 3, cy + r // 2, cx + r // 3, cy + r // 2), fill=BLACK, width=1)
+    if hair == "beard":
+        # Outline plus two interior strokes, not a solid wedge: filled,
+        # it swallows the mouth the face just spent three strokes
+        # establishing.
+        draw.polygon(
+            [
+                (cx - r + 3, cy + r // 2),
+                (cx + r - 3, cy + r // 2),
+                (cx + r // 3, cy + r + 8),
+                (cx - r // 3, cy + r + 8),
+            ],
+            outline=BLACK, width=2,
+        )
+        for side in (-1, 1):
+            draw.line(
+                (cx + side * r // 3, cy + r // 2 + 2, cx + side * r // 5, cy + r + 5),
+                fill=BLACK, width=1,
+            )
+
+
+def _tarot_drapery(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    shoulder_y: int,
+    hem_y: int,
+    half_top: int,
+    half_bot: int,
+    folds: int = 4,
+) -> None:
+    """Fold lines down the inside of a robe, at one third the outline weight.
+
+    A trapezoid is a wedge until something inside it says "cloth". The
+    folds are hairlines against the outline's 3 px so the eye reads a
+    hierarchy — contour, then interior detail — which is what separates
+    a drawing from a diagram; a uniform weight everywhere is most of why
+    the first version of these emblems looked like clip art.
+
+    Each fold fans from a point near the neck to its own place on the
+    hem, because parallel verticals read as stripes rather than as cloth
+    hanging off a body.
+    """
+    BLACK = SPECTRA6["black"]
+    # Fixed irrational-ish offsets rather than an RNG: the frame has to
+    # stay byte-deterministic, and evenly-spaced folds read as the
+    # pleats of an accordion skirt rather than as cloth hanging on a
+    # body. Four values cycled across any fold count is enough to break
+    # the symmetry without any per-emblem tuning.
+    jitter = (0.0, 0.13, -0.09, 0.06, -0.15)
+    for i in range(1, folds + 1):
+        t = i / (folds + 1) + jitter[i % len(jitter)] * 0.5
+        x_top = cx + round((t - 0.5) * 2 * half_top * 0.55)
+        x_bot = cx + round((t - 0.5) * 2 * half_bot * 0.88)
+        mid_y = shoulder_y + (hem_y - shoulder_y) * (0.5 + jitter[i % len(jitter)])
+        mid_x = x_top + (x_bot - x_top) * 0.45
+        draw.line(
+            [(x_top, shoulder_y + 4), (mid_x, mid_y), (x_bot, hem_y - 2)],
+            fill=BLACK, width=1, joint="curve",
+        )
+
+
+def _tarot_hand(draw: ImageDraw.ImageDraw, x: float, y: float, r: int = 4) -> None:
+    """A small filled disc terminating an arm.
+
+    Crude on purpose — at this scale a modelled hand is four ambiguous
+    pixels. What matters is that the arm *ends* in something rather than
+    stopping mid-air, so the attribute beyond it reads as gripped.
+    """
+    draw.ellipse((x - r, y - r, x + r, y + r), fill=SPECTRA6["black"])
+
+
+def _tarot_arm(
+    draw: ImageDraw.ImageDraw,
+    x0: float, y0: float, x1: float, y1: float,
+    *, elbow: float = 0.35, hand: bool = True,
+) -> tuple[float, float]:
+    """A two-segment arm from shoulder to hand. Returns the hand's centre.
+
+    A straight line from body to attribute reads as a stick; one bend
+    reads as a limb. ``elbow`` displaces the joint perpendicular to the
+    shoulder-to-hand line, so the direction of the bend follows the
+    reach instead of being hardcoded per emblem.
+    """
+    BLACK = SPECTRA6["black"]
+    mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+    dx, dy = x1 - x0, y1 - y0
+    span = math.hypot(dx, dy) or 1
+    ex, ey = mx - dy / span * span * elbow * 0.35, my + dx / span * span * elbow * 0.35
+    draw.line([(x0, y0), (ex, ey), (x1, y1)], fill=BLACK, width=3, joint="curve")
+    if hand:
+        _tarot_hand(draw, x1, y1)
+    return x1, y1
+
+
+def _tarot_robed_figure(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    top: int,
+    bottom: int,
+    half_w: int,
+    *,
+    hair: str = "none",
+    gaze: int = 0,
+    folds: int = 4,
+) -> tuple[int, int]:
+    """Head over a trapezoid robe, with a face and drapery. Returns (cx, cy) of the head.
+
+    ``top`` is the crown of the head and ``bottom`` the hem, both
+    relative to the emblem centre; the head is sized from the gap so a
+    short figure does not end up all head.
+
+    This is the shape the eight legible emblems converged on, so the
+    four that failed were rebuilt onto it and four more that had grown
+    their own near-copies (Empress, Hierophant, Chariot, World) were
+    folded in as well — twelve hands drawing the same figure is why the
+    set read as inconsistent even where individual cards worked.
+    """
+    BLACK = SPECTRA6["black"]
+    head_r = max(9, (bottom - top) // 7)
+    head_cy = cy + top + head_r
+    draw.ellipse(
+        (cx - head_r, head_cy - head_r, cx + head_r, head_cy + head_r),
+        outline=BLACK, width=3,
+    )
+    _tarot_face(draw, cx, head_cy, head_r, hair=hair, gaze=gaze)
+    shoulder = head_cy + head_r + 4
+    half_top = head_r + 6
+    draw.polygon(
+        [
+            (cx - half_top, shoulder),
+            (cx + half_top, shoulder),
+            (cx + half_w, cy + bottom),
+            (cx - half_w, cy + bottom),
+        ],
+        outline=BLACK, width=3,
+    )
+    _tarot_drapery(draw, cx, shoulder, cy + bottom, half_top, half_w, folds=folds)
+    return cx, head_cy
+
+
+def _tarot_crown(draw: ImageDraw.ImageDraw, cx: int, base_y: int, half_w: int) -> None:
+    """Three-spike crown sitting on a band — the head's, not free-floating."""
+    BLACK = SPECTRA6["black"]
+    draw.rectangle((cx - half_w, base_y - 5, cx + half_w, base_y), fill=BLACK)
+    step = half_w
+    for tip_x in (cx - step, cx, cx + step):
+        draw.polygon(
+            [(tip_x - 5, base_y - 5), (tip_x, base_y - 17), (tip_x + 5, base_y - 5)],
+            fill=BLACK,
+        )
+
+
 def _tarot_emblem_magician(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Magician (I): tall staff held aloft, four suit symbols on a small
-    altar table, infinity lemniscate above the head — the canonical
-    Rider-Waite Magician composition compressed into a ~180×180 box.
+    """Magician (I): one arm raised to the wand, one pointing down.
+
+    "As above, so below" is the whole gesture of this trump, and it needs
+    two arms and a body to exist at all — the lemniscate and the four
+    tools are the annotations on it, not the subject.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # The vertical staff (held aloft, dominant axis).
-    draw.line((cx, cy - 90, cx, cy + 50), fill=BLACK, width=4)
-    # Staff cap dots (one above, one below the figure's "hand").
-    draw.ellipse((cx - 10, cy - 100, cx + 10, cy - 80), fill=RED)
-    draw.ellipse((cx - 10, cy + 42, cx + 10, cy + 62), fill=RED)
-    # Infinity lemniscate floating above the figure (Rider-Waite Magician
-    # has this hovering over the head — represents eternity / mastery).
-    draw.arc((cx - 36, cy - 76, cx,    cy - 50), start=0,   end=360, fill=BLACK, width=2)
-    draw.arc((cx,      cy - 76, cx + 36, cy - 50), start=0, end=360, fill=BLACK, width=2)
-    # Small altar table beneath the figure carrying the four suit symbols
-    # (cup / wand / sword / pentacle — the elemental tools of the trade).
-    altar_y = cy + 64
-    altar_x0, altar_x1 = cx - 70, cx + 70
-    draw.rectangle((altar_x0, altar_y, altar_x1, altar_y + 6), fill=BLACK)
-    # Suit pip 1: cup (left). U-shape outline.
-    sx = altar_x0 + 18
-    draw.arc((sx - 10, altar_y - 18, sx + 10, altar_y + 2), 0, 180, fill=RED, width=2)
-    draw.line((sx - 10, altar_y - 8, sx - 10, altar_y - 18), fill=RED, width=2)
-    draw.line((sx + 10, altar_y - 8, sx + 10, altar_y - 18), fill=RED, width=2)
-    # Suit pip 2: wand (centre-left). Short vertical stroke.
-    sx = altar_x0 + 50
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-46, bottom=44, half_w=34)
+    # Lemniscate hovering above the head.
+    draw.arc((cx - 30, cy - 76, cx - 2, cy - 58), 0, 360, fill=BLACK, width=3)
+    draw.arc((cx + 2, cy - 76, cx + 30, cy - 58), 0, 360, fill=BLACK, width=3)
+    # Raised arm to the wand held aloft on the right.
+    draw.line((cx + 12, cy - 12, cx + 44, cy - 34), fill=BLACK, width=3)
+    draw.line((cx + 44, cy - 34, cx + 52, cy - 84), fill=BLACK, width=4)
+    draw.ellipse((cx + 44, cy - 94, cx + 60, cy - 78), fill=RED)
+    # Lowered arm pointing at the earth on the left.
+    draw.line((cx - 12, cy - 12, cx - 44, cy + 16), fill=BLACK, width=3)
+    draw.line((cx - 44, cy + 16, cx - 52, cy + 34), fill=BLACK, width=3)
+    # Altar of the four suit tools across the foot.
+    altar_y = cy + 62
+    draw.rectangle((cx - 62, altar_y, cx + 62, altar_y + 6), fill=BLACK)
+    sx = cx - 46  # cup
+    draw.arc((sx - 10, altar_y - 20, sx + 10, altar_y), 0, 180, fill=RED, width=3)
+    draw.line((sx - 10, altar_y - 10, sx - 10, altar_y - 20), fill=RED, width=3)
+    draw.line((sx + 10, altar_y - 10, sx + 10, altar_y - 20), fill=RED, width=3)
+    sx = cx - 16  # wand
     draw.line((sx, altar_y - 22, sx, altar_y - 2), fill=BLACK, width=3)
-    draw.ellipse((sx - 4, altar_y - 26, sx + 4, altar_y - 18), fill=RED)
-    # Suit pip 3: sword (centre-right). Vertical line + crossguard.
-    sx = altar_x1 - 50
-    draw.line((sx, altar_y - 22, sx, altar_y - 2), fill=BLACK, width=2)
-    draw.line((sx - 6, altar_y - 16, sx + 6, altar_y - 16), fill=BLACK, width=2)
-    # Suit pip 4: pentacle (right). Small red 5-point star.
-    sx = altar_x1 - 16
-    _tarot_paint_pentagram(draw, sx, altar_y - 12, 9, RED)
+    draw.ellipse((sx - 5, altar_y - 28, sx + 5, altar_y - 18), fill=RED)
+    sx = cx + 16  # sword
+    draw.line((sx, altar_y - 24, sx, altar_y - 2), fill=BLACK, width=3)
+    draw.line((sx - 8, altar_y - 16, sx + 8, altar_y - 16), fill=BLACK, width=3)
+    _tarot_paint_pentagram(draw, cx + 46, altar_y - 12, 11, RED)  # pentacle
 
 
 def _tarot_emblem_hermit(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
@@ -16861,216 +17108,162 @@ def _tarot_emblem_priestess(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None
 
 
 def _tarot_emblem_empress(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Empress (III): crowned figure on a throne with wheat at her feet.
+    """Empress (III): enthroned figure, twelve-star crown, wheat at her feet.
 
-    Compact silhouette: trapezoidal throne + a 12-star crown arc above
-    the head + a wheat-sheaf fan beneath the throne. The 12 stars are
-    the Empress's iconic ``corona stellarum duodecim`` (12-star crown,
-    Revelation 12 — also the crown of the Virgin Mary).
+    The throne used to *be* the figure — an outlined trapezoid with a
+    head balanced on its rim and a heart floating in the middle of it,
+    which read as a shield rather than as a woman on a seat. The throne
+    is a back behind her now and she sits in front of it.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Throne (trapezoidal, wider at the base).
-    throne = [
-        (cx - 60, cy + 60),
-        (cx - 40, cy - 20),
-        (cx + 40, cy - 20),
-        (cx + 60, cy + 60),
-    ]
-    draw.polygon(throne, outline=BLACK, width=3)
-    # Head (circle at top of throne back).
-    draw.ellipse((cx - 14, cy - 50, cx + 14, cy - 22), outline=BLACK, width=3)
-    # 12-star crown — arc of small red star dots above the head.
-    crown_r = 30
+    # Throne back rising behind her.
+    draw.polygon(
+        [(cx - 58, cy + 76), (cx - 46, cy - 34), (cx + 46, cy - 34), (cx + 58, cy + 76)],
+        outline=BLACK, width=3,
+    )
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-30, bottom=76, half_w=44, hair="long")
+    # Corona stellarum duodecim — the twelve-star crown of Revelation 12.
     for i in range(12):
-        # Half-circle arc from angle 200° to 340° (~140° sweep above the head).
         angle = math.radians(200 + i * (140 / 11))
-        sx = cx + crown_r * math.cos(angle)
-        sy = cy - 36 + crown_r * math.sin(angle)
+        sx = cx + 34 * math.cos(angle)
+        sy = head_cy + 34 * math.sin(angle)
         draw.ellipse((sx - 2, sy - 2, sx + 2, sy + 2), fill=RED)
-    # Heart-shield with Venus symbol on the empress's chest — simplified
-    # to a small red filled heart silhouette at chest height.
+    # Heart shield resting against the robe.
+    hy = cy + 18
     draw.polygon([
-        (cx, cy + 12),
-        (cx - 10, cy - 2),
-        (cx - 6, cy - 10),
-        (cx, cy - 4),
-        (cx + 6, cy - 10),
-        (cx + 10, cy - 2),
+        (cx, hy + 14), (cx - 11, hy), (cx - 7, hy - 9),
+        (cx, hy - 3), (cx + 7, hy - 9), (cx + 11, hy),
     ], fill=RED)
-    # Wheat sheaf fan beneath the throne — short black lines radiating
-    # from a centre point.
-    wheat_cy = cy + 78
+    # Wheat sheaf at her feet.
     for i in range(7):
         angle = math.radians(250 + i * 10)
-        x2 = cx + 26 * math.cos(angle)
-        y2 = wheat_cy + 26 * math.sin(angle)
-        draw.line((cx, wheat_cy, x2, y2), fill=BLACK, width=2)
-        # Wheat-head terminal dot.
+        x2 = cx + 24 * math.cos(angle)
+        y2 = cy + 86 + 24 * math.sin(angle)
+        draw.line((cx, cy + 86, x2, y2), fill=BLACK, width=2)
         draw.ellipse((x2 - 2, y2 - 2, x2 + 2, y2 + 2), fill=BLACK)
 
 
 def _tarot_emblem_emperor(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Emperor (IV): stone throne with ram-head finials + ankh scepter.
+    """Emperor (IV): seated crowned figure, ram finials, ankh and orb.
 
-    Rider-Waite Emperor's throne is carved with four ram heads (Aries,
-    his ruling sign); he holds the ankh (life) in his right hand and
-    an orb (dominion) in his left. The compact silhouette here marks
-    the throne's two upper finials as ram horns and shows the ankh
-    centred over the chest.
+    The throne used to be an empty outlined rectangle with a head
+    balanced on its rim, which read as a goalpost. It is two posts
+    *behind* a seated figure now, which is what a throne back is.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Throne (rectangular base + back).
-    draw.rectangle((cx - 56, cy - 30, cx + 56, cy + 80), outline=BLACK, width=3)
-    # Two ram-head finials at the top corners of the throne — spiral
-    # horns rendered as small curved arc clusters.
-    for finial_cx in (cx - 56, cx + 56):
-        # Stylised horn: two concentric arcs forming a spiral.
-        draw.arc((finial_cx - 14, cy - 50, finial_cx + 14, cy - 22), 0, 360, fill=BLACK, width=3)
-        draw.arc((finial_cx - 8, cy - 44, finial_cx + 8, cy - 28), 0, 360, fill=BLACK, width=2)
-    # Crowned head silhouette centred on the throne back.
-    draw.ellipse((cx - 14, cy - 18, cx + 14, cy + 10), outline=BLACK, width=3)
-    # Spiked crown above the head — three triangular points.
-    for tip_x in (cx - 10, cx, cx + 10):
-        draw.polygon([(tip_x - 4, cy - 18), (tip_x, cy - 28), (tip_x + 4, cy - 18)], fill=BLACK)
-    # Ankh scepter held in the right hand — circle on top of a cross.
-    ankh_cx, ankh_cy = cx + 38, cy + 30
-    draw.ellipse((ankh_cx - 6, ankh_cy - 14, ankh_cx + 6, ankh_cy - 2), outline=RED, width=2)
-    draw.line((ankh_cx, ankh_cy - 2, ankh_cx, ankh_cy + 20), fill=RED, width=2)
-    draw.line((ankh_cx - 8, ankh_cy + 6, ankh_cx + 8, ankh_cy + 6), fill=RED, width=2)
-    # Orb in the left hand — small filled red circle.
-    draw.ellipse((cx - 42, cy + 22, cx - 30, cy + 34), fill=RED)
+    # Throne back: two posts flanking the figure, ram spirals on top.
+    for post_x in (cx - 62, cx + 62):
+        draw.line((post_x, cy - 44, post_x, cy + 76), fill=BLACK, width=5)
+        draw.arc((post_x - 14, cy - 62, post_x + 14, cy - 34), 0, 360, fill=BLACK, width=3)
+        draw.arc((post_x - 7, cy - 55, post_x + 7, cy - 41), 0, 360, fill=BLACK, width=2)
+    draw.line((cx - 62, cy - 44, cx + 62, cy - 44), fill=BLACK, width=4)
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-26, bottom=76, half_w=44)
+    _tarot_crown(draw, cx, head_cy - 13, 11)
+    # Ankh scepter (right hand) and orb of dominion (left).
+    ax, ay = cx + 36, cy + 14
+    draw.ellipse((ax - 8, ay - 18, ax + 8, ay - 2), outline=RED, width=3)
+    draw.line((ax, ay - 2, ax, ay + 26), fill=RED, width=3)
+    draw.line((ax - 11, ay + 8, ax + 11, ay + 8), fill=RED, width=3)
+    draw.ellipse((cx - 44, cy + 8, cx - 26, cy + 26), fill=RED)
 
 
 def _tarot_emblem_hierophant(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Hierophant (V): triple-tiered papal tiara + crossed keys.
+    """Hierophant (V): bearded figure under the triregnum, hand raised in blessing.
 
-    Rider-Waite Hierophant wears the three-tier ``triregnum`` (papal
-    crown) and holds three crossed keys at his feet. The compact
-    silhouette here shows the stacked-trapezoid crown above the head
-    + crossed-keys below as the two anchoring motifs.
+    Was a bare circle under a stack of trapezoids with the keys lying
+    on the floor beneath a second, unrelated trapezoid. He holds the
+    keys now and the tiara sits on a head that has a face under it.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Head silhouette.
-    draw.ellipse((cx - 16, cy - 30, cx + 16, cy + 6), outline=BLACK, width=3)
-    # Triple tiara — three stacked trapezoids of decreasing width.
-    for i, (top_w, bot_w, top_y) in enumerate([
-        (28, 36, cy - 50),  # bottom tier
-        (22, 28, cy - 70),  # middle tier
-        (16, 22, cy - 88),  # top tier
-    ]):
-        bot_y = top_y + 14
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-24, bottom=74, half_w=42, hair="beard")
+    # Triple tiara stacked on the crown of the head.
+    # Three tiers with air between them. Stacked flush at 15 px each
+    # they merge into one tall solid trapezoid — a dunce cap, not a
+    # triregnum: the *bands* between the crowns are what make it read
+    # as three. Outlined rather than filled for the same reason the
+    # beard is.
+    base = head_cy - 14
+    for top_w, bot_w, depth in ((32, 40, 0), (24, 32, 17), (17, 24, 34)):
+        bot_y = base - depth
+        top_y = bot_y - 12
         draw.polygon([
-            (cx - bot_w // 2, bot_y),
-            (cx - top_w // 2, top_y),
-            (cx + top_w // 2, top_y),
-            (cx + bot_w // 2, bot_y),
-        ], fill=BLACK)
-    # Small cross on top of the highest tier.
-    draw.line((cx, cy - 88, cx, cy - 100), fill=BLACK, width=2)
-    draw.line((cx - 4, cy - 96, cx + 4, cy - 96), fill=BLACK, width=2)
-    # Vestment trapezoid below the head (suggests the figure's robe).
-    draw.polygon([
-        (cx - 18, cy + 6),
-        (cx + 18, cy + 6),
-        (cx + 42, cy + 60),
-        (cx - 42, cy + 60),
-    ], outline=BLACK, width=3)
-    # Crossed keys at his feet — two diagonal red lines with bow-handles.
-    draw.line((cx - 30, cy + 90, cx + 30, cy + 60), fill=RED, width=3)
-    draw.line((cx + 30, cy + 90, cx - 30, cy + 60), fill=RED, width=3)
-    # Bow handles at the upper ends.
-    draw.ellipse((cx + 24, cy + 54, cx + 38, cy + 68), outline=RED, width=2)
-    draw.ellipse((cx - 38, cy + 54, cx - 24, cy + 68), outline=RED, width=2)
+            (cx - bot_w // 2, bot_y), (cx - top_w // 2, top_y),
+            (cx + top_w // 2, top_y), (cx + bot_w // 2, bot_y),
+        ], outline=BLACK, width=2)
+        draw.rectangle((cx - bot_w // 2, bot_y - 3, cx + bot_w // 2, bot_y), fill=BLACK)
+    draw.line((cx, base - 46, cx, base - 58), fill=BLACK, width=2)
+    draw.line((cx - 4, base - 54, cx + 4, base - 54), fill=BLACK, width=2)
+    # Right hand raised in benediction, left holding the crossed keys.
+    _tarot_arm(draw, cx + 16, cy + 6, cx + 44, cy - 22)
+    _tarot_arm(draw, cx - 16, cy + 6, cx - 44, cy + 26)
+    for sign in (-1, 1):
+        draw.line((cx - 52, cy + 56 - sign * 12, cx - 22, cy + 26 + sign * 12), fill=RED, width=3)
+    draw.ellipse((cx - 58, cy + 38, cx - 44, cy + 52), outline=RED, width=2)
+    draw.ellipse((cx - 58, cy + 56, cx - 44, cy + 70), outline=RED, width=2)
 
 
 def _tarot_emblem_lovers(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Lovers (VI): two intertwined hearts beneath a hovering cherub.
+    """Lovers (VI): two figures beneath the sun, a tree behind each.
 
-    Rider-Waite Lovers shows a man + woman beneath the angel Raphael
-    against a backdrop of the Tree of Knowledge (right) and Tree of
-    Life (left). The compact silhouette here distils that to the two
-    intertwined hearts (union) under a small winged-figure (the angel)
-    flanked by two stylised tree silhouettes.
+    The two figures were discs of the same size overlapping at the
+    centre, which at panel distance merged into a single blot. They are
+    separated and given bodies, so the card reads as a pair.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Sun behind the angel — a small filled red disc.
-    draw.ellipse((cx - 14, cy - 90, cx + 14, cy - 62), fill=RED)
-    # Sun rays — 8 short red radials.
-    for i in range(8):
-        angle = i * math.pi / 4
-        x1 = cx + 18 * math.cos(angle)
-        y1 = cy - 76 + 18 * math.sin(angle)
-        x2 = cx + 26 * math.cos(angle)
-        y2 = cy - 76 + 26 * math.sin(angle)
-        draw.line((x1, y1, x2, y2), fill=RED, width=2)
-    # Angel silhouette — small head + spread wings beneath the sun.
-    draw.ellipse((cx - 8, cy - 52, cx + 8, cy - 36), outline=BLACK, width=2)
-    # Wings: two stylised arcs sweeping outward.
-    draw.arc((cx - 36, cy - 50, cx, cy - 30), 270, 90, fill=BLACK, width=3)
-    draw.arc((cx, cy - 50, cx + 36, cy - 30), 90, 270, fill=BLACK, width=3)
-    # Two intertwined hearts at the centre — overlapping heart silhouettes,
-    # left red-outline and right black-outline so they read as a couple.
-    def heart(draw_, cx_, cy_, scale, fill_, outline_):
-        # Polygon approximation of a heart shape.
-        pts = []
-        for t in range(0, 360, 6):
-            theta = math.radians(t)
-            r = scale * (1 - math.sin(theta))
-            x = cx_ + r * math.cos(theta) * 1.0
-            y = cy_ + r * math.sin(theta) * 0.9 - scale * 0.4
-            pts.append((x, y))
-        if fill_:
-            draw_.polygon(pts, fill=fill_)
-        if outline_:
-            for i in range(len(pts)):
-                draw_.line((pts[i], pts[(i + 1) % len(pts)]), fill=outline_, width=2)
-    heart(draw, cx - 14, cy + 16, 22, RED, None)
-    heart(draw, cx + 14, cy + 16, 22, None, BLACK)
-    # Two stylised tree silhouettes flanking the hearts.
-    for tree_cx in (cx - 60, cx + 60):
-        # Trunk.
-        draw.line((tree_cx, cy + 70, tree_cx, cy + 30), fill=BLACK, width=3)
-        # Canopy — small filled black circle.
-        draw.ellipse((tree_cx - 14, cy + 14, tree_cx + 14, cy + 36), outline=BLACK, width=2)
+    # Sun overhead with rays.
+    draw.ellipse((cx - 15, cy - 88, cx + 15, cy - 58), fill=RED)
+    for i in range(12):
+        a = i * math.pi / 6
+        draw.line(
+            (cx + 19 * math.cos(a), cy - 73 + 19 * math.sin(a),
+             cx + 29 * math.cos(a), cy - 73 + 29 * math.sin(a)),
+            fill=RED, width=2,
+        )
+    # The two figures, well clear of each other.
+    for fx in (cx - 38, cx + 38):
+        _tarot_robed_figure(draw, fx, cy, top=-34, bottom=52, half_w=24)
+    # A tree behind each — trunk plus canopy, at the outer margin. The
+    # canopy sits well above the heads and is drawn larger than one: at
+    # head size and head height it read as a second face per figure.
+    for tx in (cx - 68, cx + 68):
+        draw.line((tx, cy - 18, tx, cy + 52), fill=BLACK, width=3)
+        draw.ellipse((tx - 18, cy - 54, tx + 18, cy - 18), outline=BLACK, width=3)
+    # Joined hands between them — the union the trump is about.
+    draw.line((cx - 20, cy + 6, cx + 20, cy + 6), fill=BLACK, width=3)
+    draw.polygon(
+        [(cx, cy - 2), (cx + 9, cy + 6), (cx, cy + 16), (cx - 9, cy + 6)],
+        fill=RED,
+    )
 
 
 def _tarot_emblem_chariot(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Chariot (VII): canopied chariot box on two wheels.
+    """Chariot (VII): crowned charioteer riding a canopied car.
 
-    Rider-Waite Chariot shows the charioteer in a starry blue canopy
-    drawn by a pair of sphinxes (black + white). The compact silhouette
-    here distils that to the chariot box (rectangular cab + canopy with
-    four star-spotted columns) on two wheels.
+    The charioteer was a small empty circle peeping over the cab rim,
+    so the card read as an unmanned cart. He is a figure standing in
+    the car now, which is what the trump is about.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Two wheels at the base.
-    for wheel_cx in (cx - 50, cx + 50):
-        draw.ellipse((wheel_cx - 18, cy + 50, wheel_cx + 18, cy + 86), outline=BLACK, width=3)
-        # 4-spoke wheel.
-        draw.line((wheel_cx, cy + 50, wheel_cx, cy + 86), fill=BLACK, width=2)
-        draw.line((wheel_cx - 18, cy + 68, wheel_cx + 18, cy + 68), fill=BLACK, width=2)
-        # Red hub.
-        draw.ellipse((wheel_cx - 4, cy + 64, wheel_cx + 4, cy + 72), fill=RED)
-    # Chariot box (cab) — solid rectangle resting on the wheel axles.
-    draw.rectangle((cx - 56, cy + 10, cx + 56, cy + 56), outline=BLACK, width=3)
-    # Starry canopy above — four columns and a roof.
-    # Roof.
-    draw.line((cx - 60, cy - 30, cx + 60, cy - 30), fill=BLACK, width=3)
-    # Four columns dropping from the roof to the box top.
-    for col_x in (cx - 50, cx - 18, cx + 18, cx + 50):
-        draw.line((col_x, cy - 30, col_x, cy + 10), fill=BLACK, width=2)
-    # Red star centred above the canopy peak.
-    _tarot_paint_pentagram(draw, cx, cy - 50, 12, RED)
-    # Charioteer's head peeking above the cab.
-    draw.ellipse((cx - 10, cy - 8, cx + 10, cy + 12), outline=BLACK, width=2)
-    # Crown points on the head.
-    for tip_x in (cx - 6, cx, cx + 6):
-        draw.polygon([(tip_x - 3, cy - 8), (tip_x, cy - 14), (tip_x + 3, cy - 8)], fill=BLACK)
+    # Canopy roof and its four columns, behind the rider.
+    draw.line((cx - 58, cy - 62, cx + 58, cy - 62), fill=BLACK, width=3)
+    for col_x in (cx - 50, cx + 50):
+        draw.line((col_x, cy - 62, col_x, cy + 26), fill=BLACK, width=2)
+    _tarot_paint_pentagram(draw, cx, cy - 76, 11, RED)
+    # The charioteer, hem hidden behind the car's front panel.
+    _tarot_robed_figure(draw, cx, cy, top=-50, bottom=30, half_w=30, folds=3)
+    # Car: front panel drawn after the figure so he stands *in* it.
+    draw.rectangle((cx - 58, cy + 26, cx + 58, cy + 62), fill=SPECTRA6["white"], outline=BLACK, width=3)
+    draw.line((cx - 58, cy + 34, cx + 58, cy + 34), fill=BLACK, width=1)
+    for wheel_cx in (cx - 44, cx + 44):
+        draw.ellipse((wheel_cx - 17, cy + 56, wheel_cx + 17, cy + 88), outline=BLACK, width=3)
+        draw.line((wheel_cx, cy + 56, wheel_cx, cy + 88), fill=BLACK, width=2)
+        draw.line((wheel_cx - 17, cy + 72, wheel_cx + 17, cy + 72), fill=BLACK, width=2)
+        draw.ellipse((wheel_cx - 4, cy + 68, wheel_cx + 4, cy + 76), fill=RED)
 
 
 def _tarot_emblem_strength(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
@@ -17111,47 +17304,46 @@ def _tarot_emblem_strength(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
 
 
 def _tarot_emblem_justice(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
-    """Justice (XI): crowned figure with raised sword + balanced scales.
+    """Justice (XI): crowned figure, sword raised right, scales held left.
 
-    Rider-Waite Justice sits between two pillars, sword raised in her
-    right hand, scales held aloft in her left. The compact silhouette
-    here distils that to the vertical sword + horizontal scale-beam
-    + two hanging pans, with a small crown above as the figure's
-    silhouette anchor.
+    Previously a bare vertical sword through a scale beam with a spiked
+    bar above it — no body, so the crown read as the sword's own head
+    and the whole thing as a trident over two buckets. The sword goes to
+    one hand and the scales to the other now, which is both the
+    Rider-Waite composition and the only arrangement in which either
+    attribute is legible as itself.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
-    # Crown silhouette at the top (three-spike crown).
-    for tip_x in (cx - 14, cx, cx + 14):
-        draw.polygon([(tip_x - 5, cy - 70), (tip_x, cy - 90), (tip_x + 5, cy - 70)], fill=BLACK)
-    # Crown base.
-    draw.rectangle((cx - 20, cy - 70, cx + 20, cy - 60), fill=BLACK)
-    # Vertical sword — long blade pointing up, crossguard near the base.
-    draw.line((cx, cy - 60, cx, cy + 40), fill=BLACK, width=4)
-    # Crossguard (horizontal bar near top).
-    draw.line((cx - 16, cy - 50, cx + 16, cy - 50), fill=BLACK, width=3)
-    # Pommel (red circle below crossguard).
-    draw.ellipse((cx - 5, cy + 40, cx + 5, cy + 50), fill=RED)
-    # Scales — horizontal beam across the figure's chest.
-    beam_y = cy + 12
-    draw.line((cx - 60, beam_y, cx + 60, beam_y), fill=BLACK, width=2)
-    # Chains hanging from each end of the beam down to the pan.
-    for pan_cx in (cx - 50, cx + 50):
-        draw.line((pan_cx, beam_y, pan_cx, beam_y + 20), fill=BLACK, width=2)
-        # Pan: shallow trapezoid.
-        draw.polygon([
-            (pan_cx - 14, beam_y + 20),
-            (pan_cx + 14, beam_y + 20),
-            (pan_cx + 10, beam_y + 30),
-            (pan_cx - 10, beam_y + 30),
-        ], fill=BLACK)
-    # Central pivot point on the beam — small red diamond.
-    draw.polygon([
-        (cx, beam_y - 4),
-        (cx + 4, beam_y),
-        (cx, beam_y + 4),
-        (cx - 4, beam_y),
-    ], fill=RED)
+    _, head_cy = _tarot_robed_figure(draw, cx, cy, top=-40, bottom=68, half_w=38)
+    _tarot_crown(draw, cx, head_cy - 12, 10)
+    # Sword raised in the right hand: blade up, crossguard, red pommel.
+    sx = cx + 44
+    draw.line((sx, cy - 66, sx, cy + 26), fill=BLACK, width=5)
+    draw.line((sx - 14, cy + 12, sx + 14, cy + 12), fill=BLACK, width=4)
+    draw.ellipse((sx - 6, cy + 26, sx + 6, cy + 38), fill=RED)
+    draw.line((cx + 16, cy + 2, sx, cy + 18), fill=BLACK, width=3)
+    # Scales held out in the left hand.
+    # Held out clear of the robe: at half_w=38 the hem reaches cx-38, and
+    # an inboard pan landed on top of it.
+    hx, hy = cx - 52, cy - 22
+    draw.line((cx - 16, cy - 4, hx, hy + 4), fill=BLACK, width=3)
+    draw.line((hx, hy, hx, hy + 14), fill=BLACK, width=3)
+    beam_y = hy + 14
+    draw.line((hx - 18, beam_y, hx + 18, beam_y), fill=BLACK, width=3)
+    for pan_x in (hx - 16, hx + 16):
+        draw.line((pan_x, beam_y, pan_x, beam_y + 16), fill=BLACK, width=2)
+        draw.polygon(
+            [
+                (pan_x - 13, beam_y + 16), (pan_x + 13, beam_y + 16),
+                (pan_x + 9, beam_y + 26), (pan_x - 9, beam_y + 26),
+            ],
+            fill=BLACK,
+        )
+    draw.polygon(
+        [(hx, beam_y - 5), (hx + 5, beam_y), (hx, beam_y + 5), (hx - 5, beam_y)],
+        fill=RED,
+    )
 
 
 def _tarot_emblem_world(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
@@ -17187,32 +17379,39 @@ def _tarot_emblem_world(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
             ry = lx * math.sin(tangent) + ly * math.cos(tangent)
             leaf_pts.append((ox + rx, oy + ry))
         draw.polygon(leaf_pts, fill=BLACK)
-    # Dancing figure inside the wreath — stick figure with bent legs.
-    # Head.
-    draw.ellipse((cx - 8, cy - 36, cx + 8, cy - 20), fill=BLACK)
-    # Torso.
-    draw.line((cx, cy - 20, cx, cy + 10), fill=BLACK, width=4)
-    # Arms (one raised, one out).
-    draw.line((cx, cy - 12, cx - 20, cy - 26), fill=BLACK, width=3)
-    draw.line((cx, cy - 12, cx + 20, cy + 6), fill=BLACK, width=3)
-    # Legs (one straight, one bent — dancing pose).
-    draw.line((cx, cy + 10, cx - 14, cy + 40), fill=BLACK, width=3)
-    draw.line((cx, cy + 10, cx + 14, cy + 30), fill=BLACK, width=3)
-    draw.line((cx + 14, cy + 30, cx + 6, cy + 44), fill=BLACK, width=3)
+    # Dancing figure inside the wreath. The one trump whose figure is
+    # *not* robed — the dancer is conventionally bare with a floating
+    # scarf, so the shared robe skeleton would be wrong here — but the
+    # head still gets the face every other figure has, which is what
+    # separates a dancer from a stick.
+    head_r = 11
+    head_cy = cy - 30
+    draw.ellipse(
+        (cx - head_r, head_cy - head_r, cx + head_r, head_cy + head_r),
+        outline=BLACK, width=3,
+    )
+    _tarot_face(draw, cx, head_cy, head_r, hair="short")
+    draw.line((cx, head_cy + head_r, cx, cy + 12), fill=BLACK, width=4)
+    _tarot_arm(draw, cx, cy - 12, cx - 26, cy - 30, elbow=-0.4)
+    _tarot_arm(draw, cx, cy - 12, cx + 26, cy + 4, elbow=0.4)
+    # Legs, one straight and one bent — the crossed-leg dancing pose.
+    draw.line([(cx, cy + 12), (cx - 12, cy + 30), (cx - 18, cy + 48)], fill=BLACK, width=3, joint="curve")
+    draw.line([(cx, cy + 12), (cx + 15, cy + 28), (cx + 5, cy + 46)], fill=BLACK, width=3, joint="curve")
+    # The floating scarf, in the rubric red the rest of the card uses.
+    draw.line(
+        [(cx - 30, cy - 16), (cx - 8, cy - 4), (cx + 14, cy - 14), (cx + 32, cy - 2)],
+        fill=RED, width=3, joint="curve",
+    )
     # Wreath ribbons — two red bow-knots at top and bottom where the wreath ties.
     draw.ellipse((cx - 6, cy - 86, cx + 6, cy - 74), fill=RED)
     draw.ellipse((cx - 6, cy + 74, cx + 6, cy + 86), fill=RED)
     # Four corner creatures — tiny red filled triangles + black "creature" glyph.
     # Top-left bull, top-right eagle, bottom-left lion, bottom-right angel.
-    creature_r = 6
-    for (corner_cx, corner_cy, glyph) in [
-        (cx - 90, cy - 80, "♉"),  # bull → fall back to plain triangle if missing
-        (cx + 90, cy - 80, "♅"),  # eagle
-        (cx - 90, cy + 80, "♌"),  # lion
-        (cx + 90, cy + 80, "♍"),  # angel
-    ]:
-        # Small red star to anchor the corner.
-        _tarot_paint_pentagram(draw, corner_cx, corner_cy, creature_r, RED)
+    # Bull / eagle / lion / angel. Pulled in from ±90 x, which the
+    # illustration panel clips: they were painting nothing at all.
+    for corner_cx in (cx - 62, cx + 62):
+        for corner_cy in (cy - 66, cy + 66):
+            _tarot_paint_pentagram(draw, corner_cx, corner_cy, 7, RED)
 
 
 _TAROT_EMBLEMS = {
@@ -17231,12 +17430,80 @@ _TAROT_EMBLEMS = {
 }
 
 
+# The emblem painters were drawn for the old 520x440 card, where the
+# illustration shared its column with the quote. On the portrait card
+# they have a panel of their own and read small in it. Rather than
+# re-scaling twelve hand-tuned coordinate sets by hand — twelve chances
+# to break a silhouette — each is drawn once at its native size and the
+# tile is enlarged, which also thickens every stroke: a 2 px rule
+# becomes 3 px, and the compact line figures gain the weight of a
+# woodcut instead of reading as hairline clip art.
+_TAROT_EMBLEM_SCALE = 1.5
+# Native half-extent of the largest emblem (the Magician's staff reaches
+# ~100 px above centre). The tile has to hold the whole figure or the
+# enlargement clips it.
+_TAROT_EMBLEM_TILE = 240
+# The emblems paint in black and red, plus three white knockouts (the
+# Priestess's moon, the Hermit's beard). Enlarging is done in RGB rather
+# than per-ink masks precisely because of those knockouts: a mask per ink
+# loses the draw order, and a white knockout stamped after its black
+# ground is the whole point of it.
+_TAROT_EMBLEM_INKS = [SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["red"]]
+
+
 def _tarot_paint_emblem(
-    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int, cx: int, cy: int,
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    hour_int: int,
+    cx: int,
+    cy: int,
+    clip: tuple[int, int, int, int] | None = None,
 ) -> None:
-    """Dispatch the hour-mapped emblem painter."""
+    """Dispatch the hour-mapped emblem painter, enlarged onto the card.
+
+    The figure is drawn at native size onto a white tile, resampled up by
+    ``_TAROT_EMBLEM_SCALE``, snapped back to the three inks the painters
+    use, and stamped over the card stock — white pixels skipped, so the
+    card's cream wash shows through the figure's negative space instead
+    of the tile pasting an opaque white square over it.
+
+    ``clip`` bounds the stamp to the illustration panel. The widest
+    emblems (the Emperor's throne, the Wheel's rim) reach past the
+    keyline once enlarged, and a figure crossing its own frame reads as
+    a layout fault rather than as a bold composition — historical trumps
+    keep the figure inside the rule. Clipping rather than shrinking the
+    scale keeps the stroke weight the enlargement bought.
+    """
     painter = _TAROT_EMBLEMS.get(hour_int, _tarot_emblem_default)
-    painter(draw, cx, cy)
+    size = _TAROT_EMBLEM_TILE
+    half = size // 2
+    tile = Image.new("RGB", (size, size), SPECTRA6["white"])
+    painter(ImageDraw.Draw(tile), half, half)
+    scaled = size * _TAROT_EMBLEM_SCALE
+    tile = tile.resize((round(scaled), round(scaled)), Image.LANCZOS)
+    tile = snap_image_to_palette(tile, _TAROT_EMBLEM_INKS)
+
+    px = image.load()
+    src = tile.load()
+    w, h = image.size
+    ox = cx - tile.width // 2
+    oy = cy - tile.height // 2
+    lo_x, lo_y, hi_x, hi_y = (0, 0, w, h) if clip is None else clip
+    # Inset by one so the stamp never lands on the keyline itself.
+    lo_x, lo_y = max(0, lo_x + 1), max(0, lo_y + 1)
+    hi_x, hi_y = min(w, hi_x), min(h, hi_y)
+    WHITE = SPECTRA6["white"]
+    for ty in range(tile.height):
+        y = oy + ty
+        if not lo_y <= y < hi_y:
+            continue
+        for tx in range(tile.width):
+            x = ox + tx
+            if not lo_x <= x < hi_x:
+                continue
+            ink = src[tx, ty]
+            if ink != WHITE:
+                px[x, y] = ink
 
 
 def _tarot_paint_body_panel(
@@ -17362,8 +17629,20 @@ def _tarot_paint_attribution(
     quote_row: dict,
     cx: int,
     y_top: int,
+    max_w: int,
 ) -> None:
-    """Author · title in Cinzel Decorative Regular 12, solid black, centred."""
+    """Author · title in Cinzel Decorative Regular 12, solid black, centred.
+
+    ``max_w`` is passed rather than hardcoded because the byline moved: it
+    used to sit on a 520 px-wide card and truncated against a literal 470,
+    and when the reading moved into its own 444 px panel that constant
+    stayed behind. Nine distinct shipped-corpus attributions land in the
+    445..470 band the old limit left alone — "Arthur Conan Doyle · The
+    Adventures of Sherlock Holmes" among them — so they crossed the
+    cartouche's red rule and painted onto the cloth; the ones past 470 were
+    truncated *to* 470 and overflowed anyway, so the target was wrong and
+    not merely the threshold.
+    """
     BLACK = SPECTRA6["black"]
     font = load_font(theme_font_candidates("tarot", "ornament"), size=12)
     author = quote_row.get("author") or ""
@@ -17374,8 +17653,6 @@ def _tarot_paint_attribution(
     text = " · ".join(parts)
     bbox = draw.textbbox((0, 0), text, font=font)
     w = bbox[2] - bbox[0]
-    # Truncate if too wide (card-inner is ~480 px).
-    max_w = 470
     if w > max_w:
         # Shorten title side first.
         while parts and w > max_w:
@@ -17389,73 +17666,131 @@ def _tarot_paint_attribution(
     draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
 
 
-def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Single centred tarot card.
+def _tarot_paint_card_stock(
+    image: Image.Image, draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+) -> None:
+    """Lay the card onto the cloth: drop shadow, then a cleaner stock.
 
-    Cream-washed vellum ground, doubled red+black rubricated border, red
-    corner pentagrams, Roman-numeral hour, matched-phrase card name in
-    Tyrian purple, hour-mapped emblem at centre, EB Garamond quote body
-    (with Tyrian purple matched-phrase substitution), centred author ·
-    title attribution.
+    The card and the cloth are the same two-ink recipe, so without a
+    tonal split between them the card's border reads as a rule drawn
+    *on* the cloth rather than as the edge of a separate object. The
+    card interior is therefore wiped and re-washed at a lower cream
+    density with no foxing at all — pale, handled card stock against
+    the darker foxed cloth it is lying on — and offset by a black
+    shadow ledge on the lower-right, the same lift ``kanagawa`` gives
+    its paper panel and ``pride`` its quote card.
     """
-    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    BLACK = SPECTRA6["black"]
+    x0, y0, x1, y1 = rect
+    off = _TAROT_CARD_SHADOW
+    draw.rectangle((x0 + off, y0 + off, x1 + off, y1 + off), fill=BLACK)
+    draw.rectangle((x0, y0, x1, y1), fill=WHITE)
+    card_w = max(0, min(image.width, x1 + 1) - max(0, x0))
+    card_h = max(0, min(image.height, y1 + 1) - max(0, y0))
+    if not card_w or not card_h:
+        return
+    cut = round(_TAROT_CREAM_DENSITY * 0.75 * 255)
+    stock = _tarot_noise(card_w, card_h, _TAROT_CREAM_SEED)
+    image.paste(YELLOW, (max(0, x0), max(0, y0)), stock.point(lambda v: 255 if v < cut else 0))
+
+
+def _tarot_paint_emblem_panel(
+    draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, int],
+) -> None:
+    """Thin keyline around the trump illustration.
+
+    Every historical trump sets its figure inside a ruled panel with the
+    numeral above and the name below; without the keyline the emblem
+    reads as clip art floating on the stock. The rule is doing real work
+    here because these emblems are compact line silhouettes — a frame is
+    what tells the eye they are an *illustration* rather than a defect.
+    """
+    draw.rectangle(rect, outline=SPECTRA6["black"], width=1)
+
+
+def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A single trump laid on a reading cloth, interpretation beside it.
+
+    Left: a portrait card on foxed vellum — doubled red+black rubricated
+    rule, playing-card corner numerals, Roman-numeral hour above a ruled
+    illustration panel, and the matched phrase as the card's name along
+    the foot. Numeral above / figure between / name below is the layout
+    every historical trump uses, and moving the name to the foot (it used
+    to sit under the numeral at the head) is what makes the card read as
+    one.
+
+    Right: the reading. A clean cream cartouche knocked out of the cloth
+    carrying the quote in EB Garamond with a Tyrian-purple matched
+    phrase, and the attribution at its foot.
+    """
+    # Composed at the canonical 800x480 and NEAREST-downsampled for a
+    # non-native request, the convention ``metro`` established. Every
+    # rectangle here is an absolute panel coordinate — a tarot card has
+    # fixed proportions and the reading sits beside it — so a direct
+    # render at the curator grid's 320x192 put the whole reading panel
+    # (x=324..768) off the canvas and returned a cropped card corner with
+    # no quote on it at all. The pre-existing preview sweep cannot see
+    # that: it asserts only ``img.size`` and palette-subset, both of which
+    # a cropped fragment satisfies.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
     _tarot_paint_vellum(image)
     draw = ImageDraw.Draw(image)
 
-    # Card rect: centred 520 × 440. Width 800 → x∈[140, 660]; height 480 → y∈[20, 460].
-    card_w, card_h = 520, 440
-    cx = width // 2
-    x0 = (width - card_w) // 2
-    y0 = (height - card_h) // 2
-    x1 = x0 + card_w
-    y1 = y0 + card_h
-    card_rect = (x0, y0, x1, y1)
-    _tarot_paint_doubled_border(image, draw, card_rect)
-
-    # Hour numeral.
     try:
         hour24 = int(time_str.split(":", 1)[0])
     except (ValueError, AttributeError):
         hour24 = 0
     hour_int = hour24 % 12 or 12
-    # Playing-card-style numerals in all four corners (bottom corners
-    # rotated 180° for the playing-card orientation convention).
-    _tarot_paint_corner_numerals(image, draw, card_rect, hour_int)
-    _tarot_paint_roman_numeral(image, draw, hour_int, cx, y0 + 16)
 
-    # Card name (matched phrase).
-    name = quote_row.get("matched_text") or ""
-    _tarot_paint_card_name(image, draw, name, cx, y0 + 58)
+    # ── the card ──────────────────────────────────────────────────────
+    card_rect = _TAROT_CARD_RECT
+    x0, y0, x1, y1 = card_rect
+    card_cx = (x0 + x1) // 2
+    _tarot_paint_card_stock(image, draw, card_rect)
+    _tarot_paint_doubled_border(image, draw, card_rect)
+    _tarot_paint_corner_pips(draw, card_rect)
+    _tarot_paint_roman_numeral(image, draw, hour_int, card_cx, y0 + 20)
 
-    # Emblem at centre — the dominant illustration. Bigger emblems
-    # (~140–200 px tall depending on hour) anchor the visual centre.
-    # Centre is pushed below the card name + a 10 px breathing gap so
-    # the tallest emblems (Magician's staff reaches ~100 px above
-    # centre) clear the name band.
-    _tarot_paint_emblem(image, draw, hour_int, cx, y0 + 200)
+    # Illustration panel — the numeral band above and the name band
+    # below are carved out of the card's height first, so the emblem
+    # gets whatever is left rather than being squeezed by whichever
+    # trump happens to be tallest.
+    panel = (x0 + 20, y0 + 68, x1 - 20, y1 - 74)
+    _tarot_paint_emblem_panel(draw, panel)
+    _tarot_paint_emblem(image, draw, hour_int, card_cx, (panel[1] + panel[3]) // 2, clip=panel)
 
-    # Body interpretation cartouche — knock out a clean cream panel
-    # under the body so the quote text + matched-phrase dither sit on
-    # legible ground rather than on the heavier R+G foxing of the
-    # surrounding card stock. The panel runs slightly wider than the
-    # body rect inset would suggest because the red frame is the visual
-    # anchor of the cartouche.
-    body_rect = (x0 + 14, y0 + 304, x1 - 14, y0 + 406)
-    _tarot_paint_body_panel(image, draw, body_rect)
-    _tarot_paint_body(image, draw, quote_row, body_rect)
+    # Card name along the foot, where a trump carries it.
+    _tarot_paint_card_name(image, draw, quote_row.get("matched_text") or "", card_cx, y1 - 60)
 
-    # Attribution at the bottom.
-    _tarot_paint_attribution(image, draw, quote_row, cx, y1 - 24)
+    # ── the reading ───────────────────────────────────────────────────
+    rx0, ry0, rx1, ry1 = _TAROT_READING_RECT
+    _tarot_paint_body_panel(image, draw, (rx0, ry0, rx1, ry1))
+    attribution_band = 30
+    _tarot_paint_body(image, draw, quote_row, (rx0, ry0, rx1, ry1 - attribution_band))
+    # The byline shares the body's inset from the panel rule, so it can
+    # never be wider than the text it attributes.
+    _tarot_paint_attribution(image, draw, quote_row, (rx0 + rx1) // 2, ry1 - 22, (rx1 - rx0) - 16)
 
-    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
 
 
 # ─── vinyl (turntable + record label) ────────────────────────────────────────
 
-_VINYL_DISK_CX = 200
-_VINYL_DISK_CY = 240
-_VINYL_DISK_R = 200
-_VINYL_LABEL_R = 80
+# Disc geometry. The disc used to be r=200 centred (200, 240), which ran
+# flush to the left, top and bottom edges and left nowhere for the arm
+# assembly to live — the pivot ended up at only 1.27x the disc radius from
+# the spindle, where no arm length can put the stylus in a sane place. A
+# real deck's platter does not fill its plinth; shrinking the disc is what
+# makes the tonearm geometry solvable at all.
+_VINYL_DISK_CX = 178
+_VINYL_DISK_CY = 246
+_VINYL_DISK_R = 168
+_VINYL_LABEL_R = 76
 
 
 def _vinyl_paint_wear_speckle(image: Image.Image, seed: int) -> None:
@@ -17478,6 +17813,16 @@ def _vinyl_paint_wear_speckle(image: Image.Image, seed: int) -> None:
                 px[x, y] = BLACK
 
 
+# Programme-band sheen. Peak density stays low because a record is black:
+# the band is a satin hint of reflection, not a silver ring. The jitter is
+# light — the cosine ramp is already smooth, so this only dissolves the
+# residual tile lattice rather than doing the shaping (bakelite's
+# ordered-plus-jitter recipe; hash alone at this density reads as sandpaper).
+_VINYL_SHEEN_BANDS = 6
+_VINYL_SHEEN_PEAK = 0.20
+_VINYL_SHEEN_JITTER = 0.20
+
+
 def _vinyl_paint_disk(
     image: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int, r_outer: int, r_label: int,
 ) -> None:
@@ -17490,12 +17835,25 @@ def _vinyl_paint_disk(
        record holds the run-out groove and the matrix etching. Drawn
        implicitly by NOT painting any groove rings in this band.
     2. Programme band (``r_label + 12`` → ``r_outer - 10``): the
-       music-bearing groove area, painted as ~33 fine 1-px white
-       hairline ellipses spaced every 3 px. At panel viewing distance
-       these blur into a textured silvery band — the iconic
-       "pressed vinyl" silhouette. Earlier revisions used only 3-4
-       hairlines spaced 28 px apart; those read as decorative rings
-       rather than as actual grooves, so the disk looked toy-like.
+       music-bearing area, painted per pixel as a smooth radial
+       **sheen** — a cosine density ramp that peaks on each reflection
+       band and falls to nothing between, dithered on ``BAYER_8x8``
+       with a light :func:`position_noise` jitter.
+
+       **Not hairline grooves, and not by accident.** Two earlier
+       revisions drew literal rings: 3-4 spaced 28 px apart (which read
+       as decorative concentric circles), then ~33 spaced 3 px apart.
+       The dense version is what put this theme out of the rotation —
+       rasterised 1-px ellipses that close together beat against each
+       other into radial spoke moiré, and 33 solid-white rings made the
+       record read as a light grey disc rather than black vinyl. A real
+       LP's groove pitch is ~0.1 mm and is simply *not resolvable* at
+       the 1-3 m this panel is read from; what a viewer actually sees is
+       broad satin sheen banding on a black disc, which is what this
+       paints. Per-pixel rather than drawn rings because there is then
+       no rasterisation phase to beat, and a smooth density ramp gives
+       the dither nothing periodic to alias against — the same reason
+       ``chrono``'s sky and ``abyssal``'s water ramp rather than step.
     3. Lead-in groove (``r_outer - 6`` → ``r_outer - 3``): a slightly
        heavier 2-px white ring near the very rim, where a real LP's
        tonearm first contacts the record.
@@ -17504,10 +17862,32 @@ def _vinyl_paint_disk(
     WHITE = SPECTRA6["white"]
     # Outer disk.
     draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), fill=BLACK)
-    # Programme band — dense 1-px groove hairlines every 3 px.
-    for r in range(r_label + 12, r_outer - 10, 3):
-        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=WHITE, width=1)
-    # Lead-in groove — slightly heavier ring just inside the rim.
+
+    # Programme band — a smooth radial *sheen*, painted per pixel.
+    px = image.load()
+    w, h = image.size
+    lo, hi = r_label + 12, r_outer - 10
+    span = max(1, hi - lo)
+    x0, y0 = max(0, cx - r_outer), max(0, cy - r_outer)
+    x1, y1 = min(w, cx + r_outer + 1), min(h, cy + r_outer + 1)
+    for y in range(y0, y1):
+        dy = y - cy
+        for x in range(x0, x1):
+            dx = x - cx
+            radius = math.hypot(dx, dy)
+            if not (lo <= radius <= hi):
+                continue
+            # Smooth cosine banding: density peaks on a sheen ring and falls
+            # to nothing between, so there is no hard periodic edge for the
+            # dither tile to beat against.
+            phase = (radius - lo) / span * _VINYL_SHEEN_BANDS * 2 * math.pi
+            amp = ((math.cos(phase) + 1) / 2) ** 1.6
+            rank = BAYER_8x8[y % 8][x % 8] + (position_noise(x, y) / 255 - 0.5) * 64 * _VINYL_SHEEN_JITTER
+            if rank < amp * _VINYL_SHEEN_PEAK * 64:
+                px[x, y] = WHITE
+
+    # Lead-in groove — a single heavier ring just inside the rim. Isolated,
+    # so a drawn ellipse is fine here; it is the packed ones that beat.
     lead_in_r = r_outer - 4
     draw.ellipse(
         (cx - lead_in_r, cy - lead_in_r, cx + lead_in_r, cy + lead_in_r),
@@ -17617,7 +17997,34 @@ def _vinyl_paint_label(
     draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=WHITE)
 
 
-_VINYL_TONEARM_PIVOT = (388, 70)
+# Tonearm mount, derived from the disc rather than hardcoded so the two
+# cannot drift apart. Real-deck proportions for a 12-inch record: the
+# pivot sits 1.46x the record radius from the spindle and the effective
+# arm length is 1.51x — see ``_vinyl_paint_tonearm``. The bearing sits
+# behind and right of the platter, the near-universal deck layout.
+_VINYL_PIVOT_DISTANCE_RATIO = 1.46
+_VINYL_PIVOT_ANGLE_DEG = -40.0
+
+
+def _vinyl_tonearm_pivot(cx: int, cy: int, r_outer: int) -> tuple[float, float]:
+    """Where the arm's bearing sits, in panel coordinates."""
+    d = r_outer * _VINYL_PIVOT_DISTANCE_RATIO
+    ang = math.radians(_VINYL_PIVOT_ANGLE_DEG)
+    return cx + d * math.cos(ang), cy + d * math.sin(ang)
+
+
+# Tonearm geometry. 1.45x the disc radius is a 9-inch arm on a 12-inch
+# record — the commonest consumer proportion (222 mm pivot-to-spindle,
+# 230 mm effective length, 152 mm record radius), and long enough that the
+# stylus can reach from the outer edge to the run-out without the arm
+# swinging through absurd angles. The run-out ratio stops the stylus just
+# outside the label, where a side actually ends.
+_VINYL_ARM_LENGTH_RATIO = 1.51
+# Where the stylus stops at minute 59. 0.47 put the run-out at r=79
+# against a 76 px label — the cartridge body would have been sitting on
+# the paper. A real run-out groove clears the label by a few millimetres.
+_VINYL_RUNOUT_RATIO = 0.55
+_VINYL_COUNTERWEIGHT_OFFSET = 34
 
 
 def _vinyl_paint_tonearm(
@@ -17628,93 +18035,111 @@ def _vinyl_paint_tonearm(
     r_outer: int,
     minute: int,
 ) -> None:
-    """Pivoted tonearm with cartridge headshell and counterweight.
+    """Pivoted tonearm whose stylus tracks *inward* across the hour.
 
-    The tonearm pivots from a fixed point at the upper-right of the
-    turntable plate (``_VINYL_TONEARM_PIVOT``, off the disk itself).
-    The cartridge headshell at the front of the arm contacts the disk
-    at the current-minute rim position (minute 0 = top, sweeping
-    clockwise — same convention as the earlier straight-stylus
-    rendition). A counterweight cylinder sits behind the pivot,
-    visually balancing the cartridge end.
+    **The minute drives the stylus radius, not a rim angle.** A record
+    plays outside-in, so minute 0 puts the stylus at the outer edge of
+    the programme band and minute 59 near the run-out — the arm creeps
+    inward over the hour exactly as a real one does while a side plays.
+    The arm's *angle* then falls out of geometry rather than being
+    dictated: with the pivot a fixed distance ``d`` from the disc centre
+    and a fixed arm length ``L``, a stylus at radius ``r`` sits at an
+    intersection of the circle of radius ``r`` about the centre with the
+    circle of radius ``L`` about the pivot, which is the standard
+    two-circle solve below.
 
-    Earlier revisions painted just a straight red line from rim to
-    label centre, which read as a diagram of the stylus path rather
-    than as a real tonearm. The pivot-plus-counterweight-plus-
-    cartridge silhouette is the canonical "this is a turntable"
-    visual that every consumer LP-deck has worn into collective
-    memory; without it the disk reads as a generic vinyl drawing
-    rather than as a playing record.
-
-    Geometry is allowed to be non-physical for some minute angles
-    (a real swinging arm only sweeps a ~40° arc, not 360°); the
-    cartridge always lands on the rim at the current-minute angle
-    even when that would require a comically-stretched arm. At
-    panel viewing distance casual readers see "arm pointing at the
-    current minute" and the metaphor lands; analysing the geometry
-    isn't the point.
+    The previous revision mapped the minute to an angle on the *rim* and
+    swept the cartridge a full 360 degrees around the disc, which its own
+    docstring conceded was "allowed to be non-physical" and would need "a
+    comically-stretched arm". It looked like one: a stick on a ball
+    crossing the record, reading as a scratch rather than as a tonearm.
+    A real arm sweeps a narrow arc and never leaves the playing side.
+    ``_VINYL_ARM_LENGTH`` is ~1.45x the disc radius — a 9-inch arm on a
+    12-inch record, the commonest consumer geometry — which yields a
+    ~23 degree sweep across the hour: visibly moving, never absurd.
     """
     BLACK = SPECTRA6["black"]
+    WHITE = SPECTRA6["white"]
     RED = SPECTRA6["red"]
-    pivot_x, pivot_y = _VINYL_TONEARM_PIVOT
-    # Cartridge tip position on the disk rim at the current-minute angle.
-    angle_deg = (minute / 60.0) * 360.0 - 90.0
-    rim_angle = math.radians(angle_deg)
-    tip_x = cx + r_outer * math.cos(rim_angle)
-    tip_y = cy + r_outer * math.sin(rim_angle)
-    # Unit vector from cartridge tip back to pivot.
-    dx = pivot_x - tip_x
-    dy = pivot_y - tip_y
-    arm_length = math.hypot(dx, dy)
-    if arm_length < 1:
+    pivot_x, pivot_y = _vinyl_tonearm_pivot(cx, cy, r_outer)
+    arm_len = r_outer * _VINYL_ARM_LENGTH_RATIO
+
+    # Stylus radius: outer edge of the programme band at minute 0,
+    # creeping toward the run-out by minute 59.
+    r_start = r_outer - 8
+    r_end = r_outer * _VINYL_RUNOUT_RATIO
+    frac = min(max(minute, 0), 59) / 59.0
+    r_stylus = r_start + (r_end - r_start) * frac
+
+    d = math.hypot(pivot_x - cx, pivot_y - cy)
+    if d < 1:
         return
-    ux, uy = dx / arm_length, dy / arm_length
-    # Counterweight sits behind the pivot — extend the arm 36 px past
-    # the pivot in the away-from-cartridge direction.
-    cw_distance = 36
-    cw_x = pivot_x + ux * cw_distance
-    cw_y = pivot_y + uy * cw_distance
-    # Main arm: black line from cartridge end of the arm to the
-    # counterweight end (drawn through the pivot, all one stroke so
-    # the arm reads as a single rigid object).
-    draw.line((tip_x + ux * 6, tip_y + uy * 6, cw_x, cw_y), fill=BLACK, width=4)
-    # Pivot mount: small black filled circle marking the pivot point.
+    # Two-circle intersection: |S - C| = r_stylus, |S - P| = arm_len.
+    a = (r_stylus * r_stylus - arm_len * arm_len + d * d) / (2 * d)
+    h_sq = r_stylus * r_stylus - a * a
+    if h_sq < 0:
+        # Unreachable geometry (a caller shrank the disc past what the
+        # fixed pivot and arm can span). Draw nothing rather than a
+        # nonsense arm — the disk still reads as a record without it.
+        return
+    h = math.sqrt(h_sq)
+    ux, uy = (pivot_x - cx) / d, (pivot_y - cy) / d
+    # Perpendicular; the sign picks which of the two intersections the
+    # stylus takes. Negative swings the arm across the near face of the
+    # disc below the pivot, where a real rear-right arm rests.
+    px_, py_ = -uy, ux
+    tip_x = cx + a * ux + h * px_
+    tip_y = cy + a * uy + h * py_
+
+    # Unit vector from stylus back to pivot — the arm axis.
+    dx, dy = pivot_x - tip_x, pivot_y - tip_y
+    axis = math.hypot(dx, dy)
+    if axis < 1:
+        return
+    ax, ay = dx / axis, dy / axis
+    perp_x, perp_y = -ay, ax
+
+    # Counterweight sits behind the pivot, balancing the cartridge end.
+    cw_x = pivot_x + ax * _VINYL_COUNTERWEIGHT_OFFSET
+    cw_y = pivot_y + ay * _VINYL_COUNTERWEIGHT_OFFSET
+
+    # Arm tube: one stroke through the pivot so it reads as a rigid object,
+    # cased — a dark outline with a white core. A real arm is chrome, and
+    # more to the point a plain black tube is *invisible* for the whole
+    # stretch where it crosses the black disc, which is precisely the
+    # stretch a viewer needs to see. The casing is the same read-on-any-
+    # ground trick ``metro`` uses for its route lines.
+    ends = (tip_x + ax * 6, tip_y + ay * 6, cw_x, cw_y)
+    draw.line(ends, fill=BLACK, width=5)
+    draw.line(ends, fill=WHITE, width=2)
+    # Pivot mount on the plate.
     draw.ellipse((pivot_x - 8, pivot_y - 8, pivot_x + 8, pivot_y + 8), fill=BLACK)
-    # Inner pivot dot in red (mimics the pivot's coloured cap on
-    # vintage decks — also visually rhymes with the red label).
     draw.ellipse((pivot_x - 3, pivot_y - 3, pivot_x + 3, pivot_y + 3), fill=RED)
-    # Counterweight cylinder at the back of the arm.
-    cw_r = 9
+    # Counterweight cylinder.
+    cw_r = 8
     draw.ellipse((cw_x - cw_r, cw_y - cw_r, cw_x + cw_r, cw_y + cw_r), fill=BLACK)
-    # Counterweight outline ring in red — adds visual weight without
-    # making the back end disappear into the chassis-distant sleeve.
     draw.ellipse((cw_x - cw_r, cw_y - cw_r, cw_x + cw_r, cw_y + cw_r), outline=RED, width=1)
-    # Cartridge headshell at the tip — a small black quadrilateral
-    # oriented roughly perpendicular to the arm, with a red stylus pin
-    # underneath touching the groove. The headshell is rendered as a
-    # 4-point polygon (a rotated rectangle approximation) so it can
-    # follow the arm angle without PIL needing a rotate-rectangle
-    # primitive.
-    perp_x, perp_y = -uy, ux
-    head_long = 12   # along the arm axis
-    head_wide = 8    # perpendicular to the arm axis
-    # Cartridge body centre is just behind the contact tip.
-    body_cx = tip_x + ux * (head_long * 0.4)
-    body_cy = tip_y + uy * (head_long * 0.4)
-    head_pts = [
-        (body_cx + ux * head_long / 2 + perp_x * head_wide / 2,
-         body_cy + uy * head_long / 2 + perp_y * head_wide / 2),
-        (body_cx + ux * head_long / 2 - perp_x * head_wide / 2,
-         body_cy + uy * head_long / 2 - perp_y * head_wide / 2),
-        (body_cx - ux * head_long / 2 - perp_x * head_wide / 2,
-         body_cy - uy * head_long / 2 - perp_y * head_wide / 2),
-        (body_cx - ux * head_long / 2 + perp_x * head_wide / 2,
-         body_cy - uy * head_long / 2 + perp_y * head_wide / 2),
-    ]
-    draw.polygon(head_pts, fill=BLACK)
-    # Stylus pin contact point — small filled red dot exactly on the
-    # rim of the disk at the current-minute angle.
-    draw.ellipse((tip_x - 3, tip_y - 3, tip_x + 3, tip_y + 3), fill=RED)
+    # Cartridge headshell — a rotated rectangle (PIL has no such
+    # primitive, so a 4-point polygon following the arm axis).
+    head_long, head_wide = 13, 8
+    body_cx = tip_x + ax * (head_long * 0.45)
+    body_cy = tip_y + ay * (head_long * 0.45)
+    draw.polygon(
+        [
+            (body_cx + ax * head_long / 2 + perp_x * head_wide / 2,
+             body_cy + ay * head_long / 2 + perp_y * head_wide / 2),
+            (body_cx + ax * head_long / 2 - perp_x * head_wide / 2,
+             body_cy + ay * head_long / 2 - perp_y * head_wide / 2),
+            (body_cx - ax * head_long / 2 - perp_x * head_wide / 2,
+             body_cy - ay * head_long / 2 - perp_y * head_wide / 2),
+            (body_cx - ax * head_long / 2 + perp_x * head_wide / 2,
+             body_cy - ay * head_long / 2 + perp_y * head_wide / 2),
+        ],
+        fill=BLACK,
+        outline=WHITE,
+    )
+    # Stylus contact point.
+    draw.ellipse((tip_x - 2, tip_y - 2, tip_x + 2, tip_y + 2), fill=RED)
 
 
 def _vinyl_paint_33rpm_badge(
@@ -17806,6 +18231,19 @@ def _vinyl_paint_spec_line(
     draw.text((x_right - w - bbox[0], y_top - bbox[1]), right_text, font=font, fill=BLACK)
 
 
+# Catalog-bar typography. The imprint degrades before the size does, and
+# the size has a floor — below ~8 pt Cardo Italic shreds after the palette
+# snap (the hairline-at-small-size failure astrarium and vitrail document).
+_VINYL_CATALOG_SIZE = 11
+_VINYL_CATALOG_MIN_SIZE = 8
+_VINYL_CATALOG_GAP = 14
+_VINYL_IMPRINTS = (
+    "IDLE HOURS LITERARY RECORDINGS",
+    "IDLE HOURS RECORDINGS",
+    "IDLE HOURS",
+)
+
+
 def _vinyl_paint_catalog_bar(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -17824,15 +18262,30 @@ def _vinyl_paint_catalog_bar(
     number on both the label and the jacket).
     """
     BLACK = SPECTRA6["black"]
-    font = load_font([CARDO_ITALIC, *META_FONT_CANDIDATES], size=11)
     year = datetime.date.today().year
     cat = _vinyl_catalog_number(bucket)
-    left_text = "IDLE HOURS LITERARY RECORDINGS"
     right_text = f"CAT NO. {cat}  ·  © {year}"
-    draw.text((x_left, y_top), left_text, font=font, fill=BLACK)
-    bbox = draw.textbbox((0, 0), right_text, font=font)
-    w = bbox[2] - bbox[0]
-    draw.text((x_right - w - bbox[0], y_top - bbox[1]), right_text, font=font, fill=BLACK)
+    # The catalog number is the half that carries information, so the brand
+    # line is what gives way: try the full imprint, then progressively
+    # shorter forms, then step the size down. Nothing here may overlap —
+    # the two used to be drawn at fixed positions with no width check at
+    # all, which collided into unreadable mush at the shipped 11 pt.
+    for size in range(_VINYL_CATALOG_SIZE, _VINYL_CATALOG_MIN_SIZE - 1, -1):
+        font = load_font([CARDO_ITALIC, *META_FONT_CANDIDATES], size=size)
+        right_w = draw.textlength(right_text, font=font)
+        for left_text in _VINYL_IMPRINTS:
+            left_w = draw.textlength(left_text, font=font)
+            if left_w + right_w + _VINYL_CATALOG_GAP <= x_right - x_left:
+                break
+        else:
+            continue
+        break
+    # Both halves share one baseline: the left used to anchor on the raw
+    # ink-box top and the right on a bbox-corrected top, so they sat on
+    # different lines even when they did fit.
+    baseline = y_top + size
+    draw.text((x_left, baseline), left_text, font=font, fill=BLACK, anchor="ls")
+    draw.text((x_right, baseline), right_text, font=font, fill=BLACK, anchor="rs")
     # Thin horizontal black rule just above the catalog text for the
     # "back-of-jacket" reading effect.
     rule_y = y_top - 6
@@ -17969,7 +18422,13 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     bar (IDLE HOURS LITERARY RECORDINGS · CAT NO. · © year) and the
     author/title attribution. Includes the 33 RPM badge in the top-right.
     """
-    image = Image.new("RGB", (width, height), color=SPECTRA6["white"])
+    # Composed at the canonical 800x480 and NEAREST-downsampled for a
+    # non-native request, the convention ``metro`` established. The disc
+    # centre, radius, label and tonearm pivot are all absolute panel
+    # coordinates, so a direct render at the curator grid's 320x192
+    # returned a cropped corner — the top of the disc and a stray
+    # "33 RPM" badge, with no quote and no tonearm on it.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
     # Sleeve cream wash full-canvas — the disk will overpaint the left half.
     _astrarium_paint_cream_wash(image)
     # Daily-seeded wear marks on the sleeve (right half only).
@@ -17995,7 +18454,7 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
 
     # Right-half liner-notes chrome.
-    sleeve_x_left, sleeve_x_right = 420, width - 20
+    sleeve_x_left, sleeve_x_right = 420, 800 - 20
     # 33 RPM badge in the sleeve's top-right.
     _vinyl_paint_33rpm_badge(image, draw, x_right=sleeve_x_right, y_top=20)
     # TRACK ONE heading at the top of the liner-notes column.
@@ -18013,7 +18472,10 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _vinyl_paint_catalog_bar(image, draw, bucket, x_left=sleeve_x_left,
                              x_right=sleeve_x_right, y_top=450)
 
-    return snap_image_to_palette(image, SPECTRA6_PALETTE)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
 
 
 # ─── vitrail (Gothic stained-glass cathedral window) ─────────────────────────

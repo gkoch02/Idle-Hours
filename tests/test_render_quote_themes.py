@@ -20,12 +20,15 @@ from __future__ import annotations
 import bisect
 import json
 import math
+import pathlib
 import threading
 
 import pytest
 from PIL import Image, ImageDraw
 
+from idle_hours import pick_quote as pq
 from idle_hours import render_quote as rq
+from idle_hours.jsonl_io import iter_jsonl
 
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
@@ -255,6 +258,124 @@ class TestMarqueeFrame:
         assert img.size == (800, 480)
 
 
+class TestTarotAttributionFitsThePanel:
+    """The byline is truncated against the reading panel, not the old card.
+
+    ``_tarot_paint_attribution`` truncated against a literal 470 px, which
+    was the inner width of the 520 px card the reading used to sit on. The
+    reading is a 444 px panel now, so nine distinct shipped-corpus
+    attributions — "Arthur Conan Doyle · The Adventures of Sherlock Holmes"
+    among them — fell in the band the old limit left alone and painted
+    across the cartouche's red rule onto the cloth. Anything past 470 was
+    truncated *to* 470 and overflowed anyway, so the target was wrong and
+    not only the threshold.
+
+    Measured on the corpus rather than on invented strings: the failure was
+    a real-data one, and a synthetic byline could be picked to miss it.
+    """
+
+    @staticmethod
+    def _widest_corpus_attributions(limit=6):
+        img = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        draw = ImageDraw.Draw(img)
+        font = rq.load_font(rq.theme_font_candidates("tarot", "ornament"), size=12)
+        scored = []
+        for row in iter_jsonl(pathlib.Path(pq.DEFAULT_INPUT_PATH)):
+            parts = [p for p in (row.get("author") or "", row.get("title") or "") if p]
+            if not parts:
+                continue
+            text = " · ".join(parts)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            scored.append((bbox[2] - bbox[0], row))
+        scored.sort(key=lambda kv: -kv[0])
+        return [row for _, row in scored[:limit]]
+
+    def test_widest_corpus_bylines_stay_inside_the_panel(self):
+        rx0, _, rx1, ry1 = rq._TAROT_READING_RECT
+        red = rq.SPECTRA6["red"]
+        for row in self._widest_corpus_attributions():
+            img = rq.render("14:30", dict(row), 800, 480, mode="production", theme="tarot")
+            # The panel's own red rule is the boundary. Sample the byline
+            # band just inside each vertical rule: only card stock belongs
+            # there, so any non-ground ink is the byline having overrun.
+            for x in (rx0 + 1, rx0 + 2, rx1 - 2, rx1 - 1):
+                for y in range(ry1 - 34, ry1 - 8):
+                    px = img.getpixel((x, y))
+                    assert px != rq.SPECTRA6["black"], (
+                        f"byline ink at ({x}, {y}) is on the panel rule for "
+                        f"{row.get('author')} / {row.get('title')}"
+                    )
+            # And the rule itself is still intact rather than overpainted.
+            assert any(
+                img.getpixel((rx0, y)) == red for y in range(ry1 - 34, ry1 - 8)
+            ), "the panel's left rule was overpainted by the byline"
+
+
+class TestTarotEmblems:
+    """All twelve trumps draw, and draw something different from each other.
+
+    The golden suite pins exactly *one* tarot frame, at ``THEME_SWEEP_TIME``
+    (08:55), so eleven of the twelve hour-mapped emblems are outside it —
+    a rewrite of seven of them left every golden fixture byte-identical,
+    because hour 8 happened to be one of the four left alone. Twelve more
+    PNG fixtures would fence this, but the failures actually worth catching
+    are structural: an emblem that stops painting, and two hours that
+    resolve to the same figure (a typo in the ``_TAROT_EMBLEMS`` dispatch
+    maps an hour to its neighbour's painter, which no smoke test notices
+    because both still render).
+    """
+
+    @staticmethod
+    def _panel(hour):
+        """The illustration panel's ink, cropped from a rendered card."""
+        img = rq.render(f"{hour:02d}:30", make_row(), 800, 480, theme="tarot")
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        return img.crop((x0 + 20, y0 + 68, x1 - 20, y1 - 74))
+
+    def test_every_hour_paints_an_emblem(self):
+        panels = {hour: self._panel(hour) for hour in range(1, 13)}
+        for hour, panel in panels.items():
+            counts = ink_counts(panel)
+            drawn = counts.get(rq.SPECTRA6["black"], 0) + counts.get(rq.SPECTRA6["red"], 0)
+            assert drawn > 600, f"hour {hour}: emblem painted only {drawn} px"
+
+    def test_every_hour_paints_a_distinct_emblem(self):
+        seen = {}
+        for hour in range(1, 13):
+            data = pixel_bytes(self._panel(hour))
+            assert data not in seen, f"hour {hour} renders the same emblem as hour {seen[data]}"
+            seen[data] = hour
+
+    def test_emblems_stay_inside_the_keyline(self):
+        """The clip is what keeps a widened figure off its own frame.
+
+        Six of the twelve reach past the panel once ``_TAROT_EMBLEM_SCALE``
+        enlarges them — the Wheel's rim by ~1770 px, as far as the card's
+        own border — and a figure crossing its rule reads as a layout
+        fault. The stamp is clipped rather than scaled down, so this pins
+        the clip and not any emblem's extent.
+
+        The sample band matters and was got wrong first: an earlier
+        version looked *below* the panel and only for red, where the
+        overflow is overwhelmingly black and sideways, so deleting the
+        clip left it green — a test passing against the exact bug it
+        guards. The side gutters between the card's inner rule and the
+        panel keyline are where the overflow actually lands, and nothing
+        else on the card paints there.
+        """
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        px0, py0, px1, py1 = x0 + 20, y0 + 68, x1 - 20, y1 - 74
+        ink = {rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+        for hour in range(1, 13):
+            img = rq.render(f"{hour:02d}:30", make_row(), 800, 480, theme="tarot")
+            for band in (range(x0 + 8, px0 - 1), range(px1 + 2, x1 - 7)):
+                for x in band:
+                    for y in range(py0 + 4, py1 - 4):
+                        assert img.getpixel((x, y)) not in ink, (
+                            f"hour {hour}: emblem ink at ({x}, {y}) is outside the keyline"
+                        )
+
+
 class TestTarotFrame:
     """Major-arcana card — renders for every hour without raising."""
 
@@ -286,11 +407,14 @@ class TestTarotFrame:
         solid colour."""
         row = make_row(matched_text="half past two")
         img = rq.render("14:30", row, 800, 480, theme="tarot")
-        # Card name band sits at y≈88..120 (y0=20, +68 offset, font ~22pt).
-        # Sample a stripe across the card centre.
+        # Derive the name band from the card geometry rather than
+        # hardcoding it: the name moved from the head to the foot when
+        # the card became portrait, and a literal y-range silently
+        # sampled bare card stock afterwards.
+        x0, _, x1, y1 = rq._TAROT_CARD_RECT
         counts = {}
-        for y in range(95, 115):
-            for x in range(280, 520):
+        for y in range(y1 - 62, y1 - 34):
+            for x in range(x0 + 6, x1 - 6):
                 c = img.getpixel((x, y))
                 counts[c] = counts.get(c, 0) + 1
         # Both red and blue pixels must be present (the 50/50 dither).
@@ -307,39 +431,77 @@ class TestTarotFrame:
 class TestVinylFrame:
     """Turntable + LP back-cover — tonearm angle math + catalog number."""
 
-    @pytest.mark.parametrize("minute,expected_axis", [
-        (0,  "up"),     # 0° = pointing up (12-o'-clock)
-        (15, "right"),  # 90° = pointing right
-        (30, "down"),   # 180° = pointing down
-        (45, "left"),   # 270° = pointing left
-    ])
-    def test_tonearm_cartridge_lands_at_expected_axis(self, minute, expected_axis):
-        """The pivoted tonearm's cartridge tip lands on the disk rim at
-        the current-minute angle (sweeping clockwise from 12-o'-clock).
-        The cartridge stylus pin is a small red filled circle at the
-        tip; sample around the expected cardinal point and assert red
-        ink appears."""
-        img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
-        cx, cy, r = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY, rq._VINYL_DISK_R
-        # Cardinal probe points just inside the rim.
-        probes = {
-            "up":    (cx, cy - r + 5),
-            "right": (cx + r - 5, cy),
-            "down":  (cx, cy + r - 5),
-            "left":  (cx - r + 5, cy),
-        }
-        x, y = probes[expected_axis]
-        # The expected axis should have a red pixel within a small window
-        # around the cartridge tip.
-        red_seen = False
-        for dy in range(-8, 9):
-            for dx in range(-8, 9):
-                if img.getpixel((x + dx, y + dy)) == rq.SPECTRA6["red"]:
-                    red_seen = True
-                    break
-            if red_seen:
-                break
-        assert red_seen, f"stylus did not paint red at expected {expected_axis} axis"
+    @staticmethod
+    def _stylus_centroid(img):
+        """Centroid of the red stylus pin, in disc-centre coordinates.
+
+        The only red inside the programme band is the cartridge's stylus
+        pin: the label is red but sits inside ``_VINYL_LABEL_R``, and the
+        counterweight ring is outside the disc entirely.
+        """
+        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
+        r_outer, r_label = rq._VINYL_DISK_R, rq._VINYL_LABEL_R
+        red = rq.SPECTRA6["red"]
+        xs, ys = [], []
+        for y in range(cy - r_outer, cy + r_outer + 1):
+            for x in range(cx - r_outer, cx + r_outer + 1):
+                r = math.hypot(x - cx, y - cy)
+                if not r_label + 4 < r <= r_outer:
+                    continue
+                if img.getpixel((x, y)) == red:
+                    xs.append(x)
+                    ys.append(y)
+        assert xs, "no stylus pin found on the programme band"
+        return sum(xs) / len(xs), sum(ys) / len(ys)
+
+    def test_stylus_tracks_inward_across_the_hour(self):
+        """The minute drives the stylus *radius*, outside-in.
+
+        A record plays from the outer edge toward the run-out, so the
+        stylus creeps inward over the hour. An earlier revision swept the
+        cartridge a full 360 degrees around the *rim* at the minute's
+        clock angle, which no tonearm does — it read as a scratch across
+        the record rather than as an arm — so this pins the direction of
+        travel, not a set of cardinal positions.
+        """
+        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
+        radii = []
+        for minute in (0, 15, 30, 45, 59):
+            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
+            sx, sy = self._stylus_centroid(img)
+            radii.append(math.hypot(sx - cx, sy - cy))
+        # Strictly decreasing, not merely non-increasing: a stylus pinned
+        # to the rim gives a constant radius, which "sorted(reverse=True)"
+        # accepts — and a rim-pinned stylus is precisely the bug here.
+        assert all(b < a for a, b in zip(radii, radii[1:])), f"stylus did not track inward: {radii}"
+        assert radii[0] - radii[-1] > 20, "stylus barely moved across the hour"
+
+    def test_stylus_stays_on_the_programme_band(self):
+        """Never off the edge of the record, never onto the label."""
+        cx, cy = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY
+        for minute in range(0, 60, 7):
+            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
+            sx, sy = self._stylus_centroid(img)
+            r = math.hypot(sx - cx, sy - cy)
+            assert rq._VINYL_LABEL_R < r <= rq._VINYL_DISK_R, f"minute {minute}: r={r:.1f}"
+
+    def test_arm_length_is_constant(self):
+        """The stylus stays one arm's length from the bearing.
+
+        This is the invariant that separates a pivoted arm from a point
+        placed at an angle: the tip may swing, but its distance from the
+        pivot cannot change. Reading the two ratios off the module is
+        reading constants, not reimplementing the two-circle solve the
+        painter runs.
+        """
+        cx, cy, r_outer = rq._VINYL_DISK_CX, rq._VINYL_DISK_CY, rq._VINYL_DISK_R
+        pivot_x, pivot_y = rq._vinyl_tonearm_pivot(cx, cy, r_outer)
+        expected = r_outer * rq._VINYL_ARM_LENGTH_RATIO
+        for minute in (0, 20, 40, 59):
+            img = rq.render(f"11:{minute:02d}", make_row(), 800, 480, theme="vinyl")
+            sx, sy = self._stylus_centroid(img)
+            reach = math.hypot(sx - pivot_x, sy - pivot_y)
+            assert abs(reach - expected) < 6, f"minute {minute}: reach={reach:.1f} vs {expected:.1f}"
 
     def test_catalog_number_format(self):
         assert rq._vinyl_catalog_number("h2_half_past") == "IH-H2-30"
@@ -1559,7 +1721,7 @@ class TestFixedGeometryFramesDownscale:
     """
 
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
-                             "plaque", "daguerreotype")
+                             "plaque", "daguerreotype", "tarot", "vinyl")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
