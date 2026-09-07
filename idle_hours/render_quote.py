@@ -8,17 +8,19 @@ import collections
 import datetime
 import io
 import math
+import os
 import random
 import re
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 from idle_hours import atomic_io
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time
 from idle_hours.gutenberg_time_miner import daypart_for_hour
+from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 
 BASE_DIR = Path(__file__).resolve().parent
 _FONT_FALLBACK_WARNED = False
@@ -125,6 +127,8 @@ THEME_ORDER: tuple[str, ...] = (
     "nocturne",
     "plaque",
     "daguerreotype",
+    "autochrome",
+    "photo",
     "betweenus",
     "betweenus_dark",
     "diags",
@@ -1376,6 +1380,35 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
+    # Autochrome Lumiere colour plate in its passe-partout. A custom-render
+    # frame (``render_autochrome_frame``); the palette below serves only the
+    # goodnight / source-card fall-through paths. The frame itself is a
+    # six-ink-dithered photograph under black binding tape, quote on a cream card.
+    "autochrome": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # The operator's own photograph. A custom-render frame
+    # (``render_photo_frame``); the palette below serves only the goodnight /
+    # source-card fall-through paths. The picture is whatever
+    # ``IDLE_HOURS_PHOTO_PATH`` names, conditioned and dithered against all six
+    # inks, with the quote on a cream card placed over its quietest region.
+    "photo": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
     # Library catalogue card. A custom-render frame (``render_cardcatalog_frame``)
     # — the stamp column needs a right margin the shared literary layout does not
     # leave, see that frame's section comment. The palette below serves only the
@@ -2143,6 +2176,46 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     # cyanotype/daguerreotype kinship made literal. Space Mono is loaded
     # directly by the frame for the studio's small plate label.
     "daguerreotype": {
+        "quote_regular": [
+            (LIBRECASLON_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (LIBRECASLON_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (LIBRECASLON_VARIABLE, "SemiBold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Autochrome joins the other two photographic themes on Libre Caslon Text.
+    # Sharing the face is the point rather than a shortcut: the Caslon revival is
+    # the printed register all three plates would have been captioned in, and
+    # ``anna_atkins`` / ``daguerreotype`` already state the kinship — this makes
+    # it three. The sans mount chrome loads directly from the meta chain.
+    "autochrome": {
+        "quote_regular": [
+            (LIBRECASLON_VARIABLE, "Regular"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            (LIBRECASLON_VARIABLE, "Bold"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [
+            (LIBRECASLON_VARIABLE, "SemiBold"),
+            *ORNAMENT_FONT_CANDIDATES,
+        ],
+    },
+    # Photo shares the photographic themes' Libre Caslon: the caption card is
+    # the same object as daguerreotype's slip, and a neutral book serif is the
+    # right face for a caption that has to sit over an unknown picture.
+    "photo": {
         "quote_regular": [
             (LIBRECASLON_VARIABLE, "Regular"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
@@ -3859,6 +3932,18 @@ def parse_args() -> argparse.Namespace:
             "caller chose instead of whichever duplicate comes first on disk. "
             "A row that matches the key but not this text is skipped, and the "
             "render falls back to a normal pick."
+        ),
+    )
+    parser.add_argument(
+        "--photo-path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Image file or directory for the `photo` theme. Sets "
+            f"{PHOTO_PATH_ENV} for this process. run_clock never passes this "
+            "flag to the render subprocess — it exports the environment "
+            "variable instead, so an operator's own --render-script cannot be "
+            "broken by an unrecognised argument (see _corpus_render_args)."
         ),
     )
     args = parser.parse_args()
@@ -14678,6 +14763,17 @@ _AGED_PAPER_PALETTE = [SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], S
 DAGUERREOTYPE_PLATE = BASE_DIR / "assets" / "daguerreotype_plate.png"
 _SILVER_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
+# The autochrome garden (scripts/generate_autochrome_plate.py) is the first
+# plate dithered against the FULL six-ink palette, and that is the theme's whole
+# pitch — see the ``autochrome`` section comment. Every other plate restricts to
+# a sub-palette so error diffusion cannot scatter chroma into a monochrome or
+# duotone ground; here the chroma IS the ground, and the six inks stand in for
+# the dyed starch grains of the real process. Passing no ``palette`` to
+# ``_load_dithered_plate`` defaults to ``SPECTRA6_PALETTE``; this constant exists
+# so the intent reads as a decision rather than an omission.
+AUTOCHROME_PLATE = BASE_DIR / "assets" / "autochrome_garden.png"
+_AUTOCHROME_PALETTE = SPECTRA6_PALETTE
+
 # Separated Tarot de Marseille trumps (Jean Dodal, Lyon, 1701-1715), one
 # 220x290 tile per hour on a 3x4 sheet, built from the scans in
 # assets/tarot/dodal/ by scripts/ingest_tarot_plates.py. Unlike the four
@@ -25053,6 +25149,101 @@ def render_plaque_frame(time_str: str, quote_row: dict, width: int, height: int)
 
 
 # ---------------------------------------------------------------------------
+# Shared mount furniture for the photographic frames.
+#
+# ``daguerreotype`` and ``autochrome`` present the same object in different
+# decades: a plate in a case, with the quote on a cream card beside it. The
+# card stock, the centred styled-line loop and the truncating byline were
+# verbatim identical between them, so they live here rather than twice.
+#
+# The line loop in particular is worth naming: four other frames (``pulp``,
+# ``vhs``, ``intaglio``, plus ``wrap_quote_into_masks``) carry their own near
+# copies, each differing in where the block is anchored, whether it draws to a
+# mask or a canvas, and how the matched phrase is coloured. Those are NOT
+# folded in here - unpicking them touches four golden fixtures for no
+# behaviour change - but a sixth copy was not worth adding either, which is
+# the line this extraction draws.
+
+
+def paint_mount_card(image: Image.Image, draw: ImageDraw.ImageDraw,
+                     rect: tuple[int, int, int, int], ledge: int, *,
+                     outline_width: int = 1) -> None:
+    """Cream card stock on a drop-shadow ledge, keylined in black.
+
+    The documented Y+W cream at the 12.5% density the aged-paper themes use,
+    over the black ledge ``kanagawa`` / ``tarot`` / ``pride`` lift their panels
+    with - without the ledge a light card on a light plate reads as a hole cut
+    in the picture rather than as paper resting on it.
+
+    ``outline_width`` defaults to the 1 px keyline the committed-plate themes
+    use; ``photo`` asks for 2, because an operator's photograph may be pale
+    right up against the card's edge where a controlled plate never is.
+    """
+    x0, y0, x1, y1 = rect
+    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
+    draw.rectangle((x0 + ledge, y0 + ledge, x1 + ledge, y1 + ledge), fill=black)
+    draw.rectangle((x0, y0, x1, y1), fill=white)
+    px = image.load()
+    for y in range(y0, y1 + 1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1 + 1):
+            if row[x % 4] < 2:
+                px[x, y] = yellow
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=outline_width)
+
+
+def draw_centred_styled_lines(draw: ImageDraw.ImageDraw, wrapped, *, x0: int, x1: int,
+                              top: int, line_height: int, regular, bold,
+                              fill, accent, min_inset: int = 18) -> int:
+    """Draw ``fit_quote``'s wrapped output centred in ``x0..x1``, returning the
+    y after the last line.
+
+    Leading and trailing whitespace chunks are trimmed off each line before it
+    is measured, or a wrapped line's trailing space shifts the centring; and
+    every chunk is aligned on the body font's ascent, so a size difference
+    between the regular and bold faces cannot make the matched phrase float.
+    """
+    body_ascent = _font_ascent(regular)
+    y = top
+    for line in wrapped:
+        start, end = 0, len(line)
+        while start < end and line[start][0].strip() == "":
+            start += 1
+        while end > start and line[end - 1][0].strip() == "":
+            end -= 1
+        segment = line[start:end]
+        width_px = sum(draw.textbbox((0, 0), c, font=bold if b else regular)[2]
+                       for c, b in segment)
+        x = x0 + max(min_inset, ((x1 - x0) - width_px) // 2)
+        for chunk, is_bold in segment:
+            font = bold if is_bold else regular
+            draw.text((x, y + (body_ascent - _font_ascent(font))), chunk,
+                      font=font, fill=accent if is_bold else fill)
+            x += draw.textbbox((0, 0), chunk, font=font)[2]
+        y += line_height
+    return y
+
+
+def draw_truncated_centred_byline(draw: ImageDraw.ImageDraw, quote_row: dict, *,
+                                  centre: int, baseline: int, max_width: int,
+                                  font, fill) -> None:
+    """Author and title centred on a baseline, ellipsised to fit.
+
+    Truncation measures against the panel the byline actually sits in, passed
+    in rather than hardcoded: ``tarot`` shipped a literal inherited from an
+    earlier card size and painted nine shipped-corpus attributions off theirs.
+    """
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
+    parts = " — ".join(p for p in (author, title) if p)
+    if not parts:
+        return
+    while draw.textlength(parts, font=font) > max_width and len(parts) > 8:
+        parts = parts[:-2].rstrip(" ,.;:") + "…"
+    draw.text((centre, baseline), parts, font=font, fill=fill, anchor="ms")
+
+
+# ---------------------------------------------------------------------------
 # daguerreotype — a cased monochrome photograph
 #
 # An 1850s daguerreotype in its case: ornate brass mat, oval window, a
@@ -25197,16 +25388,8 @@ def _daguerreotype_paint_slip(image: Image.Image, draw: ImageDraw.ImageDraw, quo
     """The caption slip: cream stock lifted on a shadow ledge, the quote in
     Libre Caslon with the matched phrase in the studio's red ink."""
     x0, y0, x1, y1 = _DAG_SLIP
-    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
-    draw.rectangle((x0 + 3, y0 + 3, x1 + 3, y1 + 3), fill=black)  # the ledge
-    draw.rectangle((x0, y0, x1, y1), fill=white)
-    px = image.load()
-    for y in range(y0, y1 + 1):
-        row = BAYER_4x4[y % 4]
-        for x in range(x0, x1 + 1):
-            if row[x % 4] < 2:
-                px[x, y] = yellow
-    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+    black = SPECTRA6["black"]
+    paint_mount_card(image, draw, _DAG_SLIP, ledge=3)
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
@@ -25214,33 +25397,16 @@ def _daguerreotype_paint_slip(image: Image.Image, draw: ImageDraw.ImageDraw, quo
         x1 - x0 - 36, y1 - y0 - 88, font_max=26, font_min=14,
         line_height_mult=1.32, theme="daguerreotype",
     )
-    y = y0 + 26
-    body_ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
-        width_px = sum(draw.textbbox((0, 0), c, font=quote_font_bold if b else quote_font)[2]
-                       for c, b in segment)
-        x = x0 + max(18, ((x1 - x0) - width_px) // 2)
-        for chunk, is_bold in segment:
-            font = quote_font_bold if is_bold else quote_font
-            fill = SPECTRA6["red"] if is_bold else black
-            draw.text((x, y + (body_ascent - _font_ascent(font))), chunk, font=font, fill=fill)
-            x += draw.textbbox((0, 0), chunk, font=font)[2]
-        y += line_height
-
-    author = (quote_row.get("author") or "").strip()
-    title = (quote_row.get("title") or fallback_title(quote_row) or "").strip()
-    parts = " — ".join(p for p in (author, title) if p)
-    if parts:
-        font = load_font(theme_font_candidates("daguerreotype", "quote_regular"), size=13)
-        while draw.textlength(parts, font=font) > (x1 - x0 - 30) and len(parts) > 8:
-            parts = parts[:-2].rstrip(" ,.;:") + "…"
-        draw.text(((x0 + x1) // 2, y1 - 20), parts, font=font, fill=black, anchor="ms")
+    draw_centred_styled_lines(
+        draw, wrapped, x0=x0, x1=x1, top=y0 + 26, line_height=line_height,
+        regular=quote_font, bold=quote_font_bold,
+        fill=black, accent=SPECTRA6["red"],
+    )
+    draw_truncated_centred_byline(
+        draw, quote_row, centre=(x0 + x1) // 2, baseline=y1 - 20,
+        max_width=x1 - x0 - 30, fill=black,
+        font=load_font(theme_font_candidates("daguerreotype", "quote_regular"), size=13),
+    )
 
 
 def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
@@ -25259,6 +25425,693 @@ def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, heigh
     _daguerreotype_paint_ring(image)
     draw = ImageDraw.Draw(image)
     _daguerreotype_paint_slip(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# autochrome — a colour photograph, in the panel's own idiom
+#
+# Autochrome Lumiere (1907-1930s) was the first practical colour process, and
+# it worked by a mechanism this panel already has. A glass plate carried a
+# mosaic of potato-starch grains dyed orange-red, green and blue-violet; the
+# emulsion behind was exposed and developed through that random colour filter.
+# What the viewer sees is therefore not continuous colour at all — it is a
+# **stochastic mosaic of three coloured grains** the eye integrates at viewing
+# distance. A dither to six inks is the same object. Every other synthesised
+# tone in this codebase approximates a colour the hardware lacks; here the
+# panel is not approximating the medium, it is doing what the medium did.
+#
+# **The first plate dithered against the full six-ink palette.** ``anna_atkins``
+# (W+K+B), ``grimdark`` (W+K), ``letter`` (W+Y+R+G) and ``daguerreotype`` (W+K)
+# all restrict the candidate set so error diffusion cannot scatter chroma into a
+# ground that should not carry it. That restriction is right for each of them
+# and wrong here: the chroma is the subject, and the six inks stand in for the
+# dyed grains.
+#
+# **Muted and high-key is a measurement, not a mood.** Run against the real
+# primitive, a saturated source quantises to a chunky blue/red/green mosaic that
+# reads as colour bars at 800x480, while a soft desaturated one breaks into a
+# fine grain with white carrying the tone. Autochrome's own character — pastel,
+# high-key, soft-focus, warm-biased, because the grain layer scatters light and
+# costs 2-3 stops — is the one photographic register that dithers *well* on
+# these inks, so the period style and the hardware constraint point the same
+# way. The committed plate is a garden (``scripts/generate_autochrome_plate.py``
+# — an original work in the idiom, the anna_atkins reasoning) because the long
+# exposures suited static subjects, which is why the Lumieres, Clementel and
+# Albert Kahn's operators all shot flower beds, and because a garden puts all
+# six inks on the page honestly: sky blue, foliage green, poppy red, bloom
+# yellow, path white, shadow black. ``TestAutochromePlate`` measures exactly
+# that — every ink present, none but white dominant — since it is the pitch.
+#
+# **The mount is a passe-partout**: two glass sheets bound at the edges with
+# black gummed tape, the way a plate was actually presented and stored. The
+# quote sits on a cream card laid on the plate, lifted by the black shadow ledge
+# ``kanagawa`` / ``tarot`` / ``pride`` use — without it the card reads as a hole
+# cut in the photograph rather than as paper resting on it.
+#
+# **This is the one theme whose colour work is entirely in the plate.** The
+# matched phrase is solid red, not a synthesised recipe, and that is deliberate
+# twice over: the orange-red grain is the dominant one in a real autochrome
+# mosaic and the panel's red is the nearest solid ink to it, while a two-ink
+# stipple at caption size shreds a serif (the documented hairline failure that
+# ``astrarium`` / ``vitrail`` / ``bakelite`` all record). Forcing an accent
+# recipe onto a theme whose whole argument is "the panel renders a real colour
+# photograph" would be answering the wrong question.
+#
+# **A photograph carries no clock**, so ``time_str`` is del-asserted — the rule
+# ``daguerreotype`` states for the same class of object, and the matched phrase
+# carries the time alone. Composed at the canonical 800x480 and
+# NEAREST-downsampled for a non-native request (the ``metro`` convention): the
+# tape and card are absolute mount geometry, and an interpolating filter would
+# average the grain into colours the panel cannot print.
+_AUTOCHROME_TAPE = 13                       # passe-partout binding tape, px
+_AUTOCHROME_CORNER = 7                      # extra reach where tape strips overlap
+_AUTOCHROME_CARD = (458, 56, 770, 424)      # the caption card
+_AUTOCHROME_LEDGE = 3                       # the card's drop shadow
+
+
+def _autochrome_paint_plate(image: Image.Image) -> None:
+    """The photograph: the committed garden, Floyd-Steinberg-dithered against
+    all six inks, full bleed."""
+    plate = _load_dithered_plate(AUTOCHROME_PLATE, 800, 480, palette=_AUTOCHROME_PALETTE)
+    if plate is None:
+        _autochrome_paint_garden_fallback(image)
+        return
+    image.paste(plate, (0, 0))
+
+
+def _autochrome_paint_garden_fallback(image: Image.Image) -> None:
+    """A stripped install still gets a garden-shaped colour field.
+
+    The same three bands the plate is composed of — a blue sky hazing to white,
+    a green tree line and lawn, a bloom-scattered bed — synthesised as density
+    ramps read off ``BAYER_8x8``. Coarser than the dithered photograph by
+    design; the point is that the theme still reads as a colour picture rather
+    than degrading to a blank ground.
+    """
+    px = image.load()
+    white, black, blue, green, yellow, red = (
+        SPECTRA6[c] for c in ("white", "black", "blue", "green", "yellow", "red"))
+    horizon, beds = 192, 250
+    for y in range(480):
+        row = BAYER_8x8[y % 8]
+        if y < horizon:
+            # Sky: blue density falling toward the horizon haze.
+            density = 0.42 * (1.0 - y / horizon) ** 0.8
+            ink, ground = blue, white
+        elif y < beds:
+            density = 0.34
+            ink, ground = green, white
+        else:
+            # Lawn deepening toward the viewer, warmed by the beds.
+            t = (y - beds) / (480 - beds)
+            density = 0.30 + 0.24 * t
+            ink, ground = green, yellow
+        cut = 64 * density
+        for x in range(800):
+            px[x, y] = ink if row[x % 8] < cut else ground
+    # A drift of blooms across the beds, and the shadow under them: painted
+    # from a positional hash so the fallback stays deterministic.
+    for y in range(beds, 480):
+        for x in range(800):
+            h = _flow_stroke_hash(x // 3, y // 3, 11)
+            if h < 0.020:
+                px[x, y] = red
+            elif h < 0.032:
+                px[x, y] = yellow
+            elif h < 0.044:
+                px[x, y] = black
+
+
+def _autochrome_paint_tape(draw: ImageDraw.ImageDraw) -> None:
+    """The passe-partout: black gummed tape binding the glass sandwich, with a
+    hairline of light at the paper mask's edge just inside it.
+
+    Real bound plates are thicker at the corners, where the four strips overlap
+    — cheap to reproduce and the detail that reads as tape rather than as a
+    drawn frame.
+    """
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    t = _AUTOCHROME_TAPE
+    draw.rectangle((0, 0, 799, t - 1), fill=black)
+    draw.rectangle((0, 480 - t, 799, 479), fill=black)
+    draw.rectangle((0, 0, t - 1, 479), fill=black)
+    draw.rectangle((800 - t, 0, 799, 479), fill=black)
+    c = t + _AUTOCHROME_CORNER
+    for x0, y0 in ((0, 0), (800 - c, 0), (0, 480 - c), (800 - c, 480 - c)):
+        draw.rectangle((x0, y0, x0 + c - 1, y0 + c - 1), fill=black)
+    draw.rectangle((t, t, 799 - t, 479 - t), outline=white, width=1)
+
+
+def _autochrome_paint_card(image: Image.Image, draw: ImageDraw.ImageDraw,
+                           quote_row: dict) -> None:
+    """The caption card: cream stock on a shadow ledge, carrying the quote in
+    Libre Caslon with the matched phrase in the studio's red ink."""
+    x0, y0, x1, y1 = _AUTOCHROME_CARD
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    paint_mount_card(image, draw, _AUTOCHROME_CARD, ledge=_AUTOCHROME_LEDGE)
+
+    # Mount chrome: the process name letterspaced under a hairline rule, in the
+    # sans the other custom frames use for metadata. Spaced by hand because the
+    # renderer has no tracking primitive and a caption this short does not earn
+    # one.
+    draw.text(((x0 + x1) // 2, y0 + 18), " ".join("AUTOCHROME"),
+              font=load_font(META_FONT_BOLD_CANDIDATES, size=10), fill=black, anchor="ms")
+    draw.line((x0 + 34, y0 + 26, x1 - 34, y0 + 26), fill=black, width=1)
+
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0 - 36, y1 - y0 - 92, font_max=26, font_min=13,
+        line_height_mult=1.34, theme="autochrome",
+    )
+    draw_centred_styled_lines(
+        draw, wrapped, x0=x0, x1=x1, top=y0 + 46, line_height=line_height,
+        regular=quote_font, bold=quote_font_bold, fill=black, accent=red,
+    )
+    draw_truncated_centred_byline(
+        draw, quote_row, centre=(x0 + x1) // 2, baseline=y1 - 18,
+        max_width=x1 - x0 - 30, fill=black,
+        font=load_font(theme_font_candidates("autochrome", "quote_regular"), size=13),
+    )
+
+
+def render_autochrome_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """An autochrome plate in its passe-partout (see the section comment)."""
+    del time_str  # a photograph carries no clock; see the section comment.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _autochrome_paint_plate(image)
+    draw = ImageDraw.Draw(image)
+    _autochrome_paint_tape(draw)
+    _autochrome_paint_card(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# photo — the operator's own picture
+#
+# ``autochrome`` proved a colour photograph survives six inks; this is the same
+# machinery pointed at a file the operator chooses. It is the only theme whose
+# art is not committed, which changes what the code has to do in three ways.
+#
+# **The path reaches the renderer through the environment, not through argv.**
+# ``run_clock._corpus_render_args`` documents why the render subprocess's argv
+# may only carry flags an operator's own ``--render-script`` already knows: an
+# unrecognised flag exits argparse with status 2, which fails every tick and
+# slides the appliance into render backoff. An unknown environment variable is
+# ignored by any renderer, so ``IDLE_HOURS_PHOTO_PATH`` is the same channel
+# ``IDLE_HOURS_SUPPRESS_CORPUS_WARNINGS`` uses and for the same reason.
+# ``run_clock.main`` exports it into its OWN environment, which gets both
+# halves for free: children inherit it, and the in-process callers — the
+# curator UI's ``/api/preview``, ``contact_sheet`` — read the same value
+# instead of needing a second mechanism.
+#
+# **An arbitrary photograph does not dither well, and the theme has to fix
+# that rather than hope.** Measured on the real primitive, a saturated source
+# quantises to a chunky blue/red/green mosaic that reads as colour bars at
+# 800x480. ``autochrome`` dodges this by controlling its art; here the input is
+# whatever the operator had on their phone. ``_photo_condition`` therefore
+# pulls saturation and contrast into the band that survives, and does it
+# **adaptively** — the scale factors are computed from the source's own
+# measured saturation and luminance spread, and clamped so they can only ever
+# reduce. A photograph already in the band passes through essentially
+# untouched, so the conditioning costs nothing on material that does not need
+# it, and a lurid one is pulled just far enough. A fixed "make everything
+# pastel" pass was the alternative and is worse in both directions.
+#
+# **The quote cannot sit in a fixed place**, because the fixed place might be
+# the face. ``_photo_card_rect`` scores a handful of candidate positions by how
+# much *detail* each would cover — mean absolute Laplacian over a coarse grid,
+# computed on the conditioned image before dithering — and puts the card on the
+# quietest one. Sky, wall and shadow are cheap to cover; a face or a horizon is
+# not. The metric is deliberately detail, not brightness: the card is opaque,
+# so what is underneath it never affects legibility, only what the operator
+# loses.
+#
+# Everything else is defensive. The source is a file OR a directory (a
+# directory rotates deterministically with the quote via ``_row_digest``, which
+# is the cadence an appliance actually wants), and every failure mode an
+# operator can present — a missing path, a text file named ``.jpg``, a CMYK
+# scan, a portrait phone photo with an EXIF rotation, a decompression bomb, an
+# empty directory — degrades to the bundled ``autochrome`` plate with a latched
+# warning rather than raising into the per-tick render path. A theme that can
+# crash the loop because someone deleted a file is not shippable on an
+# appliance.
+
+# Extensions we will attempt from a directory listing. Deliberately a
+# allowlist rather than "whatever Pillow opens": a directory an operator points
+# at is full of other things, and probing every file with Image.open to find
+# out is both slow and a wider attack surface than reading pictures.
+_PHOTO_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff"})
+
+# A directory can hold thousands of files; the cache holds decoded 800x480 RGB
+# frames at ~1.1 MB each, so it is bounded (the ``betweenus`` paper-cache
+# lesson, where an unbounded dict keyed on caller-controlled geometry let an
+# unauthenticated /api/preview client retain a megabyte per distinct size).
+_PHOTO_CACHE: "collections.OrderedDict[tuple, tuple[Image.Image, tuple[int, int, int, int]]]" = (
+    collections.OrderedDict())
+_PHOTO_CACHE_MAX = 6
+# Decode cap, measured rather than chosen: a 56 MP PNG costs 212 MiB of RSS,
+# so ~3.8 MiB per megapixel. 40 MP bounds a non-draftable decode at ~150 MiB,
+# which a 512 MB Pi survives alongside the main loop. JPEGs are drafted down
+# before this is checked, so in practice it only turns away a large image in a
+# format that cannot be scaled at decode time. See ``_photo_open``.
+_PHOTO_MAX_PIXELS = 40_000_000
+# Warnings latch per resolved source so a stale path does not write a line per
+# render — the ``_DEGRADED_WARNED`` pattern in ``pick_quote``, for the same
+# reason: on this hardware SD-card write amplification is a design concern.
+_PHOTO_WARNED: set = set()
+
+# Conditioning targets, measured against the dither rather than chosen. Mean
+# saturation ~0.30 and a luminance spread ~0.19 are roughly where the shipped
+# autochrome plate sits, and it dithers to a fine grain with white carrying the
+# tone. Both are ceilings: a gentler photograph is left alone.
+# Conditioning targets, read off the shipped ``autochrome`` plate rather than
+# chosen: that plate is the one we have measured dithering to a fine grain with
+# white carrying the tone, so "looks like that" is the operational definition of
+# "survives six inks". Mean chroma 0.163, mean luminance 0.671, spread 0.142.
+#
+# Chroma is measured as ``(max - min) / 255`` per pixel, NOT as HSV saturation,
+# and that is load-bearing. ``ImageEnhance.Color`` blends toward greyscale, so
+# it scales this quantity *linearly* — a factor of ``target / measured`` lands
+# on the target in one pass. HSV saturation is a ratio, so the same factor
+# undershoots badly on dark colours: an early version measured HSV, computed a
+# factor of 0.35 for a lurid source, and moved it from 0.86 to 0.67. Measure in
+# the space the knob works in.
+_PHOTO_TARGET_CHROMA = 0.18
+_PHOTO_TARGET_MEAN = 0.63
+_PHOTO_SPREAD_CEILING = 0.22     # only compress contrast well above the reference
+_PHOTO_MIN_CONTRAST = 0.75       # ...and never flatten it
+_PHOTO_MEAN_TOLERANCE = 0.06
+_PHOTO_SOFT_FOCUS = 0.6
+
+# How much a tonally-unusual region costs relative to a detailed one. At 0.5
+# a smooth bright subject is about as expensive to cover as moderate
+# texture, which is the balance that keeps the card off a sun without
+# driving it onto foliage.
+_PHOTO_SALIENCE_WEIGHT = 0.5
+# How much the single worst cell under a candidate counts alongside its mean.
+_PHOTO_PEAK_WEIGHT = 0.5
+
+_PHOTO_CARD_W, _PHOTO_CARD_H = 312, 368
+_PHOTO_CARD_MARGIN = 34
+# Candidate card anchors, in the order ties are broken. Right-hand positions
+# come first because a caption on the right is the conventional reading order
+# for a picture-plus-text plate, so an image with no quiet region at all still
+# lands somewhere deliberate.
+_PHOTO_CARD_ANCHORS = ((1, 0.5), (0, 0.5), (1, 0.0), (0, 0.0), (1, 1.0), (0, 1.0))
+
+
+def _photo_source() -> str | None:
+    """The configured photo file or directory, or ``None``.
+
+    Read per render rather than captured at import: ``run_clock`` exports the
+    variable during ``main``, after this module is already imported by the
+    in-process peek path, and a test that sets it must not have to reload the
+    module.
+    """
+    value = os.environ.get(PHOTO_PATH_ENV, "").strip()
+    return value or None
+
+
+def _photo_warn_once(key: str, message: str) -> None:
+    if key not in _PHOTO_WARNED:
+        _PHOTO_WARNED.add(key)
+        print(f"photo theme: {message}", file=sys.stderr)
+
+
+def clear_photo_cache() -> None:
+    """Drop the decoded-frame cache and the warning latch.
+
+    Public because a test asserting on a warning must not be silenced by a
+    previous one, the same contract ``pick_quote.clear_corpus_cache`` keeps.
+    """
+    _PHOTO_CACHE.clear()
+    _PHOTO_WARNED.clear()
+
+
+def _photo_candidates(source: str) -> list[Path]:
+    """Resolve the configured source to a list of candidate image files.
+
+    A file yields itself (whatever its extension — the operator named it
+    explicitly, so honour that); a directory yields its sorted image-suffixed
+    entries. Sorted so the digest-driven pick is stable across filesystems,
+    whose directory order is not.
+    """
+    path = resolve_input_path(source, BASE_DIR)
+    try:
+        if path.is_file():
+            return [path]
+        if path.is_dir():
+            return sorted(p for p in path.iterdir()
+                          if p.is_file() and p.suffix.lower() in _PHOTO_SUFFIXES)
+    except OSError:
+        return []
+    return []
+
+
+def _photo_for_row(quote_row: dict) -> Path | None:
+    """Pick this render's photograph.
+
+    A directory rotates with the *quote* rather than with the clock, which is
+    the cadence the appliance already moves at — and it keeps the frame
+    deterministic for a given row, which run_clock's "quote unchanged, skip the
+    redraw" dedup depends on.
+    """
+    source = _photo_source()
+    if source is None:
+        return None
+    candidates = _photo_candidates(source)
+    if not candidates:
+        _photo_warn_once(f"empty:{source}",
+                         f"{source!r} holds no readable image; using the bundled plate")
+        return None
+    return candidates[_row_digest(quote_row) % len(candidates)]
+
+
+def _photo_measure(image: Image.Image) -> tuple[float, float, float]:
+    """Mean chroma, mean luminance and luminance spread, each 0..1.
+
+    Measured on a thumbnail: the numbers only steer a global correction, and
+    walking every pixel of a 12-megapixel phone photo to compute them would
+    cost more than the render. See ``_PHOTO_TARGET_CHROMA`` for why chroma is
+    ``max - min`` rather than HSV saturation.
+    """
+    small = image.resize((64, 40), Image.Resampling.BILINEAR)
+    pixels = small.width * small.height
+    bands = small.split()
+    lightest = ImageChops.lighter(ImageChops.lighter(bands[0], bands[1]), bands[2])
+    darkest = ImageChops.darker(ImageChops.darker(bands[0], bands[1]), bands[2])
+    chroma_hist = ImageChops.subtract(lightest, darkest).histogram()
+    chroma = sum(i * n for i, n in enumerate(chroma_hist)) / pixels / 255.0
+    value_hist = lightest.histogram()
+    mean = sum(i * n for i, n in enumerate(value_hist)) / pixels / 255.0
+    variance = sum(n * ((i / 255.0) - mean) ** 2 for i, n in enumerate(value_hist)) / pixels
+    return chroma, mean, math.sqrt(variance)
+
+
+def _photo_condition(image: Image.Image) -> Image.Image:
+    """Pull an arbitrary photograph into the band that dithers to grain.
+
+    **Chroma first, levels last**, and the order is the whole correctness
+    argument. The two corrections are not independent: blending toward grey
+    lowers the lightest channel of a saturated pixel, so a chroma correction
+    drags luminance down with it — measured on a lurid source, by 0.19, which
+    is three times the tolerance. Levels applied first therefore land on target
+    and are then knocked off it, which is what the previous two versions of
+    this function each did in their own way.
+
+    The reverse order is stable rather than merely luckier, because levels is
+    ``v * scale + offset`` with ``scale <= 1``: an offset shifts every channel
+    equally and leaves ``max - min`` untouched, and a scale multiplies chroma
+    by that same factor. So the levels pass can only hold chroma where it is or
+    push it further below target, never back above. No iteration needed.
+
+    Both corrections are computed from the source and clamped so they can only
+    reduce. A photograph already inside the band comes through untouched, which
+    is the point: a fixed "make everything pastel" pass would damage gentle
+    material in order to fix lurid material.
+    """
+    chroma, _, _ = _photo_measure(image)
+    out = image
+    if chroma > _PHOTO_TARGET_CHROMA:
+        out = ImageEnhance.Color(out).enhance(_PHOTO_TARGET_CHROMA / chroma)
+    _, mean, spread = _photo_measure(out)
+    scale = 1.0
+    if spread > _PHOTO_SPREAD_CEILING:
+        scale = max(_PHOTO_MIN_CONTRAST, _PHOTO_SPREAD_CEILING / spread)
+    if scale < 1.0 or abs(mean - _PHOTO_TARGET_MEAN) > _PHOTO_MEAN_TOLERANCE:
+        offset = (_PHOTO_TARGET_MEAN - mean * scale) * 255.0
+        out = out.point(lambda v, s=scale, o=offset: max(0, min(255, int(round(v * s + o)))))
+    return out.filter(ImageFilter.GaussianBlur(_PHOTO_SOFT_FOCUS))
+
+
+def _photo_cover_crop(image: Image.Image, width: int, height: int) -> Image.Image:
+    """Scale to cover the panel and centre-crop the overflow.
+
+    Cover rather than fit: letterboxing an operator's photo would paint bars
+    the panel has no good colour for, and a picture frame shows a picture.
+    """
+    src_w, src_h = image.size
+    scale = max(width / src_w, height / src_h)
+    scaled = image.resize((max(width, int(round(src_w * scale))),
+                           max(height, int(round(src_h * scale)))),
+                          Image.Resampling.LANCZOS)
+    left = (scaled.width - width) // 2
+    top = (scaled.height - height) // 2
+    return scaled.crop((left, top, left + width, top + height))
+
+
+def _photo_open(path: Path, width: int, height: int) -> Image.Image | None:
+    """Open, orient, crop and condition an operator's photograph.
+
+    Everything an operator can hand us is handled here rather than at the call
+    site: EXIF rotation (a phone photo is stored landscape with a rotate tag),
+    palette / CMYK / alpha modes, and a size bound. Any failure returns
+    ``None`` and the caller falls back to the bundled plate.
+
+    **Draft first, then cap, then decode**, and the order is the whole point.
+    ``Image.open`` is lazy — it reads the header only — so both steps happen
+    before a single pixel is materialised:
+
+    * ``draft`` asks the JPEG decoder to scale down during the DCT pass. A
+      108 MP phone panorama arrives declaring 12000x9000 and comes out of the
+      draft call at 3000x2250, so the decode that follows is ~7 MP rather than
+      ~108. It is a no-op for PNG and every other format, which is why the cap
+      below is still needed.
+    * The cap then rejects what draft could not shrink. Pillow's own
+      decompression-bomb guard does not cover this: it *raises* only above
+      ``MAX_IMAGE_PIXELS * 2`` (179 MP) and merely *warns* between there and
+      89.5 MP, so an image well inside its limits still decodes eagerly.
+      Measured, a 56 MP PNG costs 212 MiB of RSS — enough to OOM the render
+      child on a 512 MB Pi Zero 2 W, which would kill the render rather than
+      reach the graceful fallback this theme promises. ``_PHOTO_MAX_PIXELS``
+      is set from that measurement.
+
+    Drafting before capping is what keeps the cap from rejecting real cameras:
+    a 48 MP phone JPEG is over the limit as declared and comfortably under it
+    once drafted, so the only thing the cap actually turns away is a large
+    image in a format that cannot be scaled at decode time.
+    """
+    try:
+        with Image.open(path) as raw:
+            # Ask for twice the target box so the LANCZOS cover-crop still has
+            # resampling headroom; draft only ever overshoots upward.
+            raw.draft("RGB", (width * 2, height * 2))
+            pixels = raw.width * raw.height
+            if pixels > _PHOTO_MAX_PIXELS:
+                _photo_warn_once(
+                    f"toobig:{path}",
+                    f"{path} is {pixels / 1e6:.0f} MP after draft, over the "
+                    f"{_PHOTO_MAX_PIXELS / 1e6:.0f} MP decode cap; using the bundled plate",
+                )
+                return None
+            raw.load()
+            oriented = ImageOps.exif_transpose(raw) or raw
+            rgb = oriented.convert("RGB")
+    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as exc:
+        _photo_warn_once(f"open:{path}", f"cannot read {path}: {exc!r}; using the bundled plate")
+        return None
+    return _photo_condition(_photo_cover_crop(rgb, width, height))
+
+
+def photo_source_stamp(quote_row: dict) -> tuple | None:
+    """A hashable stamp for the photograph this row would render, or ``None``.
+
+    Public because the curator UI's ``/api/preview`` caches encoded PNGs, and
+    its key is built from theme, time, quote identity and corpus stamps —
+    none of which move when an operator swaps the file at ``--photo-path``.
+    That cache returns before ``_photo_frame_for`` runs, so its own
+    mtime-aware key never gets consulted and the preview shows the old picture
+    indefinitely (a Codex review finding on the PR that added this theme).
+
+    The stamp resolves the row's own photograph, so it also covers a directory
+    whose membership changed: adding or removing a file can move which entry
+    the row digest lands on, and the resolved path is what is stamped.
+    """
+    path = _photo_for_row(quote_row)
+    if path is None:
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        # Still distinguishes one missing path from another, and from a
+        # readable one — which is all the cache key needs.
+        return (str(path), None, None)
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
+def _photo_frame_for(quote_row: dict, width: int, height: int) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """The dithered background and the card rectangle chosen for it.
+
+    The two are returned together because the card's placement is measured on
+    the **continuous-tone** image, before dithering, and that image is a local
+    of this function. Measuring the dithered plate instead is not a small
+    inaccuracy but an inversion: a dither turns every smooth region into a
+    stipple where each pixel differs from its neighbour, so a flat pale wall
+    scores *higher* edge energy than dark foliage and the card lands on
+    precisely the part of the picture worth keeping.
+
+    Falls back to the bundled ``autochrome`` garden when nothing is configured
+    or the configured source cannot be read, so the theme is always renderable
+    - and, with the environment variable unset, byte-deterministic, which is
+    what lets it carry a golden fixture at all.
+    """
+    path = _photo_for_row(quote_row)
+    key: tuple | None = None
+    if path is not None:
+        try:
+            stat = path.stat()
+            key = (str(path), stat.st_mtime_ns, stat.st_size, width, height)
+        except OSError:
+            key = None
+        if key is not None:
+            cached = _PHOTO_CACHE.get(key)
+            if cached is not None:
+                _PHOTO_CACHE.move_to_end(key)
+                return cached
+        conditioned = _photo_open(path, width, height)
+        if conditioned is not None:
+            result = (dither_image_to_palette(conditioned, SPECTRA6_PALETTE),
+                      _photo_card_rect(conditioned, width, height))
+            if key is not None:
+                _PHOTO_CACHE[key] = result
+                while len(_PHOTO_CACHE) > _PHOTO_CACHE_MAX:
+                    _PHOTO_CACHE.popitem(last=False)
+            return result
+    return _photo_fallback_frame(width, height)
+
+
+def _photo_fallback_frame(width: int, height: int) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """The bundled ``autochrome`` garden, measured for card placement the same
+    way an operator's photograph is - off the continuous-tone source, not the
+    dithered plate."""
+    plate = _load_dithered_plate(AUTOCHROME_PLATE, width, height, palette=_AUTOCHROME_PALETTE)
+    try:
+        with Image.open(AUTOCHROME_PLATE) as raw:
+            source = raw.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
+    except (OSError, ValueError):
+        source = None
+    if plate is None:
+        plate = Image.new("RGB", (width, height), SPECTRA6["white"])
+        _autochrome_paint_garden_fallback(plate)
+    rect = _photo_card_rect(source if source is not None else plate, width, height)
+    return plate, rect
+
+
+def _photo_cost_map(image: Image.Image, cols: int = 20, rows: int = 12) -> list[list[float]]:
+    """Per-cell cost of covering that part of the picture.
+
+    Two terms, because either alone picks a bad spot on real material:
+
+    * **Detail** — mean edge energy. Flat sky, flat wall and flat shadow are
+      cheap to cover; foliage, a horizon or a face is not.
+    * **Salience** — how far the cell's luminance sits from the frame's own
+      mean. A smooth bright subject on a dark field (a sun, a lit face, a
+      window) has almost no edge energy *inside* it, so detail alone rates it
+      as quiet and the card lands squarely on it. Measured on a synthetic beach
+      photograph, adding this term is what moved the card off the sun.
+
+    Both are computed on the continuous-tone image. Running either against the
+    dithered plate inverts the answer, since a dither turns every smooth region
+    into a stipple where each pixel differs from its neighbour.
+    """
+    grey = image.convert("L")
+    detail = grey.filter(ImageFilter.FIND_EDGES).resize((cols, rows), Image.Resampling.BOX)
+    coarse = grey.resize((cols, rows), Image.Resampling.BOX)
+    dpx, cpx = detail.load(), coarse.load()
+    cells = [[cpx[c, r] for c in range(cols)] for r in range(rows)]
+    mean = sum(sum(row) for row in cells) / (cols * rows)
+    return [
+        [dpx[c, r] / 255.0 + _PHOTO_SALIENCE_WEIGHT * abs(cells[r][c] - mean) / 255.0
+         for c in range(cols)]
+        for r in range(rows)
+    ]
+
+
+def _photo_card_rect(image: Image.Image, width: int, height: int) -> tuple[int, int, int, int]:
+    """Place the caption card over the quietest candidate region."""
+    card_w = max(1, min(_PHOTO_CARD_W, width - 2 * _PHOTO_CARD_MARGIN))
+    card_h = max(1, min(_PHOTO_CARD_H, height - 2 * _PHOTO_CARD_MARGIN))
+    detail = _photo_cost_map(image)
+    rows, cols = len(detail), len(detail[0])
+    best, best_score = None, None
+    for side, vertical in _PHOTO_CARD_ANCHORS:
+        x0 = _PHOTO_CARD_MARGIN if side == 0 else width - _PHOTO_CARD_MARGIN - card_w
+        y0 = int(round(_PHOTO_CARD_MARGIN + vertical * (height - 2 * _PHOTO_CARD_MARGIN - card_h)))
+        x0 = max(0, min(width - card_w, x0))
+        y0 = max(0, min(height - card_h, y0))
+        c0, c1 = int(x0 / width * cols), max(int(x0 / width * cols) + 1, int((x0 + card_w) / width * cols))
+        r0, r1 = int(y0 / height * rows), max(int(y0 / height * rows) + 1, int((y0 + card_h) / height * rows))
+        cells = [detail[r][c] for r in range(r0, min(r1, rows)) for c in range(c0, min(c1, cols))]
+        # Mean plus a share of the worst cell. The mean alone is a card-sized
+        # average, and the card is large: one small child's face on an
+        # otherwise empty lawn is diluted to nothing across 312x368 px and gets
+        # covered at any salience weight. The peak term asks the separate
+        # question "does this position clip anything important", which is the
+        # one an operator would actually ask.
+        score = (sum(cells) / len(cells) + _PHOTO_PEAK_WEIGHT * max(cells)) if cells else 0.0
+        if best_score is None or score < best_score - 1e-9:
+            best, best_score = (x0, y0), score
+    x0, y0 = best if best is not None else (_PHOTO_CARD_MARGIN, _PHOTO_CARD_MARGIN)
+    return (x0, y0, x0 + card_w, y0 + card_h)
+
+
+def _photo_paint_card(image: Image.Image, draw: ImageDraw.ImageDraw,
+                      rect: tuple[int, int, int, int], quote_row: dict) -> None:
+    """The caption card: the shared cream mount, keylined heavier than
+    ``daguerreotype``'s because an arbitrary photograph may be pale right up
+    against the card's edge, where a controlled plate never is."""
+    x0, y0, x1, y1 = rect
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    paint_mount_card(image, draw, rect, ledge=3, outline_width=2)
+
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0 - 40, y1 - y0 - 74, font_max=26, font_min=12,
+        line_height_mult=1.34, theme="photo",
+    )
+    block_h = len(wrapped) * line_height
+    draw_centred_styled_lines(
+        draw, wrapped, x0=x0, x1=x1,
+        top=y0 + max(24, ((y1 - y0) - 34 - block_h) // 2),
+        line_height=line_height, regular=quote_font, bold=quote_font_bold,
+        fill=black, accent=red,
+    )
+    draw_truncated_centred_byline(
+        draw, quote_row, centre=(x0 + x1) // 2, baseline=y1 - 16,
+        max_width=x1 - x0 - 30, fill=black,
+        font=load_font(theme_font_candidates("photo", "quote_regular"), size=13),
+    )
+
+
+def render_photo_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The operator's photograph with the quote on a card (see the section
+    comment).
+
+    Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
+    request, the ``metro`` convention. Composing directly at the requested size
+    was tried first, on the theory that the card's placement is measured from
+    image content and so ought to be re-measured per aspect. Two things make it
+    wrong. The card has a minimum sensible size, and at the curator grid's
+    thumbnail widths that minimum exceeds the canvas — the first cut indexed
+    the card's pixel loop straight off the image and raised ``IndexError`` for
+    every theme render below ~250 px wide. And a preview's job is to show what
+    the panel will show, so re-deciding the layout for the thumbnail would make
+    it a preview of something that is never displayed.
+    """
+    del time_str  # a photograph carries no clock; the daguerreotype rule.
+    plate, rect = _photo_frame_for(quote_row, 800, 480)
+    image = plate.copy()
+    draw = ImageDraw.Draw(image)
+    _photo_paint_card(image, draw, rect, quote_row)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
@@ -25314,6 +26167,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_plaque_frame(time_str, quote_row, width, height)
     if theme == "daguerreotype":
         return render_daguerreotype_frame(time_str, quote_row, width, height)
+    if theme == "autochrome":
+        return render_autochrome_frame(time_str, quote_row, width, height)
+    if theme == "photo":
+        return render_photo_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
@@ -25682,6 +26539,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
 def main() -> int:
     args = parse_args()
+    if args.photo_path:
+        os.environ[PHOTO_PATH_ENV] = args.photo_path
     # Output is a runtime artifact, not a bundled package asset — resolve
     # relative paths against the caller's CWD (same contract as ``data/`` for
     # the Gutenberg miner cache). Pre-package-restructure this used to resolve

@@ -31,6 +31,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# The `photo` theme's source, named here rather than in ``render_quote`` so
+# ``run_clock`` can export it without importing Pillow — the same reason
+# ``theme_names`` exists. It travels by environment rather than by render-
+# subprocess argv because that argv may only carry flags an operator's own
+# ``--render-script`` already recognises (see ``run_clock._corpus_render_args``):
+# an unknown flag exits argparse with status 2 and takes the appliance into
+# render backoff, where an unknown environment variable is simply ignored.
+PHOTO_PATH_ENV = "IDLE_HOURS_PHOTO_PATH"
+
 
 def resolve_input_path(value: str | Path, base_dir: Path) -> Path:
     """Resolve an input path with CWD-then-bundled fallback.

@@ -11,9 +11,9 @@
 # /var/lib/idle-hours/ paths, production mode, and systemctl-poweroff,
 # see idle_hours/assets/config.toml.example instead.
 #
-# Two CLI defaults are `None` (argparse) and therefore OMITTED here,
-# since TOML has no null: `display_script`, `startup_image`. Set them
-# to a string path to enable the feature.
+# Three CLI defaults are `None` (argparse) and therefore OMITTED here,
+# since TOML has no null: `display_script`, `startup_image`,
+# `photo_path`. Set them to a string path to enable the feature.
 #
 # Transient flags refused in the config (and unconditionally dropped
 # with a stderr warning): `once`, `skip_preflight`, `config`. Pass
@@ -25,7 +25,7 @@ render_script    = "render_quote.py"
 output           = "output/current.png"
 mode             = "debug"
 theme            = "default"
-# Valid: any registered theme name (sixty-one themes ship today; `idle-hours run
+# Valid: any registered theme name (sixty-three themes ship today; `idle-hours run
 # --help` prints the full list and render_quote.THEME_ORDER is the canonical
 # order), "auto" (wall-clock day/night), or "random" (rerolls each time the
 # displayed quote changes; not persisted across restarts).
@@ -65,6 +65,13 @@ quiet_off   = false
 buttons_off      = false
 shutdown_command = "sudo -n shutdown -h now"
 # startup_image  = "assets/goodnight.png"   # default is unset.
+
+# Source for the `photo` theme: a single image, or a directory that rotates
+# deterministically as the displayed quote changes. Any format Pillow reads.
+# The picture is conditioned (desaturated and contrast-compressed only as far
+# as it needs) before being dithered against all six inks, and the quote card
+# is placed over whichever region of it holds the least detail.
+# photo_path     = "~/Pictures/idle-hours"   # default is unset.
 
 # ---- Curator web UI --------------------------------------------------------
 # Off by default (empty web_bind). Non-loopback binds also require

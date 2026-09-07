@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -4786,6 +4788,73 @@ class TestRenderChildSuppressesCorpusWarnings:
         flags = [str(a) for a in cmd if str(a).startswith("--")]
         assert not any("suppress" in f.lower() for f in flags), flags
         assert run_clock.pick_quote_module.SUPPRESS_WARNINGS_ENV not in flags
+
+
+class TestPhotoPathPlumbing:
+    """``--photo-path`` must reach the renderer, and must not reach it as argv.
+
+    The `photo` theme's source travels by environment for the reason
+    ``_corpus_render_args`` documents: the render subprocess's argv may only
+    carry flags an operator's own ``--render-script`` already recognises, and an
+    unrecognised flag exits argparse with status 2, failing every tick into
+    render backoff. Exporting into run_clock's OWN environment is what serves
+    the in-process consumers (the curator UI's ``/api/preview``,
+    ``contact_sheet``) off the same value.
+    """
+
+    def _main_with(self, tmp_path, monkeypatch, argv_extra):
+        monkeypatch.delenv(run_clock.PHOTO_PATH_ENV, raising=False)
+        argv = ["run_clock.py", "--once", "--skip-preflight", "--buttons-off",
+                "--output", str(tmp_path / "current.png"),
+                "--state-path", "", "--history-path", "", "--telemetry-path", "",
+                "--pidfile", ""] + argv_extra
+        monkeypatch.setattr(sys, "argv", argv)
+        with patch("idle_hours.run_clock.render_now") as render:
+            run_clock.main()
+        return render
+
+    def test_the_flag_is_exported_into_the_environment(self, tmp_path, monkeypatch):
+        photo = tmp_path / "frame.jpg"
+        photo.write_bytes(b"")
+        self._main_with(tmp_path, monkeypatch, ["--photo-path", str(photo)])
+        assert os.environ[run_clock.PHOTO_PATH_ENV] == str(photo), (
+            "run_clock did not export the photo path, so neither the render "
+            "subprocess (which inherits it) nor the curator UI's /api/preview "
+            "(which reads it in-process) can see the operator's picture"
+        )
+
+    def test_no_flag_leaves_the_environment_untouched(self, tmp_path, monkeypatch):
+        self._main_with(tmp_path, monkeypatch, [])
+        assert run_clock.PHOTO_PATH_ENV not in os.environ
+
+    def test_the_path_is_never_passed_as_argv(self, tmp_path, monkeypatch):
+        """An unrecognised flag would take an operator's custom renderer -
+        and therefore the appliance - into backoff."""
+        photo = tmp_path / "frame.jpg"
+        photo.write_bytes(b"")
+        with patch("subprocess.run") as mock_run, \
+             patch("idle_hours.run_clock.current_time_str", return_value="14:30"):
+            monkeypatch.delenv(run_clock.PHOTO_PATH_ENV, raising=False)
+            monkeypatch.setenv(run_clock.PHOTO_PATH_ENV, str(photo))
+            run_clock.render_now(
+                render_script="render_quote.py",
+                output_path=str(tmp_path / "current.png"),
+                width=800, height=480,
+            )
+        cmd = [str(a) for a in mock_run.call_args[0][0]]
+        flags = [a for a in cmd if a.startswith("--")]
+        assert not any("photo" in f.lower() for f in flags), flags
+        # ...but it must still be visible to the child through the environment.
+        assert mock_run.call_args.kwargs["env"][run_clock.PHOTO_PATH_ENV] == str(photo)
+
+    def test_a_typoed_path_fails_pre_flight(self, tmp_path, monkeypatch):
+        """The systemd-unit-typo class, caught at startup like every other
+        operator-supplied path rather than at first render."""
+        args = argparse.Namespace(render_script="render_quote.py", display_script=None,
+                                  quiet_image=None, startup_image=None,
+                                  photo_path=str(tmp_path / "absent"))
+        errors = run_clock._preflight_paths(args)
+        assert any("photo-path" in e for e in errors), errors
 
 
 class TestWatchdogPingsOutsideTheHeartbeat:

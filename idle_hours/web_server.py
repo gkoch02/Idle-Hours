@@ -1466,6 +1466,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
             theme, mode, width, height, time_str,
             str(row.get("source_id")), row.get("line_number"),
             _preview_corpus_stamp(ctx),
+            # The `photo` theme's art is an operator-managed file, and nothing
+            # else in this key moves when they swap it — so without this the
+            # cache answers before ``_photo_frame_for`` can consult its own
+            # mtime-aware key, and the preview shows the old picture until the
+            # entry is evicted (a Codex review finding). Computed only for that
+            # theme: it costs a directory listing plus a stat, and every other
+            # theme's preview must stay free of both.
+            render_quote.photo_source_stamp(row) if theme == "photo" else None,
         )
         with _PREVIEW_CACHE_LOCK:
             data = _PREVIEW_CACHE.get(cache_key)

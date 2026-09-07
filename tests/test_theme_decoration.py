@@ -95,6 +95,8 @@ CUSTOM_FRAME_THEMES = (
     "nocturne",
     "plaque",
     "daguerreotype",
+    "autochrome",
+    "photo",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

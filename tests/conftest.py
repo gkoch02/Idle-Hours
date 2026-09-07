@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
+
+from idle_hours import path_resolution
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +31,40 @@ def _isolate_home(tmp_path_factory, monkeypatch):
     # patch above is enough. We don't touch ``Path.home`` directly so code
     # paths that rely on ``os.path.expanduser`` also pick up the override.
     yield home
+
+
+@pytest.fixture(autouse=True)
+def _isolate_photo_theme(monkeypatch):
+    """Unset the ``photo`` theme's source for every test.
+
+    The theme reads an operator-configured path out of the environment, so a
+    developer who exported it for their own appliance would otherwise have it
+    silently leak into the suite — and the damage is not a visible failure but
+    a **wrong golden fixture**: ``standard_photo_production`` is regenerated
+    with ``UPDATE_RENDER_GOLDEN=1``, and with the variable set it would be
+    baked from that developer's own photographs and committed. Unsetting it
+    here is what makes the fallback-to-the-bundled-plate path the only thing
+    the fixture can capture.
+
+    The env name comes from ``path_resolution`` rather than ``render_quote``
+    precisely so this fixture stays Pillow-free: ``conftest`` is loaded for
+    every session, including the many test modules that never render, and a
+    top-level renderer import would make all of them pay for Pillow. The
+    decoded-frame cache is cleared only when the renderer is *already*
+    imported, which is exactly the sessions where it can matter — a test
+    asserting on a degradation warning must not be silenced by an earlier test
+    having latched it.
+    """
+    monkeypatch.delenv(path_resolution.PHOTO_PATH_ENV, raising=False)
+
+    def _clear():
+        module = sys.modules.get("idle_hours.render_quote")
+        if module is not None:
+            module.clear_photo_cache()
+
+    _clear()
+    yield
+    _clear()
 
 
 def make_row(**kwargs) -> dict:
