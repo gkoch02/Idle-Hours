@@ -3782,14 +3782,22 @@ def parse_args() -> argparse.Namespace:
             "Render mode. 'production' hides debug UI; 'debug' shows bucket/quality/time "
             "metadata; 'card' draws a centered source card (title/author/Gutenberg ID/"
             "matched phrase) instead of the full quote — used by the source-card button. "
-            "'goodnight' draws a centered static message in the active theme — used by "
-            "--quiet-image=auto and --startup-image=auto."
+            "'goodnight' draws the sleep frame in the active theme — used by "
+            "--quiet-image=auto and --startup-image=auto. By default that is the "
+            "bundled sleep quote rendered through the normal literary layout; pass "
+            "--message to draw a bare centered headline instead."
         ),
     )
     parser.add_argument(
         "--message",
-        default="Good night.",
-        help="Headline text for --mode goodnight. Ignored otherwise.",
+        default=None,
+        help=(
+            "Draw this headline for --mode goodnight instead of the bundled sleep "
+            "quote. A headline has no attribution line and no accent-coloured "
+            "phrase, so the default (omitting this flag) is what reproduces the "
+            "'To sleep, perchance to dream.' frame in the active theme. "
+            "Ignored outside --mode goodnight."
+        ),
     )
     parser.add_argument(
         "--theme",
@@ -14937,6 +14945,59 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
+# The quote the panel sleeps under. Shaped as a corpus row rather than as a
+# bare headline string because that is what buys the theming: ``render`` reads
+# only ``display_quote`` off a row (plus the three optional fields below), so a
+# synthetic row goes through the *entire* literary layout — every border
+# painter, every custom frame, the attribution stack, and the accent-coloured
+# matched phrase — for free, in whichever theme the operator picked.
+#
+# ``matched_text`` is not a time phrase, and does not need to be:
+# ``resolve_display_match`` tries a literal search first and only falls through
+# to the time-phrase patterns when that misses, so "sleep" is bolded and painted
+# in the theme accent exactly the way a real matched hour would be. That is what
+# reproduces the bundled ``assets/goodnight.png`` (yellow "sleep" on black —
+# a frozen ``dark``-theme render of this same row) in any of the sixty themes.
+#
+# There is deliberately no ``source_id`` / ``line_number``: this row never
+# enters the picker, never reaches the anti-repeat ledger, and must not be
+# confusable with a corpus row by anything that keys on that pair.
+SLEEP_QUOTE_ROW: dict[str, str] = {
+    "display_quote": "To sleep, perchance to dream.",
+    "matched_text": "sleep",
+    "author": "William Shakespeare",
+    "title": "Hamlet",
+}
+
+
+def render_sleep_frame(
+    time_str: str | None, width: int, height: int, theme: str = "default"
+) -> Image.Image:
+    """Render :data:`SLEEP_QUOTE_ROW` through the normal literary layout.
+
+    The themed replacement for the static ``assets/goodnight.png``. Always
+    ``mode="production"`` — a sleep frame carrying a debug footer would be
+    absurd, and the caller has no reason to ask for one.
+
+    ``time_str`` is the moment quiet hours began. It is passed through rather
+    than discarded because a dozen themes surface the hour as part of their
+    own furniture (``tarot``'s Roman numeral, ``vitrail``'s rose window,
+    ``lieder``'s time signature, ``izakaya``'s lantern, ``abyssal``'s depth
+    gauge), and on a sleep frame the entry time is the honest value for those
+    to show. ``None`` falls back to the wall clock so a bare
+    ``render_quote.py --mode goodnight`` still renders.
+    """
+    if time_str is None:
+        time_str = datetime.datetime.now().strftime("%H:%M")
+    # Hand out a copy. Every other row reaching ``render`` is freshly built by
+    # the picker, so this is the one call site where a module-level mutable is
+    # shared across renders — and ``contact_sheet``, ``/api/preview`` and
+    # ``--once`` all render many frames in one process. No painter mutates the
+    # row today; the copy is what keeps that from becoming a silent
+    # cross-render corruption if one ever starts.
+    return render(time_str, dict(SLEEP_QUOTE_ROW), width, height, mode="production", theme=theme)
+
+
 # Synthesised two-ink stipple recipes documented in spectra6_color_recipes.md
 # (and summarised in CLAUDE.md). Each entry is (display name, dark ink, light
 # ink, light density, short label). The order here drives the two-row swatch
@@ -25086,7 +25147,15 @@ def main() -> int:
     output_path = Path(args.output) if args.output else Path("output/current.png")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if args.mode == "goodnight":
-        image = render_static_message(args.message, args.width, args.height, theme=args.theme)
+        # --message is the opt-in override, not the default: a bare headline
+        # cannot carry the attribution stack or the accent-coloured phrase the
+        # sleep quote wants, so the unflagged path goes through the full
+        # literary layout instead. ``args.time`` is optional in this mode, and
+        # render_sleep_frame falls back to the wall clock when it is absent.
+        if args.message is not None:
+            image = render_static_message(args.message, args.width, args.height, theme=args.theme)
+        else:
+            image = render_sleep_frame(args.time, args.width, args.height, theme=args.theme)
     else:
         quote_row = pick_quote(
             args.time,

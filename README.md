@@ -96,7 +96,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 - `idle_hours/assets/candidates-attributed.jsonl` - raw attributed corpus (baker input; curator-UI bucket inspector + full-text search; defensive fallback if the baked DB is missing)
 - `idle_hours/assets/selection_overrides.json` - selection tweaks/overrides used at runtime (bans, boosts, preferred buckets, **per-row bans via `ban_quote_keys` (v2)**; editable via the curator UI)
 - `idle_hours/assets/content_overrides.json` - per-row hand fixes layered onto the corpus at bake time; editable from the curator UI (v2) followed by `POST /api/bake` to make the edits visible
-- `idle_hours/assets/goodnight.png` - pre-rendered dark-theme "good night" frame shown during quiet hours
+- `idle_hours/assets/goodnight.png` - pre-rendered dark-theme sleep frame; optional static alternative to the themed quiet-hours render
 - `idle_hours/assets/preview.png` - README preview image
 
 ### Build and corpus tools
@@ -411,7 +411,7 @@ The four capacitive buttons on an Inky Impression 7.3 are active whenever `run_c
 | **A** | Skip — bans the current quote in the history ledger and picks a new one. | Un-skip — removes the last-skipped ban from the ledger and re-renders. Reverses a fat-fingered tap. |
 | **B** | Cycle theme — advances through `default → dark → scholar → newsprint → nightvision → blueprint → illuminated → bauhaus → risograph → comic` (wraps), persists to `--state-path`. The curator web UI also exposes a dropdown that jumps straight to any named theme. | — |
 | **C** | Source card — shows a 5-second overlay with the title / author / Gutenberg ID / matched phrase. | — |
-| **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the goodnight frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
+| **D** | Quiet now / wake — toggles the manual quiet override, persists to `--state-path`. | Shutdown — shows the sleep frame, then runs `--shutdown-command` (default `sudo -n shutdown -h now`; empty to disable). |
 
 Short and long actions are mutually exclusive per press: a long press fires only the hold callback, a quick tap fires only the short one.
 
@@ -460,9 +460,10 @@ Telemetry is rotated by date: the `--telemetry-path` argument is a base path, bu
 ### Startup frame
 
 ```bash
-# Optional: push a static frame to the panel before the first quote renders
+# Optional: push a frame to the panel before the first quote renders
 # so a cold boot doesn't ghost yesterday's image.
-idle-hours run --startup-image assets/goodnight.png
+idle-hours run --startup-image auto                    # the sleep frame, in your theme
+idle-hours run --startup-image assets/goodnight.png    # or any static PNG
 ```
 
 The extra refresh costs a Spectra 6 cycle (~10–20s) so this is off by default; enable when you care more about clean boot visuals than time-to-first-quote.
@@ -609,17 +610,52 @@ Independently of the token, the server rejects cross-site and rebound requests o
 
 ### Quiet hours
 
-The loop defaults to quiet hours **22:00–06:00** and pushes `idle_hours/assets/goodnight.png` to the display during that window instead of rendering corpus quotes.
+The loop defaults to quiet hours **22:00–06:00**. During that window it stops
+picking corpus quotes and shows a **sleep frame** instead — "To sleep, perchance
+to dream." (Hamlet), rendered through the normal literary layout so it picks up
+your theme's borders, fonts, and accent colour like any other frame.
 
 ```bash
 # Shift or tighten the window
 idle-hours run --quiet-start 23:30 --quiet-end 07:00
 
-# Swap the quiet image
-idle-hours run --quiet-image path/to/other.png
-
 # Disable quiet hours entirely (24/7 rendering)
 idle-hours run --quiet-off
+```
+
+#### Giving sleep its own theme
+
+`--quiet-theme` is independent of `--theme`, so the panel can read one way by
+day and another overnight:
+
+```bash
+# Fixed: a dark theme for the small hours
+idle-hours run --theme scholar --quiet-theme nightvision
+
+# Random: rerolled once per night, on entering quiet hours — not per tick
+idle-hours run --theme scholar --quiet-theme random
+
+# Wall-clock day/night picks, same rule as --theme auto
+idle-hours run --quiet-theme auto
+```
+
+The default is `inherit` — the sleep frame uses whatever theme the clock is
+already showing. A manual theme override (button B, or the web dropdown) always
+wins over `--quiet-theme`, and pressing button B while the panel is asleep
+repaints the *sleep frame* in the new theme rather than waking it with a quote.
+
+#### Showing a static image instead
+
+```bash
+# Any PNG. Ignores every theme setting — it's a fixed image.
+idle-hours run --quiet-image path/to/other.png
+
+# assets/goodnight.png still ships: it's a frozen dark-theme render of the
+# same sleep frame, so it looks identical to --quiet-theme dark.
+idle-hours run --quiet-image assets/goodnight.png
+
+# Or render the --quiet-start quote as the last frame of the night
+idle-hours run --quiet-image ""
 ```
 
 ## Testing

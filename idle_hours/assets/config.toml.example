@@ -79,12 +79,22 @@ baked_db          = "/var/lib/idle-hours/quote_database.jsonl"
 quiet_start = "22:00"
 quiet_end   = "06:00"
 # Three-way choice for what gets pushed at the rising edge:
-#   "<path>"  — copy a static PNG (e.g. assets/goodnight.png — the dark default).
-#   "auto"    — render a centred "Good night." in the active theme on the fly.
-#               Pairs nicely with `theme = "auto"` + auto_day/night themes so
-#               the goodnight frame matches the rest of the UI.
+#   "auto"    — (default) render the bundled sleep quote ("To sleep, perchance
+#               to dream." / Shakespeare / Hamlet) through the normal literary
+#               layout, in the theme `quiet_theme` resolves to.
+#   "<path>"  — copy a static PNG instead. assets/goodnight.png is a frozen
+#               dark-theme render of that same sleep quote, so it ignores both
+#               `theme` and `quiet_theme` — use it only for a custom image.
 #   ""        — render the picked quote at quiet_start (last-quote-of-the-night).
-quiet_image = "assets/goodnight.png"
+quiet_image = "auto"
+# Theme for the sleep frame, independent of `theme` above. Only consulted when
+# the frame is rendered rather than copied (quiet_image = "auto" or ""):
+#   "inherit"  — (default) whatever theme the clock is already showing.
+#   "<theme>"  — any registered theme name, e.g. "nightvision".
+#   "auto"     — derive from the wall clock, like `theme = "auto"`.
+#   "random"   — pick once per quiet window, on entry, held until morning.
+# A button-B / web-dropdown manual override wins over all of these.
+quiet_theme = "inherit"
 quiet_off   = false
 
 # ---- Buttons / shutdown ----------------------------------------------------

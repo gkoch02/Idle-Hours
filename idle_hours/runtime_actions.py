@@ -21,9 +21,11 @@ Extracted from :mod:`run_clock`; the original names are re-exported from
 and ``pick_quote_module`` through ``run_clock.X`` so tests that patch those
 names on ``run_clock`` affect the action's call path (same pattern
 ``web_server`` uses to dodge circular imports at module load).
-``_display_quiet_image`` is imported *directly* from :mod:`runtime_quiet` —
+``render_quiet_frame`` is imported *directly* from :mod:`runtime_quiet` —
 the through-``run_clock`` indirection earned no coupling benefit for a leaf
-helper, and the direct import makes the ownership obvious.
+helper, and the direct import makes the ownership obvious. (It still reaches
+``run_clock.render_now`` / ``run_clock._display_quiet_image`` internally, so
+those patches keep working.)
 """
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ import argparse
 import contextlib
 
 from idle_hours.runtime_log import _log
-from idle_hours.runtime_quiet import _display_quiet_image, exit_quiet
+from idle_hours.runtime_quiet import compute_quiet, exit_quiet, render_quiet_frame
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme
 from idle_hours.theme_names import theme_cycle as _theme_cycle
@@ -107,6 +109,17 @@ def _emit_action(telemetry_path: str | None, action: str, label: str, *, ok: boo
     if error is not None:
         payload["error"] = error
     run_clock.append_telemetry(telemetry_path, payload)
+
+
+def _quiet_active(args: argparse.Namespace, state: RuntimeState, time_str: str) -> bool:
+    """Is the panel currently asleep?
+
+    Thin wrapper over :func:`runtime_quiet.compute_quiet` that keeps only the
+    first element — action handlers care whether the panel is showing a sleep
+    frame, not whether the cause was the schedule or a manual toggle.
+    """
+    now_quiet, _manual_only = compute_quiet(args, state, time_str)
+    return now_quiet
 
 
 def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
@@ -272,7 +285,18 @@ def action_theme(
             quote_id = state.last_quote_id
         _log(f"{label}: theme {current} -> {new_theme}")
         try:
-            run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            if _quiet_active(args, state, time_str):
+                # Repaint the SLEEP frame in the new theme, not a quote.
+                # ``_render_unlocked`` has no quiet awareness, so a button-B
+                # press during the blackout used to paint a corpus quote onto
+                # a sleeping panel — and because the main loop only calls
+                # ``enter_quiet`` on the rising edge, nothing put the sleep
+                # frame back until the following night. Latent before
+                # ``--quiet-theme``; unmissable once the sleep frame has a
+                # theme worth changing.
+                render_quiet_frame(args, state, time_str, manual_only=True)
+            else:
+                run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
         except Exception as exc:
             with state.lock:
                 state.manual_theme = previous_theme
@@ -320,12 +344,18 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
         exit_quiet(state)
         _log(f"{label}: manual quiet -> {quiet_now}")
         try:
-            if quiet_now and args.quiet_image:
-                _display_quiet_image(
-                    args.quiet_image, args.output, args.display_script,
-                    telemetry_path=args.telemetry_path or None,
+            if quiet_now:
+                # Shared three-way --quiet-image dispatch. Calling
+                # ``_display_quiet_image`` directly here used to skip the
+                # ``"auto"`` sentinel, so a themed install raised
+                # FileNotFoundError trying to copy a file named "auto".
+                # ``manual_only=True`` so the frame claims the time the
+                # operator actually pressed the button, not --quiet-start.
+                # The gate above already holds render_lock.
+                render_quiet_frame(
+                    args, state, run_clock.current_time_str(), manual_only=True,
                 )
-            elif not quiet_now:
+            else:
                 # Wake to the current time so the user sees something immediately.
                 time_str = run_clock.current_time_str()
                 quote_id = run_clock.peek_quote_id(

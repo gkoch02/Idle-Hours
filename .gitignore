@@ -2,6 +2,9 @@ __pycache__/
 *.pyc
 .DS_Store
 .coverage
+# per-worker data files from the documented parallel run
+# (COVERAGE_CORE=sysmon pytest -n auto --cov)
+.coverage.*
 coverage.xml
 coverage.json
 *.egg-info/
