@@ -35,7 +35,7 @@ import contextlib
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_quiet import compute_quiet, exit_quiet, render_quiet_frame
 from idle_hours.runtime_state import RuntimeState
-from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme
+from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme, resolve_quiet_theme
 from idle_hours.theme_names import theme_cycle as _theme_cycle
 
 
@@ -256,10 +256,33 @@ def action_theme(
     with _button_render_gate(state, label, "theme", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
+        time_str = run_clock.current_time_str()
+        # Both of these take ``state.lock`` internally, so they must run
+        # BEFORE the ``with state.lock`` block below — it is not reentrant.
+        quiet_now = _quiet_active(args, state, time_str)
+        # What is actually on the panel right now. While the panel is asleep
+        # that is NOT ``state.last_effective_theme``: quiet frames render
+        # through ``render_quiet_frame`` → ``render_now`` rather than
+        # ``_render_unlocked``, so they deliberately never reach
+        # ``commit_render_result`` and the field still describes the
+        # pre-sleep *clock* frame. Deriving ``current`` from it during quiet
+        # hours got both consumers below wrong: an explicit apply of the
+        # clock theme (say ``scholar``, while the sleep frame shows
+        # ``nightvision``) matched the stale value and was dropped as a
+        # no-op, and a button-B cycle advanced from ``scholar`` rather than
+        # from the ``nightvision`` the operator can see. Resolving through
+        # ``resolve_quiet_theme`` asks the same function the frame itself
+        # used, so "current" means "displayed" in both states.
+        #
+        # Calling it here cannot roll a stray ``--quiet-theme random`` pick:
+        # that branch memoises on ``state.quiet_theme``, which ``enter_quiet``
+        # has already populated by the time the panel is asleep, and in the
+        # narrow window before the loop's first quiet tick the pick it rolls
+        # is the very one the frame will use.
+        displayed = resolve_quiet_theme(args, state, time_str) if quiet_now else None
         with state.lock:
             previous_theme = state.manual_theme
-            time_str = run_clock.current_time_str()
-            current = state.last_effective_theme or resolve_effective_theme(
+            current = displayed or state.last_effective_theme or resolve_effective_theme(
                 state.theme_arg, time_str, previous_theme,
                 current_random_theme=state.current_random_theme,
                 **_auto_theme_kwargs(args),
@@ -285,7 +308,7 @@ def action_theme(
             quote_id = state.last_quote_id
         _log(f"{label}: theme {current} -> {new_theme}")
         try:
-            if _quiet_active(args, state, time_str):
+            if quiet_now:
                 # Repaint the SLEEP frame in the new theme, not a quote.
                 # ``_render_unlocked`` has no quiet awareness, so a button-B
                 # press during the blackout used to paint a corpus quote onto

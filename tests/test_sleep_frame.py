@@ -441,6 +441,84 @@ class TestThemeChangeWhileAsleep:
         assert mock_render.call_args.args[5] == "goodnight"
 
 
+class TestThemeCurrentIsWhatIsDisplayed:
+    """``action_theme`` must reason about the theme actually on the panel.
+
+    While asleep that is NOT ``state.last_effective_theme``: quiet frames go
+    through ``render_quiet_frame`` → ``render_now`` rather than
+    ``_render_unlocked``, so they deliberately never reach
+    ``commit_render_result`` and the field still holds the pre-sleep *clock*
+    theme. Deriving ``current`` from it got both consumers wrong — a Codex
+    review finding on the PR that added ``--quiet-theme``, reproduced here
+    before it was fixed.
+    """
+
+    def _args(self, tmp_path):
+        return _quiet_args(
+            tmp_path, theme="scholar", quiet_theme="nightvision",
+            state_path=str(tmp_path / "state.json"),
+        )
+
+    def _state(self, manual_theme=None):
+        state = RuntimeState("scholar")
+        state.last_effective_theme = "scholar"   # the pre-sleep clock frame
+        state.manual_theme = manual_theme
+        return state
+
+    def _apply(self, tmp_path, target, time_str, *, manual_theme=None):
+        """Returns (result, theme painted onto a SLEEP frame, quote repainted?)."""
+        state = self._state(manual_theme)
+        with patch("idle_hours.run_clock.render_now") as sleep_render, \
+             patch("idle_hours.run_clock._render_unlocked") as quote_render, \
+             patch("idle_hours.run_clock.current_time_str", return_value=time_str), \
+             patch("idle_hours.run_clock.append_telemetry"), \
+             patch("idle_hours.run_clock.save_runtime_state"):
+            result = run_clock.action_theme(self._args(tmp_path), state, label="t", target=target)
+        painted = sleep_render.call_args.args[6] if sleep_render.called else None
+        return result, painted, quote_render.called
+
+    def test_applying_the_clock_theme_while_asleep_is_not_a_noop(self, tmp_path):
+        """The bug: ``scholar`` matched the stale field and was dropped.
+
+        The operator saw ``nightvision`` on the panel, asked for ``scholar``,
+        and got a 200 carrying ``noop: True`` with no repaint.
+        """
+        result, painted, _quote = self._apply(tmp_path, "scholar", "23:30")
+        assert not result.get("noop"), "apply of the clock theme was dropped while asleep"
+        assert result["previous"] == "nightvision", "reported the stale clock theme as current"
+        assert painted == "scholar"
+
+    def test_cycle_advances_from_the_displayed_theme_while_asleep(self, tmp_path):
+        """The other half: B advanced from ``scholar``, skipping the visible one."""
+        result, painted, _quote = self._apply(tmp_path, None, "23:30")
+        order = list(rq.THEME_ORDER)
+        expected = order[(order.index("nightvision") + 1) % len(order)]
+        assert result["previous"] == "nightvision"
+        assert result["theme"] == expected
+        assert painted == expected
+
+    def test_applying_the_displayed_quiet_theme_is_still_a_noop(self, tmp_path):
+        """The guard must keep working, just against the right value —
+        re-applying what is already up should not burn a Spectra 6 refresh."""
+        result, painted, quote = self._apply(tmp_path, "nightvision", "23:30")
+        assert result.get("noop") is True
+        assert painted is None and quote is False
+
+    def test_awake_behaviour_is_unchanged(self, tmp_path):
+        """Outside quiet hours ``last_effective_theme`` is still the source."""
+        noop, _painted, _quote = self._apply(tmp_path, "scholar", "14:00")
+        cycled, _p2, quote = self._apply(tmp_path, None, "14:00")
+        assert noop.get("noop") is True
+        assert cycled["previous"] == "scholar"
+        assert quote is True, "awake presses must still paint a quote"
+
+    def test_a_manual_override_is_what_is_displayed_while_asleep(self, tmp_path):
+        """``resolve_quiet_theme`` puts ``manual_theme`` first, so a second
+        press cycles from the operator's own pick, not from ``--quiet-theme``."""
+        result, _painted, _quote = self._apply(tmp_path, None, "23:30", manual_theme="comic")
+        assert result["previous"] == "comic"
+
+
 class TestQuietThemeIsRegistered:
     def test_every_cycle_theme_is_accepted_as_a_quiet_theme(self, tmp_path):
         """Anything button B can reach must also be nameable as a quiet theme."""
