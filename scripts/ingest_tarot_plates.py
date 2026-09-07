@@ -18,9 +18,24 @@ scans under a local threshold -- ink is what is darker than its OWN
 neighbourhood -- come out legible. ``--line-mode global`` keeps the old
 behaviour for a clean, evenly-lit source.
 
-Colour is still classified by SATURATION and HUE, and the order matters:
-the red flat is about as dark as the line ink, so testing darkness first
-fuses them into one black mass.
+Colour is still classified by SATURATION and HUE, but note the darkness
+test runs FIRST, so a saturated pixel darker than its own neighbourhood is
+taken as ink. On a hand-coloured woodcut that is right, and measurably so:
+the colour was brushed inside printed outlines, so a dark saturated pixel
+at the rim of a red field is almost always a printed line. Reordering to
+classify saturated pixels first was tried and is much worse here — the
+aged line is brown-black and clears sat_min, so black collapses from
+20.5%-25.8% to 0.6%-7.1% of each card and the figures lose their contours.
+No discriminator rescues the reorder on this source: ink and colour
+overlap heavily in luminance (ink p50 72 against colour p50 145, but ink
+p90 126 against colour p10 66), and gating on LOCAL saturation fails too,
+because the lines sit inside the coloured regions and so share their
+neighbourhood.
+
+The hazard the ordering does carry: a source whose colour is NOT outlined,
+with detail narrower than --line-blur, would lose that detail to black.
+No such case exists in the Dodal deck this was built for. If one turns up,
+the fix is a source-specific gate, not a reordering of the default.
 
     darker than local mean by k  -> black      (the line work)
     saturated + red hue          -> red
@@ -272,14 +287,24 @@ def main(argv=None) -> int:
         sheet.paste(flat, ((hour - 1) % COLS * TILE_W, (hour - 1) // COLS * TILE_H))
 
     if missing:
-        print(f"missing scans for hours: {missing}", file=sys.stderr)
+        # Bail BEFORE writing. A partial sheet is the worst outcome
+        # available: the blank tile is a valid, readable PNG, so the
+        # renderer loads it happily and paints an empty illustration
+        # panel rather than falling back to the polygon painters, which
+        # only trigger on a MISSING file. A regeneration aimed at the
+        # packaged assets/tarot_plates.png could therefore replace a
+        # good sheet with one that silently renders nothing for the
+        # missing hours (a Codex review finding on this PR).
+        print(f"missing scans for hours: {missing} — refusing to write a partial sheet; "
+              f"{a.output} left unchanged", file=sys.stderr)
+        return 1
     a.output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(a.output)
     print(f"wrote {a.output} ({COLS * TILE_W}x{ROWS * TILE_H}, {a.inks}-ink)")
     if contact is not None:
         contact.save(a.contact)
         print(f"wrote {a.contact} (pre-separation crops, for eyeballing)")
-    return 1 if missing else 0
+    return 0
 
 
 if __name__ == "__main__":
