@@ -53,7 +53,8 @@ pidfile               = "~/.idle-hours/run_clock.pid"
 # ---- Quiet hours -----------------------------------------------------------
 quiet_start = "22:00"
 quiet_end   = "06:00"
-quiet_image = "assets/goodnight.png"
+quiet_image = "auto"
+quiet_theme = "inherit"
 quiet_off   = false
 
 # ---- Buttons / shutdown ----------------------------------------------------

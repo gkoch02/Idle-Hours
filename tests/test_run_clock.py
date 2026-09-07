@@ -2054,9 +2054,10 @@ class TestButtonHandlers:
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
-        # action_quiet calls runtime_quiet._display_quiet_image directly (not through
-        # run_clock), so the patch target is the action module's binding.
-        with patch("idle_hours.runtime_actions._display_quiet_image") as mock_display:
+        # action_quiet routes through runtime_quiet.render_quiet_frame, whose
+        # static-PNG branch reaches _display_quiet_image via a lazy
+        # ``import run_clock`` — so run_clock's binding is the patch target.
+        with patch("idle_hours.run_clock._display_quiet_image") as mock_display:
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         assert state.manual_quiet is True
@@ -2105,7 +2106,7 @@ class TestButtonHandlers:
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
         assert not (tmp_path / "state.json").exists()
-        with patch("idle_hours.runtime_actions._display_quiet_image", side_effect=OSError("disk full")):
+        with patch("idle_hours.run_clock._display_quiet_image", side_effect=OSError("disk full")):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()
         # Rolled back: manual_quiet stays False; nothing persisted.
@@ -2153,7 +2154,7 @@ class TestButtonHandlers:
         args = self._args(tmp_path, quiet_image=str(quiet))
         state = run_clock.RuntimeState("default")
         state.manual_quiet = False
-        with patch("idle_hours.runtime_actions._display_quiet_image"), \
+        with patch("idle_hours.run_clock._display_quiet_image"), \
              patch("idle_hours.run_clock.save_runtime_state", side_effect=OSError("disk full")):
             short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
             short_handlers["D"]()

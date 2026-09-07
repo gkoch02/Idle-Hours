@@ -64,6 +64,7 @@ CONFIG_SCHEMA: dict[str, object] = {
     "quiet_start": (str, "hhmm"),
     "quiet_end": (str, "hhmm"),
     "quiet_image": str,
+    "quiet_theme": str,
     "quiet_off": bool,
     "history_path": str,
     "history_days": int,

@@ -66,6 +66,15 @@ class RuntimeState:
         # theme recur only one or two picks later. Not persisted, same
         # rationale as ``random_theme_bag``.
         self.random_theme_recent: list[str] = []
+        # Theme held for the duration of one quiet-hours window, set only by
+        # the ``--quiet-theme random`` branch of ``runtime_theme.resolve_quiet_theme``
+        # and cleared by ``runtime_quiet.exit_quiet``. ``enter_quiet`` fires on
+        # the rising edge only, so this rerolls once per night rather than once
+        # per tick. Deliberately NOT persisted: a restart inside the window
+        # re-enters quiet and rerolls, which costs a different sleep frame on a
+        # panel nobody is looking at — cheaper than another ``state.json``
+        # schema field to validate and round-trip.
+        self.quiet_theme: str | None = None
         self.manual_quiet = False             # toggled by button D
         self.last_bucket: str | None = None
         self.last_quote_id: tuple | None = None

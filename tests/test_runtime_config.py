@@ -59,6 +59,7 @@ class TestLoadConfigHappyPath:
             'quiet_start = "23:00"',
             'quiet_end = "07:00"',
             'quiet_image = "assets/goodnight.png"',
+            'quiet_theme = "nightvision"',
             "quiet_off = false",
             'history_path = "/var/lib/idle-hours/history.jsonl"',
             "history_days = 14",
@@ -82,6 +83,7 @@ class TestLoadConfigHappyPath:
         assert cfg["interval_seconds"] == 45
         assert cfg["buttons_off"] is True
         assert cfg["quiet_start"] == "23:00"
+        assert cfg["quiet_theme"] == "nightvision"
         assert cfg["telemetry_retain_days"] == 30
         # Every declared key landed.
         assert set(cfg.keys()) == set(runtime_config.CONFIG_SCHEMA.keys())

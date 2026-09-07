@@ -179,6 +179,84 @@ def resolve_effective_theme(
     return theme_arg
 
 
+# Sentinel for ``--quiet-theme``: use whatever theme the clock is already
+# showing. The pre-``--quiet-theme`` behaviour, and the default, so an operator
+# who never touches the flag sees no change.
+QUIET_THEME_INHERIT = "inherit"
+
+
+def resolve_quiet_theme(
+    args,
+    state: RuntimeState,
+    time_str: str,
+) -> str:
+    """Resolve the theme for the quiet-hours sleep frame.
+
+    Precedence, highest first:
+
+    1. ``state.manual_theme`` — a button-B / web-dropdown override always wins,
+       here as everywhere else. An operator who deliberately picked a theme did
+       not pick it "except while asleep".
+    2. ``--quiet-theme`` when it is not :data:`QUIET_THEME_INHERIT`:
+
+       * a registered theme name — used as-is;
+       * ``auto`` — derived from the wall clock via the configured day/night
+         picks, same as ``--theme auto``. Nearly always resolves to the night
+         theme for a conventional quiet window, but it costs nothing to honour
+         and it means the flag accepts everything ``--theme`` does;
+       * ``random`` — a fresh pick held on ``state.quiet_theme`` for the
+         lifetime of the quiet window. ``enter_quiet`` is only called on the
+         rising edge and ``exit_quiet`` clears the field, so this rerolls once
+         per night rather than once per tick.
+    3. ``inherit`` (the default) — delegate to
+       :func:`resolve_effective_theme`, i.e. exactly what the clock would be
+       showing had quiet hours not started.
+
+    Note the asymmetry with ``--theme random``: that one rerolls whenever the
+    *displayed quote* changes, which is the right cadence for a clock. The
+    sleep frame's quote never changes, so the quiet window is the only
+    meaningful unit to reroll on.
+    """
+    quiet_choice = getattr(args, "quiet_theme", QUIET_THEME_INHERIT) or QUIET_THEME_INHERIT
+
+    with state.lock:
+        manual_theme = state.manual_theme
+        held = state.quiet_theme
+    if manual_theme is not None and manual_theme in _registered_themes():
+        return manual_theme
+
+    if quiet_choice == QUIET_THEME_INHERIT:
+        return resolve_effective_theme(
+            state.theme_arg, time_str, manual_theme,
+            current_random_theme=state.current_random_theme,
+            **_auto_theme_kwargs(args),
+        )
+
+    if quiet_choice == "auto":
+        # ``_auto_theme_kwargs`` keys are the argparse dest names
+        # (``auto_day_theme`` / ``auto_night_theme``); ``auto_theme_for``'s
+        # own parameters are ``day_theme`` / ``night_theme``, so translate
+        # rather than splatting. ``resolve_effective_theme`` does the same.
+        kwargs = _auto_theme_kwargs(args)
+        return auto_theme_for(
+            time_str, kwargs["auto_day_theme"], kwargs["auto_night_theme"],
+        )
+
+    if quiet_choice == "random":
+        # Held for the window. ``held`` is only ever set by this branch, so a
+        # config change from ``random`` to a fixed theme mid-window can't leak
+        # a stale pick — the fixed branch above returns before reaching here.
+        if held is not None and held in _registered_themes():
+            return held
+        picked = pick_random_theme()
+        with state.lock:
+            state.quiet_theme = picked
+        _log(f"quiet theme: random pick {picked}")
+        return picked
+
+    return quiet_choice
+
+
 def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
     """Clear the manual theme override at the day boundary so 'auto' resumes."""
     from idle_hours import run_clock

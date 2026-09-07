@@ -35,7 +35,7 @@ from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import resolve_input_path
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
-from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme
+from idle_hours.runtime_theme import resolve_quiet_theme
 
 # Resolves to the repo root (same directory as run_clock.py) since all runtime
 # modules live alongside each other. Matches run_clock.BASE_DIR exactly.
@@ -145,12 +145,106 @@ def compute_quiet(args: argparse.Namespace, state: RuntimeState, time_str: str) 
     """
     with state.lock:
         manual_quiet = state.manual_quiet
+    # ``getattr`` defaults cover programmatic ``argparse.Namespace``
+    # constructions (tests, the web server's synthesised args) that predate
+    # or omit the quiet flags — the same accommodation
+    # ``runtime_theme._auto_theme_kwargs`` documents. The defaults are
+    # deliberately the *conservative* direction rather than argparse's:
+    # a missing ``quiet_start`` yields ``None``, which ``in_quiet_hours``
+    # reads as "quiet hours disabled", so an incomplete Namespace is never
+    # spuriously reported as asleep. Real runs always carry all three.
+    quiet_off = getattr(args, "quiet_off", False)
     scheduled_quiet = in_quiet_hours(
         time_str,
-        None if args.quiet_off else args.quiet_start,
-        args.quiet_end,
+        None if quiet_off else getattr(args, "quiet_start", None),
+        getattr(args, "quiet_end", None),
     )
     return (scheduled_quiet or manual_quiet, manual_quiet and not scheduled_quiet)
+
+
+def render_quiet_frame(
+    args: argparse.Namespace,
+    state: RuntimeState,
+    time_str: str,
+    *,
+    manual_only: bool = False,
+    reason: str = "quiet hours",
+) -> None:
+    """Put the sleep frame on the panel. **Caller must hold ``state.render_lock``.**
+
+    The three-way ``--quiet-image`` dispatch, extracted from :func:`enter_quiet`
+    so every path that needs a sleep frame shares one definition of what that
+    is. Before the extraction only ``enter_quiet`` understood the ``"auto"``
+    sentinel: ``runtime_actions.action_quiet`` (button D short-press) and
+    ``run_clock``'s button-D long-press shutdown preamble both called
+    ``_display_quiet_image(args.quiet_image, ...)`` directly, so on an install
+    configured with ``--quiet-image auto`` they tried to *copy a file literally
+    named* ``auto`` and raised ``FileNotFoundError``. That was an opt-in
+    footgun while the default was a real path; it became the default's problem
+    the moment ``--quiet-image`` started defaulting to ``auto``.
+
+    The branches:
+
+    * ``"auto"`` — render the bundled sleep quote through the normal literary
+      layout in the resolved quiet theme. ``mode='goodnight'`` tells
+      ``render_quote.py`` to use :data:`render_quote.SLEEP_QUOTE_ROW` rather
+      than consulting the picker, so there is no corpus row and no history
+      append.
+    * ``"<path>"`` — copy a static PNG. Ignores the theme entirely, which is
+      the point for an operator supplying their own image.
+    * ``""`` — render the ``--quiet-start`` corpus quote as the last frame of
+      the night, in the quiet theme.
+
+    ``manual_only`` distinguishes a button-D / web toggle from the scheduled
+    rising edge, and decides only *which time the rendered frame claims*:
+    a scheduled entry renders ``--quiet-start`` (the documented
+    "last quote of the night" contract), while a manual toggle must render the
+    current time — ``--quiet-start`` is unrelated to the moment the operator
+    pressed the button, and using it painted a 22:00 quote onto the panel at
+    two in the afternoon. ``or time_str`` covers a ``--quiet-off`` install
+    where ``--quiet-start`` is unset entirely.
+    """
+    from idle_hours import run_clock  # lazy: circular import, and keeps test patches on
+                      # run_clock._display_quiet_image / run_clock.render_now working.
+    history_path = args.history_path or None
+    telemetry_path = args.telemetry_path or None
+    render_time = time_str if manual_only else (getattr(args, "quiet_start", None) or time_str)
+    # The render's telemetry entry must describe the frame we actually
+    # painted, so it takes the bucket of ``render_time`` rather than the
+    # entry-time bucket the ``quiet_enter`` marker carries. The two coincide
+    # on the normal scheduled edge; they diverge when the loop enters quiet
+    # late (a restart at 01:00 inside a 22:00–06:00 window) or on a manual
+    # toggle.
+    render_bucket = bucket_for_time(render_time)
+
+    if args.quiet_image == "auto":
+        # ``resolve_quiet_theme`` rather than ``resolve_effective_theme``:
+        # ``--quiet-theme`` lets the sleep frame differ from the clock's own
+        # theme, and its ``random`` mode rerolls per quiet window rather than
+        # per quote change. Falls through to ``resolve_effective_theme`` on
+        # the default ``inherit``.
+        effective_theme = resolve_quiet_theme(args, state, time_str)
+        run_clock.render_now(
+            args.render_script, args.output, args.width, args.height, args.display_script,
+            "goodnight", effective_theme, time_str=render_time,
+            history_path=history_path, history_days=args.history_days,
+            telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
+            **run_clock._corpus_kwargs(args),
+        )
+    elif args.quiet_image:
+        run_clock._display_quiet_image(
+            args.quiet_image, args.output, args.display_script,
+            reason=reason, telemetry_path=telemetry_path,
+        )
+    else:
+        effective_theme = resolve_quiet_theme(args, state, time_str)
+        run_clock.render_now(
+            args.render_script, args.output, args.width, args.height, args.display_script,
+            args.mode, effective_theme, time_str=render_time,
+            history_path=history_path, history_days=args.history_days,
+            telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
+            **run_clock._corpus_kwargs(args),
+        )
 
 
 def enter_quiet(
@@ -160,38 +254,22 @@ def enter_quiet(
     *,
     manual_only: bool = False,
 ) -> None:
-    """Push the quiet-image (or fallback quiet-start render) to the panel.
+    """Emit the rising-edge marker and push the sleep frame to the panel.
 
-    Wraps the push in ``state.render_lock`` so a racing button / web handler
-    can't interleave their own render. A display failure is logged, traced,
-    and recorded to the telemetry sidecar as ``mode="quiet"`` but never
-    propagated — the loop's next tick will retry.
+    Wraps :func:`render_quiet_frame` in ``state.render_lock`` so a racing
+    button / web handler can't interleave their own render. A display failure
+    is logged, traced, and recorded to the telemetry sidecar as ``mode="quiet"``
+    but never propagated — the loop's next tick will retry.
 
-    Two distinct times are in play and they are deliberately not the same
-    value. ``time_str`` is *when we entered quiet* and is what the
-    ``quiet_enter`` marker records. ``render_time`` is *what the rendered
-    frame should say*: on the scheduled rising edge that's ``--quiet-start``
-    (the documented "last quote of the night" contract for
-    ``--quiet-image ""``), but on a manual button-D toggle it must be the
-    current time — ``--quiet-start`` is unrelated to the moment the operator
-    pressed the button, and using it painted a 22:00 quote onto the panel at
-    two in the afternoon. ``or time_str`` covers a ``--quiet-off`` install
-    where ``--quiet-start`` is unset entirely.
+    ``time_str`` is *when we entered quiet* and is what the ``quiet_enter``
+    marker records; the frame's own time is decided inside
+    :func:`render_quiet_frame`.
     """
-    from idle_hours import run_clock  # lazy: avoids circular import, and keeps test patches on
-                      # run_clock._display_quiet_image / run_clock.render_now working.
-    history_path = args.history_path or None
+    from idle_hours import run_clock  # lazy: see render_quiet_frame.
     telemetry_path = args.telemetry_path or None
     # bucket_for_time(time_str) rather than current_bucket() so tests that
     # only patch current_time_str don't also have to patch the wall clock.
     quiet_bucket = bucket_for_time(time_str)
-    render_time = time_str if manual_only else (args.quiet_start or time_str)
-    # The render's telemetry entry must describe the frame we actually
-    # painted, so it takes the bucket of ``render_time`` rather than the
-    # entry-time bucket above. The two coincide on the normal scheduled
-    # edge; they diverge when the loop enters quiet late (a restart at 01:00
-    # inside a 22:00–06:00 window) or on a manual toggle.
-    render_bucket = bucket_for_time(render_time)
     trigger = "manual" if manual_only else f"{args.quiet_start}–{args.quiet_end}"
     _log(f"quiet hours start ({trigger})")
     # Structured rising-edge marker so idle_hours_health can tell
@@ -201,46 +279,8 @@ def enter_quiet(
         telemetry_path, {"mode": "quiet_enter", "manual": manual_only, "bucket": quiet_bucket},
     )
     try:
-        if args.quiet_image == "auto":
-            # On-the-fly goodnight frame in the operator's active theme. The
-            # static assets/goodnight.png is dark-only, so themed installs
-            # opt into this sentinel to keep the entire-display palette
-            # consistent at the rising edge of quiet hours. ``mode='goodnight'``
-            # tells render_quote.py to skip pick_quote and paint a centred
-            # message instead — no quote, no history append.
-            effective_theme = resolve_effective_theme(
-                state.theme_arg, time_str, state.manual_theme,
-                current_random_theme=state.current_random_theme,
-                **_auto_theme_kwargs(args),
-            )
-            with state.render_lock:
-                run_clock.render_now(
-                    args.render_script, args.output, args.width, args.height, args.display_script,
-                    "goodnight", effective_theme, time_str=render_time,
-                    history_path=history_path, history_days=args.history_days,
-                    telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
-                    **run_clock._corpus_kwargs(args),
-                )
-        elif args.quiet_image:
-            with state.render_lock:
-                run_clock._display_quiet_image(
-                    args.quiet_image, args.output, args.display_script,
-                    telemetry_path=telemetry_path,
-                )
-        else:
-            effective_theme = resolve_effective_theme(
-                state.theme_arg, time_str, state.manual_theme,
-                current_random_theme=state.current_random_theme,
-                **_auto_theme_kwargs(args),
-            )
-            with state.render_lock:
-                run_clock.render_now(
-                    args.render_script, args.output, args.width, args.height, args.display_script,
-                    args.mode, effective_theme, time_str=render_time,
-                    history_path=history_path, history_days=args.history_days,
-                    telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
-                    **run_clock._corpus_kwargs(args),
-                )
+        with state.render_lock:
+            render_quiet_frame(args, state, time_str, manual_only=manual_only)
     except Exception as exc:
         _log(f"quiet-hours display failed: {exc!r}", err=True)
         traceback.print_exc(file=sys.stderr)
@@ -260,3 +300,7 @@ def exit_quiet(state: RuntimeState) -> None:
     with state.lock:
         state.last_bucket = None
         state.last_quote_id = None
+        # Drop the ``--quiet-theme random`` pick so the next rising edge
+        # rerolls. Harmless when quiet-theme is anything else — only that
+        # branch ever sets the field.
+        state.quiet_theme = None

@@ -34,6 +34,7 @@ from idle_hours.runtime_quiet import (  # noqa: F401  in_quiet_hours + _display_
     enter_quiet,
     exit_quiet,
     in_quiet_hours,
+    render_quiet_frame,
 )
 from idle_hours.runtime_state import RuntimeState  # noqa: F401  re-exported
 from idle_hours.runtime_store import (  # noqa: F401  load_runtime_state re-exported for tests
@@ -50,6 +51,7 @@ from idle_hours.runtime_telemetry import (  # noqa: F401  daily_telemetry_path r
     prune_telemetry,
 )
 from idle_hours.runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_reset_* re-exported for tests
+    QUIET_THEME_INHERIT,
     _auto_theme_kwargs,
     _maybe_reset_manual_theme_at_midnight,
     auto_theme_for,
@@ -58,6 +60,7 @@ from idle_hours.runtime_theme import (  # noqa: F401  auto_theme_for + _maybe_re
     random_theme_pool,
     recent_window_size,
     resolve_effective_theme,
+    resolve_quiet_theme,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -379,8 +382,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--quiet-image",
         metavar="PATH",
-        default="assets/goodnight.png",
-        help="PNG to display when quiet hours begin instead of rendering a corpus quote.",
+        default="auto",
+        help=(
+            "What goes on the panel when quiet hours begin. Defaults to 'auto': render "
+            "the bundled sleep quote through the normal literary layout, in whichever "
+            "theme --quiet-theme resolves to. A PATH copies that PNG instead, ignoring "
+            "every theme setting (assets/goodnight.png is a frozen dark-theme render of "
+            "the same sleep quote, so it matches --quiet-theme dark). '' renders the "
+            "--quiet-start corpus quote as the last frame of the night."
+        ),
+    )
+    parser.add_argument(
+        "--quiet-theme",
+        choices=[*_theme_choices, "auto", "random", QUIET_THEME_INHERIT],
+        default=QUIET_THEME_INHERIT,
+        help=(
+            "Theme for the quiet-hours sleep frame, independent of --theme. Only "
+            "consulted when the frame is rendered rather than copied — i.e. with "
+            "--quiet-image auto or --quiet-image '' . "
+            "'inherit' (the default) uses whatever theme the clock is already showing. "
+            "'auto' derives from the wall clock like --theme auto. "
+            "'random' picks once per quiet window, on entry, and holds it until morning. "
+            "A button-B / web-dropdown manual theme override wins over all of these."
+        ),
     )
     parser.add_argument(
         "--quiet-off",
@@ -1115,10 +1139,23 @@ def _build_button_handlers(
                 state.manual_quiet = True
                 save_runtime_state(args.state_path, state.snapshot_for_persistence())
             try:
+                # Shared three-way --quiet-image dispatch (see
+                # runtime_quiet.render_quiet_frame): calling
+                # ``_display_quiet_image`` directly here skipped the "auto"
+                # sentinel and raised FileNotFoundError on a themed install.
+                # The gate above already holds render_lock.
+                #
+                # The ``if args.quiet_image`` guard is preserved from the
+                # pre-extraction code and is deliberate *here* but not in
+                # ``action_quiet``: with ``--quiet-image ""`` the quiet-hours
+                # contract is "render the corpus quote", which is worth a
+                # 10–20 s Spectra 6 refresh at the start of a night but not in
+                # the seconds before poweroff — the panel already shows a
+                # quote, so the refresh would be pure cost. An operator who
+                # configured "" gets the panel left as-is.
                 if args.quiet_image:
-                    _display_quiet_image(
-                        args.quiet_image, args.output, args.display_script,
-                        reason="shutdown", telemetry_path=telemetry_path,
+                    render_quiet_frame(
+                        args, state, current_time_str(), manual_only=True, reason="shutdown",
                     )
             except Exception as exc:
                 _log(f"shutdown pre-frame failed: {exc!r}", err=True)
@@ -1836,9 +1873,14 @@ def main() -> int:
     # listener starts so a press during the (potentially slow) Inky push can't
     # collide with the unlocked display call.
     if args.startup_image == "auto":
-        # On-the-fly goodnight frame in the active theme. Honours any persisted
+        # On-the-fly sleep frame in the active theme. Honours any persisted
         # ``manual_theme`` so an operator who pressed button B before reboot
         # still gets their chosen theme on cold boot, not just the --theme arg.
+        # Deliberately ``resolve_effective_theme``, NOT ``resolve_quiet_theme``:
+        # a cold boot is not a quiet-hours entry, so a ``--quiet-theme random``
+        # pick must not be rolled (and held for the window) here. If the boot
+        # lands inside the quiet window the loop's first tick takes the rising
+        # edge and repaints in the quiet theme a moment later.
         try:
             time_str = current_time_str()
             effective_theme = resolve_effective_theme(
