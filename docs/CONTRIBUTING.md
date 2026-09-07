@@ -184,6 +184,9 @@ custom-render frames `astrarium`, `marquee`, `tarot`, `vinyl`, `vitrail`,
 `nocturne` (Whistler night river — flow-field brushwork),
 `plaque` (relief-lit bronze memorial tablet),
 `daguerreotype` (cased Atkinson-dithered photograph),
+`autochrome` (1907 Autochrome Lumière plate — the only plate dithered
+against all six inks),
+`photo` (the operator's own picture via `--photo-path`),
 `betweenus` / `betweenus_dark` (the Between Us app's paper card, light and dark),
 the `circuit`
 printed-circuit-board theme, and the `diags` calibration panel — see the
