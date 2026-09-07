@@ -14678,6 +14678,17 @@ _AGED_PAPER_PALETTE = [SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], S
 DAGUERREOTYPE_PLATE = BASE_DIR / "assets" / "daguerreotype_plate.png"
 _SILVER_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
+# Separated Tarot de Marseille trumps (Jean Dodal, Lyon, 1701-1715), one
+# 220x290 tile per hour on a 3x4 sheet, built from the scans in
+# assets/tarot/dodal/ by scripts/ingest_tarot_plates.py. Unlike the four
+# plates above this is NOT dithered at render time: a woodcut is line and
+# flat colour, so the ingest separates it to white/black/red once and the
+# render just crops a tile. Absent, the polygon painters below still draw
+# every hour, so a stripped install degrades instead of failing.
+TAROT_PLATES = BASE_DIR / "assets" / "tarot_plates.png"
+_TAROT_PLATE_COLS, _TAROT_PLATE_ROWS = 3, 4
+_TAROT_PLATE_CACHE: dict = {}
+
 # Dithered results are deterministic per (source, size, method) and re-used
 # across the 144-frame contact sheet and the golden suite, so memoise them.
 _DITHER_CACHE: dict = {}
@@ -17451,38 +17462,51 @@ _TAROT_EMBLEM_TILE = 240
 _TAROT_EMBLEM_INKS = [SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["red"]]
 
 
-def _tarot_paint_emblem(
+def _tarot_plate_tile(hour_int: int) -> Image.Image | None:
+    """One trump cropped from the committed sprite sheet, or ``None``.
+
+    The sheet is decoded once per process and memoised, so a render pays a
+    crop rather than a decode -- the same shape ``_load_dithered_plate``
+    uses, and it matters here for the 144-frame contact sheet.
+
+    Hour maps to trump number directly, which is what puts this deck's own
+    numbering on the card: Marseille numbers Justice VIII and La Force XI,
+    where Waite (and the polygon painters below) swap them. Mapping by
+    number rather than by figure keeps the art and the Roman hour the
+    theme paints above it in the same tradition.
+    """
+    if not TAROT_PLATES.exists():
+        return None
+    sheet = _TAROT_PLATE_CACHE.get("sheet")
+    if sheet is None:
+        try:
+            with Image.open(TAROT_PLATES) as raw:
+                sheet = raw.convert("RGB")
+        except (OSError, ValueError):
+            return None
+        _TAROT_PLATE_CACHE["sheet"] = sheet
+    tw = sheet.width // _TAROT_PLATE_COLS
+    th = sheet.height // _TAROT_PLATE_ROWS
+    i = (hour_int - 1) % (_TAROT_PLATE_COLS * _TAROT_PLATE_ROWS)
+    col, row = i % _TAROT_PLATE_COLS, i // _TAROT_PLATE_COLS
+    return sheet.crop((col * tw, row * th, (col + 1) * tw, (row + 1) * th))
+
+
+def _tarot_stamp_tile(
     image: Image.Image,
-    draw: ImageDraw.ImageDraw,
-    hour_int: int,
+    tile: Image.Image,
     cx: int,
     cy: int,
-    clip: tuple[int, int, int, int] | None = None,
+    clip: tuple[int, int, int, int] | None,
 ) -> None:
-    """Dispatch the hour-mapped emblem painter, enlarged onto the card.
+    """Stamp a tile centred on (cx, cy), skipping white and honouring ``clip``.
 
-    The figure is drawn at native size onto a white tile, resampled up by
-    ``_TAROT_EMBLEM_SCALE``, snapped back to the three inks the painters
-    use, and stamped over the card stock — white pixels skipped, so the
-    card's cream wash shows through the figure's negative space instead
-    of the tile pasting an opaque white square over it.
-
-    ``clip`` bounds the stamp to the illustration panel. The widest
-    emblems (the Emperor's throne, the Wheel's rim) reach past the
-    keyline once enlarged, and a figure crossing its own frame reads as
-    a layout fault rather than as a bold composition — historical trumps
-    keep the figure inside the rule. Clipping rather than shrinking the
-    scale keeps the stroke weight the enlargement bought.
+    White is skipped rather than pasted so the card's cream wash shows
+    through the figure's negative space instead of the tile dropping an
+    opaque white rectangle onto it. Shared by both emblem sources: the
+    plate tile is exactly panel-sized and the clip is a no-op for it,
+    while the polygon tile is deliberately oversized and relies on it.
     """
-    painter = _TAROT_EMBLEMS.get(hour_int, _tarot_emblem_default)
-    size = _TAROT_EMBLEM_TILE
-    half = size // 2
-    tile = Image.new("RGB", (size, size), SPECTRA6["white"])
-    painter(ImageDraw.Draw(tile), half, half)
-    scaled = size * _TAROT_EMBLEM_SCALE
-    tile = tile.resize((round(scaled), round(scaled)), Image.LANCZOS)
-    tile = snap_image_to_palette(tile, _TAROT_EMBLEM_INKS)
-
     px = image.load()
     src = tile.load()
     w, h = image.size
@@ -17504,6 +17528,45 @@ def _tarot_paint_emblem(
             ink = src[tx, ty]
             if ink != WHITE:
                 px[x, y] = ink
+
+
+def _tarot_paint_emblem(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    hour_int: int,
+    cx: int,
+    cy: int,
+    clip: tuple[int, int, int, int] | None = None,
+) -> None:
+    """Stamp the hour's trump: the committed Dodal plate, else the painter.
+
+    The figure is drawn at native size onto a white tile, resampled up by
+    ``_TAROT_EMBLEM_SCALE``, snapped back to the three inks the painters
+    use, and stamped over the card stock — white pixels skipped, so the
+    card's cream wash shows through the figure's negative space instead
+    of the tile pasting an opaque white square over it.
+
+    ``clip`` bounds the stamp to the illustration panel. The widest
+    emblems (the Emperor's throne, the Wheel's rim) reach past the
+    keyline once enlarged, and a figure crossing its own frame reads as
+    a layout fault rather than as a bold composition — historical trumps
+    keep the figure inside the rule. Clipping rather than shrinking the
+    scale keeps the stroke weight the enlargement bought.
+    """
+    tile = _tarot_plate_tile(hour_int)
+    if tile is not None:
+        _tarot_stamp_tile(image, tile, cx, cy, clip)
+        return
+
+    painter = _TAROT_EMBLEMS.get(hour_int, _tarot_emblem_default)
+    size = _TAROT_EMBLEM_TILE
+    half = size // 2
+    tile = Image.new("RGB", (size, size), SPECTRA6["white"])
+    painter(ImageDraw.Draw(tile), half, half)
+    scaled = size * _TAROT_EMBLEM_SCALE
+    tile = tile.resize((round(scaled), round(scaled)), Image.LANCZOS)
+    tile = snap_image_to_palette(tile, _TAROT_EMBLEM_INKS)
+    _tarot_stamp_tile(image, tile, cx, cy, clip)
 
 
 def _tarot_paint_body_panel(
