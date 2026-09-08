@@ -2987,13 +2987,38 @@ class TestBetweenUs:
     # -- legend ---------------------------------------------------------------
 
     def test_legend_surfaces_every_tier_ink(self):
-        """Five tiers: light = red, R+Y tangerine, K+W stone, Y+R gold, green."""
+        """Five tiers: light = red, R+Y tangerine, K+W stone, Y+R gold, black."""
         image = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
         rq._betweenus_paint_legend(image, ImageDraw.Draw(image), rq.THEMES["betweenus"], False)
         foot = image.crop((0, 480 - rq._BETWEENUS_LEGEND_RISE - 8, 800, 480 - rq._BETWEENUS_LEGEND_RISE + 8))
         inks = distinct_inks(foot)
-        for name in ("red", "yellow", "green", "black", "white"):
+        for name in ("red", "yellow", "black", "white"):
             assert rq.SPECTRA6[name] in inks, f"legend is missing {name}"
+
+    def test_no_tier_paints_the_green_ink(self):
+        """``limit`` is a near-neutral slate, not a green (#257).
+
+        ``Theme.swift`` names it "slate green" but measures #5D6B66 — chroma
+        0.055 — where the panel's green ink is fully saturated, so painting
+        the name rather than the measurement put an unmistakably green chip
+        on the plate. Asserted on the recipes AND on the canvas, because the
+        dots are the only thing on this page that could reach for green and
+        a table-only check would miss a hardcoded fill.
+        """
+        for label, light, dark in rq._BETWEENUS_LEGEND:
+            assert "green" not in light, (label, light)
+            assert "green" not in dark, (label, dark)
+        for variant, dark_flag in (("betweenus", False), ("betweenus_dark", True)):
+            image = Image.new("RGB", (800, 480), rq.SPECTRA6["black" if dark_flag else "white"])
+            rq._betweenus_paint_legend(image, ImageDraw.Draw(image), rq.THEMES[variant], dark_flag)
+            assert rq.SPECTRA6["green"] not in distinct_inks(image), variant
+
+    def test_hard_no_sits_at_the_achromatic_extreme_stone_does_not(self):
+        """Both tiers are neutral, so they must differ by lightness or merge."""
+        recipes = dict((label, (light, dark)) for label, light, dark in rq._BETWEENUS_LEGEND)
+        assert recipes["Hard No"][0] == ("black", None, 0.0)
+        assert recipes["Hard No"][1] == ("white", None, 0.0)
+        assert recipes["Neutral"] == (("black", "white", 0.5), ("black", "white", 0.5))
 
     def test_legend_labels_are_the_apps_five_answers(self):
         assert [label for label, _, _ in rq._BETWEENUS_LEGEND] == [
@@ -3001,9 +3026,16 @@ class TestBetweenUs:
         ]
 
     def test_dark_legend_lifts_every_tint_with_white_or_yellow(self):
-        """The app's dark set lightens its accents rather than inverting them."""
+        """The app's dark set lightens its accents rather than inverting them.
+
+        A tier may satisfy this either by mixing white or yellow into its
+        light ink at half share or more, or — as ``limit`` does — by landing
+        on solid white outright, which is the same lightening taken all the
+        way rather than an exception to it.
+        """
         for label, _light, dark in rq._BETWEENUS_LEGEND:
-            assert dark[1] in ("white", "yellow") and dark[2] >= 0.5, (label, dark)
+            lifted = dark[0] == "white" or (dark[1] in ("white", "yellow") and dark[2] >= 0.5)
+            assert lifted, (label, dark)
 
     # -- text -----------------------------------------------------------------
 
