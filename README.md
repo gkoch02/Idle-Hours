@@ -261,7 +261,7 @@ idle-hours run --once --display-script display_inky.py --mode production
 
 ### Themes
 
-Sixty-three themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme pairs its palette with a dedicated typeface. The previews below were rendered as each theme landed rather than in one batch, so they show several different passages — compare palette and typography, not line breaks; production renders adapt layout to the picked line.
+Sixty-three themes ship built-in, all constrained to the Spectra 6 panel palette (white / black / red / yellow / blue / green). Each theme pairs its palette with a dedicated typeface. Every preview below is the same passage at the same time — H. G. Wells, *The Time Machine*, at ten o'clock — so what differs between them is palette, typography and decoration, and nothing else. Regenerate them with `python3 scripts/generate_theme_previews.py`; production renders adapt layout to whichever line the picker returns, so a real panel will not be this uniform.
 
 | `--theme`     | Preview | Page bg | Body  | Accent | Typeface             | Feel                          |
 |---------------|---------|---------|-------|--------|----------------------|-------------------------------|
