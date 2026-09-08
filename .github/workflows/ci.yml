@@ -149,6 +149,16 @@ jobs:
       - name: Run golden render tests
         run: pytest tests/test_render_golden.py -n auto --dist worksteal
 
+      # The README's per-theme thumbnails are renders too, and nothing else
+      # notices when one goes stale: the docs fences check that a preview file
+      # EXISTS per theme, never that its contents still match the renderer.
+      # That is how the betweenus "Hard No" chip stayed green in the README
+      # after the theme stopped painting it green (#257). Folded into this job
+      # rather than given its own so the required-check ruleset is unchanged;
+      # it is ~17s against this job's 10-minute budget.
+      - name: Check theme previews are current
+        run: python3 scripts/generate_theme_previews.py --check
+
   web-ui-js:
     # The curator UI's front end (idle_hours/web/main.js) is 726 lines of
     # operator-facing behaviour Python tests cannot reach: hash routing, lazy
