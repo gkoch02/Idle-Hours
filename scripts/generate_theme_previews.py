@@ -94,6 +94,38 @@ PREVIEW_MATCHED_TEXT = "ten o’clock"
 WIDTH, HEIGHT = 800, 480
 MODE = "production"
 
+# How much a committed preview may differ from a fresh render before --check
+# calls it stale. Mirrors `tests/test_render_golden.py`'s budgets deliberately,
+# and `TestToleranceMatchesTheGoldenSuite` fails if the two drift apart.
+#
+# Zero was the first cut and is wrong. `render` ends in `snap_image_to_palette`,
+# so subpixel antialiasing collapses to the same palette index almost always —
+# but not always, and the repo has the measurement: `diags` sets its small
+# system-info labels in the host's DejaVu, and a Pillow/FreeType point release
+# moves those glyph edges by roughly 0.14% of the canvas while every
+# panel-scale shape is unchanged. CI resolves Pillow at install time against a
+# `>=9.3` floor, so an exact check would redden this required job across every
+# open PR the day a Pillow release lands, with no commit having caused it —
+# the flake PR #229 already hit once.
+#
+# **What that costs, stated plainly:** at 0.1% the budget is 384 pixels of
+# 384,000, so this check catches theme-scale staleness — a palette change, a
+# new border painter, a font swap, anything that flips thousands of pixels —
+# and NOT a single small ornament. The `betweenus` chip that motivated all of
+# this moved 61 pixels and would sit under this budget. The golden fixtures
+# have the same blind spot for the same reason and the repo has already
+# accepted that trade; making this check tighter than the goldens would buy
+# sensitivity nobody else has at the cost of being the one thing that breaks
+# on a dependency bump. A change too small for this fence needs the eye, or a
+# targeted assertion of the kind #258 added.
+MAX_DIFF_RATIO = 0.001
+THEME_MAX_DIFF_RATIOS = {"diags": 0.0015}
+
+
+def tolerance_px(theme: str) -> int:
+    """Pixels this theme may differ by before its preview counts as stale."""
+    return int(THEME_MAX_DIFF_RATIOS.get(theme, MAX_DIFF_RATIO) * WIDTH * HEIGHT)
+
 # A fixed instant for the renderer's wall-clock reads. `astrarium` prints the
 # date in its header and derives its solar/lunar datums from the day of year;
 # `vinyl` stamps a copyright year and seeds its sleeve wear from YYYYMMDD.
@@ -229,6 +261,20 @@ def differing_pixels(a: Image.Image, b: Image.Image) -> int:
     return sum(ImageChops.difference(a.convert("RGB"), b.convert("RGB")).convert("L").histogram()[1:])
 
 
+def display_path(path: Path) -> str:
+    """A path for the log line, without assuming it lives under the repo.
+
+    ``--output-dir`` accepts anything — a relative ``scratch``, an absolute
+    ``/tmp/previews`` — and ``Path.relative_to`` raises for both. It raised
+    *after* the first image was written, so the advertised override could not
+    complete and left a partial directory behind.
+    """
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Regenerate the per-theme README preview thumbnails.",
@@ -288,13 +334,14 @@ def main(argv=None) -> int:
                 continue
             with Image.open(path) as existing:
                 delta = differing_pixels(image, existing)
-            if delta:
+            budget = tolerance_px(theme)
+            if delta > budget:
                 drifted.append((theme, delta))
-                print(f"DIFFERS  {theme:20s} {delta:7d} px")
+                print(f"DIFFERS  {theme:20s} {delta:7d} px (budget {budget})")
             continue
         image.save(path)
         written.append(theme)
-        print(f"wrote    {theme:20s} {path.relative_to(REPO_ROOT)}")
+        print(f"wrote    {theme:20s} {display_path(path)}")
 
     if args.check:
         if drifted:
@@ -303,7 +350,7 @@ def main(argv=None) -> int:
             return 2
         print(f"all {len(themes)} previews match a fresh render")
         return 0
-    print(f"\nwrote {len(written)} preview(s) to {args.output_dir.relative_to(REPO_ROOT)}")
+    print(f"\nwrote {len(written)} preview(s) to {display_path(args.output_dir)}")
     return 0
 
 

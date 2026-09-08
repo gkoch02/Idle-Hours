@@ -97,6 +97,42 @@ class TestThemeSelection:
         assert chosen == ["dark", "default"]
 
 
+class TestTolerance:
+    """The check's budget must track the golden suite's, not diverge from it."""
+
+    def test_the_budgets_match_the_golden_suites(self, gen):
+        """Duplicated constants, fenced — the script cannot import from tests/.
+
+        Zero tolerance was the first cut. It is wrong because `diags` sets its
+        system-info labels in the host's DejaVu and a Pillow/FreeType point
+        release moves those glyph edges by ~0.14% of the canvas; CI resolves
+        Pillow at install time against a `>=9.3` floor, so an exact check would
+        redden a required job across every open PR the day a release lands.
+        """
+        from tests import test_render_golden as golden
+
+        assert gen.MAX_DIFF_RATIO == golden.MAX_DIFF_RATIO
+        assert gen.THEME_MAX_DIFF_RATIOS["diags"] == golden.SCENARIO_MAX_DIFF_RATIOS["standard_diags_production"]
+
+    def test_diags_gets_the_wider_budget_and_others_do_not(self, gen):
+        assert gen.tolerance_px("diags") > gen.tolerance_px("default")
+        assert gen.tolerance_px("default") == int(gen.MAX_DIFF_RATIO * gen.WIDTH * gen.HEIGHT)
+
+
+class TestOutputDir:
+    def test_an_output_dir_outside_the_repo_does_not_crash(self, gen, tmp_path):
+        """It raised AFTER writing the first image, leaving a partial directory."""
+        out = tmp_path / "previews"
+        assert gen.main(["--theme", "default", "--theme", "dark", "--output-dir", str(out)]) == 0
+        assert sorted(p.name for p in out.glob("*.png")) == ["dark.png", "default.png"]
+
+    def test_display_path_survives_both_path_shapes(self, gen):
+        assert gen.display_path(gen.PREVIEW_DIR / "x.png").startswith("idle_hours/")
+        # Absolute-but-outside and relative both used to raise ValueError.
+        assert gen.display_path(Path("/tmp/elsewhere/x.png")) == "/tmp/elsewhere/x.png"
+        assert gen.display_path(Path("scratch/x.png")) == "scratch/x.png"
+
+
 class TestDeterminism:
     def test_an_operators_photo_path_cannot_reach_the_preview(self, gen, tmp_path, monkeypatch):
         """Verified against the real leak: without the guard the env changes the render."""
