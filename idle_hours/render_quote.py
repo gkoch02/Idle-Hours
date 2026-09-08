@@ -14083,11 +14083,13 @@ def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time
 #   labels in Inter SemiBold. The tiers are the app's palette and they map
 #   onto documented recipes without inventing one: light = solid red (deep
 #   terracotta), R+Y 5/8:3/8 tangerine (warm terracotta), K+W gray (stone),
-#   Y+R 5/8:3/8 gold (ochre), solid green (slate green — the panel's own
-#   green is a muted cool one, which is exactly the app's ``limit``); dark
-#   lightens every tint with white or yellow the way ``Theme.swift`` does
-#   (coral, amber, gray, cream, mint). The row sits in the bottom margin the
-#   dense layout leaves free (block_bottom ≤ ~412, card foot ≤ ~436).
+#   Y+R 5/8:3/8 gold (ochre), solid black (the app's ``limit`` — its "slate
+#   green" token is measurably a dark *neutral*, so it takes the dark end
+#   of the achromatic axis rather than the green ink, leaving stone the
+#   middle; see ``_BETWEENUS_LEGEND``); dark lightens every tint the way
+#   ``Theme.swift`` does (coral, amber, gray, cream, and ``limit`` all the
+#   way to bone white). The row sits in the bottom margin the dense layout
+#   leaves free (block_bottom ≤ ~412, card foot ≤ ~436).
 #
 # Typography is the app's web-era pair, Fraunces + Inter (its iOS build uses
 # the system New York / SF equivalents). Fraunces is a variable "soft" serif
@@ -14142,12 +14144,29 @@ _BETWEENUS_SENTINEL_DOTS = tuple((10 + i, 10 + i, 10 + i) for i in range(5))
 # ``ink_b`` where the 8x8 Bayer rank is below ``share_b * 64``, ``ink_a``
 # elsewhere; ``share_b == 0`` is a solid fill. Light column = the app's light
 # tints, dark column = its lightened dark tints.
+#
+# ``Hard No`` is the app's ``limit`` and it is the one tier whose token does
+# NOT survive a literal hue read (#257). ``Theme.swift`` calls it "slate
+# green" and it looks green written down, but measured it is #5D6B66 — max
+# minus min is 14/255, chroma 0.055, which is a dark *neutral* with a cool
+# cast, not a green. The panel's green (#35563A) is a fully saturated ink,
+# so painting the token as solid green read as unmistakably green on the
+# plate: the `pride`-brown warning in the other direction, where the name of
+# a colour was trusted over its measurement. Every reachable mix is worse
+# than plain ink here — solid green is 63 away from the token in RGB, G+K
+# forest 88, and K+W gray is nearest at 24 but is precisely what ``Neutral``
+# (stone, #8A8076) already paints, so the two chips would be one chip. So
+# the tier drops onto the achromatic axis at its *extreme* and lets stone
+# keep the middle: black on the light paper, white on the dark, which is
+# also the direction the app itself lightens (its dark ``limit`` #9FB6AD is
+# a light tint of the same near-neutral). Reads as a hard stop, and no chip
+# is confusable with another.
 _BETWEENUS_LEGEND: tuple[tuple[str, tuple, tuple], ...] = (
     ("Love it", ("red", None, 0.0), ("red", "white", 0.5)),          # deep terracotta → salmon
     ("Like it", ("red", "yellow", 0.375), ("red", "yellow", 0.5)),   # warm terracotta → apricot
     ("Neutral", ("black", "white", 0.5), ("black", "white", 0.5)),   # stone
     ("Curious", ("yellow", "red", 0.375), ("yellow", "white", 0.5)), # ochre → pale gold
-    ("Hard No", ("green", None, 0.0), ("green", "white", 0.5)),      # slate green → mint
+    ("Hard No", ("black", None, 0.0), ("white", None, 0.0)),         # slate → ink / bone
 )
 
 _BETWEENUS_DAYPART_LABELS = {
