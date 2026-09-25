@@ -56,6 +56,31 @@ def iter_records(paths: Iterable[str]) -> Iterable[Record]:
             yield Record(raw=raw, canonical_quote=normalize_text(quote), canonical_context=normalize_text(context))
 
 
+def dedupe_key(raw: dict, canonical_quote: str) -> tuple:
+    """The identity two harvested rows must share to be the same hit.
+
+    A Gutenberg row is ``(source_id, line_number, matched_text, normalized_time)``:
+    the same phrase at the same place in the same book is one hit however wide
+    the sentence window around it was cut, and a *different* phrase or time on
+    the same line is a different hit. The earlier key mixed in ``fuzzy_bucket``
+    and ``daypart_bucket``, both derived from the time, so a harvest-to-harvest
+    change in the derivation made byte-identical hits look distinct — the
+    committed corpus carried 16 exact duplicates that differed only in a
+    ``daypart_bucket`` computed under an older rollover rule (issue #294).
+    Rows with no ``source_id`` (local text files) fall back to the quote text.
+    """
+    source_id = raw.get("source_id")
+    line_number = raw.get("line_number")
+    if source_id is not None and line_number is not None:
+        return (
+            str(source_id),
+            line_number,
+            " ".join((raw.get("matched_text") or "").split()).lower(),
+            raw.get("normalized_time"),
+        )
+    return (raw.get("normalized_time"), raw.get("daypart_bucket"), canonical_quote)
+
+
 def dedupe(records: Iterable[Record]) -> tuple[list[dict], dict]:
     seen: dict[tuple, dict] = {}
     duplicates = 0
@@ -70,12 +95,7 @@ def dedupe(records: Iterable[Record]) -> tuple[list[dict], dict]:
         if raw.get("fuzzy_bucket"):
             bucket_counter[raw["fuzzy_bucket"]] += 1
 
-        key = (
-            raw.get("normalized_time"),
-            raw.get("fuzzy_bucket"),
-            raw.get("daypart_bucket"),
-            record.canonical_quote,
-        )
+        key = dedupe_key(raw, record.canonical_quote)
         existing = seen.get(key)
         if existing is None:
             enriched = dict(raw)

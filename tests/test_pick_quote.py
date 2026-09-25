@@ -1934,3 +1934,62 @@ class TestDegradationWarningsAreOneShot:
         self._baked_corpus(db, schema_version=pq.BAKED_SCORE_SCHEMA_VERSION + 1000)
         self._pick(db, raw)
         assert calls["n"] == 2
+
+
+class TestDuplicateText:
+    """Issue #294: the same display text under different keys is one quote."""
+
+    def _twins(self):
+        a = make_row(source_id="98", line_number=3534, display_quote="Ten o\u2019clock, sir,\u201d said the man.")
+        b = make_row(source_id="98", line_number=3541, display_quote="ten o'clock, sir,\" said the  man.")
+        other = make_row(source_id="7", line_number=1, display_quote="A different sentence at three o'clock.")
+        return a, b, other
+
+    def test_normalize_display_text_folds_case_quotes_and_whitespace(self):
+        assert pq.normalize_display_text("Ten o\u2019clock, sir,\u201d said the  man.") == \
+            pq.normalize_display_text("ten o'clock, sir,\" said the man.")
+        assert pq.normalize_display_text(None) == ""
+
+    def test_twins_collapse_to_one_candidate(self):
+        a, b, other = self._twins()
+        chosen, bucket, ranked = pq.pick_best(
+            [a, b, other], "h3_exact", 0, 60, {}, "03:00", None, return_ranked=True,
+        )
+        texts = [pq.normalize_display_text(e["row"]["display_quote"]) for e in ranked]
+        assert len(texts) == len(set(texts)) == 2
+        twins = [e["row"]["line_number"] for e in ranked if e["row"]["source_id"] == "98"]
+        assert len(twins) == 1
+
+    def test_collapse_keeps_best_scored_copy(self):
+        a, b, other = self._twins()
+        b["quality_score"] = 70  # a (100) must win over its twin
+        _, _, ranked = pq.pick_best([b, a, other], "h3_exact", 0, 60, {}, "03:00", None, return_ranked=True)
+        assert [e["row"]["line_number"] for e in ranked if e["row"]["source_id"] == "98"] == [3534]
+
+    def test_ban_on_one_key_excludes_the_twin(self):
+        a, b, other = self._twins()
+        overrides = {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}, "ban_quote_keys": ["98:3534"]}
+        chosen, _ = pq.pick_best([a, b, other], "h3_exact", 0, 60, overrides, "03:00", None)
+        assert chosen["source_id"] == "7"
+
+    def test_ban_reaches_a_twin_in_another_source(self):
+        a, b, other = self._twins()
+        b["source_id"] = "2701"  # another Gutenberg edition of the same book
+        overrides = {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {}, "ban_quote_keys": ["98:3534"]}
+        chosen, _ = pq.pick_best([a, b, other], "h3_exact", 0, 60, overrides, "03:00", None)
+        assert chosen["source_id"] == "7"
+
+    def test_recent_history_on_one_key_excludes_the_twin(self):
+        a, b, other = self._twins()
+        chosen, _ = pq.pick_best([a, b, other], "h3_exact", 0, 60, {}, "03:00", {("98", 3534)})
+        assert chosen["source_id"] == "7"
+
+    def test_recent_history_falls_back_when_only_twins_remain(self):
+        a, b, _ = self._twins()
+        chosen, _ = pq.pick_best([a, b], "h3_exact", 0, 60, {}, "03:00", {("98", 3534)})
+        assert chosen["source_id"] == "98"
+
+    def test_twin_texts_empty_when_nothing_to_look_up(self):
+        a, b, other = self._twins()
+        assert pq._twin_texts([a, b, other], set(), set()) == (frozenset(), frozenset())
+

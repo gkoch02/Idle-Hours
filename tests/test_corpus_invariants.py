@@ -183,25 +183,24 @@ class TestDeduplication:
             f"exceeds ceiling {self.MAX_POSITION_DUPLICATES} — merge stage regression?"
         )
 
-    def test_canonical_quote_dedup_within_bucket(self, corpus_rows):
-        """Within a (fuzzy_bucket, canonical_quote) pair, rows should be unique —
-        that's the merge_candidates dedup key. Violations mean merge silently dropped.
+    def test_merge_dedup_key_within_corpus(self, corpus_rows):
+        """Rows sharing ``merge_candidates.dedupe_key`` should be unique — that is
+        what a merge collapses. The committed corpus was merged under the older,
+        derived-field key, so a small residue of exact duplicates remains (they
+        differ only in a ``daypart_bucket`` computed under an older rollover
+        rule); the ceiling locks that residue so it cannot grow.
         """
+        from idle_hours import merge_candidates as mc
         seen = set()
         dupes = 0
         for row in corpus_rows:
-            bucket = row.get("fuzzy_bucket")
             canonical = row.get("canonical_quote")
-            normalized = row.get("normalized_time")
-            daypart = row.get("daypart_bucket")
             if not canonical:
                 continue
-            key = (normalized, bucket, daypart, canonical)
+            key = mc.dedupe_key(row, canonical)
             if key in seen:
                 dupes += 1
             seen.add(key)
-        # Lock current count as the ceiling. A clean corpus would be 0, but
-        # targeted_phrase vs original-regex collisions leave a known residue.
         assert dupes <= 40, f"{dupes} rows violate the merge_candidates dedup key (ceiling 40)"
 
 
