@@ -34,7 +34,8 @@ def run(command: list[str], *, capture: bool = False) -> subprocess.CompletedPro
 
 
 def git(*args: str, capture: bool = True) -> str:
-    return run(["git", *args], capture=capture).stdout.strip()
+    result = run(["git", *args], capture=capture)
+    return result.stdout.strip() if result.stdout is not None else ""
 
 
 def parse_version(value: str) -> tuple[int, int, int]:
@@ -125,6 +126,11 @@ def build_and_verify(version: str) -> None:
 
 
 def run_release_checks(version: str) -> None:
+    # An editable install's dist-info does not automatically refresh after
+    # pyproject.toml changes. Reinstall before pytest so the packaging and CLI
+    # version checks see the version being prepared rather than the previous
+    # release's cached metadata.
+    run([sys.executable, "-m", "pip", "install", "--no-deps", "-e", "."])
     run(
         [
             sys.executable,

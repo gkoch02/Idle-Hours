@@ -1,4 +1,5 @@
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -77,6 +78,33 @@ def test_confirm_push_requires_yes_when_noninteractive(monkeypatch):
     with pytest.raises(release.ReleaseError, match="non-interactive"):
         release.confirm_push("v2.6.0", assume_yes=False)
     assert release.confirm_push("v2.6.0", assume_yes=True)
+
+
+def test_git_without_capture_returns_empty_output(monkeypatch):
+    completed = subprocess.CompletedProcess(["git", "fetch"], 0, stdout=None)
+    monkeypatch.setattr(release, "run", lambda command, capture=False: completed)
+
+    assert release.git("fetch", "origin", "main", capture=False) == ""
+
+
+def test_release_checks_refresh_editable_metadata_before_pytest(monkeypatch):
+    commands = []
+    monkeypatch.setattr(release, "run", lambda command, **kwargs: commands.append(command))
+    monkeypatch.setattr(release, "build_and_verify", lambda version: commands.append(["build", version]))
+
+    release.run_release_checks("2.6.0")
+
+    assert commands[0] == [
+        release.sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "-e",
+        ".",
+    ]
+    assert commands[1][:4] == [release.sys.executable, "-m", "pytest", "-n"]
+    assert commands[2] == ["build", "2.6.0"]
 
 
 def test_cli_help_lists_both_phases(capsys):
