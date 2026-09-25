@@ -3656,3 +3656,51 @@ class TestPreviewModeValidation:
             status, body = _get(server, f"/api/preview?theme=default&time=03:00&mode={mode}&width=400&height=240")
         assert status == 200, body
         assert body.startswith(b"\x89PNG")
+
+
+# ============================================================================
+# Coverage counts what the panel can display (issue #300)
+# ============================================================================
+
+
+class TestDisplayableCoverageOverTheWire:
+    def _corpus(self, tmp_path, server):
+        corpus = tmp_path / "relocated-corpus.jsonl"
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1, quality_score=90),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2, quality_score=90),
+            make_row(fuzzy_bucket="h3_ten_to", normalized_time="03:50", source_id="7", line_number=3, quality_score=55),
+            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=4, quality_score=90),
+        ]
+        corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+
+    def test_quality_floor_and_live_bans_shape_the_grid(self, tmp_path, live_server):
+        server, _state, args = live_server
+        self._corpus(tmp_path, server)
+        overrides = Path(args.overrides)
+        overrides.write_text(json.dumps({
+            "ban_source_ids": ["2"], "boost_source_ids": [], "preferred_buckets": {}, "ban_quote_keys": ["1:2"],
+        }), encoding="utf-8")
+        status, body = _get(server, "/api/coverage")
+        assert status == 200
+        data = _json_body(body)
+        assert data["bucket_counts"]["h3_exact"] == 1          # one row banned by key
+        assert data["bucket_counts"]["h3_ten_to"] == 0         # its only row is below the floor
+        assert data["bucket_counts"]["h9_half_past"] == 0      # banned source
+        assert data["raw_bucket_counts"]["h3_exact"] == 2
+        assert data["raw_bucket_counts"]["h3_ten_to"] == 1
+        assert "h3_ten_to" in data["empty_buckets"]
+        assert data["total_rows"] == 4 and data["displayable_rows"] == 1
+
+    def test_gaps_tiers_empty_thin_and_sparse(self, tmp_path, live_server):
+        server, _state, _args = live_server
+        self._corpus(tmp_path, server)
+        status, body = _get(server, "/api/gaps?threshold=3")
+        assert status == 200
+        tiers = {g["bucket"]: g["tier"] for g in _json_body(body)["buckets"]}
+        assert tiers["h3_ten_to"] == "empty"       # only row is below the floor → a real gap
+        assert tiers["h3_exact"] == "thin"          # 2 rows
+        assert tiers["h9_half_past"] == "thin"
+        assert set(tiers.values()) <= {"empty", "thin", "sparse"}

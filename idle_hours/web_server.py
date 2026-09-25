@@ -1168,9 +1168,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ~3K rows. The committed snapshot stays as a fallback for the case where
         the corpus itself is missing or unreadable.
 
-        Reads the RAW corpus for the same reason ``/api/bucket`` does: the
-        operator needs to see rows the baker dropped, or the gap-finder would
-        report a bucket as covered by quotes that can never be displayed.
+        Reads the RAW corpus so the ``raw_bucket_counts`` it reports show
+        material the baker dropped; the headline ``bucket_counts`` apply the
+        baker's quality floor and the live bans (issue #300), so the grid and
+        the gap finder describe what the panel can actually display rather
+        than reporting a bucket as covered by a quote that can never appear.
         """
         from idle_hours import bucket_coverage
         ctx = self._ctx()
@@ -1180,7 +1182,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             _log(f"web: live coverage unavailable ({exc!r}); falling back to {ctx.coverage_path}", err=True)
             rows = None
         if rows is not None:
-            summary = bucket_coverage.build_summary(rows)
+            overrides = pick_quote_module.load_overrides(Path(ctx.overrides_path))
+            summary = bucket_coverage.build_summary(rows, overrides=overrides)
             summary["live"] = True
             return summary
         if not ctx.coverage_path.exists():
@@ -1206,7 +1209,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         consistent results. ``--threshold`` controls "sparse" (default ≤3
         candidates, matching the bucket-coverage shading).
         """
-        from idle_hours import target_sparse_buckets
+        from idle_hours import bucket_coverage, target_sparse_buckets
         try:
             threshold = int(query.get("threshold", ["3"])[0])
         except (TypeError, ValueError):
@@ -1223,6 +1226,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
         for bucket, count in bucket_counts.items():
             if count > threshold:
                 continue
+            # ``tier`` lets the UI stress the buckets that matter most: empty
+            # ones render a neighbour-bucket fallback, thin ones (≤2 rows)
+            # defeat the anti-repeat ledger, which falls back to the full list.
+            tier = "empty" if count == 0 else ("thin" if count <= bucket_coverage.THIN_THRESHOLD else "sparse")
             # bucket like "h7_twenty_to" → ("h7", "twenty_to")
             try:
                 hour_part, state = bucket.split("_", 1)
@@ -1247,7 +1254,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                     template.format(hour=hour_word, next_hour=next_hour_word)
                     for template, _label in templates
                 ]
-            gaps.append({"bucket": bucket, "count": count, "phrases": phrases})
+            gaps.append({"bucket": bucket, "count": count, "tier": tier, "phrases": phrases})
         # Sort emptiest-first so the UI naturally surfaces the worst gaps.
         gaps.sort(key=lambda g: (g["count"], g["bucket"]))
         self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": gaps, "total": len(gaps)})
