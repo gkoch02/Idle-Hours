@@ -1,9 +1,9 @@
 {
-  "total_rows": 3191,
+  "total_rows": 3119,
   "total_expected_buckets": 144,
-  "populated_bucket_count": 122,
-  "empty_bucket_count": 22,
-  "coverage_percent": 84.72,
+  "populated_bucket_count": 119,
+  "empty_bucket_count": 25,
+  "coverage_percent": 82.64,
   "bucket_counts": {
     "h1_exact": 161,
     "h1_five_past": 2,
@@ -15,7 +15,7 @@
     "h1_twenty_five_to": 0,
     "h1_twenty_to": 1,
     "h1_quarter_to": 6,
-    "h1_ten_to": 2,
+    "h1_ten_to": 0,
     "h1_five_to": 8,
     "h2_exact": 213,
     "h2_five_past": 2,
@@ -27,7 +27,7 @@
     "h2_twenty_five_to": 2,
     "h2_twenty_to": 4,
     "h2_quarter_to": 4,
-    "h2_ten_to": 2,
+    "h2_ten_to": 1,
     "h2_five_to": 10,
     "h3_exact": 213,
     "h3_five_past": 3,
@@ -39,7 +39,7 @@
     "h3_twenty_five_to": 0,
     "h3_twenty_to": 0,
     "h3_quarter_to": 2,
-    "h3_ten_to": 1,
+    "h3_ten_to": 0,
     "h3_five_to": 11,
     "h4_exact": 182,
     "h4_five_past": 2,
@@ -88,7 +88,7 @@
     "h7_twenty_to": 0,
     "h7_quarter_to": 11,
     "h7_ten_to": 1,
-    "h7_five_to": 18,
+    "h7_five_to": 12,
     "h8_exact": 225,
     "h8_five_past": 6,
     "h8_ten_past": 3,
@@ -135,7 +135,7 @@
     "h11_twenty_five_to": 2,
     "h11_twenty_to": 2,
     "h11_quarter_to": 14,
-    "h11_ten_to": 6,
+    "h11_ten_to": 1,
     "h11_five_to": 9,
     "h12_exact": 158,
     "h12_five_past": 4,
@@ -145,18 +145,20 @@
     "h12_twenty_five_past": 3,
     "h12_half_past": 8,
     "h12_twenty_five_to": 0,
-    "h12_twenty_to": 10,
+    "h12_twenty_to": 0,
     "h12_quarter_to": 12,
-    "h12_ten_to": 48,
+    "h12_ten_to": 1,
     "h12_five_to": 17
   },
   "empty_buckets": [
     "h1_twenty_five_to",
+    "h1_ten_to",
     "h2_twenty_five_past",
     "h3_twenty_past",
     "h3_twenty_five_past",
     "h3_twenty_five_to",
     "h3_twenty_to",
+    "h3_ten_to",
     "h4_ten_past",
     "h4_twenty_past",
     "h5_ten_past",
@@ -172,11 +174,16 @@
     "h9_twenty_five_past",
     "h9_ten_to",
     "h10_ten_past",
-    "h12_twenty_five_to"
+    "h12_twenty_five_to",
+    "h12_twenty_to"
   ],
   "sparse_buckets": [
     {
       "bucket": "h10_five_past",
+      "count": 1
+    },
+    {
+      "bucket": "h11_ten_to",
       "count": 1
     },
     {
@@ -188,6 +195,10 @@
       "count": 1
     },
     {
+      "bucket": "h12_ten_to",
+      "count": 1
+    },
+    {
       "bucket": "h12_twenty_past",
       "count": 1
     },
@@ -196,11 +207,11 @@
       "count": 1
     },
     {
-      "bucket": "h3_quarter_past",
+      "bucket": "h2_ten_to",
       "count": 1
     },
     {
-      "bucket": "h3_ten_to",
+      "bucket": "h3_quarter_past",
       "count": 1
     },
     {
@@ -296,15 +307,7 @@
       "count": 2
     },
     {
-      "bucket": "h1_ten_to",
-      "count": 2
-    },
-    {
       "bucket": "h2_five_past",
-      "count": 2
-    },
-    {
-      "bucket": "h2_ten_to",
       "count": 2
     },
     {
@@ -470,16 +473,8 @@
       "count": 147
     },
     {
-      "bucket": "h12_ten_to",
-      "count": 48
-    },
-    {
       "bucket": "h2_half_past",
       "count": 27
-    },
-    {
-      "bucket": "h7_five_to",
-      "count": 18
     },
     {
       "bucket": "h8_five_to",
@@ -510,6 +505,10 @@
       "count": 12
     },
     {
+      "bucket": "h7_five_to",
+      "count": 12
+    },
+    {
       "bucket": "h3_five_to",
       "count": 11
     },
@@ -518,15 +517,19 @@
       "count": 11
     },
     {
-      "bucket": "h12_twenty_to",
+      "bucket": "h2_five_to",
       "count": 10
+    },
+    {
+      "bucket": "h10_quarter_to",
+      "count": 9
     }
   ],
   "daypart_counts": {
-    "morning": 1374,
-    "night": 937,
+    "morning": 1363,
+    "night": 933,
     "dawn": 469,
-    "noon": 297,
+    "noon": 240,
     "midnight": 44,
     "evening": 42,
     "dusk": 28
@@ -680,18 +683,6 @@
         "quote_text": "ascended very gently from the Tuileries at a quarter to two",
         "matched_text": "quarter to two",
         "source_id": "200"
-      }
-    ],
-    "h1_ten_to": [
-      {
-        "quote_text": "“‘Ten to two.",
-        "matched_text": "Ten to two",
-        "source_id": "1661"
-      },
-      {
-        "quote_text": "off, Halsey to be on duty from ten to two, and Alex from two until six.",
-        "matched_text": "ten to two",
-        "source_id": "434"
       }
     ],
     "h1_five_to": [
@@ -856,11 +847,6 @@
     ],
     "h2_ten_to": [
       {
-        "quote_text": "This plateau varies in width from ten to three hundred",
-        "matched_text": "ten to three",
-        "source_id": "2148"
-      },
-      {
         "quote_text": "Ten minutes to three!",
         "matched_text": "Ten minutes to three",
         "source_id": "6133"
@@ -968,13 +954,6 @@
         "quote_text": "Only a quarter to four, father.",
         "matched_text": "quarter to four",
         "source_id": "885"
-      }
-    ],
-    "h3_ten_to": [
-      {
-        "quote_text": "As you know, I’ve got to work at the Treasury from ten to four.",
-        "matched_text": "ten to four",
-        "source_id": "7986"
       }
     ],
     "h3_five_to": [
@@ -1478,19 +1457,19 @@
     ],
     "h7_five_to": [
       {
-        "quote_text": "Eight years, almost eight years had passed, since all had been",
-        "matched_text": "almost eight",
-        "source_id": "105"
-      },
-      {
         "quote_text": "It was nearly eight o’clock in the evening when the cart, which we left",
         "matched_text": "nearly eight",
         "source_id": "135"
       },
       {
-        "quote_text": "thin and pale; she was nearly eight years old, but she seemed to be",
+        "quote_text": "It was nearly eight o’clock.",
         "matched_text": "nearly eight",
-        "source_id": "135"
+        "source_id": "144"
+      },
+      {
+        "quote_text": "The Mahommedans, who number nearly eight-ninths of the population, are not, however, ``citizens''",
+        "matched_text": "nearly eight",
+        "source_id": "200"
       }
     ],
     "h8_exact": [
@@ -2104,19 +2083,9 @@
     ],
     "h11_ten_to": [
       {
-        "quote_text": "miles, occupying from ten to twelve days, and the young woman was not",
-        "matched_text": "ten to twelve",
-        "source_id": "103"
-      },
-      {
-        "quote_text": "ranges from eight or ten to twelve and fifteen inches in thickness.",
-        "matched_text": "ten to twelve",
-        "source_id": "15"
-      },
-      {
-        "quote_text": "surface, the temperature did not rise above from ten to twelve degrees.",
-        "matched_text": "ten to twelve",
-        "source_id": "164"
+        "quote_text": "‘I’ll be,’ says Twemlow, ‘at the club by ten minutes to twelve, and I’ll",
+        "matched_text": "ten minutes to twelve",
+        "source_id": "883"
       }
     ],
     "h11_five_to": [
@@ -2218,23 +2187,6 @@
         "source_id": "135"
       }
     ],
-    "h12_twenty_to": [
-      {
-        "quote_text": "Twenty to one, he’ll come to speak to her;",
-        "matched_text": "Twenty to one",
-        "source_id": "100"
-      },
-      {
-        "quote_text": "Twenty to one, is trussed up in a trice",
-        "matched_text": "Twenty to one",
-        "source_id": "100"
-      },
-      {
-        "quote_text": "Twenty to one, then, he is shipped already,",
-        "matched_text": "Twenty to one",
-        "source_id": "100"
-      }
-    ],
     "h12_quarter_to": [
       {
         "quote_text": "(according to circumstances), say from quarter to one half more time",
@@ -2253,16 +2205,6 @@
       }
     ],
     "h12_ten_to": [
-      {
-        "quote_text": "And ten to one is no impeach of valour.",
-        "matched_text": "ten to one",
-        "source_id": "100"
-      },
-      {
-        "quote_text": "And ten to one you’ll meet him in the Tower.",
-        "matched_text": "ten to one",
-        "source_id": "100"
-      },
       {
         "quote_text": "And that the French were almost ten to one,",
         "matched_text": "ten to one",

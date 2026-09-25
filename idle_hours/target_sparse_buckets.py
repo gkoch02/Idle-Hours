@@ -146,18 +146,57 @@ _UNIT_TAIL_RE = re.compile(
 )
 
 
+# The minutes-less "to" templates ("ten to {next_hour}", "twenty to {next_hour}")
+# are a special hazard: for hour 12 they expand to "ten to one" / "twenty to
+# one", which in English prose is overwhelmingly the gambling idiom, and for
+# other hours they collide with ranges and scores ("from ten to twelve inches",
+# "ten to two on duty"). A sweep once filled h12_ten_to and h12_twenty_to with
+# nothing but wagers (issue #293). So a bare ``<minute> to <hour>`` hit must
+# carry a positive time cue on one side — and even then an odds marker nearby
+# wins ("says he, at twenty to one. A rank outsider").
+_BARE_TO_PHRASE_RE = re.compile(r"^(?:five|ten|twenty|twenty[- ]five)\s+to\s+[a-z]+$", re.IGNORECASE)
+_TIME_CUE_BEFORE_RE = re.compile(
+    r"\b(?:at|about|by|till|until|toward|towards|nearly|almost|exactly|precisely"
+    r"|struck|striking|round|around|wanted|wanting)\s+(?:about\s+)?[\"'“‘(]*$",
+    re.IGNORECASE,
+)
+_TIME_CUE_AFTER_RE = re.compile(
+    r"^[\s,.;:!?\"'”’)]*(?:o['’]?clock|in the (?:morning|afternoon|evening)|at night"
+    r"|that (?:morning|afternoon|evening|night)|a\.m\b|p\.m\b"
+    r"|by (?:the|my|his|her) (?:clock|watch))",
+    re.IGNORECASE,
+)
+_ODDS_BEFORE_RE = re.compile(
+    r"\b(?:bet|bets|betting|wager|odds|chances?|laid|lay|backed|outsider|favou?rite|even money)\b[^.!?]{0,60}$",
+    re.IGNORECASE,
+)
+_ODDS_AFTER_RE = re.compile(
+    r"^[\s\S]{0,40}?\b(?:bar|against|the field|outsider|odds|chances?|bet|wager)\b",
+    re.IGNORECASE,
+)
+
+
 def looks_like_false_positive(text: str, start: int, end: int) -> str | None:
     """Reject a phrase hit whose surrounding prose marks it as not-a-clock-time.
 
     Returns a short reason string (for diagnostics) or ``None`` when the hit
-    survives. Conservative by design: only the two classes observed in real
+    survives. Conservative by design: only the classes observed in real
     sweeps are rejected, so a borderline hit still flows downstream where the
-    quality filter and human curation can judge it.
+    quality filter and human curation can judge it. The one exception is the
+    bare ``<minute> to <hour>`` form, which is rejected *unless* the prose
+    around it says it is a clock time — see ``_BARE_TO_PHRASE_RE``.
     """
     if _RANGE_LEAD_RE.search(text[max(0, start - 12):start]):
         return "range_lead"
     if _UNIT_TAIL_RE.match(text[end:end + 32]):
         return "unit_tail"
+    if _BARE_TO_PHRASE_RE.match(text[start:end]):
+        before = text[max(0, start - 80):start]
+        after = text[end:end + 60]
+        if _ODDS_BEFORE_RE.search(before) or _ODDS_AFTER_RE.match(after):
+            return "odds"
+        if not (_TIME_CUE_BEFORE_RE.search(before) or _TIME_CUE_AFTER_RE.match(after)):
+            return "no_time_cue"
     return None
 
 

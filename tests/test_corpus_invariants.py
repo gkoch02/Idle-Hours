@@ -328,3 +328,42 @@ class TestBucketsHelpers:
                     continue
                 bucket = bucket_for_time(f"{h:02d}:{m:02d}")
                 assert bucket.endswith(f"_{suffix}"), f"{h:02d}:{m:02d} → {bucket} but state {suffix!r}"
+
+
+class TestTargetedPhraseGuards:
+    """Rows harvested by the sparse-bucket sweep must pass its own false-positive
+    guard when it is re-run against their stored context (issue #293: a sweep
+    once filled h12_ten_to / h12_twenty_to entirely with "ten to one" wagers).
+    """
+
+    def _offending(self, rows):
+        from idle_hours import target_sparse_buckets as tsb
+        bad = []
+        for row in rows:
+            if row.get("match_type") != "targeted_phrase":
+                continue
+            context = row.get("context_text") or row.get("quote_text") or ""
+            phrase = row.get("matched_text") or ""
+            start = context.lower().find(phrase.lower())
+            if start < 0:
+                continue
+            reason = tsb.looks_like_false_positive(context, start, start + len(phrase))
+            if reason:
+                bad.append((row.get("source_id"), row.get("line_number"), phrase, reason))
+        return bad
+
+    def test_raw_corpus_targeted_rows_pass_guard(self, corpus_rows):
+        assert self._offending(corpus_rows) == []
+
+    def test_baked_targeted_rows_pass_guard(self, baked_rows):
+        assert self._offending(baked_rows) == []
+
+    def test_no_bare_odds_phrase_in_baked_db(self, baked_rows):
+        import re
+        odds = [
+            (row.get("source_id"), row.get("line_number"))
+            for row in baked_rows
+            if re.fullmatch(r"(?:ten|twenty)\s+to\s+one", (row.get("matched_text") or "").lower())
+        ]
+        assert odds == [], f"betting-odds phrases reached the baked DB: {odds[:5]}"
+
