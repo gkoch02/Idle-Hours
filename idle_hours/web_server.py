@@ -155,7 +155,20 @@ JSON_CONTENT_TYPE = "application/json"
 # /api/preview through <img src>, and the static shell through the navigation
 # itself; none of those can attach a request header. /metrics is for the
 # scraper and is gated by --web-metrics-token instead.
-UNGATED_GET_PATHS = frozenset({"/", "/main.js", "/style.css", "/current.png", "/api/preview"})
+# The static shell only. ``/current.png`` and ``/api/preview`` used to be
+# here too on the grounds that an ``<img src>`` cannot attach a header — but
+# on a LAN bind with a token that left the picker's winning quote for every
+# minute of the day, in every theme, readable by anyone on the network, and
+# each distinct query a full Pillow render (issue #286). ``main.js`` now
+# fetches both with the token header and shows them through object URLs, so
+# gating them costs the UI nothing.
+UNGATED_GET_PATHS = frozenset({"/", "/main.js", "/style.css"})
+
+# ``/api/preview`` renders in exactly the two modes the panel itself shows.
+# ``mode`` was previously taken verbatim, which both exposed the source card
+# (``mode=card``: title / author / Gutenberg ID) and let any distinct string
+# bypass the preview cache for another full render.
+PREVIEW_MODES = frozenset({"production", "debug"})
 
 
 def _parse_bind(bind_str: str) -> tuple[str, int]:
@@ -898,8 +911,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
         corpus; the two override endpoints are the curator's own edits).
 
         The exceptions in ``UNGATED_GET_PATHS`` are mechanical, not editorial:
-        a ``<script src>`` / ``<img src>`` cannot set a request header, so
-        gating the shell or the two image routes would simply break the page.
+        a ``<script src>`` / ``<link href>`` / navigation cannot set a request
+        header, so gating the shell would simply break the page. The two
+        image routes are *not* exempt any more (issue #286): ``main.js``
+        fetches them with the header and assigns the bytes as object URLs.
         ``/metrics`` is a scraper's, and opts in via ``--web-metrics-token``.
         """
         if path == "/metrics":
@@ -1542,8 +1557,13 @@ class CuratorHandler(BaseHTTPRequestHandler):
             )
         except SystemExit as exc:
             return self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+        mode = (query.get("mode", [""])[0] or "production").strip()
+        if mode not in PREVIEW_MODES:
+            return self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": f"mode must be one of {sorted(PREVIEW_MODES)}"},
+            )
         try:
-            mode = (query.get("mode", [""])[0] or "production").strip()
             width = int(query.get("width", [str(ctx.args.width)])[0])
             height = int(query.get("height", [str(ctx.args.height)])[0])
         except (TypeError, ValueError):

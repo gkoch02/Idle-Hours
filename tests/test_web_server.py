@@ -3541,3 +3541,77 @@ class TestConnectionHygiene:
             for sock in held:
                 sock.close()
             run_clock.stop_web_server((server, thread))
+
+
+# ============================================================================
+# Image routes are token-gated; preview mode is validated (issue #286)
+# ============================================================================
+
+
+class TestImageRoutesGated:
+    """``/current.png`` and ``/api/preview`` were exempt from the token because
+    an ``<img src>`` cannot attach a header. On a LAN bind that let anyone
+    read the picker's pick for every minute in every theme, one full render
+    per distinct query. ``main.js`` now fetches both with the header."""
+
+    FAKE_ROW = {
+        "display_quote": "It was three o'clock in the afternoon, exactly.", "matched_text": "three o'clock",
+        "author": "Jane Austen", "title": "Emma", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+        "source_id": "141", "line_number": 42,
+    }
+
+    def _token_server(self, tmp_path):
+        args = _make_args_v2(tmp_path, web_bind="0.0.0.0:0")
+        return _start_v2(tmp_path, token="secret", args=args)
+
+    @pytest.mark.parametrize("path", ["/current.png", "/api/preview?theme=default&time=03:00"])
+    def test_without_a_token_the_image_routes_401(self, tmp_path, path):
+        server, thread, _state, _args = self._token_server(tmp_path)
+        try:
+            status, body = _get(server, path)
+            assert status == 401, body
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_with_the_token_the_preview_renders(self, tmp_path):
+        server, thread, _state, _args = self._token_server(tmp_path)
+        try:
+            with patch("idle_hours.pick_quote.select_quote", return_value=self.FAKE_ROW):
+                status, body = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240",
+                                    headers={"X-Idle-Hours-Token": "secret"})
+            assert status == 200
+            assert body.startswith(b"\x89PNG")
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_with_the_token_current_png_streams(self, tmp_path):
+        server, thread, _state, args = self._token_server(tmp_path)
+        try:
+            Path(args.output).write_bytes(b"\x89PNG-fake")
+            status, body = _get(server, "/current.png", headers={"X-Idle-Hours-Token": "secret"})
+            assert status == 200 and body == b"\x89PNG-fake"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_only_the_static_shell_stays_ungated(self):
+        assert web_server.UNGATED_GET_PATHS == frozenset({"/", "/main.js", "/style.css"})
+
+
+class TestPreviewModeValidation:
+    @pytest.mark.parametrize("mode", ["xyz", "card", "goodnight", "PRODUCTION"])
+    def test_unknown_mode_is_a_400_before_any_render(self, v2_server, mode):
+        server, _state, _args = v2_server
+        with patch("idle_hours.render_quote.render") as mock_render, \
+             patch("idle_hours.pick_quote.select_quote", return_value=TestImageRoutesGated.FAKE_ROW):
+            status, body = _get(server, f"/api/preview?theme=default&time=03:00&mode={mode}")
+        assert status == 400, body
+        assert "mode" in _json_body(body)["error"]
+        assert not mock_render.called
+
+    @pytest.mark.parametrize("mode", ["production", "debug"])
+    def test_the_two_panel_modes_render(self, v2_server, mode):
+        server, _state, _args = v2_server
+        with patch("idle_hours.pick_quote.select_quote", return_value=TestImageRoutesGated.FAKE_ROW):
+            status, body = _get(server, f"/api/preview?theme=default&time=03:00&mode={mode}&width=400&height=240")
+        assert status == 200, body
+        assert body.startswith(b"\x89PNG")
