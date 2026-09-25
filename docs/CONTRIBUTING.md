@@ -57,6 +57,39 @@ workflow files — they'll drift.
 - **Keep commits focused.** One logical change per commit makes bisect useful
   later.
 
+## Releases
+
+Releases use `pyproject.toml` as the package-version source of truth,
+`CHANGELOG.md` for release notes, and canonical `vMAJOR.MINOR.PATCH` Git tags.
+The release helper keeps those pieces aligned without publishing anything.
+
+Start from a clean, current `main` checkout whose Unreleased changelog section
+contains at least one bullet, then prepare a release branch and PR:
+
+```bash
+python scripts/release.py prepare 2.6.0 --open-pr
+```
+
+The command validates that the version increases, creates `release/v2.6.0`,
+updates the package version and changelog, runs the non-golden test suite,
+builds a wheel, verifies its embedded metadata, commits, pushes, and opens the
+PR. Omit `--open-pr` to keep the branch and commit local; `--push` pushes the
+branch without opening a PR. `--skip-checks` exists for troubleshooting, not
+normal releases.
+
+After the release PR merges, return to a clean, current `main` and finalize:
+
+```bash
+python scripts/release.py finalize 2.6.0 --push
+```
+
+Finalization rechecks the merged version and dated changelog entry, rebuilds
+and inspects the wheel, rejects existing local or remote tags, and creates an
+annotated `v2.6.0` tag. `--push` asks for confirmation before sending only that
+tag to `origin`; automation must also pass `--yes`. The tag-triggered CI
+`release-version` job independently checks the tag against package metadata.
+The helper deliberately does not upload to PyPI or create a GitHub Release.
+
 ## What kind of change are you making?
 
 ### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote.py`, `pick_quote.py`, `web_server.py`, `idle_hours_cli.py`, …)
