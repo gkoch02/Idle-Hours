@@ -2123,6 +2123,47 @@ class TestApiBake:
         assert baked[0]["display_quote"] == "PATCHED TEXT."
         assert _json_body(body)["applied_overrides"] == 1
 
+    def test_bake_writes_the_patched_rows_back_to_the_raw_corpus(self, v2_server):
+        """Issue #288: every curator read surface reads the raw corpus, so a
+        bake that patched only the baked DB left the inspector, search, the
+        history join and the coverage grid showing the pre-override text."""
+        server, _state, args = v2_server
+        rows = [{
+            "source_id": "141", "line_number": 1,
+            "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00",
+            "fuzzy_bucket": "h3_exact", "quality_score": 80,
+            "display_fragment": False, "cleanup_status": "complete_sentence",
+        }]
+        self._write_corpus(args, rows)
+        Path(args.content_overrides).write_text(json.dumps({
+            "141:1": {"display_quote": "PATCHED VIA WEB."},
+        }), encoding="utf-8")
+        status, body = _post(server, "/api/bake", None)
+        assert status == 200, _json_body(body)
+        raw = [json.loads(line) for line in Path(args.raw_corpus).read_text(encoding="utf-8").splitlines() if line]
+        assert raw[0]["display_quote"] == "PATCHED VIA WEB."
+        assert raw[0]["override_applied"] is True
+        # …and the bucket inspector, which reads the raw corpus, now agrees with the panel.
+        status, body = _get(server, "/api/bucket/h3_exact?time=03:00&top=5")
+        assert status == 200, body
+        quotes = [c["row"]["display_quote"] for c in _json_body(body)["candidates"]]
+        assert quotes == ["PATCHED VIA WEB."]
+
+    def test_bake_leaves_the_raw_corpus_alone_when_the_sidecar_is_empty(self, v2_server):
+        server, _state, args = v2_server
+        rows = [{
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }]
+        self._write_corpus(args, rows)
+        before = Path(args.raw_corpus).stat()
+        status, _body = _post(server, "/api/bake", None)
+        assert status == 200
+        after = Path(args.raw_corpus).stat()
+        assert (before.st_mtime_ns, before.st_ino) == (after.st_mtime_ns, after.st_ino)
+
     def test_bake_returns_409_when_render_in_flight(self, v2_server):
         server, state, _args = v2_server
         # Hold the lock to simulate an in-flight render.

@@ -1761,6 +1761,17 @@ class CuratorHandler(BaseHTTPRequestHandler):
         recent ``POST /api/content-overrides`` is reflected in the freshly-baked
         DB without requiring a CLI step.
 
+        **The patched rows are written back to the raw corpus too** (issue
+        #288), matching the CLI stage — ``apply_content_overrides.main`` with
+        ``--output`` omitted rewrites its input in place. The bake used to
+        patch an in-memory copy and write only the baked DB, and every curator
+        *read* surface (``/api/bucket``, ``/api/search``, the history join,
+        the coverage grid) reads the raw corpus: after save → bake the panel
+        showed the patched quote while the inspector still showed the old
+        text, so the operator concluded the save had not landed. The raw
+        write is skipped when the sidecar is empty — nothing changed, and an
+        appliance runs on an SD card.
+
         The runtime picker reloads the baked DB on every ``select_quote`` call
         (it goes through ``_resolve_corpus`` which reads from disk), so the next
         tick will see the newly-baked rows automatically — no in-memory cache
@@ -1800,6 +1811,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
             # Re-derive fuzzy_bucket from the post-override normalized_time so
             # the baker sees the same buckets it would after a full pipeline run.
             rederive_buckets(rows)
+            if sidecar:
+                atomic_io.atomic_write_lines(
+                    ctx.raw_corpus_path,
+                    (json.dumps(row, ensure_ascii=False) for row in rows),
+                )
             baked, stats = bake_quote_database.bake_rows(rows, min_quality=60)
             atomic_io.atomic_write_lines(
                 ctx.baked_db_path,
