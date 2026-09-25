@@ -400,9 +400,50 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
     # ephemeral ports in a tight loop don't trip over TIME_WAIT on re-bind.
     allow_reuse_address = True
 
+    # Concurrent-connection cap (issue #285). ``ThreadingHTTPServer`` spawns a
+    # thread per accepted connection with no upper bound, so a client holding
+    # sockets open pinned a thread and a file descriptor each, for ever, in
+    # the process that also writes the appliance's state and PNG. The
+    # handler's socket ``timeout`` bounds how *long* a stuck connection lives;
+    # this bounds how *many* can be alive at once. A single-operator UI plus
+    # a scraper never needs more than a handful; a connection that arrives
+    # while every slot is taken is closed unread rather than queued — the
+    # request line has not been read yet, so there is nothing to answer.
+    max_connections = 16
+
     def __init__(self, address: tuple[str, int], handler_cls, context: WebContext):
         super().__init__(address, handler_cls)
         self.context = context
+        self._connection_slots = threading.BoundedSemaphore(self.max_connections)
+        self.dropped_connections = 0
+
+    def process_request(self, request, client_address):
+        if not self._connection_slots.acquire(blocking=False):
+            self.dropped_connections += 1
+            # Log the first drop and then sparsely: a flood is exactly when
+            # one line per connection would drown the journal.
+            if self.dropped_connections == 1 or self.dropped_connections % 100 == 0:
+                _log(
+                    f"web: {self.max_connections} connections already open, "
+                    f"dropping connection from {client_address[0]} "
+                    f"({self.dropped_connections} dropped so far)",
+                    err=True,
+                )
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            # Thread creation failed, so ``process_request_thread`` will
+            # never run and never release the slot.
+            self._connection_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._connection_slots.release()
 
 
 # ----------------------------------------------------------------------------
@@ -570,6 +611,17 @@ class CuratorHandler(BaseHTTPRequestHandler):
     # header. The interpreter version is a fingerprint nobody on the LAN needs
     # (issue #284); an empty ``sys_version`` leaves just the product token.
     sys_version = ""
+
+    # Socket timeout applied by ``StreamRequestHandler.setup`` (issue #285).
+    # The default is ``None``: a client that opens a connection and sends a
+    # partial request line — or a POST whose body never arrives — held a
+    # handler thread and a file descriptor for ever, and because this server
+    # runs *inside* ``run_clock`` an exhausted FD table breaks the appliance's
+    # own state / telemetry / PNG writes, not just the UI. A timeout surfaces
+    # as an ordinary handler exit. The value is generous against a real
+    # operator on a slow LAN and small against a stuck connection; nothing the
+    # UI does legitimately pauses mid-request for 30 s.
+    timeout = 30
 
     def log_message(self, format, *args):
         # Silence the default stderr access log; we already log meaningful events

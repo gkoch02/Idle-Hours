@@ -12,7 +12,9 @@ import contextlib
 import errno
 import http.client
 import json
+import socket
 import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -3458,3 +3460,84 @@ class TestSecurityHeaders:
         assert "python" not in headers["server"].lower()
         assert headers["server"].startswith("IdleHoursCurator/")
 
+
+# ============================================================================
+# Connection hygiene (issue #285)
+# ============================================================================
+
+
+def _half_open(server) -> socket.socket:
+    """Open a connection and send a partial request line, never finishing it."""
+    host, port = server.server_address[:2]
+    sock = socket.create_connection((host, port), timeout=5)
+    sock.sendall(b"GET /api/cur")
+    return sock
+
+
+class TestConnectionHygiene:
+    def test_handler_has_a_socket_timeout(self):
+        assert web_server.CuratorHandler.timeout == 30
+        assert web_server._IdleHoursHTTPServer.max_connections >= 8
+
+    def test_half_open_connection_is_closed_after_the_timeout(self, tmp_path, monkeypatch):
+        """A partial request line no longer pins a handler thread for ever."""
+        monkeypatch.setattr(web_server.CuratorHandler, "timeout", 0.3)
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            sock = _half_open(server)
+            try:
+                # The server hangs up once the read times out: recv returns EOF
+                # (or the peer resets) instead of blocking on our unfinished line.
+                try:
+                    assert sock.recv(64) == b""
+                except ConnectionError:
+                    pass
+            finally:
+                sock.close()
+            # A fresh, well-formed request still works afterwards.
+            status, _ = _get(server, "/api/current")
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_connections_beyond_the_cap_are_dropped_not_queued(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(web_server._IdleHoursHTTPServer, "max_connections", 2)
+        # Keep the slots pinned for the whole test: the half-open sockets must
+        # outlive it rather than be reaped by the timeout mid-assertion.
+        monkeypatch.setattr(web_server.CuratorHandler, "timeout", 30)
+        server, thread, _state, _args = _start(tmp_path)
+        held: list = []
+        try:
+            held = [_half_open(server) for _ in range(2)]
+            time.sleep(0.2)   # let both handler threads take their slots
+            extra = _half_open(server)
+            try:
+                extra.settimeout(5)
+                # Third connection: closed unread. EOF or a reset, never a hang.
+                try:
+                    assert extra.recv(64) == b""
+                except ConnectionError:
+                    pass
+            finally:
+                extra.close()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and server.dropped_connections < 1:
+                time.sleep(0.05)
+            assert server.dropped_connections >= 1
+            # Releasing a slot lets the next real request through.
+            held.pop().close()
+            deadline = time.monotonic() + 5
+            status = None
+            while time.monotonic() < deadline:
+                try:
+                    status, _ = _get(server, "/api/current")
+                    if status == 200:
+                        break
+                except (ConnectionError, http.client.HTTPException, OSError):
+                    pass
+                time.sleep(0.05)
+            assert status == 200
+        finally:
+            for sock in held:
+                sock.close()
+            run_clock.stop_web_server((server, thread))
