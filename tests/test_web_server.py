@@ -3394,3 +3394,67 @@ class TestCsrfDefences:
         rejects = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 403]
         assert rejects, f"no web_error 403 marker in {entries}"
         assert rejects[-1]["path"] == "/api/action/skip"
+
+
+# ============================================================================
+# Browser-hardening headers (issue #284)
+# ============================================================================
+
+
+class TestSecurityHeaders:
+    """Every response carries the anti-framing / nosniff / CSP headers.
+
+    On the documented tokenless loopback bind a page the operator visits
+    could ``<iframe>`` the UI and steer clicks onto "Ban", "Bake now" or the
+    quiet toggle — same-origin requests that every #233 layer passes by
+    construction. Refusing to be framed is the only defence, so it has to be
+    on the static shell *and* on every JSON / PNG / metrics body.
+    """
+
+    EXPECTED = dict(web_server.SECURITY_HEADERS)
+
+    def _headers(self, server, path: str) -> dict:
+        conn = _client(server)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        resp.read()
+        headers = {k.lower(): v for k, v in resp.getheaders()}
+        conn.close()
+        return headers
+
+    @pytest.mark.parametrize("path", ["/", "/main.js", "/style.css", "/api/current", "/api/themes",
+                                      "/metrics", "/nope", "/current.png"])
+    def test_every_route_sends_the_hardening_headers(self, live_server, path):
+        server, _state, _args = live_server
+        headers = self._headers(server, path)
+        for name, value in self.EXPECTED.items():
+            assert headers.get(name.lower()) == value, f"{path}: missing {name}"
+
+    def test_frame_ancestors_and_x_frame_options_agree(self):
+        assert self.EXPECTED["X-Frame-Options"] == "DENY"
+        assert "frame-ancestors 'none'" in self.EXPECTED["Content-Security-Policy"]
+        assert self.EXPECTED["X-Content-Type-Options"] == "nosniff"
+
+    def test_csp_allows_the_shell_and_blob_images_only(self):
+        """The shell loads nothing external; token-gated images arrive as blob URLs."""
+        csp = self.EXPECTED["Content-Security-Policy"]
+        directives = {d.split()[0]: d.split()[1:] for d in csp.split(";") if d.strip()}
+        assert directives["default-src"] == ["'self'"]
+        assert directives["img-src"] == ["'self'", "blob:"]
+        assert "'unsafe-inline'" not in csp and "'unsafe-eval'" not in csp
+
+    def test_error_responses_carry_the_headers_too(self, tmp_path):
+        server, thread, _state, _args = _start(tmp_path, token="secret")
+        try:
+            headers = self._headers(server, "/api/current")   # 401 — no token
+            for name, value in self.EXPECTED.items():
+                assert headers.get(name.lower()) == value
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_server_header_omits_the_python_version(self, live_server):
+        server, _state, _args = live_server
+        headers = self._headers(server, "/api/current")
+        assert "python" not in headers["server"].lower()
+        assert headers["server"].startswith("IdleHoursCurator/")
+

@@ -411,6 +411,21 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
 
 OVERRIDES_KEYS = ("ban_source_ids", "boost_source_ids", "preferred_buckets", "ban_quote_keys")
 
+# Browser-hardening headers sent on every response (issue #284). See
+# ``CuratorHandler._send_body`` for why each one is there. The CSP names
+# ``blob:`` under ``img-src`` only — the UI loads token-gated images through
+# object URLs — and pins ``frame-ancestors`` alongside ``X-Frame-Options`` for
+# browsers that honour one but not the other.
+SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
+    ("X-Frame-Options", "DENY"),
+    (
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    ),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Referrer-Policy", "no-referrer"),
+)
+
 
 def _is_id(value: object) -> bool:
     """Accept string/int source IDs, but reject booleans.
@@ -551,6 +566,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
     """
 
     server_version = "IdleHoursCurator/1.0"
+    # ``BaseHTTPRequestHandler`` appends ``Python/3.x.y`` to every ``Server``
+    # header. The interpreter version is a fingerprint nobody on the LAN needs
+    # (issue #284); an empty ``sys_version`` leaves just the product token.
+    sys_version = ""
 
     def log_message(self, format, *args):
         # Silence the default stderr access log; we already log meaningful events
@@ -568,14 +587,41 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _ctx(self) -> WebContext:
         return self.server.context  # type: ignore[attr-defined]
 
-    def _json(self, status: int, payload: dict) -> None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    def _send_body(self, status: int, content_type: str, data: bytes) -> None:
+        """Emit a complete response: status, the common headers, ``data``.
+
+        Every response — JSON, the static shell, PNGs, ``/metrics`` — goes
+        through here so the browser-hardening headers cannot be forgotten on
+        one route (issue #284). The three that matter:
+
+        * ``X-Frame-Options: DENY`` + ``frame-ancestors 'none'``: on the
+          recommended tokenless loopback bind, any page the operator visits
+          could ``<iframe>`` the UI, overlay it, and steer clicks onto "Ban
+          this quote", "Bake now" or the quiet toggle. Those clicks are
+          *same-origin* requests issued by ``main.js`` itself, so the Host /
+          Origin / Content-Type layers all pass by construction — refusing
+          to be framed is the only defence against that clickjack.
+        * ``default-src 'self'``: the shell loads nothing external, so a
+          strict CSP costs nothing and stops an injected ``<script>`` from
+          running should corpus text ever reach ``innerHTML`` unescaped.
+          ``img-src`` additionally allows ``blob:`` because the UI fetches
+          token-gated images (previews, ``/current.png``) with the header
+          and shows them through object URLs.
+        * ``X-Content-Type-Options: nosniff``: a JSON or PNG body is never
+          reinterpreted as HTML.
+        """
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in SECURITY_HEADERS:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def _json(self, status: int, payload: dict) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self._send_body(status, "application/json; charset=utf-8", data)
 
     def _not_found(self) -> None:
         self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -583,13 +629,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _serve_static(self, path: Path, content_type: str) -> None:
         if not path.exists() or not path.is_file():
             return self._json(HTTPStatus.NOT_FOUND, {"error": f"missing {path.name}"})
-        data = path.read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_body(HTTPStatus.OK, content_type, path.read_bytes())
 
     def _check_token(self) -> bool:
         ctx = self._ctx()
@@ -1036,14 +1076,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
                    "— gate it on idle_hours_quiet_active == 0.")
 
         body = ("\n".join(lines) + "\n").encode("utf-8")
-        self.send_response(HTTPStatus.OK)
         # Prometheus text format 0.0.4. The scraper picks up the version
         # from the Content-Type and parses accordingly.
-        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_body(HTTPStatus.OK, "text/plain; version=0.0.4; charset=utf-8", body)
 
     def _coverage_summary(self) -> dict:
         """Compute bucket coverage from the corpus this appliance actually uses.
@@ -1493,12 +1528,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 _PREVIEW_CACHE.move_to_end(cache_key)
                 while len(_PREVIEW_CACHE) > PREVIEW_CACHE_MAX_ENTRIES:
                     _PREVIEW_CACHE.popitem(last=False)
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_body(HTTPStatus.OK, "image/png", data)
 
     def _api_history(self, query: dict) -> None:
         ctx = self._ctx()
