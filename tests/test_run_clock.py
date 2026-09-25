@@ -5970,3 +5970,99 @@ class TestUnknownStateKeysRoundTrip:
             "manual_theme", "manual_quiet", "last_bucket",
             "last_quote_id", "last_effective_theme", "setup_complete",
         }
+
+
+# ============================================================================
+# Driving main() for a few ticks (issues #276 / #277)
+# ============================================================================
+
+
+def _drive_main(tmp_path, argv_extra: list[str], time_seq: list[str], *, state_json: dict | None = None,
+                render_side=None) -> list[dict]:
+    """Run ``run_clock.main()`` through ``len(time_seq)`` ticks with patched I/O.
+
+    ``render_side(args, kwargs)`` returning True makes that render raise.
+    Returns one dict per ``render_now`` call (attempted, including failures).
+    """
+    from idle_hours.buckets import bucket_for_time
+
+    state_path = tmp_path / "state.json"
+    if state_json is not None:
+        state_path.write_text(json.dumps(state_json), encoding="utf-8")
+    renders: list[dict] = []
+
+    def fake_render(*a, **kw):
+        renders.append({"mode": a[5], "theme": a[6], "time": kw.get("time_str"), "quote": kw.get("quote_id")})
+        if render_side and render_side(a, kw):
+            raise RuntimeError("display boom")
+
+    times = iter(time_seq[1:])
+    cur = {"t": time_seq[0]}
+
+    def sleep(_state, _sec):
+        try:
+            cur["t"] = next(times)
+        except StopIteration:
+            raise KeyboardInterrupt from None
+
+    argv = [
+        "run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0",
+        "--state-path", str(state_path), "--history-path", "", "--telemetry-path", "",
+        "--pidfile", "", "--skip-preflight", "--buttons-off", *argv_extra,
+    ]
+    with patch("sys.argv", argv), \
+         patch("idle_hours.run_clock._install_signal_handlers"), \
+         patch("idle_hours.run_clock.current_time_str", side_effect=lambda: cur["t"]), \
+         patch("idle_hours.run_clock.current_bucket", side_effect=lambda: bucket_for_time(cur["t"])), \
+         patch("idle_hours.run_clock.peek_quote_id", return_value=("1", 2, "q", "m")), \
+         patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+         patch("idle_hours.run_clock._loop_sleep", side_effect=sleep), \
+         patch("idle_hours.run_clock.time.monotonic", return_value=1_000_000.0):
+        with pytest.raises(KeyboardInterrupt):
+            run_clock.main()
+    return renders
+
+
+class TestStartupImageInvalidatesIdentity:
+    """Issue #276: the startup frame must not survive into the first tick.
+
+    ``load_runtime_state`` restores the render identity so a mid-bucket
+    restart skips the redraw; ``--startup-image`` then paints over the panel
+    without touching it, so the loop saw "nothing changed" and left the
+    sleep frame up until the next bucket edge — the ghost-frame problem the
+    flag exists to prevent, caused by the flag.
+    """
+
+    PERSISTED = {
+        "manual_theme": None, "manual_quiet": False, "last_bucket": "h12_exact",
+        "last_quote_id": ["1", 2, "q", "m"], "last_effective_theme": "default", "setup_complete": True,
+    }
+
+    def test_auto_startup_frame_is_followed_by_a_clock_render(self, tmp_path):
+        renders = _drive_main(tmp_path, ["--startup-image", "auto", "--quiet-off"],
+                              ["12:00", "12:01", "12:02"], state_json=self.PERSISTED)
+        assert [r["mode"] for r in renders][:2] == ["goodnight", "debug"]
+        assert renders[-1]["mode"] == "debug"
+
+    def test_static_startup_frame_is_followed_by_a_clock_render(self, tmp_path):
+        png = tmp_path / "boot.png"
+        png.write_bytes(b"\x89PNG")
+        with patch("idle_hours.run_clock._display_quiet_image") as pushed:
+            renders = _drive_main(tmp_path, ["--startup-image", str(png), "--quiet-off"],
+                                  ["12:00", "12:01"], state_json=self.PERSISTED)
+        assert pushed.called
+        assert [r["mode"] for r in renders] == ["debug"]
+
+    def test_failed_startup_frame_keeps_the_restored_identity(self, tmp_path):
+        """A push that never reached the panel left the persisted frame on it,
+        so the restored triple is still accurate and the dedup must hold."""
+        def boom(a, kw):
+            return a[5] == "goodnight"
+        renders = _drive_main(tmp_path, ["--startup-image", "auto", "--quiet-off"],
+                              ["12:00", "12:01", "12:02"], state_json=self.PERSISTED, render_side=boom)
+        assert [r["mode"] for r in renders] == ["goodnight"]
+
+    def test_without_a_startup_image_the_restored_identity_still_dedups(self, tmp_path):
+        renders = _drive_main(tmp_path, ["--quiet-off"], ["12:00", "12:01", "12:02"], state_json=self.PERSISTED)
+        assert renders == []
+

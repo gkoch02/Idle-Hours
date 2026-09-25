@@ -1486,6 +1486,27 @@ def _record_render_failure(state: RuntimeState, telemetry_path: str | None, buck
     )
 
 
+def _invalidate_displayed_identity(state: RuntimeState) -> None:
+    """Forget what the panel was showing so the next tick repaints.
+
+    ``--startup-image`` pushes a frame over the panel *after* ``load_runtime_state``
+    has restored the ``(last_bucket, last_quote_id, last_effective_theme)``
+    triple that lets a mid-bucket restart skip the redraw. Left alone, that
+    triple still describes the quote the panel showed before the restart —
+    which is no longer what is on it — so the loop's first ticks saw nothing
+    changed and the sleep frame sat there until the next bucket edge or theme
+    flip (issue #276): with ``--startup-image`` set, a ``systemctl restart``
+    *caused* the ghost-frame problem the flag exists to avoid. Clearing the
+    bucket and quote id (the theme is left, so the theme-change branch stays
+    inert) forces the bucket-change branch on the first tick. Only called
+    after a *successful* push: a failed one left the persisted frame on the
+    panel, and the restored triple is then still accurate.
+    """
+    with state.lock:
+        state.last_bucket = None
+        state.last_quote_id = None
+
+
 def _in_backoff_skip(state: RuntimeState) -> bool:
     """Return True if the loop should skip this tick because of render backoff."""
     with state.lock:
@@ -1960,6 +1981,8 @@ def main() -> int:
             )
         except Exception as exc:
             _log(f"startup image render failed: {exc!r}", err=True)
+        else:
+            _invalidate_displayed_identity(state)
     elif args.startup_image:
         try:
             _display_quiet_image(
@@ -1968,6 +1991,8 @@ def main() -> int:
             )
         except Exception as exc:
             _log(f"startup image display failed: {exc!r}", err=True)
+        else:
+            _invalidate_displayed_identity(state)
 
     # ``state.button_handles`` holds the keepalive list for the lifetime of
     # the loop — gpiozero drops callbacks when its ``Button`` objects are
