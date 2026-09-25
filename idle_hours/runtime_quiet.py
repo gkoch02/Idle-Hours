@@ -253,13 +253,21 @@ def enter_quiet(
     time_str: str,
     *,
     manual_only: bool = False,
-) -> None:
+) -> bool:
     """Emit the rising-edge marker and push the sleep frame to the panel.
 
     Wraps :func:`render_quiet_frame` in ``state.render_lock`` so a racing
     button / web handler can't interleave their own render. A display failure
     is logged, traced, and recorded to the telemetry sidecar as ``mode="quiet"``
-    but never propagated — the loop's next tick will retry.
+    but never propagated; instead the return value says whether the frame
+    reached the panel, and the main loop only marks the rising edge consumed
+    (``state.was_quiet = True``) on success, so the next tick retries.
+    Before that (issue #277) the loop set the flag unconditionally, and one
+    transient failure at 22:00 — a display I/O hiccup, a render timeout —
+    left the previous quote, with its stale time, on the panel all night.
+    Repeated failures go through ``run_clock._record_render_failure`` so a
+    hard fault backs off exactly as a failed clock render does rather than
+    retrying every tick; a success resets that counter like any render.
 
     ``time_str`` is *when we entered quiet* and is what the ``quiet_enter``
     marker records; the frame's own time is decided inside
@@ -287,6 +295,12 @@ def enter_quiet(
         run_clock.append_telemetry(
             telemetry_path, {"bucket": quiet_bucket, "error": repr(exc), "mode": "quiet"},
         )
+        run_clock._record_render_failure(state, telemetry_path, quiet_bucket)
+        return False
+    with state.lock:
+        state.consecutive_render_failures = 0
+        state.backoff_skip_until = 0.0
+    return True
 
 
 def exit_quiet(state: RuntimeState) -> None:

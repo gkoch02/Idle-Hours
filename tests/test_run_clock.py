@@ -6066,3 +6066,53 @@ class TestStartupImageInvalidatesIdentity:
         renders = _drive_main(tmp_path, ["--quiet-off"], ["12:00", "12:01", "12:02"], state_json=self.PERSISTED)
         assert renders == []
 
+
+class TestQuietEntryRetry:
+    """Issue #277: a sleep frame that never reached the panel is retried."""
+
+    def test_failed_quiet_entry_is_retried_on_the_next_tick(self, tmp_path):
+        attempts = {"n": 0}
+
+        def fail_first(a, kw):
+            if a[5] == "goodnight":
+                attempts["n"] += 1
+                return attempts["n"] == 1
+            return False
+
+        renders = _drive_main(tmp_path, [], ["22:00", "22:01", "22:02", "22:03"], render_side=fail_first)
+        assert attempts["n"] == 2, [r["mode"] for r in renders]
+        # Once the frame lands the edge is consumed: no third attempt.
+        assert [r["mode"] for r in renders] == ["goodnight", "goodnight"]
+
+    def test_repeated_quiet_failures_back_off(self, tmp_path):
+        """A hard fault at 22:00 must not retry every tick for ever: the
+        third consecutive failure engages the same backoff a failed clock
+        render would, so the following ticks are skipped."""
+        def always(a, kw):
+            return a[5] == "goodnight"
+
+        with patch.object(run_clock, "BACKOFF_EVERY_N_FAILURES", 3):
+            renders = _drive_main(tmp_path, [], ["22:00", "22:01", "22:02", "22:03", "22:04", "22:05"],
+                                  render_side=always)
+        # Three attempts, then the backoff window (monotonic is frozen, so it never expires).
+        assert [r["mode"] for r in renders] == ["goodnight"] * 3
+
+    def test_enter_quiet_reports_success_and_resets_backoff(self, tmp_path):
+        from idle_hours import runtime_quiet
+        args = argparse.Namespace(
+            quiet_image="auto", quiet_theme="inherit", quiet_start="22:00", quiet_end="06:00",
+            output=str(tmp_path / "o.png"), display_script=None, render_script="r.py",
+            width=800, height=480, theme="default", telemetry_path="", history_path="", history_days=7,
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        state = run_clock.RuntimeState("default")
+        state.consecutive_render_failures = 2
+        state.backoff_skip_until = 10.0
+        with patch("idle_hours.run_clock.render_now"), patch("idle_hours.run_clock.append_telemetry"):
+            assert runtime_quiet.enter_quiet(args, state, "22:00") is True
+        assert state.consecutive_render_failures == 0
+        assert state.backoff_skip_until == 0.0
+        with patch("idle_hours.run_clock.render_now", side_effect=RuntimeError("x")), \
+             patch("idle_hours.run_clock.append_telemetry"):
+            assert runtime_quiet.enter_quiet(args, state, "22:00") is False
+        assert state.consecutive_render_failures == 1

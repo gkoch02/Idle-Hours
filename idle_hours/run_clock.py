@@ -2041,8 +2041,10 @@ def main() -> int:
             now_quiet, manual_only = compute_quiet(args, state, time_str)
 
             if now_quiet:
-                if not state.was_quiet:
-                    enter_quiet(args, state, time_str, manual_only=manual_only)
+                # Only a sleep frame that actually reached the panel consumes
+                # the rising edge; a failed push is retried next tick (with
+                # the usual render backoff between attempts) — issue #277.
+                if not state.was_quiet and enter_quiet(args, state, time_str, manual_only=manual_only):
                     state.was_quiet = True
                 # Interruptible sleep so SIGTERM-during-quiet-hours wakes us up
                 # within one tick instead of sitting on the full interval.
