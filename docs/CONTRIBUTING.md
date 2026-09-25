@@ -159,9 +159,14 @@ accumulating per-row patches.
 After editing `content_overrides.json`, re-run the tail of the pipeline:
 
 ```bash
-idle-hours apply-overrides idle_hours/assets/candidates-attributed.jsonl
-idle-hours bake idle_hours/assets/candidates-attributed.jsonl
+idle-hours apply-overrides assets/candidates-attributed.jsonl
+idle-hours bake assets/candidates-attributed.jsonl
 ```
+
+Both tools resolve a relative path against the `idle_hours/` package
+directory, not your CWD, so the paths above are package-relative — passing
+`idle_hours/assets/…` from the repo root resolves to
+`idle_hours/idle_hours/assets/…` and fails.
 
 Commit the updated `idle_hours/assets/quote_database.jsonl` alongside your override
 change — a raw-corpus commit with no matching bake means your fix is
