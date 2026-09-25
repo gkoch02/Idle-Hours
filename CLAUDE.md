@@ -381,8 +381,10 @@ The core abstraction. Each of 12 hours is divided into 12 minute-state buckets (
 - `quarter_to` — "quarter to eight"
 - `minutes_past_to` — "ten minutes past five"
 - `just_after_before` — "shortly after noon", "almost three"
-- `clock_struck` — "the clock struck midnight"
+- `clock_struck` — "the clock struck midnight". A bare `struck N` is accepted only with a striker (clock / watch / bell / chime / chronometer / church / tower / steeple / hour …) within 60 characters before it, or when N is `midnight` / `noon`; otherwise it is the verb ("she struck one of the fish", "struck one as an uncommonly strong dose" — five such rows sat at 01:00 in the baked DB, issue #298).
 - `daypart` — bare "morning", "dusk" etc. (excluded by `--strict`)
+
+**Overlapping spans are resolved, longest first (issue #298).** The patterns used to run independently over the text, so `oclock_word` also fired *inside* a `just_after_before` or `minutes_past_to` span and the same sentence was filed at two times: "just after nine o'clock" gave 09:03 *and* a wrong 09:00, "nearly one o'clock" 12:57 *and* 01:00 — 111 such pairs in the shipped corpus, which `merge_candidates` cannot collapse because `normalized_time` is in its key, and the wrong-time twin rendered with "one o'clock" bolded while the text said "nearly". `_non_overlapping_matches` collects every pattern's matches, sorts by `(start, -length, pattern order)` and drops any match whose span overlaps an accepted one, so the longer, more specific phrase wins. Candidates are therefore yielded in *text* order rather than pattern order, which is also what `--max-per-file` should count. Both fixes only affect future mines; the committed corpus had the affected rows purged and was re-baked.
 
 Use `--strict` for production runs to reduce false positives (excludes `daypart` and `digital` matches). `--skip-fetch-errors` keeps batch runs alive when a Gutenberg download 404s.
 

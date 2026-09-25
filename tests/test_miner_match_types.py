@@ -15,6 +15,8 @@ up in the wrong bucket).
 """
 from __future__ import annotations
 
+import pytest
+
 from idle_hours import gutenberg_time_miner as miner
 
 
@@ -246,3 +248,63 @@ class TestMineStrict:
         strict = [c for c in candidates if c.match_type != "daypart"]
         assert any(c.match_type == "daypart" for c in candidates)
         assert all(c.match_type != "daypart" for c in strict)
+
+
+class TestOverlappingPatterns:
+    """Issue #298: the longer, more specific phrase wins an overlapping span."""
+
+    def _all(self, text):
+        return list(miner.iter_candidates(source_path="test.txt", source_id=None, text=text, context_chars=120, max_per_file=0))
+
+    def test_just_after_swallows_the_bare_oclock(self):
+        cands = self._all("It was just after nine o'clock when the storm broke.")
+        assert [(c.match_type, c.normalized_time) for c in cands] == [("just_after_before", "09:03")]
+
+    def test_nearly_swallows_the_bare_oclock(self):
+        cands = self._all("It was nearly one o'clock before the house was quiet.")
+        assert [(c.match_type, c.normalized_time) for c in cands] == [("just_after_before", "12:57")]
+
+    def test_minutes_past_swallows_the_bare_oclock(self):
+        cands = self._all("At five minutes past five o'clock the coach left the yard.")
+        assert [(c.match_type, c.normalized_time) for c in cands] == [("minutes_past_to", "05:05")]
+
+    def test_clock_struck_swallows_the_bare_daypart(self):
+        cands = self._all("The clock struck midnight as they left the hall.")
+        assert [(c.match_type, c.normalized_time) for c in cands] == [("clock_struck", "00:00")]
+
+    def test_disjoint_matches_are_all_kept_in_text_order(self):
+        cands = self._all("She woke at seven o'clock. By half past eight the house was quiet. Quarter to ten she left.")
+        assert [c.match_type for c in cands] == ["oclock_word", "quarter_half", "quarter_to"]
+        assert [c.match_start for c in cands] == sorted(c.match_start for c in cands)
+
+
+class TestStruckNeedsAStriker:
+    """Issue #298: bare ``struck N`` is the verb unless a clock is in reach."""
+
+    @pytest.mark.parametrize("text", [
+        "She struck one of the fish with her rod and hauled it in.",
+        "The old lady, she struck one as an uncommonly strong dose.",
+        "The lightning struck one of the tallest trees on the ridge.",
+        "The book struck one of the other boys full in the face.",
+        "He had not known how it really struck one until that moment.",
+        "As agreed among themselves about the time, they struck five.",
+    ])
+    def test_the_verb_is_rejected(self, text):
+        assert _first_candidate(text, "clock_struck") is None
+
+    @pytest.mark.parametrize("text, hour", [
+        ("The clock struck one.", 1),
+        ("As the chime struck one, Campbell turned round.", 1),
+        ("Coggan's watch struck two.", 2),
+        ("As the Cathedral clock struck two in the morning we set out.", 2),
+        ("They had cleared the town as the church-bell struck two.", 2),
+        ("It struck midnight.", 0),
+        ("The distant clock had just struck noon when I heard it.", 12),
+        ("It struck six long ago, and still nobody came.", 6),
+        ("It had just struck eight when the door opened.", 8),
+        ("It had just struck three on the Palace clock.", 3),
+    ])
+    def test_a_striker_within_reach_is_accepted(self, text, hour):
+        c = _first_candidate(text, "clock_struck")
+        assert c is not None, text
+        assert c.hour == hour

@@ -348,6 +348,44 @@ def build_bucket(hour: int | None, minute: int | None, explicit_daypart: str | N
     return normalized_time, fuzzy, daypart
 
 
+# What may strike an hour. A bare ``struck <hourword>`` with none of these
+# within reach is the verb: "she struck one of the fish", "the book struck
+# one of the other boys", "struck one as an uncommonly strong dose" — five
+# such rows sat in the baked DB at 01:00 (issue #298).
+_STRIKER_RE = re.compile(
+    r"\b(?:clocks?|watch|bells?|chimes?|chronometer|timepiece|church|tower|steeple|hours?|"
+    r"belfry|campanile|carillon|gong|dial|clock-tower|church-bell)\b",
+    re.IGNORECASE,
+)
+_STRUCK_CONTEXT_CHARS = 60
+_IT_STRUCK_RE = re.compile(r"\bit\s+(?:had\s+|has\s+)?(?:just\s+|slowly\s+|now\s+)?$", re.IGNORECASE)
+
+
+def _struck_has_clock_context(text: str, match: re.Match[str], hourword: str) -> bool:
+    """Accept a ``clock_struck`` hit only when something that tells time struck.
+
+    ``the clock struck N`` carries its own noun. A bare ``struck N`` needs a
+    striker (``_STRIKER_RE``) within ``_STRUCK_CONTEXT_CHARS`` on either side
+    — "As the chime struck one", "Coggan's watch struck two", "struck three
+    on the Palace clock" — unless the hour is ``midnight`` or ``noon``, which
+    nothing but a clock strikes, or the subject is the impersonal ``it``
+    ("It had just struck eight", "It struck twelve—I waited") with any hour
+    but ``one``: "it struck one as odd" / "how it really struck one" is the
+    idiom this guard exists to reject. Precision over recall otherwise —
+    "as agreed about the time, struck five" is lost, and the exact-hour
+    buckets are the corpus's densest by far.
+    """
+    if re.match(r"the\s+clock\s+struck", match.group(0), re.IGNORECASE):
+        return True
+    if hourword in ("midnight", "noon"):
+        return True
+    before = text[max(0, match.start() - _STRUCK_CONTEXT_CHARS):match.start()]
+    after = text[match.end():match.end() + _STRUCK_CONTEXT_CHARS]
+    if hourword != "one" and _IT_STRUCK_RE.search(before):
+        return True
+    return bool(_STRIKER_RE.search(before) or _STRIKER_RE.search(after))
+
+
 def candidate_from_match(source_path: str, source_id: str | None, text: str, match_type: str, match: re.Match[str], context_chars: int) -> Candidate | None:
     groups = match.groupdict()
     # Collapse any internal whitespace (e.g. a line break splitting "thirty-five\nminutes")
@@ -413,6 +451,8 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
                 minute = 57
     elif match_type == "clock_struck":
         hw = groups["hourword"].lower()
+        if not _struck_has_clock_context(text, match, hw):
+            return None
         if hw == "midnight":
             hour, minute = 0, 0
         elif hw == "noon":
@@ -460,17 +500,45 @@ def iter_candidates(
     # yielding far fewer than N usable rows (sometimes zero).
     excluded = excluded_match_types or set()
     yielded = 0
-    for match_type, pattern in TIME_PATTERNS:
+    for match_type, match in _non_overlapping_matches(text, excluded):
+        candidate = candidate_from_match(str(source_path), source_id, text, match_type, match, context_chars)
+        if candidate is None:
+            continue
+        yield candidate
+        yielded += 1
+        if max_per_file and yielded >= max_per_file:
+            return
+
+
+def _non_overlapping_matches(text: str, excluded: set[str]) -> list[tuple[str, re.Match[str]]]:
+    """Every pattern's matches in text order, with overlapping spans resolved.
+
+    The patterns used to run independently, so ``oclock_word`` also fired
+    *inside* a ``just_after_before`` or ``minutes_past_to`` span and the same
+    sentence was filed at two times (issue #298): "just after nine o'clock"
+    yielded 09:03 *and* a wrong 09:00, "nearly one o'clock" 12:57 *and*
+    01:00 — 111 such pairs in the shipped corpus, and ``merge_candidates``
+    cannot collapse them because ``normalized_time`` is in its key. Matches
+    are sorted by ``(start, -length, pattern order)`` and a match whose span
+    overlaps an already-accepted one is dropped, so the longer, more
+    specific phrase wins. Yield order is therefore *text* order rather than
+    pattern order, which is also what ``--max-per-file`` should be counting.
+    """
+    found: list[tuple[int, int, int, str, re.Match[str]]] = []
+    for order, (match_type, pattern) in enumerate(TIME_PATTERNS):
         if match_type in excluded:
             continue
         for match in pattern.finditer(text):
-            candidate = candidate_from_match(str(source_path), source_id, text, match_type, match, context_chars)
-            if candidate is None:
-                continue
-            yield candidate
-            yielded += 1
-            if max_per_file and yielded >= max_per_file:
-                return
+            found.append((match.start(), -(match.end() - match.start()), order, match_type, match))
+    found.sort(key=lambda item: item[:3])
+    accepted: list[tuple[str, re.Match[str]]] = []
+    last_end = -1
+    for start, _neg_len, _order, match_type, match in found:
+        if start < last_end:
+            continue
+        accepted.append((match_type, match))
+        last_end = match.end()
+    return accepted
 
 
 def write_jsonl(path: Path, candidates: Iterable[Candidate]) -> int:

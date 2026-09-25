@@ -1,11 +1,11 @@
 {
-  "total_rows": 3119,
+  "total_rows": 2979,
   "total_expected_buckets": 144,
   "populated_bucket_count": 119,
   "empty_bucket_count": 25,
   "coverage_percent": 82.64,
   "bucket_counts": {
-    "h1_exact": 161,
+    "h1_exact": 136,
     "h1_five_past": 2,
     "h1_ten_past": 3,
     "h1_quarter_past": 2,
@@ -17,7 +17,7 @@
     "h1_quarter_to": 6,
     "h1_ten_to": 0,
     "h1_five_to": 8,
-    "h2_exact": 213,
+    "h2_exact": 203,
     "h2_five_past": 2,
     "h2_ten_past": 3,
     "h2_quarter_past": 3,
@@ -29,7 +29,7 @@
     "h2_quarter_to": 4,
     "h2_ten_to": 1,
     "h2_five_to": 10,
-    "h3_exact": 213,
+    "h3_exact": 201,
     "h3_five_past": 3,
     "h3_ten_past": 3,
     "h3_quarter_past": 1,
@@ -41,7 +41,7 @@
     "h3_quarter_to": 2,
     "h3_ten_to": 0,
     "h3_five_to": 11,
-    "h4_exact": 182,
+    "h4_exact": 172,
     "h4_five_past": 2,
     "h4_ten_past": 0,
     "h4_quarter_past": 3,
@@ -53,7 +53,7 @@
     "h4_quarter_to": 2,
     "h4_ten_to": 1,
     "h4_five_to": 9,
-    "h5_exact": 190,
+    "h5_exact": 182,
     "h5_five_past": 1,
     "h5_ten_past": 0,
     "h5_quarter_past": 6,
@@ -65,7 +65,7 @@
     "h5_quarter_to": 6,
     "h5_ten_to": 0,
     "h5_five_to": 8,
-    "h6_exact": 196,
+    "h6_exact": 187,
     "h6_five_past": 1,
     "h6_ten_past": 2,
     "h6_quarter_past": 3,
@@ -88,8 +88,8 @@
     "h7_twenty_to": 0,
     "h7_quarter_to": 11,
     "h7_ten_to": 1,
-    "h7_five_to": 12,
-    "h8_exact": 225,
+    "h7_five_to": 8,
+    "h8_exact": 215,
     "h8_five_past": 6,
     "h8_ten_past": 3,
     "h8_quarter_past": 4,
@@ -101,7 +101,7 @@
     "h8_quarter_to": 4,
     "h8_ten_to": 6,
     "h8_five_to": 18,
-    "h9_exact": 253,
+    "h9_exact": 236,
     "h9_five_past": 1,
     "h9_ten_past": 2,
     "h9_quarter_past": 1,
@@ -113,7 +113,7 @@
     "h9_quarter_to": 4,
     "h9_ten_to": 0,
     "h9_five_to": 16,
-    "h10_exact": 260,
+    "h10_exact": 247,
     "h10_five_past": 1,
     "h10_ten_past": 0,
     "h10_quarter_past": 3,
@@ -125,7 +125,7 @@
     "h10_quarter_to": 9,
     "h10_ten_to": 3,
     "h10_five_to": 16,
-    "h11_exact": 209,
+    "h11_exact": 195,
     "h11_five_past": 4,
     "h11_ten_past": 3,
     "h11_quarter_past": 5,
@@ -137,7 +137,7 @@
     "h11_quarter_to": 14,
     "h11_ten_to": 1,
     "h11_five_to": 9,
-    "h12_exact": 158,
+    "h12_exact": 150,
     "h12_five_past": 4,
     "h12_ten_past": 3,
     "h12_quarter_past": 1,
@@ -426,51 +426,51 @@
   "dense_buckets": [
     {
       "bucket": "h10_exact",
-      "count": 260
+      "count": 247
     },
     {
       "bucket": "h9_exact",
-      "count": 253
+      "count": 236
     },
     {
       "bucket": "h8_exact",
-      "count": 225
+      "count": 215
     },
     {
       "bucket": "h2_exact",
-      "count": 213
+      "count": 203
     },
     {
       "bucket": "h3_exact",
-      "count": 213
+      "count": 201
     },
     {
       "bucket": "h11_exact",
-      "count": 209
+      "count": 195
     },
     {
       "bucket": "h6_exact",
-      "count": 196
+      "count": 187
     },
     {
       "bucket": "h5_exact",
-      "count": 190
-    },
-    {
-      "bucket": "h4_exact",
       "count": 182
     },
     {
-      "bucket": "h1_exact",
-      "count": 161
+      "bucket": "h4_exact",
+      "count": 172
     },
     {
       "bucket": "h12_exact",
-      "count": 158
+      "count": 150
     },
     {
       "bucket": "h7_exact",
       "count": 147
+    },
+    {
+      "bucket": "h1_exact",
+      "count": 136
     },
     {
       "bucket": "h2_half_past",
@@ -505,10 +505,6 @@
       "count": 12
     },
     {
-      "bucket": "h7_five_to",
-      "count": 12
-    },
-    {
       "bucket": "h3_five_to",
       "count": 11
     },
@@ -523,13 +519,17 @@
     {
       "bucket": "h10_quarter_to",
       "count": 9
+    },
+    {
+      "bucket": "h11_five_to",
+      "count": 9
     }
   ],
   "daypart_counts": {
-    "morning": 1363,
-    "night": 933,
-    "dawn": 469,
-    "noon": 240,
+    "morning": 1305,
+    "night": 876,
+    "dawn": 452,
+    "noon": 232,
     "midnight": 44,
     "evening": 42,
     "dusk": 28
@@ -559,12 +559,12 @@
         "source_id": "100"
       },
       {
-        "quote_text": "Cowardly fled, not having struck one stroke.",
-        "matched_text": "struck one",
+        "quote_text": "It’s one o’clock, boy, is’t not?",
+        "matched_text": "one o’clock",
         "source_id": "100"
       },
       {
-        "quote_text": "It’s one o’clock, boy, is’t not?",
+        "quote_text": "’Tis one o’clock, and past.",
         "matched_text": "one o’clock",
         "source_id": "100"
       }
@@ -1105,9 +1105,9 @@
         "source_id": "100"
       },
       {
-        "quote_text": "’Tis almost five o’clock, cousin; ’tis time",
+        "quote_text": "at five o’clock, with one little extra white bow in her bonnet, which",
         "matched_text": "five o’clock",
-        "source_id": "100"
+        "source_id": "1023"
       }
     ],
     "h5_five_past": [
@@ -1457,19 +1457,19 @@
     ],
     "h7_five_to": [
       {
-        "quote_text": "It was nearly eight o’clock in the evening when the cart, which we left",
-        "matched_text": "nearly eight",
-        "source_id": "135"
-      },
-      {
-        "quote_text": "It was nearly eight o’clock.",
-        "matched_text": "nearly eight",
-        "source_id": "144"
-      },
-      {
         "quote_text": "The Mahommedans, who number nearly eight-ninths of the population, are not, however, ``citizens''",
         "matched_text": "nearly eight",
         "source_id": "200"
+      },
+      {
+        "quote_text": "while, nearly eight-and-twenty years, and had a hard time of it, till",
+        "matched_text": "nearly eight",
+        "source_id": "514"
+      },
+      {
+        "quote_text": "The storm of rain and wind descended upon them towards eight o’clock.",
+        "matched_text": "towards eight o’clock",
+        "source_id": "103"
       }
     ],
     "h8_exact": [
