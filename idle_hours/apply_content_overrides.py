@@ -74,10 +74,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def _resolve(path_str: str) -> Path:
-    path = Path(path_str).expanduser()
-    if not path.is_absolute():
-        path = BASE_DIR / path
-    return path
+    """Resolve an operator-supplied path against the CWD (issue #295).
+
+    ``DEFAULT_OVERRIDES_PATH`` is already absolute, so only paths the operator
+    typed reach the relative branch — and those must mean what they mean in
+    the shell that ran the command, not a location inside the package.
+    """
+    return Path(path_str).expanduser().resolve()
 
 
 def row_key(row: dict) -> str | None:

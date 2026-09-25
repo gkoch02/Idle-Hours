@@ -238,3 +238,18 @@ class TestMain:
         # The input corpus file must be byte-identical to its pre-call state.
         assert input_file.read_bytes() == original_bytes
         assert list(tmp_path.glob("*.tmp")) == []
+
+
+class TestCwdRelativePaths:
+    """Operator-typed paths resolve against the CWD, not the package dir (issue #295)."""
+
+    def test_relative_input_resolves_against_cwd(self, tmp_path, monkeypatch):
+        row = {"source_id": "1", "line_number": 1, "display_quote": "old", "normalized_time": "03:00"}
+        (tmp_path / "work").mkdir()
+        (tmp_path / "work" / "corpus.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+        (tmp_path / "work" / "ov.json").write_text(json.dumps({"1:1": {"display_quote": "new"}}), encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        sys.argv = ["apply_content_overrides.py", "work/corpus.jsonl", "--overrides", "work/ov.json", "--output", "work/out.jsonl"]
+        main()
+        result = json.loads((tmp_path / "work" / "out.jsonl").read_text(encoding="utf-8").strip())
+        assert result["display_quote"] == "new"

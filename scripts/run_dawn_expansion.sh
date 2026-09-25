@@ -63,15 +63,16 @@ echo ">>> Merging attributed dawn rows into existing corpus..."
 # Write to a tmp file first so we never read and write the same file simultaneously.
 TMP_OUT=$(mktemp output/candidates-attributed.XXXXXX.jsonl)
 python3 -m idle_hours.merge_candidates "$EXISTING" "$DAWN_ATTRIBUTED" --output "$TMP_OUT"
-mv "$TMP_OUT" "$EXISTING"
-final_rows=$(wc -l < "$EXISTING" | tr -d ' ')
-echo ">>> Corpus grew from $baseline_rows to $final_rows rows (+$(( final_rows - baseline_rows )))"
-
+# Check the merged file BEFORE it replaces the live corpus, so a bad merge is
+# discarded rather than installed and then complained about (issue #295).
+final_rows=$(wc -l < "$TMP_OUT" | tr -d ' ')
 if (( final_rows < baseline_rows )); then
-  echo "ERROR: corpus shrank — something went wrong. Restore with:" >&2
-  echo "  git checkout $EXISTING" >&2
+  echo "ERROR: merged corpus ($final_rows rows) is smaller than the existing one ($baseline_rows) — not installing it." >&2
+  echo "  Inspect $TMP_OUT, then delete it." >&2
   exit 1
 fi
+mv "$TMP_OUT" "$EXISTING"
+echo ">>> Corpus grew from $baseline_rows to $final_rows rows (+$(( final_rows - baseline_rows )))"
 
 echo ">>> Regenerating coverage snapshot..."
 python3 -m idle_hours.bucket_coverage "$EXISTING" \

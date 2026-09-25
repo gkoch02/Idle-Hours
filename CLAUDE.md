@@ -234,14 +234,14 @@ idle-hours fix-legacy-buckets output/candidates-quality.jsonl
 
 # Attach title/author from Gutenberg headers
 idle-hours enrich output/candidates-quality.jsonl
-# → assets/candidates-attributed.jsonl
+# → idle_hours/assets/candidates-attributed.jsonl
 
 # Layer durable hand-curated fixes from the sidecar on top.
 # No-op when the sidecar is empty; otherwise patches matching rows in place,
 # stamps override_applied=true, and re-derives fuzzy_bucket from any
 # time-affecting overrides. Warns on stderr for dangling keys.
-idle-hours apply-overrides assets/candidates-attributed.jsonl
-# → assets/candidates-attributed.jsonl (raw attributed corpus)
+idle-hours apply-overrides idle_hours/assets/candidates-attributed.jsonl
+# → idle_hours/assets/candidates-attributed.jsonl (raw attributed corpus)
 
 # Final stage: bake the display-ready runtime quote database.
 # Drops daypart-only rows and rows below --min-quality, pre-computes the
@@ -250,8 +250,8 @@ idle-hours apply-overrides assets/candidates-attributed.jsonl
 # inferred_quote_minute, and assigns a per-bucket baked_rank. The runtime
 # picker reads this file by default and only recomputes the two request-time
 # components (minute_penalty, override_bonus) per pick.
-idle-hours bake assets/candidates-attributed.jsonl
-# → assets/quote_database.jsonl (pick_quote.py default --database)
+idle-hours bake idle_hours/assets/candidates-attributed.jsonl
+# → idle_hours/assets/quote_database.jsonl (pick_quote.py default --database)
 ```
 
 ## Default paths

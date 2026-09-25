@@ -332,3 +332,22 @@ class TestSchemaVersion:
                 f"row {row.get('source_id')}:{row.get('line_number')} has stale schema "
                 f"{row.get('schema_version')!r} vs expected {bq.BAKED_SCORE_SCHEMA_VERSION}"
             )
+
+
+class TestCwdRelativePaths:
+    """Operator-typed paths resolve against the CWD, not the package dir (issue #295)."""
+
+    def test_relative_input_and_output_resolve_against_cwd(self, sample_row, tmp_path, monkeypatch):
+        (tmp_path / "in").mkdir()
+        (tmp_path / "in" / "corpus.jsonl").write_text(json.dumps(sample_row) + "\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["bake_quote_database.py", "in/corpus.jsonl", "--output", "out/db.jsonl"])
+        assert bq.main() == 0
+        baked = tmp_path / "out" / "db.jsonl"
+        assert baked.exists(), "output must land under the CWD"
+        assert not (bq.BASE_DIR / "out").exists(), "output must never be written inside the package"
+        assert "baked_score" in json.loads(baked.read_text(encoding="utf-8").splitlines()[0])
+
+    def test_resolve_is_cwd_relative(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert bq._resolve("x/y.jsonl") == (tmp_path / "x" / "y.jsonl").resolve()

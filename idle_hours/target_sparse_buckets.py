@@ -216,9 +216,11 @@ def search_bucket(bucket: str, search_dir: Path) -> list[dict]:
 
 def main() -> int:
     args = parse_args()
-    coverage_path = Path(args.coverage_json).expanduser()
-    if not coverage_path.is_absolute():
-        coverage_path = BASE_DIR / coverage_path
+    # CWD-relative, like ``--search-dir`` and ``--output`` just below — an
+    # earlier revision anchored this one argument on the package directory,
+    # so the documented ``idle-hours target-sparse output/bucket-coverage.json``
+    # could never find the file it named (issue #295).
+    coverage_path = Path(args.coverage_json).expanduser().resolve()
     coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
     targets = expected_targets(coverage, args.max_buckets)
     search_dir = Path(args.search_dir).expanduser()

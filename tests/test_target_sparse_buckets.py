@@ -284,3 +284,24 @@ class TestSearchBucketGuards:
         quotes = [r["quote_text"] for r in results]
         assert any("would call" in q for q in quotes)
         assert not any("schools" in q for q in quotes)
+
+
+class TestCwdRelativeCoveragePath:
+    """The coverage JSON argument resolves against the CWD (issue #295)."""
+
+    def test_relative_coverage_json_resolves_against_cwd(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / "output").mkdir()
+        (tmp_path / "output" / "bucket-coverage.json").write_text(
+            json.dumps({"empty_buckets": ["h3_five_past"], "sparse_buckets": []}), encoding="utf-8",
+        )
+        search_dir = tmp_path / "texts"
+        search_dir.mkdir()
+        (search_dir / "pg1.txt").write_text("It was five past three when he came in.\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "sys.argv",
+            ["target_sparse_buckets.py", "output/bucket-coverage.json", "--search-dir", "texts", "--output", "output/hits.jsonl"],
+        )
+        assert tsb.main() == 0
+        assert (tmp_path / "output" / "hits.jsonl").exists()
+        assert "Targeted buckets searched: 1" in capsys.readouterr().out
