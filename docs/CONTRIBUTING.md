@@ -6,7 +6,7 @@ just wants to fix a typo, improve a quote, or add a pipeline stage.
 
 This doc covers the dev environment, how the pipeline fits together, and what
 to do when contributing each kind of change. The deep architecture reference
-lives in [`CLAUDE.md`](CLAUDE.md) — if you're modifying the runtime or
+lives in [`CLAUDE.md`](../CLAUDE.md) — if you're modifying the runtime or
 pipeline, skim that first.
 
 By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -38,8 +38,8 @@ python3 -m idle_hours.run_clock --once --buttons-off
 ```
 
 `pip install -e ".[dev]"` registers `idle-hours` as a console script — every
-backing module is reachable via `idle-hours <subcommand>`, with `python3
-<script>.py` continuing to work for backwards compat. Run `idle-hours --help`
+backing module is reachable via `idle-hours <subcommand>`, with `python3 -m
+idle_hours.<module>` as the equivalent module form. Run `idle-hours --help`
 for the full subcommand list.
 
 `pip install -e ".[dev]"` is the single source of truth for dev deps; CI
@@ -48,8 +48,8 @@ workflow files — they'll drift.
 
 ## Before you open a PR
 
-- **Run the tests.** `pytest` should pass locally. The suite is fast (seconds,
-  not minutes).
+- **Run the tests.** `pytest` should pass locally. Use `pytest -n auto` —
+  the suite is ~4k cases, about 50s in parallel and ~3 minutes single-threaded.
 - **Run the linter.** `ruff check .` — rules `E`, `W`, `F`, `I`; line length
   130; `E501` ignored. `ruff check --fix .` handles import ordering.
 - **Don't commit generated artifacts you didn't mean to.** `output/` is
@@ -130,14 +130,14 @@ a new script as `idle-hours <name>`:
 1. Add the `(name → module)` entry to `SUBCOMMANDS` in `idle_hours_cli.py`.
 2. Make sure the backing module has a callable `main()` (every script in
    the repo already does).
-3. Add the module name to `[tool.setuptools] py-modules` in `pyproject.toml`
-   so the wheel ships it.
+3. Put the module under `idle_hours/`. `[tool.setuptools.packages.find]`
+   picks it up automatically — there is no per-module list to update.
 4. `tests/test_idle_hours_cli.py::TestSubcommandRegistry` will catch a
    `SUBCOMMANDS` entry that points at a missing module or a module without
-   a `main`. `tests/test_packaging.py` will catch the `py-modules` drift.
+   a `main`; `tests/test_packaging.py` checks the wheel actually ships it.
 
-The umbrella CLI is purely additive — `python3 <script>.py …` keeps working
-unchanged.
+The umbrella CLI is purely additive — `python3 -m idle_hours.<module> …` keeps
+working unchanged.
 
 ### Corpus / quote content
 
@@ -145,10 +145,11 @@ Two different files depending on the kind of change:
 
 | You want to… | Edit this | Effect |
 |---|---|---|
-| Fix the wording of a specific quote (bad excerpt boundary, typo, wrong author) | `assets/content_overrides.json` | Re-applied every time the pipeline re-bakes; durable |
-| Ban a source, boost a source, pin a source to a bucket | `assets/selection_overrides.json` | Runtime, also editable via the curator UI |
+| Fix the wording of a specific quote (bad excerpt boundary, typo, wrong author) | `idle_hours/assets/content_overrides.json` | Re-applied every time the pipeline re-bakes; durable |
+| Ban a source, boost a source, pin a source to a bucket | `idle_hours/assets/selection_overrides.json` | Runtime, also editable via the curator UI |
 
-**Never edit `assets/quote_database.jsonl` or `assets/candidates-attributed.jsonl`
+**Never edit `idle_hours/assets/quote_database.jsonl` or
+`idle_hours/assets/candidates-attributed.jsonl`
 by hand.** They're derived artifacts; your edit will be clobbered on the next
 pipeline re-run. If you find yourself wanting to override more than a handful
 of rows for the same reason, that's a signal that a pipeline stage has a bug —
@@ -158,11 +159,16 @@ accumulating per-row patches.
 After editing `content_overrides.json`, re-run the tail of the pipeline:
 
 ```bash
-python3 apply_content_overrides.py assets/candidates-attributed.jsonl
-python3 bake_quote_database.py assets/candidates-attributed.jsonl
+idle-hours apply-overrides assets/candidates-attributed.jsonl
+idle-hours bake assets/candidates-attributed.jsonl
 ```
 
-Commit the updated `assets/quote_database.jsonl` alongside your override
+Both tools resolve a relative path against the `idle_hours/` package
+directory, not your CWD, so the paths above are package-relative — passing
+`idle_hours/assets/…` from the repo root resolves to
+`idle_hours/idle_hours/assets/…` and fails.
+
+Commit the updated `idle_hours/assets/quote_database.jsonl` alongside your override
 change — a raw-corpus commit with no matching bake means your fix is
 invisible to the appliance.
 
@@ -171,8 +177,8 @@ invisible to the appliance.
 There's a one-shot driver:
 
 ```bash
-# Add the ID to gutenberg_dawn_expansion_ids.txt, then:
-bash run_dawn_expansion.sh
+# Add the ID to scripts/gutenberg_dawn_expansion_ids.txt, then:
+bash scripts/run_dawn_expansion.sh
 ```
 
 That drives the full pipeline and commits the updated
@@ -203,41 +209,12 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
-Seventy-three themes ship today (`default`, `dark`, `swiss`, `scholar`,
-`newsprint`, `nightvision`, `blueprint`, `illuminated`, … through the
-custom-render frames `astrarium`, `marquee`, `tarot`, `vinyl`, `vitrail`,
-`questline` (8-bit RPG dialogue), `chrono` (16-bit SNES JRPG cutscene),
-`outrun` (1980s synthwave sunset), `sampler` (counted cross-stitch),
-`lieder` (engraved art song), `izakaya` (neon alley),
-`abyssal` (deep sea), `pride` (the Progress Pride flag, flying),
-`pulp` (1940s paperback cover), `synoptic` (weather chart),
-`vhs` (worn tape under a camcorder OSD),
-`cardcatalog` (library catalogue card),
-`metro` (metropolitan transit diagram),
-`bakelite` (amber-phosphor CRT in a bakelite console),
-`intaglio` (banknote engraving — tone as line-work),
-`nocturne` (Whistler night river — flow-field brushwork),
-`plaque` (relief-lit bronze memorial tablet),
-`daguerreotype` (cased Atkinson-dithered photograph),
-`autochrome` (1907 Autochrome Lumière plate — the only plate dithered
-against all six inks),
-`photo` (the operator's own picture via `--photo-path`),
-`betweenus` / `betweenus_dark` (the Between Us app's paper card, light and dark),
-`carcosa` (The King in Yellow — tattered curtains over Lake Hali),
-`control` (Remedy's *Control* — the Astral Plane, a Hiss-red phrase),
-`observation` (No Code's *Observation* — S.A.M.'s camera feed of Saturn),
-`trisolaris` (*The Three-Body Problem* — a live three-body integration the clock drives),
-`biomech` (H. R. Giger's wall round a Beksiński dusk),
-`codex` (the Codex Seraphinianus — asemic script, a chimerical plant plate),
-`culture` (Iain M. Banks's Culture — a Mind's signal beside an Orbital),
-`orbital` (the Culture's Arch from a plate, lit as a 24-hour dial),
-`furies` (Francis Bacon's 1944 *Three Studies for Figures at the Base of a Crucifixion*),
-`bosch` (Hieronymus Bosch's *Garden of Earthly Delights* — the triptych open, crazed with craquelure),
-the `circuit`
-printed-circuit-board theme, and the `diags` calibration panel — see the
-`THEME_ORDER` tuple for the canonical list). Some are simple palette + font
-swaps on the shared literary layout; others (the custom-render frames) own
-their whole composition. Adding another means wiring it into all of:
+Seventy-three themes ship today — see the `THEME_ORDER` tuple for the
+canonical list, the README theme table for previews, and `CLAUDE.md`'s
+themes section for the design notes behind each one. Some are palette + font
+swaps on the shared literary layout, some add a border painter, and the
+custom-render frames (`tarot`, `vitrail`, `questline`, `pride`, `bosch`, …)
+own their whole composition. Adding another means wiring it into all of:
 
 - `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
 - `render_quote.THEME_ORDER` — append; this is what button B cycles through
@@ -254,9 +231,31 @@ their whole composition. Adding another means wiring it into all of:
   `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py` and commit the
   PNG. Add a second hand-written scenario if the theme has a case that varies
   in kind (e.g. `lieder` renders a different page shape at each hour)
-- a preview thumbnail at `idle_hours/assets/previews/<theme>.png` plus a row in
+- a preview thumbnail at `idle_hours/assets/previews/<theme>.png` (generate it
+  with `python scripts/generate_theme_previews.py --theme <theme>`, never by
+  hand — CI's `--check` fails a stale one) plus a row in
   the README theme table, and a paragraph in `CLAUDE.md`'s themes section
   describing the design decisions — not just the palette
+
+A **custom-render frame** (one that bypasses the shared literary layout and
+owns its whole composition) additionally needs:
+
+- a dispatch line in `render_quote.render`
+- `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`
+- `CUSTOM_THEMES` in `tests/test_render_quote_themes.py`
+- `_<theme>_paint_*` naming for its sub-painters — `TestCustomFrameCompositionPaints`
+  neuters them by that convention, and a rename empties the neuter set and turns
+  the fence into a vacuous pass
+
+Test visually with the contact sheet — re-render at least one light-ground
+and one dark-ground theme to catch palette / contrast regressions:
+
+```bash
+idle-hours contact-sheet --theme default --output output/contact-default.png
+idle-hours contact-sheet --theme dark    --output output/contact-dark.png
+# add the new theme:
+idle-hours contact-sheet --theme <new>   --output output/contact-<new>.png
+```
 
 ### Adding a typeface
 
@@ -297,26 +296,6 @@ several default to a thin axis instance (Rubik's is Light, Oxanium's is
 ExtraLight) and an unpinned chain renders as near-invisible hairlines on the
 panel.
 
-A **custom-render frame** (one that bypasses the shared literary layout and
-owns its whole composition) additionally needs:
-
-- a dispatch line in `render_quote.render`
-- `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`
-- `CUSTOM_THEMES` in `tests/test_render_quote_themes.py`
-- `_<theme>_paint_*` naming for its sub-painters — `TestCustomFrameCompositionPaints`
-  neuters them by that convention, and a rename empties the neuter set and turns
-  the fence into a vacuous pass
-
-Test visually with the contact sheet — re-render at least one light-ground
-and one dark-ground theme to catch palette / contrast regressions:
-
-```bash
-idle-hours contact-sheet --theme default --output output/contact-default.png
-idle-hours contact-sheet --theme dark    --output output/contact-dark.png
-# add the new theme:
-idle-hours contact-sheet --theme <new>   --output output/contact-<new>.png
-```
-
 ## Testing
 
 - One `tests/test_<script>.py` per main script, class-based. Use the
@@ -353,8 +332,10 @@ idle-hours contact-sheet --theme <new>   --output output/contact-<new>.png
   relevant issues. GitHub pre-fills the body from
   `.github/pull_request_template.md`; fill in what applies and delete the
   rest. If the change is corpus-only, the PR body is fine at one line.
-- CI runs on every push to `main` and every PR (lint + pytest matrix on
-  Python 3.11/3.12). Green CI is a prerequisite for merge.
+- CI runs on every push to `main` and every PR. Required checks are `lint`,
+  `test (3.11)`, `test (3.12)`, `golden-render`, `web-ui-js` and
+  `package-build`; `coverage` also runs but is advisory. Green required
+  checks are a prerequisite for merge.
 
 ## Reporting bugs
 
@@ -366,10 +347,11 @@ Open a GitHub issue with:
   bugs only surface in specific buckets),
 - relevant log lines from `journalctl -u idle-hours` or the terminal.
 
-For the appliance specifically, `python3 idle_hours_health.py --hours 24`
+For the appliance specifically, `idle-hours health --hours 24`
+(add `--config /var/lib/idle-hours/config.toml` on the systemd preset)
 output is usually the fastest way to share state.
 
 ## License
 
 By contributing, you agree that your contributions are licensed under the
-[MIT License](LICENSE) that covers the rest of the project.
+[MIT License](../LICENSE) that covers the rest of the project.
