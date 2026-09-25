@@ -768,6 +768,24 @@ def _append_history_after_render(state: RuntimeState, history_path: str | None, 
         pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
 
 
+def displayed_quote(state: RuntimeState) -> tuple[str | None, tuple | None]:
+    """Return ``(bucket, quote_id)`` for the frame currently on the panel, or ``(None, None)``.
+
+    The "repaint what is on the panel" seam (issue #275). ``action_theme``
+    learned after #190 to repaint ``state.last_quote_id`` rather than re-peek;
+    the button-C source card, its restore timer and ``action_rerender`` kept
+    peeking, and a peek is history-filtered: the quote on the panel was
+    appended to the anti-repeat ledger the moment it rendered, so the peek
+    excludes it and returns the *next-best* row. The card therefore described
+    a quote that was not on the panel, and the restore / re-render then
+    committed that other row — on the shipped corpus 26 of 32 sampled times
+    changed quote. Callers fall back to a fresh peek only when nothing has
+    been committed yet (first tick after a cold boot).
+    """
+    with state.lock:
+        return state.last_bucket, state.last_quote_id
+
+
 def _pin_key_for(quote_id) -> tuple | None:
     """Build a ``--pin-quote`` key from a peeked/committed quote identity.
 
@@ -1091,20 +1109,28 @@ def _build_button_handlers(
             _log("button C: source card")
             try:
                 time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
+                # The card describes the quote ON THE PANEL, so it pins the
+                # committed identity rather than re-peeking — a peek is
+                # history-filtered and would name the next-best row instead
+                # (issue #275). Only a cold-start panel with nothing committed
+                # yet falls back to a pick.
+                shown_bucket, quote_id = displayed_quote(state)
+                if quote_id is None:
+                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
+                    shown_bucket = None
                 _render_unlocked(args, state, time_str, history_path, mode="card", quote_id=quote_id)
 
                 def restore() -> None:
                     # The card needs to come down at the 5-second mark — relying on the
                     # next loop tick would leave it up for up to --interval-seconds (60s
-                    # default). Re-pick (the bucket may have moved during the 5s) and
-                    # render the normal frame ourselves via the BLOCKING _do_render so
-                    # the card is guaranteed to be taken down even if another handler
-                    # has the render lock at the 5s mark.
+                    # default). Put back exactly the frame the card replaced, under the
+                    # bucket it was committed for (so a bucket edge crossed during the
+                    # 5 s is still seen as a change by the next loop tick), via the
+                    # BLOCKING _do_render so the card is guaranteed to be taken down even
+                    # if another handler has the render lock at the 5s mark.
                     try:
                         rs_time = current_time_str()
-                        rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
-                        _do_render(args, state, rs_time, history_path, quote_id=rs_quote)
+                        _do_render(args, state, rs_time, history_path, bucket=shown_bucket, quote_id=quote_id)
                     except Exception as restore_exc:
                         _log(f"source card restore failed: {restore_exc!r}", err=True)
 

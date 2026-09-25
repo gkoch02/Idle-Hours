@@ -403,7 +403,16 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
 
 
 def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Force a re-render of the current time+bucket. Useful after panel ghosting or override edits."""
+    """Repaint the frame that is on the panel. Useful after panel ghosting.
+
+    A repaint, not a re-pick (issue #275): the quote on the panel is already
+    on the anti-repeat ledger, so a fresh peek excluded it and this action
+    silently swapped the quote — and then appended the replacement to the
+    ledger, burning a week of history to clear a ghost. It now pins
+    ``state.last_quote_id`` under ``state.last_bucket``, exactly as
+    ``action_theme`` does, and appends nothing. Only a cold-start panel with
+    nothing committed yet falls back to a pick (and records that pick).
+    """
     from idle_hours import run_clock
     from idle_hours.buckets import bucket_for_time
     history_path = args.history_path or None
@@ -413,13 +422,16 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
             return {"ok": False, "error": "busy"}
         try:
             time_str = run_clock.current_time_str()
-            bucket = bucket_for_time(time_str)
-            quote_id = run_clock.peek_quote_id(
-                time_str, history_path=history_path, history_days=args.history_days,
-                **run_clock._corpus_kwargs(args),
-            )
+            bucket, quote_id = run_clock.displayed_quote(state)
+            fresh_pick = quote_id is None
+            if fresh_pick:
+                bucket = bucket_for_time(time_str)
+                quote_id = run_clock.peek_quote_id(
+                    time_str, history_path=history_path, history_days=args.history_days,
+                    **run_clock._corpus_kwargs(args),
+                )
             run_clock._render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
-            if quote_id is not None:
+            if fresh_pick and quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)
             _log(f"{label}: rerender bucket={bucket}")
             _emit_action(telemetry_path, "rerender", label, ok=True)

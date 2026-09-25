@@ -2050,6 +2050,45 @@ class TestButtonHandlers:
         err = capsys.readouterr().err
         assert "restore" in err.lower() or "boom" in err
 
+    # Issue #275: the card and its restore describe / put back the quote ON
+    # THE PANEL. A peek is history-filtered and names the next-best row.
+    def test_source_card_pins_the_displayed_quote_not_a_peek(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_exact"
+        state.last_quote_id = ("shown", 7, "the quote on the panel", "ten o'clock")
+        with patch("idle_hours.run_clock.peek_quote_id", side_effect=AssertionError("must not re-peek")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:03"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            card_call = mock_render.call_args_list[0]
+            assert card_call.kwargs["quote_id"] == state.last_quote_id
+            assert card_call.kwargs["pin_quote"] == ("shown", 7, "ten o'clock")
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+        restore_call = mock_render.call_args_list[1]
+        assert restore_call.kwargs["quote_id"] == ("shown", 7, "the quote on the panel", "ten o'clock")
+        assert restore_call.kwargs["pin_quote"] == ("shown", 7, "ten o'clock")
+        # Restored under the bucket the frame was committed for, so a bucket
+        # edge crossed during the 5 s still reads as a change on the next tick.
+        assert restore_call.kwargs["bucket"] == "h10_exact"
+        assert state.last_quote_id == ("shown", 7, "the quote on the panel", "ten o'clock")
+
+    def test_source_card_falls_back_to_a_peek_when_nothing_is_displayed(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        assert state.last_quote_id is None
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")) as mock_peek, \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+        assert mock_peek.call_count == 1
+        assert mock_render.call_args.kwargs["quote_id"] == ("src", 1, "q", "mt")
+
     def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")
@@ -3351,6 +3390,37 @@ class TestActionExceptionBranches:
             result = run_clock.action_quiet(args, state, label="web")
         assert result["ok"] is False
         assert "no corpus" in result["error"]
+
+    # Issue #275: re-render is a repaint of the displayed quote, not a re-pick.
+    def test_rerender_repaints_the_displayed_quote_and_appends_nothing(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_exact"
+        state.last_quote_id = ("shown", 7, "on the panel", "ten o'clock")
+        with patch("idle_hours.run_clock.peek_quote_id", side_effect=AssertionError("must not re-peek")), \
+             patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock._append_history_after_render") as mock_append, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:03"):
+            result = run_clock.action_rerender(args, state, label="web")
+        assert result["ok"] is True
+        assert result["quote_id"] == ["shown", 7, "on the panel", "ten o'clock"]
+        assert result["bucket"] == "h10_exact"
+        assert mock_render.call_args.kwargs["quote_id"] == ("shown", 7, "on the panel", "ten o'clock")
+        assert mock_render.call_args.kwargs["bucket"] == "h10_exact"
+        mock_append.assert_not_called()
+
+    def test_rerender_picks_and_records_when_nothing_is_displayed(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock._append_history_after_render") as mock_append, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_rerender(args, state, label="web")
+        assert result["ok"] is True
+        assert result["bucket"] == "h10_exact"
+        assert mock_render.call_args.kwargs["quote_id"] == ("src", 1, "q", "mt")
+        mock_append.assert_called_once()
 
     def test_rerender_failure_returns_error_dict(self, tmp_path):
         args = self._args(tmp_path)
