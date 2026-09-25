@@ -418,8 +418,8 @@ author, title  # parsed from the cached Gutenberg header when available
 
 `quality_filter.py` starts each row at 100 and applies penalties (see `BAD_PATTERNS` and `score_quote`). Heavy hitters:
 - `contains_time_range` (`3:00–5:00`) and `contains_metadata` (copyright/project gutenberg/ebook): −55
-- `contains_work_schedule` (bare word "work") and `contains_modern_am_pm`: −45
-- `contains_structural_label` (chapter/book/act/scene): −35
+- `contains_work_schedule` (schedule text: "working hours", "work shift", "nine to five") and `contains_modern_am_pm` (`am`/`pm` only as a clock suffix after a number; dotted `a.m.`/`p.m.` alone): −45. Both were far looser until issue #296 — `\bwork\b` hit the verb in ordinary prose and a bare `am` hit "I am", which was every one of the 56 am/pm flags in the shipped corpus; between them they kept ~80 good quotes under the bake floor.
+- `contains_structural_label` (a *heading* — "Chapter IV", "BOOK 2", all-caps `ACT`/`SCENE` — never the words in prose, and a lone roman "I" only before punctuation so "the book I read" is the pronoun): −35
 - `fragment`: −30, `too_short` (<50 chars) / `too_long` (>260 chars): −20
 - Cleanup status other than `complete_sentence` or `expanded_with_context`: −20
 - `digit_heavy` (≥6 digits): −25, `uppercase_heavy` (>18% uppercase): −15
