@@ -27,8 +27,8 @@ idle-hours run --config /var/lib/idle-hours/config.toml
 ```
 
 This works from the prebuilt runtime assets already committed in the repo:
-- `assets/quote_database.jsonl` — the baked display-ready DB the clock reads by default
-- `assets/candidates-attributed.jsonl` — the raw attributed corpus that feeds the baker (also consumed by the curator UI)
+- `idle_hours/assets/quote_database.jsonl` — the baked display-ready DB the clock reads by default
+- `idle_hours/assets/candidates-attributed.jsonl` — the raw attributed corpus that feeds the baker (also consumed by the curator UI)
 
 You do not need to rebuild corpus artifacts on the Pi just to run the clock.
 Only rerun the corpus pipeline when you are intentionally changing source data or quote selection behavior — and remember to re-bake at the end so the new rows actually reach the runtime picker.
@@ -39,19 +39,22 @@ For an end-to-end "harvest a curated set of Gutenberg IDs and merge into the liv
 bash run_dawn_expansion.sh
 ```
 
-It runs the full pipeline (mine → merge → clean → quality → fix-substring → enrich → bake) against `gutenberg_dawn_expansion_ids.txt`, regenerates the coverage snapshot, and re-bakes `assets/quote_database.jsonl`. Safe to re-run; downloads are cached and `merge_candidates` dedupes.
+It runs the full pipeline (mine → merge → clean → quality → fix-substring → enrich → bake) against `gutenberg_dawn_expansion_ids.txt`, regenerates the coverage snapshot, and re-bakes `idle_hours/assets/quote_database.jsonl`. Safe to re-run; downloads are cached and `merge_candidates` dedupes.
 
 If you want to drive individual stages manually — e.g. iterating on a single transform — the order the driver script uses is:
 
 ```bash
 # starting from a merged candidates file:
-python3 clean_display_quotes.py output/candidates-merged.jsonl --output output/candidates-cleaned.jsonl
-python3 quality_filter.py output/candidates-cleaned.jsonl --output output/candidates-quality.jsonl
-python3 fix_substring_time_matches.py output/candidates-quality.jsonl   # in-place compatibility pass
-python3 enrich_metadata.py output/candidates-quality.jsonl --output assets/candidates-attributed.jsonl
-python3 apply_content_overrides.py assets/candidates-attributed.jsonl
-python3 bake_quote_database.py assets/candidates-attributed.jsonl --output assets/quote_database.jsonl
+idle-hours clean output/candidates-merged.jsonl --output output/candidates-cleaned.jsonl
+idle-hours quality output/candidates-cleaned.jsonl --output output/candidates-quality.jsonl
+idle-hours fix-substring-times output/candidates-quality.jsonl   # in-place compatibility pass
+idle-hours enrich output/candidates-quality.jsonl --output idle_hours/assets/candidates-attributed.jsonl
+idle-hours apply-overrides idle_hours/assets/candidates-attributed.jsonl
+idle-hours bake idle_hours/assets/candidates-attributed.jsonl --output idle_hours/assets/quote_database.jsonl
 ```
+
+(Every subcommand is also reachable as `python3 -m idle_hours.<module>`;
+there are no flat `*.py` scripts at the repo root.)
 
 `fix_substring_time_matches.py` runs as a defensive compatibility pass: it's a no-op on fresh harvests (the current miner already collapses the substring-collision case) but rewrites time metadata in older JSONL rows that captured `"five minutes past two"` as a substring of `"thirty-five minutes past two"`. Keeping it in the manual flow above matches `run_dawn_expansion.sh` line-for-line, so a manually-driven rebuild produces the same corpus the driver script would. `fix_legacy_buckets.py` is the companion repair for pre-`buckets.py` 8-state bucket names; the dawn driver does not run it because that drift was eradicated before the dawn corpus existed, but include it after `quality_filter` if you're rebuilding from a JSONL old enough to contain those names.
 
@@ -95,7 +98,7 @@ Notes:
 - for Inky button support, install Raspberry Pi OS's `python3-lgpio` and
   `python3-rpi-lgpio`, and create the virtualenv with `--system-site-packages`;
   `gpiozero` alone does not provide a pin backend
-- the unit uses `Type=notify` + `WatchdogSec=180s` so systemd restarts a wedged-but-breathing loop, not just a fully-dead one. The `sd_notify` client in `sd_notify.py` is pure stdlib (no `systemd-python` dep); off systemd it is a no-op so `python3 run_clock.py` on a dev host behaves identically.
+- the unit uses `Type=notify` + `WatchdogSec=180s` so systemd restarts a wedged-but-breathing loop, not just a fully-dead one. The `sd_notify` client in `sd_notify.py` is pure stdlib (no `systemd-python` dep); off systemd it is a no-op so `idle-hours run` on a dev host behaves identically.
 - the unit declares `StateDirectory=idle-hours`. systemd creates `/var/lib/idle-hours/` owned by `pi` before the service starts, and the sample config's `state_path` / `history_path` / `telemetry_path` / `pidfile` / `web_token_file` all point into that directory.
 
 After `sudo systemctl status idle-hours.service` reports `Active: active (running); notify`, confirm the supervisor is actually supervising:
@@ -137,10 +140,12 @@ sudo systemctl daemon-reload
 sudo systemctl start idle-hours.service
 ```
 
-`idle_hours_health.py` takes `--telemetry-path`, so ad-hoc health queries after the migration are just:
+`idle-hours health` takes `--telemetry-path` (or `--config`, which reads it from the same TOML the unit uses), so ad-hoc health queries after the migration are just:
 
 ```bash
-python3 idle_hours_health.py --telemetry-path /var/lib/idle-hours/telemetry.jsonl --hours 24
+idle-hours health --config /var/lib/idle-hours/config.toml --hours 24
+# or, restating the path:
+idle-hours health --telemetry-path /var/lib/idle-hours/telemetry.jsonl --hours 24
 ```
 
 ### Optional: allow button D long-press shutdown
@@ -165,10 +170,10 @@ The loop writes a JSONL telemetry sidecar — one line per successful render, on
 
 ```bash
 # Human-readable summary
-python3 idle_hours_health.py --hours 24
+idle-hours health --hours 24
 
 # Machine-readable; exit 2 when no renders landed in the window
-python3 idle_hours_health.py --hours 1 --json --fail-if-no-renders
+idle-hours health --hours 1 --json --fail-if-no-renders
 ```
 
 Wire the JSON form into a once-a-day cron / systemd timer if you want passive alerting without SSH journalctl spelunking.
@@ -203,7 +208,7 @@ See the "Curator web UI" section in `README.md` for the full endpoint list, UI p
 If button handling seems wrong on a particular Inky variant, run the standalone probe to confirm the wiring before blaming handler code:
 
 ```bash
-python3 probe_buttons.py
+idle-hours probe-buttons
 # press each physical button on the panel;
 # each press prints a timestamped line showing which GPIO pin fired
 ```

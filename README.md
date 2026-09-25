@@ -74,7 +74,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 ### Runtime
 
-- `idle_hours_cli.py` - **unified `idle-hours <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `idle-hours` as a console script. Backwards-compatible — `python3 <script>.py` still works for every subcommand.
+- `idle_hours_cli.py` - **unified `idle-hours <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `idle-hours` as a console script. Every subcommand is also reachable as `python3 -m idle_hours.<module>`.
 - `run_clock.py` - long-running clock loop, bucket-change refresh logic, optional display handoff
 - `runtime_*.py` - the seven siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` (architecture in [`CLAUDE.md`](CLAUDE.md))
 - `runtime_webhook.py` - v2 alert-firehose: posts alert-worthy telemetry events to an operator-configured HTTP endpoint on a daemon thread (errors, backoff, timeouts, button-died); never blocks the render path
@@ -172,10 +172,10 @@ idle-hours bake
 idle-hours contact-sheet --output output/contact-sheet.png
 ```
 
-`idle-hours <sub> --help` forwards to the backing script's argparse so the
-flag list is identical to `python3 <sub>.py --help`. The umbrella CLI is
-purely additive — every `python3 <script>.py` invocation in the rest of
-this doc continues to work unchanged.
+`idle-hours <sub> --help` forwards to the backing module's argparse so the
+flag list is identical to `python3 -m idle_hours.<module> --help`. The
+umbrella CLI is purely additive over that module form; there are no flat
+`<script>.py` files at the repo root to run directly.
 
 ### Render once locally (smoke test)
 

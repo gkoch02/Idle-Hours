@@ -38,8 +38,10 @@ python3 -m idle_hours.run_clock --once --buttons-off
 ```
 
 `pip install -e ".[dev]"` registers `idle-hours` as a console script — every
-backing module is reachable via `idle-hours <subcommand>`, with `python3
-<script>.py` continuing to work for backwards compat. Run `idle-hours --help`
+backing module is reachable via `idle-hours <subcommand>`, or equivalently
+`python3 -m idle_hours.<module>`. There are no flat `*.py` scripts at the repo
+root any more (the v2.x restructure moved everything under `idle_hours/`), so
+a bare `python3` call on a script name fails with "No such file". Run `idle-hours --help`
 for the full subcommand list.
 
 `pip install -e ".[dev]"` is the single source of truth for dev deps; CI
@@ -97,14 +99,15 @@ a new script as `idle-hours <name>`:
 1. Add the `(name → module)` entry to `SUBCOMMANDS` in `idle_hours_cli.py`.
 2. Make sure the backing module has a callable `main()` (every script in
    the repo already does).
-3. Add the module name to `[tool.setuptools] py-modules` in `pyproject.toml`
-   so the wheel ships it.
+3. Put the module under `idle_hours/` — `[tool.setuptools.packages.find]`
+   in `pyproject.toml` ships every module in the package automatically.
 4. `tests/test_idle_hours_cli.py::TestSubcommandRegistry` will catch a
    `SUBCOMMANDS` entry that points at a missing module or a module without
-   a `main`. `tests/test_packaging.py` will catch the `py-modules` drift.
+   a `main`. `tests/test_packaging.py` will catch a module the wheel fails
+   to ship.
 
-The umbrella CLI is purely additive — `python3 <script>.py …` keeps working
-unchanged.
+The umbrella CLI is purely additive — `python3 -m idle_hours.<module> …`
+keeps working unchanged.
 
 ### Corpus / quote content
 
@@ -112,10 +115,10 @@ Two different files depending on the kind of change:
 
 | You want to… | Edit this | Effect |
 |---|---|---|
-| Fix the wording of a specific quote (bad excerpt boundary, typo, wrong author) | `assets/content_overrides.json` | Re-applied every time the pipeline re-bakes; durable |
-| Ban a source, boost a source, pin a source to a bucket | `assets/selection_overrides.json` | Runtime, also editable via the curator UI |
+| Fix the wording of a specific quote (bad excerpt boundary, typo, wrong author) | `idle_hours/assets/content_overrides.json` | Re-applied every time the pipeline re-bakes; durable |
+| Ban a source, boost a source, pin a source to a bucket | `idle_hours/assets/selection_overrides.json` | Runtime, also editable via the curator UI |
 
-**Never edit `assets/quote_database.jsonl` or `assets/candidates-attributed.jsonl`
+**Never edit `idle_hours/assets/quote_database.jsonl` or `idle_hours/assets/candidates-attributed.jsonl`
 by hand.** They're derived artifacts; your edit will be clobbered on the next
 pipeline re-run. If you find yourself wanting to override more than a handful
 of rows for the same reason, that's a signal that a pipeline stage has a bug —
@@ -125,11 +128,11 @@ accumulating per-row patches.
 After editing `content_overrides.json`, re-run the tail of the pipeline:
 
 ```bash
-python3 apply_content_overrides.py assets/candidates-attributed.jsonl
-python3 bake_quote_database.py assets/candidates-attributed.jsonl
+idle-hours apply-overrides idle_hours/assets/candidates-attributed.jsonl
+idle-hours bake idle_hours/assets/candidates-attributed.jsonl
 ```
 
-Commit the updated `assets/quote_database.jsonl` alongside your override
+Commit the updated `idle_hours/assets/quote_database.jsonl` alongside your override
 change — a raw-corpus commit with no matching bake means your fix is
 invisible to the appliance.
 
@@ -333,7 +336,7 @@ Open a GitHub issue with:
   bugs only surface in specific buckets),
 - relevant log lines from `journalctl -u idle-hours` or the terminal.
 
-For the appliance specifically, `python3 idle_hours_health.py --hours 24`
+For the appliance specifically, `idle-hours health --hours 24`
 output is usually the fastest way to share state.
 
 ## License
