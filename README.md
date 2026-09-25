@@ -747,7 +747,7 @@ python -c 'import lgpio, RPi.GPIO; print("GPIO backend: ok")'
 
 ```bash
 source ~/.virtualenvs/pimoroni/bin/activate
-git clone git@github.com:gkoch02/idle-hours.git
+git clone git@github.com:gkoch02/Idle-Hours.git ~/IdleHours
 cd ~/IdleHours
 pip install -e '.[pi]'
 idle-hours run --once
