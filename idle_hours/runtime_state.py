@@ -76,6 +76,15 @@ class RuntimeState:
         # schema field to validate and round-trip.
         self.quiet_theme: str | None = None
         self.manual_quiet = False             # toggled by button D
+        # Manual *awake* override (issue #278): the operator pressed D (or
+        # the web "wake") during the scheduled quiet window and wants the
+        # clock back. ``compute_quiet`` treats a scheduled window as open
+        # while this is set; the main loop clears it once the window ends
+        # (``runtime_quiet.expire_manual_awake``). Deliberately NOT
+        # persisted: a restart inside the window costs one more press, which
+        # is cheaper than a ``state.json`` field that would have to expire
+        # itself across a process that was down through the falling edge.
+        self.manual_awake = False
         self.last_bucket: str | None = None
         self.last_quote_id: tuple | None = None
         self.last_effective_theme: str | None = None

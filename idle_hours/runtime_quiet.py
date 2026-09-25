@@ -134,32 +134,65 @@ def _display_quiet_image(
         _log(f"Displayed {output_resolved} via {display_path}")
 
 
-def compute_quiet(args: argparse.Namespace, state: RuntimeState, time_str: str) -> tuple[bool, bool]:
-    """Return ``(now_quiet, manual_only)`` for the current tick.
+def scheduled_quiet(args: argparse.Namespace, time_str: str) -> bool:
+    """Is ``time_str`` inside the configured ``--quiet-start``/``--quiet-end`` window?
 
-    ``now_quiet`` is the OR of the scheduled-window check and
-    ``state.manual_quiet``. ``manual_only`` is True when quiet comes purely
-    from the manual toggle (used only to label the "quiet hours start" log
-    line so the operator can tell a manual override apart from the normal
-    22:00–06:00 window).
+    ``getattr`` defaults cover programmatic ``argparse.Namespace``
+    constructions (tests, the web server's synthesised args) that predate
+    or omit the quiet flags — the same accommodation
+    ``runtime_theme._auto_theme_kwargs`` documents. The defaults are
+    deliberately the *conservative* direction rather than argparse's:
+    a missing ``quiet_start`` yields ``None``, which ``in_quiet_hours``
+    reads as "quiet hours disabled", so an incomplete Namespace is never
+    spuriously reported as asleep. Real runs always carry all three.
     """
-    with state.lock:
-        manual_quiet = state.manual_quiet
-    # ``getattr`` defaults cover programmatic ``argparse.Namespace``
-    # constructions (tests, the web server's synthesised args) that predate
-    # or omit the quiet flags — the same accommodation
-    # ``runtime_theme._auto_theme_kwargs`` documents. The defaults are
-    # deliberately the *conservative* direction rather than argparse's:
-    # a missing ``quiet_start`` yields ``None``, which ``in_quiet_hours``
-    # reads as "quiet hours disabled", so an incomplete Namespace is never
-    # spuriously reported as asleep. Real runs always carry all three.
     quiet_off = getattr(args, "quiet_off", False)
-    scheduled_quiet = in_quiet_hours(
+    return in_quiet_hours(
         time_str,
         None if quiet_off else getattr(args, "quiet_start", None),
         getattr(args, "quiet_end", None),
     )
-    return (scheduled_quiet or manual_quiet, manual_quiet and not scheduled_quiet)
+
+
+def compute_quiet(args: argparse.Namespace, state: RuntimeState, time_str: str) -> tuple[bool, bool]:
+    """Return ``(now_quiet, manual_only)`` for the current tick.
+
+    ``now_quiet`` is the scheduled-window check OR ``state.manual_quiet``,
+    except that a scheduled window is treated as *open* while
+    ``state.manual_awake`` is set — the operator woke the panel mid-window
+    (issue #278) and the clock keeps ticking until the window ends.
+    ``manual_only`` is True when quiet comes purely from the manual toggle
+    (used only to label the "quiet hours start" log line so the operator can
+    tell a manual override apart from the normal 22:00–06:00 window).
+    """
+    with state.lock:
+        manual_quiet = state.manual_quiet
+        manual_awake = state.manual_awake
+    scheduled = scheduled_quiet(args, time_str)
+    if manual_quiet:
+        return True, not scheduled
+    if scheduled and manual_awake:
+        return False, False
+    return scheduled, False
+
+
+def expire_manual_awake(args: argparse.Namespace, state: RuntimeState, time_str: str) -> bool:
+    """Drop the manual-awake override once the scheduled window has ended.
+
+    Called by the main loop every tick before :func:`compute_quiet`. The
+    override only ever means "stay awake through *this* window"; without an
+    expiry the next night's rising edge would find it still set and never
+    put the panel to sleep. Returns True when it cleared something.
+    """
+    with state.lock:
+        if not state.manual_awake:
+            return False
+    if scheduled_quiet(args, time_str):
+        return False
+    with state.lock:
+        state.manual_awake = False
+    _log("manual wake expired with the quiet window; schedule resumes")
+    return True
 
 
 def render_quiet_frame(

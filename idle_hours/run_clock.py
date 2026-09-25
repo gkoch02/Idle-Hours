@@ -33,6 +33,7 @@ from idle_hours.runtime_quiet import (  # noqa: F401  in_quiet_hours + _display_
     compute_quiet,
     enter_quiet,
     exit_quiet,
+    expire_manual_awake,
     in_quiet_hours,
     render_quiet_frame,
 )
@@ -2038,6 +2039,7 @@ def main() -> int:
                     break
                 continue
 
+            expire_manual_awake(args, state, time_str)
             now_quiet, manual_only = compute_quiet(args, state, time_str)
 
             if now_quiet:

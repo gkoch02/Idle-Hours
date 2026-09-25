@@ -969,7 +969,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 **run_clock._auto_theme_kwargs(ctx.args),
             )
             manual_quiet = state.manual_quiet
+            manual_awake = state.manual_awake
             manual_theme = state.manual_theme
+        asleep, _manual_only = run_clock.compute_quiet(ctx.args, state, now)
         payload = {
             "time": now,
             "bucket": bucket,
@@ -977,6 +979,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "theme_arg": state.theme_arg,
             "manual_theme": manual_theme,
             "manual_quiet": manual_quiet,
+            "manual_awake": manual_awake,
+            "asleep": asleep,
             "mode": ctx.args.mode,
             "source_id": quote_id[0] if quote_id else None,
             "line_number": quote_id[1] if quote_id else None,
@@ -1857,8 +1861,10 @@ def _status_from_result(result: dict) -> int:
     """Map an ``action_*`` result dict to an HTTP status code."""
     if result.get("ok"):
         return HTTPStatus.OK
-    if result.get("error") == "busy":
-        return HTTPStatus.CONFLICT  # 409 — render already in flight
+    if result.get("error") in ("busy", "asleep"):
+        # 409 — render already in flight, or the panel is showing the sleep
+        # frame and the action (skip / un-skip) needs a quote to act on.
+        return HTTPStatus.CONFLICT
     return HTTPStatus.INTERNAL_SERVER_ERROR
 
 
