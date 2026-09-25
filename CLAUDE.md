@@ -424,6 +424,7 @@ author, title  # parsed from the cached Gutenberg header when available
 - Cleanup status other than `complete_sentence` or `expanded_with_context`: −20
 - `digit_heavy` (≥6 digits): −25, `uppercase_heavy` (>18% uppercase): −15
 - `weak_ending` (no terminal punct/quote): −10
+- `unbalanced_quotes` (an odd count of `"`, or `“`/`”` that do not match one for one; single quotes are not checked because `’` is also the apostrophe): −15. Defence in depth behind the cleaner (issue #297): `clean_edges` keeps an edge quotation mark whose partner is inside the text and strips only an unpaired one (a closing mark at the start is always junk), `best_display_quote` prefers a run whose marks pair up over one that starts with the tail of a speech, and the winner has an unpaired edge mark dropped. What survives is a quotation that genuinely runs past the miner's window, which this penalty ranks below a clean alternative. `tests/test_corpus_invariants.py::TestQuotationBalance` caps the count in the baked DB.
 
 Penalty reasons are appended to `quality_flags`. The score is floored at 0.
 
@@ -1284,7 +1285,7 @@ idle_hours/                             single-package home for every Python mod
 ├─ bucket_coverage.py                   coverage report per (hour, minute-state) bucket
 ├─ target_sparse_buckets.py             targeted regex sweep for empty buckets
 ├─ import_targeted_hits.py              reshape targeted hits for merge
-├─ clean_display_quotes.py              pick a displayable excerpt from each row (expands bare single-sentence hits with up to 2 neighbouring sentences, rejects mid-text chapter headings, splits on sentence boundaries with two abbreviation classes — TITLE_ABBREVIATIONS "Mr./Mrs./Dr./St./J." always merged, SENTENCE_OK_ABBREVIATIONS "etc./p.m./U.S.A." only merged when the next fragment starts lowercase)
+├─ clean_display_quotes.py              pick a displayable excerpt from each row (expands bare single-sentence hits with up to 2 neighbouring sentences, rejects mid-text chapter headings, keeps paired edge quotation marks and prefers a run whose quotes balance — issue #297, splits on sentence boundaries with two abbreviation classes — TITLE_ABBREVIATIONS "Mr./Mrs./Dr./St./J." always merged, SENTENCE_OK_ABBREVIATIONS "etc./p.m./U.S.A." only merged when the next fragment starts lowercase)
 ├─ quality_filter.py                    score + flag rows
 ├─ fix_substring_time_matches.py        LEGACY migration tool — repair substring-collision time tags in pre-fix JSONL
 ├─ fix_legacy_buckets.py                LEGACY migration tool — repair pre-buckets.py legacy 8-state names + matched_text whitespace

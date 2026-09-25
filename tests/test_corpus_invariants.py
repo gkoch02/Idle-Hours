@@ -366,3 +366,25 @@ class TestTargetedPhraseGuards:
         ]
         assert odds == [], f"betting-odds phrases reached the baked DB: {odds[:5]}"
 
+
+
+class TestQuotationBalance:
+    """Issue #297: the panel showed an unbalanced quotation mark on ~13% of
+    displayable rows. The cleaner now keeps a paired edge mark, prefers a
+    balanced run, and drops an unpaired edge mark from the winner; what is
+    left is a quotation that genuinely runs past the miner's window, and
+    ``quality_filter`` ranks those down. The ceiling here is loose so a
+    harvest can add a few, and tight enough that the old behaviour (300+
+    rows) can never return unnoticed."""
+
+    def test_no_baked_row_starts_with_a_closing_mark(self, baked_rows):
+        offenders = [r for r in baked_rows if (r.get("display_quote") or "")[:1] in "”’"]
+        assert not offenders, [(r["source_id"], r["line_number"]) for r in offenders[:10]]
+
+    def test_unbalanced_double_quotes_are_rare_in_the_baked_db(self, baked_rows):
+        from idle_hours.clean_display_quotes import unbalanced_quotes
+        offenders = [r for r in baked_rows if unbalanced_quotes(r.get("display_quote") or "")]
+        assert len(offenders) <= max(25, len(baked_rows) // 100), len(offenders)
+        # …and every one of them carries the penalty the scorer promises.
+        for r in offenders:
+            assert "unbalanced_quotes" in r.get("quality_flags", []), (r["source_id"], r["line_number"])

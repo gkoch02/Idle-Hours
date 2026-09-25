@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from idle_hours import atomic_io
+from idle_hours.clean_display_quotes import unbalanced_quotes
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -112,6 +113,13 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     if not display_quote.endswith((".", "!", "?", '"', "”", "'", "’")):
         score -= 10
         reasons.append("weak_ending")
+
+    # Defence in depth behind the cleaner's balanced-run preference (issue
+    # #297): a quotation mark with no partner is a visible flaw on the panel,
+    # so a row that could not be cleaned ranks below a clean alternative.
+    if unbalanced_quotes(display_quote):
+        score -= 15
+        reasons.append("unbalanced_quotes")
 
     return max(score, 0), reasons
 

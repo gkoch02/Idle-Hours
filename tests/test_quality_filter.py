@@ -227,6 +227,15 @@ class TestWeakEnding:
 # ---------------------------------------------------------------------------
 
 class TestScoreFloor:
+    def test_unbalanced_quotes_deducts_15(self):
+        tail = ' he said, looking down at his watch with a frown and shaking his head slowly.'
+        s, flags = score('It is five o\'clock,"' + tail)
+        assert "unbalanced_quotes" in flags
+        assert s == 85
+        s, flags = score('"It is five o\'clock,"' + tail)
+        assert "unbalanced_quotes" not in flags
+        assert s == 100
+
     def test_score_never_below_zero(self):
         text = "working hours CHAPTER ebook 1:00-2:00 3 am 4 pm"
         s, _ = score(text, fragment=True, status="empty")
