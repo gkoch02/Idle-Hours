@@ -178,8 +178,12 @@ def apply_overrides(
         if key is not None and key in overrides:
             unseen_keys.discard(key)
             if not isinstance(patch, dict):
-                _warn(f"{overrides_path}: override for {key} is not an object; skipped")
-                patch = None
+                # Leave the row exactly as it is. Treating a present-but-
+                # malformed entry like a deleted one would restore the row's
+                # originals, so a hand-edit typo ("141:482": null) would
+                # silently undo the override it was meant to adjust.
+                _warn(f"{overrides_path}: override for {key} is not an object; row left unchanged")
+                continue
         if patch is None and not originals:
             continue
         patch = patch or {}

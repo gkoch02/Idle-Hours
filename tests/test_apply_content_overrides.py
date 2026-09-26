@@ -315,6 +315,15 @@ class TestReversibleOverrides:
         (twice,), _ = apply_overrides([once], sidecar)
         assert twice == once
 
+    def test_a_malformed_entry_keeps_the_active_override(self, capsys):
+        """A present-but-malformed entry is a typo, not a deletion: the row
+        stays as it was rather than being restored from its originals."""
+        (patched,), _ = apply_overrides([self._row()], {"1:1": {"display_quote": "Patched."}})
+        (kept,), applied = apply_overrides([patched], {"1:1": None})
+        assert kept == patched
+        assert applied == 0
+        assert "left unchanged" in capsys.readouterr().err
+
     def test_untouched_rows_are_left_alone(self):
         row = self._row()
         (out,), applied = apply_overrides([row], {})
