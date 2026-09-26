@@ -559,9 +559,14 @@ def _is_id(value: object) -> bool:
 def validate_overrides_payload(payload: object) -> dict:
     """Return a cleaned overrides dict, or raise ``ValueError`` with a caller-safe message.
 
-    Accepts the same schema as ``assets/selection_overrides.json`` and nothing
-    else — any extra top-level keys are silently dropped so a malformed client
-    can't sneak data into the on-disk file.
+    Validates and normalises the four schema keys of
+    ``assets/selection_overrides.json`` and returns only those. The wholesale
+    save (``_api_overrides_post``) layers them over the submitted document so
+    an operator's own extra top-level keys (a ``_comment``, a field from a
+    newer schema) survive the editor round-trip, as they already do through
+    the ban endpoint; the runtime loader ignores unknown keys, and the POST
+    surface is token-, Origin- and Host-gated and size-capped, so keeping them
+    lets nothing reach the picker.
 
     Rejects an empty object outright: a ``POST`` whose body is ``{}`` (or absent
     entirely, which ``_read_json_body`` coerces to ``{}``) must not be treated
@@ -1954,7 +1959,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
                         HTTPStatus.PRECONDITION_FAILED,
                         "selection_overrides.json changed on disk since it was loaded; reload and re-apply",
                     )
-            etag = overrides_etag(write_overrides_atomic(ctx.overrides_path, cleaned))
+            # Known keys in normalised form; anything else the operator wrote
+            # (a _comment, a newer schema field) is kept, not silently dropped.
+            document = {**payload, **cleaned}
+            etag = overrides_etag(write_overrides_atomic(ctx.overrides_path, document))
         _log(f"web: overrides updated -> {ctx.overrides_path}")
         self._json(
             HTTPStatus.OK, {"ok": True, "path": str(ctx.overrides_path), "etag": etag},

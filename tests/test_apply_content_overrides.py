@@ -295,6 +295,13 @@ class TestCwdRelativePaths:
         assert result["display_quote"] == "new"
 
 
+# The fields a replaced display_quote re-derives, as the ledger records them
+# for TestReversibleOverrides._row (which carries only a quality_score).
+_DERIVED_QUALITY_ORIGINALS = {
+    "quality_score": 80, "quality_flags": None, "display_fragment": None, "cleanup_status": None,
+}
+
+
 class TestReversibleOverrides:
     """The stage writes its output over its input, so an override is baked into
     the raw corpus. It records what it replaced so deleting the sidecar entry
@@ -313,7 +320,7 @@ class TestReversibleOverrides:
     def test_records_the_value_it_replaced(self):
         (patched,), _ = apply_overrides([self._row()], {"1:1": {"display_quote": "Patched."}})
         assert patched["display_quote"] == "Patched."
-        assert patched["override_originals"] == {"display_quote": "Original text."}
+        assert patched["override_originals"] == {"display_quote": "Original text.", **_DERIVED_QUALITY_ORIGINALS}
         assert patched["override_applied"] is True
 
     def test_removing_the_entry_restores_the_row(self):
@@ -329,7 +336,7 @@ class TestReversibleOverrides:
         (once,), _ = apply_overrides([original], {"1:1": {"display_quote": "First edit."}})
         (twice,), _ = apply_overrides([once], {"1:1": {"display_quote": "Second edit."}})
         assert twice["display_quote"] == "Second edit."
-        assert twice["override_originals"] == {"display_quote": "Original text."}
+        assert twice["override_originals"] == {"display_quote": "Original text.", **_DERIVED_QUALITY_ORIGINALS}
         (restored,), _ = apply_overrides([twice], {})
         assert restored == original
 
@@ -339,7 +346,7 @@ class TestReversibleOverrides:
         (one,), _ = apply_overrides([both], {"1:1": {"display_quote": "Patched."}})
         assert one["display_quote"] == "Patched."
         assert "author" not in one
-        assert one["override_originals"] == {"display_quote": "Original text."}
+        assert one["override_originals"] == {"display_quote": "Original text.", **_DERIVED_QUALITY_ORIGINALS}
 
     def test_reverting_a_time_override_restores_the_bucket(self):
         original = self._row()
@@ -438,3 +445,45 @@ class TestReviewFollowUps:
         path = tmp_path / "content_overrides.json"
         path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"1:1": {"display_quote": "x"}}).encode())
         assert load_overrides(path) == {"1:1": {"display_quote": "x"}}
+
+
+class TestDisplayQuoteRederivesQuality:
+    """A replaced display_quote re-runs the clean-classification and quality
+    scoring the old text went through; before this, a curator-trimmed sentence
+    kept its fragment-era score and flags and could stay under the bake floor."""
+
+    @staticmethod
+    def _fragment_row():
+        return {
+            "source_id": "1", "line_number": 1, "display_quote": "and so at three o'clock the",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "display_fragment": True, "cleanup_status": "fragment_fallback",
+            "quality_score": 50, "quality_flags": ["fragment", "fragment_fallback"],
+        }
+
+    CLEAN = "It was three o'clock in the beautiful breezy autumn day when he drove off to the Rectory."
+
+    def test_clean_replacement_is_rescored(self):
+        (row,), _ = apply_overrides([self._fragment_row()], {"1:1": {"display_quote": self.CLEAN}})
+        assert row["display_fragment"] is False
+        assert row["cleanup_status"] == "complete_sentence"
+        assert row["quality_score"] == 100
+        assert row["quality_flags"] == []
+
+    def test_explicit_quality_score_still_wins(self):
+        (row,), _ = apply_overrides(
+            [self._fragment_row()], {"1:1": {"display_quote": self.CLEAN, "quality_score": 0}}
+        )
+        assert row["quality_score"] == 0
+        assert row["display_fragment"] is False
+
+    def test_removing_the_override_restores_the_fragment_scoring(self):
+        original = self._fragment_row()
+        (patched,), _ = apply_overrides([original], {"1:1": {"display_quote": self.CLEAN}})
+        (restored,), _ = apply_overrides([patched], {})
+        assert restored == original
+
+    def test_a_fragmentary_replacement_is_still_a_fragment(self):
+        (row,), _ = apply_overrides([self._fragment_row()], {"1:1": {"display_quote": "at three o'clock"}})
+        assert row["display_fragment"] is True
+        assert row["quality_score"] < 60
