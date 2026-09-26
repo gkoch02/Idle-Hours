@@ -352,11 +352,16 @@ def build_bucket(hour: int | None, minute: int | None, explicit_daypart: str | N
 # within reach is the verb: "she struck one of the fish", "the book struck
 # one of the other boys", "struck one as an uncommonly strong dose" — five
 # such rows sat in the baked DB at 01:00 (issue #298).
+# The lookbehinds matter: ``\b`` sits between the apostrophe and the "c" of
+# "o'clock", so without them any "o'clock" within reach counted as a striker —
+# "she struck one of the fish; it was four o'clock" filed the verb at 01:00.
 _STRIKER_RE = re.compile(
-    r"\b(?:clocks?|watch|bells?|chimes?|chronometer|timepiece|church|tower|steeple|hours?|"
+    r"(?<!o')(?<!o’)\b(?:clocks?|watch|bells?|chimes?|chronometer|timepiece|church|tower|steeple|hours?|"
     r"belfry|campanile|carillon|gong|dial|clock-tower|church-bell)\b",
     re.IGNORECASE,
 )
+# ``struck N o'clock`` names a time on its own, whoever the subject is.
+_STRUCK_OCLOCK_RE = re.compile(r"\s*o['’]?\s*clock\b", re.IGNORECASE)
 _STRUCK_CONTEXT_CHARS = 60
 _IT_STRUCK_RE = re.compile(r"\bit\s+(?:had\s+|has\s+)?(?:just\s+|slowly\s+|now\s+)?$", re.IGNORECASE)
 
@@ -367,7 +372,9 @@ def _struck_has_clock_context(text: str, match: re.Match[str], hourword: str) ->
     ``the clock struck N`` carries its own noun. A bare ``struck N`` needs a
     striker (``_STRIKER_RE``) within ``_STRUCK_CONTEXT_CHARS`` on either side
     — "As the chime struck one", "Coggan's watch struck two", "struck three
-    on the Palace clock" — unless the hour is ``midnight`` or ``noon``, which
+    on the Palace clock"; "o'clock" is not a striker, but ``struck N
+    o'clock`` names a time on its own — unless the hour is ``midnight`` or
+    ``noon``, which
     nothing but a clock strikes, or the subject is the impersonal ``it``
     ("It had just struck eight", "It struck twelve—I waited") with any hour
     but ``one``: "it struck one as odd" / "how it really struck one" is the
@@ -381,6 +388,8 @@ def _struck_has_clock_context(text: str, match: re.Match[str], hourword: str) ->
         return True
     before = text[max(0, match.start() - _STRUCK_CONTEXT_CHARS):match.start()]
     after = text[match.end():match.end() + _STRUCK_CONTEXT_CHARS]
+    if _STRUCK_OCLOCK_RE.match(after):
+        return True
     if hourword != "one" and _IT_STRUCK_RE.search(before):
         return True
     return bool(_STRIKER_RE.search(before) or _STRIKER_RE.search(after))

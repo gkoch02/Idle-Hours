@@ -288,6 +288,9 @@ class TestStruckNeedsAStriker:
         "The book struck one of the other boys full in the face.",
         "He had not known how it really struck one until that moment.",
         "As agreed among themselves about the time, they struck five.",
+        # "o'clock" nearby is not a striker: \b sits inside it, before "clock".
+        "She struck one of the fish; it was four o'clock by then.",
+        "He struck two of them down. At five o’clock the fighting stopped.",
     ])
     def test_the_verb_is_rejected(self, text):
         assert _first_candidate(text, "clock_struck") is None
@@ -303,6 +306,10 @@ class TestStruckNeedsAStriker:
         ("It struck six long ago, and still nobody came.", 6),
         ("It had just struck eight when the door opened.", 8),
         ("It had just struck three on the Palace clock.", 3),
+        # "struck N o'clock" names a time whoever the subject is — including
+        # the impersonal "it struck one", which the idiom guard would reject.
+        ("It struck one o'clock as we came in.", 1),
+        ("Somewhere far off it struck four o’clock, and she rose to go.", 4),
     ])
     def test_a_striker_within_reach_is_accepted(self, text, hour):
         c = _first_candidate(text, "clock_struck")

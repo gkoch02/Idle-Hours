@@ -1,7 +1,7 @@
 # Bucket Coverage Report
 
-- Total rows: **2979**
-- Displayable rows (quality ≥ 60, not banned): **2321**
+- Total rows: **2978**
+- Displayable rows (quality ≥ 60, not banned): **2320**
 - Expected buckets: **144**
 - Populated buckets: **115**
 - Populated before the quality floor / bans: **119**
@@ -20,7 +20,7 @@
 - `h6_exact`: 150
 - `h4_exact`: 141
 - `h12_exact`: 122
-- `h7_exact`: 121
+- `h7_exact`: 120
 - `h1_exact`: 110
 - `h2_half_past`: 24
 - `h8_five_to`: 15
@@ -78,7 +78,7 @@
 
 ## Daypart counts
 
-- `morning`: 1305
+- `morning`: 1304
 - `night`: 876
 - `dawn`: 452
 - `noon`: 232
