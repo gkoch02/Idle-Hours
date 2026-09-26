@@ -98,7 +98,7 @@ jobs:
     # live ruleset does not require it. This keeps the signal without making the
     # slowest job the merge critical path.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v7

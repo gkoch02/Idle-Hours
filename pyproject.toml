@@ -41,7 +41,7 @@ dependencies = [
 # .github/workflows/ci.yml to fence it against the required-status-check list
 # in .github/rulesets/main-branch.json. Imported hard rather than through
 # ``importorskip`` so a missing parser fails that fence instead of skipping it.
-dev = ["pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
+dev = ["build", "pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
 # gpiozero deliberately does not choose a pin backend on its own. Raspberry Pi
 # OS deployments should install the distro's python3-lgpio + python3-rpi-lgpio
 # packages and create the venv with --system-site-packages; see the Pi guide and
