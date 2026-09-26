@@ -2033,3 +2033,17 @@ class TestDuplicateText:
         a, b, other = self._twins()
         assert pq._twin_texts([a, b, other], set(), set()) == (frozenset(), frozenset())
 
+
+
+def test_pick_cli_without_time_or_bucket_is_a_usage_error(capsys):
+    from idle_hours import pick_quote
+    with pytest.raises(SystemExit) as exc:
+        pick_quote.parse_args([])
+    assert exc.value.code == 2
+
+
+def test_selection_overrides_with_bom_load(tmp_path):
+    from idle_hours import pick_quote
+    path = tmp_path / "selection_overrides.json"
+    path.write_bytes(b"\xef\xbb\xbf" + b'{"ban_source_ids": ["141"]}')
+    assert pick_quote.load_overrides(path)["ban_source_ids"] == ["141"]

@@ -672,20 +672,17 @@ def validate_content_overrides_payload(payload: object) -> dict:
                 f"Allowed: {sorted(apply_content_overrides.ALLOWED_FIELDS)}"
             )
         for field, fval in value.items():
-            if field in {"display_quote", "matched_text", "author", "title", "normalized_time"}:
+            if field in {"display_quote", "matched_text", "author", "title"}:
                 if not isinstance(fval, str):
                     raise ValueError(f"override {key!r}.{field} must be a string")
-            elif field in {"hour", "minute", "quality_score"}:
-                if isinstance(fval, bool) or not isinstance(fval, int):
-                    raise ValueError(f"override {key!r}.{field} must be an int")
-                # Range-check so an out-of-bounds value can't silently re-derive
-                # a bogus bucket at bake time (e.g. minute=99 → bucket_for_time
-                # "HH:99" KeyErrors and the row gets dropped with no feedback).
-                bounds = {"hour": (0, 23), "minute": (0, 59), "quality_score": (0, 100)}[field]
-                if not bounds[0] <= fval <= bounds[1]:
-                    raise ValueError(
-                        f"override {key!r}.{field} must be in [{bounds[0]}, {bounds[1]}]"
-                    )
+                continue
+            # hour / minute / quality_score / normalized_time: the bake stage's
+            # own rule, so a value this endpoint accepts is one the next
+            # "Bake now" actually applies instead of skipping with a warning
+            # that only reaches the journal.
+            problem = apply_content_overrides._invalid_value(field, fval)
+            if problem:
+                raise ValueError(f"override {key!r}.{field} {problem}")
         cleaned[key] = dict(value)
     return cleaned
 
@@ -1546,7 +1543,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             # than 500-ing the whole overrides editor: a bad save should still
             # let the operator see (and overwrite) the defaults.
             try:
-                loaded = json.loads(raw.decode("utf-8"))
+                loaded = json.loads(raw.decode("utf-8-sig"))
             except ValueError:
                 loaded = None
             if isinstance(loaded, dict):
@@ -1903,7 +1900,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             current = _default_overrides()
             if raw is not None:
                 try:
-                    loaded = json.loads(raw.decode("utf-8"))
+                    loaded = json.loads(raw.decode("utf-8-sig"))
                     if not isinstance(loaded, dict):
                         raise ValueError("root is not a JSON object")
                     current.update(loaded)

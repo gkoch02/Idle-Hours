@@ -222,7 +222,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_HISTORY_DAYS,
         help="Number of days of history to consider when filtering repeats. 0 disables the filter.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.time and not args.bucket:
+        parser.error("provide --time or --bucket")
+    return args
 
 
 def resolve_path(path_str: str) -> Path:
@@ -424,7 +427,7 @@ def load_overrides(path: Path) -> dict:
     if not path.exists():
         return _empty_overrides()
     try:
-        overrides = json.loads(path.read_text(encoding="utf-8"))
+        overrides = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
         print(
             f"warning: selection overrides {path}: unreadable or invalid JSON ({exc}); "

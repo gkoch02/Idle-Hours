@@ -397,3 +397,44 @@ class TestDawnExpansionDriverOrdering:
         check = self._pos(text, "(( final_rows < baseline_rows ))")
         install = self._pos(text, 'mv "$TMP_OUT" "$EXISTING"')
         assert check < install
+
+
+class TestReviewFollowUps:
+    """Follow-ups from the adversarial review of the #305 change."""
+
+    def _row(self):
+        return {"source_id": "1", "line_number": 1, "hour": 2, "minute": 10,
+                "normalized_time": "02:10", "fuzzy_bucket": "h2_ten_past", "display_quote": "q"}
+
+    def test_invalid_edit_keeps_the_earlier_valid_override(self, capsys):
+        first, _ = apply_overrides([self._row()], {"1:1": {"minute": 30}})
+        assert first[0]["normalized_time"] == "02:30"
+        second, _ = apply_overrides(first, {"1:1": {"minute": "30"}})
+        row = second[0]
+        assert (row["minute"], row["normalized_time"], row["fuzzy_bucket"]) == (30, "02:30", "h2_half_past")
+        assert row["override_applied"] is True
+        # ...and deleting the entry still restores the true original.
+        third, _ = apply_overrides(second, {})
+        assert (third[0]["minute"], third[0]["normalized_time"]) == (10, "02:10")
+        assert "override_originals" not in third[0]
+
+    def test_invalid_normalized_time_edit_keeps_earlier_time(self, capsys):
+        first, _ = apply_overrides([self._row()], {"1:1": {"normalized_time": "03:45"}})
+        second, _ = apply_overrides(first, {"1:1": {"normalized_time": "3:45"}})
+        row = second[0]
+        assert (row["hour"], row["minute"], row["normalized_time"]) == (3, 45, "03:45")
+
+    def test_disagreeing_hour_yields_to_normalized_time(self, capsys):
+        patched, _ = apply_overrides([self._row()], {"1:1": {"normalized_time": "03:45", "hour": 7, "minute": 50}})
+        row = patched[0]
+        assert (row["hour"], row["minute"], row["fuzzy_bucket"]) == (3, 45, "h3_quarter_to")
+        assert "taken from normalized_time" in capsys.readouterr().err
+
+    def test_non_ascii_digits_rejected(self, capsys):
+        patched, _ = apply_overrides([self._row()], {"1:1": {"normalized_time": "\u0660\u0669:\u0663\u0660"}})
+        assert patched[0]["normalized_time"] == "02:10"
+
+    def test_bom_prefixed_sidecar_loads(self, tmp_path):
+        path = tmp_path / "content_overrides.json"
+        path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"1:1": {"display_quote": "x"}}).encode())
+        assert load_overrides(path) == {"1:1": {"display_quote": "x"}}

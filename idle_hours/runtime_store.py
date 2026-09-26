@@ -106,7 +106,7 @@ def load_runtime_state(state_path: str | None, telemetry_path: str | None = None
     if path is None or not path.exists():
         return {}
     try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
+        parsed = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
         _log(f"runtime state at {path} unreadable, ignoring: {exc!r}", err=True)
         if telemetry_path:

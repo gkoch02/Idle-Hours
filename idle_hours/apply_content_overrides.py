@@ -106,7 +106,9 @@ def load_overrides(path: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        text = path.read_text(encoding="utf-8")
+        # utf-8-sig: a BOM from a Windows editor would otherwise fail the
+        # parse, and fail-open would revert every override in the corpus.
+        text = path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         _warn(f"{path}: overrides unreadable ({exc!r}); treating as empty")
         return {}
@@ -130,7 +132,7 @@ def _warn(msg: str) -> None:
 # ``apply_overrides``.
 ORIGINALS_FIELD = "override_originals"
 _TIME_FIELDS = frozenset({"hour", "minute", "normalized_time"})
-_HHMM_RE = re.compile(r"\d{2}:\d{2}")
+_HHMM_RE = re.compile(r"[0-9]{2}:[0-9]{2}")
 
 
 def _invalid_value(field: str, value) -> str | None:
@@ -219,6 +221,7 @@ def apply_overrides(
         if unknown:
             _warn(f"{overrides_path}: override for {key} has unsupported fields: {', '.join(unknown)}")
         writes = {}
+        held = set()
         for field, value in patch.items():
             if field not in ALLOWED_FIELDS:
                 continue
@@ -228,8 +231,23 @@ def apply_overrides(
                 # out-of-range hour would otherwise land on the row and break
                 # every consumer that does arithmetic on it (issue #305).
                 _warn(f"{overrides_path}: override for {key} has invalid {field} {value!r} ({problem}); field skipped")
+                # A typo is not a deletion: keep whatever this field's earlier
+                # override put on the row rather than restoring the original.
+                held.add(field)
                 continue
             writes[field] = value
+        if "normalized_time" in writes:
+            parts = dict(zip(("hour", "minute"), (int(p) for p in writes["normalized_time"].split(":"))))
+            for field in ("hour", "minute"):
+                if field in writes and writes[field] != parts[field]:
+                    _warn(
+                        f"{overrides_path}: override for {key} sets {field}={writes[field]!r} but "
+                        f"normalized_time={writes['normalized_time']!r}; {field} taken from normalized_time"
+                    )
+                    del writes[field]
+        # A held time field keeps the fields derived with it, too.
+        if held & _TIME_FIELDS:
+            held |= _TIME_FIELDS - writes.keys()
         # hour/minute without normalized_time re-derive it, so it is written too.
         derive_time = bool(_TIME_FIELDS & writes.keys()) and "normalized_time" not in writes
         # ...and normalized_time re-derives whichever of hour/minute the patch
@@ -243,7 +261,7 @@ def apply_overrides(
 
         # Put back every field the sidecar used to write and no longer does.
         restored_any = False
-        for field in [f for f in originals if f not in written]:
+        for field in [f for f in originals if f not in written and f not in held]:
             _restore(row, field, originals.pop(field))
             restored_any = True
 

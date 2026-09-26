@@ -2515,14 +2515,22 @@ class TestContentOverridesValidator:
         with pytest.raises(ValueError, match="must be an int"):
             web_server.validate_content_overrides_payload({"141:42": {"hour": True}})
 
+    def test_normalized_time_uses_the_bake_stage_rule(self):
+        # The bake stage skips a malformed normalized_time, so accepting it
+        # here would report "saved" for an edit that never reaches the panel.
+        for bad in ("4:30", "banana", "24:00", "\u0660\u0669:\u0663\u0660"):
+            with pytest.raises(ValueError, match="normalized_time"):
+                web_server.validate_content_overrides_payload({"141:42": {"normalized_time": bad}})
+        web_server.validate_content_overrides_payload({"141:42": {"normalized_time": "04:30"}})
+
     def test_rejects_out_of_range_int_fields(self):
         # An out-of-range minute would re-derive a bogus bucket at bake time and
         # get silently dropped; reject it up front with a 400-worthy ValueError.
-        with pytest.raises(ValueError, match=r"\[0, 59\]"):
+        with pytest.raises(ValueError, match=r"0\.\.59"):
             web_server.validate_content_overrides_payload({"141:42": {"minute": 99}})
-        with pytest.raises(ValueError, match=r"\[0, 23\]"):
+        with pytest.raises(ValueError, match=r"0\.\.23"):
             web_server.validate_content_overrides_payload({"141:42": {"hour": 24}})
-        with pytest.raises(ValueError, match=r"\[0, 100\]"):
+        with pytest.raises(ValueError, match=r"0\.\.100"):
             web_server.validate_content_overrides_payload({"141:42": {"quality_score": 101}})
 
     def test_accepts_in_range_int_fields(self):
