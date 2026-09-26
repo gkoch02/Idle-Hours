@@ -41,7 +41,9 @@ from pathlib import Path
 
 from idle_hours import atomic_io
 from idle_hours.buckets import bucket_for_time
+from idle_hours.clean_display_quotes import looks_fragment
 from idle_hours.jsonl_io import iter_jsonl
+from idle_hours.quality_filter import score_quote
 from idle_hours.runtime_config import validate_hhmm
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -257,7 +259,17 @@ def apply_overrides(
         derive_parts = (
             {"hour", "minute"} - writes.keys() if "normalized_time" in writes else set()
         )
-        written = set(writes) | ({"normalized_time"} if derive_time else set()) | derive_parts
+        # ...and a replaced display_quote re-derives the fields the clean and
+        # quality stages computed from the *old* text. Without this the row
+        # kept its fragment-era flags and score: a curator-trimmed sentence
+        # stayed under the bake floor and lost ranking ties to its own
+        # fragment penalty. An explicit quality_score in the patch still wins.
+        derive_quality = (
+            {"display_fragment", "cleanup_status", "quality_flags"}
+            | ({"quality_score"} - writes.keys() - held)
+            if "display_quote" in writes else set()
+        )
+        written = set(writes) | ({"normalized_time"} if derive_time else set()) | derive_parts | derive_quality
 
         # Put back every field the sidecar used to write and no longer does.
         restored_any = False
@@ -276,6 +288,16 @@ def apply_overrides(
                 row["hour"] = parsed_hour
             if "minute" in derive_parts:
                 row["minute"] = parsed_minute
+
+        if derive_quality:
+            fragment = looks_fragment(writes["display_quote"])
+            status = "fragment_fallback" if fragment else "complete_sentence"
+            score, flags = score_quote(writes["display_quote"], fragment, status)
+            row["display_fragment"] = fragment
+            row["cleanup_status"] = status
+            row["quality_flags"] = flags
+            if "quality_score" in derive_quality:
+                row["quality_score"] = score
 
         if derive_time:
             hour = row.get("hour")

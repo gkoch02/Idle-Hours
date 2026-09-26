@@ -71,6 +71,13 @@ HEADING_PREFIX = re.compile(
     # at the start of a sentence ("MIX.", "DI.", "MD.", "CC.", "DC."). "LIV."
     # is excluded by name — it is a given name as often as fifty-four.
     r"(?!LIV\.)(?=[CLXVI]{2})C?(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\.(?=\s|$)"
+    r"|"
+    # ...and the same numeral with no period, running straight into a
+    # Title-case sentence: "XI Emil came home at about half-past seven",
+    # "III It was eleven o'clock". Nine shipped rows carried one. Without the
+    # period the next word has to be capitalised prose, so a lone numeral in
+    # running text is never taken.
+    r"(?!LIV\b)(?=[CLXVI]{2})C?(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})(?=\s+[A-Z][a-z])"
     r")\s*",
 )
 

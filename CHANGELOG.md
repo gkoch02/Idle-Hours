@@ -17,6 +17,16 @@ these entries under the new dated version heading.
   a file where a directory should be, a read-only mount) exits 42 and halts
   the systemd unit;
   transient errors such as a full disk still exit 1 and are retried.
+- Characters a theme's font cannot draw (the ellipsis in `glacier`, the
+  prime marks in about forty faces) now render as ASCII stand-ins instead of
+  a missing-glyph box.
+- Replacing a quote's text through `content_overrides.json` now re-scores it
+  from the new text, so a curator-trimmed sentence is no longer held under
+  the display floor, or ranked as a fragment, by the text it replaced.
+- Chapter numbers with no full stop ("XI Emil came home…") are stripped from
+  quotes; nine shipped quotes carried one.
+- Saving the whole overrides file from the curator UI keeps extra keys such
+  as `_comment` instead of dropping them.
 - Button D is now a real wake during quiet hours: the clock keeps ticking
   until the window ends, and skip, un-skip, re-render, the source card and
   theme changes no longer paint a clock quote onto a sleeping panel.
