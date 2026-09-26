@@ -10,6 +10,13 @@ class TestIterJsonl:
         path.write_text('{"a": 1}\n{"a": 2}\n', encoding="utf-8")
         assert list(iter_jsonl(path)) == [{"a": 1}, {"a": 2}]
 
+    def test_leading_bom_does_not_drop_the_first_row(self, tmp_path, capsys):
+        # Issue #307: a BOM glued to row one made it undecodable.
+        path = tmp_path / "rows.jsonl"
+        path.write_bytes(b'\xef\xbb\xbf{"a": 1}\n{"a": 2}\n')
+        assert list(iter_jsonl(path)) == [{"a": 1}, {"a": 2}]
+        assert capsys.readouterr().err == ""
+
     def test_skips_blank_lines(self, tmp_path):
         path = tmp_path / "rows.jsonl"
         path.write_text('{"a": 1}\n\n   \n{"a": 2}\n', encoding="utf-8")

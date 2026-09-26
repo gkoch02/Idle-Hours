@@ -74,6 +74,13 @@ fi
 mv "$TMP_OUT" "$EXISTING"
 echo ">>> Corpus grew from $baseline_rows to $final_rows rows (+$(( final_rows - baseline_rows )))"
 
+echo ">>> Re-applying hand-curated content overrides..."
+# The merged corpus was rebuilt from pipeline output, so any per-row fix in
+# content_overrides.json has to be layered back on — otherwise the bake below
+# ships the unpatched rows (issue #302). Writes in place, atomically; the
+# overrides path defaults to the bundled sidecar, resolved package-absolute.
+python3 -m idle_hours.apply_content_overrides "$EXISTING"
+
 echo ">>> Regenerating coverage snapshot..."
 python3 -m idle_hours.bucket_coverage "$EXISTING" \
   --output-json "$COVERAGE_JSON" \

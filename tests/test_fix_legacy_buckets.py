@@ -123,3 +123,27 @@ class TestMain:
         }
         result = self._run(tmp_path, row)
         assert result["fuzzy_bucket"] == "h3_exact"
+
+
+class TestAtomicInPlaceWrite:
+    def test_failed_replace_leaves_the_input_intact(self, tmp_path, monkeypatch):
+        """Issue #306: the default in-place rewrite goes through atomic_io, so
+        a crash at the rename leaves the original file byte-identical."""
+        import os
+
+        import pytest
+
+        input_file = tmp_path / "input.jsonl"
+        original = json.dumps({"hour": 1, "minute": 10, "normalized_time": "01:10",
+                               "fuzzy_bucket": "h1_early_past"}) + "\n"
+        input_file.write_text(original, encoding="utf-8")
+
+        def boom(*_a, **_k):
+            raise OSError("simulated crash")
+
+        monkeypatch.setattr(os, "replace", boom)
+        monkeypatch.setattr(sys, "argv", ["fix_legacy_buckets.py", str(input_file)])
+        with pytest.raises(OSError):
+            main()
+        assert input_file.read_text(encoding="utf-8") == original
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["input.jsonl"]

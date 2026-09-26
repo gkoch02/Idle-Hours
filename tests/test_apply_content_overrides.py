@@ -147,15 +147,55 @@ class TestApplyOverrides:
     def test_invalid_normalized_time_warns(self, sample_row, capsys):
         sample_row["source_id"] = "1"
         sample_row["line_number"] = 1
+        sample_row["normalized_time"] = "03:00"
         sample_row["fuzzy_bucket"] = "h3_exact"
         patched, _ = apply_overrides([sample_row], {"1:1": {"normalized_time": "25:99"}})
         err = capsys.readouterr().err
         assert "invalid" in err
         assert "25:99" in err
-        # The override still lands on the row (loud failure, not silent drop),
-        # but fuzzy_bucket is left as-was rather than corrupted.
-        assert patched[0]["normalized_time"] == "25:99"
+        # Issue #305: an invalid time is skipped loudly rather than landing on
+        # the row, where it would desynchronise hour/minute/bucket.
+        assert patched[0]["normalized_time"] == "03:00"
         assert patched[0]["fuzzy_bucket"] == "h3_exact"
+
+    def test_normalized_time_override_rederives_hour_and_minute(self, sample_row):
+        # Issue #305: hour/minute used to keep describing the old time.
+        sample_row.update(source_id="1", line_number=1, hour=3, minute=0,
+                          normalized_time="03:00", fuzzy_bucket="h3_exact")
+        (patched,), _ = apply_overrides([sample_row], {"1:1": {"normalized_time": "16:45"}})
+        assert (patched["hour"], patched["minute"]) == (16, 45)
+        assert patched["fuzzy_bucket"] == "h4_quarter_to"
+        assert patched["override_originals"] == {"normalized_time": "03:00", "hour": 3, "minute": 0}
+        (restored,), _ = apply_overrides([patched], {})
+        assert restored == sample_row
+
+    def test_explicit_hour_survives_a_normalized_time_override(self, sample_row):
+        sample_row.update(source_id="1", line_number=1, hour=3, minute=0, normalized_time="03:00")
+        (patched,), _ = apply_overrides([sample_row], {"1:1": {"normalized_time": "04:30", "hour": 4}})
+        assert (patched["hour"], patched["minute"]) == (4, 30)
+
+    @pytest.mark.parametrize("field,value", [
+        ("minute", "30"),
+        ("hour", "4"),
+        ("hour", True),
+        ("hour", 24),
+        ("minute", 60),
+        ("quality_score", "90"),
+        ("quality_score", 101),
+        ("normalized_time", "4:30"),
+        ("normalized_time", 430),
+    ])
+    def test_rejects_ill_typed_values(self, sample_row, capsys, field, value):
+        sample_row.update(source_id="1", line_number=1, hour=3, minute=0,
+                          normalized_time="03:00", fuzzy_bucket="h3_exact", quality_score=80)
+        before = dict(sample_row)
+        (patched,), applied = apply_overrides([sample_row], {"1:1": {field: value, "display_quote": "Kept."}})
+        err = capsys.readouterr().err
+        assert f"invalid {field}" in err
+        assert patched[field] == before[field]
+        assert patched["fuzzy_bucket"] == "h3_exact"
+        assert patched["display_quote"] == "Kept."
+        assert applied == 1
 
     def test_non_object_patch_logs_and_skips(self, sample_row, capsys):
         sample_row["source_id"] = "1"
@@ -328,3 +368,32 @@ class TestReversibleOverrides:
         row = self._row()
         (out,), applied = apply_overrides([row], {})
         assert out == row and applied == 0
+
+
+class TestDawnExpansionDriverOrdering:
+    """String fence on scripts/run_dawn_expansion.sh (issues #295 / #302).
+
+    The driver rebuilds the live corpus from pipeline output, so it must
+    re-apply the content-overrides sidecar before coverage and the bake, and
+    it must check the merged row count before the merge replaces the corpus.
+    """
+
+    SCRIPT = __import__("pathlib").Path(__file__).resolve().parents[1] / "scripts" / "run_dawn_expansion.sh"
+
+    def _pos(self, text, needle):
+        assert needle in text, f"{needle!r} missing from {self.SCRIPT.name}"
+        return text.index(needle)
+
+    def test_overrides_reapplied_after_merge_and_before_bake(self):
+        text = self.SCRIPT.read_text(encoding="utf-8")
+        install = self._pos(text, 'mv "$TMP_OUT" "$EXISTING"')
+        apply = self._pos(text, 'python3 -m idle_hours.apply_content_overrides "$EXISTING"')
+        coverage = self._pos(text, "python3 -m idle_hours.bucket_coverage")
+        bake = self._pos(text, "python3 -m idle_hours.bake_quote_database")
+        assert install < apply < coverage < bake
+
+    def test_shrink_check_runs_before_the_corpus_is_replaced(self):
+        text = self.SCRIPT.read_text(encoding="utf-8")
+        check = self._pos(text, "(( final_rows < baseline_rows ))")
+        install = self._pos(text, 'mv "$TMP_OUT" "$EXISTING"')
+        assert check < install

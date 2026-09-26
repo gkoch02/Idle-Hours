@@ -8,6 +8,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from idle_hours import atomic_io
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -276,9 +278,8 @@ def main() -> int:
 
     output_path = Path(args.output).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
-        for row in all_results:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    # Atomic (issue #306): a crash mid-write must not leave a truncated file.
+    atomic_io.atomic_write_lines(output_path, (json.dumps(row, ensure_ascii=False) for row in all_results))
 
     print(f"Targeted buckets searched: {len(targets)}")
     print(f"Targeted candidates found: {len(all_results)}")
