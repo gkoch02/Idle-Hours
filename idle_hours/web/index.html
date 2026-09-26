@@ -69,7 +69,8 @@
     <section class="tab-panel" id="tab-now" role="tabpanel">
       <div class="card preview-card">
         <div class="preview">
-          <img id="current-png" src="/current.png" alt="Currently rendered frame" />
+          <!-- No src: /current.png is token-gated, and main.js loads it with the header. -->
+          <img id="current-png" alt="Currently rendered frame" />
         </div>
         <div class="identity-strip">
           <div id="quote" class="quote">—</div>

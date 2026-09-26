@@ -12,6 +12,7 @@ import contextlib
 import errno
 import http.client
 import json
+import re
 import socket
 import threading
 import time
@@ -3693,6 +3694,17 @@ class TestImageRoutesGated:
         "source_id": "141", "line_number": 42,
     }
 
+    def test_the_shell_loads_nothing_gated_before_main_js_runs(self):
+        """The HTML parser fetches every src / href in the shell without the
+        token header, before main.js can swap in an authorised blob. A gated
+        route there 401s on every page load and writes a ``web_auth_fail``
+        entry, so the shell may only reference the ungated static routes."""
+        html = (Path(web_server.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+        html = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+        refs = re.findall(r'\b(?:src|href)="(/[^"]*)"', html)
+        gated = [r for r in refs if r.split("?")[0] not in web_server.UNGATED_GET_PATHS]
+        assert gated == [], gated
+
     def _token_server(self, tmp_path):
         args = _make_args_v2(tmp_path, web_bind="0.0.0.0:0")
         return _start_v2(tmp_path, token="secret", args=args)
@@ -3759,10 +3771,10 @@ class TestDisplayableCoverageOverTheWire:
     def _corpus(self, tmp_path, server):
         corpus = tmp_path / "relocated-corpus.jsonl"
         rows = [
-            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1, quality_score=90),
-            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2, quality_score=90),
-            make_row(fuzzy_bucket="h3_ten_to", normalized_time="03:50", source_id="7", line_number=3, quality_score=55),
-            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=4, quality_score=90),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1, quality_score=90, display_quote="Distinct quote number 1."),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2, quality_score=90, display_quote="Distinct quote number 2."),
+            make_row(fuzzy_bucket="h3_ten_to", normalized_time="03:50", source_id="7", line_number=3, quality_score=55, display_quote="Distinct quote number 3."),
+            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=4, quality_score=90, display_quote="Distinct quote number 4."),
         ]
         corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
         server.context.raw_corpus_path = corpus
