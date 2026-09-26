@@ -2150,6 +2150,56 @@ class TestApiBake:
         quotes = [c["row"]["display_quote"] for c in _json_body(body)["candidates"]]
         assert quotes == ["PATCHED VIA WEB."]
 
+    def test_deleting_an_override_and_baking_again_restores_the_row(self, v2_server):
+        """The bake writes overrides into the raw corpus, so without a record
+        of what they replaced "delete the entry, bake again" changed nothing
+        and the edit was permanent."""
+        server, _state, args = v2_server
+        original = {
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }
+        self._write_corpus(args, [original])
+        sidecar = Path(args.content_overrides)
+        sidecar.write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        assert _post(server, "/api/bake", None)[0] == 200
+        sidecar.write_text("{}", encoding="utf-8")
+        status, body = _post(server, "/api/bake", None)
+        assert status == 200, _json_body(body)
+        assert _json_body(body)["reverted_overrides"] == 1
+        raw = [json.loads(line) for line in Path(args.raw_corpus).read_text(encoding="utf-8").splitlines() if line]
+        assert raw == [original]
+        baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
+        assert baked[0]["display_quote"] == "ORIGINAL TEXT."
+
+    def test_baked_rows_do_not_carry_the_originals_ledger(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [{
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }])
+        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        assert _post(server, "/api/bake", None)[0] == 200
+        baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
+        assert "override_originals" not in baked[0]
+        assert baked[0]["override_applied"] is True
+
+    def test_a_repeat_bake_does_not_rewrite_the_raw_corpus(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [{
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }])
+        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        assert _post(server, "/api/bake", None)[0] == 200
+        before = Path(args.raw_corpus).stat()
+        assert _post(server, "/api/bake", None)[0] == 200
+        after = Path(args.raw_corpus).stat()
+        assert (before.st_mtime_ns, before.st_ino) == (after.st_mtime_ns, after.st_ino)
+
     def test_bake_leaves_the_raw_corpus_alone_when_the_sidecar_is_empty(self, v2_server):
         server, _state, args = v2_server
         rows = [{

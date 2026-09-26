@@ -1776,8 +1776,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
         the coverage grid) reads the raw corpus: after save → bake the panel
         showed the patched quote while the inspector still showed the old
         text, so the operator concluded the save had not landed. The raw
-        write is skipped when the sidecar is empty — nothing changed, and an
-        appliance runs on an SD card.
+        write is skipped when no row changed — an appliance runs on an SD card.
+        Deleting an override and baking again restores the row: the
+        overrides stage records what it replaced in ``override_originals``.
 
         The runtime picker reloads the baked DB on every ``select_quote`` call
         (it goes through ``_resolve_corpus`` which reads from disk), so the next
@@ -1808,17 +1809,21 @@ class CuratorHandler(BaseHTTPRequestHandler):
             # is reflected in the baked DB. Operator workflow: edit row → save
             # overrides → click Bake; both should land on the panel within seconds.
             sidecar = apply_content_overrides.load_overrides(ctx.content_overrides_path)
-            rows = list(iter_jsonl(ctx.raw_corpus_path))
-            if sidecar:
-                rows, applied = apply_content_overrides.apply_overrides(
-                    rows, sidecar, overrides_path=str(ctx.content_overrides_path),
-                )
-            else:
-                applied = 0
+            loaded = list(iter_jsonl(ctx.raw_corpus_path))
+            # Applied even when the sidecar is empty: a row whose override
+            # was just deleted is restored from its ``override_originals``,
+            # which is how "delete the entry, bake again" undoes an edit.
+            apply_stats: dict = {}
+            rows, applied = apply_content_overrides.apply_overrides(
+                loaded, sidecar, overrides_path=str(ctx.content_overrides_path), stats=apply_stats,
+            )
+            reverted = apply_stats.get("reverted", 0)
             # Re-derive fuzzy_bucket from the post-override normalized_time so
             # the baker sees the same buckets it would after a full pipeline run.
             rederive_buckets(rows)
-            if sidecar:
+            # Only rewrite the raw corpus when a row actually changed: a
+            # repeat bake of the same sidecar is a no-op on an SD card.
+            if rows != loaded:
                 atomic_io.atomic_write_lines(
                     ctx.raw_corpus_path,
                     (json.dumps(row, ensure_ascii=False) for row in rows),
@@ -1839,7 +1844,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         _log(f"web: baked {stats['kept']} rows -> {ctx.baked_db_path}")
         self._emit_web_telemetry({
             "mode": "action", "action": "bake", "label": "web", "ok": True,
-            "kept": stats["kept"], "applied": applied,
+            "kept": stats["kept"], "applied": applied, "reverted": reverted,
         })
         self._json(HTTPStatus.OK, {
             "ok": True,
@@ -1847,6 +1852,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "kept": stats["kept"],
             "input": stats["input"],
             "applied_overrides": applied,
+            "reverted_overrides": reverted,
             "drops": stats["drops"],
             "per_bucket": stats["per_bucket"],
         })

@@ -143,6 +143,11 @@ _BAKED_ONLY_FIELDS: frozenset[str] = frozenset(
     {"baked_score", "inferred_quote_minute", "baked_rank", "schema_version"}
 )
 
+# Raw-corpus bookkeeping the runtime never reads: ``override_originals`` is
+# how the content-overrides stage undoes a removed override, and it would only
+# add bytes to every patched row of the baked DB.
+_RAW_ONLY_FIELDS: frozenset[str] = frozenset({"override_originals"})
+
 
 def _static_score(row: dict, source_counts: Counter) -> list[int]:
     """Compute the ten row-intrinsic score components for ``row``.
@@ -222,7 +227,10 @@ def bake_rows(rows: list[dict], min_quality: int, *, top_n: int = 0) -> tuple[li
     # Defensive copy + strip: protects callers from surprise mutation, and
     # guarantees ``score_row`` takes the full recomputation path below even
     # when handed an already-baked input.
-    kept = [{k: v for k, v in row.items() if k not in _BAKED_ONLY_FIELDS} for row in kept]
+    kept = [
+        {k: v for k, v in row.items() if k not in _BAKED_ONLY_FIELDS and k not in _RAW_ONLY_FIELDS}
+        for row in kept
+    ]
 
     # Rarity must be computed against the input corpus (not the kept subset)
     # so picks are bit-for-bit equivalent to what the live picker does with

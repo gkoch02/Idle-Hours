@@ -22,7 +22,8 @@ other key in the sidecar is ignored with a stderr warning. After applying,
 ``fuzzy_bucket`` is re-derived from the post-override ``normalized_time`` so
 time-affecting overrides can't drift the bucket. Patched rows are stamped
 ``override_applied: true`` so downstream debugging can tell which rows came
-from the sidecar.
+from the sidecar, and carry ``override_originals`` — the values the sidecar
+replaced — so deleting an entry and re-running restores the row.
 
 Keys that don't match any row in the input are logged to stderr so typos and
 overrides for rows that later got dedup-dropped surface loudly rather than
@@ -122,52 +123,101 @@ def _warn(msg: str) -> None:
     print(f"warning: {msg}", file=sys.stderr, flush=True)
 
 
-def apply_overrides(rows: list[dict], overrides: dict[str, dict], *, overrides_path: str = "content_overrides.json") -> tuple[list[dict], int]:
+# Pre-override values of every field the sidecar has written on a row, kept
+# on the row itself so removing an override can put them back. See
+# ``apply_overrides``.
+ORIGINALS_FIELD = "override_originals"
+_TIME_FIELDS = frozenset({"hour", "minute", "normalized_time"})
+
+
+def _restore(row: dict, field: str, original) -> None:
+    # ``None`` records "absent or null" — the two are equivalent for every
+    # overridable field — and restores to absent.
+    if original is None:
+        row.pop(field, None)
+    else:
+        row[field] = original
+
+
+def apply_overrides(
+    rows: list[dict],
+    overrides: dict[str, dict],
+    *,
+    overrides_path: str = "content_overrides.json",
+    stats: dict | None = None,
+) -> tuple[list[dict], int]:
     """Return ``(patched_rows, applied_count)`` after layering ``overrides`` onto ``rows``.
 
     Mutates row copies, not the inputs. Warns on stderr for unknown fields and
     dangling keys (overrides that didn't match any row).
+
+    **Reversible.** This stage writes its output back over its input by
+    default, and so does the curator UI's "Bake now" (issue #288), so an
+    override is baked into the raw corpus. Without a record of what it
+    replaced, deleting the sidecar entry and re-running changed nothing —
+    the patched text was permanent, and on an appliance whose relocated
+    corpus has no git history, unrecoverable. So the first time the sidecar
+    writes a field, the row's previous value goes into ``override_originals``;
+    a field the sidecar no longer writes is restored from it and dropped.
+    A row left with no originals loses both ``override_originals`` and the
+    ``override_applied`` stamp. Rows patched before the ledger existed record
+    their already-patched value as the original, since the true one is gone.
+
+    ``stats``, when given, is filled with ``applied`` and ``reverted`` counts,
+    so a caller can tell whether anything changed.
     """
     patched_rows = [dict(row) for row in rows]
     unseen_keys = set(overrides.keys())
     applied = 0
+    reverted = 0
 
     for row in patched_rows:
         key = row_key(row)
-        if key is None or key not in overrides:
+        originals = dict(row.get(ORIGINALS_FIELD) or {})
+        patch = overrides.get(key) if key is not None else None
+        if key is not None and key in overrides:
+            unseen_keys.discard(key)
+            if not isinstance(patch, dict):
+                _warn(f"{overrides_path}: override for {key} is not an object; skipped")
+                patch = None
+        if patch is None and not originals:
             continue
-        unseen_keys.discard(key)
-        patch = overrides[key]
-        if not isinstance(patch, dict):
-            _warn(f"{overrides_path}: override for {key} is not an object; skipped")
-            continue
+        patch = patch or {}
 
         unknown = sorted(f for f in patch if f not in ALLOWED_FIELDS)
         if unknown:
             _warn(f"{overrides_path}: override for {key} has unsupported fields: {', '.join(unknown)}")
+        writes = {field: value for field, value in patch.items() if field in ALLOWED_FIELDS}
+        # hour/minute without normalized_time re-derive it, so it is written too.
+        derive_time = bool(_TIME_FIELDS & writes.keys()) and "normalized_time" not in writes
+        written = set(writes) | ({"normalized_time"} if derive_time else set())
 
-        time_touched = False
-        for field, value in patch.items():
-            if field not in ALLOWED_FIELDS:
-                continue
+        # Put back every field the sidecar used to write and no longer does.
+        restored_any = False
+        for field in [f for f in originals if f not in written]:
+            _restore(row, field, originals.pop(field))
+            restored_any = True
+
+        for field in written:
+            originals.setdefault(field, row.get(field))
+        for field, value in writes.items():
             row[field] = value
-            if field in {"hour", "minute", "normalized_time"}:
-                time_touched = True
 
-        if time_touched:
+        if derive_time:
             hour = row.get("hour")
             minute = row.get("minute")
             # If hour/minute were touched but normalized_time wasn't, keep them in sync.
-            if "normalized_time" not in patch:
-                if isinstance(hour, int) and isinstance(minute, int):
-                    row["normalized_time"] = f"{hour:02d}:{minute:02d}"
-                else:
-                    _warn(
-                        f"{overrides_path}: override for {key} touches hour/minute but "
-                        f"leaves them inconsistent (hour={hour!r}, minute={minute!r}); "
-                        f"bucket will not be re-derived. Provide both, or set normalized_time."
-                    )
+            if isinstance(hour, int) and isinstance(minute, int):
+                row["normalized_time"] = f"{hour:02d}:{minute:02d}"
+            else:
+                _warn(
+                    f"{overrides_path}: override for {key} touches hour/minute but "
+                    f"leaves them inconsistent (hour={hour!r}, minute={minute!r}); "
+                    f"bucket will not be re-derived. Provide both, or set normalized_time."
+                )
 
+        # Re-derived for every row this stage touches, as it always was; a
+        # restored time field makes it matter on the revert path too.
         normalized = row.get("normalized_time")
         if isinstance(normalized, str) and ":" in normalized:
             try:
@@ -178,8 +228,16 @@ def apply_overrides(rows: list[dict], overrides: dict[str, dict], *, overrides_p
                     f"normalized_time {normalized!r}; fuzzy_bucket left unchanged."
                 )
 
-        row["override_applied"] = True
-        applied += 1
+        if originals:
+            row[ORIGINALS_FIELD] = originals
+            row["override_applied"] = True
+        else:
+            row.pop(ORIGINALS_FIELD, None)
+            row.pop("override_applied", None)
+        if writes:
+            applied += 1
+        elif restored_any:
+            reverted += 1
 
     if unseen_keys:
         dangling = ", ".join(sorted(unseen_keys))
@@ -188,6 +246,9 @@ def apply_overrides(rows: list[dict], overrides: dict[str, dict], *, overrides_p
             f"(dropped row or typo?): {dangling}"
         )
 
+    if stats is not None:
+        stats["applied"] = applied
+        stats["reverted"] = reverted
     return patched_rows, applied
 
 
@@ -199,7 +260,8 @@ def main() -> int:
 
     rows = list(iter_jsonl(input_path))
     overrides = load_overrides(overrides_path)
-    patched, applied = apply_overrides(rows, overrides, overrides_path=str(overrides_path))
+    stats: dict = {}
+    patched, applied = apply_overrides(rows, overrides, overrides_path=str(overrides_path), stats=stats)
 
     # Atomic write: ``output_path == input_path`` when --output is omitted
     # (the default), so an in-place crash here would otherwise truncate the
@@ -211,6 +273,8 @@ def main() -> int:
     )
 
     print(f"Applied {applied} override(s) across {len(overrides)} sidecar entries")
+    if stats["reverted"]:
+        print(f"Reverted {stats['reverted']} row(s) whose override was removed from the sidecar")
     print(f"Wrote {len(patched)} rows to {output_path}")
     return 0
 
