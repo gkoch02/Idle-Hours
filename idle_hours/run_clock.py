@@ -92,6 +92,10 @@ BACKOFF_MAX_SECONDS = 15 * 60
 # hours and between bucket changes, but writing on every tick of a
 # default 60s loop would be noisy and on a 1s test loop would be absurd.
 HEARTBEAT_INTERVAL_SECONDS = 60
+# Longest uninterrupted inter-tick wait before the watchdog is pinged again
+# (issue #280). Kept at the heartbeat cadence so the shipped WatchdogSec=180s
+# is safe for any --interval-seconds.
+WATCHDOG_SLICE_SECONDS = HEARTBEAT_INTERVAL_SECONDS
 
 
 def _valid_hhmm(value: str) -> str:
@@ -1205,7 +1209,15 @@ def _build_button_handlers(
             _log("button D held: shutdown")
             with state.lock:
                 state.manual_quiet = True
-                save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                # Best-effort persist (issue #279): a disk error here must not
+                # escape before the shutdown command runs, leaving manual_quiet
+                # latched in memory with no rollback. The in-memory flip is what
+                # keeps the loop off the panel in the final seconds; the
+                # _rollback_quiet path below still un-latches on a failed command.
+                try:
+                    save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                except Exception as exc:
+                    _log(f"shutdown: runtime state persist failed: {exc!r}", err=True)
             try:
                 # Shared three-way --quiet-image dispatch (see
                 # runtime_quiet.render_quiet_frame): calling
@@ -1608,8 +1620,23 @@ def _loop_sleep(state: RuntimeState, seconds: float) -> bool:
     Returns True when ``state.stop_requested`` is set (caller should break the
     loop), False otherwise. Extracted as a module-level helper so tests can
     patch it to drive the loop deterministically without racing the event.
+
+    The wait is split into slices of at most ``WATCHDOG_SLICE_SECONDS``, each
+    followed by a systemd watchdog ping (issue #280). A single uninterrupted
+    wait meant an ``--interval-seconds`` longer than the unit's
+    ``WatchdogSec`` let systemd kill a perfectly healthy appliance mid-sleep.
+    A ping is a no-op off systemd, and ``stop_requested`` still interrupts any
+    slice immediately.
     """
-    return state.stop_requested.wait(timeout=seconds)
+    remaining = max(0.0, float(seconds))
+    while True:
+        chunk = min(remaining, WATCHDOG_SLICE_SECONDS)
+        if state.stop_requested.wait(timeout=chunk):
+            return True
+        remaining -= chunk
+        sd_notify.notify_watchdog()
+        if remaining <= 0:
+            return False
 
 
 def _install_signal_handlers(state: RuntimeState) -> None:
@@ -1948,6 +1975,7 @@ def main() -> int:
             args.mode, effective_theme, time_str=time_str,
             history_path=history_path, history_days=args.history_days,
             telemetry_path=telemetry_path, bucket=current_bucket(), quote_id=quote_id,
+            pin_quote=_pin_key_for(quote_id),
             **_corpus_kwargs(args),
         )
         if quote_id is not None:
@@ -1969,6 +1997,13 @@ def main() -> int:
     except pidfile.PidfileLockedError as exc:
         _log(str(exc), err=True)
         return 1
+    except OSError as exc:
+        # Unwritable / unopenable pidfile path (PermissionError, a directory,
+        # a missing parent that can't be created …): a configuration error,
+        # not contention. Exit 42 so RestartPreventExitStatus=42 halts the
+        # unit instead of flapping against Restart=always (issue #283).
+        _log(f"cannot acquire pidfile {args.pidfile!r}: {exc!r}", err=True)
+        return runtime_config.EXIT_CONFIG_ERROR
 
     persisted = load_runtime_state(args.state_path, telemetry_path=telemetry_path)
     state = RuntimeState(args.theme, persisted=persisted)
