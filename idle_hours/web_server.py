@@ -62,6 +62,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import hashlib
 import hmac
 import json
 import os
@@ -271,6 +272,11 @@ class WebContext:
         self._token_file: Path | None = Path(token_file).expanduser() if token_file else None
         self._cached_token: str = self._inline_token
         self._cached_token_mtime: float | None = None
+        # Latch for the "token file unreadable" log line (#291): the file is
+        # stat'ed on every request, so without a latch a missing file wrote
+        # one identical line to journald per request. Holds the repr of the
+        # last failure; cleared (with a "readable again" line) on recovery.
+        self._token_file_error: str | None = None
         self._token_lock = threading.Lock()
         self.history_path: str | None = args.history_path or None
         self.telemetry_path: str | None = args.telemetry_path or None
@@ -312,15 +318,18 @@ class WebContext:
         try:
             stat = self._token_file.stat()
         except OSError as exc:
-            if not initial:
-                _log(f"--web-token-file {self._token_file!s} unreadable: {exc!r}; using previous token", err=True)
+            self._note_token_file_error(f"unreadable: {exc!r}", initial=initial)
             return
+        if self._token_file_error is not None:
+            self._token_file_error = None
+            if not initial:
+                _log(f"--web-token-file {self._token_file!s} readable again")
         if self._cached_token_mtime == stat.st_mtime:
             return
         try:
             contents = self._token_file.read_text(encoding="utf-8").strip()
         except OSError as exc:
-            _log(f"--web-token-file {self._token_file!s} read failed: {exc!r}; using previous token", err=True)
+            self._note_token_file_error(f"read failed: {exc!r}", initial=initial)
             return
         if not contents and self._cached_token:
             _log(
@@ -336,6 +345,19 @@ class WebContext:
         self._cached_token_mtime = stat.st_mtime
         if not initial:
             _log(f"--web-token-file {self._token_file!s} reloaded (mtime changed)")
+
+    def _note_token_file_error(self, detail: str, *, initial: bool) -> None:
+        """Log a token-file failure once per distinct error, not once per request.
+
+        The startup read (``initial=True``) records the failure without
+        logging — ``run_clock._resolve_web_token`` has already reported it —
+        so a file missing from boot stays quiet until it changes or recovers.
+        """
+        if detail == self._token_file_error:
+            return
+        self._token_file_error = detail
+        if not initial:
+            _log(f"--web-token-file {self._token_file!s} {detail}; using previous token", err=True)
 
     def host_is_allowed(self, host_header: str) -> bool:
         """Return True when ``host_header`` names an authority we answer for.
@@ -581,6 +603,45 @@ def write_overrides_atomic(path: Path, payload: dict) -> None:
     atomic_io.atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
+# Serialises every read-modify-write of selection_overrides.json made through
+# this server (#289): the If-Match compare + write of a wholesale save, and the
+# append of a single-key ban. Per-process, which is the scope that matters —
+# the web server is the only in-process writer.
+_OVERRIDES_LOCK = threading.Lock()
+
+
+def _default_overrides() -> dict:
+    return {
+        "ban_source_ids": [],
+        "boost_source_ids": [],
+        "preferred_buckets": {},
+        "ban_quote_keys": [],
+    }
+
+
+def _read_overrides_bytes(path: Path) -> bytes | None:
+    """Return the sidecar's bytes, or ``None`` when the file does not exist."""
+    try:
+        return Path(path).read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def overrides_etag(raw: bytes | None) -> str:
+    """Strong ETag over the exact bytes on disk (``"absent"`` for no file)."""
+    if raw is None:
+        return '"absent"'
+    return '"' + hashlib.sha256(raw).hexdigest()[:32] + '"'
+
+
+def _etag_matches(if_match: str, current: str) -> bool:
+    """RFC 9110 If-Match: a comma list of ETags, or ``*`` (any existing file)."""
+    candidates = [c.strip() for c in if_match.split(",") if c.strip()]
+    if "*" in candidates:
+        return current != '"absent"'
+    return current in candidates
+
+
 def validate_content_overrides_payload(payload: object) -> dict:
     """Return a cleaned content-overrides dict, or raise ``ValueError``.
 
@@ -680,7 +741,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _ctx(self) -> WebContext:
         return self.server.context  # type: ignore[attr-defined]
 
-    def _send_body(self, status: int, content_type: str, data: bytes) -> None:
+    def _send_body(
+        self, status: int, content_type: str, data: bytes,
+        extra_headers: tuple[tuple[str, str], ...] = (),
+    ) -> None:
         """Emit a complete response: status, the common headers, ``data``.
 
         Every response — JSON, the static shell, PNGs, ``/metrics`` — goes
@@ -709,12 +773,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         for name, value in SECURITY_HEADERS:
             self.send_header(name, value)
+        for name, value in extra_headers:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
-    def _json(self, status: int, payload: dict) -> None:
+    def _json(self, status: int, payload: dict, extra_headers: tuple[tuple[str, str], ...] = ()) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self._send_body(status, "application/json; charset=utf-8", data)
+        self._send_body(status, "application/json; charset=utf-8", data, extra_headers)
 
     def _not_found(self) -> None:
         self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -886,8 +952,16 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 return
             return handler()
         except Exception as exc:  # noqa: BLE001
+            # The repr stays in the journal only (#291): echoing it to the
+            # client leaked internals (paths, exception text) on a LAN bind,
+            # and the telemetry marker carries just the exception class so an
+            # operator can still tell a flaky endpoint from a scanner.
             _log(f"web GET {path}: {exc!r}", err=True)
-            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
+            self._emit_web_telemetry({
+                "mode": "web_error", "status": 500, "path": path,
+                "error": f"internal error ({type(exc).__name__})",
+            })
+            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal error"})
 
     def _resolve_get_route(self, path: str, query: dict):
         """Return a zero-arg callable for ``path``, or ``None`` for 404."""
@@ -957,6 +1031,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         # told "401 token required" and learn that the service exists.
         routes = {
             "/api/overrides": self._api_overrides_post,
+            "/api/overrides/ban": self._api_overrides_ban_post,
             "/api/content-overrides": self._api_content_overrides_post,
             "/api/bake": self._api_bake_post,
             "/api/setup": self._api_setup_post,
@@ -1003,23 +1078,30 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ctx = self._ctx()
         state = ctx.state
         now = run_clock.current_time_str()
+        # Snapshot under the lock, resolve after releasing it (#291) — the
+        # same discipline ``_api_themes`` documents: resolve_effective_theme
+        # lazily imports render_quote, and a module import has no business
+        # running inside state.lock.
         with state.lock:
             quote_id = state.last_quote_id
             bucket = state.last_bucket or bucket_for_time(now)
-            theme = state.last_effective_theme or run_clock.resolve_effective_theme(
-                state.theme_arg, now, state.manual_theme,
-                current_random_theme=state.current_random_theme,
-                **run_clock._auto_theme_kwargs(ctx.args),
-            )
+            last_effective = state.last_effective_theme
+            theme_arg = state.theme_arg
+            current_random = state.current_random_theme
             manual_quiet = state.manual_quiet
             manual_awake = state.manual_awake
             manual_theme = state.manual_theme
+        theme = last_effective or run_clock.resolve_effective_theme(
+            theme_arg, now, manual_theme,
+            current_random_theme=current_random,
+            **run_clock._auto_theme_kwargs(ctx.args),
+        )
         asleep, _manual_only = run_clock.compute_quiet(ctx.args, state, now)
         payload = {
             "time": now,
             "bucket": bucket,
             "theme": theme,
-            "theme_arg": state.theme_arg,
+            "theme_arg": theme_arg,
             "manual_theme": manual_theme,
             "manual_quiet": manual_quiet,
             "manual_awake": manual_awake,
@@ -1037,7 +1119,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             hours = int(query.get("hours", ["24"])[0])
         except (TypeError, ValueError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "hours must be int"})
+            return self._reject(HTTPStatus.BAD_REQUEST, "hours must be int")
         hours = max(1, min(hours, 24 * 30))  # clamp 1h..30d
         ctx = self._ctx()
         if not ctx.telemetry_path:
@@ -1118,7 +1200,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         metric("idle_hours_press_dropped_total", summary.get("press_dropped_count", 0),
                "Button presses dropped because a render was in flight.", mtype="gauge")
         metric("idle_hours_web_auth_fails_total", summary.get("web_auth_fail_count", 0),
-               "Web UI POSTs that failed token auth in the last 24 hours.", mtype="gauge")
+               "Web UI requests (GET or POST) that failed token auth in the last 24 hours.", mtype="gauge")
         metric("idle_hours_web_errors_total", summary.get("web_error_count", 0),
                "Web UI 4xx/5xx responses in the last 24 hours.", mtype="gauge")
         metric("idle_hours_quiet_enter_total", summary.get("quiet_enter_count", 0),
@@ -1224,7 +1306,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             payload = self._coverage_summary()
         except (OSError, ValueError) as exc:
-            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
+            _log(f"web: coverage unavailable: {exc!r}", err=True)
+            return self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "coverage unavailable")
         self._json(HTTPStatus.OK, payload)
 
     def _api_gaps(self, query: dict) -> None:
@@ -1241,12 +1324,13 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             threshold = int(query.get("threshold", ["3"])[0])
         except (TypeError, ValueError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "threshold must be int"})
+            return self._reject(HTTPStatus.BAD_REQUEST, "threshold must be int")
         threshold = max(0, min(threshold, 50))
         try:
             coverage = self._coverage_summary()
         except (OSError, ValueError) as exc:
-            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
+            _log(f"web: coverage unavailable: {exc!r}", err=True)
+            return self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "coverage unavailable")
         bucket_counts = coverage.get("bucket_counts") or {}
         if not bucket_counts:
             return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
@@ -1297,7 +1381,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         so a freshly-booted appliance hits one URL on first paint to decide
         whether to overlay the wizard or load the normal UI.
         """
-        from idle_hours.theme_names import theme_cycle
+        from idle_hours.runtime_theme import random_theme_pool
         ctx = self._ctx()
         with ctx.state.lock:
             setup_complete = ctx.state.setup_complete
@@ -1305,7 +1389,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
             theme_arg = ctx.state.theme_arg
         self._json(HTTPStatus.OK, {
             "setup_complete": setup_complete,
-            "themes": list(theme_cycle()),
+            # The wizard offers themes to *live with*: a diagnostic-only theme
+            # (``diags``, which shows swatches instead of a quote) is excluded
+            # the same way ``--theme random`` excludes it (#292).
+            "themes": list(random_theme_pool()),
             "theme_arg": theme_arg,
             "manual_theme": manual_theme,
             "quiet_start": getattr(ctx.args, "quiet_start", None),
@@ -1436,8 +1523,14 @@ class CuratorHandler(BaseHTTPRequestHandler):
             current_random_theme=current_random,
             **run_clock._auto_theme_kwargs(ctx.args),
         )
+        from idle_hours.runtime_theme import random_theme_pool
         self._json(HTTPStatus.OK, {
             "themes": order,
+            # The Now tab's thumbnail grid (#292): every operator-choice theme,
+            # minus the diagnostic ``diags`` frame — a swatch panel rendered as
+            # a "preview" of the current quote is noise. The dropdown keeps
+            # the full ``themes`` list so ``diags`` stays explicitly reachable.
+            "preview_themes": list(random_theme_pool()),
             "theme_arg": theme_arg,
             "manual_theme": manual,
             "effective": effective,
@@ -1445,20 +1538,16 @@ class CuratorHandler(BaseHTTPRequestHandler):
 
     def _api_overrides_get(self) -> None:
         ctx = self._ctx()
-        defaults = {
-            "ban_source_ids": [],
-            "boost_source_ids": [],
-            "preferred_buckets": {},
-            "ban_quote_keys": [],
-        }
-        payload = defaults
-        if ctx.overrides_path.exists():
+        payload = _default_overrides()
+        with _OVERRIDES_LOCK:
+            raw = _read_overrides_bytes(ctx.overrides_path)
+        if raw is not None:
             # Fail open on a corrupt / hand-truncated / non-object file rather
             # than 500-ing the whole overrides editor: a bad save should still
             # let the operator see (and overwrite) the defaults.
             try:
-                loaded = json.loads(ctx.overrides_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
+                loaded = json.loads(raw.decode("utf-8"))
+            except ValueError:
                 loaded = None
             if isinstance(loaded, dict):
                 # Surface ban_quote_keys to the UI even on legacy files that
@@ -1466,7 +1555,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 # missing key.
                 loaded.setdefault("ban_quote_keys", [])
                 payload = loaded
-        self._json(HTTPStatus.OK, payload)
+        # The ETag names the exact bytes the editor was loaded from, so a save
+        # can say "only if nobody has written since" (If-Match, #289).
+        self._json(HTTPStatus.OK, payload, (("ETag", overrides_etag(raw)),))
 
     def _api_content_overrides_get(self) -> None:
         """Return the per-row content-overrides sidecar.
@@ -1501,15 +1592,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             limit = int(query.get("limit", ["50"])[0])
         except (TypeError, ValueError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "limit must be int"})
+            return self._reject(HTTPStatus.BAD_REQUEST, "limit must be int")
         limit = max(1, min(limit, 500))
         if not (q or author or title or bucket):
-            return self._json(
+            return self._reject(
                 HTTPStatus.BAD_REQUEST,
-                {"error": "at least one of q / author / title / bucket is required"},
+                "at least one of q / author / title / bucket is required",
             )
         if bucket and bucket not in pick_quote_module.valid_bucket_names():
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": f"unknown bucket {bucket!r}"})
+            return self._reject(HTTPStatus.BAD_REQUEST, f"unknown bucket {bucket!r}")
         results: list[dict] = []
         if not ctx.raw_corpus_path.exists():
             return self._json(HTTPStatus.OK, {"results": [], "total": 0, "note": "raw corpus missing"})
@@ -1560,7 +1651,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ctx = self._ctx()
         theme = (query.get("theme", [""])[0] or "default").strip()
         if theme not in render_quote.THEMES:
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": f"unknown theme {theme!r}"})
+            return self._reject(HTTPStatus.BAD_REQUEST, f"unknown theme {theme!r}")
         time_str = (query.get("time", [""])[0] or "").strip() or dt.datetime.now().strftime("%H:%M")
         # Validate HH:MM shape AND ranges. ``bucket_for_time`` calls
         # ``minute_bucket`` which uses ``((minute + 2) // 5) * 5`` to round —
@@ -1576,10 +1667,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             if not (0 <= h <= 23 and 0 <= m <= 59):
                 raise ValueError(f"time {time_str!r} out of range (need 00:00–23:59)")
         except (ValueError, AttributeError):
-            return self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": "time must be HH:MM (00:00–23:59)"},
-            )
+            return self._reject(HTTPStatus.BAD_REQUEST, "time must be HH:MM (00:00–23:59)")
         try:
             row = pick_quote_module.select_quote(
                 time_str=time_str,
@@ -1591,18 +1679,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 history_path=None,  # Preview should be deterministic — don't tie it to ledger state.
             )
         except SystemExit as exc:
-            return self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return self._reject(HTTPStatus.NOT_FOUND, str(exc))
         mode = (query.get("mode", [""])[0] or "production").strip()
         if mode not in PREVIEW_MODES:
-            return self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"error": f"mode must be one of {sorted(PREVIEW_MODES)}"},
-            )
+            return self._reject(HTTPStatus.BAD_REQUEST, f"mode must be one of {sorted(PREVIEW_MODES)}")
         try:
             width = int(query.get("width", [str(ctx.args.width)])[0])
             height = int(query.get("height", [str(ctx.args.height)])[0])
         except (TypeError, ValueError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "width/height must be int"})
+            return self._reject(HTTPStatus.BAD_REQUEST, "width/height must be int")
         # Cap dimensions: preview is used for thumbnails, and full panel size is
         # already enough detail while avoiding slow/high-memory renders from a
         # hostile or buggy client.
@@ -1646,7 +1731,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             limit = int(query.get("limit", ["50"])[0])
         except (TypeError, ValueError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "limit must be int"})
+            return self._reject(HTTPStatus.BAD_REQUEST, "limit must be int")
         limit = max(1, min(limit, 500))
         entries: list[dict] = []
         if ctx.history_path:
@@ -1733,9 +1818,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             top_n = int(query.get("top", ["10"])[0])
         except (TypeError, ValueError):
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": "top must be int"})
+            return self._reject(HTTPStatus.BAD_REQUEST, "top must be int")
         top_n = max(1, min(top_n, 50))  # cap at 50; dense buckets can exceed 200 candidates
         time_str = query.get("time", [None])[0]
+        if time_str is not None:
+            # Same boundary check /api/preview makes (#292): a malformed time
+            # otherwise reaches minute_bucket and surfaces as a 500.
+            from idle_hours.runtime_config import validate_hhmm
+            try:
+                validate_hhmm(time_str.strip())
+            except (ValueError, AttributeError):
+                return self._reject(HTTPStatus.BAD_REQUEST, "time must be HH:MM (00:00–23:59)")
+            time_str = time_str.strip()
         try:
             candidates = pick_quote_module.select_candidates(
                 time_str=time_str, bucket=bucket, top_n=top_n,
@@ -1748,18 +1842,92 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 history_path=None,  # UI wants the full corpus view, not the anti-repeat-filtered one
             )
         except SystemExit as exc:
-            return self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+            return self._reject(HTTPStatus.NOT_FOUND, str(exc))
         self._json(HTTPStatus.OK, {"bucket": bucket, "time": time_str, "candidates": candidates})
 
     # -- POST endpoints -------------------------------------------------------
 
     def _api_overrides_post(self) -> None:
+        """Replace ``selection_overrides.json`` wholesale.
+
+        Honours ``If-Match`` (#289): the editor sends the ETag it loaded, and a
+        file that changed underneath it — a "Ban this quote" click in another
+        tab, a CLI edit — returns 412 instead of being silently overwritten by
+        the stale textarea. A request without ``If-Match`` still writes
+        unconditionally so existing scripts keep working. The compare and the
+        write happen under one lock so two racing saves cannot both pass the
+        check.
+        """
         ctx = self._ctx()
         payload = self._read_json_body()
         cleaned = validate_overrides_payload(payload)
-        write_overrides_atomic(ctx.overrides_path, cleaned)
+        if_match = self.headers.get("If-Match")
+        with _OVERRIDES_LOCK:
+            if if_match is not None:
+                current = overrides_etag(_read_overrides_bytes(ctx.overrides_path))
+                if not _etag_matches(if_match, current):
+                    return self._reject(
+                        HTTPStatus.PRECONDITION_FAILED,
+                        "selection_overrides.json changed on disk since it was loaded; reload and re-apply",
+                    )
+            write_overrides_atomic(ctx.overrides_path, cleaned)
+            etag = overrides_etag(_read_overrides_bytes(ctx.overrides_path))
         _log(f"web: overrides updated -> {ctx.overrides_path}")
-        self._json(HTTPStatus.OK, {"ok": True, "path": str(ctx.overrides_path)})
+        self._json(
+            HTTPStatus.OK, {"ok": True, "path": str(ctx.overrides_path), "etag": etag},
+            (("ETag", etag),),
+        )
+
+    def _api_overrides_ban_post(self) -> None:
+        """Append one ``"<source_id>:<line_number>"`` to ``ban_quote_keys`` (#289).
+
+        The UI's "Ban this quote" buttons used to GET the sidecar, mutate it in
+        the browser and POST the whole document back — a lost update against
+        any concurrent write (another tab's ban, an editor save, a CLI edit)
+        between the two requests. The read-modify-write now happens here,
+        under the same lock the wholesale save takes.
+
+        A file that exists but does not parse (or fails validation) is refused
+        with 409 rather than replaced by defaults: the wholesale editor fails
+        open so the operator can *see* a broken file, but a one-key ban must
+        never be the thing that silently wipes every ban and boost in it.
+        """
+        ctx = self._ctx()
+        body = self._read_json_body()
+        key = body.get("key") if isinstance(body, dict) else None
+        if not isinstance(key, str) or not CONTENT_OVERRIDE_KEY_RE.match(key.strip()):
+            raise ValueError("key must be of the form '<source_id>:<line_number>'")
+        key = key.strip()
+        with _OVERRIDES_LOCK:
+            raw = _read_overrides_bytes(ctx.overrides_path)
+            current = _default_overrides()
+            if raw is not None:
+                try:
+                    loaded = json.loads(raw.decode("utf-8"))
+                    if not isinstance(loaded, dict):
+                        raise ValueError("root is not a JSON object")
+                    current.update(loaded)
+                    current = validate_overrides_payload(current)
+                except ValueError as exc:
+                    _log(f"web: refusing ban — {ctx.overrides_path} is invalid: {exc!r}", err=True)
+                    return self._reject(
+                        HTTPStatus.CONFLICT,
+                        "selection_overrides.json is corrupt or invalid; fix it in the editor before banning",
+                    )
+            already = key in current["ban_quote_keys"]
+            if not already:
+                current["ban_quote_keys"].append(key)
+                write_overrides_atomic(ctx.overrides_path, current)
+            etag = overrides_etag(_read_overrides_bytes(ctx.overrides_path))
+        _log(f"web: banned quote {key}" + (" (already banned)" if already else ""))
+        self._emit_web_telemetry({
+            "mode": "action", "action": "ban", "label": "web", "ok": True, "key": key,
+        })
+        self._json(
+            HTTPStatus.OK,
+            {"ok": True, "key": key, "already_banned": already, "etag": etag},
+            (("ETag", etag),),
+        )
 
     def _api_content_overrides_post(self) -> None:
         """Replace the per-row content-overrides sidecar atomically.

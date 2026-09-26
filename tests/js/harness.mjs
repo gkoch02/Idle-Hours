@@ -46,6 +46,14 @@ const EXPORTED = [
   "loadImage",
   "refreshCurrent",
   "refreshThemePreview",
+  "loadOverrides",
+  "saveOverrides",
+  "bakeNow",
+  "refreshCoverage",
+  "refreshTelemetry",
+  "maybeShowWizard",
+  "completeWizard",
+  "wireControls",
 ];
 
 class StubClassList {
@@ -65,7 +73,7 @@ export class StubElement {
     this.id = id;
     this.tagName = tag.toUpperCase();
     this.textContent = "";
-    this.innerHTML = "";
+    this._innerHTML = "";
     this.className = "";
     this.value = "";
     this.hidden = false;
@@ -77,6 +85,11 @@ export class StubElement {
     this.children = [];
     this.listeners = {};
   }
+  // Assigning innerHTML replaces the children, as in a real DOM — otherwise a
+  // re-rendered list (the theme dropdown on every poll) would accumulate
+  // stale options and a test could read the first render's selection.
+  get innerHTML() { return this._innerHTML; }
+  set innerHTML(v) { this._innerHTML = v; this.children = []; }
   get lastChild() { return this.children[this.children.length - 1] ?? null; }
   setAttribute(k, v) { this.attributes[k] = v; }
   getAttribute(k) { return this.attributes[k]; }
@@ -89,6 +102,13 @@ export class StubElement {
   }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   querySelectorAll() { return []; }
+  querySelector() { return null; }
+  // Focus moves document.activeElement, which the wizard's focus management
+  // and the dropdown's focus guard both read. `_doc` is wired by loadMainJs.
+  focus() {
+    this.focusCalls = (this.focusCalls || 0) + 1;
+    if (this._doc) this._doc._activeElement = this;
+  }
   // Convenience for assertions: every option appended to a <select>.
   get optionValues() { return this.children.map((c) => c.value); }
 }
@@ -110,6 +130,7 @@ export async function loadMainJs(opts = {}) {
 
   const elements = new Map();
   for (const id of opts.elementIds || []) elements.set(id, new StubElement(id));
+  let documentRef = null;
 
   const tabs = opts.tabs || [];
   const panels = opts.panels || [];
@@ -136,7 +157,7 @@ export async function loadMainJs(opts = {}) {
     _activeElement: null,
     get activeElement() { return this._activeElement; },
     getElementById: (id) => elements.get(id) ?? null,
-    createElement: (tag) => new StubElement("", tag),
+    createElement: (tag) => { const el = new StubElement("", tag); el._doc = documentRef; return el; },
     querySelectorAll: (sel) => {
       if (sel === ".tab") return tabs;
       if (sel === ".tab-panel") return panels;
@@ -145,6 +166,9 @@ export async function loadMainJs(opts = {}) {
     addEventListener: (type, fn) => { (document.listeners[type] ||= []).push(fn); },
     listeners: {},
   };
+
+  documentRef = document;
+  for (const el of elements.values()) el._doc = document;
 
   const location = { hash: opts.hash ?? "" };
 

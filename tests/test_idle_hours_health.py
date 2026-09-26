@@ -448,7 +448,7 @@ class TestFormatSummary:
 
     def test_web_error_shown_when_nonzero(self):
         out = idle_hours_health.format_summary(self._base_summary(web_error_count=1), hours=1)
-        assert "1 web POST errors" in out
+        assert "1 web errors" in out
 
     def test_quiet_hours_shown_when_nonzero(self):
         out = idle_hours_health.format_summary(
