@@ -4091,6 +4091,23 @@ class TestTokenFileLogLatch:
         ctx.current_token()
         assert capsys.readouterr().err.count("unreadable") == 1
 
+    def test_statable_but_unreadable_stays_latched(self, tmp_path, capsys):
+        """A path that stats but can't be read (here a directory) logs once,
+        not a recovery plus a fresh failure on every request (PR #315 review)."""
+        token_file = tmp_path / "token"
+        token_file.write_text("secret\n", encoding="utf-8")
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        ctx = web_server.WebContext(args, run_clock.RuntimeState(args.theme), token_file=str(token_file))
+        capsys.readouterr()
+        token_file.unlink()
+        token_file.mkdir()
+        for _ in range(5):
+            assert ctx.current_token() == "secret"
+        captured = capsys.readouterr()
+        out = captured.out + captured.err
+        assert out.count("read failed") == 1, out
+        assert "readable again" not in out
+
     def test_missing_at_startup_stays_quiet(self, tmp_path, capsys):
         """run_clock._resolve_web_token already reported the startup miss."""
         missing = tmp_path / "never"

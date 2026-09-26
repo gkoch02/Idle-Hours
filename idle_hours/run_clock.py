@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import errno
 import os
 import shlex
 import signal
@@ -2011,6 +2012,11 @@ def main() -> int:
         _log(f"cannot acquire pidfile {args.pidfile!r}: {exc!r}", err=True)
         return runtime_config.EXIT_CONFIG_ERROR
     except OSError as exc:
+        if exc.errno == errno.EROFS:
+            # A read-only mount (ProtectSystem=strict, a read-only root) is how
+            # the unit was configured, not a moment: halt rather than flap.
+            _log(f"cannot acquire pidfile {args.pidfile!r}: {exc!r}", err=True)
+            return runtime_config.EXIT_CONFIG_ERROR
         # Anything else (ENOSPC, EIO on a flaky SD card, ENOLCK) can clear on
         # its own, so exit 1 and let Restart=always retry: halting the unit on
         # a transient fault would freeze the panel until a human intervened.

@@ -324,17 +324,19 @@ class WebContext:
         except OSError as exc:
             self._note_token_file_error(f"unreadable: {exc!r}", initial=initial)
             return
-        if self._token_file_error is not None:
-            self._token_file_error = None
-            if not initial:
-                _log(f"--web-token-file {self._token_file!s} readable again")
         if self._cached_token_mtime == stat.st_mtime:
+            # Unchanged since the last successful read: back and readable.
+            self._clear_token_file_error(initial=initial)
             return
         try:
             contents = self._token_file.read_text(encoding="utf-8").strip()
         except OSError as exc:
+            # A path that stats but can't be read (a directory, no read
+            # permission) must stay latched: clearing on the stat alone logged
+            # a recovery and a fresh failure on every request.
             self._note_token_file_error(f"read failed: {exc!r}", initial=initial)
             return
+        self._clear_token_file_error(initial=initial)
         if not contents and self._cached_token:
             _log(
                 f"--web-token-file {self._token_file!s} is now empty; refusing to downgrade to "
@@ -349,6 +351,13 @@ class WebContext:
         self._cached_token_mtime = stat.st_mtime
         if not initial:
             _log(f"--web-token-file {self._token_file!s} reloaded (mtime changed)")
+
+    def _clear_token_file_error(self, *, initial: bool) -> None:
+        if self._token_file_error is None:
+            return
+        self._token_file_error = None
+        if not initial:
+            _log(f"--web-token-file {self._token_file!s} readable again")
 
     def _note_token_file_error(self, detail: str, *, initial: bool) -> None:
         """Log a token-file failure once per distinct error, not once per request.

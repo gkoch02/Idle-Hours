@@ -14,7 +14,8 @@ these entries under the new dated version heading.
   main loop already did. A custom `--render-script` that does not accept
   those flags now fails under `--once` too.
 - A pidfile that cannot be created because of the configuration (permission,
-  a file where a directory should be) exits 42 and halts the systemd unit;
+  a file where a directory should be, a read-only mount) exits 42 and halts
+  the systemd unit;
   transient errors such as a full disk still exit 1 and are retried.
 - Button D is now a real wake during quiet hours: the clock keeps ticking
   until the window ends, and skip, un-skip, re-render, the source card and

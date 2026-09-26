@@ -209,3 +209,17 @@ class TestWebhookThreadStartFailure:
         # Every permit came back: a full set can still be acquired.
         for _ in range(runtime_webhook._WEBHOOK_MAX_INFLIGHT):
             assert sem.acquire(blocking=False)
+
+
+def test_read_only_pidfile_mount_is_a_config_error(tmp_path):
+    """EROFS arrives as a plain OSError; a read-only mount is configuration."""
+    argv = [
+        "run_clock.py", "--output", str(tmp_path / "current.png"),
+        "--buttons-off", "--history-path", "", "--telemetry-path", "",
+        "--state-path", "", "--quiet-off", "--skip-preflight",
+        "--pidfile", str(tmp_path / "run_clock.pid"),
+    ]
+    with patch("sys.argv", argv), \
+         patch("idle_hours.run_clock.pidfile.acquire_pidfile", side_effect=OSError(errno.EROFS, "ro")), \
+         patch("idle_hours.run_clock.render_now"):
+        assert run_clock.main() == runtime_config.EXIT_CONFIG_ERROR
