@@ -35,12 +35,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 from idle_hours import atomic_io
 from idle_hours.buckets import bucket_for_time
 from idle_hours.jsonl_io import iter_jsonl
+from idle_hours.runtime_config import validate_hhmm
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -104,7 +106,9 @@ def load_overrides(path: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        text = path.read_text(encoding="utf-8")
+        # utf-8-sig: a BOM from a Windows editor would otherwise fail the
+        # parse, and fail-open would revert every override in the corpus.
+        text = path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         _warn(f"{path}: overrides unreadable ({exc!r}); treating as empty")
         return {}
@@ -128,6 +132,31 @@ def _warn(msg: str) -> None:
 # ``apply_overrides``.
 ORIGINALS_FIELD = "override_originals"
 _TIME_FIELDS = frozenset({"hour", "minute", "normalized_time"})
+_HHMM_RE = re.compile(r"[0-9]{2}:[0-9]{2}")
+
+
+def _invalid_value(field: str, value) -> str | None:
+    """Return why ``value`` can't be written to ``field``, or ``None`` if it can.
+
+    ``bool`` is rejected explicitly: it is an ``int`` subclass, so ``True``
+    would otherwise pass as hour 1.
+    """
+    if field in {"hour", "minute", "quality_score"}:
+        if not isinstance(value, int) or isinstance(value, bool):
+            return "must be an integer"
+        bounds = {"hour": (0, 23), "minute": (0, 59), "quality_score": (0, 100)}[field]
+        if not bounds[0] <= value <= bounds[1]:
+            return f"must be {bounds[0]}..{bounds[1]}"
+    elif field == "normalized_time":
+        if not isinstance(value, str):
+            return "must be an HH:MM string"
+        try:
+            validate_hhmm(value)
+        except ValueError:
+            return "must be HH:MM, 00:00-23:59"
+        if not _HHMM_RE.fullmatch(value):
+            return "must be zero-padded HH:MM"
+    return None
 
 
 def _restore(row: dict, field: str, original) -> None:
@@ -191,14 +220,48 @@ def apply_overrides(
         unknown = sorted(f for f in patch if f not in ALLOWED_FIELDS)
         if unknown:
             _warn(f"{overrides_path}: override for {key} has unsupported fields: {', '.join(unknown)}")
-        writes = {field: value for field, value in patch.items() if field in ALLOWED_FIELDS}
+        writes = {}
+        held = set()
+        for field, value in patch.items():
+            if field not in ALLOWED_FIELDS:
+                continue
+            problem = _invalid_value(field, value)
+            if problem:
+                # Skip just this field: a string minute ("30") or an
+                # out-of-range hour would otherwise land on the row and break
+                # every consumer that does arithmetic on it (issue #305).
+                _warn(f"{overrides_path}: override for {key} has invalid {field} {value!r} ({problem}); field skipped")
+                # A typo is not a deletion: keep whatever this field's earlier
+                # override put on the row rather than restoring the original.
+                held.add(field)
+                continue
+            writes[field] = value
+        if "normalized_time" in writes:
+            parts = dict(zip(("hour", "minute"), (int(p) for p in writes["normalized_time"].split(":"))))
+            for field in ("hour", "minute"):
+                if field in writes and writes[field] != parts[field]:
+                    _warn(
+                        f"{overrides_path}: override for {key} sets {field}={writes[field]!r} but "
+                        f"normalized_time={writes['normalized_time']!r}; {field} taken from normalized_time"
+                    )
+                    del writes[field]
+        # A held time field keeps the fields derived with it, too.
+        if held & _TIME_FIELDS:
+            held |= _TIME_FIELDS - writes.keys()
         # hour/minute without normalized_time re-derive it, so it is written too.
         derive_time = bool(_TIME_FIELDS & writes.keys()) and "normalized_time" not in writes
-        written = set(writes) | ({"normalized_time"} if derive_time else set())
+        # ...and normalized_time re-derives whichever of hour/minute the patch
+        # left out, or they would go on describing the old time (issue #305).
+        # Derived fields count as written so their originals are recorded and
+        # removing the override restores them.
+        derive_parts = (
+            {"hour", "minute"} - writes.keys() if "normalized_time" in writes else set()
+        )
+        written = set(writes) | ({"normalized_time"} if derive_time else set()) | derive_parts
 
         # Put back every field the sidecar used to write and no longer does.
         restored_any = False
-        for field in [f for f in originals if f not in written]:
+        for field in [f for f in originals if f not in written and f not in held]:
             _restore(row, field, originals.pop(field))
             restored_any = True
 
@@ -206,6 +269,13 @@ def apply_overrides(
             originals.setdefault(field, row.get(field))
         for field, value in writes.items():
             row[field] = value
+
+        if derive_parts:
+            parsed_hour, parsed_minute = (int(p) for p in writes["normalized_time"].split(":"))
+            if "hour" in derive_parts:
+                row["hour"] = parsed_hour
+            if "minute" in derive_parts:
+                row["minute"] = parsed_minute
 
         if derive_time:
             hour = row.get("hour")

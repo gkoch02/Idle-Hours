@@ -268,5 +268,10 @@ def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
         if today != state.last_seen_date and state.theme_arg in ("auto", "random") and state.manual_theme is not None:
             _log(f"midnight rollover: clearing manual theme override ({state.manual_theme})")
             state.manual_theme = None
-            run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+            # Best-effort (issue #279): this runs at tick-top, outside the
+            # loop's error handling, so a persist error would crash main().
+            try:
+                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+            except Exception as exc:
+                _log(f"midnight rollover: runtime state persist failed: {exc!r}", err=True)
         state.last_seen_date = today

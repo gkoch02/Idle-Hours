@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from idle_hours import quality_filter as qf
 from tests.conftest import make_row
 
@@ -285,3 +287,43 @@ class TestMainCLI:
         assert qf.main() == 0
         written = json.loads(output_path.read_text().splitlines()[0])
         assert "quality_score" in written
+
+
+class TestLeadingHeadingPenalty:
+    """Issue #308: a heading still opening the excerpt is pushed under the
+    bake floor even when the cleaner missed it."""
+
+    def test_roman_numeral_heading_is_penalised(self):
+        s, flags = score("XXXIV. Next morning, accordingly, she rose at five o'clock and went into the street.")
+        assert "leading_heading" in flags
+        assert s < 70
+
+    def test_caps_chapter_title_is_penalised(self):
+        _, flags = score(
+            "WITHIN THE POWER-HOUSE At a few moments before six o'clock Byng was shown into Jasmine's sitting-room."
+        )
+        assert "leading_heading" in flags
+
+    def test_play_speaker_label_is_not_a_heading(self):
+        _, flags = score("ROSALIND. How say you now? Is it not past two o'clock? And here much Orlando.")
+        assert "leading_heading" not in flags
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "J. R. R. Tolkien was born, and at ten o’clock he was christened in the chapel.",
+            "U. S. A. Troops landed at ten o’clock and marched inland until the evening came.",
+            "SIR TOBY BELCH. Out o’ tune, sir: ye lie. Art any more than a steward? It is ten o’clock.",
+            "MR. JONES, SIR. How are you? I have waited here since ten o’clock this morning.",
+            "I AM NOT. Go away, for I will not open the door before ten o’clock tonight.",
+            "NO, NO, NO. I will not go, not if the clock strikes ten o’clock a hundred times.",
+            "MIX. It was ten o’clock and the flour had to be in the bowl before the fire went out.",
+        ],
+    )
+    def test_caps_prose_is_not_flagged(self, text):
+        _, flags = score(text)
+        assert "leading_heading" not in flags
+
+    def test_pronoun_sentence_is_not_a_heading(self):
+        _, flags = score("I. said nothing, but at five o'clock the carriage came round to the door.")
+        assert "leading_heading" not in flags

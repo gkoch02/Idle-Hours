@@ -108,6 +108,10 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     without webhook plumbing, since alerting on every 60s liveness ping
     would be spam.
     """
+    # Stamp ``ts`` once so the file line and the webhook payload carry the
+    # same timestamp (issue #281: the webhook used to get the unstamped entry).
+    # An explicit ``ts`` on the caller's entry wins, as it does in the file.
+    entry = {"ts": _now_ts(), **entry}
     _append_entry(telemetry_path, entry, fsync=True)
     # Lazy import: webhook config is read at the call boundary so a test that
     # never configures one pays no import cost. The module is tiny anyway,
@@ -119,6 +123,10 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
         post_event(url, entry, send_all=all_events)
 
 
+def _now_ts() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
 def _append_entry(telemetry_path: str | None, entry: dict, *, fsync: bool) -> None:
     if not telemetry_path:
         return
@@ -126,7 +134,7 @@ def _append_entry(telemetry_path: str | None, entry: dict, *, fsync: bool) -> No
         base = Path(telemetry_path).expanduser()
         path = daily_telemetry_path(base)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
+        payload = {"ts": _now_ts(), **entry}
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
             if fsync:

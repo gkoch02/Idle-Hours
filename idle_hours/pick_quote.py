@@ -68,13 +68,17 @@ BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
 BAKED_SCORE_SCHEMA_VERSION: int = 1
 
 EXACT_MINUTE_PATTERNS = {
-    "zero": ["o’clock", "oclock", "struck"],
+    # Both apostrophes: the corpus carries straight "o'clock" as often as the
+    # typographic one, and a straight one otherwise inferred no minute at all.
+    "zero": ["o’clock", "o'clock", "oclock", "struck"],
     5: ["five minutes past", "five minutes after", "five past"],
     10: ["ten minutes past", "ten minutes after", "ten past"],
     15: ["quarter past"],
     20: ["twenty minutes past", "twenty past"],
     25: ["twenty-five minutes past", "twenty five minutes past", "twenty-five past", "twenty five past"],
-    30: ["half past", "half-past", "11:30", "12:30"],
+    # No digital "11:30"-style entries: a digit pair is a different minute on
+    # every other hour, and --strict harvests never produce digital matches.
+    30: ["half past", "half-past"],
     35: ["thirty-five minutes past", "thirty five minutes past", "twenty-five minutes to", "twenty five minutes to", "twenty-five to", "twenty five to"],
     40: ["twenty minutes to", "twenty to"],
     45: ["quarter to"],
@@ -142,7 +146,26 @@ PRONOUN_HEAVY_OPENINGS = [
 ]
 
 
-def parse_args() -> argparse.Namespace:
+def _cli_time(value: str) -> str:
+    """argparse ``type=`` for ``--time``: a clean exit-2 error, not a traceback (issue #304)."""
+    from idle_hours.runtime_config import validate_hhmm
+
+    try:
+        return validate_hhmm(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
+def _cli_bucket(value: str) -> str:
+    """argparse ``type=`` for ``--bucket``: must be a canonical ``h{1..12}_{state}`` name (issue #304)."""
+    if value not in valid_bucket_names():
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not a valid bucket (expected h1..h12 plus one of: {', '.join(BUCKET_ORDER)})"
+        )
+    return value
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pick the best Idle Hours quote for a time.")
     parser.add_argument(
         "--input",
@@ -159,11 +182,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--time",
+        type=_cli_time,
         help="Time in HH:MM 24-hour format, for example 22:54.",
     )
     parser.add_argument(
         "--bucket",
-        help="Explicit bucket like h10_just_before.",
+        type=_cli_bucket,
+        help="Explicit bucket like h10_five_to.",
     )
     parser.add_argument(
         "--seed",
@@ -197,7 +222,10 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_HISTORY_DAYS,
         help="Number of days of history to consider when filtering repeats. 0 disables the filter.",
     )
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    if not args.time and not args.bucket:
+        parser.error("provide --time or --bucket")
+    return args
 
 
 def resolve_path(path_str: str) -> Path:
@@ -399,7 +427,7 @@ def load_overrides(path: Path) -> dict:
     if not path.exists():
         return _empty_overrides()
     try:
-        overrides = json.loads(path.read_text(encoding="utf-8"))
+        overrides = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
         print(
             f"warning: selection overrides {path}: unreadable or invalid JSON ({exc}); "

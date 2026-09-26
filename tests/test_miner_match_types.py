@@ -101,13 +101,26 @@ class TestQuarterHalfMatchType:
         assert c.hour == 2
         assert c.minute == 30
 
-    def test_hyphenated_half_past_is_not_matched(self):
-        """The quarter_half regex uses ``\\s+`` between "half" and "past" — it
-        does NOT accept "half-past". Documenting this explicitly so the day
-        someone adds hyphen support, they also update this test rather than
-        silently changing observable behaviour."""
-        c = _first_candidate("It was half-past ten when we arrived.", "quarter_half")
-        assert c is None
+    @pytest.mark.parametrize(
+        "text, hour, minute",
+        [
+            ("It was half-past ten when we arrived.", 10, 30),
+            ("At a quarter-past six the lamps were lit.", 6, 15),
+            ("It was half-past-ten by the kitchen clock.", 10, 30),
+            ("We dined at a quarter after seven.", 7, 15),
+            ("The coach left at half after four.", 4, 30),
+        ],
+    )
+    def test_hyphenated_and_after_forms(self, text, hour, minute):
+        """Issue #301: "half-past" / "quarter after" / "half after" used to
+        produce no row at all, so every hyphenated period text lost its
+        half-hours."""
+        c = _first_candidate(text, "quarter_half")
+        assert c is not None
+        assert (c.hour, c.minute) == (hour, minute)
+
+    def test_half_after_needs_an_hour_word(self):
+        assert _first_candidate("Half after dinner he slept.", "quarter_half") is None
 
 
 class TestQuarterToMatchType:
@@ -117,6 +130,19 @@ class TestQuarterToMatchType:
         # "quarter to eight" means 7:45.
         assert c.hour == 7
         assert c.minute == 45
+
+    @pytest.mark.parametrize(
+        "text, hour, minute",
+        [
+            ("It wanted a quarter before ten.", 9, 45),
+            ("At a quarter-to-six the lamps were lit.", 5, 45),
+            ("It was a quarter\nto seven.", 6, 45),
+        ],
+    )
+    def test_before_hyphen_and_wrapped_forms(self, text, hour, minute):
+        c = _first_candidate(text, "quarter_to")
+        assert c is not None
+        assert (c.hour, c.minute) == (hour, minute)
 
     def test_quarter_to_one_wraps_to_twelve(self):
         c = _first_candidate("Quarter to one the mail arrived.", "quarter_to")
@@ -158,6 +184,33 @@ class TestMinutesPastToMatchType:
         assert "forty" in c.matched_text and "seven" in c.matched_text
 
 
+    @pytest.mark.parametrize(
+        "text, hour, minute",
+        [
+            ("It was five-and-twenty minutes past seven.", 7, 25),
+            ("At five and twenty minutes to nine she rose.", 8, 35),
+            ("Some three-and-thirty minutes past two.", 2, 33),
+            # A line break inside the compound: the regex used a literal
+            # ``[- ]`` around "and", so the wrapped form fell back to the
+            # trailing "twenty minutes past seven" (7:20).
+            ("It was five and\ntwenty minutes past seven.", 7, 25),
+            ("It was five-and-\ntwenty minutes past seven.", 7, 25),
+        ],
+    )
+    def test_reversed_compound_minutes(self, text, hour, minute):
+        """Issue #301: the archaic "five-and-twenty" form was mined as its
+        trailing "twenty minutes past seven" — five minutes early."""
+        c = _first_candidate(text, "minutes_past_to")
+        assert c is not None
+        assert (c.hour, c.minute) == (hour, minute)
+        assert "and" in c.matched_text
+
+    def test_normalize_reversed_compound(self):
+        assert miner.normalize_number_phrase("five-and-twenty") == 25
+        assert miner.normalize_number_phrase("five and twenty") == 25
+        assert miner.normalize_number_phrase("twenty and five") is None
+
+
 class TestJustAfterBeforeMatchType:
     def test_shortly_after_three(self):
         # The regex requires o'clock after the hourword (or a bare daypart).
@@ -172,6 +225,14 @@ class TestJustAfterBeforeMatchType:
         assert c is not None
         assert c.hour == 4
         assert c.minute == 57
+
+    def test_a_little_before_nine(self):
+        # The Moonstone 155:18444 was mined as a bare "nine o'clock" at 09:00
+        # because "a little before" was missing from the prefix list.
+        c = _first_candidate("A little before nine o’clock, I prevailed on Mr. Blake.", "just_after_before")
+        assert c is not None
+        assert (c.hour, c.minute) == (8, 57)
+        assert c.matched_text.lower().startswith("a little before")
 
     def test_almost_ten(self):
         c = _first_candidate("Almost ten o'clock when the bell rang.", "just_after_before")

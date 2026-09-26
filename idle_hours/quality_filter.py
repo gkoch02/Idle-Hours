@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from idle_hours import atomic_io
-from idle_hours.clean_display_quotes import unbalanced_quotes
+from idle_hours.clean_display_quotes import HEADING_PREFIX, LEADING_CAPS_HEADING, unbalanced_quotes
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -100,10 +100,22 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
         score -= 10
         reasons.append("some_digits")
 
+    # Deliberately mild: the rows this flags that survive the cleaner are
+    # mostly plays, where speaker labels ("ROSALIND. How say you now?") are
+    # part of the text. The chapter-title case it used to be the only guard
+    # against is now stripped by the cleaner and penalised below.
     uppercase_ratio = sum(ch.isupper() for ch in display_quote) / max(len(display_quote), 1)
     if uppercase_ratio > 0.18:
         score -= 15
         reasons.append("uppercase_heavy")
+
+    # Defence in depth behind the cleaner (issue #308): a chapter title or a
+    # bare Roman-numeral heading still opening the excerpt ("XXXIV. Next
+    # morning…", "—CONTINUATION OF THE ENIGMA The night wind…") is not prose,
+    # and the same weight as a structural label puts it under the floor.
+    if HEADING_PREFIX.match(display_quote) or LEADING_CAPS_HEADING.match(display_quote):
+        score -= 35
+        reasons.append("leading_heading")
 
     for pattern, label, penalty in BAD_PATTERNS:
         if pattern.search(display_quote):

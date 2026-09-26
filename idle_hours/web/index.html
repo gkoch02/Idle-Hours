@@ -10,7 +10,7 @@
 <body>
   <!-- First-run wizard overlay. Hidden by default; main.js shows it on
        initial load when GET /api/setup reports setup_complete=false. -->
-  <div id="setup-wizard" class="wizard" hidden role="dialog" aria-labelledby="wizard-title">
+  <div id="setup-wizard" class="wizard" hidden role="dialog" aria-modal="true" aria-labelledby="wizard-title">
     <div class="wizard-card">
       <h2 id="wizard-title">Welcome to Idle Hours</h2>
       <p class="wizard-intro">
@@ -40,7 +40,7 @@
           to dismiss this wizard.
         </p>
         <button id="wizard-dismiss" type="button" class="btn btn-primary">I'm ready</button>
-        <div id="wizard-status" class="override-status"></div>
+        <div id="wizard-status" class="override-status" role="status"></div>
       </section>
     </div>
   </div>
@@ -103,7 +103,7 @@
 
       <div class="card">
         <h2>Preview themes</h2>
-        <p class="hint">All registered themes rendered at the current time. Click a thumbnail to apply that theme.</p>
+        <p class="hint">Every theme rendered at the current time (the diagnostic <code>diags</code> panel is only in the dropdown). Click a thumbnail to apply that theme.</p>
         <div id="theme-preview-grid" class="theme-preview-grid"></div>
       </div>
     </section>
@@ -114,9 +114,13 @@
         <h2>Search corpus</h2>
         <p class="hint">Linear scan across the raw attributed corpus. Combine fields to narrow the result set.</p>
         <form id="search-form" class="search-form">
+          <label for="search-q" class="visually-hidden">Quote text contains</label>
           <input id="search-q" name="q" placeholder="text contains…" />
+          <label for="search-author" class="visually-hidden">Author</label>
           <input id="search-author" name="author" placeholder="author" />
+          <label for="search-title" class="visually-hidden">Title</label>
           <input id="search-title" name="title" placeholder="title" />
+          <label for="search-bucket" class="visually-hidden">Bucket (optional)</label>
           <input id="search-bucket" name="bucket" placeholder="bucket (optional)" />
           <button type="submit" class="btn">Search</button>
         </form>
@@ -127,7 +131,9 @@
         <h2>Bucket inspector</h2>
         <p class="hint">Pick a bucket (or click a coverage cell) to see ranked candidates with full score breakdown. Lower is better at every position.</p>
         <form id="inspector-form" class="inspector-form">
+          <label for="inspector-bucket" class="visually-hidden">Bucket</label>
           <input id="inspector-bucket" name="bucket" placeholder="e.g. h3_half_past" />
+          <label for="inspector-time" class="visually-hidden">Time (HH:MM, optional)</label>
           <input id="inspector-time" name="time" placeholder="HH:MM (optional)" />
           <button type="submit" class="btn">Inspect</button>
         </form>
@@ -137,30 +143,33 @@
       <div class="card">
         <h2>Selection overrides</h2>
         <p class="hint">Edits to <code>assets/selection_overrides.json</code>. Bans, boosts, preferred buckets, and per-row bans (<code>ban_quote_keys</code>). Server-validated — bad shapes return 400.</p>
+        <label for="overrides-text" class="visually-hidden">Selection overrides JSON</label>
         <textarea id="overrides-text" spellcheck="false"></textarea>
         <div class="override-actions">
-          <button id="overrides-save" class="btn">Save</button>
+          <button id="overrides-save" type="button" class="btn">Save</button>
           <button id="overrides-reload" type="button" class="btn">Reload from disk</button>
         </div>
-        <div id="overrides-status" class="override-status"></div>
+        <div id="overrides-status" class="override-status" role="status"></div>
+        <pre id="overrides-conflict" class="override-conflict" hidden></pre>
       </div>
 
       <div class="card">
         <h2>Content overrides</h2>
         <p class="hint">Per-row fixes layered onto the corpus by <code>apply_content_overrides.py</code> at bake time. After saving, click <strong>Bake now</strong> below to make the changes visible on the panel.</p>
+        <label for="content-overrides-text" class="visually-hidden">Content overrides JSON</label>
         <textarea id="content-overrides-text" spellcheck="false"></textarea>
         <div class="override-actions">
-          <button id="content-overrides-save" class="btn">Save</button>
+          <button id="content-overrides-save" type="button" class="btn">Save</button>
           <button id="content-overrides-reload" type="button" class="btn">Reload from disk</button>
         </div>
-        <div id="content-overrides-status" class="override-status"></div>
+        <div id="content-overrides-status" class="override-status" role="status"></div>
       </div>
 
       <div class="card">
         <h2>Re-bake quote database</h2>
         <p class="hint">Runs <code>bake_quote_database.py</code> in-process: re-applies the content-overrides sidecar to the raw corpus and writes <code>assets/quote_database.jsonl</code>. The runtime picker reads the new file on the next tick.</p>
         <button id="bake-now" type="button" class="btn btn-primary">Bake now</button>
-        <div id="bake-status" class="override-status"></div>
+        <div id="bake-status" class="override-status" role="status"></div>
       </div>
     </section>
 

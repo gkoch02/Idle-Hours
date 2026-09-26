@@ -9,6 +9,14 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `idle-hours run --once` now pins its render to the quote it picked, and so
+  passes `--pin-quote` / `--pin-matched-text` to the render script as the
+  main loop already did. A custom `--render-script` that does not accept
+  those flags now fails under `--once` too.
+- A pidfile that cannot be created because of the configuration (permission,
+  a file where a directory should be, a read-only mount) exits 42 and halts
+  the systemd unit;
+  transient errors such as a full disk still exit 1 and are retried.
 - Button D is now a real wake during quiet hours: the clock keeps ticking
   until the window ends, and skip, un-skip, re-render, the source card and
   theme changes no longer paint a clock quote onto a sleeping panel.

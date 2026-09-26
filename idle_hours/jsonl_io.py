@@ -20,7 +20,11 @@ def iter_jsonl(path: Path) -> Iterator[dict]:
     (with a ``path:lineno`` prefix) and skipped so a single bad row cannot
     abort a long-running pipeline stage.
     """
-    with path.open(encoding="utf-8") as handle:
+    # ``utf-8-sig`` strips a leading byte-order mark (a Windows editor adds
+    # one); plain ``utf-8`` left it glued to the first row, which then failed
+    # to decode and was silently dropped (issue #307). Identical to ``utf-8``
+    # for every file without a BOM.
+    with path.open(encoding="utf-8-sig") as handle:
         for line_num, line in enumerate(handle, start=1):
             if not line.strip():
                 continue

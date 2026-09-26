@@ -159,3 +159,26 @@ class TestBucketInvariants:
             for state, minute in DEFAULT_BUCKET_MINUTES.items():
                 bucket = bucket_for_time(f"{h24:02d}:{minute:02d}")
                 assert bucket == f"h{h12}_{state}", f"{h24}:{minute} → {bucket}, expected h{h12}_{state}"
+
+
+class TestNeighborBucketsRealMinuteOrder:
+    """Pin the fallback order against real clock minutes (issue #303).
+
+    ``h{H}_five_to`` is H:55 (``bucket_for_time("03:55") == "h3_five_to"`` —
+    "nearly four o'clock" is filed at 03:57 in hour 3), and ``h{H}_exact`` is
+    H:00, fifty-five minutes earlier. Within one hour group the states are a
+    *line* from :00 to :55, not a circle, so wrapping ``five_to`` onto
+    ``exact`` would hand a 3:55 request a "three o'clock" quote before a
+    "ten to four" one. The linear walk is already nearest-first.
+    """
+
+    @pytest.mark.parametrize("bucket", _all_buckets())
+    def test_nth_neighbour_never_further_in_minutes_than_next(self, bucket):
+        base = DEFAULT_BUCKET_MINUTES[bucket.split("_", 1)[1]]
+        dists = [abs(DEFAULT_BUCKET_MINUTES[n.split("_", 1)[1]] - base) for n in neighbor_buckets(bucket)]
+        for i in range(1, len(dists)):
+            assert dists[i] >= dists[i - 1], f"non-monotonic minute distance: {dists}"
+
+    def test_five_to_is_late_in_its_own_hour(self):
+        assert bucket_for_time("03:55") == "h3_five_to"
+        assert bucket_for_time("02:55") == "h2_five_to"

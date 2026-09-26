@@ -3,10 +3,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from idle_hours.fix_substring_time_matches import (
     bucket_for_minute,
+    infer_quarter_half_from_quote,
     infer_time_from_quote,
     parse_number_word,
+    repair_row,
 )
 
 
@@ -255,3 +259,188 @@ class TestArchaicReversedCompound:
         assert fixed["matched_text"] == "Five and twenty minutes past eight"
         assert fixed["normalized_time"] == "08:25"
         assert fixed["fuzzy_bucket"] == "h8_twenty_five_past"
+
+
+class TestMultiplePhrasesInQuote:
+    """Issue #301: with two ``<minutes> past/to <hour>`` phrases in one quote,
+    the repair must pick the phrase that contains the row's own matched_text,
+    not whichever phrase happens to come first."""
+
+    QUOTE = (
+        "It was ten minutes past three when he left, and "
+        "thirty-five minutes past four when he returned."
+    )
+
+    def test_prefers_phrase_containing_current_match(self):
+        result = infer_time_from_quote(self.QUOTE, "five minutes past four")
+        assert result is not None
+        assert (result["hour"], result["minute"]) == (4, 35)
+
+    def test_without_current_match_first_phrase_wins(self):
+        result = infer_time_from_quote(self.QUOTE)
+        assert (result["hour"], result["minute"]) == (3, 10)
+
+    def test_main_repairs_the_second_phrase(self, tmp_path):
+        import sys
+
+        from idle_hours.fix_substring_time_matches import main
+
+        row = {
+            "display_quote": self.QUOTE,
+            "matched_text": "five minutes past four",
+            "hour": 4,
+            "minute": 5,
+            "normalized_time": "04:05",
+            "fuzzy_bucket": "h4_five_past",
+        }
+        path = tmp_path / "rows.jsonl"
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        sys.argv = ["fix_substring_time_matches.py", str(path)]
+        main()
+        result = json.loads(path.read_text(encoding="utf-8").strip())
+        assert result["normalized_time"] == "04:35"
+        assert result["matched_text"] == "thirty-five minutes past four"
+
+
+class TestAtomicWriteback:
+    """Issue #306: the in-place default must go through atomic_io, so a
+    failure mid-write leaves the input byte-identical."""
+
+    def test_failed_replace_leaves_input_intact(self, tmp_path, monkeypatch):
+        import os
+        import sys
+
+        import pytest
+
+        from idle_hours.fix_substring_time_matches import main
+
+        row = {
+            "display_quote": "It was thirty-five minutes past two.",
+            "matched_text": "five minutes past two",
+            "hour": 2,
+            "minute": 5,
+            "normalized_time": "02:05",
+            "fuzzy_bucket": "h2_five_past",
+        }
+        path = tmp_path / "rows.jsonl"
+        original = json.dumps(row) + "\n"
+        path.write_text(original, encoding="utf-8")
+
+        def boom(*_a, **_k):
+            raise OSError("simulated crash")
+
+        monkeypatch.setattr(os, "replace", boom)
+        sys.argv = ["fix_substring_time_matches.py", str(path)]
+        with pytest.raises(OSError):
+            main()
+        assert path.read_text(encoding="utf-8") == original
+        assert [p.name for p in tmp_path.iterdir()] == ["rows.jsonl"]
+
+
+class TestQuarterHalfSwallowedPhrase:
+    """Legacy ``oclock_word`` rows mined on "ten o'clock" inside "half-past
+    ten o'clock" sat at :00 with only the bare hour bolded while the quote
+    stated a time 15-30 minutes away."""
+
+    @pytest.mark.parametrize(
+        "quote, needle, matched, hhmm, bucket, match_type",
+        [
+            ("It was half-past ten o’clock at night.", "ten o’clock", "half-past ten", "10:30", "h10_half_past", "quarter_half"),
+            ("About half after eleven o’clock.", "eleven o’clock", "half after eleven", "11:30", "h11_half_past", "quarter_half"),
+            ("From a quarter after eight o’clock on.", "eight o’clock", "quarter after eight", "08:15", "h8_quarter_past", "quarter_half"),
+            ("At quarter past two o'clock he rose.", "two o'clock", "quarter past two", "02:15", "h2_quarter_past", "quarter_half"),
+            ("It was a quarter to nine o’clock.", "nine o’clock", "quarter to nine", "08:45", "h8_quarter_to", "quarter_to"),
+            ("It was a quarter before ten o’clock.", "ten o’clock", "quarter before ten", "09:45", "h9_quarter_to", "quarter_to"),
+            ("It was a quarter to one o’clock.", "one o’clock", "quarter to one", "12:45", "h12_quarter_to", "quarter_to"),
+            ("At half past twelve o’clock he came.", "twelve o’clock", "half past twelve", "12:30", "h12_half_past", "quarter_half"),
+            ("It struck half-past-ten.", "ten", "half-past-ten", "10:30", "h10_half_past", "quarter_half"),
+        ],
+    )
+    def test_infers_the_quarter_half_phrase(self, quote, needle, matched, hhmm, bucket, match_type):
+        result = infer_quarter_half_from_quote(quote, needle)
+        assert result is not None
+        assert result["matched_text"] == matched
+        assert result["normalized_time"] == hhmm
+        assert result["fuzzy_bucket"] == bucket
+        assert result["match_type"] == match_type
+
+    def test_already_the_quarter_half_phrase_is_left_alone(self):
+        assert infer_quarter_half_from_quote("At half past ten o’clock.", "half past ten") is None
+
+    def test_standalone_occurrence_blocks_the_repair(self):
+        # The row may have been mined on the bare "ten o'clock"; moving it
+        # to 10:30 would break a correct row.
+        quote = "He left at ten o’clock and came back at half-past ten o’clock."
+        assert infer_quarter_half_from_quote(quote, "ten o’clock") is None
+
+    def test_half_to_is_not_a_time(self):
+        assert infer_quarter_half_from_quote("It was half to ten o’clock.", "ten o’clock") is None
+
+    def test_different_hour_is_not_swallowed(self):
+        assert infer_quarter_half_from_quote("At half-past nine, or ten o’clock.", "ten o’clock") is None
+
+
+def _run_main(tmp_path, rows):
+    import sys
+
+    from idle_hours.fix_substring_time_matches import main
+
+    path = tmp_path / "rows.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    sys.argv = ["fix_substring_time_matches.py", str(path)]
+    main()
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _oclock_row(**extra):
+    row = {
+        "source_id": "885",
+        "line_number": 3988,
+        "match_type": "oclock_word",
+        "display_quote": "Who was in a room in your house, at half-past ten o’clock at night?",
+        "matched_text": "ten o’clock",
+        "hour": 10,
+        "minute": 0,
+        "normalized_time": "10:00",
+        "fuzzy_bucket": "h10_exact",
+        "daypart_bucket": "morning",
+    }
+    row.update(extra)
+    return row
+
+
+class TestMainQuarterHalf:
+    def test_repairs_the_row(self, tmp_path):
+        (row,) = _run_main(tmp_path, [_oclock_row()])
+        assert row["matched_text"] == "half-past ten"
+        assert row["match_type"] == "quarter_half"
+        assert (row["hour"], row["minute"], row["normalized_time"]) == (10, 30, "10:30")
+        assert row["fuzzy_bucket"] == "h10_half_past"
+
+    def test_quarter_to_rolls_the_daypart(self):
+        row = _oclock_row(display_quote="It was a quarter to seven o’clock.", matched_text="seven o’clock", hour=7)
+        repair = repair_row(row)
+        assert repair["normalized_time"] == "06:45"
+        assert repair["daypart_bucket"] == "dawn"
+
+    def test_repaired_twin_of_a_correct_row_is_dropped(self, tmp_path):
+        twin = _oclock_row(
+            match_type="quarter_half", matched_text="half-past ten", minute=30,
+            normalized_time="10:30", fuzzy_bucket="h10_half_past",
+        )
+        rows = _run_main(tmp_path, [_oclock_row(), twin])
+        assert rows == [twin]
+
+    def test_row_whose_override_owns_the_time_is_skipped(self):
+        row = _oclock_row(override_originals={"matched_text": "ten o’clock"}, override_applied=True)
+        assert repair_row(row) is None
+
+    def test_overridden_display_quote_must_agree_with_the_original(self):
+        agreeing = _oclock_row(
+            override_originals={"display_quote": "CHAPTER X Who was in a room at half-past ten o’clock?"},
+        )
+        assert repair_row(agreeing)["normalized_time"] == "10:30"
+        # The original text had the bare phrase only: deleting the override
+        # later would restore a quote the repaired matched_text is not in.
+        disagreeing = _oclock_row(override_originals={"display_quote": "Who was there at ten o’clock?"})
+        assert repair_row(disagreeing) is None

@@ -392,7 +392,7 @@ def format_summary(summary: dict, hours: int) -> str:
     if summary.get("web_auth_fail_count"):
         parts.append(f"{summary['web_auth_fail_count']} web auth failures")
     if summary.get("web_error_count"):
-        parts.append(f"{summary['web_error_count']} web POST errors")
+        parts.append(f"{summary['web_error_count']} web errors")
     if summary.get("quiet_active"):
         # Say so explicitly: a reader seeing "0 renders" plus a stale-looking
         # last-render timestamp should be told the appliance is asleep on
@@ -431,7 +431,7 @@ def format_actions_summary(summary: dict, hours: int) -> str:
         f"  last action: {last_action}",
         f"  presses dropped: {summary.get('press_dropped_count', 0)}",
         f"  web auth failures: {summary.get('web_auth_fail_count', 0)}",
-        f"  web POST errors: {summary.get('web_error_count', 0)}",
+        f"  web errors: {summary.get('web_error_count', 0)}",
         f"  quiet hours: {summary.get('quiet_enter_count', 0)} enters / "
         f"{summary.get('quiet_exit_count', 0)} exits",
     ])

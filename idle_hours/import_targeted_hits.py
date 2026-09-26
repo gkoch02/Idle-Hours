@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from idle_hours import atomic_io
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -95,9 +96,9 @@ def main() -> int:
     for raw in iter_jsonl(input_path):
         rows.append(row_from_targeted(raw))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    # Atomic (issue #306): a crash mid-write must not leave a truncated file,
+    # least of all on an in-place rewrite of the input.
+    atomic_io.atomic_write_lines(output_path, (json.dumps(row, ensure_ascii=False) for row in rows))
     print(f"Wrote {len(rows)} importable targeted hits to {output_path}")
     return 0
 

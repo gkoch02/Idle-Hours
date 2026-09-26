@@ -848,6 +848,17 @@ class TestInferQuoteMinute:
     def test_empty_row(self):
         assert pq.infer_quote_minute({}) is None
 
+    def test_ascii_apostrophe_oclock_infers_zero(self):
+        # Issue #307: only the typographic apostrophe was listed.
+        assert pq.infer_quote_minute({"matched_text": "three o'clock"}) == 0
+
+    def test_no_digital_debris_patterns(self):
+        # Issue #307: "11:30" / "12:30" were debris — a digital time is not a
+        # minute-of-hour phrase, and 10:30 would never have matched anyway.
+        patterns = [p for ps in pq.EXACT_MINUTE_PATTERNS.values() for p in ps]
+        assert not any(any(ch.isdigit() for ch in p) for p in patterns)
+        assert pq.infer_quote_minute({"matched_text": "11:30"}) is None
+
     @pytest.mark.parametrize("phrase,minute", [
         ("o’clock", 0),
         ("oclock", 0),
@@ -1179,6 +1190,35 @@ class TestPickQuoteCLI:
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["bucket"] == "h3_exact"
+
+    @pytest.mark.parametrize("flag,value", [
+        ("--bucket", "h10_just_before"),   # legacy 8-state name
+        ("--bucket", "h13_exact"),
+        ("--bucket", "nonsense"),
+        ("--time", "25:99"),
+        ("--time", "3pm"),
+        ("--time", "12:60"),
+    ])
+    def test_main_rejects_invalid_input_with_usage_error(self, capsys, flag, value):
+        """Issue #304: bad --bucket / --time exit 2 with one line, not a traceback."""
+        from unittest.mock import patch
+
+        argv = ["pick_quote.py", flag, value, "--database", "", "--history-path", ""]
+        with patch("sys.argv", argv), pytest.raises(SystemExit) as exc_info:
+            pq.main()
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "Traceback" not in err
+        assert value in err
+
+    def test_bucket_help_names_a_canonical_bucket(self, capsys):
+        from unittest.mock import patch
+
+        with patch("sys.argv", ["pick_quote.py", "--help"]), pytest.raises(SystemExit):
+            pq.main()
+        out = capsys.readouterr().out
+        assert "h10_just_before" not in out
+        assert "h10_five_to" in out
 
 
 class TestOverridesPathDefaults:
@@ -1993,3 +2033,17 @@ class TestDuplicateText:
         a, b, other = self._twins()
         assert pq._twin_texts([a, b, other], set(), set()) == (frozenset(), frozenset())
 
+
+
+def test_pick_cli_without_time_or_bucket_is_a_usage_error(capsys):
+    from idle_hours import pick_quote
+    with pytest.raises(SystemExit) as exc:
+        pick_quote.parse_args([])
+    assert exc.value.code == 2
+
+
+def test_selection_overrides_with_bom_load(tmp_path):
+    from idle_hours import pick_quote
+    path = tmp_path / "selection_overrides.json"
+    path.write_bytes(b"\xef\xbb\xbf" + b'{"ban_source_ids": ["141"]}')
+    assert pick_quote.load_overrides(path)["ban_source_ids"] == ["141"]

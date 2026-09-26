@@ -98,28 +98,28 @@ TIME_PATTERNS = [
     (
         "quarter_half",
         re.compile(
-            r"\b(?P<phrase>quarter|half)\s+past\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\b(?P<phrase>quarter|half)[-\s]+(?:past|after)[-\s]+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),
     (
         "quarter_to",
         re.compile(
-            r"\bquarter\s+to\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\bquarter[-\s]+(?:to|before)[-\s]+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),
     (
         "minutes_past_to",
         re.compile(
-            r"\b(?P<minuteword>(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\b(?P<minuteword>(?:one|two|three|four|five|six|seven|eight|nine)[-\s]+and[-\s]+(?:twenty|thirty|forty|fifty)|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),
     (
         "just_after_before",
         re.compile(
-            r"\b(?P<prefix>just after|a little after|shortly after|just before|almost|nearly|close on|towards)\s+(?:(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+o['’]?clock|(?P<daypart>dawn|daybreak|sunrise|morning|noon|midday|afternoon|dusk|sunset|evening|night|midnight))\b",
+            r"\b(?P<prefix>just after|a little after|shortly after|just before|a little before|almost|nearly|close on|towards)\s+(?:(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+o['’]?clock|(?P<daypart>dawn|daybreak|sunrise|morning|noon|midday|afternoon|dusk|sunset|evening|night|midnight))\b",
             re.IGNORECASE,
         ),
     ),
@@ -289,6 +289,16 @@ def normalize_number_phrase(phrase: str) -> int | None:
     parts = cleaned.split()
     if len(parts) == 2 and parts[0] in NUMBER_WORDS and parts[1] in NUMBER_WORDS:
         return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[1]]
+    # Archaic reversed compound: "five-and-twenty" = 25 (issue #301). Only a
+    # unit before a tens word; "twenty and five" is not a period form.
+    if (
+        len(parts) == 3
+        and parts[1] == "and"
+        and parts[0] in NUMBER_WORDS
+        and 1 <= NUMBER_WORDS[parts[0]] <= 9
+        and parts[2] in {"twenty", "thirty", "forty", "fifty"}
+    ):
+        return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[2]]
     return None
 
 
@@ -453,7 +463,7 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
                 return None
             if prefix in {"just after", "a little after", "shortly after"}:
                 minute = 3
-            elif prefix in {"just before", "almost", "nearly", "close on", "towards"}:
+            elif prefix in {"just before", "a little before", "almost", "nearly", "close on", "towards"}:
                 # "just before nine" means ~8:57, not 9:57 — same hour rollback
                 # as quarter_to / minutes_past_to above.
                 hour = 12 if hour == 1 else hour - 1

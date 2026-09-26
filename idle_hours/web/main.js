@@ -78,7 +78,35 @@ async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
   if (text) {
     try { data = JSON.parse(text); } catch { data = { error: text }; }
   }
-  return { status: resp.status, ok: resp.ok, data };
+  // `headers` rides along for the overrides editor's ETag (#289); fetch stubs
+  // that don't model headers leave it undefined, and callers tolerate that.
+  return { status: resp.status, ok: resp.ok, data, headers: resp.headers };
+}
+
+// Polled GETs used to drop a failure on the floor (`if (!ok) return;`), so a
+// dead endpoint left the page silently showing stale data. Report it once per
+// burst — the first failure of a run logs, repeats stay quiet, and the next
+// success logs a recovery — so a 30 s poll against a sick appliance cannot
+// flood the action log (#290).
+const pollFailures = new Set();
+
+async function pollFetch(name, url) {
+  let res;
+  try {
+    res = await jsonFetch(url);
+  } catch (err) {
+    res = { ok: false, status: 0, data: { error: String(err) } };
+  }
+  if (!res.ok || !res.data) {
+    if (!pollFailures.has(name)) {
+      pollFailures.add(name);
+      const why = res.status ? `HTTP ${res.status}` : "network error";
+      log(`${name} refresh failed (${why}): ${res.data?.error || "?"}`, "err");
+    }
+    return null;
+  }
+  if (pollFailures.delete(name)) log(`${name} refresh recovered`, "ok");
+  return res.data;
 }
 
 // ------- Token-gated images ------------------------------------------------
@@ -88,8 +116,17 @@ async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
 // object URL for a tag is revoked when it is replaced, so a page left open
 // polling /current.png every 30 s does not leak a frame per poll.
 const objectUrls = new Map();
+// Latest load started per <img>. A reload that starts while an earlier one is
+// still in flight must win, and a tile released mid-fetch must not have an
+// object URL minted for it afterwards — that URL would never be revoked.
+const imageLoadSeq = new WeakMap();
+// Pending "load when visible" observers, so a reload replaces rather than
+// stacks them and a released tile stops waiting to be scrolled into view.
+const imageObservers = new Map();
 
 async function loadImage(img, url) {
+  const seq = (imageLoadSeq.get(img) || 0) + 1;
+  imageLoadSeq.set(img, seq);
   if (inFlightRequests === 0) tokenPromptAttempt = null;
   inFlightRequests += 1;
   let resp;
@@ -105,7 +142,9 @@ async function loadImage(img, url) {
     log(`image ${url}: HTTP ${resp.status}`);
     return false;
   }
-  const objectUrl = URL.createObjectURL(await resp.blob());
+  const blob = await resp.blob();
+  if (imageLoadSeq.get(img) !== seq) return false; // superseded or released
+  const objectUrl = URL.createObjectURL(blob);
   const previous = objectUrls.get(img);
   if (previous) URL.revokeObjectURL(previous);
   objectUrls.set(img, objectUrl);
@@ -113,10 +152,30 @@ async function loadImage(img, url) {
   return true;
 }
 
+// Forget an <img> the page is discarding: revoke its object URL (the blob is
+// otherwise pinned for the life of the page), drop the Map entry that would
+// keep the detached element alive, and cancel any pending or in-flight load.
+function releaseImage(img) {
+  const url = objectUrls.get(img);
+  if (url) URL.revokeObjectURL(url);
+  objectUrls.delete(img);
+  const observer = imageObservers.get(img);
+  if (observer) observer.disconnect();
+  imageObservers.delete(img);
+  imageLoadSeq.set(img, -1);
+}
+
 // Thumbnail grids hold one <img> per theme, and each is a full render on the
 // appliance: load a tile only once it scrolls into view (the job the old
 // `loading="lazy"` attribute did before the src became a fetched blob).
+//
+// Calling it again for the same <img> (a reload after the quote changed)
+// replaces the pending observer, so an off-screen tile is fetched once, when
+// it is finally scrolled to, with the latest URL — not once per quote change.
 function loadImageWhenVisible(img, url) {
+  const pending = imageObservers.get(img);
+  if (pending) pending.disconnect();
+  imageObservers.delete(img);
   if (typeof IntersectionObserver === "undefined") {
     loadImage(img, url);
     return;
@@ -125,12 +184,21 @@ function loadImageWhenVisible(img, url) {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       observer.disconnect();
+      if (imageObservers.get(img) === observer) imageObservers.delete(img);
       loadImage(img, url);
+      return;
     }
   }, { rootMargin: "200px" });
+  imageObservers.set(img, observer);
   observer.observe(img);
 }
 
+// Cache-busted per call; the server answers no-store anyway.
+const previewUrl = (theme) =>
+  `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`;
+
+// Returns `{ cell, img }` so callers can keep the <img> for a later reload
+// or release without walking the DOM.
 function themeThumb(theme, title, onClick) {
   const cell = document.createElement("button");
   cell.type = "button";
@@ -143,9 +211,8 @@ function themeThumb(theme, title, onClick) {
   cell.appendChild(img);
   cell.appendChild(label);
   cell.onclick = onClick;
-  // Cache-bust per page-load — once is enough; server returns no-store.
-  loadImageWhenVisible(img, `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`);
-  return cell;
+  loadImageWhenVisible(img, previewUrl(theme));
+  return { cell, img };
 }
 
 function promptForToken(staleToken) {
@@ -227,18 +294,23 @@ function activateTab(name) {
   }
   // Lazy-loads on first activation: search & content overrides aren't fetched
   // on initial page load to keep first paint snappy.
-  if (name === "curate" && !state.contentOverridesLoaded) {
-    loadContentOverrides();
-    state.contentOverridesLoaded = true;
-  }
-  if (name === "coverage" && !state.gapsLoaded) {
-    refreshGaps();
-    state.gapsLoaded = true;
-  }
-  if (name === "now" && !state.themePreviewLoaded) {
-    refreshThemePreview();
-    state.themePreviewLoaded = true;
-  }
+  if (name === "curate") lazyLoad("contentOverridesLoaded", loadContentOverrides);
+  if (name === "coverage") lazyLoad("gapsLoaded", refreshGaps);
+  if (name === "now") lazyLoad("themePreviewLoaded", refreshThemePreview);
+}
+
+// The "loaded" flag is set only once the loader reports success (#290). It was
+// set beside the call, so a tab whose first fetch failed stayed empty until a
+// full page reload. A loader already in flight is not started twice, so rapid
+// tab flips still cost one request.
+function lazyLoad(flag, loader) {
+  if (state[flag] || state.lazyInFlight[flag]) return;
+  state.lazyInFlight[flag] = true;
+  Promise.resolve()
+    .then(loader)
+    .then((ok) => { if (ok) state[flag] = true; })
+    .catch((err) => log(`${flag}: ${err}`, "err"))
+    .finally(() => { state.lazyInFlight[flag] = false; });
 }
 
 // Module-level state. Tab activation tracks which sections have ever been
@@ -247,16 +319,24 @@ const state = {
   contentOverridesLoaded: false,
   gapsLoaded: false,
   themePreviewLoaded: false,
+  lazyInFlight: {},      // lazy loaders currently running, by flag name
   currentQuoteId: null,  // [source_id, line_number] for the ban button
   asleep: false,         // panel shows the sleep frame (from /api/current)
-  themes: [],            // populated by /api/themes
+  themes: [],            // populated by /api/themes (the dropdown's list)
+  previewTiles: [],      // [{ theme, img }] currently in the Now-tab grid
+  wizardTiles: [],       // [{ theme, img }] currently in the wizard grid
+  liveTheme: null,       // the theme the panel shows, per the last /api/themes
+  previewThemes: [],     // /api/themes preview_themes: the grid's list, no diags
+  themeSelectDirty: false, // dropdown holds an unapplied choice that differs from the live theme
+  overridesEtag: null,   // ETag the overrides editor was loaded from (#289)
+  overridesLoadedText: null, // textarea contents as last loaded/saved — dirty = differs
 };
 
 // ------- Now Showing ---------------------------------------------------------
 
 async function refreshCurrent() {
-  const { ok, data } = await jsonFetch("/api/current");
-  if (!ok || !data) return;
+  const data = await pollFetch("current", "/api/current");
+  if (!data) return;
   $("clock").textContent = data.time || "--:--";
   $("bucket").textContent = data.bucket || "--";
   $("theme").textContent = data.theme || "--";
@@ -269,9 +349,17 @@ async function refreshCurrent() {
   loadImage($("current-png"), `/current.png?t=${Date.now()}`);
   // Track identity for the ban button. Disabled when there's no source/line —
   // (e.g. cold start before first render).
+  const previousId = state.currentQuoteId;
   state.currentQuoteId = data.source_id != null && data.line_number != null
     ? [String(data.source_id), data.line_number]
     : null;
+  // The thumbnails render the quote on the panel, so a new quote makes every
+  // one of them stale (#290). Only once the grid has loaded — before that the
+  // lazy loader will draw it fresh anyway.
+  const idKey = (id) => (id ? `${id[0]}:${id[1]}` : "");
+  if (previousId && idKey(previousId) !== idKey(state.currentQuoteId) && state.themePreviewLoaded) {
+    refreshThemePreview();
+  }
   const banBtn = $("ban-current");
   if (banBtn) banBtn.disabled = state.currentQuoteId == null;
   reflectSleep(Boolean(data.asleep));
@@ -297,8 +385,8 @@ function reflectSleep(asleep) {
 async function refreshTelemetry() {
   const hours = 24;
   $("telemetry-hours").textContent = hours;
-  const { ok, data } = await jsonFetch(`/api/telemetry?hours=${hours}`);
-  if (!ok || !data) return;
+  const data = await pollFetch("telemetry", `/api/telemetry?hours=${hours}`);
+  if (!data) return;
   $("t-renders").textContent = data.render_count ?? "—";
   $("t-errors").textContent = data.error_count ?? "—";
   $("t-render-p50").textContent = fmtMs(data.render_p50_ms);
@@ -317,9 +405,10 @@ const STATES = [
 ];
 
 async function refreshCoverage() {
-  const { ok, data } = await jsonFetch("/api/coverage");
-  if (!ok || !data) return;
   const grid = $("coverage-grid");
+  if (!grid) return false;
+  const data = await pollFetch("coverage", "/api/coverage");
+  if (!data) return false;
   grid.innerHTML = "";
   const counts = data.bucket_counts || {};
   for (let h = 1; h <= 12; h++) {
@@ -338,6 +427,7 @@ async function refreshCoverage() {
       grid.appendChild(cell);
     }
   }
+  return true;
 }
 
 function bucketClass(n) {
@@ -350,18 +440,19 @@ function bucketClass(n) {
 // ------- Bucket gaps --------------------------------------------------------
 
 async function refreshGaps() {
-  const threshold = parseInt($("gap-threshold").value, 10) || 0;
   const results = $("gap-results");
+  if (!results) return false;
+  const threshold = parseInt($("gap-threshold")?.value, 10) || 0;
   results.textContent = "Loading…";
   const { ok, data } = await jsonFetch(`/api/gaps?threshold=${threshold}`);
-  if (!ok) {
+  if (!ok || !data) {
     results.textContent = `Error: ${data?.error || "?"}`;
-    return;
+    return false;
   }
   const buckets = data.buckets || [];
   if (!buckets.length) {
     results.textContent = `No buckets at or below ${threshold} candidate${threshold === 1 ? "" : "s"}. ✨`;
-    return;
+    return true;
   }
   results.innerHTML = "";
   for (const gap of buckets) {
@@ -383,6 +474,16 @@ async function refreshGaps() {
     };
     results.appendChild(card);
   }
+  return true;
+}
+
+// A ban or a bake changes which rows the picker can reach, and coverage is
+// computed live from them — so both views go stale the moment either lands.
+// The gap finder only refreshes once it has been opened; before that the lazy
+// loader draws it fresh (#290).
+function refreshCoverageViews() {
+  refreshCoverage();
+  if (state.gapsLoaded) refreshGaps();
 }
 
 // ------- Bucket inspector ----------------------------------------------------
@@ -504,16 +605,41 @@ async function runSearch(event) {
 
 async function refreshThemePreview() {
   const grid = $("theme-preview-grid");
-  if (!grid) return;
-  // Make sure /api/themes has populated state.themes; if not, fetch now.
-  if (!state.themes.length) {
+  if (!grid) return false;
+  // Make sure /api/themes has populated the preview list; if not, fetch now.
+  if (!state.previewThemes.length) {
     const { ok, data } = await jsonFetch("/api/themes");
-    if (ok && data) state.themes = data.themes || [];
+    if (ok && data) rememberThemes(data);
   }
+  if (!state.previewThemes.length) return false;
+  // Same theme list as the tiles already on screen (the common case: the
+  // quote changed): reload those tiles in place. Rebuilding the grid on every
+  // quote change used to orphan every thumbnail's object URL (the map is keyed
+  // by <img>, and new elements never matched the old keys) and re-render all
+  // ~70 previews at once; reloading through the visibility observer fetches
+  // only tiles on screen now, the rest when they are scrolled to.
+  const themes = state.previewThemes;
+  const tiles = state.previewTiles;
+  if (tiles.length === themes.length && tiles.every((t, i) => t.theme === themes[i])) {
+    for (const tile of tiles) loadImageWhenVisible(tile.img, previewUrl(tile.theme));
+    return true;
+  }
+  for (const tile of tiles) releaseImage(tile.img);
   grid.innerHTML = "";
-  for (const theme of state.themes) {
-    grid.appendChild(themeThumb(theme, `Apply ${theme}`, () => fireAction("theme", { theme })));
+  state.previewTiles = [];
+  for (const theme of themes) {
+    const { cell, img } = themeThumb(theme, `Apply ${theme}`, () => fireAction("theme", { theme }));
+    state.previewTiles.push({ theme, img });
+    grid.appendChild(cell);
   }
+  return true;
+}
+
+// The dropdown lists every theme (diags included, for an operator who wants
+// it); the thumbnail grid and the wizard show only themes to live with (#292).
+function rememberThemes(data) {
+  state.themes = data.themes || [];
+  state.previewThemes = data.preview_themes || state.themes.filter((t) => t !== "diags");
 }
 
 // ------- Controls (mirror buttons) ------------------------------------------
@@ -534,20 +660,33 @@ async function fireAction(action, body = {}) {
     } else {
       log(`${action}: busy (render in flight)`, "warn");
     }
-    return;
+    return false;
   }
   if (!ok) {
     log(`${action}: error ${status} ${data?.error || ""}`, "err");
-    return;
+    return false;
   }
   log(`${action}: ok${data?.theme ? ` → ${data.theme}` : ""}`, "ok");
+  // Any applied theme supersedes a pending dropdown choice, so let the
+  // dropdown follow the live theme again (#290).
+  if (action === "theme") state.themeSelectDirty = false;
   await Promise.all([refreshCurrent(), refreshThemes()]);
+  return true;
 }
 
 function wireControls() {
   document.querySelectorAll("[data-action]").forEach((btn) => {
     btn.addEventListener("click", () => fireAction(btn.dataset.action));
   });
+  const select = $("theme-select");
+  if (select) {
+    // Dirty means "holds a choice other than what the panel shows". Picking
+    // the live theme back clears it, so a later live change is followed
+    // rather than hidden behind a choice the operator already undid.
+    select.addEventListener("change", () => {
+      state.themeSelectDirty = select.value !== state.liveTheme;
+    });
+  }
   const apply = $("theme-apply");
   if (apply) {
     apply.addEventListener("click", () => {
@@ -571,21 +710,31 @@ function wireControls() {
 async function refreshThemes() {
   const select = $("theme-select");
   if (!select) return;
-  const { ok, data } = await jsonFetch("/api/themes");
-  if (!ok || !data) return;
-  state.themes = data.themes || [];
+  const data = await pollFetch("themes", "/api/themes");
+  if (!data) return;
+  rememberThemes(data);
+  state.liveTheme = data.manual_theme || data.effective || null;
   const isFocused = document.activeElement === select;
   if (!isFocused) {
+    // Follow the live theme unless the operator has picked something they
+    // haven't applied yet (#290). `prev || current` used to pin the dropdown
+    // to whatever it first showed, so a button-B press or an auto flip never
+    // reached it.
     const prev = select.value;
     const current = data.manual_theme || data.effective;
+    // A pending choice the live theme has since caught up with is no longer
+    // pending; dropping the flag lets the next live change through.
+    if (prev === current) state.themeSelectDirty = false;
+    const wanted = state.themeSelectDirty && prev ? prev : current;
     select.innerHTML = "";
     for (const name of data.themes || []) {
       const opt = document.createElement("option");
       opt.value = name;
       opt.textContent = name + (name === data.effective ? " (active)" : "");
-      if (name === (prev || current)) opt.selected = true;
+      if (name === wanted) opt.selected = true;
       select.appendChild(opt);
     }
+    select.value = wanted;
   }
   const pill = $("theme-current");
   if (pill) {
@@ -601,14 +750,50 @@ async function refreshThemes() {
 
 // ------- Selection overrides editor -----------------------------------------
 
+// `?envelope=1` returns `{ overrides, etag }`: the tag rides in the body as
+// well as the header because a gzip-ing proxy rewrites the header to a weak
+// `W/"…"`. An older server ignores the parameter and returns the bare
+// document, so fall back to that shape and the header.
+async function fetchOverrides() {
+  const { ok, status, data, headers } = await jsonFetch("/api/overrides?envelope=1");
+  if (!ok) return { ok, status, data };
+  const enveloped = data && typeof data.etag === "string"
+    && data.overrides && typeof data.overrides === "object";
+  return {
+    ok,
+    status,
+    doc: enveloped ? data.overrides : data,
+    etag: enveloped ? data.etag : (headers?.get?.("ETag") || null),
+  };
+}
+
+function overridesDirty() {
+  const el = $("overrides-text");
+  return Boolean(el) && state.overridesLoadedText != null && el.value !== state.overridesLoadedText;
+}
+
+function showOverridesConflict(text) {
+  const el = $("overrides-conflict");
+  if (!el) return;
+  el.textContent = text || "";
+  el.hidden = !text;
+}
+
 async function loadOverrides() {
-  const { ok, data } = await jsonFetch("/api/overrides");
-  if (ok) {
-    $("overrides-text").value = JSON.stringify(data, null, 2);
+  const res = await fetchOverrides();
+  if (res.ok) {
+    const text = JSON.stringify(res.doc, null, 2);
+    $("overrides-text").value = text;
+    state.overridesLoadedText = text;
+    // Remember exactly which version the textarea holds, so a save can refuse
+    // to overwrite a change made since (If-Match, #289).
+    state.overridesEtag = res.etag;
+    showOverridesConflict("");
     setStatus("overrides-status", "loaded from disk", "ok");
   } else {
-    setStatus("overrides-status", `load failed: ${data?.error || "?"}`, "err");
+    setStatus("overrides-status", `load failed: ${res.data?.error || "?"}`, "err");
   }
+  return res.ok;
 }
 
 async function saveOverrides() {
@@ -619,25 +804,56 @@ async function saveOverrides() {
     setStatus("overrides-status", `invalid JSON: ${err.message}`, "err");
     return;
   }
+  const headers = { "Content-Type": "application/json" };
+  if (state.overridesEtag) headers["If-Match"] = state.overridesEtag;
   const { ok, status, data } = await jsonFetch("/api/overrides", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
-  if (ok) setStatus("overrides-status", `saved to ${data.path}`, "ok");
-  else setStatus("overrides-status", `save failed (${status}): ${data?.error || "?"}`, "err");
+  if (status === 412) {
+    // Someone (another tab's ban, a CLI edit) wrote the file since this
+    // editor loaded it. Saving anyway would silently undo their change —
+    // and so would replacing the textarea with the disk copy, which would
+    // throw away the operator's edit instead. Keep the draft, show what is
+    // on disk now beside it, and leave the ETag alone: only an explicit
+    // "Reload from disk" adopts the new version, so a blind re-save keeps
+    // being refused rather than overwriting the change it never saw.
+    const fresh = await fetchOverrides();
+    showOverridesConflict(fresh.ok
+      ? `Current file on disk:\n${JSON.stringify(fresh.doc, null, 2)}`
+      : "");
+    setStatus(
+      "overrides-status",
+      "not saved: the file changed on disk since you loaded it. Your edit is kept above; " +
+      "merge in the current version shown below, then click \"Reload from disk\" " +
+      "(which replaces your edit) and re-apply, or copy your edit first",
+      "warn",
+    );
+    return;
+  }
+  if (ok) {
+    if (data?.etag) state.overridesEtag = data.etag;
+    state.overridesLoadedText = $("overrides-text").value;
+    showOverridesConflict("");
+    setStatus("overrides-status", `saved to ${data.path}`, "ok");
+    refreshCoverageViews();
+  } else {
+    setStatus("overrides-status", `save failed (${status}): ${data?.error || "?"}`, "err");
+  }
 }
 
 // ------- Content overrides editor -------------------------------------------
 
 async function loadContentOverrides() {
   const { ok, data } = await jsonFetch("/api/content-overrides");
-  if (ok) {
+  if (ok && data) {
     $("content-overrides-text").value = JSON.stringify(data, null, 2);
     setStatus("content-overrides-status", `loaded ${Object.keys(data).length} entries`, "ok");
-  } else {
-    setStatus("content-overrides-status", `load failed: ${data?.error || "?"}`, "err");
+    return true;
   }
+  setStatus("content-overrides-status", `load failed: ${data?.error || "?"}`, "err");
+  return false;
 }
 
 async function saveContentOverrides() {
@@ -688,8 +904,10 @@ async function bakeNow() {
     `Next tick will pick up the new database.`,
     "ok",
   );
-  // Refresh the now-showing block so the operator sees the updated pick.
+  // Refresh the now-showing block so the operator sees the updated pick, and
+  // the coverage views, which a bake changes (#290).
   setTimeout(refreshCurrent, 1500);
+  refreshCoverageViews();
 }
 
 // ------- Per-row ban --------------------------------------------------------
@@ -697,33 +915,36 @@ async function bakeNow() {
 async function banQuoteKey(key) {
   if (!key) return;
   if (!confirm(`Add ${key} to ban_quote_keys? The picker will skip this exact quote forever.`)) return;
-  // Read-modify-write the selection_overrides sidecar through the existing
-  // POST endpoint. Server-side validation will reject an already-banned dup
-  // with a clean error if we hit it, but the de-dup happens here too.
-  const { ok: okGet, data: current } = await jsonFetch("/api/overrides");
-  if (!okGet) {
-    alert(`Could not load overrides: ${current?.error || "?"}`);
-    return;
-  }
-  const next = {
-    ban_source_ids: current.ban_source_ids || [],
-    boost_source_ids: current.boost_source_ids || [],
-    preferred_buckets: current.preferred_buckets || {},
-    ban_quote_keys: Array.from(new Set([...(current.ban_quote_keys || []), key])),
-  };
-  const { ok, status, data } = await jsonFetch("/api/overrides", {
+  // The server does the read-modify-write under a lock (#289). Doing it here —
+  // GET the sidecar, add the key, POST the whole document back — lost any
+  // write that landed between the two requests (a ban from another tab, an
+  // editor save), and could clobber a corrupt file with defaults.
+  const { ok, status, data } = await jsonFetch("/api/overrides/ban", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(next),
+    body: JSON.stringify({ key }),
   });
   if (!ok) {
-    alert(`Save failed (${status}): ${data?.error || "?"}`);
+    alert(`Ban failed (${status}): ${data?.error || "?"}`);
     return;
   }
-  log(`banned ${key}`, "ok");
+  log(data?.already_banned ? `${key} was already banned` : `banned ${key}`, "ok");
   // Re-render so the panel jumps to a new pick that doesn't include the banned row.
   await fireAction("rerender");
-  await loadOverrides();
+  // Show the ban in the editor — unless the operator has unsaved edits there.
+  // Reloading would discard them, and adopting the new ETag would let their
+  // eventual save silently drop this ban; leaving both alone means that save
+  // is refused with 412 and they are told why.
+  if (overridesDirty()) {
+    setStatus(
+      "overrides-status",
+      `${key} was banned on disk; your unsaved edit is kept — saving it will be refused until you reload`,
+      "warn",
+    );
+  } else {
+    await loadOverrides();
+  }
+  refreshCoverageViews();
 }
 
 // ------- Utils --------------------------------------------------------------
@@ -738,8 +959,8 @@ function setStatus(id, msg, cls) {
 // ------- History ------------------------------------------------------------
 
 async function refreshHistory() {
-  const { ok, data } = await jsonFetch("/api/history?limit=30");
-  if (!ok || !data) return;
+  const data = await pollFetch("history", "/api/history?limit=30");
+  if (!data) return;
   const list = $("history-list");
   list.innerHTML = "";
   for (const entry of data.entries || []) {
@@ -800,13 +1021,86 @@ async function maybeShowWizard() {
   // Now tab's thumbnail UX (and the operator picks a theme by clicking, not
   // by reading names off a dropdown they haven't learned yet).
   const grid = $("wizard-theme-grid");
+  releaseWizardTiles();
   grid.innerHTML = "";
   for (const theme of data.themes || []) {
-    const cell = themeThumb(theme, `Use ${theme}`, () => completeWizard(theme));
+    const { cell, img } = themeThumb(theme, `Use ${theme}`, () => completeWizard(theme));
+    state.wizardTiles.push({ theme, img });
     if (theme === (data.manual_theme || data.theme_arg)) cell.classList.add("selected");
     grid.appendChild(cell);
   }
+  openWizard(overlay);
+}
+
+function releaseWizardTiles() {
+  for (const tile of state.wizardTiles) releaseImage(tile.img);
+  state.wizardTiles = [];
+}
+
+// Minimal modal focus management (#292): remember where focus was, move it
+// into the dialog so keyboard and screen-reader users land on it, and put it
+// back when the dialog closes.
+let wizardReturnFocus = null;
+let wizardKeysWired = false;
+
+const WIZARD_FOCUSABLE = "button, [href], input, select, textarea";
+
+function wizardFocusables(overlay) {
+  const found = Array.from(overlay.querySelectorAll?.(WIZARD_FOCUSABLE) || [])
+    .filter((el) => !el.disabled && !el.hidden);
+  if (!found.length) {
+    const dismiss = $("wizard-dismiss");
+    if (dismiss) found.push(dismiss);
+  }
+  return found;
+}
+
+// aria-modal promises assistive tech that nothing outside the dialog is
+// reachable, so keep Tab / Shift+Tab cycling inside it. Escape closes the
+// dialog for this page load without marking setup complete — it comes back
+// on the next visit, where "I'm ready" is the way to retire it for good.
+function wizardKeydown(event) {
+  const overlay = $("setup-wizard");
+  if (!overlay || overlay.hidden) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeWizard();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const items = wizardFocusables(overlay);
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  let target = null;
+  if (!items.includes(active)) target = event.shiftKey ? last : first;
+  else if (event.shiftKey && active === first) target = last;
+  else if (!event.shiftKey && active === last) target = first;
+  if (target) {
+    event.preventDefault();
+    target.focus();
+  }
+}
+
+function openWizard(overlay) {
+  wizardReturnFocus = document.activeElement || null;
   overlay.hidden = false;
+  if (!wizardKeysWired) {
+    document.addEventListener("keydown", wizardKeydown);
+    wizardKeysWired = true;
+  }
+  const first = overlay.querySelector?.(WIZARD_FOCUSABLE) || $("wizard-dismiss");
+  if (first && typeof first.focus === "function") first.focus();
+}
+
+function closeWizard() {
+  const overlay = $("setup-wizard");
+  if (overlay) overlay.hidden = true;
+  releaseWizardTiles();
+  const back = wizardReturnFocus;
+  wizardReturnFocus = null;
+  if (back && typeof back.focus === "function") back.focus();
 }
 
 async function completeWizard(theme) {
@@ -823,7 +1117,7 @@ async function completeWizard(theme) {
   }
   // Hide the overlay, refresh the underlying view so the freshly-applied
   // theme is reflected on the Now tab once the operator looks.
-  $("setup-wizard").hidden = true;
+  closeWizard();
   await Promise.all([refreshCurrent(), refreshThemes()]);
 }
 

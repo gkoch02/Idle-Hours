@@ -1233,18 +1233,19 @@ class TestOverrideValidation:
             web_server.validate_overrides_payload({"preferred_buckets": {"h3_exact": [1]}})
 
     def test_write_atomic_uses_shared_helper(self, tmp_path):
-        """Write goes through atomic_io.atomic_write_text, which tmp+fsync+replace+dir-fsync."""
+        """Write goes through atomic_io.atomic_write_bytes, which tmp+fsync+replace+dir-fsync,
+        and returns exactly the bytes it wrote (the response ETag is minted from them)."""
         called = {"n": 0}
 
         def fake(path, payload):
             called["n"] += 1
-            path.write_text(payload)
+            path.write_bytes(payload)
 
         target = tmp_path / "overrides.json"
-        with patch("idle_hours.atomic_io.atomic_write_text", side_effect=fake):
-            web_server.write_overrides_atomic(target, {"ban_source_ids": []})
+        with patch("idle_hours.atomic_io.atomic_write_bytes", side_effect=fake):
+            written = web_server.write_overrides_atomic(target, {"ban_source_ids": []})
         assert called["n"] == 1
-        assert target.exists()
+        assert target.read_bytes() == written
 
     def test_bad_payload_returns_400(self, live_server):
         server, _, _ = live_server
@@ -1521,7 +1522,9 @@ class TestErrorBranches:
         monkeypatch.setattr(rc, "current_time_str", lambda: (_ for _ in ()).throw(RuntimeError("clock fail")))
         status, body = _get(server, "/api/current")
         assert status == 500
-        assert "clock fail" in _json_body(body)["error"]
+        # The exception text stays in the journal, never in the body (#291).
+        assert _json_body(body)["error"] == "internal error"
+        assert "clock fail" not in body.decode("utf-8")
 
     def test_post_handler_exception_returns_500(self, tmp_path, live_server, monkeypatch):
         """A non-ValueError in a POST handler surfaces as 500, not as a bare 200."""
@@ -1532,7 +1535,8 @@ class TestErrorBranches:
         )
         status, body = _post(server, "/api/action/rerender", {})
         assert status == 500
-        assert "explode" in _json_body(body)["error"]
+        # The repr stays in the journal; the client gets a generic body.
+        assert _json_body(body) == {"error": "internal error"}
 
     def test_api_telemetry_non_int_hours_returns_400(self, live_server):
         server, _, _ = live_server
@@ -1664,12 +1668,15 @@ class TestWebErrorTelemetry:
             run_clock, "action_rerender",
             lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("explode")),
         )
-        status, _ = _post(server, "/api/action/rerender", {})
+        status, body = _post(server, "/api/action/rerender", {})
         assert status == 500
+        # Generic like GET: the repr goes to the journal only.
+        assert _json_body(body) == {"error": "internal error"}
         entries = _read_web_telemetry(Path(args.telemetry_path).parent)
         matching = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 500]
         assert matching
-        assert "explode" in matching[0]["error"]
+        assert "RuntimeError" in matching[0]["error"]
+        assert "explode" not in matching[0]["error"]
 
 
 # ============================================================================
@@ -2513,14 +2520,22 @@ class TestContentOverridesValidator:
         with pytest.raises(ValueError, match="must be an int"):
             web_server.validate_content_overrides_payload({"141:42": {"hour": True}})
 
+    def test_normalized_time_uses_the_bake_stage_rule(self):
+        # The bake stage skips a malformed normalized_time, so accepting it
+        # here would report "saved" for an edit that never reaches the panel.
+        for bad in ("4:30", "banana", "24:00", "\u0660\u0669:\u0663\u0660"):
+            with pytest.raises(ValueError, match="normalized_time"):
+                web_server.validate_content_overrides_payload({"141:42": {"normalized_time": bad}})
+        web_server.validate_content_overrides_payload({"141:42": {"normalized_time": "04:30"}})
+
     def test_rejects_out_of_range_int_fields(self):
         # An out-of-range minute would re-derive a bogus bucket at bake time and
         # get silently dropped; reject it up front with a 400-worthy ValueError.
-        with pytest.raises(ValueError, match=r"\[0, 59\]"):
+        with pytest.raises(ValueError, match=r"0\.\.59"):
             web_server.validate_content_overrides_payload({"141:42": {"minute": 99}})
-        with pytest.raises(ValueError, match=r"\[0, 23\]"):
+        with pytest.raises(ValueError, match=r"0\.\.23"):
             web_server.validate_content_overrides_payload({"141:42": {"hour": 24}})
-        with pytest.raises(ValueError, match=r"\[0, 100\]"):
+        with pytest.raises(ValueError, match=r"0\.\.100"):
             web_server.validate_content_overrides_payload({"141:42": {"quality_score": 101}})
 
     def test_accepts_in_range_int_fields(self):
@@ -2875,6 +2890,7 @@ class TestSandboxedDeploymentWritePaths:
         than by chmod, which root (how CI runs) would simply bypass.
         """
         real_text = atomic_io.atomic_write_text
+        real_bytes = atomic_io.atomic_write_bytes
         real_lines = atomic_io.atomic_write_lines
 
         def guard(real):
@@ -2885,6 +2901,7 @@ class TestSandboxedDeploymentWritePaths:
             return wrapper
 
         with patch.object(atomic_io, "atomic_write_text", guard(real_text)), \
+             patch.object(atomic_io, "atomic_write_bytes", guard(real_bytes)), \
              patch.object(atomic_io, "atomic_write_lines", guard(real_lines)):
             yield
 
@@ -3808,3 +3825,563 @@ class TestDisplayableCoverageOverTheWire:
         assert tiers["h3_exact"] == "thin"          # 2 rows
         assert tiers["h9_half_past"] == "thin"
         assert set(tiers.values()) <= {"empty", "thin", "sparse"}
+
+
+# ============================================================================
+# #289 — lost updates on selection_overrides.json
+# ============================================================================
+
+def _request_full(server, method: str, path: str, payload=None, headers: dict | None = None):
+    """Like ``_get`` / ``_post`` but also returns the response headers."""
+    conn = _client(server)
+    h = dict(headers or {})
+    data = b""
+    if method == "POST":
+        h.setdefault("Content-Type", "application/json")
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+        h["Content-Length"] = str(len(data))
+    conn.request(method, path, body=data if method == "POST" else None, headers=h)
+    resp = conn.getresponse()
+    body = resp.read()
+    resp_headers = {k.lower(): v for k, v in resp.getheaders()}
+    conn.close()
+    return resp.status, resp_headers, body
+
+
+_OVERRIDES_DOC = {
+    "ban_source_ids": ["999"],
+    "boost_source_ids": ["141"],
+    "preferred_buckets": {"h3_exact": "1342"},
+    "ban_quote_keys": ["141:100"],
+}
+
+
+class TestOverridesBanEndpoint:
+    def test_ban_appends_key_and_preserves_siblings(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        status, body = _post(server, "/api/overrides/ban", {"key": "1342:77"})
+        assert status == 200, body
+        data = _json_body(body)
+        assert data["already_banned"] is False
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert on_disk["ban_quote_keys"] == ["141:100", "1342:77"]
+        assert on_disk["ban_source_ids"] == ["999"]
+        assert on_disk["boost_source_ids"] == ["141"]
+        assert on_disk["preferred_buckets"] == {"h3_exact": "1342"}
+
+    def test_ban_is_idempotent(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        before = Path(args.overrides).read_bytes()
+        status, body = _post(server, "/api/overrides/ban", {"key": "141:100"})
+        assert status == 200
+        assert _json_body(body)["already_banned"] is True
+        assert Path(args.overrides).read_bytes() == before, "an existing ban must not rewrite the file"
+
+    def test_ban_creates_missing_file_from_defaults(self, live_server):
+        server, _, args = live_server
+        assert not Path(args.overrides).exists()
+        status, _ = _post(server, "/api/overrides/ban", {"key": "141:482"})
+        assert status == 200
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert on_disk["ban_quote_keys"] == ["141:482"]
+
+    @pytest.mark.parametrize("key", ["", "141", "141:abc", "a b:1", 42, None])
+    def test_ban_rejects_malformed_key(self, live_server, key):
+        server, _, args = live_server
+        status, _ = _post(server, "/api/overrides/ban", {"key": key})
+        assert status == 400
+        assert not Path(args.overrides).exists()
+
+    @pytest.mark.parametrize("contents", ["not { json", "[1, 2]", '{"ban_quote_keys": "oops"}'])
+    def test_corrupt_file_is_refused_not_clobbered(self, live_server, contents):
+        """The regression that matters most: a one-key ban must never replace a
+        broken file (and every ban / boost the operator can still recover from
+        it) with defaults."""
+        server, _, args = live_server
+        Path(args.overrides).write_text(contents, encoding="utf-8")
+        status, body = _post(server, "/api/overrides/ban", {"key": "1342:77"})
+        assert status == 409, body
+        assert Path(args.overrides).read_text(encoding="utf-8") == contents
+
+    def test_concurrent_bans_all_land(self, live_server):
+        """The lost update the endpoint exists to close: N racing bans, N keys."""
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        keys = [f"500:{i}" for i in range(12)]
+        results: list[int] = []
+
+        def ban(k):
+            status, _ = _post(server, "/api/overrides/ban", {"key": k})
+            results.append(status)
+
+        threads = [threading.Thread(target=ban, args=(k,)) for k in keys]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert results == [200] * len(keys)
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert set(on_disk["ban_quote_keys"]) == {"141:100", *keys}
+
+    def test_ban_requires_json_content_type(self, live_server):
+        server, _, _ = live_server
+        status, _ = _post(server, "/api/overrides/ban", {"key": "1:1"},
+                          headers={"Content-Type": "text/plain"})
+        assert status == 415
+
+
+class TestOverridesEtag:
+    def test_get_returns_etag(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        status, headers, _ = _request_full(server, "GET", "/api/overrides")
+        assert status == 200
+        assert headers["etag"].startswith('"') and headers["etag"].endswith('"')
+
+    def test_etag_changes_when_file_changes(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        _, h1, _ = _request_full(server, "GET", "/api/overrides")
+        _post(server, "/api/overrides/ban", {"key": "7:7"})
+        _, h2, _ = _request_full(server, "GET", "/api/overrides")
+        assert h1["etag"] != h2["etag"]
+
+    def test_matching_if_match_saves(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        _, headers, _ = _request_full(server, "GET", "/api/overrides")
+        status, resp_headers, body = _request_full(
+            server, "POST", "/api/overrides", {**_OVERRIDES_DOC, "ban_source_ids": []},
+            headers={"If-Match": headers["etag"]},
+        )
+        assert status == 200, body
+        assert _json_body(body)["etag"] == resp_headers["etag"]
+        assert json.loads(Path(args.overrides).read_text())["ban_source_ids"] == []
+
+    def test_stale_if_match_is_412_and_file_untouched(self, live_server):
+        """The editor's stale-textarea save: loaded, then someone banned a quote,
+        then the save lands. The ban must survive."""
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        _, headers, _ = _request_full(server, "GET", "/api/overrides")
+        _post(server, "/api/overrides/ban", {"key": "7:7"})
+        after_ban = Path(args.overrides).read_bytes()
+        status, _, body = _request_full(
+            server, "POST", "/api/overrides", _OVERRIDES_DOC,
+            headers={"If-Match": headers["etag"]},
+        )
+        assert status == 412, body
+        assert Path(args.overrides).read_bytes() == after_ban
+        entries = _read_web_telemetry(Path(args.telemetry_path).parent)
+        assert any(e.get("mode") == "web_error" and e.get("status") == 412 for e in entries)
+
+    def test_post_without_if_match_still_writes(self, live_server):
+        """Backwards compatibility for scripts that never learned ETags."""
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        status, _ = _post(server, "/api/overrides", {**_OVERRIDES_DOC, "boost_source_ids": []})
+        assert status == 200
+        assert json.loads(Path(args.overrides).read_text())["boost_source_ids"] == []
+
+    def test_if_match_against_missing_file(self, live_server):
+        server, _, args = live_server
+        _, headers, _ = _request_full(server, "GET", "/api/overrides")
+        assert headers["etag"] == '"absent"'
+        status, _, _ = _request_full(
+            server, "POST", "/api/overrides", _OVERRIDES_DOC, headers={"If-Match": headers["etag"]},
+        )
+        assert status == 200
+        # "*" means "only if a file exists" — true now.
+        status, _, _ = _request_full(
+            server, "POST", "/api/overrides", _OVERRIDES_DOC, headers={"If-Match": "*"},
+        )
+        assert status == 200
+
+    def test_star_if_match_fails_when_file_absent(self, live_server):
+        server, _, args = live_server
+        status, _, _ = _request_full(
+            server, "POST", "/api/overrides", _OVERRIDES_DOC, headers={"If-Match": "*"},
+        )
+        assert status == 412
+        assert not Path(args.overrides).exists()
+
+
+# ============================================================================
+# #291 — GET error hygiene, token-file log latch, lock discipline
+# ============================================================================
+
+class TestGetErrorTelemetry:
+    @pytest.mark.parametrize("path", [
+        "/api/telemetry?hours=x",
+        "/api/gaps?threshold=x",
+        "/api/search",
+        "/api/search?q=a&limit=x",
+        "/api/preview?theme=nope",
+        "/api/preview?theme=default&time=25:00",
+        "/api/bucket/h3_exact?top=x",
+        "/api/bucket/h3_exact?time=3:99",
+    ])
+    def test_get_400s_emit_web_error(self, live_server, path):
+        server, _, args = live_server
+        status, _ = _get(server, path)
+        assert status == 400
+        entries = _read_web_telemetry(Path(args.telemetry_path).parent)
+        bare = path.split("?")[0]
+        assert any(
+            e.get("mode") == "web_error" and e.get("status") == 400 and e.get("path") == bare
+            for e in entries
+        ), entries
+
+    def test_get_500_emits_web_error_without_repr(self, live_server, monkeypatch):
+        server, _, args = live_server
+        monkeypatch.setattr(
+            run_clock, "current_time_str",
+            lambda: (_ for _ in ()).throw(RuntimeError("/secret/path/leak")),
+        )
+        status, body = _get(server, "/api/current")
+        assert status == 500
+        assert "/secret/path/leak" not in body.decode("utf-8")
+        entries = _read_web_telemetry(Path(args.telemetry_path).parent)
+        matching = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 500]
+        assert matching and matching[0]["path"] == "/api/current"
+        assert "RuntimeError" in matching[0]["error"]
+        assert "/secret/path/leak" not in matching[0]["error"]
+
+    def test_coverage_500_does_not_echo_exception(self, tmp_path, live_server):
+        server, _, _ = live_server
+        server.context.raw_corpus_path = tmp_path / "no_such_corpus.jsonl"
+        bad = tmp_path / "bucket-coverage.json"
+        bad.write_text("not { valid json", encoding="utf-8")
+        server.context.coverage_path = bad
+        status, body = _get(server, "/api/coverage")
+        assert status == 500
+        assert _json_body(body)["error"] == "coverage unavailable"
+
+    def test_metrics_help_says_requests_not_posts(self, live_server):
+        server, _, _ = live_server
+        status, body = _get(server, "/metrics")
+        assert status == 200
+        text = body.decode("utf-8")
+        assert "POSTs that failed token auth" not in text
+        assert "idle_hours_web_auth_fails_total Web UI requests" in text
+
+
+class TestTokenFileLogLatch:
+    def test_missing_file_logs_once_then_recovery(self, tmp_path, capsys):
+        token_file = tmp_path / "token"
+        token_file.write_text("secret\n", encoding="utf-8")
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        ctx = web_server.WebContext(args, run_clock.RuntimeState(args.theme), token_file=str(token_file))
+        capsys.readouterr()
+        token_file.unlink()
+        for _ in range(5):
+            assert ctx.current_token() == "secret"
+        err = capsys.readouterr().err
+        assert err.count("unreadable") == 1, err
+        token_file.write_text("secret\n", encoding="utf-8")
+        assert ctx.current_token() == "secret"
+        captured = capsys.readouterr()
+        assert "readable again" in captured.out + captured.err
+        # A second outage is a new event and logs again.
+        token_file.unlink()
+        ctx.current_token()
+        ctx.current_token()
+        assert capsys.readouterr().err.count("unreadable") == 1
+
+    def test_statable_but_unreadable_stays_latched(self, tmp_path, capsys):
+        """A path that stats but can't be read (here a directory) logs once,
+        not a recovery plus a fresh failure on every request (PR #315 review)."""
+        token_file = tmp_path / "token"
+        token_file.write_text("secret\n", encoding="utf-8")
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(token_file))
+        ctx = web_server.WebContext(args, run_clock.RuntimeState(args.theme), token_file=str(token_file))
+        capsys.readouterr()
+        token_file.unlink()
+        token_file.mkdir()
+        for _ in range(5):
+            assert ctx.current_token() == "secret"
+        captured = capsys.readouterr()
+        out = captured.out + captured.err
+        assert out.count("read failed") == 1, out
+        assert "readable again" not in out
+
+    def test_missing_at_startup_stays_quiet(self, tmp_path, capsys):
+        """run_clock._resolve_web_token already reported the startup miss."""
+        missing = tmp_path / "never"
+        args = _make_args(tmp_path, web_bind="127.0.0.1:0", web_token_file=str(missing))
+        ctx = web_server.WebContext(args, run_clock.RuntimeState(args.theme), token="x", token_file=str(missing))
+        for _ in range(3):
+            assert ctx.current_token() == "x"
+        assert "unreadable" not in capsys.readouterr().err
+
+
+class TestApiCurrentLockDiscipline:
+    def test_resolve_effective_theme_runs_outside_state_lock(self, live_server, monkeypatch):
+        server, state, _ = live_server
+        state.last_effective_theme = None
+        held: list[bool] = []
+
+        def fake_resolve(*a, **kw):
+            acquired = state.lock.acquire(blocking=False)
+            held.append(not acquired)
+            if acquired:
+                state.lock.release()
+            return "default"
+
+        monkeypatch.setattr(run_clock, "resolve_effective_theme", fake_resolve)
+        status, body = _get(server, "/api/current")
+        assert status == 200
+        assert _json_body(body)["theme"] == "default"
+        assert held == [False], "resolve_effective_theme was called with state.lock held"
+
+
+# ============================================================================
+# #292 — diags excluded from pick-a-theme surfaces; /api/bucket validates time
+# ============================================================================
+
+class TestDiagsExcludedFromPickers:
+    def test_setup_themes_exclude_diags(self, live_server):
+        from idle_hours.runtime_theme import random_theme_pool
+        server, _, _ = live_server
+        data = _json_body(_get(server, "/api/setup")[1])
+        assert "diags" not in data["themes"]
+        assert data["themes"] == list(random_theme_pool())
+
+    def test_themes_exposes_preview_list_without_diags(self, live_server):
+        from idle_hours.theme_names import theme_cycle
+        server, _, _ = live_server
+        data = _json_body(_get(server, "/api/themes")[1])
+        assert "diags" not in data["preview_themes"]
+        # The dropdown keeps the full cycle so diags stays explicitly reachable.
+        assert data["themes"] == list(theme_cycle())
+        assert set(data["preview_themes"]) <= set(data["themes"])
+
+
+class TestBucketTimeValidation:
+    @pytest.mark.parametrize("bad", ["3", "25:00", "03:60", "ab:cd", "03:15:00", "-1:05"])
+    def test_invalid_time_is_400(self, live_server, bad):
+        server, _, _ = live_server
+        status, body = _get(server, f"/api/bucket/h3_exact?time={bad}")
+        assert status == 400
+        assert "HH:MM" in _json_body(body)["error"]
+
+    def test_valid_time_passes_through(self, live_server):
+        server, _, _ = live_server
+        with patch("idle_hours.pick_quote.select_candidates", return_value=[]) as sc:
+            status, body = _get(server, "/api/bucket/h3_exact?time=03:15")
+        assert status == 200
+        assert sc.call_args.kwargs["time_str"] == "03:15"
+
+
+class TestIndexHtmlAccessibility:
+    """#292: every form control has an associated label and the wizard is a
+    real modal to assistive tech."""
+
+    HTML = (Path(web_server.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+
+    def test_every_input_and_textarea_has_a_label(self):
+        ids = re.findall(r"<(?:input|textarea|select)\b[^>]*\bid=\"([^\"]+)\"", self.HTML)
+        assert ids, "no form controls found — the regex no longer matches the markup"
+        labelled = set(re.findall(r"<label\b[^>]*\bfor=\"([^\"]+)\"", self.HTML))
+        missing = [i for i in ids if i not in labelled]
+        assert not missing, f"form controls without <label for>: {missing}"
+
+    def test_wizard_is_aria_modal(self):
+        m = re.search(r"<div id=\"setup-wizard\"[^>]*>", self.HTML)
+        assert m and 'role="dialog"' in m.group(0) and 'aria-modal="true"' in m.group(0)
+
+
+# ============================================================================
+# Review fixes for e58df59 — ETag robustness, ban merge, response hygiene
+# ============================================================================
+
+class TestWeakEtagFromProxy:
+    """A gzip-ing proxy rewrites ``"…"`` to ``W/"…"``; the browser echoes it."""
+
+    def test_weak_if_match_still_saves(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        _, headers, _ = _request_full(server, "GET", "/api/overrides")
+        status, _, body = _request_full(
+            server, "POST", "/api/overrides", _OVERRIDES_DOC,
+            headers={"If-Match": "W/" + headers["etag"]},
+        )
+        assert status == 200, body
+
+    def test_weak_stale_if_match_is_still_412(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        _, headers, _ = _request_full(server, "GET", "/api/overrides")
+        _post(server, "/api/overrides/ban", {"key": "7:7"})
+        status, _, _ = _request_full(
+            server, "POST", "/api/overrides", _OVERRIDES_DOC,
+            headers={"If-Match": 'W/"nope", W/' + headers["etag"]},
+        )
+        assert status == 412
+
+    def test_matches_helper(self):
+        assert web_server._etag_matches('W/"abc"', '"abc"')
+        assert web_server._etag_matches('"x", W/"abc"', '"abc"')
+        assert not web_server._etag_matches('W/"abd"', '"abc"')
+
+    def test_envelope_carries_etag_in_body(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        status, headers, body = _request_full(server, "GET", "/api/overrides?envelope=1")
+        assert status == 200
+        data = _json_body(body)
+        assert data["etag"] == headers["etag"]
+        assert data["overrides"]["ban_quote_keys"] == ["141:100"]
+
+    def test_bare_get_is_unchanged(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps(_OVERRIDES_DOC), encoding="utf-8")
+        _, _, body = _request_full(server, "GET", "/api/overrides")
+        assert _json_body(body) == _OVERRIDES_DOC
+
+
+class TestBanMergesIntoLoadedDocument:
+    def test_unknown_keys_and_int_ids_survive_a_ban(self, live_server):
+        server, _, args = live_server
+        doc = {
+            "_comment": "hand notes — keep me",
+            "ban_source_ids": [999],
+            "boost_source_ids": [141, "7"],
+            "preferred_buckets": {"h3_exact": 1342},
+            "ban_quote_keys": ["141:100"],
+            "future_field": {"nested": True},
+        }
+        Path(args.overrides).write_text(json.dumps(doc), encoding="utf-8")
+        status, body = _post(server, "/api/overrides/ban", {"key": "1342:77"})
+        assert status == 200, body
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert on_disk == {**doc, "ban_quote_keys": ["141:100", "1342:77"]}
+
+    def test_legacy_file_without_ban_quote_keys_gains_it(self, live_server):
+        server, _, args = live_server
+        Path(args.overrides).write_text(json.dumps({"ban_source_ids": ["1"]}), encoding="utf-8")
+        status, _ = _post(server, "/api/overrides/ban", {"key": "1:2"})
+        assert status == 200
+        assert json.loads(Path(args.overrides).read_text()) == {"ban_source_ids": ["1"], "ban_quote_keys": ["1:2"]}
+
+    def test_typoed_preferred_bucket_does_not_block_a_ban(self, live_server):
+        """The runtime loader only warns about a bad bucket name; the ban must
+        not be stricter than the picker it curates."""
+        server, _, args = live_server
+        doc = {"preferred_buckets": {"h3_bogus": "141"}, "ban_quote_keys": []}
+        Path(args.overrides).write_text(json.dumps(doc), encoding="utf-8")
+        status, body = _post(server, "/api/overrides/ban", {"key": "1342:77"})
+        assert status == 200, body
+        on_disk = json.loads(Path(args.overrides).read_text())
+        assert on_disk["preferred_buckets"] == {"h3_bogus": "141"}
+        assert on_disk["ban_quote_keys"] == ["1342:77"]
+
+
+class TestWriteEtagComesFromWrittenBytes:
+    """An external edit landing between our write and a re-read must not be
+    adopted as the version the editor holds."""
+
+    @pytest.fixture
+    def racing_write(self, monkeypatch):
+        real = atomic_io.atomic_write_bytes
+
+        def write_then_external_edit(path, data):
+            real(path, data)
+            Path(path).write_text('{"ban_quote_keys": ["9:9"], "external": true}', encoding="utf-8")
+
+        monkeypatch.setattr(web_server.atomic_io, "atomic_write_bytes", write_then_external_edit)
+
+    def test_save_etag_names_what_was_written(self, live_server, racing_write):
+        server, _, args = live_server
+        payload = {**_OVERRIDES_DOC, "ban_source_ids": []}
+        status, headers, body = _request_full(server, "POST", "/api/overrides", payload)
+        assert status == 200, body
+        expected = web_server.overrides_etag(
+            web_server.serialize_overrides(web_server.validate_overrides_payload(payload))
+        )
+        assert headers["etag"] == expected == _json_body(body)["etag"]
+        # And therefore a save with that tag refuses to clobber the external edit.
+        status, _, _ = _request_full(
+            server, "POST", "/api/overrides", payload, headers={"If-Match": headers["etag"]},
+        )
+        assert status == 412
+
+    def test_ban_etag_names_what_was_written(self, live_server, racing_write):
+        server, _, args = live_server
+        status, headers, body = _request_full(server, "POST", "/api/overrides/ban", {"key": "1:1"})
+        assert status == 200, body
+        written = web_server.serialize_overrides({**web_server._default_overrides(), "ban_quote_keys": ["1:1"]})
+        assert headers["etag"] == web_server.overrides_etag(written)
+        assert headers["etag"] != web_server.overrides_etag(Path(args.overrides).read_bytes())
+
+
+def _raw_exchange(server, request: bytes) -> bytes:
+    host, port = server.server_address[:2]
+    with socket.create_connection((host, port), timeout=3) as sock:
+        sock.sendall(request)
+        chunks = []
+        while True:
+            try:
+                chunk = sock.recv(65536)
+            except (ConnectionResetError, TimeoutError):
+                break
+            if not chunk:
+                break
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _web_errors(args) -> list[dict]:
+    return [e for e in _read_web_telemetry(Path(args.telemetry_path).parent) if e.get("mode") == "web_error"]
+
+
+class TestClientDisconnectAndDoubleResponse:
+    @pytest.mark.parametrize("exc", [BrokenPipeError, ConnectionResetError])
+    def test_get_client_gone_is_not_a_web_error(self, live_server, monkeypatch, exc):
+        server, _, args = live_server
+
+        def boom(self):
+            raise exc("client went away")
+
+        monkeypatch.setattr(web_server.CuratorHandler, "_api_themes", boom)
+        raw = _raw_exchange(server, b"GET /api/themes HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        assert raw == b"", "nothing may be written onto a dead socket"
+        assert _web_errors(args) == []
+
+    def test_post_client_gone_is_not_a_web_error(self, live_server, monkeypatch):
+        server, _, args = live_server
+        monkeypatch.setattr(
+            run_clock, "action_rerender",
+            lambda *a, **kw: (_ for _ in ()).throw(ConnectionResetError("gone")),
+        )
+        raw = _raw_exchange(
+            server,
+            b"POST /api/action/rerender HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\nContent-Length: 0\r\n\r\n",
+        )
+        assert raw == b""
+        assert _web_errors(args) == []
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    def test_failure_after_headers_sent_writes_no_second_response(self, live_server, monkeypatch, method):
+        server, _, args = live_server
+
+        def half_done(self):
+            self._json(200, {"ok": True})
+            raise RuntimeError("after the fact")
+
+        if method == "GET":
+            monkeypatch.setattr(web_server.CuratorHandler, "_api_themes", half_done)
+            req = b"GET /api/themes HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+        else:
+            monkeypatch.setattr(web_server.CuratorHandler, "_action_rerender", half_done)
+            req = (b"POST /api/action/rerender HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                   b"Content-Type: application/json\r\nContent-Length: 0\r\n\r\n")
+        raw = _raw_exchange(server, req)
+        assert raw.count(b"HTTP/1.") == 1, raw
+        assert raw.startswith(b"HTTP/1.0 200") or raw.startswith(b"HTTP/1.1 200"), raw
+        errors = _web_errors(args)
+        assert len(errors) == 1 and "RuntimeError" in errors[0]["error"]

@@ -24,6 +24,7 @@ import argparse
 import json
 from pathlib import Path
 
+from idle_hours import atomic_io
 from idle_hours.buckets import BUCKET_ORDER, bucket_for_time
 from idle_hours.jsonl_io import iter_jsonl
 
@@ -78,9 +79,9 @@ def main() -> int:
 
         rows.append(row)
 
-    with output_path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    # Atomic (issue #306): a crash mid-write must not leave a truncated file,
+    # least of all on an in-place rewrite of the input.
+    atomic_io.atomic_write_lines(output_path, (json.dumps(row, ensure_ascii=False) for row in rows))
 
     print(f"Repaired {bucket_fixes} legacy fuzzy_bucket rows")
     print(f"Normalised {matched_text_fixes} matched_text whitespace rows")

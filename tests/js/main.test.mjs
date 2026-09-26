@@ -35,27 +35,19 @@ const LAZY_TAB_ROUTES = {
 /** Let the lazy loaders activateTab kicked off settle before asserting. */
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-const OVERRIDES = {
-  ban_source_ids: ["999"],
-  boost_source_ids: ["141"],
-  preferred_buckets: { h3_exact: 1342 },
-  ban_quote_keys: ["141:100"],
-};
-
 /** Load main.js wired for the ban flow, capturing what gets POSTed. */
-async function banHarness(overrides = OVERRIDES, extra = {}) {
+async function banHarness(extra = {}, banRoute = { body: { ok: true, key: "1342:77", already_banned: false } }) {
   const posted = [];
-  const routes = {
-    "GET /api/overrides": { body: overrides },
-    "POST /api/overrides": { body: { ok: true } },
+  const table = routeTable({
+    "GET /api/overrides": { body: {} },
+    "POST /api/overrides/ban": banRoute,
     "POST /api/action/rerender": { body: { ok: true } },
-  };
-  const table = routeTable(routes);
+  });
   const harness = await loadMainJs({
     elementIds: ["action-log", "overrides-text", "overrides-status"],
     fetch: async (url, init) => {
-      if ((init.method || "GET").toUpperCase() === "POST" && url === "/api/overrides") {
-        posted.push(JSON.parse(init.body));
+      if ((init.method || "GET").toUpperCase() === "POST") {
+        posted.push({ url, body: init.body ? JSON.parse(init.body) : null, headers: init.headers });
       }
       return table(url, init);
     },
@@ -64,50 +56,37 @@ async function banHarness(overrides = OVERRIDES, extra = {}) {
   return { ...harness, posted };
 }
 
-describe("banQuoteKey — read-modify-write of selection_overrides", () => {
-  it("preserves every sibling field it did not intend to change", async () => {
-    // The regression this guards: reconstructing the payload from scratch and
-    // forgetting a key silently wipes the operator's bans/boosts/preferences
-    // on the next single-quote ban. The server accepts the payload either way.
+describe("banQuoteKey — server-side ban, no browser read-modify-write (#289)", () => {
+  it("POSTs only the key to the ban endpoint", async () => {
+    // The old flow GET-mutated-POSTed the whole sidecar and lost any write
+    // that landed in between. The browser must now send just the key.
     const { api, posted } = await banHarness();
     await api.banQuoteKey("1342:77");
-
-    assert.equal(posted.length, 1);
-    assert.deepEqual(posted[0].ban_source_ids, ["999"]);
-    assert.deepEqual(posted[0].boost_source_ids, ["141"]);
-    assert.deepEqual(posted[0].preferred_buckets, { h3_exact: 1342 });
+    const bans = posted.filter((p) => p.url === "/api/overrides/ban");
+    assert.equal(bans.length, 1);
+    assert.deepEqual(bans[0].body, { key: "1342:77" });
+    assert.equal(bans[0].headers["Content-Type"], "application/json");
   });
 
-  it("appends the new key to the existing ban list", async () => {
+  it("never writes the whole sidecar document", async () => {
     const { api, posted } = await banHarness();
     await api.banQuoteKey("1342:77");
-    assert.deepEqual(posted[0].ban_quote_keys, ["141:100", "1342:77"]);
+    assert.equal(posted.filter((p) => p.url === "/api/overrides").length, 0);
   });
 
-  it("de-duplicates a key that is already banned", async () => {
-    const { api, posted } = await banHarness();
-    await api.banQuoteKey("141:100");
-    assert.deepEqual(posted[0].ban_quote_keys, ["141:100"]);
-  });
-
-  it("defaults every missing field on a legacy v1 sidecar", async () => {
-    // A sidecar written before ban_quote_keys existed has no such key, and an
-    // operator may have hand-edited the file down to a bare object.
-    const { api, posted } = await banHarness({});
-    await api.banQuoteKey("141:482");
-    assert.deepEqual(posted[0], {
-      ban_source_ids: [],
-      boost_source_ids: [],
-      preferred_buckets: {},
-      ban_quote_keys: ["141:482"],
-    });
+  it("does not read the sidecar before banning", async () => {
+    const { api, calls } = await banHarness();
+    await api.banQuoteKey("1342:77");
+    const firstBan = calls.fetches.findIndex((f) => f.url === "/api/overrides/ban");
+    const readBefore = calls.fetches.slice(0, firstBan).some((f) => f.url === "/api/overrides");
+    assert.equal(readBefore, false);
   });
 
   it("does nothing at all when the operator cancels the confirm", async () => {
-    const { api, posted, calls } = await banHarness(OVERRIDES, { confirmResult: false });
+    const { api, posted, calls } = await banHarness({ confirmResult: false });
     await api.banQuoteKey("1342:77");
     assert.equal(posted.length, 0);
-    assert.equal(calls.fetches.length, 0, "must not even read the sidecar");
+    assert.equal(calls.fetches.length, 0);
   });
 
   it("ignores an empty key without prompting", async () => {
@@ -117,28 +96,12 @@ describe("banQuoteKey — read-modify-write of selection_overrides", () => {
     assert.equal(calls.fetches.length, 0);
   });
 
-  it("aborts without writing when the sidecar cannot be read", async () => {
-    // Writing on a failed read would clobber the file with defaults — the
-    // worst possible outcome of a transient 500.
-    const { api, posted, calls } = await banHarness(OVERRIDES, {
-      fetch: routeTable({ "GET /api/overrides": { status: 500, body: { error: "boom" } } }),
-    });
-    await api.banQuoteKey("1342:77");
-    assert.equal(posted.length, 0);
-    assert.equal(calls.alerts.length, 1);
-    assert.match(calls.alerts[0], /Could not load overrides/);
-  });
-
-  it("surfaces a failed save and does not claim success", async () => {
-    const { api, calls } = await banHarness(OVERRIDES, {
-      fetch: routeTable({
-        "GET /api/overrides": { body: OVERRIDES },
-        "POST /api/overrides": { status: 409, body: { error: "busy" } },
-      }),
-    });
+  it("surfaces a refused ban (corrupt sidecar) and does not re-render", async () => {
+    const { api, calls } = await banHarness({}, { status: 409, body: { error: "corrupt" } });
     await api.banQuoteKey("1342:77");
     assert.equal(calls.alerts.length, 1);
-    assert.match(calls.alerts[0], /Save failed \(409\)/);
+    assert.match(calls.alerts[0], /Ban failed \(409\)/);
+    assert.equal(calls.fetches.filter((f) => f.url === "/api/action/rerender").length, 0);
   });
 
   it("re-renders the panel after a successful ban", async () => {
@@ -148,6 +111,116 @@ describe("banQuoteKey — read-modify-write of selection_overrides", () => {
     await api.banQuoteKey("1342:77");
     const actions = calls.fetches.filter((f) => f.url === "/api/action/rerender");
     assert.equal(actions.length, 1);
+  });
+
+  it("refreshes the coverage grid after a successful ban", async () => {
+    const { api, calls } = await banHarness({
+      elementIds: ["action-log", "overrides-text", "overrides-status", "coverage-grid"],
+    });
+    await api.banQuoteKey("1342:77");
+    await flush();
+    assert.ok(calls.fetches.some((f) => f.url === "/api/coverage"), "coverage not refreshed");
+  });
+});
+
+describe("overrides editor — If-Match on save (#289)", () => {
+  // `envelope` switches the GET between the body-carries-the-ETag shape and
+  // the bare document an older server returns (tag in the header only).
+  function editorHarness(saveRoute, { envelope = true, headerEtag = (v) => `"v${v}"` } = {}) {
+    const table = routeTable({
+      "POST /api/overrides": saveRoute,
+      "POST /api/overrides/ban": { body: { ok: true, key: "1:1", already_banned: false } },
+      "POST /api/action/rerender": { body: { ok: true } },
+    });
+    let gets = 0;
+    return loadMainJs({
+      elementIds: ["action-log", "overrides-text", "overrides-status", "overrides-conflict"],
+      fetch: async (url, init) => {
+        if ((init.method || "GET") === "GET" && url.split("?")[0] === "/api/overrides") {
+          gets += 1;
+          const doc = { ban_quote_keys: [], version: gets };
+          const body = envelope ? { overrides: doc, etag: `"v${gets}"` } : doc;
+          return {
+            status: 200, ok: true,
+            text: async () => JSON.stringify(body),
+            headers: { get: (h) => (h.toLowerCase() === "etag" ? headerEtag(gets) : null) },
+          };
+        }
+        return table(url, init);
+      },
+    });
+  }
+
+  it("sends the ETag it loaded as If-Match", async () => {
+    const h = await editorHarness({ body: { ok: true, path: "x", etag: '"v9"' } });
+    await h.sandbox.loadOverrides();
+    await h.sandbox.saveOverrides();
+    const save = h.calls.fetches.find((f) => f.init.method === "POST");
+    assert.equal(save.init.headers["If-Match"], '"v1"');
+    assert.equal(h.api.state.overridesEtag, '"v9"', "a successful save adopts the new ETag");
+  });
+
+  it("asks for the envelope and prefers the body ETag over a proxy-weakened header", async () => {
+    const h = await editorHarness({ body: { ok: true } }, { headerEtag: (v) => `W/"v${v}"` });
+    await h.sandbox.loadOverrides();
+    assert.ok(h.calls.fetches[0].url.includes("envelope=1"));
+    assert.equal(h.api.state.overridesEtag, '"v1"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 1/);
+    assert.doesNotMatch(h.elements.get("overrides-text").value, /etag/, "the envelope must not leak into the editor");
+  });
+
+  it("falls back to the header ETag against a server without the envelope", async () => {
+    const h = await editorHarness({ body: { ok: true } }, { envelope: false });
+    await h.sandbox.loadOverrides();
+    assert.equal(h.api.state.overridesEtag, '"v1"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 1/);
+  });
+
+  it("on 412 keeps the operator's draft and the old ETag, and shows the disk copy", async () => {
+    const h = await editorHarness({ status: 412, body: { error: "changed" } });
+    await h.sandbox.loadOverrides();
+    const draft = '{"ban_quote_keys": ["my-edit"]}';
+    h.elements.get("overrides-text").value = draft;
+    await h.sandbox.saveOverrides();
+    assert.equal(h.elements.get("overrides-text").value, draft, "the draft was destroyed");
+    assert.equal(h.api.state.overridesEtag, '"v1"', "a 412 must not adopt the new version implicitly");
+    assert.match(h.elements.get("overrides-status").textContent, /changed on disk/);
+    assert.match(h.elements.get("overrides-status").textContent, /edit is kept/);
+    const conflict = h.elements.get("overrides-conflict");
+    assert.equal(conflict.hidden, false);
+    assert.match(conflict.textContent, /"version": 2/);
+    // An explicit reload is what adopts the current version.
+    await h.sandbox.loadOverrides();
+    assert.equal(h.api.state.overridesEtag, '"v3"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 3/);
+    assert.equal(conflict.hidden, true);
+  });
+
+  it("omits If-Match when nothing was loaded", async () => {
+    const h = await editorHarness({ body: { ok: true, path: "x" } });
+    h.elements.get("overrides-text").value = '{"ban_quote_keys": []}';
+    await h.sandbox.saveOverrides();
+    const save = h.calls.fetches.find((f) => f.init.method === "POST");
+    assert.equal(save.init.headers["If-Match"], undefined);
+  });
+
+  it("a ban leaves an unsaved edit and its ETag alone", async () => {
+    const h = await editorHarness({ body: { ok: true } });
+    await h.sandbox.loadOverrides();
+    const draft = '{"ban_quote_keys": [], "boost_source_ids": ["42"]}';
+    h.elements.get("overrides-text").value = draft;
+    await h.api.banQuoteKey("1:1");
+    assert.equal(h.elements.get("overrides-text").value, draft, "the ban wiped the operator's edit");
+    assert.equal(h.api.state.overridesEtag, '"v1"', "adopting the post-ban ETag would let the save drop the ban");
+    assert.match(h.elements.get("overrides-status").textContent, /unsaved edit is kept/);
+  });
+
+  it("a ban reloads a clean editor so the new key shows", async () => {
+    const h = await editorHarness({ body: { ok: true } });
+    await h.sandbox.loadOverrides();
+    await h.api.banQuoteKey("1:1");
+    assert.equal(h.api.state.overridesEtag, '"v2"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 2/);
   });
 });
 
@@ -373,34 +446,53 @@ describe("lazy per-tab loading", () => {
     assert.equal(second, 1, "re-activating a tab must not re-fetch");
   });
 
-  it("does not re-fetch a lazy tab whose first load failed", async () => {
-    // The gate latches on *activation*, not on a successful response, so a
-    // 500ing endpoint is asked once rather than on every tab flip — an
-    // operator idly switching tabs shouldn't hammer a sick appliance. (The
-    // flag is set synchronously beside the call rather than in a .then(); for
-    // a non-2xx response the two are equivalent, since the loaders resolve
-    // normally after rendering their error state.)
+  it("retries a lazy tab whose first load failed (#290)", async () => {
+    // The flag used to latch on activation, so a tab whose first fetch
+    // failed stayed empty until a full page reload. It now latches on
+    // success only.
+    let gapsFail = true;
+    const table = routeTable(LAZY_TAB_ROUTES);
     const { api, calls } = await loadMainJs({
       tabs: TAB_NAMES.map(makeTab),
       panels: TAB_NAMES.map(makePanel),
       elementIds: LAZY_TAB_ELEMENT_IDS,
-      fetch: routeTable({
-        ...LAZY_TAB_ROUTES,
-        "GET /api/gaps": { status: 500, body: { error: "boom" } },
-      }),
+      fetch: async (url, init) => {
+        if (url.startsWith("/api/gaps") && gapsFail) {
+          return { status: 500, ok: false, text: async () => JSON.stringify({ error: "boom" }) };
+        }
+        return table(url, init);
+      },
     });
     const gapCalls = () => calls.fetches.filter((f) => f.url.startsWith("/api/gaps")).length;
 
     api.activateTab("coverage");
     await flush();
-    assert.equal(api.state.gapsLoaded, true, "flag must latch even on failure");
+    assert.equal(api.state.gapsLoaded, false, "a failed load must not latch");
     assert.equal(gapCalls(), 1);
+
+    gapsFail = false;
+    api.activateTab("now");
+    await flush();
+    api.activateTab("coverage");
+    await flush();
+    assert.equal(gapCalls(), 2, "the next activation must retry");
+    assert.equal(api.state.gapsLoaded, true);
 
     api.activateTab("now");
     await flush();
     api.activateTab("coverage");
     await flush();
-    assert.equal(gapCalls(), 1, "a failed first load must not re-fire on every flip");
+    assert.equal(gapCalls(), 2, "a successful load is not repeated");
+  });
+
+  it("does not start a second load while the first is in flight", async () => {
+    const { api, calls } = await lazyHarness();
+    api.activateTab("curate");
+    api.activateTab("now");
+    api.activateTab("curate");
+    await flush();
+    const n = calls.fetches.filter((f) => f.url.startsWith("/api/content-overrides")).length;
+    assert.equal(n, 1);
   });
 
   it("keeps the three lazy tabs independent", async () => {
@@ -713,5 +805,378 @@ describe("the sleep frame — skip / un-skip are refused while asleep", () => {
     await api.fireAction("skip");
     const lines = elements.get("action-log").children.map((c) => c.textContent);
     assert.ok(lines.some((l) => /skip: busy/.test(l)), lines.join("\n"));
+  });
+});
+
+describe("theme dropdown follows the live theme (#290)", () => {
+  const PAYLOAD = { themes: ["default", "dark", "scholar"], theme_arg: "auto", manual_theme: null, effective: "dark" };
+
+  async function harness(payloads) {
+    let i = 0;
+    const h = await loadMainJs({
+      elementIds: ["theme-select", "theme-current", "action-log", "theme-apply"],
+      fetch: async (url, init) => {
+        if (url === "/api/themes") {
+          const body = payloads[Math.min(i, payloads.length - 1)];
+          i += 1;
+          return { status: 200, ok: true, text: async () => JSON.stringify(body) };
+        }
+        return routeTable({ "POST /api/action/theme": { body: { ok: true, theme: "scholar" } } })(url, init);
+      },
+    });
+    h.api.wireControls();
+    return { ...h, select: h.elements.get("theme-select") };
+  }
+
+  const selected = (select) => select.children.find((c) => c.selected)?.value;
+
+  it("moves the selection when the live theme changes", async () => {
+    const { api, select } = await harness([PAYLOAD, { ...PAYLOAD, effective: "scholar" }]);
+    await api.refreshThemes();
+    assert.equal(selected(select), "dark");
+    await api.refreshThemes();
+    assert.equal(selected(select), "scholar", "stuck on the first theme it showed");
+  });
+
+  it("keeps an unapplied operator choice across polls", async () => {
+    const { api, select } = await harness([PAYLOAD, PAYLOAD]);
+    await api.refreshThemes();
+    select.value = "default";
+    for (const fn of select.listeners.change || []) fn();
+    await api.refreshThemes();
+    assert.equal(selected(select), "default");
+  });
+
+  it("follows the live theme after the operator picks the live theme back (not latched)", async () => {
+    const { api, select } = await harness([
+      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "scholar" },
+    ]);
+    await api.refreshThemes();
+    const pick = (v) => { select.value = v; for (const fn of select.listeners.change || []) fn(); };
+    pick("dark");
+    await api.refreshThemes();
+    assert.equal(selected(select), "dark", "a real pending choice is kept");
+    pick("default");
+    await api.refreshThemes();
+    assert.equal(selected(select), "scholar", "stuck on a choice the operator already undid");
+  });
+
+  it("drops a pending choice once the live theme catches up with it", async () => {
+    const { api, select } = await harness([
+      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "dark" }, { ...PAYLOAD, effective: "scholar" },
+    ]);
+    await api.refreshThemes();
+    select.value = "dark";
+    for (const fn of select.listeners.change || []) fn();
+    await api.refreshThemes();
+    await api.refreshThemes();
+    assert.equal(selected(select), "scholar");
+  });
+
+  it("follows the live theme again once the choice is applied", async () => {
+    const { api, select, elements } = await harness([PAYLOAD, PAYLOAD, { ...PAYLOAD, effective: "scholar" }]);
+    await api.refreshThemes();
+    select.value = "default";
+    for (const fn of select.listeners.change || []) fn();
+    for (const fn of elements.get("theme-apply").listeners.click || []) fn();
+    await flush();
+    await flush();
+    assert.equal(api.state.themeSelectDirty, false);
+    await api.refreshThemes();
+    assert.equal(selected(select), "scholar");
+  });
+});
+
+describe("polled GET failures are reported once per burst (#290)", () => {
+  it("logs the first failure, stays quiet on repeats, and logs recovery", async () => {
+    let fail = true;
+    const { api, elements } = await loadMainJs({
+      elementIds: ["action-log", "telemetry-hours", "t-renders", "t-errors", "t-render-p50",
+        "t-render-p95", "t-display-p50", "t-display-p95", "t-last-error"],
+      fetch: async () => (fail
+        ? { status: 503, ok: false, text: async () => JSON.stringify({ error: "down" }) }
+        : { status: 200, ok: true, text: async () => JSON.stringify({ render_count: 3 }) }),
+    });
+    const logLines = () => elements.get("action-log").children.map((c) => c.textContent);
+    await api.refreshTelemetry();
+    await api.refreshTelemetry();
+    await api.refreshTelemetry();
+    const failures = logLines().filter((l) => /telemetry refresh failed \(HTTP 503\)/.test(l));
+    assert.equal(failures.length, 1, logLines().join("\n"));
+    fail = false;
+    await api.refreshTelemetry();
+    assert.ok(logLines().some((l) => /telemetry refresh recovered/.test(l)));
+    assert.equal(elements.get("t-renders").textContent, 3);
+  });
+
+  it("reports a network error instead of rejecting", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: ["action-log", "coverage-grid"],
+      fetch: async () => { throw new Error("offline"); },
+    });
+    assert.equal(await api.refreshCoverage(), false);
+    assert.match(elements.get("action-log").children[0].textContent, /coverage refresh failed \(network error\)/);
+  });
+});
+
+describe("staleness after a quote change or a bake (#290)", () => {
+  const CURRENT_IDS = ["clock", "bucket", "theme", "mode", "quote", "attribution", "matched",
+    "current-png", "ban-current", "action-log", "theme-preview-grid"];
+
+  it("re-renders the theme thumbnails when the displayed quote changes", async () => {
+    let current = { source_id: "141", line_number: 1 };
+    const { api, calls } = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      fetch: async (url, init) => {
+        if (url === "/api/current") return { status: 200, ok: true, text: async () => JSON.stringify(current) };
+        return routeTable({
+          "GET /api/themes": { body: { themes: ["default"], effective: "default" } },
+          "GET /api/preview": { body: "thumb" },
+          "GET /current.png": { body: "png" },
+        })(url, init);
+      },
+    });
+    await api.refreshCurrent();
+    api.state.themePreviewLoaded = true;
+    const previews = () => calls.fetches.filter((f) => f.url.startsWith("/api/preview")).length;
+    await api.refreshCurrent();
+    await flush();
+    assert.equal(previews(), 0, "same quote must not re-render the grid");
+    current = { source_id: "141", line_number: 2 };
+    await api.refreshCurrent();
+    await flush();
+    await flush();
+    assert.equal(previews(), 1);
+  });
+
+  it("refreshes coverage after a successful bake", async () => {
+    const { api, calls } = await loadMainJs({
+      elementIds: ["action-log", "bake-now", "bake-status", "coverage-grid"],
+      fetch: routeTable({
+        "POST /api/bake": { body: { ok: true, kept: 1, input: 1, drops: {} } },
+        "GET /api/coverage": { body: { bucket_counts: {} } },
+      }),
+    });
+    await api.bakeNow();
+    await flush();
+    assert.ok(calls.fetches.some((f) => f.url === "/api/coverage"));
+  });
+});
+
+describe("pick-a-theme surfaces leave out diags (#292)", () => {
+  it("the Now-tab grid uses preview_themes, not the full list", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: ["action-log", "theme-preview-grid"],
+      fetch: routeTable({
+        "GET /api/themes": { body: { themes: ["default", "diags"], preview_themes: ["default"], effective: "default" } },
+        "GET /api/preview": { body: "thumb" },
+      }),
+    });
+    await api.refreshThemePreview();
+    const labels = elements.get("theme-preview-grid").children.map((c) => c.children[1].textContent);
+    assert.deepEqual(labels, ["default"]);
+  });
+
+  it("falls back to filtering diags when the server predates preview_themes", async () => {
+    const { api } = await loadMainJs({
+      elementIds: ["action-log", "theme-preview-grid"],
+      fetch: routeTable({
+        "GET /api/themes": { body: { themes: ["default", "diags"], effective: "default" } },
+        "GET /api/preview": { body: "thumb" },
+      }),
+    });
+    await api.refreshThemePreview();
+    assert.deepEqual(api.state.previewThemes, ["default"]);
+    assert.deepEqual(api.state.themes, ["default", "diags"], "the dropdown keeps diags");
+  });
+});
+
+describe("setup wizard focus management (#292)", () => {
+  it("moves focus into the dialog and restores it on close", async () => {
+    const h = await loadMainJs({
+      elementIds: ["action-log", "setup-wizard", "wizard-quiet", "wizard-theme-grid", "wizard-dismiss",
+        "wizard-status", "opener"],
+      fetch: routeTable({
+        "GET /api/setup": { body: { setup_complete: false, themes: [] } },
+        "POST /api/setup": { body: { ok: true, setup_complete: true } },
+      }),
+    });
+    const opener = h.elements.get("opener");
+    opener.focus();
+    await h.api.maybeShowWizard();
+    assert.equal(h.elements.get("setup-wizard").hidden, false);
+    assert.equal(h.document.activeElement, h.elements.get("wizard-dismiss"));
+    await h.api.completeWizard(null);
+    assert.equal(h.elements.get("setup-wizard").hidden, true);
+    assert.equal(h.document.activeElement, opener);
+  });
+});
+
+describe("thumbnail grid reuses its tiles across quote changes (no blob leak)", () => {
+  const CURRENT_IDS = ["clock", "bucket", "theme", "mode", "quote", "attribution", "matched",
+    "current-png", "ban-current", "action-log", "theme-preview-grid"];
+
+  async function gridHarness(themesByCall = [["a", "b", "c"]]) {
+    let current = { source_id: "141", line_number: 0 };
+    let themeCalls = 0;
+    const h = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      fetch: async (url, init) => {
+        if (url === "/api/current") return { status: 200, ok: true, text: async () => JSON.stringify(current) };
+        if (url === "/api/themes") {
+          const themes = themesByCall[Math.min(themeCalls, themesByCall.length - 1)];
+          themeCalls += 1;
+          return { status: 200, ok: true, text: async () => JSON.stringify({ themes, preview_themes: themes, effective: themes[0] }) };
+        }
+        return routeTable({ "GET /api/preview": { body: "thumb" }, "GET /current.png": { body: "png" } })(url, init);
+      },
+    });
+    const setQuote = (n) => { current = { source_id: "141", line_number: n }; };
+    return { ...h, setQuote };
+  }
+
+  const settle = async () => { for (let i = 0; i < 6; i += 1) await flush(); };
+  const created = (calls) => calls.objectUrls.map((_, i) => `blob:stub-${i + 1}`);
+
+  it("N quote changes: same <img> elements, every superseded URL revoked", async () => {
+    const h = await gridHarness();
+    await h.api.refreshCurrent();
+    await h.api.refreshThemePreview();
+    h.api.state.themePreviewLoaded = true;
+    await settle();
+    const grid = h.elements.get("theme-preview-grid");
+    const imgs = grid.children.map((c) => c.children[0]);
+    for (let n = 1; n <= 5; n += 1) {
+      h.setQuote(n);
+      await h.api.refreshCurrent();
+      await settle();
+    }
+    assert.deepEqual(grid.children.map((c) => c.children[0]), imgs, "the grid was rebuilt");
+    assert.equal(grid.children.length, 3);
+    const live = new Set([...imgs.map((i) => i.src), h.elements.get("current-png").src]);
+    assert.equal(live.size, 4);
+    const revoked = new Set(h.calls.revokedUrls);
+    for (const url of created(h.calls)) {
+      if (live.has(url)) assert.ok(!revoked.has(url), `live ${url} revoked`);
+      else assert.ok(revoked.has(url), `${url} leaked`);
+    }
+  });
+
+  it("a changed theme list rebuilds the grid and revokes the discarded tiles", async () => {
+    const h = await gridHarness([["a", "b"], ["a", "b", "c"]]);
+    await h.api.refreshThemePreview();
+    await settle();
+    const oldSrcs = h.elements.get("theme-preview-grid").children.map((c) => c.children[0].src);
+    h.api.state.previewThemes = [];
+    await h.api.refreshThemePreview();
+    await settle();
+    for (const url of oldSrcs) assert.ok(h.calls.revokedUrls.includes(url), `${url} leaked on rebuild`);
+    assert.equal(h.elements.get("theme-preview-grid").children.length, 3);
+  });
+
+  it("reloads only on-screen tiles; an off-screen tile waits for one fetch, not one per quote", async () => {
+    const h = await gridHarness();
+    const visible = new Set();
+    const observers = [];
+    h.sandbox.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; this.targets = []; this.live = true; observers.push(this); }
+      observe(el) {
+        this.targets.push(el);
+        if (visible.has(el)) this.cb([{ isIntersecting: true, target: el }]);
+      }
+      disconnect() { this.live = false; }
+    };
+    await h.api.refreshThemePreview();
+    const grid = h.elements.get("theme-preview-grid");
+    const imgs = grid.children.map((c) => c.children[0]);
+    h.api.state.themePreviewLoaded = true;
+    await h.api.refreshCurrent();
+    await settle();
+    visible.add(imgs[0]);
+    const previews = () => h.calls.fetches.filter((f) => f.url.startsWith("/api/preview")).length;
+    const before = previews();
+    for (let n = 1; n <= 4; n += 1) {
+      h.setQuote(n);
+      await h.api.refreshCurrent();
+      await settle();
+    }
+    assert.equal(previews() - before, 4, "only the visible tile should reload per quote change");
+    // Each hidden tile has exactly one live observer waiting.
+    for (const img of imgs.slice(1)) {
+      const waiting = observers.filter((o) => o.live && o.targets.includes(img));
+      assert.equal(waiting.length, 1);
+    }
+    // Scrolling a hidden tile into view fetches it exactly once.
+    const waiter = observers.find((o) => o.live && o.targets.includes(imgs[1]));
+    waiter.cb([{ isIntersecting: true, target: imgs[1] }]);
+    await settle();
+    assert.equal(previews() - before, 5);
+  });
+});
+
+describe("setup wizard keyboard handling (#292)", () => {
+  async function wizardHarness() {
+    const h = await loadMainJs({
+      elementIds: ["action-log", "setup-wizard", "wizard-quiet", "wizard-theme-grid", "wizard-dismiss",
+        "wizard-status", "opener", "wiz-a", "wiz-b"],
+      fetch: routeTable({
+        "GET /api/setup": { body: { setup_complete: false, themes: [] } },
+        "POST /api/setup": { body: { ok: true, setup_complete: true } },
+      }),
+    });
+    const overlay = h.elements.get("setup-wizard");
+    const items = [h.elements.get("wiz-a"), h.elements.get("wiz-b"), h.elements.get("wizard-dismiss")];
+    overlay.querySelectorAll = () => items;
+    overlay.querySelector = () => items[0];
+    const key = (k, shiftKey = false) => {
+      const ev = { key: k, shiftKey, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+      for (const fn of h.document.listeners.keydown || []) fn(ev);
+      return ev;
+    };
+    return { ...h, overlay, items, key };
+  }
+
+  it("Tab from the last control wraps to the first, Shift+Tab from the first to the last", async () => {
+    const h = await wizardHarness();
+    await h.api.maybeShowWizard();
+    assert.equal(h.document.activeElement, h.items[0]);
+    const back = h.key("Tab", true);
+    assert.ok(back.defaultPrevented);
+    assert.equal(h.document.activeElement, h.items[2]);
+    const fwd = h.key("Tab");
+    assert.ok(fwd.defaultPrevented);
+    assert.equal(h.document.activeElement, h.items[0]);
+    const mid = h.key("Tab");
+    assert.equal(mid.defaultPrevented, false, "ordinary Tab inside the dialog is left to the browser");
+  });
+
+  it("pulls focus back in if it has escaped the dialog", async () => {
+    const h = await wizardHarness();
+    await h.api.maybeShowWizard();
+    h.elements.get("opener").focus();
+    h.key("Tab");
+    assert.equal(h.document.activeElement, h.items[0]);
+  });
+
+  it("Escape closes without completing setup and restores focus", async () => {
+    const h = await wizardHarness();
+    const opener = h.elements.get("opener");
+    opener.focus();
+    await h.api.maybeShowWizard();
+    const ev = h.key("Escape");
+    assert.ok(ev.defaultPrevented);
+    assert.equal(h.overlay.hidden, true);
+    assert.equal(h.document.activeElement, opener);
+    assert.equal(h.calls.fetches.filter((f) => f.init.method === "POST").length, 0);
+  });
+
+  it("does nothing once the dialog is closed", async () => {
+    const h = await wizardHarness();
+    await h.api.maybeShowWizard();
+    await h.api.completeWizard(null);
+    h.elements.get("opener").focus();
+    const ev = h.key("Tab");
+    assert.equal(ev.defaultPrevented, false);
+    assert.equal(h.document.activeElement, h.elements.get("opener"));
   });
 });
