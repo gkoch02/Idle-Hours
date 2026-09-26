@@ -66,6 +66,7 @@ import hmac
 import json
 import os
 import re
+import socket
 import threading
 import urllib.parse
 from collections import OrderedDict
@@ -416,19 +417,28 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
     # Concurrent-connection cap (issue #285). ``ThreadingHTTPServer`` spawns a
     # thread per accepted connection with no upper bound, so a client holding
     # sockets open pinned a thread and a file descriptor each, for ever, in
-    # the process that also writes the appliance's state and PNG. The
-    # handler's socket ``timeout`` bounds how *long* a stuck connection lives;
-    # this bounds how *many* can be alive at once. A single-operator UI plus
-    # a scraper never needs more than a handful; a connection that arrives
-    # while every slot is taken is closed unread rather than queued — the
-    # request line has not been read yet, so there is nothing to answer.
+    # the process that also writes the appliance's state and PNG. This bounds
+    # how *many* can be alive at once. A single-operator UI plus a scraper
+    # never needs more than a handful; a connection that arrives while every
+    # slot is taken is closed unread rather than queued — the request line
+    # has not been read yet, so there is nothing to answer.
     max_connections = 16
+
+    # Total lifetime of one connection, in seconds. The handler's socket
+    # ``timeout`` only bounds each *read*, and restarts on every byte, so a
+    # client sending one byte every 29 s kept its slot for ever — and 16 of
+    # them locked the UI and ``/metrics`` out entirely. Past this deadline
+    # the socket is shut down from outside, which wakes a blocked read with
+    # EOF and fails a blocked write. Generous against anything legitimate:
+    # the slowest request, a bake on a Pi Zero, takes seconds.
+    connection_deadline = 120.0
 
     def __init__(self, address: tuple[str, int], handler_cls, context: WebContext):
         super().__init__(address, handler_cls)
         self.context = context
         self._connection_slots = threading.BoundedSemaphore(self.max_connections)
         self.dropped_connections = 0
+        self.expired_connections = 0
 
     def process_request(self, request, client_address):
         if not self._connection_slots.acquire(blocking=False):
@@ -453,10 +463,28 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
             raise
 
     def process_request_thread(self, request, client_address):
+        deadline = threading.Timer(self.connection_deadline, self._expire, (request, client_address))
+        deadline.daemon = True
+        deadline.start()
         try:
             super().process_request_thread(request, client_address)
         finally:
+            deadline.cancel()
             self._connection_slots.release()
+
+    def _expire(self, request, client_address) -> None:
+        """Cut a connection that outlived ``connection_deadline``."""
+        self.expired_connections += 1
+        if self.expired_connections == 1 or self.expired_connections % 100 == 0:
+            _log(
+                f"web: closing connection from {client_address[0]} after "
+                f"{self.connection_deadline:g}s ({self.expired_connections} closed so far)",
+                err=True,
+            )
+        # The handler may have finished and closed the socket a moment ago;
+        # shutting down a closed socket raises, and there is nothing to do.
+        with contextlib.suppress(OSError):
+            request.shutdown(socket.SHUT_RDWR)
 
 
 # ----------------------------------------------------------------------------

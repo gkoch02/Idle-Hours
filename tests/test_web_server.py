@@ -3591,6 +3591,48 @@ class TestConnectionHygiene:
         finally:
             run_clock.stop_web_server((server, thread))
 
+    def test_a_trickling_client_is_cut_off_at_the_deadline(self, tmp_path, monkeypatch):
+        """The socket timeout restarts on every byte, so a client sending one
+        byte at a time never times out. The total deadline still ends it."""
+        monkeypatch.setattr(web_server.CuratorHandler, "timeout", 30)
+        monkeypatch.setattr(web_server._IdleHoursHTTPServer, "connection_deadline", 0.5)
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            sock = socket.create_connection(server.server_address[:2], timeout=5)
+            started = time.monotonic()
+            cut = False
+            try:
+                for byte in b"GET /api/current HTTP/1.1\r\nX-Pad: " + b"a" * 200:
+                    sock.sendall(bytes([byte]))
+                    time.sleep(0.05)
+                    if time.monotonic() - started > 5:
+                        break
+            except OSError:
+                cut = True
+            if not cut:
+                try:
+                    cut = sock.recv(64) == b""
+                except ConnectionError:
+                    cut = True
+            sock.close()
+            assert cut
+            assert time.monotonic() - started < 5
+            assert server.expired_connections >= 1
+            # The slot came back: a normal request is served.
+            status, _ = _get(server, "/api/current")
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_a_normal_request_does_not_trip_the_deadline(self, tmp_path):
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            status, _ = _get(server, "/api/current")
+            assert status == 200
+            assert server.expired_connections == 0
+        finally:
+            run_clock.stop_web_server((server, thread))
+
     def test_connections_beyond_the_cap_are_dropped_not_queued(self, tmp_path, monkeypatch):
         monkeypatch.setattr(web_server._IdleHoursHTTPServer, "max_connections", 2)
         # Keep the slots pinned for the whole test: the half-open sockets must
