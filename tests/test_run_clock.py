@@ -2089,6 +2089,74 @@ class TestButtonHandlers:
         assert mock_peek.call_count == 1
         assert mock_render.call_args.kwargs["quote_id"] == ("src", 1, "q", "mt")
 
+    # Button C while asleep: the committed identity is the pre-sleep quote,
+    # and the restore used to paint that clock frame over the sleep frame,
+    # where it stayed until the window ended.
+    QUIET = dict(quiet_start="22:00", quiet_end="06:00", quiet_off=False, quiet_image="auto",
+                 quiet_theme="inherit", auto_day_theme="default", auto_night_theme="dark")
+
+    def test_source_card_is_refused_while_asleep(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True
+        state.last_bucket = "h9_fifty"
+        state.last_quote_id = ("before", 3, "the quote from before sleep", "nine")
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="23:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+        mock_render.assert_not_called()
+        mock_timer.assert_not_called()
+
+    def test_source_card_works_after_a_mid_window_wake(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.manual_awake = True
+        state.last_bucket = "h11_exact"
+        state.last_quote_id = ("shown", 7, "q", "eleven")
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="23:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+        assert mock_render.call_args[0][5] == "card"
+
+    def test_restore_puts_back_the_sleep_frame_if_the_window_opened(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_five_to"
+        state.last_quote_id = ("shown", 7, "q", "five to ten")
+        clock = {"t": "21:59"}
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: clock["t"]):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            clock["t"] = "22:00"
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+        modes = [c.args[5] for c in mock_render.call_args_list]
+        assert modes == ["card", "goodnight"]
+        # The restore took the edge, so the loop will not paint it again.
+        assert state.was_quiet is True
+
+    def test_restore_leaves_a_sleep_frame_the_loop_already_painted(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("shown", 7, "q", "five to ten")
+        clock = {"t": "21:59"}
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: clock["t"]):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            clock["t"] = "22:00"
+            state.was_quiet = True   # the loop entered quiet during the 5 s
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+        assert [c.args[5] for c in mock_render.call_args_list] == ["card"]
+
     def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")

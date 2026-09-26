@@ -21,6 +21,7 @@ from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     _button_render_gate,
+    _refuse_while_asleep,
     action_quiet,
     action_rerender,
     action_skip,
@@ -1108,6 +1109,13 @@ def _build_button_handlers(
         with _button_render_gate(state, "button C", "card", telemetry_path=telemetry_path) as acquired:
             if not acquired:
                 return
+            # While asleep the committed identity is the quote from *before*
+            # sleep, not what the panel shows, and the restore below would
+            # paint that clock frame over the sleep frame — where it stayed
+            # until the window ended, because the loop had already taken the
+            # rising edge. Refused like skip / un-skip (issue #278's rule).
+            if _refuse_while_asleep(args, state, "card", "button C", telemetry_path):
+                return
             _log("button C: source card")
             try:
                 time_str = current_time_str()
@@ -1132,6 +1140,14 @@ def _build_button_handlers(
                     # if another handler has the render lock at the 5s mark.
                     try:
                         rs_time = current_time_str()
+                        # The quiet window may have opened during the 5 s the
+                        # card was up. Then the frame to put back is the sleep
+                        # frame, not the clock: enter_quiet paints it and takes
+                        # the edge, or does nothing if the loop already did.
+                        rs_quiet, rs_manual = compute_quiet(args, state, rs_time)
+                        if rs_quiet:
+                            enter_quiet(args, state, rs_time, manual_only=rs_manual)
+                            return
                         _do_render(args, state, rs_time, history_path, bucket=shown_bucket, quote_id=quote_id)
                     except Exception as restore_exc:
                         _log(f"source card restore failed: {restore_exc!r}", err=True)
