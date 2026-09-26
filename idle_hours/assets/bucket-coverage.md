@@ -1,7 +1,7 @@
 # Bucket Coverage Report
 
 - Total rows: **2966**
-- Displayable rows (quality ≥ 60, not banned): **2308**
+- Displayable rows (quality ≥ 60, not banned): **2312**
 - Expected buckets: **144**
 - Populated buckets: **115**
 - Populated before the quality floor / bans: **119**
@@ -13,17 +13,17 @@
 - `h10_exact`: 216
 - `h9_exact`: 197
 - `h8_exact`: 172
-- `h2_exact`: 170
+- `h2_exact`: 171
 - `h11_exact`: 164
-- `h3_exact`: 157
+- `h3_exact`: 158
+- `h6_exact`: 148
 - `h5_exact`: 147
-- `h6_exact`: 147
 - `h4_exact`: 136
 - `h12_exact`: 119
 - `h7_exact`: 117
 - `h1_exact`: 105
 - `h2_half_past`: 27
-- `h8_five_to`: 15
+- `h8_five_to`: 16
 - `h11_quarter_to`: 14
 
 ## Sparse buckets (<=3 quotes)

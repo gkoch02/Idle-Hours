@@ -52,13 +52,17 @@
     "quality_score": 92
   },
   "145:1032": {
-    "display_quote": "It was three o’clock in the beautiful breezy autumn day when Mr. Casaubon drove off to his Rectory at Lowick, only five miles from Tipton."
+    "display_quote": "It was three o’clock in the beautiful breezy autumn day when Mr. Casaubon drove off to his Rectory at Lowick, only five miles from Tipton.",
+    "quality_score": 100
   },
   "153:8556": {
     "display_quote": "But I have to go back by the six o’clock train. You will be staying on here, I suppose?"
   },
   "155:18444": {
-    "display_quote": "A little before nine o’clock, I prevailed on Mr. Blake to accompany me to his bedroom; stating, as a reason, that I wished him to look round it, for the last time."
+    "display_quote": "A little before nine o’clock, I prevailed on Mr. Blake to accompany me to his bedroom; stating, as a reason, that I wished him to look round it, for the last time.",
+    "quality_score": 100,
+    "matched_text": "a little before nine o’clock",
+    "normalized_time": "08:57"
   },
   "164:6554": {
     "display_quote": "The next morning at four o’clock I was awakened by the steward whom Captain Nemo had placed at my service."
@@ -73,14 +77,16 @@
     "display_quote": "About nine o’clock that night Liddy came into the living-room and reported that one of the housemaids declared she had seen two men slip around the corner of the stable."
   },
   "514:14369": {
-    "display_quote": "He seemed to have thrown himself back in his chair, tired out, and sat there with his eyes shut till the clock struck two, when he jumped up, put his books in his pocket, as if ready for another lesson."
+    "display_quote": "He seemed to have thrown himself back in his chair, tired out, and sat there with his eyes shut till the clock struck two, when he jumped up, put his books in his pocket, as if ready for another lesson.",
+    "quality_score": 92
   },
   "730:2337": {
     "display_quote": "Oliver reached the stile at which the by-path terminated; and once more gained the high-road. It was eight o’clock now.",
     "quality_score": 100
   },
   "730:5693": {
-    "display_quote": "At six o’clock next morning, Mr. Bumble: having exchanged his cocked hat for a round one, and encased his person in a blue great-coat with a cape to it: took his place on the outside of the coach."
+    "display_quote": "At six o’clock next morning, Mr. Bumble: having exchanged his cocked hat for a round one, and encased his person in a blue great-coat with a cape to it: took his place on the outside of the coach.",
+    "quality_score": 100
   },
   "844:175": {
     "display_quote": "Eating as usual, I see, Algy! ALGERNON. [Stiffly.] I believe it is customary in good society to take some slight refreshment at five o’clock."

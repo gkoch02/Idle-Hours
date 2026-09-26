@@ -226,6 +226,14 @@ class TestJustAfterBeforeMatchType:
         assert c.hour == 4
         assert c.minute == 57
 
+    def test_a_little_before_nine(self):
+        # The Moonstone 155:18444 was mined as a bare "nine o'clock" at 09:00
+        # because "a little before" was missing from the prefix list.
+        c = _first_candidate("A little before nine o’clock, I prevailed on Mr. Blake.", "just_after_before")
+        assert c is not None
+        assert (c.hour, c.minute) == (8, 57)
+        assert c.matched_text.lower().startswith("a little before")
+
     def test_almost_ten(self):
         c = _first_candidate("Almost ten o'clock when the bell rang.", "just_after_before")
         assert c is not None

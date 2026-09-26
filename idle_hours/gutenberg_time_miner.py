@@ -119,7 +119,7 @@ TIME_PATTERNS = [
     (
         "just_after_before",
         re.compile(
-            r"\b(?P<prefix>just after|a little after|shortly after|just before|almost|nearly|close on|towards)\s+(?:(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+o['’]?clock|(?P<daypart>dawn|daybreak|sunrise|morning|noon|midday|afternoon|dusk|sunset|evening|night|midnight))\b",
+            r"\b(?P<prefix>just after|a little after|shortly after|just before|a little before|almost|nearly|close on|towards)\s+(?:(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+o['’]?clock|(?P<daypart>dawn|daybreak|sunrise|morning|noon|midday|afternoon|dusk|sunset|evening|night|midnight))\b",
             re.IGNORECASE,
         ),
     ),
@@ -463,7 +463,7 @@ def candidate_from_match(source_path: str, source_id: str | None, text: str, mat
                 return None
             if prefix in {"just after", "a little after", "shortly after"}:
                 minute = 3
-            elif prefix in {"just before", "almost", "nearly", "close on", "towards"}:
+            elif prefix in {"just before", "a little before", "almost", "nearly", "close on", "towards"}:
                 # "just before nine" means ~8:57, not 9:57 — same hour rollback
                 # as quarter_to / minutes_past_to above.
                 hour = 12 if hour == 1 else hour - 1
