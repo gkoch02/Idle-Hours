@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import errno
+import threading
 from unittest.mock import patch
 
 from idle_hours import run_clock, runtime_config, runtime_telemetry, runtime_webhook
@@ -171,3 +173,39 @@ class TestPidfileOSError:
         ]
         with patch("sys.argv", argv), patch("idle_hours.run_clock.render_now"):
             assert run_clock.main() == runtime_config.EXIT_CONFIG_ERROR
+
+
+class TestPidfileTransientOSError:
+    """A transient pidfile OSError exits 1 so Restart=always can recover."""
+
+    def _argv(self, tmp_path):
+        return [
+            "run_clock.py", "--output", str(tmp_path / "current.png"),
+            "--buttons-off", "--history-path", "", "--telemetry-path", "",
+            "--state-path", "", "--quiet-off", "--skip-preflight",
+            "--pidfile", str(tmp_path / "run_clock.pid"),
+        ]
+
+    def test_transient_errnos_return_one(self, tmp_path):
+        for code in (errno.ENOSPC, errno.EIO, errno.ENOLCK):
+            with patch("sys.argv", self._argv(tmp_path)), \
+                 patch("idle_hours.run_clock.pidfile.acquire_pidfile", side_effect=OSError(code, "x")), \
+                 patch("idle_hours.run_clock.render_now"):
+                assert run_clock.main() == 1, errno.errorcode[code]
+
+
+class TestWebhookThreadStartFailure:
+    def test_failed_start_releases_permit(self, monkeypatch):
+        sem = threading.BoundedSemaphore(runtime_webhook._WEBHOOK_MAX_INFLIGHT)
+        monkeypatch.setattr(runtime_webhook, "_inflight_semaphore", sem)
+
+        class Boom(threading.Thread):
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        monkeypatch.setattr(runtime_webhook.threading, "Thread", Boom)
+        for _ in range(runtime_webhook._WEBHOOK_MAX_INFLIGHT + 2):
+            runtime_webhook.post_event("https://hooks.example.test/x", {"mode": "backoff", "error": "e"})
+        # Every permit came back: a full set can still be acquired.
+        for _ in range(runtime_webhook._WEBHOOK_MAX_INFLIGHT):
+            assert sem.acquire(blocking=False)

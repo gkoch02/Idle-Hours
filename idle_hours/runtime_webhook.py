@@ -269,11 +269,18 @@ def post_event(
         finally:
             semaphore.release()
 
-    threading.Thread(
-        target=_run_and_release,
-        name="idle-hours-webhook",
-        daemon=True,
-    ).start()
+    try:
+        threading.Thread(
+            target=_run_and_release,
+            name="idle-hours-webhook",
+            daemon=True,
+        ).start()
+    except Exception as exc:  # noqa: BLE001
+        # "can't start new thread" under memory pressure: the worker never
+        # runs, so its finally never releases. Hand the permit back here or
+        # four such failures would silence the webhook for the process's life.
+        semaphore.release()
+        _log(f"webhook: could not start worker thread: {exc!r}", err=True)
 
 
 def _post_blocking(webhook_url: str, entry: dict, timeout_seconds: float) -> None:

@@ -98,6 +98,11 @@ HEARTBEAT_INTERVAL_SECONDS = 60
 WATCHDOG_SLICE_SECONDS = HEARTBEAT_INTERVAL_SECONDS
 
 
+# Pidfile errors that describe the configuration rather than the moment:
+# retrying cannot fix them, so main() exits EXIT_CONFIG_ERROR (issue #283).
+_PIDFILE_CONFIG_ERRORS = (PermissionError, NotADirectoryError, IsADirectoryError, FileExistsError)
+
+
 def _valid_hhmm(value: str) -> str:
     """argparse ``type=`` adapter around :func:`runtime_config.validate_hhmm`.
 
@@ -1997,13 +2002,20 @@ def main() -> int:
     except pidfile.PidfileLockedError as exc:
         _log(str(exc), err=True)
         return 1
-    except OSError as exc:
+    except _PIDFILE_CONFIG_ERRORS as exc:
         # Unwritable / unopenable pidfile path (PermissionError, a directory,
-        # a missing parent that can't be created …): a configuration error,
-        # not contention. Exit 42 so RestartPreventExitStatus=42 halts the
-        # unit instead of flapping against Restart=always (issue #283).
+        # a file where a parent directory should be, a read-only mount): a
+        # configuration error, not contention. Exit 42 so
+        # RestartPreventExitStatus=42 halts the unit instead of flapping
+        # against Restart=always (issue #283).
         _log(f"cannot acquire pidfile {args.pidfile!r}: {exc!r}", err=True)
         return runtime_config.EXIT_CONFIG_ERROR
+    except OSError as exc:
+        # Anything else (ENOSPC, EIO on a flaky SD card, ENOLCK) can clear on
+        # its own, so exit 1 and let Restart=always retry: halting the unit on
+        # a transient fault would freeze the panel until a human intervened.
+        _log(f"cannot acquire pidfile {args.pidfile!r} (transient?): {exc!r}", err=True)
+        return 1
 
     persisted = load_runtime_state(args.state_path, telemetry_path=telemetry_path)
     state = RuntimeState(args.theme, persisted=persisted)
