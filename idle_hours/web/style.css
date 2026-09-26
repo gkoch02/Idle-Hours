@@ -411,6 +411,8 @@ textarea {
 .override-status.ok { color: var(--ok); }
 .override-status.err { color: var(--err); }
 .override-status.warn { color: var(--warn); }
+.override-conflict { margin-top: 8px; max-height: 16rem; overflow: auto; padding: 8px; border: 1px solid var(--warn); border-radius: 6px; font-size: 0.78rem; white-space: pre-wrap; word-break: break-word; }
+.override-conflict[hidden] { display: none; }
 
 /* History ----------------------------------------------------------------- */
 

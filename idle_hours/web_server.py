@@ -152,6 +152,10 @@ WILDCARD_BIND_HOSTS = {"0.0.0.0", "::", "*"}
 # we answer no OPTIONS, so the real request is never sent. This is the layer
 # that closes localhost CSRF on a tokenless loopback bind.
 JSON_CONTENT_TYPE = "application/json"
+
+# A client that went away mid-response. Not a server fault: never telemetry
+# (it would page the webhook), never a second response onto the dead socket.
+_CLIENT_GONE_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
 # GET routes that stay reachable without a token even when one is configured.
 # Not a judgement about sensitivity — the browser loads /current.png and
 # /api/preview through <img src>, and the static shell through the navigation
@@ -593,14 +597,27 @@ def validate_overrides_payload(payload: object) -> dict:
     }
 
 
-def write_overrides_atomic(path: Path, payload: dict) -> None:
-    """Atomically write ``payload`` to ``path``.
+def serialize_overrides(payload: dict) -> bytes:
+    """The exact bytes ``write_overrides_atomic`` puts on disk for ``payload``."""
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def write_overrides_atomic(path: Path, payload: dict) -> bytes:
+    """Atomically write ``payload`` to ``path`` and return the bytes written.
 
     Routes through :mod:`atomic_io` so the on-disk overrides file inherits the
     same tmp → fsync → replace → dir-fsync durability contract as persisted
     runtime state and the attributed corpus.
+
+    The bytes are returned so a caller can mint the response ETag from what
+    *it* wrote. Re-reading the file afterwards would adopt an external edit
+    (a CLI save, a hand edit) that landed between the write and the read: the
+    editor would then hold a tag for content it never saw, and its next save
+    would pass If-Match and silently undo that edit.
     """
-    atomic_io.atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    data = serialize_overrides(payload)
+    atomic_io.atomic_write_bytes(path, data)
+    return data
 
 
 # Serialises every read-modify-write of selection_overrides.json made through
@@ -634,12 +651,27 @@ def overrides_etag(raw: bytes | None) -> str:
     return '"' + hashlib.sha256(raw).hexdigest()[:32] + '"'
 
 
+def _strip_weak(tag: str) -> str:
+    """Drop a leading ``W/`` weakness marker from an entity tag."""
+    tag = tag.strip()
+    return tag[2:] if tag[:2] in ("W/", "w/") else tag
+
+
 def _etag_matches(if_match: str, current: str) -> bool:
-    """RFC 9110 If-Match: a comma list of ETags, or ``*`` (any existing file)."""
-    candidates = [c.strip() for c in if_match.split(",") if c.strip()]
+    """RFC 9110 If-Match: a comma list of ETags, or ``*`` (any existing file).
+
+    Weak tags are compared as if strong. RFC 9110 asks If-Match for the strong
+    comparison, but a gzip-ing reverse proxy rewrites our ``"…"`` to
+    ``W/"…"`` on the way out, the browser echoes that back, and a strict
+    compare then fails every save forever. Treating them as equal is safe
+    here because this server minted the tag from a hash of the file's exact
+    bytes — the weakness marker is the proxy's annotation, not a claim that
+    the content is merely equivalent.
+    """
+    candidates = [_strip_weak(c) for c in if_match.split(",") if c.strip()]
     if "*" in candidates:
         return current != '"absent"'
-    return current in candidates
+    return _strip_weak(current) in candidates
 
 
 def validate_content_overrides_payload(payload: object) -> dict:
@@ -774,6 +806,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    # Set once a status line has gone out for the current request, so an
+    # exception raised mid-response is not answered with a second response
+    # written onto the same (possibly dead) socket.
+    _response_started = False
+
+    def send_response(self, code, message=None):  # noqa: D401 - http.server override
+        self._response_started = True
+        super().send_response(code, message)
 
     def _json(self, status: int, payload: dict, extra_headers: tuple[tuple[str, str], ...] = ()) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -930,7 +971,40 @@ class CuratorHandler(BaseHTTPRequestHandler):
 
     # -- dispatch -------------------------------------------------------------
 
+    def _handle_failure(self, method: str, path: str, exc: BaseException) -> None:
+        """Answer an exception that escaped a handler — at most once.
+
+        A client that disconnects mid-response (a closed tab, an aborted
+        thumbnail fetch) surfaces as ``BrokenPipeError`` /
+        ``ConnectionResetError`` from the write. That is not a server fault:
+        logging it as ``web_error`` paged the webhook, and answering it wrote
+        a second response onto the dead socket. Likewise any exception after
+        the status line has gone out cannot be answered with a fresh 500 —
+        the client has already started reading the first one.
+
+        The exception's ``repr`` goes to the journal only (#291): echoing it
+        leaked paths and exception text to the client on a LAN bind, and the
+        telemetry marker carries just the class name.
+        """
+        if isinstance(exc, _CLIENT_GONE_ERRORS):
+            _log(f"web {method} {path}: client disconnected ({type(exc).__name__})")
+            self.close_connection = True
+            return
+        _log(f"web {method} {path}: {exc!r}", err=True)
+        self._emit_web_telemetry({
+            "mode": "web_error", "status": 500, "path": path,
+            "error": f"internal error ({type(exc).__name__})",
+        })
+        if self._response_started:
+            self.close_connection = True
+            return
+        try:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal error"})
+        except _CLIENT_GONE_ERRORS:
+            self.close_connection = True
+
     def do_GET(self):  # noqa: N802 (required by BaseHTTPRequestHandler)
+        self._response_started = False
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
@@ -949,16 +1023,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 return
             return handler()
         except Exception as exc:  # noqa: BLE001
-            # The repr stays in the journal only (#291): echoing it to the
-            # client leaked internals (paths, exception text) on a LAN bind,
-            # and the telemetry marker carries just the exception class so an
-            # operator can still tell a flaky endpoint from a scanner.
-            _log(f"web GET {path}: {exc!r}", err=True)
-            self._emit_web_telemetry({
-                "mode": "web_error", "status": 500, "path": path,
-                "error": f"internal error ({type(exc).__name__})",
-            })
-            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal error"})
+            return self._handle_failure("GET", path, exc)
 
     def _resolve_get_route(self, path: str, query: dict):
         """Return a zero-arg callable for ``path``, or ``None`` for 404."""
@@ -985,7 +1050,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         if path == "/api/setup":
             return self._api_setup_get
         if path == "/api/overrides":
-            return self._api_overrides_get
+            return lambda: self._api_overrides_get(query)
         if path == "/api/content-overrides":
             return self._api_content_overrides_get
         if path == "/api/search":
@@ -1021,6 +1086,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         return path not in UNGATED_GET_PATHS
 
     def do_POST(self):  # noqa: N802
+        self._response_started = False
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         # Resolve the route FIRST so an unknown path returns 404 before we
@@ -1055,18 +1121,19 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             return handler()
         except ValueError as exc:
+            if self._response_started:
+                return self._handle_failure("POST", path, exc)
             # Body/payload validation failure — structured 400 marker so an
             # operator can tell a curl-it-wrong from a real 5xx blow-up.
             self._emit_web_telemetry({
                 "mode": "web_error", "status": 400, "path": path, "error": str(exc),
             })
-            return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            try:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            except _CLIENT_GONE_ERRORS:
+                self.close_connection = True
         except Exception as exc:  # noqa: BLE001
-            _log(f"web POST {path}: {exc!r}", err=True)
-            self._emit_web_telemetry({
-                "mode": "web_error", "status": 500, "path": path, "error": repr(exc),
-            })
-            return self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": repr(exc)})
+            return self._handle_failure("POST", path, exc)
 
     # -- GET endpoints --------------------------------------------------------
 
@@ -1533,7 +1600,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "effective": effective,
         })
 
-    def _api_overrides_get(self) -> None:
+    def _api_overrides_get(self, query: dict | None = None) -> None:
+        """Return the selection-overrides sidecar and its ETag.
+
+        ``?envelope=1`` wraps the document as ``{"overrides": …, "etag": …}``
+        so the editor can read the tag from the body. A gzip-ing proxy
+        rewrites the ``ETag`` *header* to a weak ``W/"…"``; the body is out of
+        its reach, so the UI prefers the body copy. Without the parameter the
+        response is the bare document, as scripts have always received it.
+        """
         ctx = self._ctx()
         payload = _default_overrides()
         with _OVERRIDES_LOCK:
@@ -1554,7 +1629,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 payload = loaded
         # The ETag names the exact bytes the editor was loaded from, so a save
         # can say "only if nobody has written since" (If-Match, #289).
-        self._json(HTTPStatus.OK, payload, (("ETag", overrides_etag(raw)),))
+        etag = overrides_etag(raw)
+        if (query or {}).get("envelope", [""])[0] in ("1", "true"):
+            payload = {"overrides": payload, "etag": etag}
+        self._json(HTTPStatus.OK, payload, (("ETag", etag),))
 
     def _api_content_overrides_get(self) -> None:
         """Return the per-row content-overrides sidecar.
@@ -1867,8 +1945,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                         HTTPStatus.PRECONDITION_FAILED,
                         "selection_overrides.json changed on disk since it was loaded; reload and re-apply",
                     )
-            write_overrides_atomic(ctx.overrides_path, cleaned)
-            etag = overrides_etag(_read_overrides_bytes(ctx.overrides_path))
+            etag = overrides_etag(write_overrides_atomic(ctx.overrides_path, cleaned))
         _log(f"web: overrides updated -> {ctx.overrides_path}")
         self._json(
             HTTPStatus.OK, {"ok": True, "path": str(ctx.overrides_path), "etag": etag},
@@ -1884,10 +1961,19 @@ class CuratorHandler(BaseHTTPRequestHandler):
         between the two requests. The read-modify-write now happens here,
         under the same lock the wholesale save takes.
 
-        A file that exists but does not parse (or fails validation) is refused
-        with 409 rather than replaced by defaults: the wholesale editor fails
-        open so the operator can *see* a broken file, but a one-key ban must
-        never be the thing that silently wipes every ban and boost in it.
+        A file that is unreadable as a document — unparseable JSON, a root
+        that is not an object, or a ``ban_quote_keys`` that is not a list — is
+        refused with 409 rather than replaced by defaults: the wholesale editor
+        fails open so the operator can *see* a broken file, but a one-key ban
+        must never be the thing that silently wipes every ban and boost in it.
+
+        Anything short of that is left exactly as it is. The new key is merged
+        into the *loaded* dict, so an operator's ``_comment``, an int source
+        id, or a key this version doesn't know all survive a ban verbatim;
+        writing back the validator's projection used to drop and coerce them.
+        And a typo'd ``preferred_buckets`` key does not block the ban: the
+        runtime loader only warns about one, so refusing here would make the
+        UI stricter than the thing it curates.
         """
         ctx = self._ctx()
         body = self._read_json_body()
@@ -1897,14 +1983,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         key = key.strip()
         with _OVERRIDES_LOCK:
             raw = _read_overrides_bytes(ctx.overrides_path)
-            current = _default_overrides()
-            if raw is not None:
+            if raw is None:
+                current = _default_overrides()
+            else:
                 try:
-                    loaded = json.loads(raw.decode("utf-8-sig"))
-                    if not isinstance(loaded, dict):
+                    current = json.loads(raw.decode("utf-8-sig"))
+                    if not isinstance(current, dict):
                         raise ValueError("root is not a JSON object")
-                    current.update(loaded)
-                    current = validate_overrides_payload(current)
+                    if not isinstance(current.setdefault("ban_quote_keys", []), list):
+                        raise ValueError("ban_quote_keys is not a list")
                 except ValueError as exc:
                     _log(f"web: refusing ban — {ctx.overrides_path} is invalid: {exc!r}", err=True)
                     return self._reject(
@@ -1912,10 +1999,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
                         "selection_overrides.json is corrupt or invalid; fix it in the editor before banning",
                     )
             already = key in current["ban_quote_keys"]
-            if not already:
+            if already:
+                etag = overrides_etag(raw)
+            else:
                 current["ban_quote_keys"].append(key)
-                write_overrides_atomic(ctx.overrides_path, current)
-            etag = overrides_etag(_read_overrides_bytes(ctx.overrides_path))
+                etag = overrides_etag(write_overrides_atomic(ctx.overrides_path, current))
         _log(f"web: banned quote {key}" + (" (already banned)" if already else ""))
         self._emit_web_telemetry({
             "mode": "action", "action": "ban", "label": "web", "ok": True, "key": key,

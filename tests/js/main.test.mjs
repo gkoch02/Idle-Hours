@@ -124,21 +124,26 @@ describe("banQuoteKey — server-side ban, no browser read-modify-write (#289)",
 });
 
 describe("overrides editor — If-Match on save (#289)", () => {
-  function editorHarness(saveRoute) {
+  // `envelope` switches the GET between the body-carries-the-ETag shape and
+  // the bare document an older server returns (tag in the header only).
+  function editorHarness(saveRoute, { envelope = true, headerEtag = (v) => `"v${v}"` } = {}) {
     const table = routeTable({
       "POST /api/overrides": saveRoute,
+      "POST /api/overrides/ban": { body: { ok: true, key: "1:1", already_banned: false } },
+      "POST /api/action/rerender": { body: { ok: true } },
     });
     let gets = 0;
     return loadMainJs({
-      elementIds: ["action-log", "overrides-text", "overrides-status"],
+      elementIds: ["action-log", "overrides-text", "overrides-status", "overrides-conflict"],
       fetch: async (url, init) => {
-        if ((init.method || "GET") === "GET" && url === "/api/overrides") {
+        if ((init.method || "GET") === "GET" && url.split("?")[0] === "/api/overrides") {
           gets += 1;
-          const etag = `"v${gets}"`;
+          const doc = { ban_quote_keys: [], version: gets };
+          const body = envelope ? { overrides: doc, etag: `"v${gets}"` } : doc;
           return {
             status: 200, ok: true,
-            text: async () => JSON.stringify({ ban_quote_keys: [], version: gets }),
-            headers: { get: (h) => (h.toLowerCase() === "etag" ? etag : null) },
+            text: async () => JSON.stringify(body),
+            headers: { get: (h) => (h.toLowerCase() === "etag" ? headerEtag(gets) : null) },
           };
         }
         return table(url, init);
@@ -155,15 +160,40 @@ describe("overrides editor — If-Match on save (#289)", () => {
     assert.equal(h.api.state.overridesEtag, '"v9"', "a successful save adopts the new ETag");
   });
 
-  it("on 412 reloads the file and tells the operator", async () => {
+  it("asks for the envelope and prefers the body ETag over a proxy-weakened header", async () => {
+    const h = await editorHarness({ body: { ok: true } }, { headerEtag: (v) => `W/"v${v}"` });
+    await h.sandbox.loadOverrides();
+    assert.ok(h.calls.fetches[0].url.includes("envelope=1"));
+    assert.equal(h.api.state.overridesEtag, '"v1"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 1/);
+    assert.doesNotMatch(h.elements.get("overrides-text").value, /etag/, "the envelope must not leak into the editor");
+  });
+
+  it("falls back to the header ETag against a server without the envelope", async () => {
+    const h = await editorHarness({ body: { ok: true } }, { envelope: false });
+    await h.sandbox.loadOverrides();
+    assert.equal(h.api.state.overridesEtag, '"v1"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 1/);
+  });
+
+  it("on 412 keeps the operator's draft and the old ETag, and shows the disk copy", async () => {
     const h = await editorHarness({ status: 412, body: { error: "changed" } });
     await h.sandbox.loadOverrides();
-    h.elements.get("overrides-text").value = '{"ban_quote_keys": ["stale"]}';
+    const draft = '{"ban_quote_keys": ["my-edit"]}';
+    h.elements.get("overrides-text").value = draft;
     await h.sandbox.saveOverrides();
-    const status = h.elements.get("overrides-status");
-    assert.match(status.textContent, /changed on disk/);
-    assert.equal(h.api.state.overridesEtag, '"v2"', "must reload to the current version");
-    assert.match(h.elements.get("overrides-text").value, /"version": 2/);
+    assert.equal(h.elements.get("overrides-text").value, draft, "the draft was destroyed");
+    assert.equal(h.api.state.overridesEtag, '"v1"', "a 412 must not adopt the new version implicitly");
+    assert.match(h.elements.get("overrides-status").textContent, /changed on disk/);
+    assert.match(h.elements.get("overrides-status").textContent, /edit is kept/);
+    const conflict = h.elements.get("overrides-conflict");
+    assert.equal(conflict.hidden, false);
+    assert.match(conflict.textContent, /"version": 2/);
+    // An explicit reload is what adopts the current version.
+    await h.sandbox.loadOverrides();
+    assert.equal(h.api.state.overridesEtag, '"v3"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 3/);
+    assert.equal(conflict.hidden, true);
   });
 
   it("omits If-Match when nothing was loaded", async () => {
@@ -172,6 +202,25 @@ describe("overrides editor — If-Match on save (#289)", () => {
     await h.sandbox.saveOverrides();
     const save = h.calls.fetches.find((f) => f.init.method === "POST");
     assert.equal(save.init.headers["If-Match"], undefined);
+  });
+
+  it("a ban leaves an unsaved edit and its ETag alone", async () => {
+    const h = await editorHarness({ body: { ok: true } });
+    await h.sandbox.loadOverrides();
+    const draft = '{"ban_quote_keys": [], "boost_source_ids": ["42"]}';
+    h.elements.get("overrides-text").value = draft;
+    await h.api.banQuoteKey("1:1");
+    assert.equal(h.elements.get("overrides-text").value, draft, "the ban wiped the operator's edit");
+    assert.equal(h.api.state.overridesEtag, '"v1"', "adopting the post-ban ETag would let the save drop the ban");
+    assert.match(h.elements.get("overrides-status").textContent, /unsaved edit is kept/);
+  });
+
+  it("a ban reloads a clean editor so the new key shows", async () => {
+    const h = await editorHarness({ body: { ok: true } });
+    await h.sandbox.loadOverrides();
+    await h.api.banQuoteKey("1:1");
+    assert.equal(h.api.state.overridesEtag, '"v2"');
+    assert.match(h.elements.get("overrides-text").value, /"version": 2/);
   });
 });
 
@@ -798,6 +847,32 @@ describe("theme dropdown follows the live theme (#290)", () => {
     assert.equal(selected(select), "default");
   });
 
+  it("follows the live theme after the operator picks the live theme back (not latched)", async () => {
+    const { api, select } = await harness([
+      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "scholar" },
+    ]);
+    await api.refreshThemes();
+    const pick = (v) => { select.value = v; for (const fn of select.listeners.change || []) fn(); };
+    pick("dark");
+    await api.refreshThemes();
+    assert.equal(selected(select), "dark", "a real pending choice is kept");
+    pick("default");
+    await api.refreshThemes();
+    assert.equal(selected(select), "scholar", "stuck on a choice the operator already undid");
+  });
+
+  it("drops a pending choice once the live theme catches up with it", async () => {
+    const { api, select } = await harness([
+      { ...PAYLOAD, effective: "default" }, { ...PAYLOAD, effective: "dark" }, { ...PAYLOAD, effective: "scholar" },
+    ]);
+    await api.refreshThemes();
+    select.value = "dark";
+    for (const fn of select.listeners.change || []) fn();
+    await api.refreshThemes();
+    await api.refreshThemes();
+    assert.equal(selected(select), "scholar");
+  });
+
   it("follows the live theme again once the choice is applied", async () => {
     const { api, select, elements } = await harness([PAYLOAD, PAYLOAD, { ...PAYLOAD, effective: "scholar" }]);
     await api.refreshThemes();
@@ -934,5 +1009,174 @@ describe("setup wizard focus management (#292)", () => {
     await h.api.completeWizard(null);
     assert.equal(h.elements.get("setup-wizard").hidden, true);
     assert.equal(h.document.activeElement, opener);
+  });
+});
+
+describe("thumbnail grid reuses its tiles across quote changes (no blob leak)", () => {
+  const CURRENT_IDS = ["clock", "bucket", "theme", "mode", "quote", "attribution", "matched",
+    "current-png", "ban-current", "action-log", "theme-preview-grid"];
+
+  async function gridHarness(themesByCall = [["a", "b", "c"]]) {
+    let current = { source_id: "141", line_number: 0 };
+    let themeCalls = 0;
+    const h = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      fetch: async (url, init) => {
+        if (url === "/api/current") return { status: 200, ok: true, text: async () => JSON.stringify(current) };
+        if (url === "/api/themes") {
+          const themes = themesByCall[Math.min(themeCalls, themesByCall.length - 1)];
+          themeCalls += 1;
+          return { status: 200, ok: true, text: async () => JSON.stringify({ themes, preview_themes: themes, effective: themes[0] }) };
+        }
+        return routeTable({ "GET /api/preview": { body: "thumb" }, "GET /current.png": { body: "png" } })(url, init);
+      },
+    });
+    const setQuote = (n) => { current = { source_id: "141", line_number: n }; };
+    return { ...h, setQuote };
+  }
+
+  const settle = async () => { for (let i = 0; i < 6; i += 1) await flush(); };
+  const created = (calls) => calls.objectUrls.map((_, i) => `blob:stub-${i + 1}`);
+
+  it("N quote changes: same <img> elements, every superseded URL revoked", async () => {
+    const h = await gridHarness();
+    await h.api.refreshCurrent();
+    await h.api.refreshThemePreview();
+    h.api.state.themePreviewLoaded = true;
+    await settle();
+    const grid = h.elements.get("theme-preview-grid");
+    const imgs = grid.children.map((c) => c.children[0]);
+    for (let n = 1; n <= 5; n += 1) {
+      h.setQuote(n);
+      await h.api.refreshCurrent();
+      await settle();
+    }
+    assert.deepEqual(grid.children.map((c) => c.children[0]), imgs, "the grid was rebuilt");
+    assert.equal(grid.children.length, 3);
+    const live = new Set([...imgs.map((i) => i.src), h.elements.get("current-png").src]);
+    assert.equal(live.size, 4);
+    const revoked = new Set(h.calls.revokedUrls);
+    for (const url of created(h.calls)) {
+      if (live.has(url)) assert.ok(!revoked.has(url), `live ${url} revoked`);
+      else assert.ok(revoked.has(url), `${url} leaked`);
+    }
+  });
+
+  it("a changed theme list rebuilds the grid and revokes the discarded tiles", async () => {
+    const h = await gridHarness([["a", "b"], ["a", "b", "c"]]);
+    await h.api.refreshThemePreview();
+    await settle();
+    const oldSrcs = h.elements.get("theme-preview-grid").children.map((c) => c.children[0].src);
+    h.api.state.previewThemes = [];
+    await h.api.refreshThemePreview();
+    await settle();
+    for (const url of oldSrcs) assert.ok(h.calls.revokedUrls.includes(url), `${url} leaked on rebuild`);
+    assert.equal(h.elements.get("theme-preview-grid").children.length, 3);
+  });
+
+  it("reloads only on-screen tiles; an off-screen tile waits for one fetch, not one per quote", async () => {
+    const h = await gridHarness();
+    const visible = new Set();
+    const observers = [];
+    h.sandbox.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; this.targets = []; this.live = true; observers.push(this); }
+      observe(el) {
+        this.targets.push(el);
+        if (visible.has(el)) this.cb([{ isIntersecting: true, target: el }]);
+      }
+      disconnect() { this.live = false; }
+    };
+    await h.api.refreshThemePreview();
+    const grid = h.elements.get("theme-preview-grid");
+    const imgs = grid.children.map((c) => c.children[0]);
+    h.api.state.themePreviewLoaded = true;
+    await h.api.refreshCurrent();
+    await settle();
+    visible.add(imgs[0]);
+    const previews = () => h.calls.fetches.filter((f) => f.url.startsWith("/api/preview")).length;
+    const before = previews();
+    for (let n = 1; n <= 4; n += 1) {
+      h.setQuote(n);
+      await h.api.refreshCurrent();
+      await settle();
+    }
+    assert.equal(previews() - before, 4, "only the visible tile should reload per quote change");
+    // Each hidden tile has exactly one live observer waiting.
+    for (const img of imgs.slice(1)) {
+      const waiting = observers.filter((o) => o.live && o.targets.includes(img));
+      assert.equal(waiting.length, 1);
+    }
+    // Scrolling a hidden tile into view fetches it exactly once.
+    const waiter = observers.find((o) => o.live && o.targets.includes(imgs[1]));
+    waiter.cb([{ isIntersecting: true, target: imgs[1] }]);
+    await settle();
+    assert.equal(previews() - before, 5);
+  });
+});
+
+describe("setup wizard keyboard handling (#292)", () => {
+  async function wizardHarness() {
+    const h = await loadMainJs({
+      elementIds: ["action-log", "setup-wizard", "wizard-quiet", "wizard-theme-grid", "wizard-dismiss",
+        "wizard-status", "opener", "wiz-a", "wiz-b"],
+      fetch: routeTable({
+        "GET /api/setup": { body: { setup_complete: false, themes: [] } },
+        "POST /api/setup": { body: { ok: true, setup_complete: true } },
+      }),
+    });
+    const overlay = h.elements.get("setup-wizard");
+    const items = [h.elements.get("wiz-a"), h.elements.get("wiz-b"), h.elements.get("wizard-dismiss")];
+    overlay.querySelectorAll = () => items;
+    overlay.querySelector = () => items[0];
+    const key = (k, shiftKey = false) => {
+      const ev = { key: k, shiftKey, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+      for (const fn of h.document.listeners.keydown || []) fn(ev);
+      return ev;
+    };
+    return { ...h, overlay, items, key };
+  }
+
+  it("Tab from the last control wraps to the first, Shift+Tab from the first to the last", async () => {
+    const h = await wizardHarness();
+    await h.api.maybeShowWizard();
+    assert.equal(h.document.activeElement, h.items[0]);
+    const back = h.key("Tab", true);
+    assert.ok(back.defaultPrevented);
+    assert.equal(h.document.activeElement, h.items[2]);
+    const fwd = h.key("Tab");
+    assert.ok(fwd.defaultPrevented);
+    assert.equal(h.document.activeElement, h.items[0]);
+    const mid = h.key("Tab");
+    assert.equal(mid.defaultPrevented, false, "ordinary Tab inside the dialog is left to the browser");
+  });
+
+  it("pulls focus back in if it has escaped the dialog", async () => {
+    const h = await wizardHarness();
+    await h.api.maybeShowWizard();
+    h.elements.get("opener").focus();
+    h.key("Tab");
+    assert.equal(h.document.activeElement, h.items[0]);
+  });
+
+  it("Escape closes without completing setup and restores focus", async () => {
+    const h = await wizardHarness();
+    const opener = h.elements.get("opener");
+    opener.focus();
+    await h.api.maybeShowWizard();
+    const ev = h.key("Escape");
+    assert.ok(ev.defaultPrevented);
+    assert.equal(h.overlay.hidden, true);
+    assert.equal(h.document.activeElement, opener);
+    assert.equal(h.calls.fetches.filter((f) => f.init.method === "POST").length, 0);
+  });
+
+  it("does nothing once the dialog is closed", async () => {
+    const h = await wizardHarness();
+    await h.api.maybeShowWizard();
+    await h.api.completeWizard(null);
+    h.elements.get("opener").focus();
+    const ev = h.key("Tab");
+    assert.equal(ev.defaultPrevented, false);
+    assert.equal(h.document.activeElement, h.elements.get("opener"));
   });
 });

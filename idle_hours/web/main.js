@@ -116,8 +116,17 @@ async function pollFetch(name, url) {
 // object URL for a tag is revoked when it is replaced, so a page left open
 // polling /current.png every 30 s does not leak a frame per poll.
 const objectUrls = new Map();
+// Latest load started per <img>. A reload that starts while an earlier one is
+// still in flight must win, and a tile released mid-fetch must not have an
+// object URL minted for it afterwards — that URL would never be revoked.
+const imageLoadSeq = new WeakMap();
+// Pending "load when visible" observers, so a reload replaces rather than
+// stacks them and a released tile stops waiting to be scrolled into view.
+const imageObservers = new Map();
 
 async function loadImage(img, url) {
+  const seq = (imageLoadSeq.get(img) || 0) + 1;
+  imageLoadSeq.set(img, seq);
   if (inFlightRequests === 0) tokenPromptAttempt = null;
   inFlightRequests += 1;
   let resp;
@@ -133,7 +142,9 @@ async function loadImage(img, url) {
     log(`image ${url}: HTTP ${resp.status}`);
     return false;
   }
-  const objectUrl = URL.createObjectURL(await resp.blob());
+  const blob = await resp.blob();
+  if (imageLoadSeq.get(img) !== seq) return false; // superseded or released
+  const objectUrl = URL.createObjectURL(blob);
   const previous = objectUrls.get(img);
   if (previous) URL.revokeObjectURL(previous);
   objectUrls.set(img, objectUrl);
@@ -141,10 +152,30 @@ async function loadImage(img, url) {
   return true;
 }
 
+// Forget an <img> the page is discarding: revoke its object URL (the blob is
+// otherwise pinned for the life of the page), drop the Map entry that would
+// keep the detached element alive, and cancel any pending or in-flight load.
+function releaseImage(img) {
+  const url = objectUrls.get(img);
+  if (url) URL.revokeObjectURL(url);
+  objectUrls.delete(img);
+  const observer = imageObservers.get(img);
+  if (observer) observer.disconnect();
+  imageObservers.delete(img);
+  imageLoadSeq.set(img, -1);
+}
+
 // Thumbnail grids hold one <img> per theme, and each is a full render on the
 // appliance: load a tile only once it scrolls into view (the job the old
 // `loading="lazy"` attribute did before the src became a fetched blob).
+//
+// Calling it again for the same <img> (a reload after the quote changed)
+// replaces the pending observer, so an off-screen tile is fetched once, when
+// it is finally scrolled to, with the latest URL — not once per quote change.
 function loadImageWhenVisible(img, url) {
+  const pending = imageObservers.get(img);
+  if (pending) pending.disconnect();
+  imageObservers.delete(img);
   if (typeof IntersectionObserver === "undefined") {
     loadImage(img, url);
     return;
@@ -153,12 +184,21 @@ function loadImageWhenVisible(img, url) {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       observer.disconnect();
+      if (imageObservers.get(img) === observer) imageObservers.delete(img);
       loadImage(img, url);
+      return;
     }
   }, { rootMargin: "200px" });
+  imageObservers.set(img, observer);
   observer.observe(img);
 }
 
+// Cache-busted per call; the server answers no-store anyway.
+const previewUrl = (theme) =>
+  `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`;
+
+// Returns `{ cell, img }` so callers can keep the <img> for a later reload
+// or release without walking the DOM.
 function themeThumb(theme, title, onClick) {
   const cell = document.createElement("button");
   cell.type = "button";
@@ -171,9 +211,8 @@ function themeThumb(theme, title, onClick) {
   cell.appendChild(img);
   cell.appendChild(label);
   cell.onclick = onClick;
-  // Cache-bust per page-load — once is enough; server returns no-store.
-  loadImageWhenVisible(img, `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`);
-  return cell;
+  loadImageWhenVisible(img, previewUrl(theme));
+  return { cell, img };
 }
 
 function promptForToken(staleToken) {
@@ -284,9 +323,13 @@ const state = {
   currentQuoteId: null,  // [source_id, line_number] for the ban button
   asleep: false,         // panel shows the sleep frame (from /api/current)
   themes: [],            // populated by /api/themes (the dropdown's list)
+  previewTiles: [],      // [{ theme, img }] currently in the Now-tab grid
+  wizardTiles: [],       // [{ theme, img }] currently in the wizard grid
+  liveTheme: null,       // the theme the panel shows, per the last /api/themes
   previewThemes: [],     // /api/themes preview_themes: the grid's list, no diags
-  themeSelectDirty: false, // operator picked a theme in the dropdown, not applied yet
+  themeSelectDirty: false, // dropdown holds an unapplied choice that differs from the live theme
   overridesEtag: null,   // ETag the overrides editor was loaded from (#289)
+  overridesLoadedText: null, // textarea contents as last loaded/saved — dirty = differs
 };
 
 // ------- Now Showing ---------------------------------------------------------
@@ -569,9 +612,25 @@ async function refreshThemePreview() {
     if (ok && data) rememberThemes(data);
   }
   if (!state.previewThemes.length) return false;
+  // Same theme list as the tiles already on screen (the common case: the
+  // quote changed): reload those tiles in place. Rebuilding the grid on every
+  // quote change used to orphan every thumbnail's object URL (the map is keyed
+  // by <img>, and new elements never matched the old keys) and re-render all
+  // ~70 previews at once; reloading through the visibility observer fetches
+  // only tiles on screen now, the rest when they are scrolled to.
+  const themes = state.previewThemes;
+  const tiles = state.previewTiles;
+  if (tiles.length === themes.length && tiles.every((t, i) => t.theme === themes[i])) {
+    for (const tile of tiles) loadImageWhenVisible(tile.img, previewUrl(tile.theme));
+    return true;
+  }
+  for (const tile of tiles) releaseImage(tile.img);
   grid.innerHTML = "";
-  for (const theme of state.previewThemes) {
-    grid.appendChild(themeThumb(theme, `Apply ${theme}`, () => fireAction("theme", { theme })));
+  state.previewTiles = [];
+  for (const theme of themes) {
+    const { cell, img } = themeThumb(theme, `Apply ${theme}`, () => fireAction("theme", { theme }));
+    state.previewTiles.push({ theme, img });
+    grid.appendChild(cell);
   }
   return true;
 }
@@ -621,7 +680,12 @@ function wireControls() {
   });
   const select = $("theme-select");
   if (select) {
-    select.addEventListener("change", () => { state.themeSelectDirty = true; });
+    // Dirty means "holds a choice other than what the panel shows". Picking
+    // the live theme back clears it, so a later live change is followed
+    // rather than hidden behind a choice the operator already undid.
+    select.addEventListener("change", () => {
+      state.themeSelectDirty = select.value !== state.liveTheme;
+    });
   }
   const apply = $("theme-apply");
   if (apply) {
@@ -649,6 +713,7 @@ async function refreshThemes() {
   const data = await pollFetch("themes", "/api/themes");
   if (!data) return;
   rememberThemes(data);
+  state.liveTheme = data.manual_theme || data.effective || null;
   const isFocused = document.activeElement === select;
   if (!isFocused) {
     // Follow the live theme unless the operator has picked something they
@@ -657,6 +722,9 @@ async function refreshThemes() {
     // reached it.
     const prev = select.value;
     const current = data.manual_theme || data.effective;
+    // A pending choice the live theme has since caught up with is no longer
+    // pending; dropping the flag lets the next live change through.
+    if (prev === current) state.themeSelectDirty = false;
     const wanted = state.themeSelectDirty && prev ? prev : current;
     select.innerHTML = "";
     for (const name of data.themes || []) {
@@ -682,18 +750,50 @@ async function refreshThemes() {
 
 // ------- Selection overrides editor -----------------------------------------
 
+// `?envelope=1` returns `{ overrides, etag }`: the tag rides in the body as
+// well as the header because a gzip-ing proxy rewrites the header to a weak
+// `W/"…"`. An older server ignores the parameter and returns the bare
+// document, so fall back to that shape and the header.
+async function fetchOverrides() {
+  const { ok, status, data, headers } = await jsonFetch("/api/overrides?envelope=1");
+  if (!ok) return { ok, status, data };
+  const enveloped = data && typeof data.etag === "string"
+    && data.overrides && typeof data.overrides === "object";
+  return {
+    ok,
+    status,
+    doc: enveloped ? data.overrides : data,
+    etag: enveloped ? data.etag : (headers?.get?.("ETag") || null),
+  };
+}
+
+function overridesDirty() {
+  const el = $("overrides-text");
+  return Boolean(el) && state.overridesLoadedText != null && el.value !== state.overridesLoadedText;
+}
+
+function showOverridesConflict(text) {
+  const el = $("overrides-conflict");
+  if (!el) return;
+  el.textContent = text || "";
+  el.hidden = !text;
+}
+
 async function loadOverrides() {
-  const { ok, data, headers } = await jsonFetch("/api/overrides");
-  if (ok) {
-    $("overrides-text").value = JSON.stringify(data, null, 2);
+  const res = await fetchOverrides();
+  if (res.ok) {
+    const text = JSON.stringify(res.doc, null, 2);
+    $("overrides-text").value = text;
+    state.overridesLoadedText = text;
     // Remember exactly which version the textarea holds, so a save can refuse
     // to overwrite a change made since (If-Match, #289).
-    state.overridesEtag = headers?.get?.("ETag") || null;
+    state.overridesEtag = res.etag;
+    showOverridesConflict("");
     setStatus("overrides-status", "loaded from disk", "ok");
   } else {
-    setStatus("overrides-status", `load failed: ${data?.error || "?"}`, "err");
+    setStatus("overrides-status", `load failed: ${res.data?.error || "?"}`, "err");
   }
-  return ok;
+  return res.ok;
 }
 
 async function saveOverrides() {
@@ -713,18 +813,29 @@ async function saveOverrides() {
   });
   if (status === 412) {
     // Someone (another tab's ban, a CLI edit) wrote the file since this
-    // editor loaded it. Saving anyway would silently undo their change, so
-    // reload the current file and let the operator re-apply their edit.
-    await loadOverrides();
+    // editor loaded it. Saving anyway would silently undo their change —
+    // and so would replacing the textarea with the disk copy, which would
+    // throw away the operator's edit instead. Keep the draft, show what is
+    // on disk now beside it, and leave the ETag alone: only an explicit
+    // "Reload from disk" adopts the new version, so a blind re-save keeps
+    // being refused rather than overwriting the change it never saw.
+    const fresh = await fetchOverrides();
+    showOverridesConflict(fresh.ok
+      ? `Current file on disk:\n${JSON.stringify(fresh.doc, null, 2)}`
+      : "");
     setStatus(
       "overrides-status",
-      "not saved: the file changed on disk since you loaded it — reloaded the current version; re-apply your edit and save again",
+      "not saved: the file changed on disk since you loaded it. Your edit is kept above; " +
+      "merge in the current version shown below, then click \"Reload from disk\" " +
+      "(which replaces your edit) and re-apply, or copy your edit first",
       "warn",
     );
     return;
   }
   if (ok) {
     if (data?.etag) state.overridesEtag = data.etag;
+    state.overridesLoadedText = $("overrides-text").value;
+    showOverridesConflict("");
     setStatus("overrides-status", `saved to ${data.path}`, "ok");
     refreshCoverageViews();
   } else {
@@ -820,7 +931,19 @@ async function banQuoteKey(key) {
   log(data?.already_banned ? `${key} was already banned` : `banned ${key}`, "ok");
   // Re-render so the panel jumps to a new pick that doesn't include the banned row.
   await fireAction("rerender");
-  await loadOverrides();
+  // Show the ban in the editor — unless the operator has unsaved edits there.
+  // Reloading would discard them, and adopting the new ETag would let their
+  // eventual save silently drop this ban; leaving both alone means that save
+  // is refused with 412 and they are told why.
+  if (overridesDirty()) {
+    setStatus(
+      "overrides-status",
+      `${key} was banned on disk; your unsaved edit is kept — saving it will be refused until you reload`,
+      "warn",
+    );
+  } else {
+    await loadOverrides();
+  }
   refreshCoverageViews();
 }
 
@@ -898,30 +1021,83 @@ async function maybeShowWizard() {
   // Now tab's thumbnail UX (and the operator picks a theme by clicking, not
   // by reading names off a dropdown they haven't learned yet).
   const grid = $("wizard-theme-grid");
+  releaseWizardTiles();
   grid.innerHTML = "";
   for (const theme of data.themes || []) {
-    const cell = themeThumb(theme, `Use ${theme}`, () => completeWizard(theme));
+    const { cell, img } = themeThumb(theme, `Use ${theme}`, () => completeWizard(theme));
+    state.wizardTiles.push({ theme, img });
     if (theme === (data.manual_theme || data.theme_arg)) cell.classList.add("selected");
     grid.appendChild(cell);
   }
   openWizard(overlay);
 }
 
+function releaseWizardTiles() {
+  for (const tile of state.wizardTiles) releaseImage(tile.img);
+  state.wizardTiles = [];
+}
+
 // Minimal modal focus management (#292): remember where focus was, move it
 // into the dialog so keyboard and screen-reader users land on it, and put it
 // back when the dialog closes.
 let wizardReturnFocus = null;
+let wizardKeysWired = false;
+
+const WIZARD_FOCUSABLE = "button, [href], input, select, textarea";
+
+function wizardFocusables(overlay) {
+  const found = Array.from(overlay.querySelectorAll?.(WIZARD_FOCUSABLE) || [])
+    .filter((el) => !el.disabled && !el.hidden);
+  if (!found.length) {
+    const dismiss = $("wizard-dismiss");
+    if (dismiss) found.push(dismiss);
+  }
+  return found;
+}
+
+// aria-modal promises assistive tech that nothing outside the dialog is
+// reachable, so keep Tab / Shift+Tab cycling inside it. Escape closes the
+// dialog for this page load without marking setup complete — it comes back
+// on the next visit, where "I'm ready" is the way to retire it for good.
+function wizardKeydown(event) {
+  const overlay = $("setup-wizard");
+  if (!overlay || overlay.hidden) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeWizard();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const items = wizardFocusables(overlay);
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  let target = null;
+  if (!items.includes(active)) target = event.shiftKey ? last : first;
+  else if (event.shiftKey && active === first) target = last;
+  else if (!event.shiftKey && active === last) target = first;
+  if (target) {
+    event.preventDefault();
+    target.focus();
+  }
+}
 
 function openWizard(overlay) {
   wizardReturnFocus = document.activeElement || null;
   overlay.hidden = false;
-  const first = overlay.querySelector?.("button, [href], input, select, textarea") || $("wizard-dismiss");
+  if (!wizardKeysWired) {
+    document.addEventListener("keydown", wizardKeydown);
+    wizardKeysWired = true;
+  }
+  const first = overlay.querySelector?.(WIZARD_FOCUSABLE) || $("wizard-dismiss");
   if (first && typeof first.focus === "function") first.focus();
 }
 
 function closeWizard() {
   const overlay = $("setup-wizard");
   if (overlay) overlay.hidden = true;
+  releaseWizardTiles();
   const back = wizardReturnFocus;
   wizardReturnFocus = null;
   if (back && typeof back.focus === "function") back.focus();
