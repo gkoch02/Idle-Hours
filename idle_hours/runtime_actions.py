@@ -33,7 +33,13 @@ import argparse
 import contextlib
 
 from idle_hours.runtime_log import _log
-from idle_hours.runtime_quiet import compute_quiet, exit_quiet, render_quiet_frame
+from idle_hours.runtime_quiet import (
+    claim_quiet_edge,
+    compute_quiet,
+    exit_quiet,
+    render_quiet_frame,
+    scheduled_quiet,
+)
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme, resolve_quiet_theme
 from idle_hours.theme_names import theme_cycle as _theme_cycle
@@ -122,11 +128,34 @@ def _quiet_active(args: argparse.Namespace, state: RuntimeState, time_str: str) 
     return now_quiet
 
 
+def _refuse_while_asleep(
+    args: argparse.Namespace, state: RuntimeState, action: str, label: str, telemetry_path: str | None,
+) -> dict | None:
+    """``{"ok": False, "error": "asleep"}`` when the panel shows the sleep frame, else ``None``.
+
+    Skip and un-skip re-pick and paint a *quote*; while the panel is asleep
+    that painted a clock frame onto it that then froze until the window
+    ended, because the main loop's quiet branch never ticks the clock
+    (issue #278). Neither action means anything against a sleep frame — the
+    quote it would ban is not on the panel — so both are refused the way a
+    busy render is, and the operator wakes the panel first (button D / web
+    wake) if they want the clock back. The web layer maps the error to 409.
+    """
+    from idle_hours import run_clock
+    if not _quiet_active(args, state, run_clock.current_time_str()):
+        return None
+    _log(f"{label}: {action} ignored, panel is asleep (wake it first)")
+    _emit_action(telemetry_path, action, label, ok=False, error="asleep")
+    return {"ok": False, "error": "asleep"}
+
+
 def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
     """Ban the currently-shown quote and render the next pick.
 
     Mirrors button A short-press. Returns ``{"ok": True, "new_quote_id": [...]}``,
-    ``{"ok": False, "error": "busy"}`` when a render is already in flight, or
+    ``{"ok": False, "error": "busy"}`` when a render is already in flight,
+    ``{"ok": False, "error": "asleep"}`` while the panel shows the sleep
+    frame (see :func:`_refuse_while_asleep`), or
     ``{"ok": False, "error": "<repr>"}`` on exception.
     """
     from idle_hours import run_clock
@@ -135,6 +164,9 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
     with _button_render_gate(state, label, "skip", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
+        refused = _refuse_while_asleep(args, state, "skip", label, telemetry_path)
+        if refused is not None:
+            return refused
         _log(f"{label}: skip")
         try:
             with state.lock:
@@ -179,6 +211,9 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
     with _button_render_gate(state, label, "unskip", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
+        refused = _refuse_while_asleep(args, state, "unskip", label, telemetry_path)
+        if refused is not None:
+            return refused
         _log(f"{label}: un-skip")
         try:
             with state.lock:
@@ -339,13 +374,29 @@ def action_theme(
 
 
 def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Toggle the manual quiet override, display goodnight-or-wake frame, persist on success.
+    """Toggle the panel between asleep and awake, display the matching frame, persist on success.
 
-    Mirrors button D short-press. See :func:`action_theme` for the ordering
-    rationale: the flip happens in RAM first, then we push the display (quiet
-    image going in, fresh render coming out), then persist. A raise during the
-    display push rolls the flip back so ``state.json`` cannot claim "quiet"
-    while the panel still shows a quote (or vice versa).
+    Mirrors button D short-press. The toggle is relative to what the panel is
+    *showing*, not to the ``manual_quiet`` flag alone (issue #278). Before
+    this, a D press during the scheduled window set ``manual_quiet`` (no
+    visible change — the panel was already asleep) and a second press
+    cleared it and painted a quote, after which the main loop still saw the
+    scheduled window and neither re-entered quiet nor ticked the clock: a
+    frozen clock frame until 06:00. Now:
+
+    * asleep → **wake**: ``manual_quiet`` is cleared and, if the window is
+      the reason the panel was asleep, ``state.manual_awake`` is set so
+      ``compute_quiet`` keeps the clock ticking until the window ends;
+    * awake → **sleep**: inside the window that just clears
+      ``manual_awake`` (the schedule itself keeps the panel asleep, and it
+      wakes on its own at the window's end); outside it sets
+      ``manual_quiet`` exactly as before.
+
+    See :func:`action_theme` for the ordering rationale: the flip happens in
+    RAM first, then we push the display (quiet image going in, fresh render
+    coming out), then persist. A raise during the display push rolls the flip
+    back so ``state.json`` cannot claim "quiet" while the panel still shows a
+    quote (or vice versa).
 
     Persist failures AFTER the display/render succeeded are logged but do
     NOT trigger rollback — the panel is already the source of truth, so
@@ -358,14 +409,25 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     with _button_render_gate(state, label, "quiet", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
+        time_str = run_clock.current_time_str()
+        # Both take ``state.lock`` internally, so they run before the block below.
+        asleep_now = _quiet_active(args, state, time_str)
+        scheduled = scheduled_quiet(args, time_str)
         with state.lock:
-            previous_quiet = state.manual_quiet
-            state.manual_quiet = not previous_quiet
-            quiet_now = state.manual_quiet
+            previous = (state.manual_quiet, state.manual_awake)
+            if asleep_now:
+                state.manual_quiet = False
+                state.manual_awake = scheduled
+            else:
+                state.manual_awake = False
+                state.manual_quiet = not scheduled
+            quiet_now = not asleep_now
+            flags = f"manual_quiet={state.manual_quiet}, manual_awake={state.manual_awake}"
         # Shared with the main loop's scheduled-exit path: clear render-dedup
-        # state so the next tick repaints in whichever direction we flipped.
+        # state before painting. The frame painted below commits its own
+        # identity (a wake) or is a sleep frame the loop ignores while asleep.
         exit_quiet(state)
-        _log(f"{label}: manual quiet -> {quiet_now}")
+        _log(f"{label}: {'sleep' if quiet_now else 'wake'} ({flags})")
         try:
             if quiet_now:
                 # Shared three-way --quiet-image dispatch. Calling
@@ -375,12 +437,9 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 # ``manual_only=True`` so the frame claims the time the
                 # operator actually pressed the button, not --quiet-start.
                 # The gate above already holds render_lock.
-                render_quiet_frame(
-                    args, state, run_clock.current_time_str(), manual_only=True,
-                )
+                render_quiet_frame(args, state, time_str, manual_only=True)
             else:
                 # Wake to the current time so the user sees something immediately.
-                time_str = run_clock.current_time_str()
                 quote_id = run_clock.peek_quote_id(
                     time_str, history_path=history_path, history_days=args.history_days,
                     **run_clock._corpus_kwargs(args),
@@ -388,10 +447,19 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
         except Exception as exc:
             with state.lock:
-                state.manual_quiet = previous_quiet
-            _log(f"{label} quiet toggle failed: {exc!r} (rolled back to {previous_quiet!r})", err=True)
+                state.manual_quiet, state.manual_awake = previous
+            _log(f"{label} quiet toggle failed: {exc!r} (rolled back to {previous!r})", err=True)
             _emit_action(telemetry_path, "quiet", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc), "rolled_back": True}
+        # This action painted the frame, so it takes the quiet edge too. Left
+        # to the main loop, the next tick saw an untaken edge and painted the
+        # same sleep frame (or the same quote) a second time — a wasted
+        # 10–20 s refresh on every toggle. The claim also emits the
+        # ``quiet_enter`` / ``quiet_exit`` marker the loop used to.
+        from idle_hours.buckets import bucket_for_time
+        claim_quiet_edge(
+            state, quiet_now, telemetry_path, manual=not scheduled, bucket=bucket_for_time(time_str),
+        )
         # Display/render succeeded; persist best-effort (see docstring).
         try:
             with state.lock:
@@ -399,11 +467,28 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
         except Exception as exc:
             _log(f"{label} quiet toggle: persist after display failed: {exc!r} (keeping in-memory flip)", err=True)
         _emit_action(telemetry_path, "quiet", label, ok=True)
-        return {"ok": True, "manual_quiet": quiet_now}
+        with state.lock:
+            return {
+                "ok": True, "asleep": quiet_now,
+                "manual_quiet": state.manual_quiet, "manual_awake": state.manual_awake,
+            }
 
 
 def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str = "web") -> dict:
-    """Force a re-render of the current time+bucket. Useful after panel ghosting or override edits."""
+    """Repaint the frame that is on the panel. Useful after panel ghosting.
+
+    A repaint, not a re-pick (issue #275): the quote on the panel is already
+    on the anti-repeat ledger, so a fresh peek excluded it and this action
+    silently swapped the quote — and then appended the replacement to the
+    ledger, burning a week of history to clear a ghost. It now pins
+    ``state.last_quote_id`` under ``state.last_bucket``, exactly as
+    ``action_theme`` does, and appends nothing. Only a cold-start panel with
+    nothing committed yet falls back to a pick (and records that pick).
+
+    While the panel is asleep the frame on it is the *sleep frame*, so that
+    is what gets repainted (issue #278) — the same routing ``action_theme``
+    uses. Painting a quote here froze the clock until the window ended.
+    """
     from idle_hours import run_clock
     from idle_hours.buckets import bucket_for_time
     history_path = args.history_path or None
@@ -413,13 +498,23 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
             return {"ok": False, "error": "busy"}
         try:
             time_str = run_clock.current_time_str()
-            bucket = bucket_for_time(time_str)
-            quote_id = run_clock.peek_quote_id(
-                time_str, history_path=history_path, history_days=args.history_days,
-                **run_clock._corpus_kwargs(args),
-            )
+            quiet_now, manual_only = compute_quiet(args, state, time_str)
+            if quiet_now:
+                # The gate above already holds render_lock.
+                render_quiet_frame(args, state, time_str, manual_only=manual_only)
+                _log(f"{label}: rerender (sleep frame)")
+                _emit_action(telemetry_path, "rerender", label, ok=True)
+                return {"ok": True, "asleep": True, "bucket": None, "quote_id": None}
+            bucket, quote_id = run_clock.displayed_quote(state)
+            fresh_pick = quote_id is None
+            if fresh_pick:
+                bucket = bucket_for_time(time_str)
+                quote_id = run_clock.peek_quote_id(
+                    time_str, history_path=history_path, history_days=args.history_days,
+                    **run_clock._corpus_kwargs(args),
+                )
             run_clock._render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
-            if quote_id is not None:
+            if fresh_pick and quote_id is not None:
                 run_clock._append_history_after_render(state, history_path, quote_id)
             _log(f"{label}: rerender bucket={bucket}")
             _emit_action(telemetry_path, "rerender", label, ok=True)

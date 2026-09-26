@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { loadMainJs, makeTab, makePanel, routeTable, StubElement } from "./harness.mjs";
+import { loadMainJs, makeTab, makePanel, routeTable } from "./harness.mjs";
 
 // Every id the lazy tab loaders touch. Tab tests must supply all of them:
 // activateTab fires those loaders, and a missing element surfaces as an
@@ -564,5 +564,154 @@ describe("token storage degrades gracefully", () => {
     };
     assert.equal(api.getToken(), "");
     assert.doesNotThrow(() => api.setToken("x"));
+  });
+});
+
+describe("token-gated images — /current.png and /api/preview load through fetch (#286)", () => {
+  const CURRENT_IDS = [
+    "clock", "bucket", "theme", "mode", "quote", "attribution", "matched", "current-png", "ban-current",
+    "action-log",
+  ];
+  const CURRENT = { time: "10:00", bucket: "h10_exact", theme: "default", source_id: "141", line_number: 1 };
+
+  it("fetches the current frame with the token header and shows it as an object URL", async () => {
+    const { api, calls, elements } = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      fetch: routeTable({ "GET /api/current": { body: CURRENT }, "GET /current.png": { body: "png-bytes" } }),
+    });
+    api.setToken("secret");
+    await api.refreshCurrent();
+    await flush();
+    const png = calls.fetches.find((f) => f.url.startsWith("/current.png"));
+    assert.ok(png, "current.png must be fetched, not assigned to img.src");
+    assert.equal(png.init.headers["X-Idle-Hours-Token"], "secret");
+    assert.deepEqual(calls.objectUrls, ["png-bytes"]);
+    assert.equal(elements.get("current-png").src, "blob:stub-1");
+  });
+
+  it("revokes the previous object URL when the frame is refreshed", async () => {
+    const { api, calls } = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      fetch: routeTable({ "GET /api/current": { body: CURRENT }, "GET /current.png": { body: "png" } }),
+    });
+    await api.refreshCurrent();
+    await api.refreshCurrent();
+    await flush();
+    assert.deepEqual(calls.revokedUrls, ["blob:stub-1"]);
+  });
+
+  it("loads one preview per theme with the header and never sets a raw src", async () => {
+    const { api, calls, elements } = await loadMainJs({
+      elementIds: ["action-log", "theme-preview-grid"],
+      fetch: routeTable({
+        "GET /api/themes": { body: { themes: ["default", "dark"], effective: "default", theme_arg: "auto" } },
+        "GET /api/preview": { body: "thumb" },
+      }),
+    });
+    api.setToken("secret");
+    await api.refreshThemePreview();
+    await flush();
+    const previews = calls.fetches.filter((f) => f.url.startsWith("/api/preview?theme="));
+    assert.equal(previews.length, 2);
+    for (const f of previews) assert.equal(f.init.headers["X-Idle-Hours-Token"], "secret");
+    const cells = elements.get("theme-preview-grid").children;
+    assert.equal(cells.length, 2);
+    for (const cell of cells) {
+      const img = cell.children[0];
+      assert.equal(img.tagName, "IMG");
+      assert.ok(img.src.startsWith("blob:stub-"), `img.src is ${img.src}`);
+    }
+  });
+
+  it("prompts for the token once and retries when an image 401s", async () => {
+    let attempts = 0;
+    const { api, calls, elements } = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      promptResult: "fresh",
+      fetch: async (url) => {
+        if (url.startsWith("/current.png")) {
+          attempts += 1;
+          if (attempts === 1) return { status: 401, ok: false, text: async () => "" };
+          return { status: 200, ok: true, blob: async () => "png" };
+        }
+        return { status: 200, ok: true, text: async () => JSON.stringify(CURRENT) };
+      },
+    });
+    await api.refreshCurrent();
+    await flush();
+    assert.equal(calls.prompts.length, 1);
+    assert.equal(attempts, 2);
+    assert.equal(elements.get("current-png").src, "blob:stub-1");
+  });
+
+  it("leaves the image alone and logs when the fetch fails", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: CURRENT_IDS,
+      fetch: routeTable({ "GET /api/current": { body: CURRENT }, "GET /current.png": { status: 404, body: {} } }),
+    });
+    elements.get("current-png").src = "before";
+    await api.refreshCurrent();
+    await flush();
+    assert.equal(elements.get("current-png").src, "before");
+  });
+});
+
+describe("the sleep frame — skip / un-skip are refused while asleep", () => {
+  const IDS = [
+    "clock", "bucket", "theme", "mode", "quote", "attribution", "matched", "current-png", "ban-current",
+    "action-log", "action-skip", "action-unskip", "action-quiet",
+  ];
+  const current = (asleep) => ({
+    time: "23:00", bucket: "h11_exact", theme: "default", source_id: "141", line_number: 1, asleep,
+  });
+
+  it("disables skip and un-skip and offers a wake while the panel is asleep", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "GET /api/current": { body: current(true) }, "GET /current.png": { body: "png" } }),
+    });
+    await api.refreshCurrent();
+    assert.equal(elements.get("action-skip").disabled, true);
+    assert.equal(elements.get("action-unskip").disabled, true);
+    assert.match(elements.get("action-skip").title, /asleep/);
+    assert.equal(elements.get("action-quiet").textContent, "D · Wake");
+  });
+
+  it("re-enables them once the panel is awake", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "GET /api/current": { body: current(false) }, "GET /current.png": { body: "png" } }),
+    });
+    await api.refreshCurrent();
+    assert.equal(elements.get("action-skip").disabled, false);
+    assert.equal(elements.get("action-skip").title, "");
+    assert.equal(elements.get("action-quiet").textContent, "D · Sleep");
+  });
+
+  it("reports an asleep refusal as asleep, not as a busy render", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({
+        "POST /api/action/skip": { status: 409, body: { ok: false, error: "asleep" } },
+        "GET /api/current": { body: current(true) },
+        "GET /current.png": { body: "png" },
+      }),
+    });
+    await api.fireAction("skip");
+    const lines = elements.get("action-log").children.map((c) => c.textContent);
+    assert.ok(lines.some((l) => /skip: the panel is asleep/.test(l)), lines.join("\n"));
+    assert.ok(!lines.some((l) => /busy/.test(l)), lines.join("\n"));
+    // The refusal refreshes the controls, so the stale buttons disable.
+    assert.equal(elements.get("action-skip").disabled, true);
+  });
+
+  it("still reports a render in flight as busy", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "POST /api/action/skip": { status: 409, body: { ok: false, error: "busy" } } }),
+    });
+    await api.fireAction("skip");
+    const lines = elements.get("action-log").children.map((c) => c.textContent);
+    assert.ok(lines.some((l) => /skip: busy/.test(l)), lines.join("\n"));
   });
 });

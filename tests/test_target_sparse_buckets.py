@@ -259,6 +259,39 @@ class TestLooksLikeFalsePositive:
     def test_oclock_kept(self):
         assert self._check("at twenty minutes past eight o'clock he rose", "twenty minutes past eight") is None
 
+    # Bare "<minute> to <hour>" hits (issue #293): the gambling idiom and
+    # ranges must be rejected, a real clock time with a cue must survive.
+    def test_bare_to_one_without_time_cue_rejected(self):
+        assert self._check("It is certainly ten to one that they go down-stream.", "ten to one") == "no_time_cue"
+
+    def test_bare_to_one_odds_after_rejected_even_with_cue(self):
+        assert self._check("Throwaway, says he, at twenty to one. A rank outsider.", "twenty to one") == "odds"
+
+    def test_bare_to_one_bookmaker_call_rejected(self):
+        assert self._check("Ten to one bar one! A dark horse bolts past.", "Ten to one") == "odds"
+
+    def test_bare_to_one_wager_before_rejected(self):
+        assert self._check("I will bet him twenty to one, and let any publisher hold it.", "twenty to one") == "odds"
+
+    def test_bare_to_one_chances_rejected(self):
+        assert self._check("The chances are twenty to one that it has nothing to do with it.", "twenty to one") == "odds"
+
+    def test_bare_to_with_at_cue_kept(self):
+        assert self._check("Come round to-morrow at twenty to three; don't be late.", "twenty to three") is None
+
+    def test_bare_to_one_with_oclock_after_kept(self):
+        assert self._check("It wanted ten to one o'clock when the carriage drew up.", "ten to one") is None
+
+    def test_bare_to_with_struck_kept(self):
+        assert self._check("It struck five to eight by the church clock.", "five to eight") is None
+
+    def test_minutes_form_needs_no_cue(self):
+        assert self._check("He rose at ten minutes to one and went out.", "ten minutes to one") is None
+        assert self._check("Ten minutes to one, and still no sign of him.", "Ten minutes to one") is None
+
+    def test_bare_past_form_needs_no_cue(self):
+        assert self._check("Ten past seven, and she was still asleep.", "Ten past seven") is None
+
 
 class TestSearchBucketGuards:
     def test_duration_hit_filtered_from_results(self, tmp_path):
@@ -284,3 +317,24 @@ class TestSearchBucketGuards:
         quotes = [r["quote_text"] for r in results]
         assert any("would call" in q for q in quotes)
         assert not any("schools" in q for q in quotes)
+
+
+class TestCwdRelativeCoveragePath:
+    """The coverage JSON argument resolves against the CWD (issue #295)."""
+
+    def test_relative_coverage_json_resolves_against_cwd(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / "output").mkdir()
+        (tmp_path / "output" / "bucket-coverage.json").write_text(
+            json.dumps({"empty_buckets": ["h3_five_past"], "sparse_buckets": []}), encoding="utf-8",
+        )
+        search_dir = tmp_path / "texts"
+        search_dir.mkdir()
+        (search_dir / "pg1.txt").write_text("It was five past three when he came in.\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "sys.argv",
+            ["target_sparse_buckets.py", "output/bucket-coverage.json", "--search-dir", "texts", "--output", "output/hits.jsonl"],
+        )
+        assert tsb.main() == 0
+        assert (tmp_path / "output" / "hits.jsonl").exists()
+        assert "Targeted buckets searched: 1" in capsys.readouterr().out

@@ -784,6 +784,47 @@ def _row_history_key(row: dict) -> tuple | None:
     return (str(source_id), line_number)
 
 
+_TEXT_QUOTE_MAP = str.maketrans({"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"'})
+
+
+def normalize_display_text(text: str | None) -> str:
+    """Collapse a ``display_quote`` to the form two rows must share to count as the same quote.
+
+    Case, curly-vs-straight quotes and whitespace runs are the only ways the
+    committed corpus's twins differ (the miner fires on adjacent lines of one
+    passage, or on two Gutenberg editions of one book, and the cleaner expands
+    each to the same sentence run), so that is all this folds.
+    """
+    return re.sub(r"\s+", " ", (text or "").translate(_TEXT_QUOTE_MAP)).strip().lower()
+
+
+def _twin_texts(rows: list[dict], ban_keys: set[str], recent: set[tuple]) -> tuple[frozenset[str], frozenset[str]]:
+    """Return ``(banned_texts, recent_texts)`` — the display texts of every row a ban key or a
+    ledger entry names, so the exclusion reaches the row's textual twins too (issue #294).
+
+    ``(source_id, line_number)`` does not identify a quote: the committed corpus
+    carries the same display text under several keys (``98:3534`` … ``98:3541``
+    are one passage; ``43`` and ``42`` are two editions of Jekyll & Hyde). A ban
+    or a recent-history entry that only matched its own key was therefore
+    silently defeated by the twin — the operator banned ``83:5162`` and
+    ``83:5165`` kept appearing. One pass over ``rows``, only when there is
+    something to look up.
+    """
+    if not ban_keys and not recent:
+        return frozenset(), frozenset()
+    banned: set[str] = set()
+    seen: set[str] = set()
+    for row in rows:
+        key = _row_history_key(row)
+        if key is None:
+            continue
+        if ban_keys and f"{key[0]}:{key[1]}" in ban_keys:
+            banned.add(normalize_display_text(row.get("display_quote")))
+        if recent and key in recent:
+            seen.add(normalize_display_text(row.get("display_quote")))
+    return frozenset(banned), frozenset(seen)
+
+
 # Positional labels for the tuple returned by :func:`score_row`. The web UI's
 # candidate browser (``GET /api/bucket/<bucket>``) uses this to explode the raw
 # tuple into named fields so the operator can see *why* a candidate ranked
@@ -859,18 +900,29 @@ def pick_best(
             rows_by_bucket[bucket_name].append(row)
 
     recent = recent_history or set()
+    ban_keys = {str(k) for k in overrides.get("ban_quote_keys", [])}
+    banned_texts, recent_texts = _twin_texts(rows, ban_keys, recent)
     for candidate_bucket in neighbor_buckets(bucket):
         candidates = [
             row for row in rows_by_bucket.get(candidate_bucket, ())
             if row.get("display_quote")
             and not is_banned(row, overrides)
+            and (not banned_texts or normalize_display_text(row.get("display_quote")) not in banned_texts)
             and (row.get("quality_score") is None or row.get("quality_score", 0) >= min_quality)
         ]
         if not candidates:
             continue
-        # Strict fresh-first: exclude recently-shown rows. If that empties the pool,
-        # fall back to the full candidate list so a sparse bucket still renders.
-        fresh = [row for row in candidates if _row_history_key(row) not in recent] if recent else candidates
+        # Strict fresh-first: exclude recently-shown rows — by key AND by text, so
+        # a twin of the row on the ledger counts as shown. If that empties the
+        # pool, fall back to the full candidate list so a sparse bucket still renders.
+        fresh = (
+            [
+                row for row in candidates
+                if _row_history_key(row) not in recent
+                and normalize_display_text(row.get("display_quote")) not in recent_texts
+            ]
+            if recent else candidates
+        )
         pool = fresh or candidates
         # score_row is pure, so compute each candidate's score once and derive
         # the sort, the top-score filter, and the ranked view from it rather
@@ -885,6 +937,21 @@ def pick_best(
             ),
             key=lambda sr: sr[0],
         )
+        # Collapse textual twins to their best-scored copy. The sort is stable,
+        # so the survivor is the copy pick_best would have ranked first anyway;
+        # without this a duplicated passage got two entries in the top-score
+        # tie-break and the curator saw the same quote twice in the inspector.
+        # Applied identically on the baked and raw paths, so pick-equivalence
+        # holds by construction.
+        seen_texts: set[str] = set()
+        collapsed = []
+        for score, row in scored:
+            text = normalize_display_text(row.get("display_quote"))
+            if text in seen_texts:
+                continue
+            seen_texts.add(text)
+            collapsed.append((score, row))
+        scored = collapsed
         top_score = scored[0][0]
         top = [row for score, row in scored if score == top_score]
         rng = random.Random(seed)

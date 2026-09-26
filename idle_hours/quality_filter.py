@@ -8,16 +8,50 @@ import re
 from pathlib import Path
 
 from idle_hours import atomic_io
+from idle_hours.clean_display_quotes import unbalanced_quotes
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
 
 
+# Each pattern names a *modern / non-prose* register the panel should never
+# show. They were far looser than their labels (issue #296): ``\bwork\b`` hit
+# the verb in "the fearful work went on until nearly dawn", and a bare
+# ``am`` / ``pm`` hit "I am sure it was nearly ten o'clock" — every one of the
+# 56 am/pm flags in the shipped corpus was that false positive, and between
+# them the two rules kept ~80 good quotes under the bake floor.
 BAD_PATTERNS = [
-    (re.compile(r"\bwork\b", re.IGNORECASE), "contains_work_schedule", 45),
-    (re.compile(r"\b(?:a\.m\.|p\.m\.|am|pm)\b", re.IGNORECASE), "contains_modern_am_pm", 45),
+    # Schedule text ("working hours", "work shift", "nine to five"), not the
+    # verb or noun "work" that any novel uses.
+    (
+        re.compile(
+            r"\b(?:work(?:ing)?\s+(?:hours|schedules?|shifts?|weeks?|days?)|(?:nine|9)\s*(?:-|–|to)\s*(?:five|5))\b",
+            re.IGNORECASE,
+        ),
+        "contains_work_schedule",
+        45,
+    ),
+    # a.m. / p.m. as a clock suffix: bare ``am`` / ``pm`` only after a number
+    # ("3 pm", "10:30 am"); the dotted forms are unambiguous on their own.
+    (
+        re.compile(r"\b(?:\d{1,2}(?::\d{2})?\s*(?:a\.m\.|p\.m\.|am|pm)\b|a\.m\.|p\.m\.)", re.IGNORECASE),
+        "contains_modern_am_pm",
+        45,
+    ),
     (re.compile(r"\b\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}\b"), "contains_time_range", 55),
-    (re.compile(r"\b(?:chapter|book|act|scene)\b", re.IGNORECASE), "contains_structural_label", 35),
+    # A heading, not the words: "Chapter IV", "BOOK 2", "ACT", "Scene 3" —
+    # never "the book I read" or "the last act of the play". Case-sensitive,
+    # and a lone "I" only counts as a numeral when punctuation or the end of
+    # the text follows it, because "the book I was reading" is the pronoun.
+    (
+        re.compile(
+            r"\b(?:[Cc]hapter|[Bb]ook|[Aa]ct|[Ss]cene|CHAPTER|BOOK|ACT|SCENE)\s+"
+            r"(?:(?:[IVXLCDM]{2,}|\d+)\b|I(?=[.:;,]|\s*$))"
+            r"|\b(?:CHAPTER|BOOK|ACT|SCENE)\b",
+        ),
+        "contains_structural_label",
+        35,
+    ),
     (re.compile(r"\b(?:copyright|project gutenberg|ebook)\b", re.IGNORECASE), "contains_metadata", 55),
 ]
 
@@ -79,6 +113,13 @@ def score_quote(display_quote: str, display_fragment: bool, cleanup_status: str)
     if not display_quote.endswith((".", "!", "?", '"', "”", "'", "’")):
         score -= 10
         reasons.append("weak_ending")
+
+    # Defence in depth behind the cleaner's balanced-run preference (issue
+    # #297): a quotation mark with no partner is a visible flaw on the panel,
+    # so a row that could not be cleaned ranks below a clean alternative.
+    if unbalanced_quotes(display_quote):
+        score -= 15
+        reasons.append("unbalanced_quotes")
 
     return max(score, 0), reasons
 

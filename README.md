@@ -74,7 +74,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 ### Runtime
 
-- `idle_hours_cli.py` - **unified `idle-hours <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `idle-hours` as a console script. Backwards-compatible — `python3 <script>.py` still works for every subcommand.
+- `idle_hours_cli.py` - **unified `idle-hours <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `idle-hours` as a console script. Every subcommand is also reachable as `python3 -m idle_hours.<module>`.
 - `run_clock.py` - long-running clock loop, bucket-change refresh logic, optional display handoff
 - `runtime_*.py` - the seven siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` (architecture in [`CLAUDE.md`](CLAUDE.md))
 - `runtime_webhook.py` - v2 alert-firehose: posts alert-worthy telemetry events to an operator-configured HTTP endpoint on a daemon thread (errors, backoff, timeouts, button-died); never blocks the render path
@@ -172,10 +172,10 @@ idle-hours bake
 idle-hours contact-sheet --output output/contact-sheet.png
 ```
 
-`idle-hours <sub> --help` forwards to the backing script's argparse so the
-flag list is identical to `python3 <sub>.py --help`. The umbrella CLI is
-purely additive — every `python3 <script>.py` invocation in the rest of
-this doc continues to work unchanged.
+`idle-hours <sub> --help` forwards to the backing module's argparse so the
+flag list is identical to `python3 -m idle_hours.<module> --help`. The
+umbrella CLI is purely additive over that module form; there are no flat
+`<script>.py` files at the repo root to run directly.
 
 ### Render once locally (smoke test)
 
@@ -551,10 +551,11 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))" | sudo tee /var/li
 sudo systemctl restart idle-hours.service
 ```
 
-Browsers can still `GET` the UI without credentials (telemetry, coverage, `current.png` are not sensitive), but every mutating `POST` must send `X-Idle-Hours-Token: <the token>`. **Caveat:** the bundled `idle_hours/web/` UI does not currently attach that header — it was built for the loopback-no-auth path — so on a LAN+token bind the page loads and reads cleanly but the action buttons and overrides-save will come back as `401 missing or invalid token`. Until the UI grows a token field, the working options for a LAN+token deployment are:
+Every API read and every mutating `POST` must send `X-Idle-Hours-Token: <the token>`; only the static shell (`/`, `/main.js`, `/style.css`) is served without it. The bundled `idle_hours/web/` UI attaches the header itself — it prompts for the token on first use and keeps it in `localStorage` — including for the `current.png` preview and the theme thumbnails, which it fetches with the header and shows as object URLs, so a LAN+token bind works end-to-end from the browser. Scripted access works the same way:
 
-- Drive mutating endpoints from `curl` (or any other client), e.g. `curl -X POST -H "X-Idle-Hours-Token: $(cat ~/.idle-hours/web.token)" http://<pi>:8080/api/action/rerender`.
-- Or just use the SSH-tunnel flow above — loopback bind needs no token and the bundled UI works end-to-end.
+- `curl -H "X-Idle-Hours-Token: $(cat ~/.idle-hours/web.token)" http://<pi>:8080/api/current`
+- `curl -X POST -H "Content-Type: application/json" -H "X-Idle-Hours-Token: $(cat ~/.idle-hours/web.token)" http://<pi>:8080/api/action/rerender`
+- Or use the SSH-tunnel flow above — a loopback bind needs no token at all.
 
 **How to tell it's working.** `journalctl -u idle-hours.service -n 20` should show a line like `web UI listening on 127.0.0.1:8080 (no token)` (or `(token required)` on a LAN bind). If the bind fails (port busy, missing token on a non-loopback bind) the main render loop keeps running and logs `web UI failed to start on …` — the panel won't go dark just because the web UI couldn't start.
 
@@ -598,7 +599,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 | `GET /metrics` | **v2** — Prometheus text-exposition format over a 24 h window (renders / errors / heartbeats / actions / latency p50+p95 / `last_heartbeat_age_seconds`). Unauthed on every bind. |
 | `GET /api/current` | `{time, bucket, theme, source_id, line_number, display_quote, matched_text, ...}` |
 | `GET /api/telemetry?hours=24` | p50/p95 render/display latency + error counts (reuses `idle_hours_health`) |
-| `GET /api/coverage` | The 144-bucket coverage, computed live from the running corpus (falls back to `idle_hours/assets/bucket-coverage.json`) |
+| `GET /api/coverage` | The 144-bucket coverage, computed live from the running corpus and counting only rows the panel can display (quality floor + bans; raw tallies alongside as `raw_bucket_counts`); falls back to `idle_hours/assets/bucket-coverage.json` |
 | `GET /api/gaps?threshold=N` | **v2** — empty/sparse buckets with harvester phrase suggestions |
 | `GET /api/themes` | `{themes, theme_arg, manual_theme, effective}` — feeds the dropdown |
 | `GET /api/bucket/<bucket>?time=HH:MM&top=N` | Full ranked candidate list with per-component scores |
@@ -616,7 +617,7 @@ The UI shares the render lock with the button handlers, so every mutating action
 
 Security model: loopback binds (`127.0.0.1:*`, `localhost:*`, `::1:*`) skip auth entirely — the OS-level trust boundary is sufficient. Any other bind **requires** `--web-token` / `--web-token-file`; startup aborts rather than quietly expose a tokenless POST surface. Tokens are checked via the `X-Idle-Hours-Token` header only; query-string tokens would leak into journald via HTTP request logging.
 
-A configured token gates every POST **and** every JSON GET (`/api/history`, `/api/search`, `/api/bucket/*`, both override endpoints, ...) — the UI already sends the header on all of them, so this costs it nothing. Four routes stay open because a browser loads them by tag and a tag cannot attach a request header: the static shell (`/`, `/main.js`, `/style.css`), `/current.png`, and `/api/preview`. `/metrics` stays open for scrapers unless you pass `--web-metrics-token`.
+A configured token gates every POST **and** every JSON GET (`/api/history`, `/api/search`, `/api/bucket/*`, both override endpoints, ...) — the UI already sends the header on all of them, so this costs it nothing. Only the static shell (`/`, `/main.js`, `/style.css`) stays open, because a browser loads it by tag and a tag cannot attach a request header; the UI fetches `/current.png` and `/api/preview` with the header and shows them as object URLs. `/metrics` stays open for scrapers unless you pass `--web-metrics-token`.
 
 Independently of the token, the server rejects cross-site and rebound requests on **every** bind, including the tokenless loopback one the quick-start recommends:
 

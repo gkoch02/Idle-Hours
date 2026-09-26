@@ -2050,6 +2050,113 @@ class TestButtonHandlers:
         err = capsys.readouterr().err
         assert "restore" in err.lower() or "boom" in err
 
+    # Issue #275: the card and its restore describe / put back the quote ON
+    # THE PANEL. A peek is history-filtered and names the next-best row.
+    def test_source_card_pins_the_displayed_quote_not_a_peek(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_exact"
+        state.last_quote_id = ("shown", 7, "the quote on the panel", "ten o'clock")
+        with patch("idle_hours.run_clock.peek_quote_id", side_effect=AssertionError("must not re-peek")), \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:03"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            card_call = mock_render.call_args_list[0]
+            assert card_call.kwargs["quote_id"] == state.last_quote_id
+            assert card_call.kwargs["pin_quote"] == ("shown", 7, "ten o'clock")
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+        restore_call = mock_render.call_args_list[1]
+        assert restore_call.kwargs["quote_id"] == ("shown", 7, "the quote on the panel", "ten o'clock")
+        assert restore_call.kwargs["pin_quote"] == ("shown", 7, "ten o'clock")
+        # Restored under the bucket the frame was committed for, so a bucket
+        # edge crossed during the 5 s still reads as a change on the next tick.
+        assert restore_call.kwargs["bucket"] == "h10_exact"
+        assert state.last_quote_id == ("shown", 7, "the quote on the panel", "ten o'clock")
+
+    def test_source_card_falls_back_to_a_peek_when_nothing_is_displayed(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        assert state.last_quote_id is None
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")) as mock_peek, \
+             patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+        assert mock_peek.call_count == 1
+        assert mock_render.call_args.kwargs["quote_id"] == ("src", 1, "q", "mt")
+
+    # Button C while asleep: the committed identity is the pre-sleep quote,
+    # and the restore used to paint that clock frame over the sleep frame,
+    # where it stayed until the window ended.
+    QUIET = dict(quiet_start="22:00", quiet_end="06:00", quiet_off=False, quiet_image="auto",
+                 quiet_theme="inherit", auto_day_theme="default", auto_night_theme="dark")
+
+    def test_source_card_is_refused_while_asleep(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True
+        state.last_bucket = "h9_fifty"
+        state.last_quote_id = ("before", 3, "the quote from before sleep", "nine")
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", return_value="23:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+        mock_render.assert_not_called()
+        mock_timer.assert_not_called()
+
+    def test_source_card_works_after_a_mid_window_wake(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.manual_awake = True
+        state.last_bucket = "h11_exact"
+        state.last_quote_id = ("shown", 7, "q", "eleven")
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer"), \
+             patch("idle_hours.run_clock.current_time_str", return_value="23:00"):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+        assert mock_render.call_args[0][5] == "card"
+
+    def test_restore_puts_back_the_sleep_frame_if_the_window_opened(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_five_to"
+        state.last_quote_id = ("shown", 7, "q", "five to ten")
+        clock = {"t": "21:59"}
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: clock["t"]):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            clock["t"] = "22:00"
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+        modes = [c.args[5] for c in mock_render.call_args_list]
+        assert modes == ["card", "goodnight"]
+        # The restore took the edge, so the loop will not paint it again.
+        assert state.was_quiet is True
+
+    def test_restore_leaves_a_sleep_frame_the_loop_already_painted(self, tmp_path):
+        args = self._args(tmp_path, **self.QUIET)
+        state = run_clock.RuntimeState("default")
+        state.last_quote_id = ("shown", 7, "q", "five to ten")
+        clock = {"t": "21:59"}
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.threading.Timer") as mock_timer, \
+             patch("idle_hours.run_clock.current_time_str", side_effect=lambda: clock["t"]):
+            short_handlers, _hold_handlers = run_clock._build_button_handlers(args, state)
+            short_handlers["C"]()
+            clock["t"] = "22:00"
+            state.was_quiet = True   # the loop entered quiet during the 5 s
+            _delay, callback = mock_timer.call_args[0][:2]
+            callback()
+        assert [c.args[5] for c in mock_render.call_args_list] == ["card"]
+
     def test_quiet_toggle_handler_enables_and_persists(self, tmp_path):
         quiet = tmp_path / "goodnight.png"
         quiet.write_bytes(b"\x89PNG")
@@ -3351,6 +3458,37 @@ class TestActionExceptionBranches:
             result = run_clock.action_quiet(args, state, label="web")
         assert result["ok"] is False
         assert "no corpus" in result["error"]
+
+    # Issue #275: re-render is a repaint of the displayed quote, not a re-pick.
+    def test_rerender_repaints_the_displayed_quote_and_appends_nothing(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket = "h10_exact"
+        state.last_quote_id = ("shown", 7, "on the panel", "ten o'clock")
+        with patch("idle_hours.run_clock.peek_quote_id", side_effect=AssertionError("must not re-peek")), \
+             patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock._append_history_after_render") as mock_append, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:03"):
+            result = run_clock.action_rerender(args, state, label="web")
+        assert result["ok"] is True
+        assert result["quote_id"] == ["shown", 7, "on the panel", "ten o'clock"]
+        assert result["bucket"] == "h10_exact"
+        assert mock_render.call_args.kwargs["quote_id"] == ("shown", 7, "on the panel", "ten o'clock")
+        assert mock_render.call_args.kwargs["bucket"] == "h10_exact"
+        mock_append.assert_not_called()
+
+    def test_rerender_picks_and_records_when_nothing_is_displayed(self, tmp_path):
+        args = self._args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        with patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "mt")), \
+             patch("idle_hours.run_clock._render_unlocked") as mock_render, \
+             patch("idle_hours.run_clock._append_history_after_render") as mock_append, \
+             patch("idle_hours.run_clock.current_time_str", return_value="10:00"):
+            result = run_clock.action_rerender(args, state, label="web")
+        assert result["ok"] is True
+        assert result["bucket"] == "h10_exact"
+        assert mock_render.call_args.kwargs["quote_id"] == ("src", 1, "q", "mt")
+        mock_append.assert_called_once()
 
     def test_rerender_failure_returns_error_dict(self, tmp_path):
         args = self._args(tmp_path)
@@ -5900,3 +6038,427 @@ class TestUnknownStateKeysRoundTrip:
             "manual_theme", "manual_quiet", "last_bucket",
             "last_quote_id", "last_effective_theme", "setup_complete",
         }
+
+
+# ============================================================================
+# Driving main() for a few ticks (issues #276 / #277)
+# ============================================================================
+
+
+def _drive_main(tmp_path, argv_extra: list[str], time_seq: list[str], *, state_json: dict | None = None,
+                render_side=None, on_sleep=None) -> list[dict]:
+    """Run ``run_clock.main()`` through ``len(time_seq)`` ticks with patched I/O.
+
+    ``render_side(args, kwargs)`` returning True makes that render raise.
+    ``on_sleep(state, time_str)`` runs between ticks — the place a test
+    presses a button while the loop is waiting.
+    Returns one dict per ``render_now`` call (attempted, including failures).
+    The fake pick carries the requested time as its ``matched_text`` so every
+    bucket change is a *different* quote and the "quote unchanged" dedup
+    branch does not hide a render the test is looking for.
+    """
+    from idle_hours.buckets import bucket_for_time
+
+    state_path = tmp_path / "state.json"
+    if state_json is not None:
+        state_path.write_text(json.dumps(state_json), encoding="utf-8")
+    renders: list[dict] = []
+
+    def fake_render(*a, **kw):
+        renders.append({"mode": a[5], "theme": a[6], "time": kw.get("time_str"), "quote": kw.get("quote_id")})
+        if render_side and render_side(a, kw):
+            raise RuntimeError("display boom")
+
+    times = iter(time_seq[1:])
+    cur = {"t": time_seq[0]}
+
+    def sleep(_state, _sec):
+        if on_sleep is not None:
+            on_sleep(_state, cur["t"])
+        try:
+            cur["t"] = next(times)
+        except StopIteration:
+            raise KeyboardInterrupt from None
+
+    argv = [
+        "run_clock.py", "--output", str(tmp_path / "current.png"), "--interval-seconds", "0",
+        "--state-path", str(state_path), "--history-path", "", "--telemetry-path", "",
+        "--pidfile", "", "--skip-preflight", "--buttons-off", *argv_extra,
+    ]
+    with patch("sys.argv", argv), \
+         patch("idle_hours.run_clock._install_signal_handlers"), \
+         patch("idle_hours.run_clock.current_time_str", side_effect=lambda: cur["t"]), \
+         patch("idle_hours.run_clock.current_bucket", side_effect=lambda: bucket_for_time(cur["t"])), \
+         patch("idle_hours.run_clock.peek_quote_id", side_effect=lambda t, *a, **kw: ("1", 2, "q", t)), \
+         patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+         patch("idle_hours.run_clock._loop_sleep", side_effect=sleep), \
+         patch("idle_hours.run_clock.time.monotonic", return_value=1_000_000.0):
+        with pytest.raises(KeyboardInterrupt):
+            run_clock.main()
+    return renders
+
+
+class TestQuietEdgeClaimedOnce:
+    """A button-D / web toggle paints the new frame *and* takes the quiet edge.
+
+    Left to the main loop, the next tick saw an untaken edge and painted the
+    same sleep frame, or the same quote, a second time — a wasted 10–20 s
+    Spectra 6 refresh on every manual toggle.
+    """
+
+    @staticmethod
+    def _press_at(presses: set[str]):
+        from idle_hours.runtime_actions import action_quiet
+
+        def on_sleep(state, time_str):
+            if time_str in presses:
+                assert action_quiet(run_clock.parse_args(), state, label="button D")["ok"]
+        return on_sleep
+
+    def test_manual_sleep_and_wake_paint_once_each(self, tmp_path):
+        renders = _drive_main(tmp_path, [], ["12:00", "12:01", "12:02"],
+                              on_sleep=self._press_at({"12:00", "12:01"}))
+        assert [r["mode"] for r in renders] == ["debug", "goodnight", "debug"]
+
+    def test_mid_window_wake_is_not_painted_twice(self, tmp_path):
+        renders = _drive_main(tmp_path, [], ["22:00", "22:01", "22:02"],
+                              on_sleep=self._press_at({"22:00"}))
+        assert [r["mode"] for r in renders] == ["goodnight", "debug"]
+
+    def test_markers_stay_balanced(self, tmp_path):
+        telemetry = tmp_path / "telemetry.jsonl"
+        _drive_main(tmp_path, ["--telemetry-path", str(telemetry)], ["12:00", "12:01", "12:02"],
+                    on_sleep=self._press_at({"12:00", "12:01"}))
+        entries = [
+            json.loads(line)
+            for path in tmp_path.glob("telemetry-*.jsonl")
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+        modes = [e.get("mode") for e in entries if e.get("mode") in ("quiet_enter", "quiet_exit")]
+        assert modes == ["quiet_enter", "quiet_exit"]
+        assert [e for e in entries if e.get("mode") == "quiet_enter"][0]["manual"] is True
+
+    def test_enter_quiet_does_not_repaint_a_claimed_edge(self, tmp_path):
+        from idle_hours import runtime_quiet
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True
+        with patch("idle_hours.run_clock.render_now") as render:
+            assert runtime_quiet.enter_quiet(_quiet_args(tmp_path), state, "22:00") is True
+        render.assert_not_called()
+
+    def test_a_failing_entry_emits_no_marker(self, tmp_path):
+        """The marker is emitted on the claim, so a failing entry retried every
+        tick no longer writes a ``quiet_enter`` per attempt."""
+        telemetry = tmp_path / "telemetry.jsonl"
+
+        def always(a, kw):
+            return a[5] == "goodnight"
+
+        _drive_main(tmp_path, ["--telemetry-path", str(telemetry)], ["22:00", "22:01"], render_side=always)
+        entries = [
+            json.loads(line)
+            for path in tmp_path.glob("telemetry-*.jsonl")
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+        assert not [e for e in entries if e.get("mode") == "quiet_enter"]
+        assert [e for e in entries if e.get("mode") == "quiet"]
+
+
+class TestStartupImageInvalidatesIdentity:
+    """Issue #276: the startup frame must not survive into the first tick.
+
+    ``load_runtime_state`` restores the render identity so a mid-bucket
+    restart skips the redraw; ``--startup-image`` then paints over the panel
+    without touching it, so the loop saw "nothing changed" and left the
+    sleep frame up until the next bucket edge — the ghost-frame problem the
+    flag exists to prevent, caused by the flag.
+    """
+
+    PERSISTED = {
+        "manual_theme": None, "manual_quiet": False, "last_bucket": "h12_exact",
+        "last_quote_id": ["1", 2, "q", "12:00"], "last_effective_theme": "default", "setup_complete": True,
+    }
+
+    def test_auto_startup_frame_is_followed_by_a_clock_render(self, tmp_path):
+        renders = _drive_main(tmp_path, ["--startup-image", "auto", "--quiet-off"],
+                              ["12:00", "12:01", "12:02"], state_json=self.PERSISTED)
+        assert [r["mode"] for r in renders][:2] == ["goodnight", "debug"]
+        assert renders[-1]["mode"] == "debug"
+
+    def test_static_startup_frame_is_followed_by_a_clock_render(self, tmp_path):
+        png = tmp_path / "boot.png"
+        png.write_bytes(b"\x89PNG")
+        with patch("idle_hours.run_clock._display_quiet_image") as pushed:
+            renders = _drive_main(tmp_path, ["--startup-image", str(png), "--quiet-off"],
+                                  ["12:00", "12:01"], state_json=self.PERSISTED)
+        assert pushed.called
+        assert [r["mode"] for r in renders] == ["debug"]
+
+    def test_failed_startup_frame_keeps_the_restored_identity(self, tmp_path):
+        """A push that never reached the panel left the persisted frame on it,
+        so the restored triple is still accurate and the dedup must hold."""
+        def boom(a, kw):
+            return a[5] == "goodnight"
+        renders = _drive_main(tmp_path, ["--startup-image", "auto", "--quiet-off"],
+                              ["12:00", "12:01", "12:02"], state_json=self.PERSISTED, render_side=boom)
+        assert [r["mode"] for r in renders] == ["goodnight"]
+
+    def test_without_a_startup_image_the_restored_identity_still_dedups(self, tmp_path):
+        renders = _drive_main(tmp_path, ["--quiet-off"], ["12:00", "12:01", "12:02"], state_json=self.PERSISTED)
+        assert renders == []
+
+
+class TestQuietEntryRetry:
+    """Issue #277: a sleep frame that never reached the panel is retried."""
+
+    def test_failed_quiet_entry_is_retried_on_the_next_tick(self, tmp_path):
+        attempts = {"n": 0}
+
+        def fail_first(a, kw):
+            if a[5] == "goodnight":
+                attempts["n"] += 1
+                return attempts["n"] == 1
+            return False
+
+        renders = _drive_main(tmp_path, [], ["22:00", "22:01", "22:02", "22:03"], render_side=fail_first)
+        assert attempts["n"] == 2, [r["mode"] for r in renders]
+        # Once the frame lands the edge is consumed: no third attempt.
+        assert [r["mode"] for r in renders] == ["goodnight", "goodnight"]
+
+    def test_repeated_quiet_failures_back_off(self, tmp_path):
+        """A hard fault at 22:00 must not retry every tick for ever: the
+        third consecutive failure engages the same backoff a failed clock
+        render would, so the following ticks are skipped."""
+        def always(a, kw):
+            return a[5] == "goodnight"
+
+        with patch.object(run_clock, "BACKOFF_EVERY_N_FAILURES", 3):
+            renders = _drive_main(tmp_path, [], ["22:00", "22:01", "22:02", "22:03", "22:04", "22:05"],
+                                  render_side=always)
+        # Three attempts, then the backoff window (monotonic is frozen, so it never expires).
+        assert [r["mode"] for r in renders] == ["goodnight"] * 3
+
+    def test_enter_quiet_reports_success_and_resets_backoff(self, tmp_path):
+        from idle_hours import runtime_quiet
+        args = argparse.Namespace(
+            quiet_image="auto", quiet_theme="inherit", quiet_start="22:00", quiet_end="06:00",
+            output=str(tmp_path / "o.png"), display_script=None, render_script="r.py",
+            width=800, height=480, theme="default", telemetry_path="", history_path="", history_days=7,
+            auto_day_theme="default", auto_night_theme="dark",
+        )
+        state = run_clock.RuntimeState("default")
+        state.consecutive_render_failures = 2
+        state.backoff_skip_until = 10.0
+        with patch("idle_hours.run_clock.render_now"), patch("idle_hours.run_clock.append_telemetry"):
+            assert runtime_quiet.enter_quiet(args, state, "22:00") is True
+        assert state.consecutive_render_failures == 0
+        assert state.backoff_skip_until == 0.0
+        # A successful entry claims the edge; clear it to try a failing one.
+        assert state.was_quiet is True
+        state.was_quiet = False
+        with patch("idle_hours.run_clock.render_now", side_effect=RuntimeError("x")), \
+             patch("idle_hours.run_clock.append_telemetry"):
+            assert runtime_quiet.enter_quiet(args, state, "22:00") is False
+        assert state.was_quiet is False
+        assert state.consecutive_render_failures == 1
+
+
+# ============================================================================
+# Manual wake during the scheduled quiet window (issue #278)
+# ============================================================================
+
+
+def _quiet_args(tmp_path, **overrides) -> argparse.Namespace:
+    defaults = dict(
+        render_script="render_quote.py", output=str(tmp_path / "current.png"), width=800, height=480,
+        display_script=None, mode="production", theme="default", history_path=str(tmp_path / "history.jsonl"),
+        history_days=7, telemetry_path="", state_path=str(tmp_path / "state.json"),
+        quiet_start="22:00", quiet_end="06:00", quiet_off=False, quiet_image="auto", quiet_theme="inherit",
+        auto_day_theme="default", auto_night_theme="dark", shutdown_command="",
+    )
+    defaults.update(overrides)
+    return argparse.Namespace(**defaults)
+
+
+class TestComputeQuietManualAwake:
+    def test_manual_awake_opens_a_scheduled_window(self, tmp_path):
+        from idle_hours.runtime_quiet import compute_quiet
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        assert compute_quiet(args, state, "23:00") == (True, False)
+        state.manual_awake = True
+        assert compute_quiet(args, state, "23:00") == (False, False)
+        # It never opens a *manual* quiet.
+        state.manual_quiet = True
+        assert compute_quiet(args, state, "23:00") == (True, False)
+        assert compute_quiet(args, state, "12:00") == (True, True)
+
+    def test_expire_clears_the_override_only_outside_the_window(self, tmp_path):
+        from idle_hours.runtime_quiet import expire_manual_awake
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_awake = True
+        assert expire_manual_awake(args, state, "23:30") is False
+        assert state.manual_awake is True
+        assert expire_manual_awake(args, state, "06:00") is True
+        assert state.manual_awake is False
+        assert expire_manual_awake(args, state, "06:01") is False
+
+    def test_manual_awake_is_not_persisted(self, tmp_path):
+        state = run_clock.RuntimeState("default")
+        state.manual_awake = True
+        assert "manual_awake" not in state.snapshot_for_persistence()
+
+
+class TestActionQuietDuringScheduledWindow:
+    """Button D / web quiet is a toggle against what the panel *shows*."""
+
+    def _press(self, args, state, time_str, *, render_fail=False):
+        from idle_hours.runtime_actions import action_quiet
+        renders: list[tuple] = []
+
+        def fake_render(*a, **kw):
+            if render_fail:
+                raise RuntimeError("inky boom")
+            renders.append((a[5], kw.get("time_str")))
+
+        with patch("idle_hours.run_clock.render_now", side_effect=fake_render), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=("1", 2, "q", "m")), \
+             patch("idle_hours.run_clock.current_time_str", return_value=time_str), \
+             patch("idle_hours.run_clock.current_bucket", return_value="h10_half_past"):
+            result = action_quiet(args, state, label="button D")
+        return result, renders
+
+    def test_first_press_in_the_window_wakes_the_clock(self, tmp_path):
+        from idle_hours.runtime_quiet import compute_quiet
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True   # the loop took the 22:00 rising edge
+        result, renders = self._press(args, state, "22:30")
+        assert result["ok"] and result["asleep"] is False
+        assert state.manual_quiet is False and state.manual_awake is True
+        assert [m for m, _ in renders] == ["production"]
+        # The loop now ticks the clock for the rest of the window…
+        assert compute_quiet(args, state, "23:30") == (False, False)
+        assert compute_quiet(args, state, "05:59") == (False, False)
+        # …and the override does not leak past it.
+        assert compute_quiet(args, state, "12:00") == (False, False)
+        persisted = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert persisted["manual_quiet"] is False
+
+    def test_second_press_in_the_window_sleeps_again_by_schedule(self, tmp_path):
+        from idle_hours.runtime_quiet import compute_quiet
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_awake = True   # woken earlier tonight
+        result, renders = self._press(args, state, "23:00")
+        assert result["ok"] and result["asleep"] is True
+        # The schedule keeps it asleep; no manual_quiet is latched, so the
+        # panel wakes on its own at 06:00 instead of staying dark all day.
+        assert state.manual_quiet is False and state.manual_awake is False
+        assert [m for m, t in renders] == ["goodnight"]
+        assert renders[0][1] == "23:00"
+        assert compute_quiet(args, state, "23:30") == (True, False)
+        assert compute_quiet(args, state, "06:00") == (False, False)
+
+    def test_press_outside_the_window_latches_manual_quiet_as_before(self, tmp_path):
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        result, renders = self._press(args, state, "14:00")
+        assert result["asleep"] is True
+        assert state.manual_quiet is True and state.manual_awake is False
+        assert [m for m, _ in renders] == ["goodnight"]
+        result, renders = self._press(args, state, "14:05")
+        assert result["asleep"] is False
+        assert state.manual_quiet is False and state.manual_awake is False
+        assert [m for m, _ in renders] == ["production"]
+
+    def test_waking_from_manual_quiet_inside_the_window_stays_awake(self, tmp_path):
+        from idle_hours.runtime_quiet import compute_quiet
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = True   # latched at 14:00, still set at 23:00
+        result, _ = self._press(args, state, "23:00")
+        assert result["asleep"] is False
+        assert state.manual_quiet is False and state.manual_awake is True
+        assert compute_quiet(args, state, "23:01") == (False, False)
+
+    def test_failed_wake_rolls_both_flags_back(self, tmp_path):
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.manual_quiet = True
+        result, _ = self._press(args, state, "23:00", render_fail=True)
+        assert result["ok"] is False and result["rolled_back"]
+        assert state.manual_quiet is True and state.manual_awake is False
+
+    def test_main_loop_keeps_ticking_after_a_mid_window_wake(self, tmp_path):
+        """End to end: D at 22:30 inside 22:00–06:00, then ticks through 23:10."""
+        from idle_hours.runtime_actions import action_quiet
+        pressed = {"done": False}
+        real_liveness = run_clock._check_button_liveness
+
+        def liveness_then_press(state, telemetry_path):
+            real_liveness(state, telemetry_path)
+            if run_clock.current_time_str() == "22:30" and not pressed["done"]:
+                pressed["done"] = True
+                # Use whatever args the loop built; the handler reads the same flags.
+                action_quiet(pressed["args"], state, label="button D")
+
+        real_parse_args = run_clock.parse_args
+
+        def capture():
+            pressed["args"] = real_parse_args()
+            return pressed["args"]
+
+        with patch("idle_hours.run_clock._check_button_liveness", side_effect=liveness_then_press), \
+             patch("idle_hours.run_clock.parse_args", side_effect=capture):
+            renders = _drive_main(tmp_path, [], ["22:00", "22:30", "22:31", "22:35", "22:40", "23:10"])
+        modes = [(r["mode"], r["time"]) for r in renders]
+        assert modes[0] == ("goodnight", "22:00")
+        # The press itself painted the clock, and the loop kept painting it
+        # on every bucket change afterwards instead of freezing at 22:30.
+        clock_times = [t for m, t in modes if m != "goodnight"]
+        assert clock_times[0] == "22:30"
+        assert {"22:35", "22:40", "23:10"} <= set(clock_times)
+        assert modes.count(("goodnight", "22:00")) == 1
+
+
+class TestActionsWhileAsleep:
+    def _asleep(self, tmp_path):
+        args = _quiet_args(tmp_path)
+        state = run_clock.RuntimeState("default")
+        state.last_bucket, state.last_quote_id = "h9_half_past", ("1", 2, "q", "m")
+        state.was_quiet = True
+        return args, state
+
+    @pytest.mark.parametrize("name", ["skip", "unskip"])
+    def test_skip_and_unskip_are_refused_with_asleep(self, tmp_path, name):
+        from idle_hours import runtime_actions
+        args, state = self._asleep(tmp_path)
+        state.last_skipped = ("9", 9, "x", "y")
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.peek_quote_id") as mock_peek, \
+             patch("idle_hours.run_clock.current_time_str", return_value="23:00"):
+            result = getattr(runtime_actions, f"action_{name}")(args, state, label="web")
+        assert result == {"ok": False, "error": "asleep"}
+        assert not mock_render.called and not mock_peek.called
+        assert not (tmp_path / "history.jsonl").exists()
+        assert state.last_skipped == ("9", 9, "x", "y")
+
+    def test_rerender_repaints_the_sleep_frame(self, tmp_path):
+        from idle_hours.runtime_actions import action_rerender
+        args, state = self._asleep(tmp_path)
+        with patch("idle_hours.run_clock.render_now") as mock_render, \
+             patch("idle_hours.run_clock.peek_quote_id") as mock_peek, \
+             patch("idle_hours.run_clock.current_time_str", return_value="23:00"):
+            result = action_rerender(args, state, label="web")
+        assert result["ok"] and result["asleep"] is True
+        assert not mock_peek.called
+        assert mock_render.call_args.args[5] == "goodnight"
+        # A scheduled window paints the last-quote-of-the-night time, not "now".
+        assert mock_render.call_args.kwargs["time_str"] == "22:00"
+        assert not (tmp_path / "history.jsonl").exists()
+
+    def test_web_maps_asleep_to_409(self):
+        from idle_hours import web_server
+        assert web_server._status_from_result({"ok": False, "error": "asleep"}) == 409

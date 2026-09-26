@@ -58,6 +58,32 @@ class TestLoadEntries:
         since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
         assert len(idle_hours_health.load_entries(path, since)) == 2
 
+    def test_skips_well_formed_json_that_is_not_an_entry(self, tmp_path):
+        """Issue #287: a JSON line that parses but is not a telemetry object.
+
+        ``[1, 2]``, ``"str"``, ``42`` and ``null`` all decode cleanly and then
+        blew up on ``entry["ts"]`` (TypeError, not in the except tuple);
+        ``{"ts": 123}`` blew up inside ``fromisoformat``. Any one of them took
+        the health CLI and ``/api/telemetry`` down with it, and a torn
+        sidecar write is exactly how such a line gets there.
+        """
+        path = tmp_path / "log.jsonl"
+        path.write_text(
+            "[1, 2]\n"
+            '"str"\n'
+            "42\n"
+            "null\n"
+            '{"ts": 123}\n'
+            '{"ts": null}\n'
+            '{"ts": ["2026-01-01T00:00:00+00:00"]}\n'
+            f'{{"ts": "{_ts(5)}", "render_ms": 100}}\n',
+            encoding="utf-8",
+        )
+        since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+        rows = idle_hours_health.load_entries(path, since)
+        assert len(rows) == 1
+        assert rows[0]["render_ms"] == 100
+
     def test_filters_by_timestamp(self, tmp_path):
         path = _ledger(tmp_path, [
             {"ts": _ts(120), "render_ms": 100},   # 2h ago, before window

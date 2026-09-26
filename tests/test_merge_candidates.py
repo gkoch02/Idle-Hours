@@ -48,11 +48,12 @@ class TestNormalizeText:
 
 class TestDedupe:
     def _record(self, quote, context="context", source_id="1", normalized_time="03:00",
-                fuzzy_bucket="h3_exact", daypart_bucket="morning"):
+                fuzzy_bucket="h3_exact", daypart_bucket="morning", line_number=100):
         raw = make_row(
             quote_text=quote,
             context_text=context,
             source_id=source_id,
+            line_number=line_number,
             normalized_time=normalized_time,
             fuzzy_bucket=fuzzy_bucket,
             daypart_bucket=daypart_bucket,
@@ -91,13 +92,61 @@ class TestDedupe:
         assert len(merged) == 1
         assert "longer" in merged[0]["context_text"]
 
-    def test_different_bucket_not_deduplicated(self):
+    def test_different_time_not_deduplicated(self):
         records = [
-            self._record("Same quote text.", fuzzy_bucket="h3_exact"),
-            self._record("Same quote text.", fuzzy_bucket="h3_just_after"),
+            self._record("Same quote text.", normalized_time="03:00", fuzzy_bucket="h3_exact"),
+            self._record("Same quote text.", normalized_time="03:05", fuzzy_bucket="h3_five_past"),
         ]
         merged, _ = mc.dedupe(records)
         assert len(merged) == 2
+
+    # Issue #294: the key is the hit's position and phrase, not the sentence
+    # window or the buckets derived from its time.
+    def test_same_hit_with_different_sentence_windows_deduplicated(self):
+        records = [
+            self._record("It was three o'clock.", context="short"),
+            self._record("He looked up. It was three o'clock. Nobody came.", context="longer context here"),
+        ]
+        merged, summary = mc.dedupe(records)
+        assert len(merged) == 1
+        assert summary["duplicates_removed"] == 1
+        assert "longer" in merged[0]["context_text"]
+
+    def test_derived_daypart_drift_does_not_split_a_hit(self):
+        records = [
+            self._record("Same quote text.", daypart_bucket="dawn"),
+            self._record("Same quote text.", daypart_bucket="night"),
+        ]
+        merged, _ = mc.dedupe(records)
+        assert len(merged) == 1
+
+    def test_same_text_on_different_lines_kept(self):
+        a = self._record("Same quote text.")
+        b = self._record("Same quote text.")
+        b.raw["line_number"] = a.raw["line_number"] + 1
+        merged, _ = mc.dedupe([a, b])
+        assert len(merged) == 2
+
+    def test_different_phrase_on_same_line_kept(self):
+        a = self._record("Ten o'clock, close on ten o'clock.")
+        b = self._record("Ten o'clock, close on ten o'clock.", normalized_time="09:55", fuzzy_bucket="h9_five_to")
+        b.raw["matched_text"] = "close on ten o'clock"
+        merged, _ = mc.dedupe([a, b])
+        assert len(merged) == 2
+
+    def test_rows_without_source_id_fall_back_to_quote_text(self):
+        a = self._record("Same quote.", source_id=None)
+        b = self._record("Same quote.", source_id=None)
+        b.raw["line_number"] = 999
+        merged, _ = mc.dedupe([a, b])
+        assert len(merged) == 1
+        assert mc.dedupe_key(a.raw, a.canonical_quote) == ("03:00", "morning", a.canonical_quote)
+
+    def test_dedupe_key_normalises_phrase_case_and_whitespace(self):
+        a = self._record("Same quote.")
+        b = self._record("Same quote.")
+        b.raw["matched_text"] = "Three  O'CLOCK"
+        assert mc.dedupe_key(a.raw, a.canonical_quote) == mc.dedupe_key(b.raw, b.canonical_quote)
 
     def test_summary_counts_correct(self):
         records = [

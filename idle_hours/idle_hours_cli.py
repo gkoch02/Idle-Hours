@@ -19,11 +19,11 @@ list — no per-script refactor needed. Lazy import matters: ``idle-hours
 the subcommand list. Without it, an operator running ``idle-hours health``
 on a dev host would also load the renderer.
 
-**Backwards compat is preserved.** Every existing
-``python3 <script>.py …`` invocation keeps working — this CLI is purely
-additive. The systemd unit, the bootstrap script, and the docs that
-reference the per-script paths don't need touching unless we want to
-move them over (separate change).
+**The module form is the only other entry point.** After the v2.x
+restructure every backing module lives under ``idle_hours/``, so
+``python3 -m idle_hours.<module> …`` works and a flat ``python3
+<script>.py …`` does not — there is no such file. The systemd unit uses
+the module form; the docs use the subcommand form.
 """
 from __future__ import annotations
 
@@ -89,8 +89,8 @@ def _format_help() -> str:
         lines.append(f"  {name:<{width}} {description}")
     lines.extend([
         "",
-        "Backwards-compat: `python3 <script>.py …` continues to work for every",
-        "subcommand listed above; this umbrella CLI is purely additive.",
+        "Every subcommand is also reachable as `python3 -m idle_hours.<module>`;",
+        "there are no flat `<script>.py` files to run directly.",
     ])
     return "\n".join(lines)
 

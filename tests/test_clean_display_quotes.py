@@ -115,8 +115,39 @@ class TestCleanEdges:
     def test_removes_trailing_comma(self):
         assert cdq.clean_edges("Hello world,") == "Hello world"
 
-    def test_removes_leading_quote(self):
-        assert cdq.clean_edges('"She said hello."') == "She said hello."
+    def test_keeps_a_paired_edge_quote(self):
+        """Issue #297: a fully quoted sentence keeps both marks."""
+        assert cdq.clean_edges('"She said hello."') == '"She said hello."'
+        assert cdq.clean_edges("“Late!” she cried, at ten o’clock.") == "“Late!” she cried, at ten o’clock."
+        assert cdq.clean_edges("‘It’s nearly eleven o’clock, John.’") == "‘It’s nearly eleven o’clock, John.’"
+
+    def test_keeps_an_opening_quote_whose_partner_is_inside(self):
+        text = '"It is five o\'clock," he said, looking at his watch.'
+        assert cdq.clean_edges(text) == text
+
+    def test_strips_an_unpaired_edge_quote(self):
+        assert cdq.clean_edges('"She said hello.') == "She said hello."
+        assert cdq.clean_edges("“And now thou must lie by quietly, at ten o’clock.") == (
+            "And now thou must lie by quietly, at ten o’clock."
+        )
+        assert cdq.clean_edges("She said hello.”") == "She said hello."
+        assert cdq.clean_edges("ready.’") == "ready."
+
+    def test_a_closing_mark_at_the_start_is_always_junk(self):
+        assert cdq.clean_edges("” It was ten o’clock at night when he stood.") == (
+            "It was ten o’clock at night when he stood."
+        )
+        assert cdq.clean_edges("’ It was ten o’clock.") == "It was ten o’clock."
+
+    def test_apostrophes_do_not_count_as_closing_quotes(self):
+        # Only apostrophes inside — the leading ‘ has no partner and goes.
+        assert cdq.clean_edges("‘Tis o’clock, don’t you know.") == "Tis o’clock, don’t you know."
+
+    def test_unbalanced_quotes_predicate(self):
+        assert cdq.unbalanced_quotes('It is five o\'clock," he said.')
+        assert cdq.unbalanced_quotes("Let me follow in her steps.” It was ten o'clock.")
+        assert not cdq.unbalanced_quotes('"It is five," he said. "Indeed."')
+        assert not cdq.unbalanced_quotes("It was ten o’clock, don’t you know.")
 
     def test_keeps_interior_punct(self):
         result = cdq.clean_edges("Hello, world.")
@@ -451,3 +482,41 @@ class TestMainCLI:
         out = capsys.readouterr().out
         assert "Wrote 2 cleaned" in out
         assert "Fragment fallbacks:" in out
+
+
+class TestBalancedRunPreference:
+    """Issue #297: a run whose quotes pair up beats one that starts mid-speech."""
+
+    def test_prefers_the_balanced_run(self):
+        row = {
+            "quote_text": "Let me follow in her steps.” It was ten o’clock at night when he stood before the prison of La Force.",
+            "context_text": (
+                "“Go,” she said. “Let me follow in her steps.” It was ten o’clock at night when he stood "
+                "before the prison of La Force. He waited a long while."
+            ),
+            "matched_text": "ten o’clock",
+        }
+        quote, fragment, _status = cdq.best_display_quote(row)
+        assert not fragment
+        assert not cdq.unbalanced_quotes(quote), quote
+        assert "ten o’clock" in quote
+
+    def test_falls_back_to_an_unbalanced_run_when_nothing_else_exists(self):
+        row = {
+            "quote_text": "Let me follow in her steps.” It was ten o’clock at night when he stood before the prison.",
+            "context_text": "",
+            "matched_text": "ten o’clock",
+        }
+        quote, _fragment, _status = cdq.best_display_quote(row)
+        assert "ten o’clock" in quote
+
+    def test_the_winner_loses_an_edge_mark_whose_partner_is_beyond_the_window(self):
+        row = {
+            "quote_text": "“On that evening the horses had been exercised and watered as usual, and the stables were locked at nine o’clock.",
+            "context_text": "",
+            "matched_text": "nine o’clock",
+        }
+        quote, fragment, status = cdq.best_display_quote(row)
+        assert not fragment and status == "complete_sentence"
+        assert quote.startswith("On that evening")
+        assert not cdq.unbalanced_quotes(quote)

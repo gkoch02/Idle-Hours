@@ -66,6 +66,7 @@ import hmac
 import json
 import os
 import re
+import socket
 import threading
 import urllib.parse
 from collections import OrderedDict
@@ -155,7 +156,20 @@ JSON_CONTENT_TYPE = "application/json"
 # /api/preview through <img src>, and the static shell through the navigation
 # itself; none of those can attach a request header. /metrics is for the
 # scraper and is gated by --web-metrics-token instead.
-UNGATED_GET_PATHS = frozenset({"/", "/main.js", "/style.css", "/current.png", "/api/preview"})
+# The static shell only. ``/current.png`` and ``/api/preview`` used to be
+# here too on the grounds that an ``<img src>`` cannot attach a header — but
+# on a LAN bind with a token that left the picker's winning quote for every
+# minute of the day, in every theme, readable by anyone on the network, and
+# each distinct query a full Pillow render (issue #286). ``main.js`` now
+# fetches both with the token header and shows them through object URLs, so
+# gating them costs the UI nothing.
+UNGATED_GET_PATHS = frozenset({"/", "/main.js", "/style.css"})
+
+# ``/api/preview`` renders in exactly the two modes the panel itself shows.
+# ``mode`` was previously taken verbatim, which both exposed the source card
+# (``mode=card``: title / author / Gutenberg ID) and let any distinct string
+# bypass the preview cache for another full render.
+PREVIEW_MODES = frozenset({"production", "debug"})
 
 
 def _parse_bind(bind_str: str) -> tuple[str, int]:
@@ -400,9 +414,77 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
     # ephemeral ports in a tight loop don't trip over TIME_WAIT on re-bind.
     allow_reuse_address = True
 
+    # Concurrent-connection cap (issue #285). ``ThreadingHTTPServer`` spawns a
+    # thread per accepted connection with no upper bound, so a client holding
+    # sockets open pinned a thread and a file descriptor each, for ever, in
+    # the process that also writes the appliance's state and PNG. This bounds
+    # how *many* can be alive at once. A single-operator UI plus a scraper
+    # never needs more than a handful; a connection that arrives while every
+    # slot is taken is closed unread rather than queued — the request line
+    # has not been read yet, so there is nothing to answer.
+    max_connections = 16
+
+    # Total lifetime of one connection, in seconds. The handler's socket
+    # ``timeout`` only bounds each *read*, and restarts on every byte, so a
+    # client sending one byte every 29 s kept its slot for ever — and 16 of
+    # them locked the UI and ``/metrics`` out entirely. Past this deadline
+    # the socket is shut down from outside, which wakes a blocked read with
+    # EOF and fails a blocked write. Generous against anything legitimate:
+    # the slowest request, a bake on a Pi Zero, takes seconds.
+    connection_deadline = 120.0
+
     def __init__(self, address: tuple[str, int], handler_cls, context: WebContext):
         super().__init__(address, handler_cls)
         self.context = context
+        self._connection_slots = threading.BoundedSemaphore(self.max_connections)
+        self.dropped_connections = 0
+        self.expired_connections = 0
+
+    def process_request(self, request, client_address):
+        if not self._connection_slots.acquire(blocking=False):
+            self.dropped_connections += 1
+            # Log the first drop and then sparsely: a flood is exactly when
+            # one line per connection would drown the journal.
+            if self.dropped_connections == 1 or self.dropped_connections % 100 == 0:
+                _log(
+                    f"web: {self.max_connections} connections already open, "
+                    f"dropping connection from {client_address[0]} "
+                    f"({self.dropped_connections} dropped so far)",
+                    err=True,
+                )
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            # Thread creation failed, so ``process_request_thread`` will
+            # never run and never release the slot.
+            self._connection_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        deadline = threading.Timer(self.connection_deadline, self._expire, (request, client_address))
+        deadline.daemon = True
+        deadline.start()
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            deadline.cancel()
+            self._connection_slots.release()
+
+    def _expire(self, request, client_address) -> None:
+        """Cut a connection that outlived ``connection_deadline``."""
+        self.expired_connections += 1
+        if self.expired_connections == 1 or self.expired_connections % 100 == 0:
+            _log(
+                f"web: closing connection from {client_address[0]} after "
+                f"{self.connection_deadline:g}s ({self.expired_connections} closed so far)",
+                err=True,
+            )
+        # The handler may have finished and closed the socket a moment ago;
+        # shutting down a closed socket raises, and there is nothing to do.
+        with contextlib.suppress(OSError):
+            request.shutdown(socket.SHUT_RDWR)
 
 
 # ----------------------------------------------------------------------------
@@ -410,6 +492,21 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
 # ----------------------------------------------------------------------------
 
 OVERRIDES_KEYS = ("ban_source_ids", "boost_source_ids", "preferred_buckets", "ban_quote_keys")
+
+# Browser-hardening headers sent on every response (issue #284). See
+# ``CuratorHandler._send_body`` for why each one is there. The CSP names
+# ``blob:`` under ``img-src`` only — the UI loads token-gated images through
+# object URLs — and pins ``frame-ancestors`` alongside ``X-Frame-Options`` for
+# browsers that honour one but not the other.
+SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
+    ("X-Frame-Options", "DENY"),
+    (
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    ),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Referrer-Policy", "no-referrer"),
+)
 
 
 def _is_id(value: object) -> bool:
@@ -551,6 +648,21 @@ class CuratorHandler(BaseHTTPRequestHandler):
     """
 
     server_version = "IdleHoursCurator/1.0"
+    # ``BaseHTTPRequestHandler`` appends ``Python/3.x.y`` to every ``Server``
+    # header. The interpreter version is a fingerprint nobody on the LAN needs
+    # (issue #284); an empty ``sys_version`` leaves just the product token.
+    sys_version = ""
+
+    # Socket timeout applied by ``StreamRequestHandler.setup`` (issue #285).
+    # The default is ``None``: a client that opens a connection and sends a
+    # partial request line — or a POST whose body never arrives — held a
+    # handler thread and a file descriptor for ever, and because this server
+    # runs *inside* ``run_clock`` an exhausted FD table breaks the appliance's
+    # own state / telemetry / PNG writes, not just the UI. A timeout surfaces
+    # as an ordinary handler exit. The value is generous against a real
+    # operator on a slow LAN and small against a stuck connection; nothing the
+    # UI does legitimately pauses mid-request for 30 s.
+    timeout = 30
 
     def log_message(self, format, *args):
         # Silence the default stderr access log; we already log meaningful events
@@ -568,14 +680,41 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _ctx(self) -> WebContext:
         return self.server.context  # type: ignore[attr-defined]
 
-    def _json(self, status: int, payload: dict) -> None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    def _send_body(self, status: int, content_type: str, data: bytes) -> None:
+        """Emit a complete response: status, the common headers, ``data``.
+
+        Every response — JSON, the static shell, PNGs, ``/metrics`` — goes
+        through here so the browser-hardening headers cannot be forgotten on
+        one route (issue #284). The three that matter:
+
+        * ``X-Frame-Options: DENY`` + ``frame-ancestors 'none'``: on the
+          recommended tokenless loopback bind, any page the operator visits
+          could ``<iframe>`` the UI, overlay it, and steer clicks onto "Ban
+          this quote", "Bake now" or the quiet toggle. Those clicks are
+          *same-origin* requests issued by ``main.js`` itself, so the Host /
+          Origin / Content-Type layers all pass by construction — refusing
+          to be framed is the only defence against that clickjack.
+        * ``default-src 'self'``: the shell loads nothing external, so a
+          strict CSP costs nothing and stops an injected ``<script>`` from
+          running should corpus text ever reach ``innerHTML`` unescaped.
+          ``img-src`` additionally allows ``blob:`` because the UI fetches
+          token-gated images (previews, ``/current.png``) with the header
+          and shows them through object URLs.
+        * ``X-Content-Type-Options: nosniff``: a JSON or PNG body is never
+          reinterpreted as HTML.
+        """
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in SECURITY_HEADERS:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def _json(self, status: int, payload: dict) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self._send_body(status, "application/json; charset=utf-8", data)
 
     def _not_found(self) -> None:
         self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -583,13 +722,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _serve_static(self, path: Path, content_type: str) -> None:
         if not path.exists() or not path.is_file():
             return self._json(HTTPStatus.NOT_FOUND, {"error": f"missing {path.name}"})
-        data = path.read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_body(HTTPStatus.OK, content_type, path.read_bytes())
 
     def _check_token(self) -> bool:
         ctx = self._ctx()
@@ -806,8 +939,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
         corpus; the two override endpoints are the curator's own edits).
 
         The exceptions in ``UNGATED_GET_PATHS`` are mechanical, not editorial:
-        a ``<script src>`` / ``<img src>`` cannot set a request header, so
-        gating the shell or the two image routes would simply break the page.
+        a ``<script src>`` / ``<link href>`` / navigation cannot set a request
+        header, so gating the shell would simply break the page. The two
+        image routes are *not* exempt any more (issue #286): ``main.js``
+        fetches them with the header and assigns the bytes as object URLs.
         ``/metrics`` is a scraper's, and opts in via ``--web-metrics-token``.
         """
         if path == "/metrics":
@@ -877,7 +1012,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 **run_clock._auto_theme_kwargs(ctx.args),
             )
             manual_quiet = state.manual_quiet
+            manual_awake = state.manual_awake
             manual_theme = state.manual_theme
+        asleep, _manual_only = run_clock.compute_quiet(ctx.args, state, now)
         payload = {
             "time": now,
             "bucket": bucket,
@@ -885,6 +1022,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "theme_arg": state.theme_arg,
             "manual_theme": manual_theme,
             "manual_quiet": manual_quiet,
+            "manual_awake": manual_awake,
+            "asleep": asleep,
             "mode": ctx.args.mode,
             "source_id": quote_id[0] if quote_id else None,
             "line_number": quote_id[1] if quote_id else None,
@@ -1036,14 +1175,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
                    "— gate it on idle_hours_quiet_active == 0.")
 
         body = ("\n".join(lines) + "\n").encode("utf-8")
-        self.send_response(HTTPStatus.OK)
         # Prometheus text format 0.0.4. The scraper picks up the version
         # from the Content-Type and parses accordingly.
-        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_body(HTTPStatus.OK, "text/plain; version=0.0.4; charset=utf-8", body)
 
     def _coverage_summary(self) -> dict:
         """Compute bucket coverage from the corpus this appliance actually uses.
@@ -1062,9 +1196,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ~3K rows. The committed snapshot stays as a fallback for the case where
         the corpus itself is missing or unreadable.
 
-        Reads the RAW corpus for the same reason ``/api/bucket`` does: the
-        operator needs to see rows the baker dropped, or the gap-finder would
-        report a bucket as covered by quotes that can never be displayed.
+        Reads the RAW corpus so the ``raw_bucket_counts`` it reports show
+        material the baker dropped; the headline ``bucket_counts`` apply the
+        baker's quality floor and the live bans (issue #300), so the grid and
+        the gap finder describe what the panel can actually display rather
+        than reporting a bucket as covered by a quote that can never appear.
         """
         from idle_hours import bucket_coverage
         ctx = self._ctx()
@@ -1074,7 +1210,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             _log(f"web: live coverage unavailable ({exc!r}); falling back to {ctx.coverage_path}", err=True)
             rows = None
         if rows is not None:
-            summary = bucket_coverage.build_summary(rows)
+            overrides = pick_quote_module.load_overrides(Path(ctx.overrides_path))
+            summary = bucket_coverage.build_summary(rows, overrides=overrides)
             summary["live"] = True
             return summary
         if not ctx.coverage_path.exists():
@@ -1100,7 +1237,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         consistent results. ``--threshold`` controls "sparse" (default ≤3
         candidates, matching the bucket-coverage shading).
         """
-        from idle_hours import target_sparse_buckets
+        from idle_hours import bucket_coverage, target_sparse_buckets
         try:
             threshold = int(query.get("threshold", ["3"])[0])
         except (TypeError, ValueError):
@@ -1117,6 +1254,10 @@ class CuratorHandler(BaseHTTPRequestHandler):
         for bucket, count in bucket_counts.items():
             if count > threshold:
                 continue
+            # ``tier`` lets the UI stress the buckets that matter most: empty
+            # ones render a neighbour-bucket fallback, thin ones (≤2 rows)
+            # defeat the anti-repeat ledger, which falls back to the full list.
+            tier = "empty" if count == 0 else ("thin" if count <= bucket_coverage.THIN_THRESHOLD else "sparse")
             # bucket like "h7_twenty_to" → ("h7", "twenty_to")
             try:
                 hour_part, state = bucket.split("_", 1)
@@ -1141,7 +1282,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                     template.format(hour=hour_word, next_hour=next_hour_word)
                     for template, _label in templates
                 ]
-            gaps.append({"bucket": bucket, "count": count, "phrases": phrases})
+            gaps.append({"bucket": bucket, "count": count, "tier": tier, "phrases": phrases})
         # Sort emptiest-first so the UI naturally surfaces the worst gaps.
         gaps.sort(key=lambda g: (g["count"], g["bucket"]))
         self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": gaps, "total": len(gaps)})
@@ -1451,8 +1592,13 @@ class CuratorHandler(BaseHTTPRequestHandler):
             )
         except SystemExit as exc:
             return self._json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+        mode = (query.get("mode", [""])[0] or "production").strip()
+        if mode not in PREVIEW_MODES:
+            return self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": f"mode must be one of {sorted(PREVIEW_MODES)}"},
+            )
         try:
-            mode = (query.get("mode", [""])[0] or "production").strip()
             width = int(query.get("width", [str(ctx.args.width)])[0])
             height = int(query.get("height", [str(ctx.args.height)])[0])
         except (TypeError, ValueError):
@@ -1493,12 +1639,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 _PREVIEW_CACHE.move_to_end(cache_key)
                 while len(_PREVIEW_CACHE) > PREVIEW_CACHE_MAX_ENTRIES:
                     _PREVIEW_CACHE.popitem(last=False)
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_body(HTTPStatus.OK, "image/png", data)
 
     def _api_history(self, query: dict) -> None:
         ctx = self._ctx()
@@ -1655,6 +1796,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
         recent ``POST /api/content-overrides`` is reflected in the freshly-baked
         DB without requiring a CLI step.
 
+        **The patched rows are written back to the raw corpus too** (issue
+        #288), matching the CLI stage — ``apply_content_overrides.main`` with
+        ``--output`` omitted rewrites its input in place. The bake used to
+        patch an in-memory copy and write only the baked DB, and every curator
+        *read* surface (``/api/bucket``, ``/api/search``, the history join,
+        the coverage grid) reads the raw corpus: after save → bake the panel
+        showed the patched quote while the inspector still showed the old
+        text, so the operator concluded the save had not landed. The raw
+        write is skipped when no row changed — an appliance runs on an SD card.
+        Deleting an override and baking again restores the row: the
+        overrides stage records what it replaced in ``override_originals``.
+
         The runtime picker reloads the baked DB on every ``select_quote`` call
         (it goes through ``_resolve_corpus`` which reads from disk), so the next
         tick will see the newly-baked rows automatically — no in-memory cache
@@ -1684,16 +1837,25 @@ class CuratorHandler(BaseHTTPRequestHandler):
             # is reflected in the baked DB. Operator workflow: edit row → save
             # overrides → click Bake; both should land on the panel within seconds.
             sidecar = apply_content_overrides.load_overrides(ctx.content_overrides_path)
-            rows = list(iter_jsonl(ctx.raw_corpus_path))
-            if sidecar:
-                rows, applied = apply_content_overrides.apply_overrides(
-                    rows, sidecar, overrides_path=str(ctx.content_overrides_path),
-                )
-            else:
-                applied = 0
+            loaded = list(iter_jsonl(ctx.raw_corpus_path))
+            # Applied even when the sidecar is empty: a row whose override
+            # was just deleted is restored from its ``override_originals``,
+            # which is how "delete the entry, bake again" undoes an edit.
+            apply_stats: dict = {}
+            rows, applied = apply_content_overrides.apply_overrides(
+                loaded, sidecar, overrides_path=str(ctx.content_overrides_path), stats=apply_stats,
+            )
+            reverted = apply_stats.get("reverted", 0)
             # Re-derive fuzzy_bucket from the post-override normalized_time so
             # the baker sees the same buckets it would after a full pipeline run.
             rederive_buckets(rows)
+            # Only rewrite the raw corpus when a row actually changed: a
+            # repeat bake of the same sidecar is a no-op on an SD card.
+            if rows != loaded:
+                atomic_io.atomic_write_lines(
+                    ctx.raw_corpus_path,
+                    (json.dumps(row, ensure_ascii=False) for row in rows),
+                )
             baked, stats = bake_quote_database.bake_rows(rows, min_quality=60)
             atomic_io.atomic_write_lines(
                 ctx.baked_db_path,
@@ -1710,7 +1872,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         _log(f"web: baked {stats['kept']} rows -> {ctx.baked_db_path}")
         self._emit_web_telemetry({
             "mode": "action", "action": "bake", "label": "web", "ok": True,
-            "kept": stats["kept"], "applied": applied,
+            "kept": stats["kept"], "applied": applied, "reverted": reverted,
         })
         self._json(HTTPStatus.OK, {
             "ok": True,
@@ -1718,6 +1880,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             "kept": stats["kept"],
             "input": stats["input"],
             "applied_overrides": applied,
+            "reverted_overrides": reverted,
             "drops": stats["drops"],
             "per_bucket": stats["per_bucket"],
         })
@@ -1775,8 +1938,10 @@ def _status_from_result(result: dict) -> int:
     """Map an ``action_*`` result dict to an HTTP status code."""
     if result.get("ok"):
         return HTTPStatus.OK
-    if result.get("error") == "busy":
-        return HTTPStatus.CONFLICT  # 409 — render already in flight
+    if result.get("error") in ("busy", "asleep"):
+        # 409 — render already in flight, or the panel is showing the sleep
+        # frame and the action (skip / un-skip) needs a quote to act on.
+        return HTTPStatus.CONFLICT
     return HTTPStatus.INTERNAL_SERVER_ERROR
 
 

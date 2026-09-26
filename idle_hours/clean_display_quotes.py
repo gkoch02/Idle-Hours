@@ -14,8 +14,18 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 TERMINAL_PUNCT = ".!?\"'”’)]"
-LEADING_JUNK = re.compile(r'^[\s\[\("“”‘’\-,:;]+')
-TRAILING_JUNK = re.compile(r'[\s\[\("“”‘’\-,:;]+$')
+# Edge junk *other than* quotation marks — those are handled by
+# ``clean_edges`` itself, because whether an edge quote is junk depends on
+# whether its partner is inside the text (issue #297). A closing mark at the
+# start (``” It was ten…``) or an opening mark at the end can never be paired
+# and is always stripped.
+LEADING_JUNK = re.compile(r'^[\s\[\(”’\-,:;]+')
+TRAILING_JUNK = re.compile(r'[\s\[\(“‘\-,:;]+$')
+OPENING_QUOTES = '"“‘'
+CLOSING_QUOTES = '"”’'
+# A ``’`` closes a quotation only when it does not sit between two letters —
+# ``o’clock`` and ``don’t`` are apostrophes and must not count as pairs.
+_CLOSING_SINGLE = re.compile(r"(?<![A-Za-z])’|’(?![A-Za-z])")
 
 # Titles/honorifics and initials: in natural English prose the period is
 # almost always followed by a proper name, not a new sentence. Merging across
@@ -142,10 +152,60 @@ def split_sentences(text: str) -> list[str]:
     return merged
 
 
+def unbalanced_quotes(text: str) -> bool:
+    """True when the double quotation marks in ``text`` do not pair up.
+
+    Straight ``"`` must come in an even count; curly ``“`` and ``”`` must
+    match one for one. Single quotes are deliberately not checked — ``’`` is
+    also the apostrophe, and a heuristic that tried to tell them apart
+    misfired more than it caught. Shared by the cleaner (to prefer a balanced
+    run) and ``quality_filter`` (to penalise what the cleaner could not fix).
+    """
+    return text.count('"') % 2 == 1 or text.count("“") != text.count("”")
+
+
+def _leading_quote_is_unpaired(text: str) -> bool:
+    mark = text[0]
+    if mark == '"':
+        return text.count('"') % 2 == 1
+    if mark == "“":
+        return text.count("“") > text.count("”")
+    # ``‘``: unpaired unless a closing single quote follows somewhere.
+    return not _CLOSING_SINGLE.search(text[1:])
+
+
+def _trailing_quote_is_unpaired(text: str) -> bool:
+    mark = text[-1]
+    if mark == '"':
+        return text.count('"') % 2 == 1
+    if mark == "”":
+        return text.count("”") > text.count("“")
+    # ``’`` at the very end after punctuation is a closing quote; it is
+    # unpaired unless an opening ``‘`` appears in the text.
+    return "‘" not in text
+
+
 def clean_edges(text: str) -> str:
-    text = LEADING_JUNK.sub("", text)
-    text = TRAILING_JUNK.sub("", text)
+    """Strip edge junk, but keep a quotation mark whose partner is inside.
+
+    ``LEADING_JUNK`` / ``TRAILING_JUNK`` used to include every quotation mark,
+    so ``"It is five o'clock," he said.`` lost its opening ``"`` and reached
+    the panel as ``It is five o'clock," he said.`` — 13% of displayable rows
+    carried an unbalanced quote that way (issue #297). A quote is stripped
+    only when it has no partner in the text; a fully quoted sentence keeps
+    both marks.
+    """
     text = re.sub(r"\s+", " ", text).strip()
+    while text:
+        before = text
+        text = LEADING_JUNK.sub("", text)
+        text = TRAILING_JUNK.sub("", text).strip()
+        if text and text[0] in OPENING_QUOTES and _leading_quote_is_unpaired(text):
+            text = text[1:].lstrip()
+        if text and text[-1] in CLOSING_QUOTES and _trailing_quote_is_unpaired(text):
+            text = text[:-1].rstrip()
+        if text == before:
+            break
     while True:
         stripped = HEADING_PREFIX.sub("", text).strip()
         if stripped == text:
@@ -263,10 +323,22 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
     # Sparse buckets where every candidate bleeds a heading still render something.
     clean_non_fragments = [c for c in non_fragments if not INTERIOR_HEADING.search(c)]
     pool = clean_non_fragments or non_fragments
+    # Then prefer a run whose quotation marks pair up (issue #297):
+    # ``split_sentences`` splits inside dialogue, so a run can start with the
+    # tail of a speech whose opening mark sits in the previous sentence, or
+    # end before the closing one. Where a balanced run exists it wins; where
+    # none does, ``quality_filter`` penalises the survivor.
+    balanced = [c for c in pool if not unbalanced_quotes(c)]
+    pool = balanced or pool
     if pool:
         best = min(pool, key=lambda c: (abs(len(c) - 140), len(c)))
         status = "complete_sentence" if best in single_hits else "expanded_with_context"
-        return best, False, status
+        # The runs kept their interior quotes on purpose (see
+        # ``strip_heading_prefix``), so the winner may still open with a mark
+        # whose partner lies beyond the miner's window — the commonest shape
+        # left after the balanced-run preference. One last ``clean_edges``
+        # drops exactly that unpaired edge mark and nothing else.
+        return clean_edges(best), False, status
 
     if seen:
         best = max(seen, key=len)

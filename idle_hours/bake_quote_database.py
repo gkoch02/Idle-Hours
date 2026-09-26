@@ -127,15 +127,26 @@ def parse_args() -> argparse.Namespace:
 
 
 def _resolve(path_str: str) -> Path:
-    path = Path(path_str).expanduser()
-    if not path.is_absolute():
-        path = BASE_DIR / path
-    return path
+    """Resolve an operator-supplied path against the CWD, like every other stage.
+
+    An earlier revision anchored relative paths on ``BASE_DIR`` — the installed
+    package directory — so ``idle-hours bake idle_hours/assets/…`` run from the
+    repo root looked for ``idle_hours/idle_hours/assets/…`` and ``--output
+    output/x.jsonl`` silently wrote inside site-packages (issue #295). Only the
+    argparse *defaults* are package-anchored; anything typed by the operator is
+    relative to where they typed it.
+    """
+    return Path(path_str).expanduser().resolve()
 
 
 _BAKED_ONLY_FIELDS: frozenset[str] = frozenset(
     {"baked_score", "inferred_quote_minute", "baked_rank", "schema_version"}
 )
+
+# Raw-corpus bookkeeping the runtime never reads: ``override_originals`` is
+# how the content-overrides stage undoes a removed override, and it would only
+# add bytes to every patched row of the baked DB.
+_RAW_ONLY_FIELDS: frozenset[str] = frozenset({"override_originals"})
 
 
 def _static_score(row: dict, source_counts: Counter) -> list[int]:
@@ -216,7 +227,10 @@ def bake_rows(rows: list[dict], min_quality: int, *, top_n: int = 0) -> tuple[li
     # Defensive copy + strip: protects callers from surprise mutation, and
     # guarantees ``score_row`` takes the full recomputation path below even
     # when handed an already-baked input.
-    kept = [{k: v for k, v in row.items() if k not in _BAKED_ONLY_FIELDS} for row in kept]
+    kept = [
+        {k: v for k, v in row.items() if k not in _BAKED_ONLY_FIELDS and k not in _RAW_ONLY_FIELDS}
+        for row in kept
+    ]
 
     # Rarity must be computed against the input corpus (not the kept subset)
     # so picks are bit-for-bit equivalent to what the live picker does with

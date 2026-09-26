@@ -42,6 +42,10 @@ const EXPORTED = [
   "refreshThemes",
   "bucketClass",
   "fireAction",
+  "authFetch",
+  "loadImage",
+  "refreshCurrent",
+  "refreshThemePreview",
 ];
 
 class StubClassList {
@@ -117,6 +121,8 @@ export async function loadMainJs(opts = {}) {
     prompts: [],
     replaceState: [],
     intervals: [],
+    objectUrls: [],
+    revokedUrls: [],
   };
 
   const storage = new Map();
@@ -167,7 +173,16 @@ export async function loadMainJs(opts = {}) {
     setTimeout: (fn, ms) => { return 0; },
     fetch: async (url, init = {}) => {
       calls.fetches.push({ url, init });
-      return opts.fetch ? opts.fetch(url, init) : { status: 200, ok: true, text: async () => "{}" };
+      return opts.fetch ? opts.fetch(url, init) : { status: 200, ok: true, text: async () => "{}", blob: async () => "png" };
+    },
+    // Object-URL plumbing for the token-gated image loader (#286). No
+    // IntersectionObserver in the sandbox, so thumbnails load eagerly.
+    URL: {
+      createObjectURL: (blob) => {
+        calls.objectUrls.push(blob);
+        return `blob:stub-${calls.objectUrls.length}`;
+      },
+      revokeObjectURL: (url) => { calls.revokedUrls.push(url); },
     },
   };
   sandbox.window = sandbox;
@@ -210,6 +225,7 @@ export function routeTable(routes) {
       status,
       ok: status >= 200 && status < 300,
       text: async () => (typeof hit.body === "string" ? hit.body : JSON.stringify(hit.body ?? {})),
+      blob: async () => hit.body,
     };
   };
 }

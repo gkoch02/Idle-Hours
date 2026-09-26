@@ -238,3 +238,93 @@ class TestMain:
         # The input corpus file must be byte-identical to its pre-call state.
         assert input_file.read_bytes() == original_bytes
         assert list(tmp_path.glob("*.tmp")) == []
+
+
+class TestCwdRelativePaths:
+    """Operator-typed paths resolve against the CWD, not the package dir (issue #295)."""
+
+    def test_relative_input_resolves_against_cwd(self, tmp_path, monkeypatch):
+        row = {"source_id": "1", "line_number": 1, "display_quote": "old", "normalized_time": "03:00"}
+        (tmp_path / "work").mkdir()
+        (tmp_path / "work" / "corpus.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+        (tmp_path / "work" / "ov.json").write_text(json.dumps({"1:1": {"display_quote": "new"}}), encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        sys.argv = ["apply_content_overrides.py", "work/corpus.jsonl", "--overrides", "work/ov.json", "--output", "work/out.jsonl"]
+        main()
+        result = json.loads((tmp_path / "work" / "out.jsonl").read_text(encoding="utf-8").strip())
+        assert result["display_quote"] == "new"
+
+
+class TestReversibleOverrides:
+    """The stage writes its output over its input, so an override is baked into
+    the raw corpus. It records what it replaced so deleting the sidecar entry
+    and re-running restores the row — without that the edit was permanent."""
+
+    @staticmethod
+    def _row(**extra):
+        row = {
+            "source_id": "1", "line_number": 1, "display_quote": "Original text.",
+            "matched_text": "three o'clock", "hour": 3, "minute": 0,
+            "normalized_time": "03:00", "fuzzy_bucket": "h3_exact", "quality_score": 80,
+        }
+        row.update(extra)
+        return row
+
+    def test_records_the_value_it_replaced(self):
+        (patched,), _ = apply_overrides([self._row()], {"1:1": {"display_quote": "Patched."}})
+        assert patched["display_quote"] == "Patched."
+        assert patched["override_originals"] == {"display_quote": "Original text."}
+        assert patched["override_applied"] is True
+
+    def test_removing_the_entry_restores_the_row(self):
+        original = self._row()
+        (patched,), _ = apply_overrides([original], {"1:1": {"display_quote": "Patched."}})
+        stats: dict = {}
+        (restored,), applied = apply_overrides([patched], {}, stats=stats)
+        assert restored == original
+        assert applied == 0 and stats == {"applied": 0, "reverted": 1}
+
+    def test_editing_an_override_keeps_the_true_original(self):
+        original = self._row()
+        (once,), _ = apply_overrides([original], {"1:1": {"display_quote": "First edit."}})
+        (twice,), _ = apply_overrides([once], {"1:1": {"display_quote": "Second edit."}})
+        assert twice["display_quote"] == "Second edit."
+        assert twice["override_originals"] == {"display_quote": "Original text."}
+        (restored,), _ = apply_overrides([twice], {})
+        assert restored == original
+
+    def test_dropping_one_field_restores_only_that_field(self):
+        original = self._row()
+        (both,), _ = apply_overrides([original], {"1:1": {"display_quote": "Patched.", "author": "Someone"}})
+        (one,), _ = apply_overrides([both], {"1:1": {"display_quote": "Patched."}})
+        assert one["display_quote"] == "Patched."
+        assert "author" not in one
+        assert one["override_originals"] == {"display_quote": "Original text."}
+
+    def test_reverting_a_time_override_restores_the_bucket(self):
+        original = self._row()
+        (moved,), _ = apply_overrides([original], {"1:1": {"hour": 4, "minute": 30}})
+        assert moved["normalized_time"] == "04:30"
+        assert moved["fuzzy_bucket"] == "h4_half_past"
+        (restored,), _ = apply_overrides([moved], {})
+        assert restored == original
+
+    def test_reapplying_the_same_sidecar_is_a_no_op(self):
+        sidecar = {"1:1": {"display_quote": "Patched.", "normalized_time": "04:30"}}
+        (once,), _ = apply_overrides([self._row()], sidecar)
+        (twice,), _ = apply_overrides([once], sidecar)
+        assert twice == once
+
+    def test_a_malformed_entry_keeps_the_active_override(self, capsys):
+        """A present-but-malformed entry is a typo, not a deletion: the row
+        stays as it was rather than being restored from its originals."""
+        (patched,), _ = apply_overrides([self._row()], {"1:1": {"display_quote": "Patched."}})
+        (kept,), applied = apply_overrides([patched], {"1:1": None})
+        assert kept == patched
+        assert applied == 0
+        assert "left unchanged" in capsys.readouterr().err
+
+    def test_untouched_rows_are_left_alone(self):
+        row = self._row()
+        (out,), applied = apply_overrides([row], {})
+        assert out == row and applied == 0

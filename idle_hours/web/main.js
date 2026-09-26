@@ -50,28 +50,102 @@ async function jsonFetch(url, opts = {}, retryAfterAuth = true) {
   }
 }
 
-async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
+// The one place a request leaves the page with credentials: attaches the
+// token header and handles 401 recovery, for JSON and image bodies alike.
+async function authFetch(url, opts = {}, retryAfterAuth = true) {
   const headers = { ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers["X-Idle-Hours-Token"] = token;
   // Remember which token this request used, so a 401 handler can tell "nobody
   // has a working token yet" from "a sibling request already fixed it".
   const resp = await fetch(url, { ...opts, headers });
-  const text = await resp.text();
-  let data = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch { data = { error: text }; }
-  }
   // 401 recovery: prompt for the token, store it, and retry once. Loopback
   // binds never 401 (server ignores tokens), so this only fires on LAN
   // deployments where the operator must supply the configured value.
   if (resp.status === 401 && retryAfterAuth) {
     const entered = promptForToken(token);
     if (entered) {
-      return jsonFetchInner(url, opts, false);
+      return authFetch(url, opts, false);
     }
   }
+  return resp;
+}
+
+async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
+  const resp = await authFetch(url, opts, retryAfterAuth);
+  const text = await resp.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { error: text }; }
+  }
   return { status: resp.status, ok: resp.ok, data };
+}
+
+// ------- Token-gated images ------------------------------------------------
+// `/current.png` and `/api/preview` are behind the token like every other
+// read (#286), and an <img src> cannot attach a header. So the bytes are
+// fetched with the header and handed to the tag as an object URL. The previous
+// object URL for a tag is revoked when it is replaced, so a page left open
+// polling /current.png every 30 s does not leak a frame per poll.
+const objectUrls = new Map();
+
+async function loadImage(img, url) {
+  if (inFlightRequests === 0) tokenPromptAttempt = null;
+  inFlightRequests += 1;
+  let resp;
+  try {
+    resp = await authFetch(url);
+  } catch (err) {
+    log(`image ${url}: ${err}`);
+    return false;
+  } finally {
+    inFlightRequests -= 1;
+  }
+  if (!resp.ok) {
+    log(`image ${url}: HTTP ${resp.status}`);
+    return false;
+  }
+  const objectUrl = URL.createObjectURL(await resp.blob());
+  const previous = objectUrls.get(img);
+  if (previous) URL.revokeObjectURL(previous);
+  objectUrls.set(img, objectUrl);
+  img.src = objectUrl;
+  return true;
+}
+
+// Thumbnail grids hold one <img> per theme, and each is a full render on the
+// appliance: load a tile only once it scrolls into view (the job the old
+// `loading="lazy"` attribute did before the src became a fetched blob).
+function loadImageWhenVisible(img, url) {
+  if (typeof IntersectionObserver === "undefined") {
+    loadImage(img, url);
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      observer.disconnect();
+      loadImage(img, url);
+    }
+  }, { rootMargin: "200px" });
+  observer.observe(img);
+}
+
+function themeThumb(theme, title, onClick) {
+  const cell = document.createElement("button");
+  cell.type = "button";
+  cell.className = "theme-thumb";
+  cell.title = title;
+  const img = document.createElement("img");
+  img.alt = `${theme} preview`;
+  const label = document.createElement("span");
+  label.textContent = theme;
+  cell.appendChild(img);
+  cell.appendChild(label);
+  cell.onclick = onClick;
+  // Cache-bust per page-load — once is enough; server returns no-store.
+  loadImageWhenVisible(img, `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`);
+  return cell;
 }
 
 function promptForToken(staleToken) {
@@ -174,6 +248,7 @@ const state = {
   gapsLoaded: false,
   themePreviewLoaded: false,
   currentQuoteId: null,  // [source_id, line_number] for the ban button
+  asleep: false,         // panel shows the sleep frame (from /api/current)
   themes: [],            // populated by /api/themes
 };
 
@@ -191,7 +266,7 @@ async function refreshCurrent() {
   const line = data.line_number != null ? ` line ${data.line_number}` : "";
   $("attribution").textContent = `${src}${line}`;
   $("matched").textContent = data.matched_text ? `matched: ${data.matched_text}` : "";
-  $("current-png").src = `/current.png?t=${Date.now()}`;
+  loadImage($("current-png"), `/current.png?t=${Date.now()}`);
   // Track identity for the ban button. Disabled when there's no source/line —
   // (e.g. cold start before first render).
   state.currentQuoteId = data.source_id != null && data.line_number != null
@@ -199,6 +274,22 @@ async function refreshCurrent() {
     : null;
   const banBtn = $("ban-current");
   if (banBtn) banBtn.disabled = state.currentQuoteId == null;
+  reflectSleep(Boolean(data.asleep));
+}
+
+// While the panel shows the sleep frame, skip and un-skip have no quote to
+// act on and the server refuses them (409 "asleep"), so the buttons say so
+// up front instead of failing on click; button D reads as the wake it is.
+function reflectSleep(asleep) {
+  state.asleep = asleep;
+  for (const id of ["action-skip", "action-unskip"]) {
+    const btn = $(id);
+    if (!btn) continue;
+    btn.disabled = asleep;
+    btn.title = asleep ? "The panel is asleep — wake it first (D)" : "";
+  }
+  const quietBtn = $("action-quiet");
+  if (quietBtn) quietBtn.textContent = asleep ? "D · Wake" : "D · Sleep";
 }
 
 // ------- Telemetry -----------------------------------------------------------
@@ -421,18 +512,7 @@ async function refreshThemePreview() {
   }
   grid.innerHTML = "";
   for (const theme of state.themes) {
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.className = "theme-thumb";
-    cell.title = `Apply ${theme}`;
-    // Cache-bust per page-load — once is enough; server returns no-store.
-    const url = `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`;
-    cell.innerHTML = `
-      <img alt="${escapeHtml(theme)} preview" loading="lazy" src="${url}" />
-      <span>${escapeHtml(theme)}</span>
-    `;
-    cell.onclick = () => fireAction("theme", { theme });
-    grid.appendChild(cell);
+    grid.appendChild(themeThumb(theme, `Apply ${theme}`, () => fireAction("theme", { theme })));
   }
 }
 
@@ -446,7 +526,14 @@ async function fireAction(action, body = {}) {
     body: JSON.stringify(body),
   });
   if (status === 409) {
-    log(`${action}: busy (render in flight)`, "warn");
+    // Two refusals share the status: a render already in flight, and an
+    // action that needs a quote while the panel shows the sleep frame.
+    if (data?.error === "asleep") {
+      log(`${action}: the panel is asleep — wake it first (D)`, "warn");
+      await refreshCurrent();
+    } else {
+      log(`${action}: busy (render in flight)`, "warn");
+    }
     return;
   }
   if (!ok) {
@@ -595,7 +682,8 @@ async function bakeNow() {
   const drops = data.drops || {};
   setStatus(
     "bake-status",
-    `baked ${data.kept} rows from ${data.input} input (overrides applied: ${data.applied_overrides}, ` +
+    `baked ${data.kept} rows from ${data.input} input (overrides applied: ${data.applied_overrides}` +
+    (data.reverted_overrides ? `, reverted: ${data.reverted_overrides}` : "") + ", " +
     `dropped ${drops.no_bucket} no-bucket / ${drops.no_display_quote} no-quote / ${drops.low_quality} low-quality). ` +
     `Next tick will pick up the new database.`,
     "ok",
@@ -714,17 +802,8 @@ async function maybeShowWizard() {
   const grid = $("wizard-theme-grid");
   grid.innerHTML = "";
   for (const theme of data.themes || []) {
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.className = "theme-thumb";
-    cell.title = `Use ${theme}`;
+    const cell = themeThumb(theme, `Use ${theme}`, () => completeWizard(theme));
     if (theme === (data.manual_theme || data.theme_arg)) cell.classList.add("selected");
-    const url = `/api/preview?theme=${encodeURIComponent(theme)}&width=320&height=192&t=${Date.now()}`;
-    cell.innerHTML = `
-      <img alt="${escapeHtml(theme)} preview" loading="lazy" src="${url}" />
-      <span>${escapeHtml(theme)}</span>
-    `;
-    cell.onclick = () => completeWizard(theme);
     grid.appendChild(cell);
   }
   overlay.hidden = false;

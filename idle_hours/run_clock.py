@@ -21,6 +21,7 @@ from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_server + tests
     _button_render_gate,
+    _refuse_while_asleep,
     action_quiet,
     action_rerender,
     action_skip,
@@ -30,9 +31,11 @@ from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_serv
 from idle_hours.runtime_log import _log  # noqa: F401  re-exported
 from idle_hours.runtime_quiet import (  # noqa: F401  in_quiet_hours + _display_quiet_image re-exported
     _display_quiet_image,
+    claim_quiet_edge,
     compute_quiet,
     enter_quiet,
     exit_quiet,
+    expire_manual_awake,
     in_quiet_hours,
     render_quiet_frame,
 )
@@ -768,6 +771,24 @@ def _append_history_after_render(state: RuntimeState, history_path: str | None, 
         pick_quote_module.append_history(history_path, quote_id[0], quote_id[1])
 
 
+def displayed_quote(state: RuntimeState) -> tuple[str | None, tuple | None]:
+    """Return ``(bucket, quote_id)`` for the frame currently on the panel, or ``(None, None)``.
+
+    The "repaint what is on the panel" seam (issue #275). ``action_theme``
+    learned after #190 to repaint ``state.last_quote_id`` rather than re-peek;
+    the button-C source card, its restore timer and ``action_rerender`` kept
+    peeking, and a peek is history-filtered: the quote on the panel was
+    appended to the anti-repeat ledger the moment it rendered, so the peek
+    excludes it and returns the *next-best* row. The card therefore described
+    a quote that was not on the panel, and the restore / re-render then
+    committed that other row — on the shipped corpus 26 of 32 sampled times
+    changed quote. Callers fall back to a fresh peek only when nothing has
+    been committed yet (first tick after a cold boot).
+    """
+    with state.lock:
+        return state.last_bucket, state.last_quote_id
+
+
 def _pin_key_for(quote_id) -> tuple | None:
     """Build a ``--pin-quote`` key from a peeked/committed quote identity.
 
@@ -1088,23 +1109,46 @@ def _build_button_handlers(
         with _button_render_gate(state, "button C", "card", telemetry_path=telemetry_path) as acquired:
             if not acquired:
                 return
+            # While asleep the committed identity is the quote from *before*
+            # sleep, not what the panel shows, and the restore below would
+            # paint that clock frame over the sleep frame — where it stayed
+            # until the window ended, because the loop had already taken the
+            # rising edge. Refused like skip / un-skip (issue #278's rule).
+            if _refuse_while_asleep(args, state, "card", "button C", telemetry_path):
+                return
             _log("button C: source card")
             try:
                 time_str = current_time_str()
-                quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
+                # The card describes the quote ON THE PANEL, so it pins the
+                # committed identity rather than re-peeking — a peek is
+                # history-filtered and would name the next-best row instead
+                # (issue #275). Only a cold-start panel with nothing committed
+                # yet falls back to a pick.
+                shown_bucket, quote_id = displayed_quote(state)
+                if quote_id is None:
+                    quote_id = peek_quote_id(time_str, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
+                    shown_bucket = None
                 _render_unlocked(args, state, time_str, history_path, mode="card", quote_id=quote_id)
 
                 def restore() -> None:
                     # The card needs to come down at the 5-second mark — relying on the
                     # next loop tick would leave it up for up to --interval-seconds (60s
-                    # default). Re-pick (the bucket may have moved during the 5s) and
-                    # render the normal frame ourselves via the BLOCKING _do_render so
-                    # the card is guaranteed to be taken down even if another handler
-                    # has the render lock at the 5s mark.
+                    # default). Put back exactly the frame the card replaced, under the
+                    # bucket it was committed for (so a bucket edge crossed during the
+                    # 5 s is still seen as a change by the next loop tick), via the
+                    # BLOCKING _do_render so the card is guaranteed to be taken down even
+                    # if another handler has the render lock at the 5s mark.
                     try:
                         rs_time = current_time_str()
-                        rs_quote = peek_quote_id(rs_time, history_path=history_path, history_days=args.history_days, **_corpus_kwargs(args))
-                        _do_render(args, state, rs_time, history_path, quote_id=rs_quote)
+                        # The quiet window may have opened during the 5 s the
+                        # card was up. Then the frame to put back is the sleep
+                        # frame, not the clock: enter_quiet paints it and takes
+                        # the edge, or does nothing if the loop already did.
+                        rs_quiet, rs_manual = compute_quiet(args, state, rs_time)
+                        if rs_quiet:
+                            enter_quiet(args, state, rs_time, manual_only=rs_manual)
+                            return
+                        _do_render(args, state, rs_time, history_path, bucket=shown_bucket, quote_id=quote_id)
                     except Exception as restore_exc:
                         _log(f"source card restore failed: {restore_exc!r}", err=True)
 
@@ -1181,6 +1225,11 @@ def _build_button_handlers(
                     render_quiet_frame(
                         args, state, current_time_str(), manual_only=True, reason="shutdown",
                     )
+                    # Take the quiet edge, so the loop does not start painting
+                    # the same sleep frame again in the seconds before poweroff.
+                    # A failed shutdown command un-latches manual_quiet below,
+                    # and the loop then takes the falling edge and repaints.
+                    claim_quiet_edge(state, True, telemetry_path, manual=True, bucket=current_bucket())
             except Exception as exc:
                 _log(f"shutdown pre-frame failed: {exc!r}", err=True)
             def _rollback_quiet() -> None:
@@ -1458,6 +1507,27 @@ def _record_render_failure(state: RuntimeState, telemetry_path: str | None, buck
             "skip_seconds": skip_seconds,
         },
     )
+
+
+def _invalidate_displayed_identity(state: RuntimeState) -> None:
+    """Forget what the panel was showing so the next tick repaints.
+
+    ``--startup-image`` pushes a frame over the panel *after* ``load_runtime_state``
+    has restored the ``(last_bucket, last_quote_id, last_effective_theme)``
+    triple that lets a mid-bucket restart skip the redraw. Left alone, that
+    triple still describes the quote the panel showed before the restart —
+    which is no longer what is on it — so the loop's first ticks saw nothing
+    changed and the sleep frame sat there until the next bucket edge or theme
+    flip (issue #276): with ``--startup-image`` set, a ``systemctl restart``
+    *caused* the ghost-frame problem the flag exists to avoid. Clearing the
+    bucket and quote id (the theme is left, so the theme-change branch stays
+    inert) forces the bucket-change branch on the first tick. Only called
+    after a *successful* push: a failed one left the persisted frame on the
+    panel, and the restored triple is then still accurate.
+    """
+    with state.lock:
+        state.last_bucket = None
+        state.last_quote_id = None
 
 
 def _in_backoff_skip(state: RuntimeState) -> bool:
@@ -1934,6 +2004,8 @@ def main() -> int:
             )
         except Exception as exc:
             _log(f"startup image render failed: {exc!r}", err=True)
+        else:
+            _invalidate_displayed_identity(state)
     elif args.startup_image:
         try:
             _display_quiet_image(
@@ -1942,6 +2014,8 @@ def main() -> int:
             )
         except Exception as exc:
             _log(f"startup image display failed: {exc!r}", err=True)
+        else:
+            _invalidate_displayed_identity(state)
 
     # ``state.button_handles`` holds the keepalive list for the lifetime of
     # the loop — gpiozero drops callbacks when its ``Button`` objects are
@@ -1987,11 +2061,14 @@ def main() -> int:
                     break
                 continue
 
+            expire_manual_awake(args, state, time_str)
             now_quiet, manual_only = compute_quiet(args, state, time_str)
 
             if now_quiet:
-                if not state.was_quiet:
-                    enter_quiet(args, state, time_str, manual_only=manual_only)
+                # Only a sleep frame that actually reached the panel consumes
+                # the rising edge; a failed push is retried next tick (with
+                # the usual render backoff between attempts) — issue #277.
+                if not state.was_quiet and enter_quiet(args, state, time_str, manual_only=manual_only):
                     state.was_quiet = True
                 # Interruptible sleep so SIGTERM-during-quiet-hours wakes us up
                 # within one tick instead of sitting on the full interval.
@@ -1999,15 +2076,16 @@ def main() -> int:
                     break
                 continue
 
-            if state.was_quiet:
+            # Falling edge. The claim emits the ``quiet_exit`` marker paired
+            # with the ``quiet_enter`` one, so idle_hours_health can count
+            # balanced quiet windows (and an operator can spot "we stopped
+            # rendering because we entered quiet" vs "because we wedged"). A
+            # button-D / web wake claims this edge itself after painting the
+            # clock, so the claim fails here and the loop does not clear the
+            # identity it just committed and paint the same frame again.
+            if claim_quiet_edge(state, False, telemetry_path):
                 _log("quiet hours end, resuming normal render cycle")
                 exit_quiet(state)
-                # Falling-edge marker paired with the enter_quiet emission so
-                # idle_hours_health can count balanced quiet windows (and an
-                # operator can spot "we stopped rendering because we entered
-                # quiet" vs "we stopped rendering because we wedged").
-                append_telemetry(telemetry_path, {"mode": "quiet_exit"})
-                state.was_quiet = False
 
             bucket = current_bucket()
             effective_theme = resolve_effective_theme(

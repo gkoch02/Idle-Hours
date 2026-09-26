@@ -12,7 +12,10 @@ import contextlib
 import errno
 import http.client
 import json
+import re
+import socket
 import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -2121,6 +2124,97 @@ class TestApiBake:
         assert baked[0]["display_quote"] == "PATCHED TEXT."
         assert _json_body(body)["applied_overrides"] == 1
 
+    def test_bake_writes_the_patched_rows_back_to_the_raw_corpus(self, v2_server):
+        """Issue #288: every curator read surface reads the raw corpus, so a
+        bake that patched only the baked DB left the inspector, search, the
+        history join and the coverage grid showing the pre-override text."""
+        server, _state, args = v2_server
+        rows = [{
+            "source_id": "141", "line_number": 1,
+            "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00",
+            "fuzzy_bucket": "h3_exact", "quality_score": 80,
+            "display_fragment": False, "cleanup_status": "complete_sentence",
+        }]
+        self._write_corpus(args, rows)
+        Path(args.content_overrides).write_text(json.dumps({
+            "141:1": {"display_quote": "PATCHED VIA WEB."},
+        }), encoding="utf-8")
+        status, body = _post(server, "/api/bake", None)
+        assert status == 200, _json_body(body)
+        raw = [json.loads(line) for line in Path(args.raw_corpus).read_text(encoding="utf-8").splitlines() if line]
+        assert raw[0]["display_quote"] == "PATCHED VIA WEB."
+        assert raw[0]["override_applied"] is True
+        # …and the bucket inspector, which reads the raw corpus, now agrees with the panel.
+        status, body = _get(server, "/api/bucket/h3_exact?time=03:00&top=5")
+        assert status == 200, body
+        quotes = [c["row"]["display_quote"] for c in _json_body(body)["candidates"]]
+        assert quotes == ["PATCHED VIA WEB."]
+
+    def test_deleting_an_override_and_baking_again_restores_the_row(self, v2_server):
+        """The bake writes overrides into the raw corpus, so without a record
+        of what they replaced "delete the entry, bake again" changed nothing
+        and the edit was permanent."""
+        server, _state, args = v2_server
+        original = {
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }
+        self._write_corpus(args, [original])
+        sidecar = Path(args.content_overrides)
+        sidecar.write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        assert _post(server, "/api/bake", None)[0] == 200
+        sidecar.write_text("{}", encoding="utf-8")
+        status, body = _post(server, "/api/bake", None)
+        assert status == 200, _json_body(body)
+        assert _json_body(body)["reverted_overrides"] == 1
+        raw = [json.loads(line) for line in Path(args.raw_corpus).read_text(encoding="utf-8").splitlines() if line]
+        assert raw == [original]
+        baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
+        assert baked[0]["display_quote"] == "ORIGINAL TEXT."
+
+    def test_baked_rows_do_not_carry_the_originals_ledger(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [{
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }])
+        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        assert _post(server, "/api/bake", None)[0] == 200
+        baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
+        assert "override_originals" not in baked[0]
+        assert baked[0]["override_applied"] is True
+
+    def test_a_repeat_bake_does_not_rewrite_the_raw_corpus(self, v2_server):
+        server, _state, args = v2_server
+        self._write_corpus(args, [{
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }])
+        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        assert _post(server, "/api/bake", None)[0] == 200
+        before = Path(args.raw_corpus).stat()
+        assert _post(server, "/api/bake", None)[0] == 200
+        after = Path(args.raw_corpus).stat()
+        assert (before.st_mtime_ns, before.st_ino) == (after.st_mtime_ns, after.st_ino)
+
+    def test_bake_leaves_the_raw_corpus_alone_when_the_sidecar_is_empty(self, v2_server):
+        server, _state, args = v2_server
+        rows = [{
+            "source_id": "141", "line_number": 1, "display_quote": "ORIGINAL TEXT.",
+            "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+            "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
+        }]
+        self._write_corpus(args, rows)
+        before = Path(args.raw_corpus).stat()
+        status, _body = _post(server, "/api/bake", None)
+        assert status == 200
+        after = Path(args.raw_corpus).stat()
+        assert (before.st_mtime_ns, before.st_ino) == (after.st_mtime_ns, after.st_ino)
+
     def test_bake_returns_409_when_render_in_flight(self, v2_server):
         server, state, _args = v2_server
         # Hold the lock to simulate an in-flight render.
@@ -3394,3 +3488,323 @@ class TestCsrfDefences:
         rejects = [e for e in entries if e.get("mode") == "web_error" and e.get("status") == 403]
         assert rejects, f"no web_error 403 marker in {entries}"
         assert rejects[-1]["path"] == "/api/action/skip"
+
+
+# ============================================================================
+# Browser-hardening headers (issue #284)
+# ============================================================================
+
+
+class TestSecurityHeaders:
+    """Every response carries the anti-framing / nosniff / CSP headers.
+
+    On the documented tokenless loopback bind a page the operator visits
+    could ``<iframe>`` the UI and steer clicks onto "Ban", "Bake now" or the
+    quiet toggle — same-origin requests that every #233 layer passes by
+    construction. Refusing to be framed is the only defence, so it has to be
+    on the static shell *and* on every JSON / PNG / metrics body.
+    """
+
+    EXPECTED = dict(web_server.SECURITY_HEADERS)
+
+    def _headers(self, server, path: str) -> dict:
+        conn = _client(server)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        resp.read()
+        headers = {k.lower(): v for k, v in resp.getheaders()}
+        conn.close()
+        return headers
+
+    @pytest.mark.parametrize("path", ["/", "/main.js", "/style.css", "/api/current", "/api/themes",
+                                      "/metrics", "/nope", "/current.png"])
+    def test_every_route_sends_the_hardening_headers(self, live_server, path):
+        server, _state, _args = live_server
+        headers = self._headers(server, path)
+        for name, value in self.EXPECTED.items():
+            assert headers.get(name.lower()) == value, f"{path}: missing {name}"
+
+    def test_frame_ancestors_and_x_frame_options_agree(self):
+        assert self.EXPECTED["X-Frame-Options"] == "DENY"
+        assert "frame-ancestors 'none'" in self.EXPECTED["Content-Security-Policy"]
+        assert self.EXPECTED["X-Content-Type-Options"] == "nosniff"
+
+    def test_csp_allows_the_shell_and_blob_images_only(self):
+        """The shell loads nothing external; token-gated images arrive as blob URLs."""
+        csp = self.EXPECTED["Content-Security-Policy"]
+        directives = {d.split()[0]: d.split()[1:] for d in csp.split(";") if d.strip()}
+        assert directives["default-src"] == ["'self'"]
+        assert directives["img-src"] == ["'self'", "blob:"]
+        assert "'unsafe-inline'" not in csp and "'unsafe-eval'" not in csp
+
+    def test_error_responses_carry_the_headers_too(self, tmp_path):
+        server, thread, _state, _args = _start(tmp_path, token="secret")
+        try:
+            headers = self._headers(server, "/api/current")   # 401 — no token
+            for name, value in self.EXPECTED.items():
+                assert headers.get(name.lower()) == value
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_server_header_omits_the_python_version(self, live_server):
+        server, _state, _args = live_server
+        headers = self._headers(server, "/api/current")
+        assert "python" not in headers["server"].lower()
+        assert headers["server"].startswith("IdleHoursCurator/")
+
+
+# ============================================================================
+# Connection hygiene (issue #285)
+# ============================================================================
+
+
+def _half_open(server) -> socket.socket:
+    """Open a connection and send a partial request line, never finishing it."""
+    host, port = server.server_address[:2]
+    sock = socket.create_connection((host, port), timeout=5)
+    sock.sendall(b"GET /api/cur")
+    return sock
+
+
+class TestConnectionHygiene:
+    def test_handler_has_a_socket_timeout(self):
+        assert web_server.CuratorHandler.timeout == 30
+        assert web_server._IdleHoursHTTPServer.max_connections >= 8
+
+    def test_half_open_connection_is_closed_after_the_timeout(self, tmp_path, monkeypatch):
+        """A partial request line no longer pins a handler thread for ever."""
+        monkeypatch.setattr(web_server.CuratorHandler, "timeout", 0.3)
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            sock = _half_open(server)
+            try:
+                # The server hangs up once the read times out: recv returns EOF
+                # (or the peer resets) instead of blocking on our unfinished line.
+                try:
+                    assert sock.recv(64) == b""
+                except ConnectionError:
+                    pass
+            finally:
+                sock.close()
+            # A fresh, well-formed request still works afterwards.
+            status, _ = _get(server, "/api/current")
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_a_trickling_client_is_cut_off_at_the_deadline(self, tmp_path, monkeypatch):
+        """The socket timeout restarts on every byte, so a client sending one
+        byte at a time never times out. The total deadline still ends it."""
+        monkeypatch.setattr(web_server.CuratorHandler, "timeout", 30)
+        monkeypatch.setattr(web_server._IdleHoursHTTPServer, "connection_deadline", 0.5)
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            sock = socket.create_connection(server.server_address[:2], timeout=5)
+            started = time.monotonic()
+            cut = False
+            try:
+                for byte in b"GET /api/current HTTP/1.1\r\nX-Pad: " + b"a" * 200:
+                    sock.sendall(bytes([byte]))
+                    time.sleep(0.05)
+                    if time.monotonic() - started > 5:
+                        break
+            except OSError:
+                cut = True
+            if not cut:
+                try:
+                    cut = sock.recv(64) == b""
+                except ConnectionError:
+                    cut = True
+            sock.close()
+            assert cut
+            assert time.monotonic() - started < 5
+            assert server.expired_connections >= 1
+            # The slot came back: a normal request is served.
+            status, _ = _get(server, "/api/current")
+            assert status == 200
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_a_normal_request_does_not_trip_the_deadline(self, tmp_path):
+        server, thread, _state, _args = _start(tmp_path)
+        try:
+            status, _ = _get(server, "/api/current")
+            assert status == 200
+            assert server.expired_connections == 0
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_connections_beyond_the_cap_are_dropped_not_queued(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(web_server._IdleHoursHTTPServer, "max_connections", 2)
+        # Keep the slots pinned for the whole test: the half-open sockets must
+        # outlive it rather than be reaped by the timeout mid-assertion.
+        monkeypatch.setattr(web_server.CuratorHandler, "timeout", 30)
+        server, thread, _state, _args = _start(tmp_path)
+        held: list = []
+        try:
+            held = [_half_open(server) for _ in range(2)]
+            time.sleep(0.2)   # let both handler threads take their slots
+            extra = _half_open(server)
+            try:
+                extra.settimeout(5)
+                # Third connection: closed unread. EOF or a reset, never a hang.
+                try:
+                    assert extra.recv(64) == b""
+                except ConnectionError:
+                    pass
+            finally:
+                extra.close()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and server.dropped_connections < 1:
+                time.sleep(0.05)
+            assert server.dropped_connections >= 1
+            # Releasing a slot lets the next real request through.
+            held.pop().close()
+            deadline = time.monotonic() + 5
+            status = None
+            while time.monotonic() < deadline:
+                try:
+                    status, _ = _get(server, "/api/current")
+                    if status == 200:
+                        break
+                except (ConnectionError, http.client.HTTPException, OSError):
+                    pass
+                time.sleep(0.05)
+            assert status == 200
+        finally:
+            for sock in held:
+                sock.close()
+            run_clock.stop_web_server((server, thread))
+
+
+# ============================================================================
+# Image routes are token-gated; preview mode is validated (issue #286)
+# ============================================================================
+
+
+class TestImageRoutesGated:
+    """``/current.png`` and ``/api/preview`` were exempt from the token because
+    an ``<img src>`` cannot attach a header. On a LAN bind that let anyone
+    read the picker's pick for every minute in every theme, one full render
+    per distinct query. ``main.js`` now fetches both with the header."""
+
+    FAKE_ROW = {
+        "display_quote": "It was three o'clock in the afternoon, exactly.", "matched_text": "three o'clock",
+        "author": "Jane Austen", "title": "Emma", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
+        "source_id": "141", "line_number": 42,
+    }
+
+    def test_the_shell_loads_nothing_gated_before_main_js_runs(self):
+        """The HTML parser fetches every src / href in the shell without the
+        token header, before main.js can swap in an authorised blob. A gated
+        route there 401s on every page load and writes a ``web_auth_fail``
+        entry, so the shell may only reference the ungated static routes."""
+        html = (Path(web_server.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+        html = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+        refs = re.findall(r'\b(?:src|href)="(/[^"]*)"', html)
+        gated = [r for r in refs if r.split("?")[0] not in web_server.UNGATED_GET_PATHS]
+        assert gated == [], gated
+
+    def _token_server(self, tmp_path):
+        args = _make_args_v2(tmp_path, web_bind="0.0.0.0:0")
+        return _start_v2(tmp_path, token="secret", args=args)
+
+    @pytest.mark.parametrize("path", ["/current.png", "/api/preview?theme=default&time=03:00"])
+    def test_without_a_token_the_image_routes_401(self, tmp_path, path):
+        server, thread, _state, _args = self._token_server(tmp_path)
+        try:
+            status, body = _get(server, path)
+            assert status == 401, body
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_with_the_token_the_preview_renders(self, tmp_path):
+        server, thread, _state, _args = self._token_server(tmp_path)
+        try:
+            with patch("idle_hours.pick_quote.select_quote", return_value=self.FAKE_ROW):
+                status, body = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240",
+                                    headers={"X-Idle-Hours-Token": "secret"})
+            assert status == 200
+            assert body.startswith(b"\x89PNG")
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_with_the_token_current_png_streams(self, tmp_path):
+        server, thread, _state, args = self._token_server(tmp_path)
+        try:
+            Path(args.output).write_bytes(b"\x89PNG-fake")
+            status, body = _get(server, "/current.png", headers={"X-Idle-Hours-Token": "secret"})
+            assert status == 200 and body == b"\x89PNG-fake"
+        finally:
+            run_clock.stop_web_server((server, thread))
+
+    def test_only_the_static_shell_stays_ungated(self):
+        assert web_server.UNGATED_GET_PATHS == frozenset({"/", "/main.js", "/style.css"})
+
+
+class TestPreviewModeValidation:
+    @pytest.mark.parametrize("mode", ["xyz", "card", "goodnight", "PRODUCTION"])
+    def test_unknown_mode_is_a_400_before_any_render(self, v2_server, mode):
+        server, _state, _args = v2_server
+        with patch("idle_hours.render_quote.render") as mock_render, \
+             patch("idle_hours.pick_quote.select_quote", return_value=TestImageRoutesGated.FAKE_ROW):
+            status, body = _get(server, f"/api/preview?theme=default&time=03:00&mode={mode}")
+        assert status == 400, body
+        assert "mode" in _json_body(body)["error"]
+        assert not mock_render.called
+
+    @pytest.mark.parametrize("mode", ["production", "debug"])
+    def test_the_two_panel_modes_render(self, v2_server, mode):
+        server, _state, _args = v2_server
+        with patch("idle_hours.pick_quote.select_quote", return_value=TestImageRoutesGated.FAKE_ROW):
+            status, body = _get(server, f"/api/preview?theme=default&time=03:00&mode={mode}&width=400&height=240")
+        assert status == 200, body
+        assert body.startswith(b"\x89PNG")
+
+
+# ============================================================================
+# Coverage counts what the panel can display (issue #300)
+# ============================================================================
+
+
+class TestDisplayableCoverageOverTheWire:
+    def _corpus(self, tmp_path, server):
+        corpus = tmp_path / "relocated-corpus.jsonl"
+        rows = [
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=1, quality_score=90, display_quote="Distinct quote number 1."),
+            make_row(fuzzy_bucket="h3_exact", normalized_time="03:00", source_id="1", line_number=2, quality_score=90, display_quote="Distinct quote number 2."),
+            make_row(fuzzy_bucket="h3_ten_to", normalized_time="03:50", source_id="7", line_number=3, quality_score=55, display_quote="Distinct quote number 3."),
+            make_row(fuzzy_bucket="h9_half_past", normalized_time="09:30", source_id="2", line_number=4, quality_score=90, display_quote="Distinct quote number 4."),
+        ]
+        corpus.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        server.context.raw_corpus_path = corpus
+        pick_quote.clear_corpus_cache()
+
+    def test_quality_floor_and_live_bans_shape_the_grid(self, tmp_path, live_server):
+        server, _state, args = live_server
+        self._corpus(tmp_path, server)
+        overrides = Path(args.overrides)
+        overrides.write_text(json.dumps({
+            "ban_source_ids": ["2"], "boost_source_ids": [], "preferred_buckets": {}, "ban_quote_keys": ["1:2"],
+        }), encoding="utf-8")
+        status, body = _get(server, "/api/coverage")
+        assert status == 200
+        data = _json_body(body)
+        assert data["bucket_counts"]["h3_exact"] == 1          # one row banned by key
+        assert data["bucket_counts"]["h3_ten_to"] == 0         # its only row is below the floor
+        assert data["bucket_counts"]["h9_half_past"] == 0      # banned source
+        assert data["raw_bucket_counts"]["h3_exact"] == 2
+        assert data["raw_bucket_counts"]["h3_ten_to"] == 1
+        assert "h3_ten_to" in data["empty_buckets"]
+        assert data["total_rows"] == 4 and data["displayable_rows"] == 1
+
+    def test_gaps_tiers_empty_thin_and_sparse(self, tmp_path, live_server):
+        server, _state, _args = live_server
+        self._corpus(tmp_path, server)
+        status, body = _get(server, "/api/gaps?threshold=3")
+        assert status == 200
+        tiers = {g["bucket"]: g["tier"] for g in _json_body(body)["buckets"]}
+        assert tiers["h3_ten_to"] == "empty"       # only row is below the floor → a real gap
+        assert tiers["h3_exact"] == "thin"          # 2 rows
+        assert tiers["h9_half_past"] == "thin"
+        assert set(tiers.values()) <= {"empty", "thin", "sparse"}

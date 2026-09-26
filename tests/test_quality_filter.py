@@ -133,17 +133,44 @@ class TestUppercasePenalty:
 # ---------------------------------------------------------------------------
 
 class TestBadPatterns:
-    def test_work_pattern_deducts_45(self):
-        text = "She would work until three o'clock every day."
-        s, flags = score(text)
-        assert "contains_work_schedule" in flags
-        assert s <= 55
+    def test_work_schedule_pattern_deducts_45(self):
+        for text in (
+            "Our working hours ran from nine until three o'clock every day.",
+            "She took the night work shift and left at three o'clock every day.",
+            "He worked nine to five and was home by six o'clock every evening.",
+        ):
+            s, flags = score(text)
+            assert "contains_work_schedule" in flags, text
+            assert s <= 55
+
+    def test_the_verb_work_is_not_a_schedule(self):
+        """Issue #296: ``\\bwork\\b`` flagged 70 corpus rows, none a schedule."""
+        for text in (
+            "The fearful work went on until nearly dawn, and nobody spoke a word.",
+            "She would work until three o'clock every day, then walk home slowly.",
+            "His custom was to work from four o'clock in the morning until dusk.",
+        ):
+            _s, flags = score(text)
+            assert "contains_work_schedule" not in flags, text
 
     def test_am_pm_deducts_45(self):
-        # \bpm\b requires a space before pm; "3pm" has no word boundary between digit and p
-        text = "She departed at three pm after the long meeting ended at last."
-        s, flags = score(text)
-        assert "contains_modern_am_pm" in flags
+        for text in (
+            "She departed at 3 pm after the long meeting ended at last, exhausted.",
+            "The train left at 10:30 a.m. and did not stop until it reached the coast.",
+            "We shall meet at 7 AM sharp tomorrow, and you had better not be late.",
+            "The office opens at nine a.m. on weekdays and closes at five p.m. daily.",
+        ):
+            s, flags = score(text)
+            assert "contains_modern_am_pm" in flags, text
+
+    def test_the_verb_am_is_not_a_clock_suffix(self):
+        """Issue #296: every am/pm flag in the shipped corpus was "I am"."""
+        for text in (
+            "I am sure it was nearly ten o'clock when the letter arrived at the house.",
+            "Here I am at last, she said, as the clock struck three in the hall.",
+        ):
+            _s, flags = score(text)
+            assert "contains_modern_am_pm" not in flags, text
 
     def test_time_range_deducts_55(self):
         text = "Office hours are 9:00-5:00 on weekdays."
@@ -151,9 +178,22 @@ class TestBadPatterns:
         assert "contains_time_range" in flags
 
     def test_structural_label_deducts_35(self):
-        text = "Chapter three begins at this point."
-        s, flags = score(text)
-        assert "contains_structural_label" in flags
+        for text in (
+            "Chapter III begins at this point of the story, near three o'clock.",
+            "BOOK 2 opens at this point of the story, near three o'clock at night.",
+            "ACT THE SECOND. It was three o'clock when the curtain rose again.",
+        ):
+            s, flags = score(text)
+            assert "contains_structural_label" in flags, text
+
+    def test_prose_book_act_scene_are_not_headings(self):
+        for text in (
+            "The book I was reading fell shut at three o'clock, and I slept at once.",
+            "It was the last act of the play, and the clock had just struck three.",
+            "The scene before them at three o'clock was one of perfect stillness.",
+        ):
+            _s, flags = score(text)
+            assert "contains_structural_label" not in flags, text
 
     def test_metadata_deducts_55(self):
         text = "This ebook is provided by Project Gutenberg for free."
@@ -187,8 +227,17 @@ class TestWeakEnding:
 # ---------------------------------------------------------------------------
 
 class TestScoreFloor:
+    def test_unbalanced_quotes_deducts_15(self):
+        tail = ' he said, looking down at his watch with a frown and shaking his head slowly.'
+        s, flags = score('It is five o\'clock,"' + tail)
+        assert "unbalanced_quotes" in flags
+        assert s == 85
+        s, flags = score('"It is five o\'clock,"' + tail)
+        assert "unbalanced_quotes" not in flags
+        assert s == 100
+
     def test_score_never_below_zero(self):
-        text = "work chapter ebook 1:00-2:00 am pm"
+        text = "working hours CHAPTER ebook 1:00-2:00 3 am 4 pm"
         s, _ = score(text, fragment=True, status="empty")
         assert s == 0
 

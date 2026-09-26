@@ -190,8 +190,22 @@ def load_entries(path: Path, since: dt.datetime) -> list[dict]:
                     continue
                 try:
                     entry = json.loads(line)
-                    ts = dt.datetime.fromisoformat(entry["ts"])
-                except (ValueError, KeyError, json.JSONDecodeError):
+                except json.JSONDecodeError:
+                    continue
+                # A well-formed JSON line is not necessarily a telemetry
+                # entry: ``[1, 2]``, ``"str"``, ``42`` and ``null`` all parse,
+                # and ``{"ts": 123}`` parses to a dict whose ``ts`` is not a
+                # string. Every one of those raised out of ``entry["ts"]`` or
+                # ``fromisoformat`` past the old ``except`` (issue #287) and
+                # took the health CLI and ``/api/telemetry`` down with it.
+                if not isinstance(entry, dict):
+                    continue
+                raw_ts = entry.get("ts")
+                if not isinstance(raw_ts, str):
+                    continue
+                try:
+                    ts = dt.datetime.fromisoformat(raw_ts)
+                except (ValueError, TypeError):
                     continue
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=dt.timezone.utc)
