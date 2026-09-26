@@ -243,7 +243,12 @@ def post_event(
     # Concurrency cap: drop the event if too many posts are already in
     # flight. Better to lose one alert than to grow an unbounded thread
     # pile against a wedged endpoint.
-    if not _inflight_semaphore.acquire(blocking=False):
+    # Bind the semaphore once so the worker releases the permit it actually
+    # acquired, even if the module global is swapped while it runs (the test
+    # suite resets it between cases; a straggler releasing the *new* one
+    # raised "Semaphore released too many times").
+    semaphore = _inflight_semaphore
+    if not semaphore.acquire(blocking=False):
         _log(
             f"webhook: at concurrency cap ({_WEBHOOK_MAX_INFLIGHT} in flight); "
             f"dropping event {entry.get('mode') or entry.get('type') or 'unknown'!r}",
@@ -262,7 +267,7 @@ def post_event(
             # the regression is visible.
             _log(f"webhook: worker thread raised: {exc!r}", err=True)
         finally:
-            _inflight_semaphore.release()
+            semaphore.release()
 
     threading.Thread(
         target=_run_and_release,
