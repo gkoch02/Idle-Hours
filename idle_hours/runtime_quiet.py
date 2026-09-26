@@ -280,6 +280,42 @@ def render_quiet_frame(
         )
 
 
+def claim_quiet_edge(
+    state: RuntimeState,
+    quiet: bool,
+    telemetry_path: str | None,
+    *,
+    manual: bool = False,
+    bucket: str | None = None,
+) -> bool:
+    """Record that the panel now shows ``quiet`` (sleep frame or clock), once.
+
+    ``state.was_quiet`` is the edge detector: the main loop paints the sleep
+    frame on the tick it flips False → True and repaints the clock on the
+    tick it flips back. A button-D / web toggle paints the new frame itself,
+    and when it left ``was_quiet`` alone the loop saw an untaken edge on its
+    next tick and painted the *same* frame a second time — a wasted 10–20 s
+    Spectra 6 refresh on every manual sleep or wake. Whoever paints the frame
+    therefore claims the edge, under ``state.lock`` so the loop thread and a
+    handler thread cannot both take it, and the claim emits the matching
+    ``quiet_enter`` / ``quiet_exit`` marker exactly once per edge. Returns
+    whether this call moved the flag.
+    """
+    from idle_hours import run_clock  # lazy: see render_quiet_frame.
+    with state.lock:
+        if state.was_quiet == quiet:
+            return False
+        state.was_quiet = quiet
+    if quiet:
+        entry = {"mode": "quiet_enter", "manual": manual}
+        if bucket is not None:
+            entry["bucket"] = bucket
+    else:
+        entry = {"mode": "quiet_exit"}
+    run_clock.append_telemetry(telemetry_path, entry)
+    return True
+
+
 def enter_quiet(
     args: argparse.Namespace,
     state: RuntimeState,
@@ -287,20 +323,27 @@ def enter_quiet(
     *,
     manual_only: bool = False,
 ) -> bool:
-    """Emit the rising-edge marker and push the sleep frame to the panel.
+    """Push the sleep frame to the panel and claim the rising edge.
 
     Wraps :func:`render_quiet_frame` in ``state.render_lock`` so a racing
     button / web handler can't interleave their own render. A display failure
     is logged, traced, and recorded to the telemetry sidecar as ``mode="quiet"``
-    but never propagated; instead the return value says whether the frame
-    reached the panel, and the main loop only marks the rising edge consumed
-    (``state.was_quiet = True``) on success, so the next tick retries.
+    but never propagated; instead the return value says whether the sleep
+    frame is on the panel, and the edge is only claimed
+    (:func:`claim_quiet_edge`) on success, so the next tick retries.
     Before that (issue #277) the loop set the flag unconditionally, and one
     transient failure at 22:00 — a display I/O hiccup, a render timeout —
     left the previous quote, with its stale time, on the panel all night.
     Repeated failures go through ``run_clock._record_render_failure`` so a
     hard fault backs off exactly as a failed clock render does rather than
     retrying every tick; a success resets that counter like any render.
+
+    The ``quiet_enter`` marker is emitted by the claim, i.e. once per edge
+    that actually reached the panel — emitting it before the attempt wrote a
+    fresh marker on every retry of a failing entry, which left the enter /
+    exit counts unbalanced. If another thread painted the sleep frame and
+    claimed the edge while this call waited for the render lock, the frame is
+    not painted a second time.
 
     ``time_str`` is *when we entered quiet* and is what the ``quiet_enter``
     marker records; the frame's own time is decided inside
@@ -312,15 +355,13 @@ def enter_quiet(
     # only patch current_time_str don't also have to patch the wall clock.
     quiet_bucket = bucket_for_time(time_str)
     trigger = "manual" if manual_only else f"{args.quiet_start}–{args.quiet_end}"
-    _log(f"quiet hours start ({trigger})")
-    # Structured rising-edge marker so idle_hours_health can tell
-    # "silent window because quiet" apart from "silent window because wedged";
-    # the falling-edge marker is emitted by the main loop after exit_quiet.
-    run_clock.append_telemetry(
-        telemetry_path, {"mode": "quiet_enter", "manual": manual_only, "bucket": quiet_bucket},
-    )
     try:
         with state.render_lock:
+            with state.lock:
+                already_asleep = state.was_quiet
+            if already_asleep:
+                return True
+            _log(f"quiet hours start ({trigger})")
             render_quiet_frame(args, state, time_str, manual_only=manual_only)
     except Exception as exc:
         _log(f"quiet-hours display failed: {exc!r}", err=True)
@@ -333,6 +374,9 @@ def enter_quiet(
     with state.lock:
         state.consecutive_render_failures = 0
         state.backoff_skip_until = 0.0
+    # Structured rising-edge marker so idle_hours_health can tell
+    # "silent window because quiet" apart from "silent window because wedged".
+    claim_quiet_edge(state, True, telemetry_path, manual=manual_only, bucket=quiet_bucket)
     return True
 
 

@@ -30,6 +30,7 @@ from idle_hours.runtime_actions import (  # noqa: F401  re-exported for web_serv
 from idle_hours.runtime_log import _log  # noqa: F401  re-exported
 from idle_hours.runtime_quiet import (  # noqa: F401  in_quiet_hours + _display_quiet_image re-exported
     _display_quiet_image,
+    claim_quiet_edge,
     compute_quiet,
     enter_quiet,
     exit_quiet,
@@ -1208,6 +1209,11 @@ def _build_button_handlers(
                     render_quiet_frame(
                         args, state, current_time_str(), manual_only=True, reason="shutdown",
                     )
+                    # Take the quiet edge, so the loop does not start painting
+                    # the same sleep frame again in the seconds before poweroff.
+                    # A failed shutdown command un-latches manual_quiet below,
+                    # and the loop then takes the falling edge and repaints.
+                    claim_quiet_edge(state, True, telemetry_path, manual=True, bucket=current_bucket())
             except Exception as exc:
                 _log(f"shutdown pre-frame failed: {exc!r}", err=True)
             def _rollback_quiet() -> None:
@@ -2054,15 +2060,16 @@ def main() -> int:
                     break
                 continue
 
-            if state.was_quiet:
+            # Falling edge. The claim emits the ``quiet_exit`` marker paired
+            # with the ``quiet_enter`` one, so idle_hours_health can count
+            # balanced quiet windows (and an operator can spot "we stopped
+            # rendering because we entered quiet" vs "because we wedged"). A
+            # button-D / web wake claims this edge itself after painting the
+            # clock, so the claim fails here and the loop does not clear the
+            # identity it just committed and paint the same frame again.
+            if claim_quiet_edge(state, False, telemetry_path):
                 _log("quiet hours end, resuming normal render cycle")
                 exit_quiet(state)
-                # Falling-edge marker paired with the enter_quiet emission so
-                # idle_hours_health can count balanced quiet windows (and an
-                # operator can spot "we stopped rendering because we entered
-                # quiet" vs "we stopped rendering because we wedged").
-                append_telemetry(telemetry_path, {"mode": "quiet_exit"})
-                state.was_quiet = False
 
             bucket = current_bucket()
             effective_theme = resolve_effective_theme(

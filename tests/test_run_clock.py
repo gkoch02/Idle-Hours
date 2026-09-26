@@ -5978,10 +5978,12 @@ class TestUnknownStateKeysRoundTrip:
 
 
 def _drive_main(tmp_path, argv_extra: list[str], time_seq: list[str], *, state_json: dict | None = None,
-                render_side=None) -> list[dict]:
+                render_side=None, on_sleep=None) -> list[dict]:
     """Run ``run_clock.main()`` through ``len(time_seq)`` ticks with patched I/O.
 
     ``render_side(args, kwargs)`` returning True makes that render raise.
+    ``on_sleep(state, time_str)`` runs between ticks — the place a test
+    presses a button while the loop is waiting.
     Returns one dict per ``render_now`` call (attempted, including failures).
     The fake pick carries the requested time as its ``matched_text`` so every
     bucket change is a *different* quote and the "quote unchanged" dedup
@@ -6003,6 +6005,8 @@ def _drive_main(tmp_path, argv_extra: list[str], time_seq: list[str], *, state_j
     cur = {"t": time_seq[0]}
 
     def sleep(_state, _sec):
+        if on_sleep is not None:
+            on_sleep(_state, cur["t"])
         try:
             cur["t"] = next(times)
         except StopIteration:
@@ -6024,6 +6028,72 @@ def _drive_main(tmp_path, argv_extra: list[str], time_seq: list[str], *, state_j
         with pytest.raises(KeyboardInterrupt):
             run_clock.main()
     return renders
+
+
+class TestQuietEdgeClaimedOnce:
+    """A button-D / web toggle paints the new frame *and* takes the quiet edge.
+
+    Left to the main loop, the next tick saw an untaken edge and painted the
+    same sleep frame, or the same quote, a second time — a wasted 10–20 s
+    Spectra 6 refresh on every manual toggle.
+    """
+
+    @staticmethod
+    def _press_at(presses: set[str]):
+        from idle_hours.runtime_actions import action_quiet
+
+        def on_sleep(state, time_str):
+            if time_str in presses:
+                assert action_quiet(run_clock.parse_args(), state, label="button D")["ok"]
+        return on_sleep
+
+    def test_manual_sleep_and_wake_paint_once_each(self, tmp_path):
+        renders = _drive_main(tmp_path, [], ["12:00", "12:01", "12:02"],
+                              on_sleep=self._press_at({"12:00", "12:01"}))
+        assert [r["mode"] for r in renders] == ["debug", "goodnight", "debug"]
+
+    def test_mid_window_wake_is_not_painted_twice(self, tmp_path):
+        renders = _drive_main(tmp_path, [], ["22:00", "22:01", "22:02"],
+                              on_sleep=self._press_at({"22:00"}))
+        assert [r["mode"] for r in renders] == ["goodnight", "debug"]
+
+    def test_markers_stay_balanced(self, tmp_path):
+        telemetry = tmp_path / "telemetry.jsonl"
+        _drive_main(tmp_path, ["--telemetry-path", str(telemetry)], ["12:00", "12:01", "12:02"],
+                    on_sleep=self._press_at({"12:00", "12:01"}))
+        entries = [
+            json.loads(line)
+            for path in tmp_path.glob("telemetry-*.jsonl")
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+        modes = [e.get("mode") for e in entries if e.get("mode") in ("quiet_enter", "quiet_exit")]
+        assert modes == ["quiet_enter", "quiet_exit"]
+        assert [e for e in entries if e.get("mode") == "quiet_enter"][0]["manual"] is True
+
+    def test_enter_quiet_does_not_repaint_a_claimed_edge(self, tmp_path):
+        from idle_hours import runtime_quiet
+        state = run_clock.RuntimeState("default")
+        state.was_quiet = True
+        with patch("idle_hours.run_clock.render_now") as render:
+            assert runtime_quiet.enter_quiet(_quiet_args(tmp_path), state, "22:00") is True
+        render.assert_not_called()
+
+    def test_a_failing_entry_emits_no_marker(self, tmp_path):
+        """The marker is emitted on the claim, so a failing entry retried every
+        tick no longer writes a ``quiet_enter`` per attempt."""
+        telemetry = tmp_path / "telemetry.jsonl"
+
+        def always(a, kw):
+            return a[5] == "goodnight"
+
+        _drive_main(tmp_path, ["--telemetry-path", str(telemetry)], ["22:00", "22:01"], render_side=always)
+        entries = [
+            json.loads(line)
+            for path in tmp_path.glob("telemetry-*.jsonl")
+            for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+        assert not [e for e in entries if e.get("mode") == "quiet_enter"]
+        assert [e for e in entries if e.get("mode") == "quiet"]
 
 
 class TestStartupImageInvalidatesIdentity:
@@ -6115,9 +6185,13 @@ class TestQuietEntryRetry:
             assert runtime_quiet.enter_quiet(args, state, "22:00") is True
         assert state.consecutive_render_failures == 0
         assert state.backoff_skip_until == 0.0
+        # A successful entry claims the edge; clear it to try a failing one.
+        assert state.was_quiet is True
+        state.was_quiet = False
         with patch("idle_hours.run_clock.render_now", side_effect=RuntimeError("x")), \
              patch("idle_hours.run_clock.append_telemetry"):
             assert runtime_quiet.enter_quiet(args, state, "22:00") is False
+        assert state.was_quiet is False
         assert state.consecutive_render_failures == 1
 
 

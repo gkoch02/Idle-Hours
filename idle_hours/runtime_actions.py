@@ -33,7 +33,13 @@ import argparse
 import contextlib
 
 from idle_hours.runtime_log import _log
-from idle_hours.runtime_quiet import compute_quiet, exit_quiet, render_quiet_frame, scheduled_quiet
+from idle_hours.runtime_quiet import (
+    claim_quiet_edge,
+    compute_quiet,
+    exit_quiet,
+    render_quiet_frame,
+    scheduled_quiet,
+)
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme, resolve_quiet_theme
 from idle_hours.theme_names import theme_cycle as _theme_cycle
@@ -416,13 +422,12 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 state.manual_awake = False
                 state.manual_quiet = not scheduled
             quiet_now = not asleep_now
+            flags = f"manual_quiet={state.manual_quiet}, manual_awake={state.manual_awake}"
         # Shared with the main loop's scheduled-exit path: clear render-dedup
-        # state so the next tick repaints in whichever direction we flipped.
+        # state before painting. The frame painted below commits its own
+        # identity (a wake) or is a sleep frame the loop ignores while asleep.
         exit_quiet(state)
-        _log(
-            f"{label}: {'sleep' if quiet_now else 'wake'} "
-            f"(manual_quiet={state.manual_quiet}, manual_awake={state.manual_awake})"
-        )
+        _log(f"{label}: {'sleep' if quiet_now else 'wake'} ({flags})")
         try:
             if quiet_now:
                 # Shared three-way --quiet-image dispatch. Calling
@@ -446,6 +451,15 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
             _log(f"{label} quiet toggle failed: {exc!r} (rolled back to {previous!r})", err=True)
             _emit_action(telemetry_path, "quiet", label, ok=False, error=repr(exc))
             return {"ok": False, "error": repr(exc), "rolled_back": True}
+        # This action painted the frame, so it takes the quiet edge too. Left
+        # to the main loop, the next tick saw an untaken edge and painted the
+        # same sleep frame (or the same quote) a second time — a wasted
+        # 10–20 s refresh on every toggle. The claim also emits the
+        # ``quiet_enter`` / ``quiet_exit`` marker the loop used to.
+        from idle_hours.buckets import bucket_for_time
+        claim_quiet_edge(
+            state, quiet_now, telemetry_path, manual=not scheduled, bucket=bucket_for_time(time_str),
+        )
         # Display/render succeeded; persist best-effort (see docstring).
         try:
             with state.lock:
