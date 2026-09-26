@@ -89,6 +89,15 @@ class TestStripUnderscoreEmphasis:
     def test_keeps_blank_runs(self):
         assert rq.strip_underscore_emphasis("Mr. ____ called.") == "Mr. ____ called."
 
+    def test_lone_marker_between_spaces_leaves_one_space(self):
+        assert rq.strip_underscore_emphasis("x _ y") == "x y"
+        assert rq.strip_underscore_emphasis("_ It was ten.") == "It was ten."
+
+    def test_preserves_dunder_and_snake_identifiers(self):
+        assert rq.strip_underscore_emphasis("call __init__ now") == "call __init__ now"
+        assert rq.strip_underscore_emphasis("__init__") == "__init__"
+        assert rq.strip_underscore_emphasis("a snake_case name") == "a snake_case name"
+
 
 # ---------------------------------------------------------------------------
 # normalize_dashes

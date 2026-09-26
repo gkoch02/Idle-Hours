@@ -105,14 +105,14 @@ TIME_PATTERNS = [
     (
         "quarter_to",
         re.compile(
-            r"\bquarter\s+to\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\bquarter[-\s]+(?:to|before)[-\s]+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),
     (
         "minutes_past_to",
         re.compile(
-            r"\b(?P<minuteword>(?:one|two|three|four|five|six|seven|eight|nine)[- ]and[- ](?:twenty|thirty|forty|fifty)|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\b(?P<minuteword>(?:one|two|three|four|five|six|seven|eight|nine)[-\s]+and[-\s]+(?:twenty|thirty|forty|fifty)|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),

@@ -1,7 +1,7 @@
 # Bucket Coverage Report
 
-- Total rows: **2978**
-- Displayable rows (quality ≥ 60, not banned): **2318**
+- Total rows: **2966**
+- Displayable rows (quality ≥ 60, not banned): **2308**
 - Expected buckets: **144**
 - Populated buckets: **115**
 - Populated before the quality floor / bans: **119**
@@ -10,19 +10,19 @@
 
 ## Strongest buckets
 
-- `h10_exact`: 218
-- `h9_exact`: 201
-- `h8_exact`: 180
-- `h2_exact`: 174
-- `h11_exact`: 168
-- `h3_exact`: 162
-- `h5_exact`: 151
-- `h6_exact`: 150
-- `h4_exact`: 140
-- `h12_exact`: 122
-- `h7_exact`: 120
-- `h1_exact`: 110
-- `h2_half_past`: 24
+- `h10_exact`: 216
+- `h9_exact`: 197
+- `h8_exact`: 172
+- `h2_exact`: 170
+- `h11_exact`: 164
+- `h3_exact`: 157
+- `h5_exact`: 147
+- `h6_exact`: 147
+- `h4_exact`: 136
+- `h12_exact`: 119
+- `h7_exact`: 117
+- `h1_exact`: 105
+- `h2_half_past`: 27
 - `h8_five_to`: 15
 - `h11_quarter_to`: 14
 
@@ -78,10 +78,10 @@
 
 ## Daypart counts
 
-- `morning`: 1304
-- `night`: 876
-- `dawn`: 452
-- `noon`: 232
+- `morning`: 1300
+- `night`: 872
+- `dawn`: 450
+- `noon`: 230
 - `midnight`: 44
 - `evening`: 42
 - `dusk`: 28

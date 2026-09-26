@@ -11,6 +11,7 @@ like "every bucket must have >= N quotes" (that's ``bucket_coverage.py``'s job).
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -449,4 +450,32 @@ class TestDisplayHygiene:
 
     def test_no_leading_ellipsis(self, displayable_baked_rows):
         offenders = [_key(r) for r in displayable_baked_rows if r["display_quote"].startswith(("…", ".."))]
+        assert not offenders, offenders[:10]
+
+
+class TestQuarterHalfSwallowedPhrases:
+    """A row mined on "ten o'clock" inside "half-past ten o'clock" sat at the
+    top of the hour while its quote said half past, with only "ten o'clock"
+    bolded. ``fix_substring_time_matches`` repairs the committed rows; this
+    pins that none is left on the panel."""
+
+    PATTERN = re.compile(
+        r"\b(?:a\s+)?(?:half[-\s]+(?:past|after)|quarter[-\s]+(?:past|after|to|before))"
+        r"[-\s]+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+        r"(?:\s+o['’]?clock)?\b",
+        re.IGNORECASE,
+    )
+
+    def test_no_matched_text_swallowed_by_a_quarter_half_phrase(self, displayable_baked_rows):
+        offenders = []
+        for r in displayable_baked_rows:
+            text = " ".join((r.get("display_quote") or "").split()).lower()
+            needle = " ".join((r.get("matched_text") or "").split()).lower()
+            if not needle:
+                continue
+            for m in self.PATTERN.finditer(text):
+                span = m.group(0)
+                if needle in span and needle != span and not re.search(r"\b(?:half|quarter)\b", needle):
+                    offenders.append((_key(r), r["matched_text"], span))
+                    break
         assert not offenders, offenders[:10]

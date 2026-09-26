@@ -131,6 +131,19 @@ class TestQuarterToMatchType:
         assert c.hour == 7
         assert c.minute == 45
 
+    @pytest.mark.parametrize(
+        "text, hour, minute",
+        [
+            ("It wanted a quarter before ten.", 9, 45),
+            ("At a quarter-to-six the lamps were lit.", 5, 45),
+            ("It was a quarter\nto seven.", 6, 45),
+        ],
+    )
+    def test_before_hyphen_and_wrapped_forms(self, text, hour, minute):
+        c = _first_candidate(text, "quarter_to")
+        assert c is not None
+        assert (c.hour, c.minute) == (hour, minute)
+
     def test_quarter_to_one_wraps_to_twelve(self):
         c = _first_candidate("Quarter to one the mail arrived.", "quarter_to")
         assert c is not None
@@ -177,6 +190,11 @@ class TestMinutesPastToMatchType:
             ("It was five-and-twenty minutes past seven.", 7, 25),
             ("At five and twenty minutes to nine she rose.", 8, 35),
             ("Some three-and-thirty minutes past two.", 2, 33),
+            # A line break inside the compound: the regex used a literal
+            # ``[- ]`` around "and", so the wrapped form fell back to the
+            # trailing "twenty minutes past seven" (7:20).
+            ("It was five and\ntwenty minutes past seven.", 7, 25),
+            ("It was five-and-\ntwenty minutes past seven.", 7, 25),
         ],
     )
     def test_reversed_compound_minutes(self, text, hour, minute):

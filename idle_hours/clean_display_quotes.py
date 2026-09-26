@@ -65,23 +65,63 @@ HEADING_PREFIX = re.compile(
     # A bare Roman-numeral heading: "XXXIV. Next morning, …" (issue #308).
     # At least two numeral letters, because a lone "I." is the pronoun
     # ending a sentence and a lone "C." / "V." is as often an initial. The
-    # full numeral grammar (not ``[IVXLCDM]+``) keeps "DID." / "MID." out.
-    r"(?=[MDCLXVI]{2})M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\.(?=\s|$)"
+    # numeral grammar (not ``[IVXLCDM]+``) keeps "DID." out, and it stops at
+    # C..CXCIX: a chapter numbered in the hundreds is vanishingly rare, while
+    # every M / D / CC form is also a word or an abbreviation someone shouts
+    # at the start of a sentence ("MIX.", "DI.", "MD.", "CC.", "DC."). "LIV."
+    # is excluded by name — it is a given name as often as fifty-four.
+    r"(?!LIV\.)(?=[CLXVI]{2})C?(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\.(?=\s|$)"
     r")\s*",
 )
 
-# A leading run of three or more all-caps words ending where a Title-case
-# sentence begins: the chapter *titles* Gutenberg texts print above a
-# chapter ("—CONTINUATION OF THE ENIGMA The night wind had risen…",
-# "TWENTY MINUTES PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M. As ten
-# o'clock struck…"). ``HEADING_PREFIX`` only knows headings that carry a
-# keyword such as CHAPTER, so these reached the panel verbatim (issue #308).
-# Three words is the floor so a play's speaker label ("ROSALIND. How say you
-# now?") and a single shouted word survive; the sentence that follows must
-# open with a capital and a lowercase letter (or a lone "A" / "I" word) so a
-# heading is only ever cut at a sentence start.
+# A leading run of all-caps words ending where a Title-case sentence
+# begins: the chapter *titles* Gutenberg texts print above a chapter
+# ("—CONTINUATION OF THE ENIGMA The night wind had risen…", "TWENTY MINUTES
+# PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M. As ten o'clock struck…").
+# ``HEADING_PREFIX`` only knows headings that carry a keyword such as
+# CHAPTER, so these reached the panel verbatim (issue #308).
+#
+# All-caps prose opens sentences too, and the first cut of this pattern ate
+# it: initials ("J. R. R. Tolkien was born"), acronyms ("U. S. A. Troops"),
+# a play's speaker label ("SIR TOBY BELCH. Out o' tune") and a shout ("I AM
+# NOT. Go away"). What separates them from a title is punctuation — a title
+# sits on its own line, so it runs into the sentence with nothing but
+# whitespace, where every one of those ends its caps run in a period. So a run
+# qualifies in one of two ways:
+#
+# * it carries a heading signal (CHAPTER / BOOK / PART …, or a clock phrase,
+#   which is what the chapter titles of a time-keeping novel are made of) —
+#   then its words may carry periods, as "CHAPTER I." and "P. M." do; or
+# * its last word does not end in sentence punctuation (``.``, ``!``,
+#   ``?``), and it is not made of initials alone. Earlier words may: two
+#   headings stacked ("OLIVER WALKS TO LONDON. HE ENCOUNTERS … GENTLEMAN
+#   Oliver reached…") and an initial ("BY H. HARRIS, AGENT") both still run
+#   into the sentence unpunctuated.
+#
+# Three words is the floor either way, so a single shouted word or a
+# two-word label survives, and the sentence that follows must open with a
+# capital and a lowercase letter (or a lone "A" / "I" word) so a heading is
+# only ever cut at a sentence start.
+_CAPS_WORD = r"[A-Z0-9][A-Z0-9’'.,\-—]*"
+_CAPS_WORD_UNSTOPPED = r"[A-Z0-9](?:[A-Z0-9’',\-—]*[A-Z0-9’',\-—])?"
+_HEADING_SIGNAL = (
+    r"(?:CHAPTER|BOOK|PART|VOLUME|NARRATIVE|PREFACE|INTRODUCTION|EPILOGUE|PROLOGUE"
+    r"|O[’']CLOCK|MINUTES?|MIDNIGHT|NOON)"
+)
+_SENTENCE_START = r"(?=[A-Z](?:[a-z’']|\s+[a-z]))"
 LEADING_CAPS_HEADING = re.compile(
-    r"^[—\-\s]*(?:[A-Z0-9][A-Z0-9’'.,\-—]*\s+){3,}(?=[A-Z](?:[a-z’']|\s+[a-z]))"
+    r"^[—\-\s]*(?:"
+    # Signalled: the signal must sit inside the caps run. The run cannot
+    # contain a lowercase letter, so a lookahead confined to caps, digits,
+    # punctuation and spaces can never find the word in the sentence after.
+    r"(?=[A-Z0-9’'.,\-—\s]*?(?<![A-Za-z])" + _HEADING_SIGNAL + r"(?![A-Za-z]))"
+    r"(?:" + _CAPS_WORD + r"\s+){3,}"
+    r"|"
+    # Unsignalled: the last word does not end a sentence, and the run is
+    # not initials alone.
+    r"(?!(?:[A-Z]\.?\s+)+" + _SENTENCE_START + r")"
+    r"(?:" + _CAPS_WORD + r"\s+){2,}" + _CAPS_WORD_UNSTOPPED + r"\s+"
+    r")" + _SENTENCE_START
 )
 
 # Stray-character normalisation for glyphs the bundled faces lack. PRIME
@@ -89,7 +129,7 @@ LEADING_CAPS_HEADING = re.compile(
 # latitude ("20° 7′ north"); forty of the bundled body faces have no glyph for
 # them and render tofu (issue #308). The apostrophe and closing double quote
 # are the typographic stand-ins every book face carries.
-GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "\u201d"})
+GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "''"})
 
 # An opening ellipsis ("… But I have to go…", "... You are right") is the
 # source's own elision mark, which reads as a fragment on the panel. Applied

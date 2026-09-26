@@ -7,7 +7,15 @@ number forms like ``thirty-five`` before the bare ``five``), so fresh harvests
 mostly do not produce substring-collision rows — but the archaic reversed
 compound ("five-and-twenty minutes past eight" = 8:25) still slips through as
 the bare trailing phrase ("twenty minutes past eight" = 8:20), so this script
-stays in the pipeline to repair that class. New hand-curated content fixes
+stays in the pipeline to repair that class.
+
+It also repairs the quarter / half class: legacy ``oclock_word`` rows mined
+on "ten o'clock" inside "half-past ten o'clock" / "a quarter after eight
+o'clock" / "quarter to nine o'clock", filed at the top of the hour with only
+the bare hour bolded while the quote states a time 15-30 minutes away. Such a
+row is rewritten to the quarter / half phrase (``match_type`` becomes
+``quarter_half`` or ``quarter_to``, as the miner would have produced), and a
+repaired row that duplicates a correct twin already in the file is dropped. New hand-curated content fixes
 should go in ``assets/content_overrides.json`` (applied by
 ``apply_content_overrides.py``) so they survive pipeline re-runs.
 """
@@ -56,13 +64,136 @@ TIME_PATTERN = re.compile(
     # Archaic reversed compound first: "five-and-twenty minutes past seven"
     # (= 25). Victorian-era texts use this form heavily; capturing only the
     # trailing "twenty minutes past seven" mis-tags the row by five minutes.
-    r"(?:one|two|three|four|five|six|seven|eight|nine)[- ]and[- ](?:twenty|thirty|forty|fifty)"
+    r"(?:one|two|three|four|five|six|seven|eight|nine)[-\s]+and[-\s]+(?:twenty|thirty|forty|fifty)"
     r"|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?"
     r"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen"
     r"|sixteen|seventeen|eighteen|nineteen"
     r")\s+minutes?\s+(?P<relation>past|to)\s+(?P<hour_word>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
     re.IGNORECASE,
 )
+
+# A quarter / half phrase that can swallow a bare hour phrase: a row mined as
+# ``oclock_word`` on "ten o'clock" whose text reads "half-past ten o'clock"
+# (or "a quarter after eight o'clock", "quarter to nine o'clock") sits at the
+# top of the hour while its quote states another time. Legacy rows of that
+# shape were filed at :00 with only "ten o'clock" bolded. ``core`` is the
+# phrase the miner's ``quarter_half`` / ``quarter_to`` patterns capture (no
+# leading "a", no trailing "o'clock"), so a repaired row gets the same
+# ``matched_text`` — and therefore the same dedupe key — as a twin the
+# current miner produced. "half to" is not a time, so only a quarter may
+# run to / before its hour.
+QUARTER_HALF_PATTERN = re.compile(
+    r"\b(?:a\s+)?"
+    r"(?P<core>(?:(?P<half>half)[-\s]+(?:past|after)"
+    r"|(?P<quarter>quarter)[-\s]+(?P<relation>past|after|to|before))"
+    r"[-\s]+(?P<hour_word>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))"
+    r"(?:\s+o['’]?clock)?\b",
+    re.IGNORECASE,
+)
+
+# The fields a content override may set that this repair would also write.
+# A row whose override owns them is left alone: the next
+# ``apply_content_overrides`` run would overwrite the repair anyway, and its
+# ``override_originals`` ledger would record the repaired value as the one
+# to restore.
+_TIME_FIELDS = ("matched_text", "hour", "minute", "normalized_time")
+
+
+def daypart_for_hour(hour: int) -> str:
+    """The miner's hour → daypart rule (``gutenberg_time_miner.daypart_for_hour``)."""
+    from idle_hours.gutenberg_time_miner import daypart_for_hour as _miner_daypart
+
+    return _miner_daypart(hour)
+
+
+def infer_quarter_half_from_quote(display_quote: str, current_matched: str | None):
+    """Return the quarter / half phrase that swallows ``current_matched``.
+
+    ``current_matched`` (e.g. "ten o'clock") must be a strict substring of a
+    quarter / half phrase in ``display_quote`` ("half-past ten o'clock") at
+    *every* place it occurs — if it also stands alone somewhere, the row may
+    well have been mined on that occurrence, and rewriting it would move a
+    correct row. Returns a partial row (with ``match_type``) or ``None``.
+    """
+    text = ' '.join((display_quote or '').split())
+    needle = ' '.join((current_matched or '').split()).lower()
+    if not text or not needle:
+        return None
+    lowered = text.lower()
+    spans = [m for m in QUARTER_HALF_PATTERN.finditer(text)]
+    if not spans:
+        return None
+    chosen = None
+    start = lowered.find(needle)
+    if start < 0:
+        return None
+    while start >= 0:
+        end = start + len(needle)
+        covering = next(
+            (m for m in spans if m.start() <= start and end <= m.end() and (m.end() - m.start()) > len(needle)),
+            None,
+        )
+        if covering is None:
+            return None
+        if chosen is None:
+            chosen = covering
+        start = lowered.find(needle, start + 1)
+    core = chosen.group('core')
+    if ' '.join(core.split()).lower() == needle:
+        return None
+    hour_value = parse_number_word(chosen.group('hour_word'))
+    if hour_value is None:
+        return None
+    if chosen.group('half'):
+        hour, minute, match_type = hour_value, 30, 'quarter_half'
+    elif chosen.group('relation').lower() in ('past', 'after'):
+        hour, minute, match_type = hour_value, 15, 'quarter_half'
+    else:
+        hour, minute, match_type = (12 if hour_value == 1 else hour_value - 1), 45, 'quarter_to'
+    return {
+        'match_type': match_type,
+        'matched_text': ' '.join(core.split()),
+        'hour': hour,
+        'minute': minute,
+        'normalized_time': f"{hour:02d}:{minute:02d}",
+        'fuzzy_bucket': f"h{hour}_{bucket_for_minute(minute)}",
+        'daypart_bucket': daypart_for_hour(hour),
+    }
+
+
+def repair_row(row: dict) -> dict | None:
+    """Return the fields to update on ``row``, or ``None`` when it is fine.
+
+    Tries the ``<minutes> past/to <hour>`` collision first, then the quarter
+    / half one. Rows whose content override owns a time field are skipped
+    (see ``_TIME_FIELDS``). A row whose override replaced its
+    ``display_quote`` is repaired only when its *original* text yields the
+    same repair, so deleting the override later cannot strand a
+    ``matched_text`` its restored quote no longer contains.
+    """
+    originals = row.get('override_originals') or {}
+    if any(field in originals for field in _TIME_FIELDS):
+        return None
+    display_quote = row.get('display_quote') or ''
+    current_matched = ' '.join((row.get('matched_text') or '').split()).lower()
+    if not current_matched:
+        return None
+
+    def _infer(quote: str):
+        inferred = infer_time_from_quote(quote, current_matched)
+        if inferred:
+            inferred_matched = inferred['matched_text'].lower()
+            if current_matched in inferred_matched and current_matched != inferred_matched:
+                return inferred
+        return infer_quarter_half_from_quote(quote, current_matched)
+
+    repair = _infer(display_quote)
+    if repair and 'display_quote' in originals:
+        original = _infer(originals.get('display_quote') or '')
+        if not original or original['normalized_time'] != repair['normalized_time']:
+            return None
+    return repair
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fix substring-collision time matches in JSONL corpus rows.")
@@ -138,23 +269,44 @@ def main() -> int:
     args = parse_args()
     input_path = Path(args.input).expanduser().resolve()
     output_path = (Path(args.output).expanduser().resolve()) if args.output else input_path
-    rows = []
+    rows = list(iter_jsonl(input_path))
     fixed = 0
-    for row in iter_jsonl(input_path):
-        display_quote = row.get('display_quote') or ''
-        current_matched = ' '.join((row.get('matched_text') or '').split()).lower()
-        inferred = infer_time_from_quote(display_quote, current_matched)
-        if inferred:
-            inferred_matched = inferred['matched_text'].lower()
-            if current_matched and current_matched in inferred_matched and current_matched != inferred_matched:
-                row.update(inferred)
-                fixed += 1
-        rows.append(row)
+    repaired: set[int] = set()
+    for index, row in enumerate(rows):
+        repair = repair_row(row)
+        if repair:
+            row.update(repair)
+            repaired.add(index)
+            fixed += 1
+            print(f"repaired {row.get('source_id')}:{row.get('line_number')} → "
+                  f"{row['matched_text']!r} {row['normalized_time']}")
+    # A repaired row can land on the exact identity of a twin the current
+    # miner already produced correctly (same source line, same phrase, same
+    # time). Keep the untouched twin and drop the repaired copy, rather than
+    # shipping an exact duplicate ``merge_candidates`` would have collapsed.
+    from idle_hours.merge_candidates import dedupe_key
+
+    kept_keys = {
+        dedupe_key(row, '') for index, row in enumerate(rows)
+        if index not in repaired and row.get('source_id') is not None and row.get('line_number') is not None
+    }
+    out = []
+    dropped = 0
+    for index, row in enumerate(rows):
+        if index in repaired and row.get('source_id') is not None and row.get('line_number') is not None:
+            key = dedupe_key(row, '')
+            if key in kept_keys:
+                dropped += 1
+                print(f"dropped repaired twin {row.get('source_id')}:{row.get('line_number')} "
+                      f"(a correct {row['matched_text']!r} row already exists)")
+                continue
+            kept_keys.add(key)
+        out.append(row)
     # Atomic: in-place is the default, so a crash mid-write must leave the
     # input corpus byte-identical rather than truncated (issue #306).
-    atomic_write_lines(output_path, (json.dumps(row, ensure_ascii=False) for row in rows))
-    print(f'Fixed {fixed} substring-collision rows')
-    print(f'Wrote {len(rows)} rows to {output_path}')
+    atomic_write_lines(output_path, (json.dumps(row, ensure_ascii=False) for row in out))
+    print(f'Fixed {fixed} substring-collision rows ({dropped} dropped as duplicates of a correct twin)')
+    print(f'Wrote {len(out)} rows to {output_path}')
     return 0
 
 

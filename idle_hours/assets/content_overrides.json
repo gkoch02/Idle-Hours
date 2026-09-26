@@ -1,9 +1,11 @@
 {
   "27:10704": {
-    "display_quote": "It was now five o’clock, and the dawn was promising to break in hues of drab and ash."
+    "display_quote": "It was now five o’clock, and the dawn was promising to break in hues of drab and ash.",
+    "quality_score": 100
   },
   "83:5165": {
-    "display_quote": "As ten o’clock struck, Michel Ardan, Barbicane, and Nicholl, took leave of the numerous friends they were leaving on the earth."
+    "display_quote": "As ten o’clock struck, Michel Ardan, Barbicane, and Nicholl, took leave of the numerous friends they were leaving on the earth.",
+    "quality_score": 100
   },
   "83:6816": {
     "display_quote": "On the 4th of December, when the travelers awoke after fifty-four hours’ journey, the chronometer marked five o’clock of the terrestrial morning."
@@ -15,10 +17,12 @@
     "display_quote": "About seven o'clock in the morning, with perfectly fine weather, we started from Hospenthal, and arrived at the MAISON on the Furka in a little under QUATRE hours."
   },
   "125:1136": {
-    "display_quote": "Four o’clock the following morning Elnora was shelling beans."
+    "display_quote": "Four o’clock the following morning Elnora was shelling beans.",
+    "quality_score": 92
   },
   "135:12600": {
-    "display_quote": "Three o’clock in the morning had just struck, and he had been walking thus for five hours, almost uninterruptedly, when he at length allowed himself to drop into his chair."
+    "display_quote": "Three o’clock in the morning had just struck, and he had been walking thus for five hours, almost uninterruptedly, when he at length allowed himself to drop into his chair.",
+    "quality_score": 100
   },
   "135:16745": {
     "display_quote": "Nevertheless, at a certain moment in the afternoon the battle came to a point. Towards four o’clock the condition of the English army was serious.",
@@ -28,22 +32,24 @@
     "display_quote": "Nevertheless, at a certain moment in the afternoon the battle came to a point. Towards four o’clock the condition of the English army was serious."
   },
   "135:23621": {
-    "display_quote": "The night wind had risen, which indicated that it must be between one and two o’clock in the morning."
+    "display_quote": "The night wind had risen, which indicated that it must be between one and two o’clock in the morning.",
+    "quality_score": 100
   },
   "135:38962": {
-    "display_quote": "A few moments later, about three o’clock, Courfeyrac chanced to be passing along the Rue Mouffetard in company with Bossuet."
+    "display_quote": "A few moments later, about three o’clock, Courfeyrac chanced to be passing along the Rue Mouffetard in company with Bossuet.",
+    "quality_score": 100
   },
   "135:39105": {
     "display_quote": "Marius seated himself on his bed. It might have been half-past five o’clock.",
-    "matched_text": "half-past five",
-    "hour": 5,
-    "minute": 30
+    "quality_score": 92
   },
   "135:39544": {
-    "display_quote": "Suddenly, the distant and melancholy vibration of a clock shook the panes. Six o’clock was striking from Saint-Médard."
+    "display_quote": "Suddenly, the distant and melancholy vibration of a clock shook the panes. Six o’clock was striking from Saint-Médard.",
+    "quality_score": 100
   },
   "143:9397": {
-    "display_quote": "Next morning, accordingly, she rose at five o’clock and went into the street."
+    "display_quote": "Next morning, accordingly, she rose at five o’clock and went into the street.",
+    "quality_score": 92
   },
   "145:1032": {
     "display_quote": "It was three o’clock in the beautiful breezy autumn day when Mr. Casaubon drove off to his Rectory at Lowick, only five miles from Tipton."
@@ -70,7 +76,8 @@
     "display_quote": "He seemed to have thrown himself back in his chair, tired out, and sat there with his eyes shut till the clock struck two, when he jumped up, put his books in his pocket, as if ready for another lesson."
   },
   "730:2337": {
-    "display_quote": "Oliver reached the stile at which the by-path terminated; and once more gained the high-road. It was eight o’clock now."
+    "display_quote": "Oliver reached the stile at which the by-path terminated; and once more gained the high-road. It was eight o’clock now.",
+    "quality_score": 100
   },
   "730:5693": {
     "display_quote": "At six o’clock next morning, Mr. Bumble: having exchanged his cocked hat for a round one, and encased his person in a blue great-coat with a cape to it: took his place on the outside of the coach."
@@ -88,7 +95,8 @@
     "display_quote": "I glanced at its face by the moonlight, and then burst into tears as I flung it far away into the ocean. It had run down at seven o’clock!"
   },
   "3746:2312": {
-    "display_quote": "At a few moments before six o'clock Byng was shown into Jasmine's sitting-room."
+    "display_quote": "At a few moments before six o'clock Byng was shown into Jasmine's sitting-room.",
+    "quality_score": 92
   },
   "3746:7319": {
     "display_quote": "They soothed her at last into a sleep which brought no peace, no rest or repose. Midnight--one o'clock, two o'clock, three o'clock."

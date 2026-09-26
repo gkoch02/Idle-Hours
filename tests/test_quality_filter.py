@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from idle_hours import quality_filter as qf
 from tests.conftest import make_row
 
@@ -304,6 +306,22 @@ class TestLeadingHeadingPenalty:
 
     def test_play_speaker_label_is_not_a_heading(self):
         _, flags = score("ROSALIND. How say you now? Is it not past two o'clock? And here much Orlando.")
+        assert "leading_heading" not in flags
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "J. R. R. Tolkien was born, and at ten o’clock he was christened in the chapel.",
+            "U. S. A. Troops landed at ten o’clock and marched inland until the evening came.",
+            "SIR TOBY BELCH. Out o’ tune, sir: ye lie. Art any more than a steward? It is ten o’clock.",
+            "MR. JONES, SIR. How are you? I have waited here since ten o’clock this morning.",
+            "I AM NOT. Go away, for I will not open the door before ten o’clock tonight.",
+            "NO, NO, NO. I will not go, not if the clock strikes ten o’clock a hundred times.",
+            "MIX. It was ten o’clock and the flour had to be in the bowl before the fire went out.",
+        ],
+    )
+    def test_caps_prose_is_not_flagged(self, text):
+        _, flags = score(text)
         assert "leading_heading" not in flags
 
     def test_pronoun_sentence_is_not_a_heading(self):

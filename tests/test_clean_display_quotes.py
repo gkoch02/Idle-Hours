@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from idle_hours import clean_display_quotes as cdq
 from tests.conftest import make_row
 
@@ -567,7 +569,51 @@ class TestCorpusHygiene:
         assert status == "fragment_fallback"
 
     def test_prime_marks_are_normalised(self):
-        assert cdq.clean_edges("In 20° 7′ north and 3″ west it was noon.") == "In 20° 7’ north and 3” west it was noon."
+        assert cdq.clean_edges("In 20° 7′ north and 3″ west it was noon.") == "In 20° 7’ north and 3'' west it was noon."
+
+    def test_double_prime_is_not_a_quotation_mark(self):
+        # ″ used to become ”, which minted a closing quotation mark with no
+        # partner: the text counted as unbalanced and a ″ at the very end
+        # was stripped as an orphan close-quote.
+        text = cdq.clean_edges("In 41° 37′ 12″ west longitude the projectile fell at one o’clock.")
+        assert "”" not in text and "12''" in text
+        assert not cdq.unbalanced_quotes(text)
+        assert cdq.clean_edges("It lay at 37′ 12″") == "It lay at 37’ 12''"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "J. R. R. Tolkien was born at ten o’clock.",
+            "U. S. A. Troops landed at ten o’clock.",
+            "SIR TOBY BELCH. Out o’ tune, sir: ye lie. It is ten o’clock.",
+            "MR. JONES, SIR. How are you at ten o’clock?",
+            "I AM NOT. Go away before ten o’clock.",
+            "NO, NO, NO. I will not go at ten o’clock.",
+            "A. B. S. It was ten o’clock.",
+        ],
+    )
+    def test_caps_prose_is_not_a_heading(self, text):
+        """Initials, acronyms, speaker labels and shouts end their caps run
+        in a period; a chapter title runs into its sentence unpunctuated."""
+        assert cdq.clean_edges(text) == text
+        assert not cdq.LEADING_CAPS_HEADING.match(text)
+
+    def test_signalled_heading_may_carry_periods(self):
+        text = "CHAPTER I. TWENTY MINUTES PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M. As ten o’clock struck, they left."
+        assert cdq.clean_edges(text) == "As ten o’clock struck, they left."
+
+    def test_three_word_title_without_signal_is_stripped(self):
+        assert cdq.clean_edges("A NEW CLIENT It was ten o’clock.") == "It was ten o’clock."
+        assert cdq.clean_edges("BY H. HARRIS, AGENT About seven o’clock we left.") == "About seven o’clock we left."
+
+    @pytest.mark.parametrize("word", ["MIX", "DI", "LIV", "CC", "MD", "DC", "CD", "MC", "MM", "CM", "DIV"])
+    def test_numeral_shaped_words_are_not_headings(self, word):
+        text = f"{word}. It was ten o’clock."
+        assert cdq.clean_edges(text) == text
+
+    @pytest.mark.parametrize("numeral", ["II", "XIV", "XXXIV", "XL", "LXXXVIII", "XCIX", "CXII"])
+    def test_chapter_numerals_are_still_headings(self, numeral):
+        assert cdq.clean_edges(f"{numeral}. It was ten o’clock.") == "It was ten o’clock."
 
     def test_leading_ellipsis_is_dropped_but_interior_kept(self):
         assert cdq.clean_edges("… But I go by the six o’clock train.") == "But I go by the six o’clock train."
