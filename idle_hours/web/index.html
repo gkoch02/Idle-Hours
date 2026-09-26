@@ -85,11 +85,11 @@
         <h2>Controls</h2>
         <p class="hint">Mirrors the four physical Inky buttons. A render in flight returns 409 — taps during a refresh are dropped.</p>
         <div class="button-grid">
-          <button data-action="skip" class="btn">A · Skip</button>
-          <button data-action="unskip" class="btn">A-hold · Un-skip</button>
+          <button id="action-skip" data-action="skip" class="btn">A · Skip</button>
+          <button id="action-unskip" data-action="unskip" class="btn">A-hold · Un-skip</button>
           <button data-action="theme" class="btn">B · Cycle theme</button>
           <button data-action="rerender" class="btn">C · Re-render</button>
-          <button data-action="quiet" class="btn">D · Quiet / wake</button>
+          <button id="action-quiet" data-action="quiet" class="btn">D · Quiet / wake</button>
         </div>
         <div class="theme-picker">
           <label for="theme-select">Theme</label>

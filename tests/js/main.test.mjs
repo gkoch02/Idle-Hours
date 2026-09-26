@@ -655,3 +655,63 @@ describe("token-gated images — /current.png and /api/preview load through fetc
     assert.equal(elements.get("current-png").src, "before");
   });
 });
+
+describe("the sleep frame — skip / un-skip are refused while asleep", () => {
+  const IDS = [
+    "clock", "bucket", "theme", "mode", "quote", "attribution", "matched", "current-png", "ban-current",
+    "action-log", "action-skip", "action-unskip", "action-quiet",
+  ];
+  const current = (asleep) => ({
+    time: "23:00", bucket: "h11_exact", theme: "default", source_id: "141", line_number: 1, asleep,
+  });
+
+  it("disables skip and un-skip and offers a wake while the panel is asleep", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "GET /api/current": { body: current(true) }, "GET /current.png": { body: "png" } }),
+    });
+    await api.refreshCurrent();
+    assert.equal(elements.get("action-skip").disabled, true);
+    assert.equal(elements.get("action-unskip").disabled, true);
+    assert.match(elements.get("action-skip").title, /asleep/);
+    assert.equal(elements.get("action-quiet").textContent, "D · Wake");
+  });
+
+  it("re-enables them once the panel is awake", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "GET /api/current": { body: current(false) }, "GET /current.png": { body: "png" } }),
+    });
+    await api.refreshCurrent();
+    assert.equal(elements.get("action-skip").disabled, false);
+    assert.equal(elements.get("action-skip").title, "");
+    assert.equal(elements.get("action-quiet").textContent, "D · Sleep");
+  });
+
+  it("reports an asleep refusal as asleep, not as a busy render", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({
+        "POST /api/action/skip": { status: 409, body: { ok: false, error: "asleep" } },
+        "GET /api/current": { body: current(true) },
+        "GET /current.png": { body: "png" },
+      }),
+    });
+    await api.fireAction("skip");
+    const lines = elements.get("action-log").children.map((c) => c.textContent);
+    assert.ok(lines.some((l) => /skip: the panel is asleep/.test(l)), lines.join("\n"));
+    assert.ok(!lines.some((l) => /busy/.test(l)), lines.join("\n"));
+    // The refusal refreshes the controls, so the stale buttons disable.
+    assert.equal(elements.get("action-skip").disabled, true);
+  });
+
+  it("still reports a render in flight as busy", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "POST /api/action/skip": { status: 409, body: { ok: false, error: "busy" } } }),
+    });
+    await api.fireAction("skip");
+    const lines = elements.get("action-log").children.map((c) => c.textContent);
+    assert.ok(lines.some((l) => /skip: busy/.test(l)), lines.join("\n"));
+  });
+});

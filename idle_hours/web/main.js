@@ -248,6 +248,7 @@ const state = {
   gapsLoaded: false,
   themePreviewLoaded: false,
   currentQuoteId: null,  // [source_id, line_number] for the ban button
+  asleep: false,         // panel shows the sleep frame (from /api/current)
   themes: [],            // populated by /api/themes
 };
 
@@ -273,6 +274,22 @@ async function refreshCurrent() {
     : null;
   const banBtn = $("ban-current");
   if (banBtn) banBtn.disabled = state.currentQuoteId == null;
+  reflectSleep(Boolean(data.asleep));
+}
+
+// While the panel shows the sleep frame, skip and un-skip have no quote to
+// act on and the server refuses them (409 "asleep"), so the buttons say so
+// up front instead of failing on click; button D reads as the wake it is.
+function reflectSleep(asleep) {
+  state.asleep = asleep;
+  for (const id of ["action-skip", "action-unskip"]) {
+    const btn = $(id);
+    if (!btn) continue;
+    btn.disabled = asleep;
+    btn.title = asleep ? "The panel is asleep — wake it first (D)" : "";
+  }
+  const quietBtn = $("action-quiet");
+  if (quietBtn) quietBtn.textContent = asleep ? "D · Wake" : "D · Sleep";
 }
 
 // ------- Telemetry -----------------------------------------------------------
@@ -509,7 +526,14 @@ async function fireAction(action, body = {}) {
     body: JSON.stringify(body),
   });
   if (status === 409) {
-    log(`${action}: busy (render in flight)`, "warn");
+    // Two refusals share the status: a render already in flight, and an
+    // action that needs a quote while the panel shows the sleep frame.
+    if (data?.error === "asleep") {
+      log(`${action}: the panel is asleep — wake it first (D)`, "warn");
+      await refreshCurrent();
+    } else {
+      log(`${action}: busy (render in flight)`, "warn");
+    }
     return;
   }
   if (!ok) {
