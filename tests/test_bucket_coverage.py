@@ -223,12 +223,12 @@ class TestDisplayableCoverage:
     def _rows(self):
         return [
             # normalized_time agrees with fuzzy_bucket: the loaders re-derive the bucket from it.
-            make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=90),
-            make_row(source_id="1", line_number=2, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=55),   # below the floor
-            make_row(source_id="7", line_number=3, fuzzy_bucket="h3_ten_to", normalized_time="03:50", quality_score=55),  # bucket's only row
-            make_row(source_id="9", line_number=4, fuzzy_bucket="h6_exact", normalized_time="06:00", quality_score=95),   # banned source
-            make_row(source_id="1", line_number=5, fuzzy_bucket="h9_exact", normalized_time="09:00", quality_score=95),   # banned key
-            make_row(source_id="1", line_number=6, fuzzy_bucket="h11_exact", normalized_time="11:00"),                   # no score: passes, as in the baker
+            make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=90, display_quote="Distinct quote number 1."),
+            make_row(source_id="1", line_number=2, fuzzy_bucket="h3_exact", normalized_time="03:00", quality_score=55, display_quote="Distinct quote number 2."),   # below the floor
+            make_row(source_id="7", line_number=3, fuzzy_bucket="h3_ten_to", normalized_time="03:50", quality_score=55, display_quote="Distinct quote number 3."),  # bucket's only row
+            make_row(source_id="9", line_number=4, fuzzy_bucket="h6_exact", normalized_time="06:00", quality_score=95, display_quote="Distinct quote number 4."),   # banned source
+            make_row(source_id="1", line_number=5, fuzzy_bucket="h9_exact", normalized_time="09:00", quality_score=95, display_quote="Distinct quote number 5."),   # banned key
+            make_row(source_id="1", line_number=6, fuzzy_bucket="h11_exact", normalized_time="11:00", display_quote="Distinct quote number 6."),                   # no score: passes, as in the baker
         ]
 
     def _overrides(self):
@@ -246,6 +246,43 @@ class TestDisplayableCoverage:
         assert summary["displayable_rows"] == 2
         assert summary["banned_rows"] == 2
         assert summary["min_quality"] == 60
+
+    def test_rows_without_display_text_are_not_displayable(self):
+        """The baker drops a row with no non-blank display_quote, so coverage must too."""
+        rows = [
+            make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00",
+                     quality_score=90, display_quote=None),
+            make_row(source_id="1", line_number=2, fuzzy_bucket="h3_exact", normalized_time="03:00",
+                     quality_score=90, display_quote="   "),
+        ]
+        summary = build_summary(rows)
+        assert summary["bucket_counts"]["h3_exact"] == 0
+        assert summary["raw_bucket_counts"]["h3_exact"] == 2
+        assert "h3_exact" in summary["empty_buckets"]
+
+    def test_pre_clean_rows_still_count(self):
+        """Coverage also runs on merged candidates, before the cleaner has set
+        any display_quote, to choose the sparse buckets to target."""
+        row = make_row(source_id="1", line_number=1, fuzzy_bucket="h3_exact", normalized_time="03:00")
+        row.pop("display_quote")
+        row.pop("quality_score")
+        assert build_summary([row])["bucket_counts"]["h3_exact"] == 1
+
+    def test_a_key_ban_reaches_the_textual_twins(self):
+        """The picker drops every row showing a banned row's text (#294);
+        coverage follows the same rule or the bucket still reads as covered."""
+        text = "It was just ten o'clock when the bell rang."
+        rows = [
+            make_row(source_id="98", line_number=3534, fuzzy_bucket="h10_exact", normalized_time="10:00",
+                     quality_score=90, display_quote=text),
+            make_row(source_id="98", line_number=3541, fuzzy_bucket="h10_exact", normalized_time="10:00",
+                     quality_score=90, display_quote=text.upper()),
+        ]
+        overrides = {"ban_source_ids": [], "boost_source_ids": [], "preferred_buckets": {},
+                     "ban_quote_keys": ["98:3534"]}
+        summary = build_summary(rows, overrides=overrides)
+        assert summary["bucket_counts"]["h10_exact"] == 0
+        assert summary["banned_rows"] == 2
 
     def test_raw_counts_are_kept_alongside(self):
         summary = build_summary(self._rows(), overrides=self._overrides())

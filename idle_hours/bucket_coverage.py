@@ -9,7 +9,13 @@ from pathlib import Path
 
 from idle_hours.buckets import BUCKET_ORDER, rederive_buckets
 from idle_hours.jsonl_io import iter_jsonl
-from idle_hours.pick_quote import DEFAULT_OVERRIDES_PATH, is_banned, load_overrides
+from idle_hours.pick_quote import (
+    DEFAULT_OVERRIDES_PATH,
+    _twin_texts,
+    is_banned,
+    load_overrides,
+    normalize_display_text,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -64,21 +70,54 @@ def expected_buckets() -> list[str]:
     return [f"h{hour}_{state}" for hour in HOURS for state in STATES]
 
 
-def is_displayable(row: dict, min_quality: int, overrides: dict | None) -> bool:
+def banned_twin_texts(rows: list[dict], overrides: dict | None) -> frozenset[str]:
+    """Display texts the picker's per-row bans reach, twins included.
+
+    ``ban_quote_keys`` names one ``source:line``, but the picker drops every
+    row that shows the same text (issue #294) — the corpus carries one
+    passage under several keys. Coverage has to follow the same rule or a
+    bucket whose only quote was banned through a twin still reads as covered.
+    """
+    ban_keys = {str(k) for k in (overrides or {}).get("ban_quote_keys", [])}
+    return _twin_texts(rows, ban_keys, set())[0]
+
+
+def _banned(row: dict, overrides: dict | None, banned_texts: frozenset[str]) -> bool:
+    if overrides and is_banned(row, overrides):
+        return True
+    return bool(banned_texts) and normalize_display_text(row.get("display_quote")) in banned_texts
+
+
+def is_displayable(
+    row: dict,
+    min_quality: int,
+    overrides: dict | None,
+    banned_texts: frozenset[str] = frozenset(),
+) -> bool:
     """Would the runtime picker ever be able to show ``row``?
 
-    Mirrors the two gates between the raw corpus and the panel: the baker's
-    quality floor (``bake_quote_database.filter_rows`` — a row with no score
-    passes, as it does there) and the picker's bans (``pick_quote.is_banned``).
+    Mirrors the gates between the raw corpus and the panel: the baker's
+    ``filter_rows`` (a bucket, a non-blank ``display_quote`` once the cleaner
+    has set one, and the quality floor — a row with no score passes, as it
+    does there) and the picker's
+    bans, including the twins a per-row ban reaches (``banned_texts``, from
+    :func:`banned_twin_texts`).
     """
     if not row.get("fuzzy_bucket"):
         return False
+    # Gated only once the cleaner has run. Coverage is also run on merged,
+    # pre-clean candidates to choose which sparse buckets to target, and
+    # there no row has a ``display_quote`` yet — gating those would read
+    # every bucket as empty. Same shape as the quality rule below: a row
+    # with no score passes.
+    if "display_quote" in row:
+        display = row["display_quote"]
+        if not isinstance(display, str) or not display.strip():
+            return False
     quality = row.get("quality_score")
     if quality is not None and quality < min_quality:
         return False
-    if overrides and is_banned(row, overrides):
-        return False
-    return True
+    return not _banned(row, overrides, banned_texts)
 
 
 def build_summary(rows: list[dict], *, min_quality: int = DEFAULT_MIN_QUALITY, overrides: dict | None = None) -> dict:
@@ -95,13 +134,14 @@ def build_summary(rows: list[dict], *, min_quality: int = DEFAULT_MIN_QUALITY, o
     bucket_rows: dict[str, list[dict]] = defaultdict(list)
     daypart_counter = Counter()
     banned = 0
+    banned_texts = banned_twin_texts(rows, overrides)
     for row in rows:
         bucket = row.get("fuzzy_bucket")
         if bucket:
             raw_rows[bucket].append(row)
-            if is_displayable(row, min_quality, overrides):
+            if is_displayable(row, min_quality, overrides, banned_texts):
                 bucket_rows[bucket].append(row)
-            elif overrides and is_banned(row, overrides):
+            elif _banned(row, overrides, banned_texts):
                 banned += 1
         if row.get("daypart_bucket"):
             daypart_counter[row["daypart_bucket"]] += 1

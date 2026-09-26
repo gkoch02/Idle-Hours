@@ -1,7 +1,7 @@
 {
   "total_rows": 2978,
-  "displayable_rows": 2320,
-  "banned_rows": 18,
+  "displayable_rows": 2319,
+  "banned_rows": 19,
   "min_quality": 60,
   "total_expected_buckets": 144,
   "populated_bucket_count": 115,
@@ -117,7 +117,7 @@
     "h9_quarter_to": 4,
     "h9_ten_to": 0,
     "h9_five_to": 14,
-    "h10_exact": 218,
+    "h10_exact": 217,
     "h10_five_past": 1,
     "h10_ten_past": 0,
     "h10_quarter_past": 2,
@@ -782,7 +782,7 @@
   "dense_buckets": [
     {
       "bucket": "h10_exact",
-      "count": 218
+      "count": 217
     },
     {
       "bucket": "h9_exact",
