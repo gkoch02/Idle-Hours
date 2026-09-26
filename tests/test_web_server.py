@@ -2123,12 +2123,12 @@ class TestApiBake:
         }]
         self._write_corpus(args, rows)
         Path(args.content_overrides).write_text(json.dumps({
-            "141:1": {"display_quote": "PATCHED TEXT."},
+            "141:1": {"display_quote": "It was three o'clock when the patched text reached the panel at last."},
         }), encoding="utf-8")
         status, body = _post(server, "/api/bake", None)
         assert status == 200, _json_body(body)
         baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
-        assert baked[0]["display_quote"] == "PATCHED TEXT."
+        assert baked[0]["display_quote"] == "It was three o'clock when the patched text reached the panel at last."
         assert _json_body(body)["applied_overrides"] == 1
 
     def test_bake_writes_the_patched_rows_back_to_the_raw_corpus(self, v2_server):
@@ -2145,18 +2145,18 @@ class TestApiBake:
         }]
         self._write_corpus(args, rows)
         Path(args.content_overrides).write_text(json.dumps({
-            "141:1": {"display_quote": "PATCHED VIA WEB."},
+            "141:1": {"display_quote": "It was three o'clock when the web patch reached the raw corpus at last."},
         }), encoding="utf-8")
         status, body = _post(server, "/api/bake", None)
         assert status == 200, _json_body(body)
         raw = [json.loads(line) for line in Path(args.raw_corpus).read_text(encoding="utf-8").splitlines() if line]
-        assert raw[0]["display_quote"] == "PATCHED VIA WEB."
+        assert raw[0]["display_quote"] == "It was three o'clock when the web patch reached the raw corpus at last."
         assert raw[0]["override_applied"] is True
         # …and the bucket inspector, which reads the raw corpus, now agrees with the panel.
         status, body = _get(server, "/api/bucket/h3_exact?time=03:00&top=5")
         assert status == 200, body
         quotes = [c["row"]["display_quote"] for c in _json_body(body)["candidates"]]
-        assert quotes == ["PATCHED VIA WEB."]
+        assert quotes == ["It was three o'clock when the web patch reached the raw corpus at last."]
 
     def test_deleting_an_override_and_baking_again_restores_the_row(self, v2_server):
         """The bake writes overrides into the raw corpus, so without a record
@@ -2170,7 +2170,7 @@ class TestApiBake:
         }
         self._write_corpus(args, [original])
         sidecar = Path(args.content_overrides)
-        sidecar.write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        sidecar.write_text(json.dumps({"141:1": {"display_quote": "It was three o'clock when the patched sentence was written to disk."}}), encoding="utf-8")
         assert _post(server, "/api/bake", None)[0] == 200
         sidecar.write_text("{}", encoding="utf-8")
         status, body = _post(server, "/api/bake", None)
@@ -2188,7 +2188,7 @@ class TestApiBake:
             "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
             "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
         }])
-        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "It was three o'clock when the patched sentence was written to disk."}}), encoding="utf-8")
         assert _post(server, "/api/bake", None)[0] == 200
         baked = [json.loads(line) for line in Path(args.baked_db).read_text(encoding="utf-8").splitlines() if line]
         assert "override_originals" not in baked[0]
@@ -2201,7 +2201,7 @@ class TestApiBake:
             "matched_text": "three o'clock", "normalized_time": "03:00", "fuzzy_bucket": "h3_exact",
             "quality_score": 80, "display_fragment": False, "cleanup_status": "complete_sentence",
         }])
-        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "PATCHED."}}), encoding="utf-8")
+        Path(args.content_overrides).write_text(json.dumps({"141:1": {"display_quote": "It was three o'clock when the patched sentence was written to disk."}}), encoding="utf-8")
         assert _post(server, "/api/bake", None)[0] == 200
         before = Path(args.raw_corpus).stat()
         assert _post(server, "/api/bake", None)[0] == 200
@@ -4259,6 +4259,25 @@ class TestBanMergesIntoLoadedDocument:
         assert status == 200, body
         on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
         assert on_disk == {**doc, "ban_quote_keys": ["141:100", "1342:77"]}
+
+    def test_wholesale_save_keeps_the_operators_extra_keys(self, live_server):
+        """The editor round-trip must not delete a _comment or a newer schema
+        field; known keys are still validated and normalised."""
+        server, _, args = live_server
+        doc = {
+            "_comment": "hand notes — keep me",
+            "future_field": {"nested": True},
+            "ban_source_ids": [999],
+            "boost_source_ids": [],
+            "preferred_buckets": {},
+            "ban_quote_keys": [],
+        }
+        status, body = _post(server, "/api/overrides", doc)
+        assert status == 200, body
+        on_disk = json.loads(Path(args.overrides).read_text(encoding="utf-8"))
+        assert on_disk["_comment"] == "hand notes — keep me"
+        assert on_disk["future_field"] == {"nested": True}
+        assert on_disk["ban_source_ids"] == ["999"]
 
     def test_legacy_file_without_ban_quote_keys_gains_it(self, live_server):
         server, _, args = live_server
