@@ -9,6 +9,8 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+## [2.6.0] - 2026-09-26
+
 - `idle-hours run --once` now pins its render to the quote it picked, and so
   passes `--pin-quote` / `--pin-matched-text` to the render script as the
   main loop already did. A custom `--render-script` that does not accept
@@ -53,7 +55,6 @@ these entries under the new dated version heading.
   and betting odds no longer fill the ten-to and twenty-to-one buckets.
 - `idle-hours bake`, `apply-overrides` and `target-sparse` resolve relative
   paths against the current directory.
-
 ## [2.5.0] - 2026-09-24
 
 - Aligned package metadata with the 2.5.0 release line and added CI validation
