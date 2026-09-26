@@ -1,7 +1,7 @@
 # Bucket Coverage Report
 
 - Total rows: **2978**
-- Displayable rows (quality ≥ 60, not banned): **2319**
+- Displayable rows (quality ≥ 60, not banned): **2318**
 - Expected buckets: **144**
 - Populated buckets: **115**
 - Populated before the quality floor / bans: **119**
@@ -10,15 +10,15 @@
 
 ## Strongest buckets
 
-- `h10_exact`: 217
+- `h10_exact`: 218
 - `h9_exact`: 201
 - `h8_exact`: 180
 - `h2_exact`: 174
 - `h11_exact`: 168
 - `h3_exact`: 162
-- `h5_exact`: 152
+- `h5_exact`: 151
 - `h6_exact`: 150
-- `h4_exact`: 141
+- `h4_exact`: 140
 - `h12_exact`: 122
 - `h7_exact`: 120
 - `h1_exact`: 110

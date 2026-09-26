@@ -388,3 +388,65 @@ class TestQuotationBalance:
         # …and every one of them carries the penalty the scorer promises.
         for r in offenders:
             assert "unbalanced_quotes" in r.get("quality_flags", []), (r["source_id"], r["line_number"])
+
+
+@pytest.fixture(scope="module")
+def displayable_baked_rows(baked_rows) -> list[dict]:
+    """Baked rows the picker can actually put on the panel — bans applied."""
+    from idle_hours.bucket_coverage import _banned, banned_twin_texts
+
+    overrides = pick_quote.load_overrides(Path(pick_quote.DEFAULT_OVERRIDES_PATH))
+    texts = banned_twin_texts(baked_rows, overrides)
+    return [r for r in baked_rows if not _banned(r, overrides, texts)]
+
+
+def _key(row: dict) -> str:
+    return f"{row.get('source_id')}:{row.get('line_number')}"
+
+
+class TestDisplayHygiene:
+    """Issue #308: residue that reached the panel from the committed corpus.
+    Each check is against what the picker can display (bans applied)."""
+
+    def test_no_leading_heading(self, displayable_baked_rows):
+        from idle_hours.clean_display_quotes import HEADING_PREFIX, LEADING_CAPS_HEADING
+
+        offenders = [
+            _key(r) for r in displayable_baked_rows
+            if HEADING_PREFIX.match(r["display_quote"]) or LEADING_CAPS_HEADING.match(r["display_quote"])
+        ]
+        assert not offenders, offenders[:10]
+
+    def test_no_bare_roman_numeral_sentence(self, displayable_baked_rows):
+        # "XXXIV. Next morning…" or a trailing "…with you.” II." — a numeral
+        # of two or more letters standing alone as a sentence.
+        import re
+
+        pattern = re.compile(r"(?:^|[.!?”’\"]\s)(?=[MDCLXVI]{2})M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\.(?:\s|$)")
+        offenders = [_key(r) for r in displayable_baked_rows if pattern.search(r["display_quote"])]
+        assert not offenders, offenders[:10]
+
+    def test_no_stray_underscore(self, displayable_baked_rows):
+        # Under the renderer's *paired* emphasis rule, nothing is left behind.
+        # (``strip_underscore_emphasis`` now also drops orphans; this pins the
+        # corpus rather than trusting the renderer to hide it.)
+        import re
+
+        paired = re.compile(r"(?<![A-Za-z0-9])_([^_\n]+?)_(?![A-Za-z0-9])")
+        orphan = re.compile(r"(?<![A-Za-z0-9_])_(?!_)|(?<!_)_(?![A-Za-z0-9_])")
+        offenders = [
+            _key(r) for r in displayable_baked_rows if orphan.search(paired.sub(r"\1", r["display_quote"]))
+        ]
+        assert not offenders, offenders[:10]
+
+    def test_no_glyphs_the_bundled_faces_lack(self, displayable_baked_rows):
+        # PRIME / DOUBLE PRIME render as tofu in forty of the bundled body
+        # faces (measured with fontTools against each theme's first
+        # ``quote_regular`` candidate). The cleaner maps them to ’ / ”.
+        missing = {"′", "″"}
+        offenders = [_key(r) for r in displayable_baked_rows if missing & set(r["display_quote"])]
+        assert not offenders, offenders[:10]
+
+    def test_no_leading_ellipsis(self, displayable_baked_rows):
+        offenders = [_key(r) for r in displayable_baked_rows if r["display_quote"].startswith(("…", ".."))]
+        assert not offenders, offenders[:10]

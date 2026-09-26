@@ -285,3 +285,27 @@ class TestMainCLI:
         assert qf.main() == 0
         written = json.loads(output_path.read_text().splitlines()[0])
         assert "quality_score" in written
+
+
+class TestLeadingHeadingPenalty:
+    """Issue #308: a heading still opening the excerpt is pushed under the
+    bake floor even when the cleaner missed it."""
+
+    def test_roman_numeral_heading_is_penalised(self):
+        s, flags = score("XXXIV. Next morning, accordingly, she rose at five o'clock and went into the street.")
+        assert "leading_heading" in flags
+        assert s < 70
+
+    def test_caps_chapter_title_is_penalised(self):
+        _, flags = score(
+            "WITHIN THE POWER-HOUSE At a few moments before six o'clock Byng was shown into Jasmine's sitting-room."
+        )
+        assert "leading_heading" in flags
+
+    def test_play_speaker_label_is_not_a_heading(self):
+        _, flags = score("ROSALIND. How say you now? Is it not past two o'clock? And here much Orlando.")
+        assert "leading_heading" not in flags
+
+    def test_pronoun_sentence_is_not_a_heading(self):
+        _, flags = score("I. said nothing, but at five o'clock the carriage came round to the door.")
+        assert "leading_heading" not in flags

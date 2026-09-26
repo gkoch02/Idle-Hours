@@ -98,7 +98,7 @@ TIME_PATTERNS = [
     (
         "quarter_half",
         re.compile(
-            r"\b(?P<phrase>quarter|half)\s+past\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\b(?P<phrase>quarter|half)[-\s]+(?:past|after)[-\s]+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),
@@ -112,7 +112,7 @@ TIME_PATTERNS = [
     (
         "minutes_past_to",
         re.compile(
-            r"\b(?P<minuteword>(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
+            r"\b(?P<minuteword>(?:one|two|three|four|five|six|seven|eight|nine)[- ]and[- ](?:twenty|thirty|forty|fifty)|(?:twenty|thirty|forty|fifty)(?:[- ]\s*(?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\s+minutes?\s+(?P<relation>past|to)\s+(?P<hourword>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
             re.IGNORECASE,
         ),
     ),
@@ -289,6 +289,16 @@ def normalize_number_phrase(phrase: str) -> int | None:
     parts = cleaned.split()
     if len(parts) == 2 and parts[0] in NUMBER_WORDS and parts[1] in NUMBER_WORDS:
         return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[1]]
+    # Archaic reversed compound: "five-and-twenty" = 25 (issue #301). Only a
+    # unit before a tens word; "twenty and five" is not a period form.
+    if (
+        len(parts) == 3
+        and parts[1] == "and"
+        and parts[0] in NUMBER_WORDS
+        and 1 <= NUMBER_WORDS[parts[0]] <= 9
+        and parts[2] in {"twenty", "thirty", "forty", "fifty"}
+    ):
+        return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[2]]
     return None
 
 

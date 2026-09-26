@@ -4572,9 +4572,19 @@ def load_font(candidates: list, size: int):
 
 
 def strip_underscore_emphasis(text: str) -> str:
+    """Drop Gutenberg's ``_emphasis_`` markers, paired or not.
+
+    Paired spans go first. A marker whose partner fell outside the miner's
+    window (``_It had run down…``) or a mangled pair (``[Stiffly_._]``) used
+    to survive as a bare ``_`` on the panel (issue #308), so any single
+    underscore left at a word edge is dropped too. Runs of two or more are kept:
+    ``Mr. ____`` is a Victorian text's suppressed name, not markup.
+    """
     if not text or "_" not in text:
         return text or ""
-    return re.sub(r"(?<![A-Za-z0-9])_([^_\n]+?)_(?![A-Za-z0-9])", r"\1", text)
+    text = re.sub(r"(?<![A-Za-z0-9])_([^_\n]+?)_(?![A-Za-z0-9])", r"\1", text)
+    # Only at a word edge, so an in-word ``var_name`` is left alone.
+    return re.sub(r"(?<![A-Za-z0-9_])_(?!_)|(?<!_)_(?![A-Za-z0-9_])", "", text)
 
 
 def normalize_dashes(text: str) -> str:

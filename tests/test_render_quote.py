@@ -80,6 +80,15 @@ class TestStripUnderscoreEmphasis:
     def test_preserves_intra_word_underscores(self):
         assert rq.strip_underscore_emphasis("var_name stays") == "var_name stays"
 
+    def test_drops_unpaired_markers(self):
+        # Issue #308: a partner lost to the miner's window left a bare "_".
+        assert rq.strip_underscore_emphasis("into the ocean. _It had run down!") == "into the ocean. It had run down!"
+        assert rq.strip_underscore_emphasis("ALGERNON. [Stiffly_._] I") == "ALGERNON. [Stiffly.] I"
+        assert rq.strip_underscore_emphasis("_(A dark horse, riderless") == "(A dark horse, riderless"
+
+    def test_keeps_blank_runs(self):
+        assert rq.strip_underscore_emphasis("Mr. ____ called.") == "Mr. ____ called."
+
 
 # ---------------------------------------------------------------------------
 # normalize_dashes

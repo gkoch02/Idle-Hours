@@ -18,6 +18,7 @@ import json
 import re
 from pathlib import Path
 
+from idle_hours.atomic_io import atomic_write_lines
 from idle_hours.buckets import minute_bucket as bucket_for_minute
 from idle_hours.jsonl_io import iter_jsonl
 
@@ -88,10 +89,26 @@ def parse_number_word(text: str) -> int | None:
     return None
 
 
-def infer_time_from_quote(display_quote: str):
-    match = TIME_PATTERN.search(' '.join(display_quote.split()))
-    if not match:
+def infer_time_from_quote(display_quote: str, current_matched: str | None = None):
+    """Return the time phrase in ``display_quote`` as a partial row, or None.
+
+    A quote can carry several ``<minutes> past/to <hour>`` phrases. When
+    ``current_matched`` (the row's stored ``matched_text``) is given, the
+    phrase that *contains* it is preferred — repairing a row against the
+    first phrase in the quote rather than the one it was actually mined on
+    rewrote its time to an unrelated phrase (issue #301). Without it, or when
+    no phrase contains it, the first phrase wins as before.
+    """
+    matches = list(TIME_PATTERN.finditer(' '.join(display_quote.split())))
+    if not matches:
         return None
+    match = matches[0]
+    needle = ' '.join((current_matched or '').split()).lower()
+    if needle:
+        for candidate in matches:
+            if needle in candidate.group(0).lower():
+                match = candidate
+                break
     minute_word = match.group('minute_word')
     relation = match.group('relation').lower()
     hour_word = match.group('hour_word').lower()
@@ -125,17 +142,17 @@ def main() -> int:
     fixed = 0
     for row in iter_jsonl(input_path):
         display_quote = row.get('display_quote') or ''
-        inferred = infer_time_from_quote(display_quote)
+        current_matched = ' '.join((row.get('matched_text') or '').split()).lower()
+        inferred = infer_time_from_quote(display_quote, current_matched)
         if inferred:
-            current_matched = ' '.join((row.get('matched_text') or '').split()).lower()
             inferred_matched = inferred['matched_text'].lower()
             if current_matched and current_matched in inferred_matched and current_matched != inferred_matched:
                 row.update(inferred)
                 fixed += 1
         rows.append(row)
-    with output_path.open('w', encoding='utf-8') as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + '\n')
+    # Atomic: in-place is the default, so a crash mid-write must leave the
+    # input corpus byte-identical rather than truncated (issue #306).
+    atomic_write_lines(output_path, (json.dumps(row, ensure_ascii=False) for row in rows))
     print(f'Fixed {fixed} substring-collision rows')
     print(f'Wrote {len(rows)} rows to {output_path}')
     return 0

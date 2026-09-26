@@ -61,8 +61,45 @@ HEADING_PREFIX = re.compile(
     r"PART\s+[IVXLCDM0-9]+[.:]?"
     r"|"
     r"IN\s+WHICH\s+[A-Z ,'-]+?(?=\s+[A-Z][a-z])"
+    r"|"
+    # A bare Roman-numeral heading: "XXXIV. Next morning, …" (issue #308).
+    # At least two numeral letters, because a lone "I." is the pronoun
+    # ending a sentence and a lone "C." / "V." is as often an initial. The
+    # full numeral grammar (not ``[IVXLCDM]+``) keeps "DID." / "MID." out.
+    r"(?=[MDCLXVI]{2})M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\.(?=\s|$)"
     r")\s*",
 )
+
+# A leading run of three or more all-caps words ending where a Title-case
+# sentence begins: the chapter *titles* Gutenberg texts print above a
+# chapter ("—CONTINUATION OF THE ENIGMA The night wind had risen…",
+# "TWENTY MINUTES PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M. As ten
+# o'clock struck…"). ``HEADING_PREFIX`` only knows headings that carry a
+# keyword such as CHAPTER, so these reached the panel verbatim (issue #308).
+# Three words is the floor so a play's speaker label ("ROSALIND. How say you
+# now?") and a single shouted word survive; the sentence that follows must
+# open with a capital and a lowercase letter (or a lone "A" / "I" word) so a
+# heading is only ever cut at a sentence start.
+LEADING_CAPS_HEADING = re.compile(
+    r"^[—\-\s]*(?:[A-Z0-9][A-Z0-9’'.,\-—]*\s+){3,}(?=[A-Z](?:[a-z’']|\s+[a-z]))"
+)
+
+# Stray-character normalisation for glyphs the bundled faces lack. PRIME
+# (U+2032) and DOUBLE PRIME (U+2033) are the minute / second marks of a
+# latitude ("20° 7′ north"); forty of the bundled body faces have no glyph for
+# them and render tofu (issue #308). The apostrophe and closing double quote
+# are the typographic stand-ins every book face carries.
+GLYPH_SUBSTITUTIONS = str.maketrans({"\u2032": "\u2019", "\u2033": "\u201d"})
+
+# An opening ellipsis ("… But I have to go…", "... You are right") is the
+# source's own elision mark, which reads as a fragment on the panel. Applied
+# by ``clean_edges`` to the whole excerpt only.
+LEADING_ELLIPSIS = re.compile(r"^(?:\.{2,}|…)\s*")
+
+# Gutenberg's ``_emphasis_`` markers, as ``render_quote.strip_underscore_emphasis``
+# pairs them. A marker whose partner fell outside the miner's window survives
+# the render as a bare ``_`` (issue #308).
+_EMPHASIS_PAIR = re.compile(r"(?<![A-Za-z0-9])_([^_\n]+?)_(?![A-Za-z0-9])")
 
 
 def parse_args() -> argparse.Namespace:
@@ -195,7 +232,7 @@ def clean_edges(text: str) -> str:
     only when it has no partner in the text; a fully quoted sentence keeps
     both marks.
     """
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text.translate(GLYPH_SUBSTITUTIONS)).strip()
     while text:
         before = text
         text = LEADING_JUNK.sub("", text)
@@ -206,12 +243,38 @@ def clean_edges(text: str) -> str:
             text = text[:-1].rstrip()
         if text == before:
             break
-    while True:
-        stripped = HEADING_PREFIX.sub("", text).strip()
-        if stripped == text:
-            break
-        text = stripped
-    return text
+    text = strip_heading_prefix(drop_stray_underscores(text))
+    # Only the excerpt's own opening ellipsis is dropped — one inside the
+    # text is the author's, and ``strip_heading_prefix`` (which also runs per
+    # interior sentence) must leave it alone.
+    return LEADING_ELLIPSIS.sub("", text).strip()
+
+
+def drop_stray_underscores(text: str) -> str:
+    """Remove single ``_`` markers that have no emphasis partner.
+
+    Paired ``_emphasis_`` spans are kept (the renderer strips them), and so
+    are runs of two or more underscores — the ``____`` a Victorian text
+    prints for a suppressed name — and an in-word ``var_name``. What goes is an orphan: ``_It had run
+    down…`` whose closing marker lay beyond the window, or the mangled
+    ``[Stiffly_._]`` whose two markers pair with nothing.
+    """
+    if "_" not in text:
+        return text
+    keep: set[int] = set()
+    for match in _EMPHASIS_PAIR.finditer(text):
+        keep.update((match.start(), match.end() - 1))
+    out = []
+    for i, ch in enumerate(text):
+        if ch == "_" and i not in keep:
+            prev = text[i - 1] if i > 0 else ""
+            nxt = text[i + 1] if i + 1 < len(text) else ""
+            in_run = prev == "_" or nxt == "_"
+            in_word = prev.isalnum() and nxt.isalnum()
+            if not in_run and not in_word:
+                continue
+        out.append(ch)
+    return "".join(out)
 
 
 def strip_heading_prefix(text: str) -> str:
@@ -225,6 +288,7 @@ def strip_heading_prefix(text: str) -> str:
     """
     while True:
         stripped = HEADING_PREFIX.sub("", text).strip()
+        stripped = LEADING_CAPS_HEADING.sub("", stripped).strip()
         if stripped == text:
             break
         text = stripped
@@ -305,6 +369,11 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
     single_hits: set[str] = set()
     for field in ("quote_text", "context_text"):
         value = clean_edges(row.get(field) or "")
+        # The whole field is a candidate too, so it gets the same per-sentence
+        # heading strip the runs get — otherwise an interior "II." or a
+        # mid-text chapter title survives in the one candidate that is not
+        # built from ``expand_candidates`` (issue #308).
+        value = " ".join(s for s in (strip_heading_prefix(x) for x in split_sentences(value)) if s)
         if not value:
             continue
         runs, singles = expand_candidates(value, row.get("matched_text") or "")
@@ -318,6 +387,15 @@ def best_display_quote(row: dict) -> tuple[str, bool, str]:
             single_hits.add(value)
 
     seen = list(dict.fromkeys(candidates))
+    # A candidate that no longer shows the matched phrase cannot be
+    # displayed for it: the renderer has nothing to highlight and the row
+    # sits at a time its text does not state. This happens when the phrase
+    # lived in a heading the cleaner just stripped ("TWENTY MINUTES PAST TEN
+    # TO … P. M. As ten o'clock struck…", issue #308); such a row falls back
+    # to a fragment so ``quality_filter`` keeps it off the panel.
+    needle = " ".join((row.get("matched_text") or "").split()).lower()
+    if needle and seen and not any(needle in c.lower() for c in seen):
+        return max(seen, key=len), True, "fragment_fallback"
     non_fragments = [c for c in seen if not looks_fragment(c)]
     # Prefer candidates whose interior is heading-free, but only if any survive.
     # Sparse buckets where every candidate bleeds a heading still render something.

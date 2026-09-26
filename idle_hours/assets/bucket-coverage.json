@@ -1,6 +1,6 @@
 {
   "total_rows": 2978,
-  "displayable_rows": 2319,
+  "displayable_rows": 2318,
   "banned_rows": 19,
   "min_quality": 60,
   "total_expected_buckets": 144,
@@ -45,7 +45,7 @@
     "h3_quarter_to": 2,
     "h3_ten_to": 0,
     "h3_five_to": 10,
-    "h4_exact": 141,
+    "h4_exact": 140,
     "h4_five_past": 2,
     "h4_ten_past": 0,
     "h4_quarter_past": 2,
@@ -57,13 +57,13 @@
     "h4_quarter_to": 2,
     "h4_ten_to": 1,
     "h4_five_to": 8,
-    "h5_exact": 152,
+    "h5_exact": 151,
     "h5_five_past": 1,
     "h5_ten_past": 0,
     "h5_quarter_past": 5,
     "h5_twenty_past": 0,
     "h5_twenty_five_past": 0,
-    "h5_half_past": 4,
+    "h5_half_past": 5,
     "h5_twenty_five_to": 0,
     "h5_twenty_to": 0,
     "h5_quarter_to": 6,
@@ -111,13 +111,13 @@
     "h9_quarter_past": 1,
     "h9_twenty_past": 0,
     "h9_twenty_five_past": 0,
-    "h9_half_past": 11,
+    "h9_half_past": 10,
     "h9_twenty_five_to": 0,
     "h9_twenty_to": 1,
     "h9_quarter_to": 4,
     "h9_ten_to": 0,
     "h9_five_to": 14,
-    "h10_exact": 217,
+    "h10_exact": 218,
     "h10_five_past": 1,
     "h10_ten_past": 0,
     "h10_quarter_past": 2,
@@ -203,13 +203,13 @@
     "h4_quarter_to": 2,
     "h4_ten_to": 1,
     "h4_five_to": 9,
-    "h5_exact": 182,
+    "h5_exact": 181,
     "h5_five_past": 1,
     "h5_ten_past": 0,
     "h5_quarter_past": 6,
     "h5_twenty_past": 0,
     "h5_twenty_five_past": 0,
-    "h5_half_past": 5,
+    "h5_half_past": 6,
     "h5_twenty_five_to": 0,
     "h5_twenty_to": 0,
     "h5_quarter_to": 6,
@@ -782,7 +782,7 @@
   "dense_buckets": [
     {
       "bucket": "h10_exact",
-      "count": 217
+      "count": 218
     },
     {
       "bucket": "h9_exact",
@@ -806,7 +806,7 @@
     },
     {
       "bucket": "h5_exact",
-      "count": 152
+      "count": 151
     },
     {
       "bucket": "h6_exact",
@@ -814,7 +814,7 @@
     },
     {
       "bucket": "h4_exact",
-      "count": 141
+      "count": 140
     },
     {
       "bucket": "h12_exact",
@@ -853,10 +853,6 @@
       "count": 12
     },
     {
-      "bucket": "h9_half_past",
-      "count": 11
-    },
-    {
       "bucket": "h2_five_to",
       "count": 10
     },
@@ -866,6 +862,10 @@
     },
     {
       "bucket": "h7_quarter_to",
+      "count": 10
+    },
+    {
+      "bucket": "h9_half_past",
       "count": 10
     },
     {
@@ -1446,6 +1446,23 @@
         "source_id": "1023"
       }
     ],
+    "h5_half_past": [
+      {
+        "quote_text": "It might have been half-past five o’clock.",
+        "matched_text": "half-past five",
+        "source_id": "135"
+      },
+      {
+        "quote_text": "About half past five o'clock we arrived at a",
+        "matched_text": "half past five",
+        "source_id": "119"
+      },
+      {
+        "quote_text": "doors opened at half past four, the play began promptly at half past five, and within two minutes afterward all who were coming were in their",
+        "matched_text": "half past five",
+        "source_id": "119"
+      }
+    ],
     "h5_five_past": [
       {
         "quote_text": "On reaching the library, he found that it was just after five o’clock",
@@ -1468,23 +1485,6 @@
         "quote_text": "six o’clock train from Waterloo; and as it was then about a quarter past five, I went home, had some tea, and walked up to the station to",
         "matched_text": "quarter past five",
         "source_id": "36"
-      }
-    ],
-    "h5_half_past": [
-      {
-        "quote_text": "About half past five o'clock we arrived at a",
-        "matched_text": "half past five",
-        "source_id": "119"
-      },
-      {
-        "quote_text": "doors opened at half past four, the play began promptly at half past five, and within two minutes afterward all who were coming were in their",
-        "matched_text": "half past five",
-        "source_id": "119"
-      },
-      {
-        "quote_text": "half past five, on a brilliant and perfectly cloudless morning.",
-        "matched_text": "half past five",
-        "source_id": "119"
       }
     ],
     "h5_quarter_to": [

@@ -101,13 +101,26 @@ class TestQuarterHalfMatchType:
         assert c.hour == 2
         assert c.minute == 30
 
-    def test_hyphenated_half_past_is_not_matched(self):
-        """The quarter_half regex uses ``\\s+`` between "half" and "past" — it
-        does NOT accept "half-past". Documenting this explicitly so the day
-        someone adds hyphen support, they also update this test rather than
-        silently changing observable behaviour."""
-        c = _first_candidate("It was half-past ten when we arrived.", "quarter_half")
-        assert c is None
+    @pytest.mark.parametrize(
+        "text, hour, minute",
+        [
+            ("It was half-past ten when we arrived.", 10, 30),
+            ("At a quarter-past six the lamps were lit.", 6, 15),
+            ("It was half-past-ten by the kitchen clock.", 10, 30),
+            ("We dined at a quarter after seven.", 7, 15),
+            ("The coach left at half after four.", 4, 30),
+        ],
+    )
+    def test_hyphenated_and_after_forms(self, text, hour, minute):
+        """Issue #301: "half-past" / "quarter after" / "half after" used to
+        produce no row at all, so every hyphenated period text lost its
+        half-hours."""
+        c = _first_candidate(text, "quarter_half")
+        assert c is not None
+        assert (c.hour, c.minute) == (hour, minute)
+
+    def test_half_after_needs_an_hour_word(self):
+        assert _first_candidate("Half after dinner he slept.", "quarter_half") is None
 
 
 class TestQuarterToMatchType:
@@ -156,6 +169,28 @@ class TestMinutesPastToMatchType:
         assert c.minute == 47
         # matched_text whitespace is normalized to a single space by the miner.
         assert "forty" in c.matched_text and "seven" in c.matched_text
+
+
+    @pytest.mark.parametrize(
+        "text, hour, minute",
+        [
+            ("It was five-and-twenty minutes past seven.", 7, 25),
+            ("At five and twenty minutes to nine she rose.", 8, 35),
+            ("Some three-and-thirty minutes past two.", 2, 33),
+        ],
+    )
+    def test_reversed_compound_minutes(self, text, hour, minute):
+        """Issue #301: the archaic "five-and-twenty" form was mined as its
+        trailing "twenty minutes past seven" — five minutes early."""
+        c = _first_candidate(text, "minutes_past_to")
+        assert c is not None
+        assert (c.hour, c.minute) == (hour, minute)
+        assert "and" in c.matched_text
+
+    def test_normalize_reversed_compound(self):
+        assert miner.normalize_number_phrase("five-and-twenty") == 25
+        assert miner.normalize_number_phrase("five and twenty") == 25
+        assert miner.normalize_number_phrase("twenty and five") is None
 
 
 class TestJustAfterBeforeMatchType:

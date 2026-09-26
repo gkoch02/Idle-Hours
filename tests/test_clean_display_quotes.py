@@ -520,3 +520,61 @@ class TestBalancedRunPreference:
         assert not fragment and status == "complete_sentence"
         assert quote.startswith("On that evening")
         assert not cdq.unbalanced_quotes(quote)
+
+
+class TestCorpusHygiene:
+    """Issue #308: residue the cleaner used to pass straight to the panel."""
+
+    def test_bare_roman_numeral_heading_is_stripped(self):
+        assert cdq.clean_edges("XXXIV. Next morning, accordingly, she rose.") == "Next morning, accordingly, she rose."
+
+    def test_trailing_roman_numeral_sentence_is_dropped_from_runs(self):
+        row = {
+            "quote_text": "“Call to-morrow at three o’clock, if you please, and we will talk.” II. Next day.",
+            "context_text": "",
+            "matched_text": "three o’clock",
+        }
+        text, _, _ = cdq.best_display_quote(row)
+        assert " II." not in text
+
+    def test_single_letter_numeral_is_left_alone(self):
+        # "I." is the pronoun ending a sentence; "C." is as often an initial.
+        assert cdq.clean_edges("I. said so at five o'clock.").startswith("I.")
+        assert cdq.clean_edges("C. Dickens came at five o'clock.").startswith("C.")
+
+    def test_all_caps_chapter_title_is_stripped(self):
+        text = "—CONTINUATION OF THE ENIGMA The night wind had risen at two o’clock."
+        assert cdq.clean_edges(text) == "The night wind had risen at two o’clock."
+        text = "WHEREIN ELNORA VISITS THE BIRD WOMAN, AND OPENS A BANK ACCOUNT Four o’clock came."
+        assert cdq.clean_edges(text) == "Four o’clock came."
+
+    def test_caps_title_before_a_lone_capital_word(self):
+        text = "A PEARL OF TEN MILLIONS A few moments later the clock struck four."
+        assert cdq.clean_edges(text) == "A few moments later the clock struck four."
+
+    def test_speaker_label_survives(self):
+        text = "ROSALIND. How say you now? Is it not past two o’clock?"
+        assert cdq.clean_edges(text) == text
+
+    def test_row_whose_phrase_lived_in_the_heading_falls_back(self):
+        row = {
+            "quote_text": "TWENTY MINUTES PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M. As ten o’clock struck, they left.",
+            "context_text": "",
+            "matched_text": "TWENTY MINUTES PAST TEN",
+        }
+        _, is_frag, status = cdq.best_display_quote(row)
+        assert is_frag is True
+        assert status == "fragment_fallback"
+
+    def test_prime_marks_are_normalised(self):
+        assert cdq.clean_edges("In 20° 7′ north and 3″ west it was noon.") == "In 20° 7’ north and 3” west it was noon."
+
+    def test_leading_ellipsis_is_dropped_but_interior_kept(self):
+        assert cdq.clean_edges("… But I go by the six o’clock train.") == "But I go by the six o’clock train."
+        assert cdq.clean_edges("... You are right ... it is ten.") == "You are right ... it is ten."
+
+    def test_stray_underscores_dropped_pairs_and_blanks_kept(self):
+        assert cdq.drop_stray_underscores("into the ocean. _It had run down!") == "into the ocean. It had run down!"
+        assert cdq.drop_stray_underscores("ALGERNON. [Stiffly_._] I believe") == "ALGERNON. [Stiffly.] I believe"
+        assert cdq.drop_stray_underscores("It was _very_ late.") == "It was _very_ late."
+        assert cdq.drop_stray_underscores("Mr. ____ called at ten.") == "Mr. ____ called at ten."

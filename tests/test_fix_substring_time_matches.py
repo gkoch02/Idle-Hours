@@ -255,3 +255,79 @@ class TestArchaicReversedCompound:
         assert fixed["matched_text"] == "Five and twenty minutes past eight"
         assert fixed["normalized_time"] == "08:25"
         assert fixed["fuzzy_bucket"] == "h8_twenty_five_past"
+
+
+class TestMultiplePhrasesInQuote:
+    """Issue #301: with two ``<minutes> past/to <hour>`` phrases in one quote,
+    the repair must pick the phrase that contains the row's own matched_text,
+    not whichever phrase happens to come first."""
+
+    QUOTE = (
+        "It was ten minutes past three when he left, and "
+        "thirty-five minutes past four when he returned."
+    )
+
+    def test_prefers_phrase_containing_current_match(self):
+        result = infer_time_from_quote(self.QUOTE, "five minutes past four")
+        assert result is not None
+        assert (result["hour"], result["minute"]) == (4, 35)
+
+    def test_without_current_match_first_phrase_wins(self):
+        result = infer_time_from_quote(self.QUOTE)
+        assert (result["hour"], result["minute"]) == (3, 10)
+
+    def test_main_repairs_the_second_phrase(self, tmp_path):
+        import sys
+
+        from idle_hours.fix_substring_time_matches import main
+
+        row = {
+            "display_quote": self.QUOTE,
+            "matched_text": "five minutes past four",
+            "hour": 4,
+            "minute": 5,
+            "normalized_time": "04:05",
+            "fuzzy_bucket": "h4_five_past",
+        }
+        path = tmp_path / "rows.jsonl"
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        sys.argv = ["fix_substring_time_matches.py", str(path)]
+        main()
+        result = json.loads(path.read_text(encoding="utf-8").strip())
+        assert result["normalized_time"] == "04:35"
+        assert result["matched_text"] == "thirty-five minutes past four"
+
+
+class TestAtomicWriteback:
+    """Issue #306: the in-place default must go through atomic_io, so a
+    failure mid-write leaves the input byte-identical."""
+
+    def test_failed_replace_leaves_input_intact(self, tmp_path, monkeypatch):
+        import os
+        import sys
+
+        import pytest
+
+        from idle_hours.fix_substring_time_matches import main
+
+        row = {
+            "display_quote": "It was thirty-five minutes past two.",
+            "matched_text": "five minutes past two",
+            "hour": 2,
+            "minute": 5,
+            "normalized_time": "02:05",
+            "fuzzy_bucket": "h2_five_past",
+        }
+        path = tmp_path / "rows.jsonl"
+        original = json.dumps(row) + "\n"
+        path.write_text(original, encoding="utf-8")
+
+        def boom(*_a, **_k):
+            raise OSError("simulated crash")
+
+        monkeypatch.setattr(os, "replace", boom)
+        sys.argv = ["fix_substring_time_matches.py", str(path)]
+        with pytest.raises(OSError):
+            main()
+        assert path.read_text(encoding="utf-8") == original
+        assert [p.name for p in tmp_path.iterdir()] == ["rows.jsonl"]
