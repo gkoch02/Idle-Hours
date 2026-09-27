@@ -283,6 +283,10 @@ THEME_SATURATION: dict[str, float] = {
     # and Garden, and the harder tier would push the rose and flesh mixes
     # toward poster colour.
     "bosch": 0.5,
+    # Cobb's Semiotic Standard — saturated sign tiles and hazard stripes on a
+    # black bulkhead. Dark-ground tier: the yellow stripes and the red / green
+    # / blue sign frames need the push to stay flag-bright against the black.
+    "semiotic": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

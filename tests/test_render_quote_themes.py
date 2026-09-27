@@ -5596,3 +5596,113 @@ class TestBoschFrame:
         mid = (y0 + y1) // 2
         band = image.crop((x0 + 4, mid - 20, x1 - 4, mid + 20))
         assert ink_counts(band).get(rq.SPECTRA6["red"], 0) == 0
+
+
+class TestSemioticFrame:
+    """``semiotic`` — Ron Cobb's Semiotic Standard on a Nostromo bulkhead.
+
+    The signs are LouH's CC BY 4.0 vector set, packed into a sheet by
+    ``scripts/ingest_semiotic_signs.py`` and classified onto the inks at render
+    time. The hour chooses the featured sign and the section; the quote
+    chooses the companions.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestSemioticFrame.ROW)),
+                         *size, mode="production", theme="semiotic")
+
+    @staticmethod
+    def _feature(img):
+        x, y, w, h = rq._SEMIOTIC_FEATURE_BOX
+        return img.crop((x, y, x + w, y + h))
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        assert distinct_inks(self._render()) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        """Hour only: nothing on the frame reads the clock's minute."""
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_twelve_distinct_hour_signs(self):
+        codes = [rq._SEMIOTIC_HOUR_SIGNS[h] for h in range(1, 13)]
+        assert len(set(codes)) == 12
+        assert all(code in rq._SEMIOTIC_INDEX for code in codes)
+        # 13:00 and 01:00 are the same hour on a 12-hour dial.
+        assert rq._semiotic_hour("13:00") == rq._semiotic_hour("01:00") == 1
+        assert rq._semiotic_hour("00:10") == rq._semiotic_hour("12:10") == 12
+
+    def test_featured_sign_follows_the_hour(self):
+        crops = {pixel_bytes(self._feature(self._render(time_str=f"{h:02d}:00"))) for h in range(1, 13)}
+        assert len(crops) == 12
+
+    def test_companions_come_from_the_quote(self):
+        other = dict(self.ROW, source_id="999", line_number=7)
+        a = rq._semiotic_companions(make_row(**self.ROW), "006")
+        b = rq._semiotic_companions(make_row(**other), "006")
+        assert a != b
+        for picks in (a, b):
+            assert len(set(picks)) == 3 and "006" not in picks
+            assert all(code in rq._SEMIOTIC_COMPANION_POOL for code in picks)
+
+    def test_sign_seams_stay_on_the_signs_own_inks(self):
+        """Regression: classifying against all seven source values let the
+        bulkhead door's black/white seam average onto the dark green."""
+        feature = self._feature(self._render(time_str="02:00"))  # 006 bulkhead door
+        assert rq.SPECTRA6["green"] not in distinct_inks(feature)
+        assert rq.SPECTRA6["blue"] not in distinct_inks(feature)
+
+    def test_grey_signs_become_a_black_white_stipple(self):
+        feature = self._feature(self._render(time_str="06:00"))  # 010 laser, grey field
+        counts = ink_counts(feature)
+        assert counts.get(rq.SPECTRA6["black"], 0) > 0.1 * feature.width * feature.height
+        assert set(counts) <= {rq.SPECTRA6["white"], rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+
+    def test_quote_is_on_the_placard(self):
+        img = self._render()
+        x0, y0, x1, y1 = rq._SEMIOTIC_QUOTE_RECT
+        counts = ink_counts(img.crop((x0, y0, x1, y1)))
+        assert counts.get(rq.SPECTRA6["red"], 0) > 200      # the matched phrase
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2000   # the prose
+
+    def test_missing_sheet_degrades_to_blank_signs(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(rq, "SEMIOTIC_SIGNS", tmp_path / "absent.png")
+        monkeypatch.setattr(rq, "_SEMIOTIC_SHEET_CACHE", {})
+        img = self._render()
+        assert distinct_inks(img) <= set(rq.SPECTRA6.values())
+        assert rq.SPECTRA6["red"] in distinct_inks(self._feature(img))
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_sheet_matches_the_ingest_legend(self):
+        import importlib.util
+        path = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "ingest_semiotic_signs.py"
+        spec = importlib.util.spec_from_file_location("ingest_semiotic_signs", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert [name.split(".")[0] for name in mod.SIGNS] == [code for code, _ in rq._SEMIOTIC_SIGNS]
+        assert mod.TILE == rq._SEMIOTIC_TILE and mod.COLS == rq._SEMIOTIC_SHEET_COLS
+        sheet = rq._semiotic_sheet()
+        rows = -(-len(mod.SIGNS) // mod.COLS)
+        assert sheet.size == (mod.COLS * mod.TILE[0], rows * mod.TILE[1])
+
+    def test_attribution_ships_with_the_sheet(self):
+        readme = rq.BASE_DIR / "assets" / "semiotic" / "README.md"
+        text = readme.read_text()
+        assert "CC BY 4.0" in text and "louh/semiotic-standard" in text and "Ron Cobb" in text
