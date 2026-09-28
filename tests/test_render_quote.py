@@ -1887,7 +1887,7 @@ class TestGrimoireBorder:
         that face is gone and its replacement is unicode-safe, so every
         theme now falls through to ``quote_bold``. The seam stays because
         the hazard is a property of PIL rather than of that one font — but
-        CLAUDE.md states no theme uses it, so this fails the moment that
+        docs/themes.md states no theme uses it, so this fails the moment that
         stops being true and the doc needs updating with it.
         """
         for theme in sorted(rq.THEMES):
@@ -1895,7 +1895,7 @@ class TestGrimoireBorder:
             card = rq.theme_font_candidates(theme, "card_quote_bold")
             assert card == bold, (
                 f"theme {theme} overrides card_quote_bold. That is a supported "
-                f"escape hatch, but CLAUDE.md says no theme uses it — update the "
+                f"escape hatch, but docs/themes.md says no theme uses it — update the "
                 f"'no theme uses it today' note in the fonts section alongside it."
             )
 

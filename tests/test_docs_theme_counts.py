@@ -1,6 +1,7 @@
 """Fence the theme counts and theme lists the docs state against the registries.
 
-CLAUDE.md, README.md and CONTRIBUTING.md each restate facts that live in code:
+The theme docs (docs/themes.md, docs/runtime.md, docs/web_ui.md,
+docs/testing.md), README.md and CONTRIBUTING.md each restate facts that live in code:
 how many themes are registered, how many bypass the literary layout, which
 themes button B cycles through, and the full roster in three separate places.
 Every one of those had drifted at least once — the README's own reference list
@@ -9,7 +10,7 @@ correctly said "Sixty-three", and CLAUDE.md's decoration paragraph claimed 33
 border painters and thirteen frames against an actual 36 and 25.
 
 A count is worth fencing where an *ordinal per theme* was not (see the
-"Themes" preamble in CLAUDE.md): it is one number, in one place, checked
+"Themes" preamble in docs/themes.md): it is one number, in one place, checked
 against a list that already exists in code, rather than a whole-set fact
 smeared across a dozen member paragraphs.
 
@@ -34,7 +35,10 @@ from idle_hours.theme_names import theme_cycle
 from .test_theme_decoration import CUSTOM_FRAME_THEMES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
+THEMES_MD = REPO_ROOT / "docs" / "themes.md"
+RUNTIME_MD = REPO_ROOT / "docs" / "runtime.md"
+WEB_UI_MD = REPO_ROOT / "docs" / "web_ui.md"
+TESTING_MD = REPO_ROOT / "docs" / "testing.md"
 README_MD = REPO_ROOT / "README.md"
 CONTRIBUTING_MD = REPO_ROOT / "docs" / "CONTRIBUTING.md"
 
@@ -112,54 +116,54 @@ def _find(path: Path, pattern: str, sentence: str) -> re.Match:
 class TestDocumentedThemeCounts:
     """Spelled-out and numeric theme counts must match the live registries."""
 
-    def test_claude_md_theme_count(self):
+    def test_themes_md_theme_count(self):
         m = _find(
-            CLAUDE_MD,
+            THEMES_MD,
             r"The `THEMES` dict defines ([a-z-]+) color sets",
             "The `THEMES` dict defines <N> color sets",
         )
         assert m.group(1) == spell(len(rq.THEMES)), (
-            f"CLAUDE.md says the THEMES dict defines {m.group(1)!r} color sets; "
+            f"docs/themes.md says the THEMES dict defines {m.group(1)!r} color sets; "
             f"there are {len(rq.THEMES)} ({spell(len(rq.THEMES))!r})."
         )
 
-    def test_claude_md_custom_frame_count(self):
+    def test_themes_md_custom_frame_count(self):
         m = _find(
-            CLAUDE_MD,
+            THEMES_MD,
             r"\b([A-Za-z-]+) themes bypass the literary layout entirely",
             "<N> themes bypass the literary layout entirely",
         )
         assert m.group(1).lower() == spell(len(CUSTOM_FRAME_THEMES)), (
-            f"CLAUDE.md says {m.group(1)!r} themes bypass the literary layout; "
+            f"docs/themes.md says {m.group(1)!r} themes bypass the literary layout; "
             f"CUSTOM_FRAME_THEMES holds {len(CUSTOM_FRAME_THEMES)} "
             f"({spell(len(CUSTOM_FRAME_THEMES))!r})."
         )
 
-    def test_claude_md_operator_choice_count(self):
+    def test_web_ui_md_operator_choice_count(self):
         # diags surfaces swatches instead of a quote, so it is the one theme an
         # operator is not really choosing between.
         m = _find(
-            CLAUDE_MD,
+            WEB_UI_MD,
             r"all ([a-z-]+) operator-choice themes \(([a-z-]+) themes including",
             "all <N> operator-choice themes (<N+1> themes including `diags`)",
         )
         assert m.group(1) == spell(len(rq.THEMES) - 1)
         assert m.group(2) == spell(len(rq.THEMES))
 
-    def test_claude_md_decoration_counts(self):
+    def test_testing_md_decoration_counts(self):
         m = _find(
-            CLAUDE_MD,
+            TESTING_MD,
             r"The (\d+) border-painted themes in `_BORDER_PAINTERS` "
             r"and (\d+) `render_\*_frame` compositions",
             "The <N> border-painted themes in `_BORDER_PAINTERS` and <M> "
             "`render_*_frame` compositions",
         )
         assert int(m.group(1)) == len(rq._BORDER_PAINTERS), (
-            f"CLAUDE.md says {m.group(1)} border-painted themes; "
+            f"docs/testing.md says {m.group(1)} border-painted themes; "
             f"_BORDER_PAINTERS holds {len(rq._BORDER_PAINTERS)}."
         )
         assert int(m.group(2)) == len(CUSTOM_FRAME_THEMES), (
-            f"CLAUDE.md says {m.group(2)} render_*_frame compositions; "
+            f"docs/testing.md says {m.group(2)} render_*_frame compositions; "
             f"CUSTOM_FRAME_THEMES holds {len(CUSTOM_FRAME_THEMES)}."
         )
 
@@ -243,9 +247,9 @@ class TestDocumentedThemeRosters:
             + _roster_diff(named, list(rq.THEME_ORDER))
         )
 
-    def test_claude_md_button_b_cycle_matches_theme_cycle(self):
+    def test_runtime_md_button_b_cycle_matches_theme_cycle(self):
         m = _find(
-            CLAUDE_MD,
+            RUNTIME_MD,
             # Stop at the ';' that ends the chain — the clause after it names the
             # CYCLE_EXCLUDED_THEMES, which are precisely not in the cycle.
             r"advances one step through `render_quote\.THEME_ORDER` \(([^);]+)",
@@ -254,10 +258,10 @@ class TestDocumentedThemeRosters:
         chain = re.findall(r"[a-z_]+", m.group(1))
         # The chain is written as a loop, closing on the theme it opened with.
         assert chain and chain[-1] == chain[0], (
-            "CLAUDE.md button-B chain should close back on its first theme."
+            "docs/runtime.md button-B chain should close back on its first theme."
         )
         assert chain[:-1] == list(theme_cycle()), (
-            "CLAUDE.md button-B chain is out of sync with theme_cycle().\n"
+            "docs/runtime.md button-B chain is out of sync with theme_cycle().\n"
             + _roster_diff(chain[:-1], list(theme_cycle()))
         )
 

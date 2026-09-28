@@ -242,9 +242,9 @@ Distilled from the [myembeddedstuff "Beyond 6 Colors" article](https://myembedde
 
   **What survives a full-palette dither is narrower than it looks.** Measured on the real primitive, a saturated source quantises into a chunky blue/red/green mosaic that reads as colour bars at panel size; a soft, desaturated, high-key source breaks into a fine grain with white carrying the luminance. Anything approaching a photograph on this panel therefore wants a *pastel* source, which is a real constraint on subject matter and not a stylistic preference. Two related traps, both measured: a hard-edged near-white shape quantises to a solid blob with a visible rim (lay masses down as blurred masks so diffusion has a gradient to break up), and a light desaturated green sits far enough from every ink that diffusion reaches for blue — a sage lawn speckles cold unless it is warmed and darkened toward the panel's own green.
 
-## How this doc relates to CLAUDE.md
+## How this doc relates to docs/themes.md
 
-The "Synthesising colours outside the Spectra 6 palette" section in [CLAUDE.md](CLAUDE.md) keeps a focused table of the **in-use** recipes — the source-of-truth quick reference for someone reading `render_quote.py` who needs to know which themes pull which recipe.
+The "Synthesising colours outside the Spectra 6 palette" section in [themes.md](themes.md) keeps a focused table of the **in-use** recipes — the source-of-truth quick reference for someone reading `render_quote.py` who needs to know which themes pull which recipe.
 
 This document is the **catalogue and playbook**: calibrated panel values, the octahedron model, unused-but-reachable recipes, three-ink forward references, and the step-by-step authoring guidance. The two are intentionally complementary; cross-link from either entry point.
 
