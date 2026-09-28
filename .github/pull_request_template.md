@@ -37,6 +37,8 @@ a systemd unit change, a migration step. Say "None" if it is invisible. -->
 
 ## Docs
 
-- [ ] `CLAUDE.md` updated if this touches architecture, invariants, a theme,
-      or anything it already documents
+- [ ] `CLAUDE.md` (or `docs/themes.md` / `runtime.md` / `web_ui.md` / `testing.md`)
+      updated if this touches architecture, invariants, a theme, or anything
+      they already document. Keep `CLAUDE.md` itself under 150k characters —
+      long design notes belong in `docs/`.
 - [ ] `README.md` updated if this changes a user-facing command or the theme table

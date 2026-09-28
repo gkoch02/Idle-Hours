@@ -14,7 +14,7 @@ derivable from code, with nothing tying the two together:
 * the spelled-out counts (``TestThemeCountWords``)
 * the README's per-theme table and its preview images (``TestReadmeThemeTable``)
 * the README's contact-sheet loop (``TestContactSheetLoop``)
-* CLAUDE.md's button-B cycle chain (``TestButtonBCycleChain``)
+* docs/runtime.md's button-B cycle chain (``TestButtonBCycleChain``)
 
 Every expectation is *derived* from ``render_quote``, so adding theme fifty
 means updating the docs and nothing here. Each scan also asserts a floor on how
@@ -83,9 +83,9 @@ CLAIM_SITES = (
      re.compile(r"previews of all ([\w-]+) registered themes"), (0,)),
     ("README.md", "feature list",
      re.compile(r"- ([\w-]+) themes ship built-in \(full table"), (0,)),
-    ("CLAUDE.md", "THEMES dict description",
+    ("docs/themes.md", "THEMES dict description",
      re.compile(r"The `THEMES` dict defines ([\w-]+) colou?r sets"), (0,)),
-    ("CLAUDE.md", "theme preview endpoint",
+    ("docs/web_ui.md", "theme preview endpoint",
      re.compile(r"compare all ([\w-]+) operator-choice themes \(([\w-]+) themes including"), (1, 0)),
     ("docs/CONTRIBUTING.md", "theme section",
      re.compile(r"([\w-]+) themes ship today"), (0,)),
@@ -123,7 +123,7 @@ class TestThemeCountWords:
         """Each file that states a count must appear in CLAIM_SITES."""
         covered = {relative for relative, _, _, _ in CLAIM_SITES}
         assert covered == {
-            "README.md", "CLAUDE.md", "docs/CONTRIBUTING.md",
+            "README.md", "docs/themes.md", "docs/web_ui.md", "docs/CONTRIBUTING.md",
             "idle_hours/assets/config.toml.defaults",
         }, f"CLAIM_SITES covers {sorted(covered)} — a file was added or dropped"
 
@@ -192,7 +192,7 @@ class TestContactSheetLoop:
 
 
 class TestButtonBCycleChain:
-    """CLAUDE.md's button-B chain must match the real cycle order.
+    """docs/runtime.md's button-B chain must match the real cycle order.
 
     The chain documents what a physical button press actually does, so it tracks
     ``theme_cycle()`` — ``THEME_ORDER`` minus ``CYCLE_EXCLUDED_THEMES`` — not the
@@ -202,22 +202,22 @@ class TestButtonBCycleChain:
     CHAIN_RE = re.compile(r"advances one step through `render_quote\.THEME_ORDER` \(([^;)]+)\)?;")
 
     def test_chain_matches_the_cycle(self):
-        text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        text = (REPO_ROOT / "docs" / "runtime.md").read_text(encoding="utf-8")
         match = self.CHAIN_RE.search(text)
-        assert match, "could not find the button-B cycle chain in CLAUDE.md"
+        assert match, "could not find the button-B cycle chain in docs/runtime.md"
         listed = [part.strip().strip("`") for part in match.group(1).split("→")]
         cycle = list(theme_names.theme_cycle())
         assert listed[-1] == cycle[0], (
             f"the chain should wrap back to `{cycle[0]}`, it ends at `{listed[-1]}`"
         )
         assert listed[:-1] == cycle, (
-            "the button-B chain in CLAUDE.md no longer matches theme_cycle() — "
+            "the button-B chain in docs/runtime.md no longer matches theme_cycle() — "
             f"missing {sorted(set(cycle) - set(listed))}, "
             f"unknown {sorted(set(listed) - set(cycle))}"
         )
 
     def test_excluded_themes_stay_out_of_the_chain(self):
-        text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        text = (REPO_ROOT / "docs" / "runtime.md").read_text(encoding="utf-8")
         listed = set(p.strip().strip("`") for p in self.CHAIN_RE.search(text).group(1).split("→"))
         for excluded in rq.CYCLE_EXCLUDED_THEMES:
             assert excluded not in listed, (

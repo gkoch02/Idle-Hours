@@ -101,7 +101,7 @@ The runtime is a thin orchestrator (`run_clock.py`) that delegates to eight
 / `runtime_webhook` / `runtime_quiet` / `runtime_theme` / `runtime_actions` /
 `runtime_log`). The module boundary, lock discipline, and thread ownership
 rules are documented in the "Runtime Module Architecture" section of
-`CLAUDE.md` — please read that section before restructuring any of those
+[`docs/runtime.md`](runtime.md) — please read that section before restructuring any of those
 modules. Highlights:
 
 - Three locks: `render_lock` (coarse, serialises panel pushes),
@@ -207,8 +207,8 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
 Seventy-four themes ship today — see the `THEME_ORDER` tuple for the
-canonical list, the README theme table for previews, and `CLAUDE.md`'s
-themes section for the design notes behind each one. Some are palette + font
+canonical list, the README theme table for previews, and
+[`docs/themes.md`](themes.md) for the design notes behind each one. Some are palette + font
 swaps on the shared literary layout, some add a border painter, and the
 custom-render frames (`tarot`, `vitrail`, `questline`, `pride`, `bosch`, …)
 own their whole composition. Adding another means wiring it into all of:
@@ -231,7 +231,7 @@ own their whole composition. Adding another means wiring it into all of:
 - a preview thumbnail at `idle_hours/assets/previews/<theme>.png` (generate it
   with `python scripts/generate_theme_previews.py --theme <theme>`, never by
   hand — CI's `--check` fails a stale one) plus a row in
-  the README theme table, and a paragraph in `CLAUDE.md`'s themes section
+  the README theme table, and a paragraph in [`docs/themes.md`](themes.md)
   describing the design decisions — not just the palette
 
 A **custom-render frame** (one that bypasses the shared literary layout and
