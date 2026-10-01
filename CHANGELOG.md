@@ -9,6 +9,11 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `atropos` theme: night in the Overgrown Ruins of Housemarque's *Returnal*
+  — a teal fog dithered to the cold inks, rain, Sentient statues, the Helios
+  wreck, ember-lit tendrils and bullet-hell orbs, the quote as a translated
+  xenoglyph cipher in Michroma and the hour as the cycle counter.
+
 ## [2.6.0] - 2026-09-26
 
 - `idle-hours run --once` now pins its render to the quote it picked, and so
