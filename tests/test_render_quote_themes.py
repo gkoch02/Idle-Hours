@@ -1876,7 +1876,7 @@ class TestFixedGeometryFramesDownscale:
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
                              "plaque", "daguerreotype", "autochrome", "photo", "tarot", "vinyl",
                              "control", "observation", "trisolaris", "biomech", "codex",
-                             "culture", "orbital", "furies", "bosch")
+                             "culture", "orbital", "furies", "bosch", "saros")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -5706,3 +5706,130 @@ class TestSemioticFrame:
         readme = rq.BASE_DIR / "assets" / "semiotic" / "README.md"
         text = readme.read_text()
         assert "CC BY 4.0" in text and "louh/semiotic-standard" in text and "Ron Cobb" in text
+
+
+class TestSarosFrame:
+    """``saros`` — Housemarque's *Saros*, the eclipse over Carcosa.
+
+    A black sun in a dithered corona whose phase is the hour, a sunset band
+    ringing the horizon with the colony cut out of it, the
+    quote in the dark sky with the matched phrase as an ember.
+    """
+
+    ROW = dict(
+        display_quote="The clock was striking ten when he came back, and the whole "
+                      "house seemed asleep; only the stars were awake over the river.",
+        matched_text="striking ten",
+        author="H. G. Wells",
+        title="The Time Machine",
+        source_id="35",
+        line_number=646,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="10:00", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestSarosFrame.ROW)),
+                         *size, mode="production", theme="saros")
+
+    @staticmethod
+    def _bead_window(hour):
+        bx, by = rq._saros_bead(hour)
+        return (int(bx) - 14, int(by) - 14, int(bx) + 14, int(by) + 14)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert "saros" in rq.THEMES
+        assert "saros" in rq.THEME_ORDER
+        assert "saros" not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION["saros"] == 0.7
+        assert rq.theme_font_candidates("saros", "quote_regular")[0] == (rq.EXO2_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("saros", "quote_bold")[0] == (rq.EXO2_VARIABLE, "SemiBold")
+        for path in (rq.EXO2_VARIABLE, rq.EXO2_ITALIC_VARIABLE, rq.MICHROMA_REGULAR):
+            assert pathlib.Path(path).exists()
+            assert (pathlib.Path(path).parent / "OFL.txt").exists()
+
+    def test_frame_is_on_palette_and_deterministic(self):
+        image = self._render()
+        inks = distinct_inks(image)
+        assert inks <= set(rq.SPECTRA6.values())
+        # Fire, sky, the horizon haze — and never green.
+        for ink in ("black", "red", "yellow", "white", "blue"):
+            assert rq.SPECTRA6[ink] in inks, ink
+        assert rq.SPECTRA6["green"] not in inks
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        """Hour only: the eclipse's phase is the hour, nothing reads the minute."""
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_twelve_is_totality(self):
+        assert rq._saros_moon_centre(12) == tuple(float(v) for v in rq._SAROS_SUN)
+        assert rq._saros_occlusion(12) == 100
+        assert all(rq._saros_occlusion(h) < 100 for h in range(1, 12))
+        assert pixel_bytes(self._render(time_str="00:00")) == pixel_bytes(self._render(time_str="12:00"))
+        # No diamond ring at totality: no white bead on the limb anywhere.
+        total = self._render(time_str="12:00")
+        for hour in range(1, 12):
+            window = total.crop(self._bead_window(hour))
+            assert ink_counts(window).get(rq.SPECTRA6["white"], 0) < 40
+
+    def test_the_bead_is_the_hour_hand(self):
+        """The exposed sliver and its bead sit where the hour hand would point."""
+        cx, cy = rq._SAROS_SUN
+        r = rq._SAROS_RADIUS
+        assert rq._saros_bead(3) == pytest.approx((cx + r, cy))
+        assert rq._saros_bead(6) == pytest.approx((cx, cy + r))
+        assert rq._saros_bead(9) == pytest.approx((cx - r, cy))
+        assert rq._saros_bead(12) == pytest.approx((cx, cy - r))
+        for hour in (3, 9):
+            image = self._render(time_str=f"{hour:02d}:00")
+            lit = ink_counts(image.crop(self._bead_window(hour))).get(rq.SPECTRA6["white"], 0)
+            dark = ink_counts(image.crop(self._bead_window(12 - hour))).get(rq.SPECTRA6["white"], 0)
+            assert lit > dark + 60, (hour, lit, dark)
+
+    def test_twelve_distinct_hour_frames(self):
+        frames = {pixel_bytes(self._render(time_str=f"{h:02d}:00")) for h in range(1, 13)}
+        assert len(frames) == 12
+
+    def test_the_corona_holds_no_blue(self):
+        """Blue is in the dither palette for the horizon haze only; a blue
+        channel in the fire would be paid out as blue specks in the corona."""
+        image = self._render(time_str="12:00")
+        assert rq.SPECTRA6["blue"] not in distinct_inks(image.crop((420, 0, 800, 300)))
+
+    def test_silhouettes_cut_the_dusk(self):
+        """The tallest colony tower stands black against the sunset band; the
+        sky beside it at the same height is lit."""
+        image = self._render(time_str="12:00")
+        tower = image.crop((750, 330, 782, 362))
+        assert distinct_inks(tower) == {rq.SPECTRA6["black"]}
+        beside = image.crop((724, 330, 740, 362))
+        assert rq.SPECTRA6["red"] in distinct_inks(beside) or rq.SPECTRA6["yellow"] in distinct_inks(beside)
+
+    def test_quote_is_white_prose_with_an_ember_phrase(self):
+        image = self._render()
+        counts = ink_counts(image.crop(rq._SAROS_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 200
+
+    def test_motes_come_from_the_quote_and_never_land_on_the_moon(self):
+        other = dict(self.ROW, source_id="999", line_number=7)
+        a = self._render(time_str="12:00")
+        b = self._render(row=other, time_str="12:00")
+        # Same text, same hour: only the spores differ, and they must.
+        assert pixel_bytes(a) != pixel_bytes(b)
+        cx, cy = rq._SAROS_SUN
+        for image in (a, b):
+            assert distinct_inks(image.crop((cx - 70, cy - 70, cx + 70, cy + 70))) == {rq.SPECTRA6["black"]}
+
+    def test_chrome_face_carries_every_glyph_it_sets(self):
+        font = rq.load_font([rq.MICHROMA_REGULAR], 10)
+        for ch in set("SAROS CARCOSA COLONY DIAMOND RING TOTALITY OCCLUSION 0123456789%"):
+            assert rq.font_has_glyph(font, ch), ch
+
+    def test_missing_author_falls_back_to_the_source(self):
+        row = dict(self.ROW, author="", title="")
+        image = self._render(row=row)
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
