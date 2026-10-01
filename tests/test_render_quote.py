@@ -4474,6 +4474,24 @@ class TestFitQuoteBalanced:
         plain_size = rq.fit_quote(draw, text, "nine o\u2019clock", 640, 248, 66, 32, 1.12, theme="chanbara")[4]
         assert size >= max(32, int(plain_size * 0.8) - 1)
 
+    def test_candidate_widow_is_judged_against_its_own_measure(self):
+        """A balanced candidate is wrapped to a narrower measure; its last
+        line is compared with the lines above it, i.e. with that measure,
+        not with the layout's full one (Codex review on #328)."""
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        regular = rq.load_font(rq.QUOTE_FONT_SEMIBOLD_CANDIDATES, size=40)
+        bold = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=40)
+        line = [("at", False), (" ", False), ("nine", False)]
+        ink = rq._line_ink_width(draw, line, regular, bold)
+        # Two words, so not a one-word widow; pick measures either side
+        # of the 30% threshold around this line's own width.
+        assert rq.is_widow_line(draw, line, regular, bold, int(ink / 0.25)) is True
+        assert rq.is_widow_line(draw, line, regular, bold, int(ink / 0.35)) is False
+        # Hence a short last line that fails against max_width can pass once
+        # the search has narrowed the measure around it.
+        wide, narrow = int(ink / 0.25), int(ink / 0.35)
+        assert rq.is_widow_line(draw, line, regular, bold, wide) and not rq.is_widow_line(draw, line, regular, bold, narrow)
+
     def test_no_widow_means_untouched(self):
         text = "The clock struck nine as he came in, and the room was full of people who had waited all evening."
         draw, (regular, bold, wrapped, line_height, size, wrap_width) = self._fit(text, "struck nine", layout="standard")
@@ -4544,6 +4562,32 @@ class TestRisographKnockout:
         blue = rq.SPECTRA6["blue"]
         box = [(x, y) for x in range(62, 73) for y in range(120, 166)]
         assert sum(img.getpixel(p) == blue for p in box) / len(box) < 0.5
+
+
+class TestKnockoutCoversByline:
+    def test_long_title_stays_inside_the_risograph_label(self):
+        """A short quote with a long title: the label's right edge used to
+        follow the quote lines alone, so the byline ran out of the panel
+        into the lower-right print bar (Codex review on #328)."""
+        row = {
+            "display_quote": "The clock struck nine as he came in.",
+            "matched_text": "struck nine",
+            "author": "Christopher Morley",
+            "title": "The Haunted Bookshop, Being a Further Account of Roger Mifflin and His Parnassus at Home",
+        }
+        img = rq.render("09:00", row, 800, 480, mode="production", theme="risograph")
+        red = rq.SPECTRA6["red"]
+        # The title paints red on paper; follow its row and check that every
+        # red pixel at the far right of the byline band is text-sized ink on
+        # white neighbours, not the solid print bar (x 712-744).
+        bar_columns = range(714, 742)
+        solid_rows = 0
+        for y in range(296, 412):
+            if all(img.getpixel((x, y)) == red for x in bar_columns):
+                solid_rows += 1
+        # The bar is 116 rows tall when untouched; the knockout must have
+        # removed the rows the byline band overlaps.
+        assert solid_rows < 116
 
 
 class TestAlchemyFaintFigure:

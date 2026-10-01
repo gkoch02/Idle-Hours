@@ -5293,9 +5293,12 @@ def fit_quote_balanced(draw, text, match_text, max_width, max_height, font_max, 
             candidate = wrap_styled_text(draw, segments, regular, bold, candidate_width, bold_stroke=bold_stroke)
             if len(candidate) != len(base):
                 break
-            if is_widow_line(draw, candidate[-1], regular, bold, max_width, bold_stroke):
+            # A widow and the fill are judged against the measure the
+            # candidate was wrapped to: what the eye compares the last line
+            # with is the lines above it, which now stop at candidate_width.
+            if is_widow_line(draw, candidate[-1], regular, bold, candidate_width, bold_stroke):
                 continue
-            if _min_body_fill(draw, candidate, regular, bold, bold_stroke, max_width) < fill_floor:
+            if _min_body_fill(draw, candidate, regular, bold, bold_stroke, candidate_width) < fill_floor:
                 continue
             return regular, bold, candidate, candidate_line_height, candidate_size, candidate_width
     return regular_font, bold_font, wrapped, line_height, size, max_width
@@ -35986,6 +35989,18 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             quote_left_edge = min(quote_left_edge, line_left)
             quote_right_edge = max(quote_right_edge, line_right)
         y_probe += line_height
+
+    # The knockout rect must cover the attribution as well as the quote
+    # lines: a short or balanced quote with a long title would otherwise
+    # leave the byline running out of the cleared panel into the border
+    # decoration (Codex review on #328).
+    attribution_left = (width - layout["max_width"]) // 2
+    for line, font in [(author_line, attribution_font) for author_line in author_lines] + [
+        (title_line, attribution_title_font) for title_line in title_lines
+    ]:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        quote_left_edge = min(quote_left_edge, attribution_left)
+        quote_right_edge = max(quote_right_edge, attribution_left + bbox[2] - bbox[0])
 
     clear_rect = None
     # Per-theme clear-rect padding (x, top, bottom). Themes that thread
