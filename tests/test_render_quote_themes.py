@@ -6147,10 +6147,12 @@ class TestWitcherFrame:
         counts = ink_counts(image.crop((cx - r, cy - r, cx + r, cy + r)))
         assert counts.get(rq.SPECTRA6["red"], 0) > 900        # the slashes
         assert counts.get(rq.SPECTRA6["black"], 0) > 300      # their outlines
-        # Three blades: a scan across the hub above the cut enters red three times.
+        # Three blades: a scan across the hub above the cut crosses three runs
+        # of red at least four pixels long (the page's foxing is single flecks).
         y = cy - r // 4
         row = [image.getpixel((x, y)) == rq.SPECTRA6["red"] for x in range(cx - r, cx + r)]
-        assert sum(1 for a, b in zip(row, row[1:]) if b and not a) == 3
+        runs = sum(1 for run in "".join("r" if v else "." for v in row).split(".") if len(run) >= 4)
+        assert runs == 3
 
     def test_quote_is_black_with_a_tangerine_phrase(self):
         counts = ink_counts(self._render().crop(rq._WITCHER_QUOTE_RECT))
