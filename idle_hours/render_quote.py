@@ -30269,7 +30269,12 @@ def _saros_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int
     cap = draw.textbbox((0, 0), "S", font=wordmark)
     cap_h = cap[3] - cap[1]
     r = cap_h / 2 + 1
-    cx, cy = x + r + 1, y + cap[1] + cap_h / 2
+    # The O sits one tracking step after the R and one before the S, like a
+    # glyph in the run; ``draw_tracked`` returns the run's width *without* a
+    # trailing step, so the step is added here. An earlier revision added only
+    # the 1 px outline allowance, which left the O a full tracking step left of
+    # centre between its neighbours.
+    cx, cy = x + tracking + r + 1, y + cap[1] + cap_h / 2
     draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=black, outline=white, width=2)
     if hour != 12:
         ux, uy = _saros_hour_vector(hour)
