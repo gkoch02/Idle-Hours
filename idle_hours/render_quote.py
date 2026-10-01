@@ -1354,7 +1354,7 @@ THEMES = {
     # under the meditation dial. A custom frame (``render_witcher_frame``):
     # cream parchment in a dark binding, the entry in Barlow Condensed with
     # the matched phrase in the interface's tangerine, the hour as the sun
-    # or moon on the dial and the title's III on a medallion at its hub. These
+    # or moon on the dial and the title's claw slashes at its hub. These
     # literary-layout slots serve only the palette-only paths (see the note
     # above ``THEMES``).
     "witcher": {
@@ -31723,7 +31723,7 @@ def render_expedition_frame(time_str: str, quote_row: dict, width: int, height: 
 # "susceptible to" line of sign and oil icons at the foot. The page is one of
 # those entries — the book is the entry, the quote is its epigraph — and the
 # **meditation dial** that the game shows when Geralt sits down to wait is
-# the time carrier, with a medallion bearing the title's III at its hub.
+# the time carrier, with the title's three claw slashes at its hub.
 #
 # **The dial is hour-only.** Two engraved rings, twelve major and forty-eight
 # minor ticks, and one marker on the hour's radius: a sun by day and a
@@ -31733,14 +31733,14 @@ def render_expedition_frame(time_str: str, quote_row: dict, width: int, height: 
 # with the matched phrase. Nothing prints a digit, nothing reads the wall
 # clock.
 #
-# **The medallion** at the hub carries the III of the game's logotype
-# rather than the wolf's head: the Wolf School emblem is CD Projekt's mark,
-# a polygon redraw of it at 96 px read as rough, and the numeral is the
-# title's other device and the one that reads cleanly at this size. A
-# black disc with a stipple shadow cast lower-right, in a silver double
-# ring; three white bars with chamfered corners between a head and a foot
-# rule, with a seeded speckle knocked out of them so the device reads as
-# struck metal rather than print.
+# **The hub** carries three claw slashes after the III of the game's
+# logotype rather than the wolf's head: the Wolf School emblem is CD
+# Projekt's mark and a polygon redraw of it at 96 px read as rough, and
+# Roman bars read as a numeral and nothing else. Each slash is a blade
+# pointed at both ends with the spike that trails it below the cut, the
+# outer two scaled down and swung outward about the hub; red outlined in
+# black, which on the panel is dried blood on parchment — the right thing
+# to find on a bestiary page.
 #
 # **The page** is the ``tarot`` vellum recipe — a Y+W cream under a sparse
 # R+G foxing — inside a deckled edge: the page mask's outer band is eaten
@@ -31778,7 +31778,7 @@ _WITCHER_HEADER_Y = 48
 _WITCHER_HEADER_RULE_Y = 106
 _WITCHER_DIAL_CENTRE = (180, 254)
 _WITCHER_DIAL_RADIUS = 108
-_WITCHER_MEDALLION_RADIUS = 48
+_WITCHER_MEDALLION_RADIUS = 50
 _WITCHER_QUOTE_RECT = (330, 124, 742, 362)
 _WITCHER_ATTRIBUTION_TOP = 372
 _WITCHER_FOOT_Y = 404
@@ -31786,13 +31786,14 @@ _WITCHER_SIGNS_RIGHT = 742
 _WITCHER_CREAM_DENSITY = 0.14
 _WITCHER_FOXING_DENSITY = 0.03
 _WITCHER_PAGE: dict = {}
-# The medallion's device: the III of the game's logotype, in a 100-unit
-# box. Three bars with chamfered outer corners between a head and a foot
-# rule, the way the title sets it; the distress is a seeded speckle.
-_WITCHER_NUMERAL_BARS = (((14, 24), (32, 24), (32, 76), (14, 76)), ((41, 24), (59, 24), (59, 76), (41, 76)),
-                         ((68, 24), (86, 24), (86, 76), (68, 76)))
-_WITCHER_NUMERAL_CHAMFER = 4
-_WITCHER_NUMERAL_RULES = (((10, 15), (90, 19)), ((10, 81), (90, 85)))
+# The hub device: three claw slashes after the III of the game's logotype,
+# in a 100-unit box. One blade, pointed at both ends and widest a third of
+# the way down, with the spike that trails it below the cut; the outer two
+# are the same blade scaled down and swung outward about the hub.
+_WITCHER_CLAW_BLADE = ((50, 2), (58, 14), (61, 32), (56, 56), (52, 64), (44, 58), (40, 32), (42, 14))
+_WITCHER_CLAW_SPIKE = ((54, 68), (52, 84), (50, 98), (46, 80), (45, 64))
+_WITCHER_CLAW_PIVOT = (50, 74)
+_WITCHER_CLAWS = ((0.0, 1.0, 0), (-0.22, 0.88, -26), (0.22, 0.88, 26))   # (lean, scale, x offset)
 _WITCHER_SIGNS = ("AARD", "IGNI", "YRDEN", "QUEN", "AXII")
 
 
@@ -31890,44 +31891,35 @@ def _witcher_paint_dial(image: Image.Image) -> None:
                  "MEDITATION", label, black, tracking=4)
 
 
+def _witcher_claw(lean: float, scale: float, dx: float):
+    """One slash's polygons: the blade scaled and swung about the pivot, then
+    shifted along the hub; returns the blade and its spike in box units."""
+    px, py = _WITCHER_CLAW_PIVOT
+    ca, sa = math.cos(lean), math.sin(lean)
+
+    def swing(pts):
+        return [(px + dx + ((x - px) * ca - (y - py) * sa) * scale, py + ((x - px) * sa + (y - py) * ca) * scale)
+                for x, y in pts]
+
+    return swing(_WITCHER_CLAW_BLADE), swing(_WITCHER_CLAW_SPIKE)
+
+
 def _witcher_paint_medallion(image: Image.Image) -> None:
-    """The medallion at the dial's hub: a black disc with a cast shadow in a
-    silver double ring, carrying the III of the logotype in white, weathered."""
+    """The hub: three claw slashes in red, outlined in black so they hold on
+    the cream, after the III of the title."""
     draw = ImageDraw.Draw(image)
-    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
     cx, cy = _WITCHER_DIAL_CENTRE
     r = _WITCHER_MEDALLION_RADIUS
-    shadow = Image.new("L", image.size, 0)
-    ImageDraw.Draw(shadow).ellipse((cx - r + 4, cy - r + 5, cx + r + 4, cy + r + 5), fill=255)
-    sp = shadow.load()
-    px = image.load()
-    for y in range(cy - r + 5, cy + r + 6):
-        row = BAYER_4x4[y % 4]
-        for x in range(cx - r + 4, cx + r + 5):
-            if sp[x, y] and row[x % 4] < 8 and px[x, y] != black:
-                px[x, y] = black
-    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=black, outline=white, width=3)
-    draw.ellipse((cx - r + 5, cy - r + 5, cx + r - 5, cy + r - 5), outline=white, width=1)
-    scale = (r - 10) * 2 / 100.0
+    scale = r * 2 / 100.0
     ox, oy = cx - 50 * scale, cy - 50 * scale
 
     def place(pts):
         return [(ox + x * scale, oy + y * scale) for x, y in pts]
 
-    c = _WITCHER_NUMERAL_CHAMFER
-    for (x0, y0), (x1, _), (_, y1), _ in _WITCHER_NUMERAL_BARS:
-        draw.polygon(place(((x0 + c, y0), (x1 - c, y0), (x1, y0 + c), (x1, y1 - c), (x1 - c, y1),
-                            (x0 + c, y1), (x0, y1 - c), (x0, y0 + c))), fill=white)
-    for (x0, y0), (x1, y1) in _WITCHER_NUMERAL_RULES:
-        draw.rectangle(place(((x0, y0), (x1, y1))), fill=white)
-    # Weathering: a seeded speckle knocked out of the white, denser toward
-    # the bars' ends, so the device reads as struck metal rather than print.
-    rng = random.Random(_WITCHER_SEED + 7)
-    for _ in range(70):
-        x, y = rng.uniform(12, 88), rng.uniform(22, 78)
-        if rng.random() < 0.2 + 0.4 * abs(y - 50) / 28:
-            (px0, py0), = place(((x, y),))
-            draw.rectangle((px0, py0, px0 + 1, py0 + 1), fill=black)
+    for lean, size, dx in _WITCHER_CLAWS:
+        for piece in _witcher_claw(lean, size, dx):
+            draw.polygon(place(piece), fill=red, outline=black)
 
 
 def _witcher_page() -> Image.Image:
@@ -31955,12 +31947,14 @@ def _witcher_paint_marker(image: Image.Image, hour: int) -> None:
     black, yellow, white = SPECTRA6["black"], SPECTRA6["yellow"], SPECTRA6["white"]
     cx, cy = _WITCHER_DIAL_CENTRE
     ang = math.radians((hour % 12) * 30 - 90)
-    rr = _WITCHER_DIAL_RADIUS - 46
+    # The marker rides between the claws' reach and the inner ring, so the
+    # sun's rays never cross a blade tip; the pointer sits on the ring itself.
+    rr = _WITCHER_DIAL_RADIUS - 36
     mx, my = cx + math.cos(ang) * rr, cy + math.sin(ang) * rr
-    tip = _WITCHER_DIAL_RADIUS - 16
+    tip = _WITCHER_DIAL_RADIUS - 11
     draw.polygon([(cx + math.cos(ang) * tip, cy + math.sin(ang) * tip),
-                  (cx + math.cos(ang + 0.09) * (tip - 10), cy + math.sin(ang + 0.09) * (tip - 10)),
-                  (cx + math.cos(ang - 0.09) * (tip - 10), cy + math.sin(ang - 0.09) * (tip - 10))], fill=black)
+                  (cx + math.cos(ang + 0.09) * (tip - 9), cy + math.sin(ang + 0.09) * (tip - 9)),
+                  (cx + math.cos(ang - 0.09) * (tip - 9), cy + math.sin(ang - 0.09) * (tip - 9))], fill=black)
     if 6 <= hour < 18:
         for k in range(8):
             a = math.radians(k * 45)

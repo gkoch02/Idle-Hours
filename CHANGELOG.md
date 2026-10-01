@@ -11,7 +11,7 @@ these entries under the new dated version heading.
 
 - New `witcher` theme: *The Witcher 3: Wild Hunt* — a bestiary page on
   deckled parchment in a dark binding, the meditation dial with the title's
-  III on a medallion at its hub and a sun or moon on the hour's radius, the
+  three claw slashes at its hub and a sun or moon on the hour's radius, the
   entry in Barlow Condensed with the matched phrase in the interface's
   tangerine, and the signs the entry is susceptible to at the foot. Archivo
   Narrow is a new bundled face (OFL, from Google Fonts).
