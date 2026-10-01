@@ -287,6 +287,11 @@ THEME_SATURATION: dict[str, float] = {
     # black bulkhead. Dark-ground tier: the yellow stripes and the red / green
     # / blue sign frames need the push to stay flag-bright against the black.
     "semiotic": 0.7,
+    # Returnal's Atropos — a black night under a teal fog dithered to blue +
+    # green, with every light a falling-density tangerine or violet bloom.
+    # Dark-ground tier: the gentler push flattens the blooms and lets the
+    # orange go rust (the ``bakelite`` / ``furies`` argument).
+    "atropos": 0.7,
     # Housemarque's *Saros* — a black sun in a dithered red-and-gold corona
     # over a silhouetted colony. Dark-ground tier, the ``biomech`` /
     # ``nocturne`` argument: every lit thing on the frame is a falling-density

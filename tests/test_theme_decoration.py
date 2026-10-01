@@ -107,6 +107,7 @@ CUSTOM_FRAME_THEMES = (
     "furies",
     "bosch",
     "semiotic",
+    "atropos",
     "saros",
 )
 

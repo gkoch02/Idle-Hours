@@ -276,6 +276,7 @@ def parse_args() -> argparse.Namespace:
         "furies",
         "bosch",
         "semiotic",
+        "atropos",
         "saros",
         "diags",
     ]

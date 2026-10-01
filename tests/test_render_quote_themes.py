@@ -5833,3 +5833,104 @@ class TestSarosFrame:
         row = dict(self.ROW, author="", title="")
         image = self._render(row=row)
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+
+
+class TestAtroposFrame:
+    """``atropos`` — Housemarque's *Returnal*: night in the Overgrown Ruins.
+
+    The night is painted in continuous tone and dithered to the cold inks; the
+    lights, the volley of orbs, the cipher and the HUD readings go on top. The
+    hour is the cycle counter; the orbs, the cipher and the readings are
+    seeded from the quote.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+    COUNTER_BOX = (560, 10, 790, 36)
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestAtroposFrame.ROW)),
+                         *size, mode="production", theme="atropos")
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        assert distinct_inks(self._render()) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        """Hour only: nothing on the frame reads the clock's minute."""
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_cycle_counter_follows_the_hour(self):
+        crops = {pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(self.COUNTER_BOX)) for h in range(1, 13)}
+        assert len(crops) == 12
+        assert rq._atropos_hour("13:00") == rq._atropos_hour("01:00") == 1
+        assert rq._atropos_hour("00:10") == rq._atropos_hour("12:10") == 12
+
+    def test_scene_is_dithered_to_the_cold_inks_only(self):
+        """Red and yellow stay out of the quantiser so diffusion cannot warm the night."""
+        inks = distinct_inks(rq._atropos_background())
+        assert inks <= {rq.SPECTRA6[k] for k in ("black", "blue", "green", "white")}
+        assert rq.SPECTRA6["blue"] in inks and rq.SPECTRA6["green"] in inks
+
+    def test_background_is_painted_once_per_process(self):
+        assert rq._atropos_background() is rq._atropos_background()
+
+    def test_quote_is_white_with_a_tangerine_phrase(self):
+        counts = ink_counts(self._render().crop(rq._ATROPOS_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000     # the prose
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 150     # the phrase's core
+        assert counts.get(rq.SPECTRA6["red"], 0) > 20         # and its halo
+
+    def test_embers_sit_on_the_tendrils(self):
+        img = self._render()
+        nodules = [(x, y) for _, _, ns in rq._atropos_tendril_paths() for x, y, _ in ns]
+        assert len(nodules) >= 6
+        lit = sum(img.getpixel((round(x), round(y))) == rq.SPECTRA6["yellow"] for x, y in nodules)
+        assert lit >= len(nodules) * 0.8
+
+    def test_volley_and_cipher_are_seeded_from_the_quote(self):
+        other = dict(self.ROW, display_quote="Nine o'clock came and went, and still nobody stirred in the house.",
+                     matched_text="Nine o'clock", source_id="999", line_number=7)
+        a, b = self._render(), self._render(other)
+        x0, y0, x1, y1 = rq._ATROPOS_SLAB
+        assert pixel_bytes(a.crop((x0, y0, x1, y1))) != pixel_bytes(b.crop((x0, y0, x1, y1)))
+        # The same quote is the same volley.
+        assert pixel_bytes(a) == pixel_bytes(self._render())
+
+    def test_cipher_alphabet_is_stable_and_distinct(self):
+        glyphs = {ch: rq._atropos_glyph(ch) for ch in "abcdefghijklmnopqrstuvwxyz"}
+        assert all(rq._atropos_glyph(ch) == g for ch, g in glyphs.items())
+        assert len(set(glyphs.values())) >= 20
+        for strokes, dot in glyphs.values():
+            assert 3 <= len(strokes) <= 5
+            assert dot is None or dot in {(c, r) for r in range(4) for c in range(3)}
+
+    def test_cipher_carries_the_phrase_first(self):
+        text = rq._atropos_cipher_text(make_row(**self.ROW))
+        assert text.startswith("half past two ")
+        assert set(text) <= set("abcdefghijklmnopqrstuvwxyz ")
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_volley_stays_clear_of_the_translation_frame(self):
+        """An orb beside a glyph read as a yellow dot stuck to the phrase."""
+        for source_id in ("141", "999", "7", "2701", "43"):
+            row = dict(self.ROW, source_id=source_id)
+            cold = rq._atropos_background().copy()
+            rq._atropos_paint_orbs(cold, make_row(**row))
+            for x0, y0, x1, y1 in (rq._atropos_quote_keepout(), rq._ATROPOS_SLAB):
+                inside = cold.crop((x0 - 4, y0 - 4, x1 + 4, y1 + 4))
+                assert rq.SPECTRA6["yellow"] not in distinct_inks(inside), source_id

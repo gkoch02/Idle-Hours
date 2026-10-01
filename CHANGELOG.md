@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `atropos` theme: night in the Overgrown Ruins of Housemarque's *Returnal*
+  — a teal fog dithered to the cold inks, rain, Sentient statues, the Helios
+  wreck, ember-lit tendrils and bullet-hell orbs, the quote as a translated
+  xenoglyph cipher in Michroma and the hour as the cycle counter.
 - New `saros` theme: Housemarque's *Saros* — a black sun in a dithered
   red-and-gold corona whose phase is the hour (the diamond-ring bead sits
   where the hour hand would point; totality at twelve), the colony
