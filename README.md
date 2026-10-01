@@ -283,7 +283,7 @@ Seventy-nine themes ship built-in, all constrained to the Spectra 6 panel palett
 | `marker`      | <img src="idle_hours/assets/previews/marker.png" width="240" alt="marker theme preview">           | white       | black | blue   | Permanent Marker     | Fridge-doodle Sharpie         |
 | `saloon`      | <img src="idle_hours/assets/previews/saloon.png" width="240" alt="saloon theme preview">           | white       | black | red    | Rye (wood-engraved slab) | Wild West wanted-poster   |
 | `roman`       | <img src="idle_hours/assets/previews/roman.png" width="240" alt="roman theme preview">             | white       | black | red    | Cinzel Decorative    | Roman lapidary inscription    |
-| `alchemy`     | <img src="idle_hours/assets/previews/alchemy.png" width="240" alt="alchemy theme preview">         | yellow/white | black | purple | IM Fell English + MedievalSharp | Parchment grimoire     |
+| `alchemy`     | <img src="idle_hours/assets/previews/alchemy.png" width="240" alt="alchemy theme preview">         | yellow/white | black | red    | IM Fell English + MedievalSharp | Parchment grimoire     |
 | `grimoire`    | <img src="idle_hours/assets/previews/grimoire.png" width="240" alt="grimoire theme preview">       | black       | white | sky-blue | IM Fell English + Eagle Lake   | Faustian spellbook       |
 | `deco`        | <img src="idle_hours/assets/previews/deco.png" width="240" alt="deco theme preview">               | white       | black | red    | Righteous (display sans) | 1930s art-deco poster     |
 | `glacier`     | <img src="idle_hours/assets/previews/glacier.png" width="240" alt="glacier theme preview">         | white       | blue  | green  | Iceland (techno display) | Icy / aurora panel        |
@@ -292,7 +292,7 @@ Seventy-nine themes ship built-in, all constrained to the Spectra 6 panel palett
 | `placard`     | <img src="idle_hours/assets/previews/placard.png" width="240" alt="placard theme preview">         | white       | black | red    | Patrick Hand SC      | Hand-lettered sandwich board  |
 | `chanbara`    | <img src="idle_hours/assets/previews/chanbara.png" width="240" alt="chanbara theme preview">       | black       | white | red    | Shojumaru (brush)    | Samurai-cinema poster         |
 | `lcars`       | <img src="idle_hours/assets/previews/lcars.png" width="240" alt="lcars theme preview">             | black       | white | yellow | Antonio (condensed sans) | LCARS console (Okudagram) |
-| `fillmore`    | <img src="idle_hours/assets/previews/fillmore.png" width="240" alt="fillmore theme preview">       | yellow      | red   | blue   | Bungee Shade (3D display) | 1960s psychedelic concert poster |
+| `fillmore`    | <img src="idle_hours/assets/previews/fillmore.png" width="240" alt="fillmore theme preview">       | yellow      | red   | blue   | Rubik Black + Bungee Shade | 1960s psychedelic concert poster |
 | `firmament`   | <img src="idle_hours/assets/previews/firmament.png" width="240" alt="firmament theme preview">     | navy        | white | gold   | Cardo (humanist serif) | 17th-century celestial atlas |
 | `astrarium`   | <img src="idle_hours/assets/previews/astrarium.png" width="240" alt="astrarium theme preview">     | cream/white | black | tangerine | EB Garamond          | Astronomical-clock dashboard |
 | `kanagawa`    | <img src="idle_hours/assets/previews/kanagawa.png" width="240" alt="kanagawa theme preview">       | white       | black | red    | Yuji Boku (sumi-brush) | Hokusai-inspired seigaiha woodblock |
