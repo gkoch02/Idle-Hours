@@ -1354,7 +1354,7 @@ THEMES = {
     # under the meditation dial. A custom frame (``render_witcher_frame``):
     # cream parchment in a dark binding, the entry in Barlow Condensed with
     # the matched phrase in the interface's tangerine, the hour as the sun
-    # or moon on the dial and the Wolf School medallion at its hub. These
+    # or moon on the dial and the title's III on a medallion at its hub. These
     # literary-layout slots serve only the palette-only paths (see the note
     # above ``THEMES``).
     "witcher": {
@@ -31723,7 +31723,7 @@ def render_expedition_frame(time_str: str, quote_row: dict, width: int, height: 
 # "susceptible to" line of sign and oil icons at the foot. The page is one of
 # those entries — the book is the entry, the quote is its epigraph — and the
 # **meditation dial** that the game shows when Geralt sits down to wait is
-# the time carrier, with the Wolf School medallion hung at its hub.
+# the time carrier, with a medallion bearing the title's III at its hub.
 #
 # **The dial is hour-only.** Two engraved rings, twelve major and forty-eight
 # minor ticks, and one marker on the hour's radius: a sun by day and a
@@ -31733,15 +31733,14 @@ def render_expedition_frame(time_str: str, quote_row: dict, width: int, height: 
 # with the matched phrase. Nothing prints a digit, nothing reads the wall
 # clock.
 #
-# **The medallion** is the School of the Wolf's, redrawn after the emblem
-# rather than traced from it (the original is CD Projekt's mark): a black
-# disc with a stipple shadow cast lower-right, in a silver double ring,
-# carrying the wolf in the emblem's own ink — a burst of eight spikes and
-# two horns, a faceted brow with facet lines cut back in black, slit eyes
-# with a yellow glint, and the long open jaw hanging below with its fangs
-# and tongue. Every polygon is a fixed point list in a 100-unit design box,
-# mirrored about the centre line and scaled, so it is the same wolf at
-# every size.
+# **The medallion** at the hub carries the III of the game's logotype
+# rather than the wolf's head: the Wolf School emblem is CD Projekt's mark,
+# a polygon redraw of it at 96 px read as rough, and the numeral is the
+# title's other device and the one that reads cleanly at this size. A
+# black disc with a stipple shadow cast lower-right, in a silver double
+# ring; three white bars with chamfered corners between a head and a foot
+# rule, with a seeded speckle knocked out of them so the device reads as
+# struck metal rather than print.
 #
 # **The page** is the ``tarot`` vellum recipe — a Y+W cream under a sparse
 # R+G foxing — inside a deckled edge: the page mask's outer band is eaten
@@ -31787,31 +31786,13 @@ _WITCHER_SIGNS_RIGHT = 742
 _WITCHER_CREAM_DENSITY = 0.14
 _WITCHER_FOXING_DENSITY = 0.03
 _WITCHER_PAGE: dict = {}
-# The wolf, in a 100-unit box, after the School of the Wolf medallion: a
-# faceted head over a burst of spikes, with a long open jaw hanging below.
-# Drawn in the emblem's ink (white on the black disc); the eyes, nose, mouth
-# and facet lines are cut back out in black, the fangs and tongue laid back
-# in white. Every polygon is symmetric about x = 50; the right-hand copies
-# are mirrored at paint time.
-_WITCHER_WOLF_SPIKES_LEFT = (
-    ((42, 26), (10, 2), (6, 16), (34, 36)),            # the horn
-    ((36, 40), (2, 36), (4, 46), (36, 50)),             # the side spike
-    ((38, 54), (8, 68), (16, 76), (42, 62)),            # the lower diagonal
-    ((42, 64), (28, 94), (37, 96), (47, 70)),           # the lower spike
-)
-_WITCHER_WOLF_HEAD = (
-    (30, 28), (42, 22), (50, 26), (58, 22), (70, 28), (68, 46), (60, 58), (50, 64), (40, 58), (32, 46),
-)
-_WITCHER_WOLF_JAW = ((40, 60), (60, 60), (58, 98), (50, 102), (42, 98))
-_WITCHER_WOLF_MOUTH = ((43, 64), (57, 64), (55, 94), (50, 97), (45, 94))
-_WITCHER_WOLF_FANGS = (
-    ((44, 64), (48, 64), (46, 73)), ((52, 64), (56, 64), (54, 73)),       # upper
-    ((45, 94), (49, 94), (47, 85)), ((51, 94), (55, 94), (53, 85)),       # lower
-)
-_WITCHER_WOLF_TONGUE = ((47, 77), (53, 77), (50, 90))
-_WITCHER_WOLF_EYE_LEFT = ((35, 38), (46, 42), (46, 47), (37, 46))
-_WITCHER_WOLF_NOSE = ((45, 56), (55, 56), (50, 62))
-_WITCHER_WOLF_FACETS = (((50, 28), (50, 55)), ((38, 32), (47, 52)), ((62, 32), (53, 52)), ((36, 44), (44, 54)), ((64, 44), (56, 54)))
+# The medallion's device: the III of the game's logotype, in a 100-unit
+# box. Three bars with chamfered outer corners between a head and a foot
+# rule, the way the title sets it; the distress is a seeded speckle.
+_WITCHER_NUMERAL_BARS = (((14, 24), (32, 24), (32, 76), (14, 76)), ((41, 24), (59, 24), (59, 76), (41, 76)),
+                         ((68, 24), (86, 24), (86, 76), (68, 76)))
+_WITCHER_NUMERAL_CHAMFER = 4
+_WITCHER_NUMERAL_RULES = (((10, 15), (90, 19)), ((10, 81), (90, 85)))
 _WITCHER_SIGNS = ("AARD", "IGNI", "YRDEN", "QUEN", "AXII")
 
 
@@ -31909,20 +31890,11 @@ def _witcher_paint_dial(image: Image.Image) -> None:
                  "MEDITATION", label, black, tracking=4)
 
 
-def _witcher_wolf(scale: float, origin: tuple[float, float]):
-    ox, oy = origin
-    return lambda pts: [(ox + x * scale, oy + y * scale) for x, y in pts]
-
-
-def _witcher_mirror(pts):
-    return tuple((100 - x, y) for x, y in pts)
-
-
 def _witcher_paint_medallion(image: Image.Image) -> None:
-    """The Wolf School medallion at the dial's hub: a black disc with a cast
-    shadow in a silver double ring, carrying the wolf in the emblem's ink."""
+    """The medallion at the dial's hub: a black disc with a cast shadow in a
+    silver double ring, carrying the III of the logotype in white, weathered."""
     draw = ImageDraw.Draw(image)
-    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
     cx, cy = _WITCHER_DIAL_CENTRE
     r = _WITCHER_MEDALLION_RADIUS
     shadow = Image.new("L", image.size, 0)
@@ -31936,28 +31908,26 @@ def _witcher_paint_medallion(image: Image.Image) -> None:
                 px[x, y] = black
     draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=black, outline=white, width=3)
     draw.ellipse((cx - r + 5, cy - r + 5, cx + r - 5, cy + r - 5), outline=white, width=1)
-    # The emblem's box runs 2..102 vertically (the horn tips to the jaw), so
-    # it is centred on (50, 52) and scaled to sit inside the inner ring.
-    scale = (r - 12) * 2 / 100.0
-    place = _witcher_wolf(scale, (cx - 50 * scale, cy - 52 * scale))
-    for spike in _WITCHER_WOLF_SPIKES_LEFT:
-        draw.polygon(place(spike), fill=white)
-        draw.polygon(place(_witcher_mirror(spike)), fill=white)
-    draw.polygon(place(_WITCHER_WOLF_JAW), fill=white)
-    draw.polygon(place(_WITCHER_WOLF_HEAD), fill=white)
-    draw.polygon(place(_WITCHER_WOLF_MOUTH), fill=black)
-    for fang in _WITCHER_WOLF_FANGS:
-        draw.polygon(place(fang), fill=white)
-    draw.polygon(place(_WITCHER_WOLF_TONGUE), fill=white)
-    draw.polygon(place(_WITCHER_WOLF_EYE_LEFT), fill=black)
-    draw.polygon(place(_witcher_mirror(_WITCHER_WOLF_EYE_LEFT)), fill=black)
-    draw.polygon(place(_WITCHER_WOLF_NOSE), fill=black)
-    for a, b in _WITCHER_WOLF_FACETS:
-        draw.line(place((a, b)), fill=black, width=1)
-    # The eyes catch the one light on the page: a yellow glint in each slit.
-    for (ex, ey) in ((41, 43), (59, 43)):
-        gx, gy = place(((ex, ey),))[0]
-        draw.ellipse((gx - 1.5, gy - 1.5, gx + 1.5, gy + 1.5), fill=yellow)
+    scale = (r - 10) * 2 / 100.0
+    ox, oy = cx - 50 * scale, cy - 50 * scale
+
+    def place(pts):
+        return [(ox + x * scale, oy + y * scale) for x, y in pts]
+
+    c = _WITCHER_NUMERAL_CHAMFER
+    for (x0, y0), (x1, _), (_, y1), _ in _WITCHER_NUMERAL_BARS:
+        draw.polygon(place(((x0 + c, y0), (x1 - c, y0), (x1, y0 + c), (x1, y1 - c), (x1 - c, y1),
+                            (x0 + c, y1), (x0, y1 - c), (x0, y0 + c))), fill=white)
+    for (x0, y0), (x1, y1) in _WITCHER_NUMERAL_RULES:
+        draw.rectangle(place(((x0, y0), (x1, y1))), fill=white)
+    # Weathering: a seeded speckle knocked out of the white, denser toward
+    # the bars' ends, so the device reads as struck metal rather than print.
+    rng = random.Random(_WITCHER_SEED + 7)
+    for _ in range(70):
+        x, y = rng.uniform(12, 88), rng.uniform(22, 78)
+        if rng.random() < 0.2 + 0.4 * abs(y - 50) / 28:
+            (px0, py0), = place(((x, y),))
+            draw.rectangle((px0, py0, px0 + 1, py0 + 1), fill=black)
 
 
 def _witcher_page() -> Image.Image:

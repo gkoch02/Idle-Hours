@@ -6140,13 +6140,17 @@ class TestWitcherFrame:
         edge = mask.crop((x0 + 60, y1 - 4, x0 + 460, y1))
         assert 0 < edge.histogram()[255] < 400 * 4    # torn, not ruled
 
-    def test_medallion_carries_the_wolf(self):
+    def test_medallion_carries_the_numeral(self):
         cx, cy = rq._WITCHER_DIAL_CENTRE
         r = rq._WITCHER_MEDALLION_RADIUS
         counts = ink_counts(self._render().crop((cx - r, cy - r, cx + r, cy + r)))
-        assert counts.get(rq.SPECTRA6["black"], 0) > 2500     # the disc and the cut-back features
-        assert counts.get(rq.SPECTRA6["white"], 0) > 2500     # the emblem and the silver rings
-        assert counts.get(rq.SPECTRA6["yellow"], 0) > 20      # the glint in each eye
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2500     # the disc and the weathering
+        assert counts.get(rq.SPECTRA6["white"], 0) > 1800     # the III and the silver rings
+        # Three bars: a horizontal scan through the device crosses white six times.
+        y = cy
+        row = [self._render().getpixel((x, y)) == rq.SPECTRA6["white"] for x in range(cx - r + 8, cx + r - 8)]
+        crossings = sum(1 for a, b in zip(row, row[1:]) if a != b)
+        assert crossings == 6
 
     def test_quote_is_black_with_a_tangerine_phrase(self):
         counts = ink_counts(self._render().crop(rq._WITCHER_QUOTE_RECT))
