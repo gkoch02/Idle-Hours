@@ -6076,3 +6076,101 @@ class TestExpeditionFrame:
         big = self._render()
         assert small.size == (320, 192)
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestWitcherFrame:
+    """``witcher`` — The Witcher 3: a bestiary page under the meditation dial.
+
+    The page is cached once per process; the hour is the sun or moon on the
+    dial's radius; the signs the entry is susceptible to are seeded from the
+    quote.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestWitcherFrame.ROW)),
+                         *size, mode="production", theme="witcher")
+
+    @staticmethod
+    def _dial_box():
+        cx, cy = rq._WITCHER_DIAL_CENTRE
+        r = rq._WITCHER_DIAL_RADIUS
+        return (cx - r, cy - r, cx + r, cy + r)
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        """Blue arrives only with Aard or Yrden, so pick an entry susceptible to one."""
+        assert distinct_inks(self._render()) <= set(rq.SPECTRA6.values())
+        row = next(dict(self.ROW, source_id=str(n)) for n in range(1, 400)
+                   if rq._witcher_susceptible(make_row(**dict(self.ROW, source_id=str(n)))) & {"AARD", "YRDEN"})
+        assert distinct_inks(self._render(row)) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_marker_walks_the_dial_and_knows_night_from_day(self):
+        crops = {pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(self._dial_box())) for h in range(24)}
+        assert len(crops) == 24          # twelve radii, each with a sun and a moon
+        assert rq._witcher_hour("13:00") == 13 and rq._witcher_hour("00:10") == 0
+        assert rq._witcher_hour("garbage") == 12
+
+    def test_page_is_painted_once_per_process(self):
+        assert rq._witcher_page() is rq._witcher_page()
+
+    def test_page_is_deckled_cream_in_a_dark_binding(self):
+        page = rq._witcher_page()
+        x0, y0, x1, y1 = rq._WITCHER_PAGE_RECT
+        inside = ink_counts(page.crop((x0 + 40, y0 + 40, x0 + 140, y0 + 60)))
+        assert inside.get(rq.SPECTRA6["white"], 0) > 100 * 20 * 0.6
+        assert inside.get(rq.SPECTRA6["yellow"], 0) > 50
+        outside = ink_counts(page.crop((0, 0, 800, y0 - 8)))
+        assert outside.get(rq.SPECTRA6["black"], 0) > 800 * (y0 - 8) * 0.8
+        mask = rq._witcher_page_mask((800, 480))
+        edge = mask.crop((x0 + 60, y1 - 4, x0 + 460, y1))
+        assert 0 < edge.histogram()[255] < 400 * 4    # torn, not ruled
+
+    def test_medallion_carries_the_wolf(self):
+        cx, cy = rq._WITCHER_DIAL_CENTRE
+        r = rq._WITCHER_MEDALLION_RADIUS
+        counts = ink_counts(self._render().crop((cx - r, cy - r, cx + r, cy + r)))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 900      # the wolf and the rings
+        assert counts.get(rq.SPECTRA6["white"], 0) > 1500     # the silver disc
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 40      # the eyes
+
+    def test_quote_is_black_with_a_tangerine_phrase(self):
+        counts = ink_counts(self._render().crop(rq._WITCHER_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["red"], 0) > 150
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 150
+
+    def test_header_carries_the_title_and_the_gutenberg_id(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, title="Persuasion", source_id="105"))
+        header = (56, rq._WITCHER_HEADER_Y - 4, 744, rq._WITCHER_HEADER_RULE_Y - 2)
+        assert pixel_bytes(a.crop(header)) != pixel_bytes(b.crop(header))
+
+    def test_susceptibility_is_seeded_from_the_quote(self):
+        other = dict(self.ROW, source_id="2701", line_number=9)
+        foot = (rq._WITCHER_SIGNS_RIGHT - 140, rq._WITCHER_FOOT_Y - 2, rq._WITCHER_SIGNS_RIGHT + 2, rq._WITCHER_FOOT_Y + 22)
+        a, b = self._render(), self._render(other)
+        assert pixel_bytes(a.crop(foot)) != pixel_bytes(b.crop(foot))
+        assert pixel_bytes(a) == pixel_bytes(self._render())
+        assert rq._witcher_susceptible(make_row(**self.ROW))
+        assert distinct_inks(a.crop(foot)) - {rq.SPECTRA6["black"], rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))

@@ -302,6 +302,9 @@ THEME_SATURATION: dict[str, float] = {
     # falling-density blooms. Dark-ground tier, the ``atropos`` / ``nocturne``
     # argument: the gentler push flattens the blooms and rusts the paint.
     "expedition": 0.7,
+    # The Witcher 3 — a cream parchment page in a dark binding; the page
+    # dominates, and the harder tier would push its Y+W cream to lemon.
+    "witcher": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

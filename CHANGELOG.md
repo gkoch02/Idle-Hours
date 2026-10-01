@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `witcher` theme: *The Witcher 3: Wild Hunt* — a bestiary page on
+  deckled parchment in a dark binding, the meditation dial with the Wolf
+  School medallion at its hub and a sun or moon on the hour's radius, the
+  entry in Barlow Condensed with the matched phrase in the interface's
+  tangerine, and the signs the entry is susceptible to at the foot. Archivo
+  Narrow is a new bundled face (OFL, from Google Fonts).
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the
