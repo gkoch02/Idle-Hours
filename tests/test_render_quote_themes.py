@@ -3904,12 +3904,16 @@ class TestControlFrame:
         assert "control" in rq.THEME_ORDER
         assert "control" not in rq.CYCLE_EXCLUDED_THEMES
         assert display_inky.THEME_SATURATION["control"] == 0.5
-        # The title-card face: Oswald pinned to Bold for the body as well as
-        # the phrase — the phrase earns its step from the Hiss red, not weight.
+        # The title-card face: Jost pinned to Bold for the body as well as
+        # the phrase (the game's title cards are Avant Garde Gothic Bold) —
+        # the phrase earns its step from the Hiss red, not weight. The sign
+        # chrome is Archivo, the Akzidenz-descended grotesque of the game's UI.
         for role in ("quote_regular", "quote_bold"):
-            assert rq.theme_font_candidates("control", role)[0] == (rq.OSWALD_VARIABLE, "Bold")
-        assert pathlib.Path(rq.OSWALD_VARIABLE).exists()
-        assert (pathlib.Path(rq.OSWALD_VARIABLE).parent / "OFL.txt").exists()
+            assert rq.theme_font_candidates("control", role)[0] == (rq.JOST_VARIABLE, "Bold")
+        assert rq.theme_font_candidates("control", "ornament")[0] == rq.ARCHIVO_BOLD
+        for path in (rq.JOST_VARIABLE, rq.ARCHIVO_BOLD):
+            assert pathlib.Path(path).exists()
+            assert (pathlib.Path(path).parent / "OFL.txt").exists()
 
     def test_time_never_reaches_the_frame(self):
         """The Astral Plane has no clock: the matched phrase carries the time,
@@ -5742,9 +5746,14 @@ class TestSarosFrame:
         assert "saros" in rq.THEME_ORDER
         assert "saros" not in rq.CYCLE_EXCLUDED_THEMES
         assert display_inky.THEME_SATURATION["saros"] == 0.7
-        assert rq.theme_font_candidates("saros", "quote_regular")[0] == (rq.EXO2_VARIABLE, "Regular")
-        assert rq.theme_font_candidates("saros", "quote_bold")[0] == (rq.EXO2_VARIABLE, "SemiBold")
-        for path in (rq.EXO2_VARIABLE, rq.EXO2_ITALIC_VARIABLE, rq.MICHROMA_REGULAR):
+        # Saira stands in for Tamba Sans (the game's text face), Orbitron for
+        # Arame (its display face), Michroma for Korataki (its chrome); Exo 2,
+        # the earlier body face, is the fallback.
+        assert rq.theme_font_candidates("saros", "quote_regular")[0] == (rq.SAIRA_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("saros", "quote_bold")[0] == (rq.SAIRA_VARIABLE, "SemiBold")
+        assert rq.theme_font_candidates("saros", "quote_regular")[1] == (rq.EXO2_VARIABLE, "Regular")
+        for path in (rq.SAIRA_VARIABLE, rq.SAIRA_ITALIC_VARIABLE, rq.ORBITRON_VARIABLE,
+                     rq.EXO2_VARIABLE, rq.EXO2_ITALIC_VARIABLE, rq.MICHROMA_REGULAR):
             assert pathlib.Path(path).exists()
             assert (pathlib.Path(path).parent / "OFL.txt").exists()
 
