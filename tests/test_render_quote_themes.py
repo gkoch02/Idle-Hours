@@ -5797,3 +5797,13 @@ class TestAtroposFrame:
         big = self._render()
         assert small.size == (320, 192)
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_volley_stays_clear_of_the_translation_frame(self):
+        """An orb beside a glyph read as a yellow dot stuck to the phrase."""
+        for source_id in ("141", "999", "7", "2701", "43"):
+            row = dict(self.ROW, source_id=source_id)
+            cold = rq._atropos_background().copy()
+            rq._atropos_paint_orbs(cold, make_row(**row))
+            for x0, y0, x1, y1 in (rq._atropos_quote_keepout(), rq._ATROPOS_SLAB):
+                inside = cold.crop((x0 - 4, y0 - 4, x1 + 4, y1 + 4))
+                assert rq.SPECTRA6["yellow"] not in distinct_inks(inside), source_id

@@ -30159,18 +30159,34 @@ def _atropos_paint_orbs(image: Image.Image, quote_row: dict) -> None:
     per quote. Hot orbs are yellow in tangerine, violet ones white in R+B."""
     rng = random.Random(_row_digest(quote_row) ^ _ATROPOS_SEED)
     width, height = image.size
+    # The volley stays clear of the translation frame and the cipher slab: an
+    # orb beside a glyph read as a yellow dot stuck to the phrase, since the
+    # text's halo only knocks out what sits under the letters themselves, and
+    # one over the slab hid the glyphs.
+    reach = 26                                                   # how far a bloom spills past its mask
+    keepouts = (_atropos_quote_keepout(), _ATROPOS_SLAB)         # the text, and the glyphs it translates
+
+    def clear(px, py):
+        return not any(kx0 - reach < px < kx1 + reach and ky0 - reach < py < ky1 + reach
+                       for kx0, ky0, kx1, ky1 in keepouts)
+
     for _ in range(6 + rng.randrange(4)):
-        x, y = rng.uniform(40, width - 40), rng.uniform(52, _ATROPOS_HORIZON + 16)
-        a = rng.uniform(0, 2 * math.pi)
         r = rng.uniform(4.5, 8.0)
+        for _attempt in range(60):
+            x, y = rng.uniform(40, width - 40), rng.uniform(52, _ATROPOS_HORIZON + 16)
+            a = rng.uniform(0, 2 * math.pi)
+            dots = [(x - math.cos(a) * k * r * 1.6, y - math.sin(a) * k * r * 1.6) for k in range(1, 8)]
+            if clear(x, y) and all(clear(tx, ty) for tx, ty in dots):
+                break
+        else:                                                    # pragma: no cover - 60 draws never all collide
+            continue
         hot = rng.random() < 0.7
         core = Image.new("L", image.size, 0)
         trail = Image.new("L", image.size, 0)
         ImageDraw.Draw(core).ellipse((x - r, y - r, x + r, y + r), fill=255)
         td = ImageDraw.Draw(trail)
-        for k in range(1, 8):
+        for k, (tx, ty) in enumerate(dots, start=1):
             tr = r * (1 - k / 8) * 0.9
-            tx, ty = x - math.cos(a) * k * r * 1.6, y - math.sin(a) * k * r * 1.6
             td.ellipse((tx - tr, ty - tr, tx + tr, ty + tr), fill=round(255 * (1 - k / 9)))
         if hot:
             _atropos_glow_hot(image, trail, None, radius=5, gamma=1.8, cap=0.55, yellow_share=0.5)
@@ -30184,6 +30200,13 @@ def _atropos_paint_orbs(image: Image.Image, quote_row: dict) -> None:
                                 glow_minor=SPECTRA6["red"], glow_minor_share=0.5)
         core.close()
         trail.close()
+
+
+def _atropos_quote_keepout() -> tuple[int, int, int, int]:
+    """The translation frame, brackets and byline included, that no orb may
+    sit inside."""
+    x0, y0, x1, _ = _ATROPOS_QUOTE_RECT
+    return (x0 - 18, y0 - 22, x1 + 18, _ATROPOS_BYLINE_BASELINE + 12)
 
 
 def _atropos_glyph(letter: str) -> tuple:
@@ -30315,8 +30338,7 @@ def _atropos_paint_hud(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int,
 
     # The translation frame: corner brackets round the quote, a label above.
     x0, y0, x1, y1 = _ATROPOS_QUOTE_RECT
-    frame = (x0 - 18, y0 - 22, x1 + 18, _ATROPOS_BYLINE_BASELINE + 12)
-    _atropos_brackets(draw, frame, 16, white)
+    _atropos_brackets(draw, _atropos_quote_keepout(), 16, white)
     draw_tracked(draw, (x0 - 6, y0 - 19), "XENOGLYPH CIPHER", _atropos_font(10), white, tracking=3)
     draw_tracked(draw, (x1 + 6, y0 - 19), "TRANSLATED", _atropos_font(10), white, tracking=3, anchor_right=True)
 
