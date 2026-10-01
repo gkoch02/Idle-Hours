@@ -283,7 +283,7 @@ Seventy-nine themes ship built-in, all constrained to the Spectra 6 panel palett
 | `marker`      | <img src="idle_hours/assets/previews/marker.png" width="240" alt="marker theme preview">           | white       | black | blue   | Permanent Marker     | Fridge-doodle Sharpie         |
 | `saloon`      | <img src="idle_hours/assets/previews/saloon.png" width="240" alt="saloon theme preview">           | white       | black | red    | Rye (wood-engraved slab) | Wild West wanted-poster   |
 | `roman`       | <img src="idle_hours/assets/previews/roman.png" width="240" alt="roman theme preview">             | white       | black | red    | Cinzel Decorative    | Roman lapidary inscription    |
-| `alchemy`     | <img src="idle_hours/assets/previews/alchemy.png" width="240" alt="alchemy theme preview">         | yellow/white | black | purple | IM Fell English + MedievalSharp | Parchment grimoire     |
+| `alchemy`     | <img src="idle_hours/assets/previews/alchemy.png" width="240" alt="alchemy theme preview">         | yellow/white | black | red    | IM Fell English + MedievalSharp | Parchment grimoire     |
 | `grimoire`    | <img src="idle_hours/assets/previews/grimoire.png" width="240" alt="grimoire theme preview">       | black       | white | sky-blue | IM Fell English + Eagle Lake   | Faustian spellbook       |
 | `deco`        | <img src="idle_hours/assets/previews/deco.png" width="240" alt="deco theme preview">               | white       | black | red    | Righteous (display sans) | 1930s art-deco poster     |
 | `glacier`     | <img src="idle_hours/assets/previews/glacier.png" width="240" alt="glacier theme preview">         | white       | blue  | green  | Iceland (techno display) | Icy / aurora panel        |

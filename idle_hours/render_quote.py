@@ -3391,6 +3391,11 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # sibling) and Atomic Age before heavy DejaVu / Liberation /
         # Noto Sans Bold, so a missing-Bungee install still lands on
         # a chunky display silhouette rather than the Playfair serif.
+        # The whole body is set in Bungee Shade, on purpose: at body size
+        # under the maroon stipple it is borderline illegible, and that is
+        # the Fillmore register -- Wes Wilson's posters made you work for
+        # the band's name. A Rubik Black body with the Shade kept for the
+        # phrase was tried and reverted as too polite.
         "quote_regular": [
             BUNGEE_SHADE_REGULAR,
             BANGERS_REGULAR,
@@ -5175,6 +5180,130 @@ def fit_quote(draw, text, match_text, max_width, max_height, font_max, font_min,
     return regular_font, bold_font, wrapped, int(font_min * line_height_mult), font_min
 
 
+# A last line is a widow when it carries a single word or less than this
+# fraction of the measure. ``fit_quote_balanced`` then re-wraps at the
+# same size on a narrower measure -- never a smaller face, never an extra
+# line -- so a word or two drop down to keep it company.
+_WIDOW_MIN_FRACTION = 0.3
+_BALANCE_MEASURES = (0.95, 0.90, 0.85, 0.80, 0.75, 0.70)
+
+
+def _trim_line(line):
+    """Drop the leading / trailing space tokens of a wrapped line."""
+    start = 0
+    while start < len(line) and line[start][0].strip() == "":
+        start += 1
+    end = len(line)
+    while end > start and line[end - 1][0].strip() == "":
+        end -= 1
+    return line[start:end]
+
+
+def _line_ink_width(draw, line, regular_font, bold_font, bold_stroke: int = 0) -> int:
+    """Pixel width of a wrapped line at its natural spacing, bold tokens
+    measured with the theme's faux-bold stroke (the way the renderer
+    paints them) and spaces at their natural advance."""
+    total = 0
+    for chunk, is_bold in _trim_line(line):
+        font = bold_font if is_bold else regular_font
+        stroke = bold_stroke if (is_bold and chunk.strip()) else 0
+        bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
+        total += bbox[2] - bbox[0]
+    return total
+
+
+def is_widow_line(draw, line, regular_font, bold_font, measure: int, bold_stroke: int = 0) -> bool:
+    """True when ``line`` would strand a widow: one word, or less than
+    ``_WIDOW_MIN_FRACTION`` of ``measure`` in ink."""
+    trimmed = _trim_line(line)
+    gaps = sum(1 for chunk, _ in trimmed if chunk == " ")
+    if gaps == 0:
+        return True
+    return _line_ink_width(draw, trimmed, regular_font, bold_font, bold_stroke) < measure * _WIDOW_MIN_FRACTION
+
+
+def _min_body_fill(draw, lines, regular_font, bold_font, bold_stroke: int, measure: int) -> float:
+    """Fill ratio of the *shortest* non-last line against ``measure`` --
+    the block's raggedness in one number (1.0 for a one-line block)."""
+    if len(lines) < 2:
+        return 1.0
+    return min(_line_ink_width(draw, line, regular_font, bold_font, bold_stroke) for line in lines[:-1]) / measure
+
+
+# ``fit_quote_balanced`` walks 2 px size steps below the largest fitting
+# size, down to ``_BALANCE_MIN_SIZE_FRACTION`` of it (never below the
+# layout's ``font_min``), before giving the widow up. It never accepts a
+# re-wrap whose shortest body line is under ``_BALANCE_MIN_FILL`` of the
+# measure (or shorter than the unbalanced wrap's shortest line, if that is
+# already shorter): trading a one-word last line for a half-empty middle
+# line is not a repair. A hero quote with one long word is typically three
+# or four steps away from a clean three-line wrap, which is a far better
+# frame than the same words four lines deep with the hour on its own.
+_BALANCE_MIN_SIZE_FRACTION = 0.8
+_BALANCE_MIN_FILL = 0.55
+
+
+def fit_quote_balanced(draw, text, match_text, max_width, max_height, font_max, font_min, line_height_mult, theme: str = "default"):
+    """``fit_quote`` plus widow control for the literary layout.
+
+    Returns ``(regular_font, bold_font, wrapped, line_height, size,
+    wrap_width)``. When the largest fitting size leaves a last line that
+    is a single word or under ``_WIDOW_MIN_FRACTION`` of the measure, the
+    text is re-wrapped at the same size on progressively narrower
+    measures (``_BALANCE_MEASURES``) until the last line fills out
+    without the block growing a line or a half-empty line opening up in
+    the middle (``_BALANCE_MIN_FILL``). Failing that, the same search runs
+    at 2 px smaller sizes down to ``_BALANCE_MIN_SIZE_FRACTION`` of the
+    fitted size, accepting the first natural wrap with no widow (often a
+    line shorter) or the first balanced re-wrap that passes, and failing
+    *that*, the original wrap is returned unchanged.
+    ``wrap_width`` is the measure the returned lines were wrapped to; the
+    caller justifies against it, not against ``max_width``, or the
+    balancing would be undone by the slack distribution. The block's left
+    edge does not move, so a balanced block simply hangs a little short
+    of the right margin, the way a well-set pull quote does.
+    """
+    regular_font, bold_font, wrapped, line_height, size = fit_quote(
+        draw, text, match_text, max_width, max_height, font_max, font_min, line_height_mult, theme=theme
+    )
+    bold_stroke = _bold_stroke_for_theme(theme)
+    if len(wrapped) < 2 or not is_widow_line(draw, wrapped[-1], regular_font, bold_font, max_width, bold_stroke):
+        return regular_font, bold_font, wrapped, line_height, size, max_width
+
+    segments = tokenize_quote(text, match_text)
+    regular_candidates = theme_font_candidates(theme, "quote_regular")
+    bold_candidates = theme_font_candidates(theme, "quote_bold")
+    smallest = max(font_min, math.ceil(size * _BALANCE_MIN_SIZE_FRACTION))
+    for step in range(0, (size - smallest) // 2 + 1):
+        candidate_size = size - 2 * step
+        if step == 0:
+            regular, bold, base = regular_font, bold_font, wrapped
+        else:
+            regular = load_font(regular_candidates, size=candidate_size)
+            bold = load_font(bold_candidates, size=candidate_size)
+            base = wrap_styled_text(draw, segments, regular, bold, max_width, bold_stroke=bold_stroke)
+        candidate_line_height = int(candidate_size * line_height_mult)
+        if len(base) * candidate_line_height > max_height:
+            continue
+        fill_floor = min(_BALANCE_MIN_FILL, _min_body_fill(draw, base, regular, bold, bold_stroke, max_width))
+        if step and not is_widow_line(draw, base[-1], regular, bold, max_width, bold_stroke):
+            return regular, bold, base, candidate_line_height, candidate_size, max_width
+        for factor in _BALANCE_MEASURES:
+            candidate_width = int(max_width * factor)
+            candidate = wrap_styled_text(draw, segments, regular, bold, candidate_width, bold_stroke=bold_stroke)
+            if len(candidate) != len(base):
+                break
+            # A widow and the fill are judged against the measure the
+            # candidate was wrapped to: what the eye compares the last line
+            # with is the lines above it, which now stop at candidate_width.
+            if is_widow_line(draw, candidate[-1], regular, bold, candidate_width, bold_stroke):
+                continue
+            if _min_body_fill(draw, candidate, regular, bold, bold_stroke, candidate_width) < fill_floor:
+                continue
+            return regular, bold, candidate, candidate_line_height, candidate_size, candidate_width
+    return regular_font, bold_font, wrapped, line_height, size, max_width
+
+
 def line_width(draw, line, regular_font, bold_font):
     width = 0
     for chunk, is_bold in line:
@@ -6168,9 +6297,6 @@ def _draw_text_body(image: Image.Image, draw, xy, text, font, fill, theme: str):
         # cathedral ground, lifting the matched phrase clear of the
         # red border ornaments instead of sharing their ink.
         draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["yellow"])
-    elif theme == "alchemy" and fill == SPECTRA6["red"]:
-        # 50/50 red+blue checkerboard → perceived purple; see docstring.
-        draw_text_dithered(image, xy, text, font, dark=fill, light=SPECTRA6["blue"])
     elif theme == "deco" and fill == SPECTRA6["red"]:
         # 3/8 yellow on 5/8 red via the shared 4×4 Bayer matrix; matches
         # ``draw_deco_border``'s post-pass threshold so the matched
@@ -6506,8 +6632,16 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     draw.ellipse((rcx - 6, rcy - 6, rcx + 6, rcy + 6), fill=accent_color)
 
 
-def draw_risograph_border(image: Image.Image, colors: dict) -> None:
+def draw_risograph_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
     """Paint a lively risograph-inspired print frame.
+
+    ``clear_rect`` is the body-text rectangle ``render`` threads through
+    (see ``_CLEAR_RECT_PADS``). When given, the chunky bars and overprint
+    circles are painted first and the rect is then knocked back to the
+    paper and framed with a misregistered red-over-blue double rule, so
+    the quote sits on a pasted-up label with the print-test shapes
+    running behind it. Without the knockout the left bar and the circles
+    sat under the first word and the attribution of most quotes.
 
     The effect comes from deliberate misregistration: a primary frame in the
     theme's text color, a slightly shifted duplicate in the accent color, plus
@@ -6642,6 +6776,17 @@ def draw_risograph_border(image: Image.Image, colors: dict) -> None:
                         pixels[px, py] = ink_blue
                     else:
                         pixels[px, py] = ink_white
+
+    if clear_rect is not None:
+        x0, y0, x1, y1 = clear_rect
+        draw.rectangle((x0, y0, x1, y1), fill=colors["page_bg"])
+        # Two plates, one slightly off: the base (red) rule on the label's
+        # edge and the accent (blue) pass shifted by the same (dx, dy) the
+        # outer frame uses, so the label is misregistered like the rest
+        # of the sheet. Both rules sit inside the clear-rect pad, clear of
+        # the first and last text lines.
+        draw.rectangle((x0, y0, x1, y1), outline=base, width=2)
+        draw.rectangle((x0 + dx, y0 + dy, x1 + dx, y1 + dy), outline=accent, width=2)
 
 
 def draw_scholar_border(image: Image.Image, colors: dict) -> None:
@@ -10810,6 +10955,18 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     outer_ring_r = 222
     inner_ring_r = 212
 
+    # The inner figure -- rings, incantation ticks, inscribed pentagram and
+    # pentagon -- is the backdrop the quote is declared into, and it used to
+    # be painted in solid blue hairlines straight through the body text:
+    # every line of the quote had a blue rule slicing its letters. It now
+    # paints in a sentinel and is gated below to a 50% (x+y) parity stipple
+    # of blue on the parchment, so each hairline becomes a dotted line that
+    # reads as a faint construction line at panel distance and lets the
+    # black serif sit on top of it. The red outer rule and corner sigils
+    # stay solid: they frame the text, they do not cross it.
+    solid_hermetic = hermetic_color
+    hermetic_color = (5, 5, 5)
+
     # 3a. Outer + inner concentric rings — the two parallel boundary
     # circles between which a real Solomonic operator would
     # letter the incantation text. Both at line width 1 so they
@@ -10886,6 +11043,16 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
         for i in range(5)
     ]
     draw.polygon(inner_pentagon_vertices, outline=hermetic_color, width=1)
+
+    figure_x0 = max(0, centre_x - outer_ring_r - 2)
+    figure_y0 = max(0, centre_y - outer_ring_r - 2)
+    figure_x1 = min(width - 1, centre_x + outer_ring_r + 2)
+    figure_y1 = min(height - 1, centre_y + outer_ring_r + 2)
+    for py in range(figure_y0, figure_y1 + 1):
+        for px in range(figure_x0, figure_x1 + 1):
+            if pixels[px, py] == hermetic_color:
+                pixels[px, py] = solid_hermetic if (px + py) & 1 == 0 else halftone_white
+    hermetic_color = solid_hermetic
 
     # ------------------------------------------------------------------
     # Layer 4: Four classical-element glyphs at the outer corners of
@@ -15926,6 +16093,64 @@ _DEBUG_LABEL_RIGHT_INSET = {
 # inscribed phrase. Strict superset is fine: the ``score_row`` / wrap
 # / fit pipeline does not depend on this set.
 _THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire", "gothic"})
+
+# Themes whose body text is set ragged-right instead of justified. A
+# typewriter, a terminal and a hand never justified a line: a monospace
+# face stretched across elastic spaces reads as a column-alignment bug,
+# and handwriting with metered gaps stops reading as handwriting. The
+# matched phrase, the hanging quote marks and the attribution are
+# unaffected -- only the slack distribution on non-last body lines.
+_THEMES_RAGGED_RIGHT: frozenset[str] = frozenset({
+    "nightvision",   # Space Mono terminal readout
+    "circuit",       # Space Mono silkscreen
+    "dispatch",      # Special Elite typewriter
+    "marker",        # Permanent Marker hand lettering
+    "chalkboard",    # Playwrite cursive on slate
+    "placard",       # Patrick Hand SC hand-printed sign
+    "kanagawa",      # Yuji Boku sumi brush
+})
+
+# Full justification is only applied when it will not open rivers: the
+# line has to be at least 75% full (slack <= 25% of the measure, the
+# original rule), carry at least ``_JUSTIFY_MIN_GAPS`` inter-word gaps,
+# and the extra width landing on each gap must stay under
+# ``_JUSTIFY_MAX_STRETCH_EM`` of the body size. The hero layout used to
+# fail this badly: a three-word line with 150 px of slack took 75 px per
+# gap -- two-and-a-half words of white -- because the 25% rule bounds the
+# slack but not how few gaps it is spread over.
+_JUSTIFY_MIN_GAPS = 3
+_JUSTIFY_MAX_STRETCH_EM = 0.45
+
+
+def justify_flags(theme: str, metrics: list[tuple[int, int]], wrap_width: int, font_size: int) -> list[bool]:
+    """Decide, per wrapped body line, whether it is fully justified.
+
+    ``metrics`` holds ``(ink_width, gap_count)`` for every line in order;
+    ``wrap_width`` is the measure the lines were wrapped to and
+    ``font_size`` the body size in pixels. The last line is never
+    justified, nor is any line in a ``_THEMES_RAGGED_RIGHT`` theme, nor a
+    line less than 75% full (that line alone stays ragged, the original
+    rule). The remaining lines are decided **as a block**: if any one of
+    them has fewer than ``_JUSTIFY_MIN_GAPS`` gaps or would stretch each
+    gap past ``_JUSTIFY_MAX_STRETCH_EM`` of the body size, the whole block
+    is set ragged-right. A paragraph that is half justified and half
+    ragged reads as a mistake; a display-size quote whose few long words
+    leave three gaps a line is simply set ragged, as a typesetter would.
+    """
+    flags = [False] * len(metrics)
+    if theme in _THEMES_RAGGED_RIGHT or len(metrics) < 2:
+        return flags
+    eligible: list[int] = []
+    for index, (ink_width, gap_count) in enumerate(metrics[:-1]):
+        slack = wrap_width - ink_width
+        if not (0 < slack <= wrap_width * 0.25):
+            continue
+        if gap_count < _JUSTIFY_MIN_GAPS or slack / gap_count > font_size * _JUSTIFY_MAX_STRETCH_EM:
+            return flags
+        eligible.append(index)
+    for index in eligible:
+        flags[index] = True
+    return flags
 
 
 # Per-theme synthesised "faux bold" for the matched phrase, threaded into
@@ -35664,7 +35889,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     debug_font = load_font(META_FONT_CANDIDATES, size=15)
     debug_label_font = load_font(META_FONT_BOLD_CANDIDATES, size=15)
-    quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size = fit_quote(
+    quote_font, quote_font_bold, wrapped_quote, line_height, chosen_size, wrap_width = fit_quote_balanced(
         draw,
         display_quote,
         quote_row.get("matched_text") or "",
@@ -35677,8 +35902,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     )
     bold_stroke = _bold_stroke_for_theme(theme)
     quote_block_height = len(wrapped_quote) * line_height
-    author_size = max(13, int(chosen_size * 0.52))
-    source_size = max(13, int(chosen_size * 0.47))
+    # Floors of 18 / 16 px: the byline is read from across a room, and the
+    # dense layout's 0.52 x 28 px body gave a 14 px author line that was
+    # not. Everything above the floor still scales with the body.
+    author_size = max(18, int(chosen_size * 0.52))
+    source_size = max(16, int(chosen_size * 0.47))
     attribution_font = load_font(theme_font_candidates(theme, "quote_regular"), size=author_size)
     attribution_title_font = load_font(theme_font_candidates(theme, "quote_regular"), size=source_size)
 
@@ -35700,11 +35928,19 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     block_bottom = block_top + total_h
     quote_top = block_top
 
+    line_metrics = [
+        (
+            _line_ink_width(draw, line, quote_font, quote_font_bold, bold_stroke),
+            sum(1 for chunk, _ in _trim_line(line) if chunk == " "),
+        )
+        for line in wrapped_quote
+    ]
+    justify = justify_flags(theme, line_metrics, wrap_width, chosen_size)
+
     quote_line_boxes = []
     quote_left_edge = width
     quote_right_edge = 0
     y_probe = quote_top
-    total_lines = len(wrapped_quote)
     for line_index, line in enumerate(wrapped_quote):
         start = 0
         while start < len(line) and line[start][0].strip() == "":
@@ -35725,10 +35961,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             current_width += bbox[2] - bbox[0]
 
         space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
-        is_last = line_index == total_lines - 1
-        slack = layout["max_width"] - current_width
+        slack = wrap_width - current_width
         distribute = []
-        if not is_last and space_slots > 0 and 0 < slack <= layout["max_width"] * 0.25:
+        if justify[line_index] and space_slots:
             base = slack // space_slots
             remainder = slack - base * space_slots
             distribute = [base + (1 if i < remainder else 0) for i in range(space_slots)]
@@ -35754,6 +35989,18 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             quote_left_edge = min(quote_left_edge, line_left)
             quote_right_edge = max(quote_right_edge, line_right)
         y_probe += line_height
+
+    # The knockout rect must cover the attribution as well as the quote
+    # lines: a short or balanced quote with a long title would otherwise
+    # leave the byline running out of the cleared panel into the border
+    # decoration (Codex review on #328).
+    attribution_left = (width - layout["max_width"]) // 2
+    for line, font in [(author_line, attribution_font) for author_line in author_lines] + [
+        (title_line, attribution_title_font) for title_line in title_lines
+    ]:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        quote_left_edge = min(quote_left_edge, attribution_left)
+        quote_right_edge = max(quote_right_edge, attribution_left + bbox[2] - bbox[0])
 
     clear_rect = None
     # Per-theme clear-rect padding (x, top, bottom). Themes that thread
@@ -35793,6 +36040,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # wide enough that the corner arcs never cut into a first / last line.
         "betweenus": (28, 18, 24),
         "betweenus_dark": (28, 18, 24),
+        # risograph knocks the body rect back to paper and frames it with a
+        # misregistered double rule (2 px red + 2 px blue offset by 5/3);
+        # 20/14/14 keeps both rules outside the text's own bounds.
+        "risograph": (20, 14, 14),
     }
     if theme in _CLEAR_RECT_PADS and quote_line_boxes:
         clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
@@ -35842,6 +36093,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # analysis paints graticule, isobars, fronts and station plots in one
         # pass, then wipes the body-text rect and boxes it as a chart legend.
         draw_synoptic_border(image, colors, clear_rect=clear_rect, time_str=time_str)
+    elif theme == "risograph":
+        # Same single-call dispatch — the print-test shapes paint across the
+        # sheet, then the body rect is knocked back to paper and framed as a
+        # misregistered pasted-up label.
+        draw_risograph_border(image, colors, clear_rect=clear_rect)
     elif theme == "letter":
         # Same single-call dispatch — the letter painter pastes the dithered
         # aged-paper plate, knocks the writing area back to clean cream so the
@@ -35865,6 +36121,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
     mark_font = load_font(theme_font_candidates(theme, "ornament"), size=mark_size)
 
+    # The mark hangs at a fixed x with its lower two thirds level with the
+    # first line, so on the standard and dense measures it runs under the
+    # first word. That overlap is a deliberate style choice (a pull-quote
+    # mark sitting behind the text), not an accident -- a gutter-fitting
+    # revision that shrank the mark to clear the text was tried and taken
+    # out again because the small, timid marks lost the gesture.
     open_bb = draw.textbbox((0, 0), "“", font=mark_font)
     open_h = open_bb[3] - open_bb[1]
     open_x = SIDE_MARGIN + 18
@@ -35880,7 +36142,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     )
 
     y = quote_top
-    total_lines = len(wrapped_quote)
     for line_index, line in enumerate(wrapped_quote):
         start = 0
         while start < len(line) and line[start][0].strip() == "":
@@ -35905,13 +36166,12 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # are equally elastic.
         space_is_bold = [is_bold for chunk, is_bold in drawable if chunk == " "]
         rigid_match = theme in _THEMES_RIGID_MATCH_SPACING
-        is_last = line_index == total_lines - 1
-        slack = layout["max_width"] - current_width
+        slack = wrap_width - current_width
 
         distribute: list[int] = []
-        # Only full-justify when the line is at least 75% full; looser lines look
-        # worse justified than ragged-right due to excessive inter-word gaps.
-        if not is_last and space_is_bold and 0 < slack <= layout["max_width"] * 0.25:
+        # Full justification only where it will not open rivers -- see
+        # ``justify_flags`` for the block-level decision.
+        if justify[line_index] and space_is_bold:
             distribute = _justify_distribution(space_is_bold, slack, rigid_match)
 
         x = (width - layout["max_width"]) // 2

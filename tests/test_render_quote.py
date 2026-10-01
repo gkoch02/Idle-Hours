@@ -1971,10 +1971,15 @@ class TestGrimoireBorder:
         bold accent run tighter than loose justification) is
         theme-agnostic; this test happens to live in TestGrimoireBorder
         for adjacency reasons rather than because it's grimoire-only."""
+        # Sized so the block justifies under ``justify_flags``: every
+        # non-last line carries well over three gaps and stretches each
+        # by far less than 0.45 em, and the phrase sits on the first,
+        # justified line.
         row = {
             "display_quote": (
-                "At a quarter past two the breeze dropped entirely, "
-                "and such a stillness reigned all about us."
+                "At a quarter past two the wind fell away to nothing, "
+                "and such a stillness lay on the sea and on the men at "
+                "the rail that no one of us spoke a word for an hour."
             ),
             "matched_text": "quarter past two",
             "title": "T",
@@ -2249,12 +2254,13 @@ class TestKanagawaBorder:
         edges. Sample a pixel just below the panel's bottom edge —
         expect black (the shadow ledge)."""
         img = rq.render("04:30", self._row(), 800, 480, mode="production", theme="kanagawa")
-        # Empirical: at y just below the panel's bottom edge (panel
-        # ends around y=394 for the test quote), 2 px ledge sits at
-        # y≈395-397. Look for black pixels in that band at panel-
-        # interior x range (away from corner rounding).
+        # The panel's bottom edge follows the attribution block, so sweep
+        # the lower half of the canvas for the 2 px black ledge rather
+        # than pinning the y it happened to land on for one layout
+        # revision. Panel-interior x range, away from corner rounding;
+        # the waves below the panel are blue / white, never black.
         found_black_ledge = False
-        for py in range(393, 400):
+        for py in range(300, 440):
             for px in range(300, 600):
                 if img.getpixel((px, py)) == rq.SPECTRA6["black"]:
                     found_black_ledge = True
@@ -3607,40 +3613,24 @@ class TestDrawTextDithered:
             f"at {mismatches} pixel(s)"
         )
 
-    def test_alchemy_call_site_uses_purple_recipe(self):
-        """``_draw_text_body`` must call ``draw_text_dithered`` for the
-        alchemy red-accent path with ``light=blue`` so the eye averages
-        red+blue at panel distance into purple — the documented
-        two-ink violet recipe. A regression to solid red would lose
-        the alchemist's pigment register the theme is built around.
+    def test_alchemy_phrase_is_a_solid_red_rubric(self):
+        """The alchemy matched phrase paints solid red. An earlier
+        revision stippled it 50/50 red + blue for a Tyrian purple, which
+        shredded MedievalSharp's thin strokes into a dotted smear at body
+        size; a scribe's rubric is solid, and so is this.
         """
-        captured: dict = {}
-
-        def fake_dither(*args, **kwargs):
-            captured["density"] = kwargs.get("light_density")
-            captured["light"] = kwargs.get("light")
-            captured["dark"] = kwargs.get("dark")
-
-        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+        with patch.object(rq, "draw_text_dithered") as dither:
             image = Image.new("RGB", (200, 60), (255, 255, 255))
             draw = ImageDraw.Draw(image)
             from PIL import ImageFont
             font = ImageFont.load_default()
             rq._draw_text_body(image, draw, (10, 10), "test", font, rq.SPECTRA6["red"], "alchemy")
-
-        assert captured.get("dark") == rq.SPECTRA6["red"], (
-            "alchemy purple dither must keep red as the dark ink"
-        )
-        assert captured.get("light") == rq.SPECTRA6["blue"], (
-            "alchemy purple dither must stipple toward blue (purple = red + blue)"
-        )
-        # Default density (0.5) → 50/50 checkerboard; ``light_density``
-        # may be the keyword default (None / unset) or 0.5 — either
-        # produces the documented purple recipe.
-        density = captured.get("density")
-        assert density in (None, 0.5), (
-            f"alchemy purple dither must use 50/50 density (default); got {density}"
-        )
+        dither.assert_not_called()
+        # Every inked pixel is a tint of red on the white ground -- no blue
+        # component anywhere, which the purple stipple would have left.
+        inks = distinct_inks(image)
+        assert any(ink != (255, 255, 255) for ink in inks)
+        assert all(r == 255 and g == b for r, g, b in inks), inks
 
     def test_gothic_call_site_uses_amber_recipe(self):
         """``_draw_text_body`` must call ``draw_text_dithered`` for the
@@ -4387,3 +4377,230 @@ class TestPaintNeonMask:
         assert distinct_inks(image) == {rq.SPECTRA6["red"], rq.SPECTRA6["white"]}, (
             "the halo painted over a ground it was not permitted to touch"
         )
+
+
+class TestJustifyFlags:
+    """Block-level justification decision (``justify_flags``)."""
+
+    def test_last_line_is_never_justified(self):
+        flags = rq.justify_flags("default", [(600, 8), (610, 7), (300, 3)], 640, 30)
+        assert flags == [True, True, False]
+
+    def test_ragged_right_themes_never_justify(self):
+        for theme in rq._THEMES_RAGGED_RIGHT:
+            assert rq.justify_flags(theme, [(600, 8), (610, 7), (300, 3)], 640, 30) == [False, False, False]
+
+    def test_one_river_line_sets_the_whole_block_ragged(self):
+        # Line 2 has two gaps carrying 120 px: 60 px each on a 40 px body,
+        # far past 0.45 em. The block, not just that line, goes ragged.
+        flags = rq.justify_flags("default", [(600, 8), (520, 2), (610, 7), (200, 2)], 640, 40)
+        assert flags == [False, False, False, False]
+
+    def test_loose_line_stays_ragged_alone(self):
+        # Line 2 is under 75% full, so it is ragged on its own (the
+        # original rule) without vetoing its neighbours.
+        flags = rq.justify_flags("default", [(600, 8), (400, 6), (610, 7), (200, 2)], 640, 40)
+        assert flags == [True, False, True, False]
+
+    def test_per_gap_stretch_cap_scales_with_body_size(self):
+        metrics = [(560, 4), (300, 2)]  # 80 px over 4 gaps = 20 px each
+        assert rq.justify_flags("default", metrics, 640, 50)[0] is True   # cap 22.5 px
+        assert rq.justify_flags("default", metrics, 640, 30)[0] is False  # cap 13.5 px
+
+    def test_hero_quote_never_justifies_a_short_line(self):
+        """The hero quote that motivated the rule: "Come to me" and its
+        like used to take 75 px per gap. Whatever wrap the balancer lands
+        on, no line with fewer than three gaps, and no line whose gaps
+        would stretch past 0.45 em, may be flagged for justification."""
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        text = "But I must consider. Come to me to-morrow at the office, at nine o\u2019clock."
+        regular, bold, wrapped, _, size, wrap_width = rq.fit_quote_balanced(
+            draw, text, "nine o\u2019clock", 640, 248, 66, 32, 1.12, theme="default",
+        )
+        metrics = [
+            (rq._line_ink_width(draw, line, regular, bold), sum(1 for c, _ in rq._trim_line(line) if c == " "))
+            for line in wrapped
+        ]
+        flags = rq.justify_flags("default", metrics, wrap_width, size)
+        for (ink, gaps), flagged in zip(metrics, flags):
+            if flagged:
+                assert gaps >= rq._JUSTIFY_MIN_GAPS
+                assert (wrap_width - ink) / gaps <= size * rq._JUSTIFY_MAX_STRETCH_EM
+        # And the old behaviour is really gone: a two-gap line with a
+        # quarter of the measure to spare is not justified.
+        assert rq.justify_flags("default", [(480, 2), (300, 3)], 640, 60) == [False, False]
+
+
+class TestFitQuoteBalanced:
+    def _fit(self, text, match, theme="default", layout="hero"):
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        lay = rq.LAYOUTS[layout]
+        return draw, rq.fit_quote_balanced(
+            draw, text, match, lay["max_width"], lay["quote_height"], lay["font_max"], lay["font_min"],
+            lay["line_height_mult"], theme=theme,
+        )
+
+    def test_returns_six_fields_and_wraps_within_wrap_width(self):
+        draw, (regular, bold, wrapped, line_height, size, wrap_width) = self._fit(
+            "It was within 638 miles of the coast of Ireland; and at half-past two in the afternoon they "
+            "discovered that communication with Europe had ceased.", "half-past two", layout="standard",
+        )
+        assert wrap_width <= rq.LAYOUTS["standard"]["max_width"]
+        for line in wrapped:
+            assert rq._line_ink_width(draw, line, regular, bold) <= wrap_width
+
+    @pytest.mark.parametrize("theme", ["default", "swiss", "chanbara", "herbarium", "roman"])
+    def test_hero_quote_does_not_end_on_a_lone_word(self, theme):
+        draw, (regular, bold, wrapped, _, _, wrap_width) = self._fit(
+            "But I must consider. Come to me to-morrow at the office, at nine o\u2019clock.", "nine o\u2019clock", theme=theme,
+        )
+        assert len(wrapped) >= 2
+        assert not rq.is_widow_line(draw, wrapped[-1], regular, bold, rq.LAYOUTS["hero"]["max_width"])
+
+    def test_balancing_never_grows_the_block(self):
+        text = ("Of course until ten o'clock, when I shut up shop, I am constantly interrupted\u2014as I have been "
+                "during this letter, once to sell a copy of Helen's Babies and once to sell The Ballad of Reading "
+                "Gaol, so you can see how varied are my clients' tastes!")
+        draw, (_, _, wrapped, line_height, _, _) = self._fit(text, "ten o'clock", layout="dense")
+        plain = rq.fit_quote(draw, text, "ten o'clock", 680, 276, 48, 24, 1.18)
+        assert len(wrapped) * line_height <= rq.LAYOUTS["dense"]["quote_height"]
+        assert len(wrapped) <= len(plain[2])
+
+    def test_size_fallback_is_bounded(self):
+        """The balancer may step the face down, but never below 80% of the
+        size ``fit_quote`` chose nor below the layout's ``font_min``."""
+        text = "But I must consider. Come to me to-morrow at the office, at nine o\u2019clock."
+        draw, (_, _, _, _, size, _) = self._fit(text, "nine o\u2019clock", theme="chanbara")
+        plain_size = rq.fit_quote(draw, text, "nine o\u2019clock", 640, 248, 66, 32, 1.12, theme="chanbara")[4]
+        assert size >= max(32, int(plain_size * 0.8) - 1)
+
+    def test_candidate_widow_is_judged_against_its_own_measure(self):
+        """A balanced candidate is wrapped to a narrower measure; its last
+        line is compared with the lines above it, i.e. with that measure,
+        not with the layout's full one (Codex review on #328)."""
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        regular = rq.load_font(rq.QUOTE_FONT_SEMIBOLD_CANDIDATES, size=40)
+        bold = rq.load_font(rq.QUOTE_FONT_BOLD_CANDIDATES, size=40)
+        line = [("at", False), (" ", False), ("nine", False)]
+        ink = rq._line_ink_width(draw, line, regular, bold)
+        # Two words, so not a one-word widow; pick measures either side
+        # of the 30% threshold around this line's own width.
+        assert rq.is_widow_line(draw, line, regular, bold, int(ink / 0.25)) is True
+        assert rq.is_widow_line(draw, line, regular, bold, int(ink / 0.35)) is False
+        # Hence a short last line that fails against max_width can pass once
+        # the search has narrowed the measure around it.
+        wide, narrow = int(ink / 0.25), int(ink / 0.35)
+        assert rq.is_widow_line(draw, line, regular, bold, wide) and not rq.is_widow_line(draw, line, regular, bold, narrow)
+
+    def test_no_widow_means_untouched(self):
+        text = "The clock struck nine as he came in, and the room was full of people who had waited all evening."
+        draw, (regular, bold, wrapped, line_height, size, wrap_width) = self._fit(text, "struck nine", layout="standard")
+        plain = rq.fit_quote(draw, text, "struck nine", 660, 258, 58, 28, 1.14)
+        if not rq.is_widow_line(draw, plain[2][-1], plain[0], plain[1], 660):
+            assert (wrapped, size, wrap_width) == (plain[2], plain[4], 660)
+
+
+class TestAttributionFloors:
+    def test_dense_byline_is_at_least_the_floor(self):
+        """The dense layout used to set the author at 0.52 x 28 = 14 px.
+        Check the rendered author line is at least 18 px tall by measuring
+        the ink extent of a capital-rich byline."""
+        row = {
+            "display_quote": ("Of course until ten o'clock, when I shut up shop, I am constantly interrupted\u2014as I "
+                              "have been during this letter, once to sell a copy of Helen's Babies and once to sell "
+                              "The Ballad of Reading Gaol, so you can see how varied are my clients' tastes!"),
+            "matched_text": "ten o'clock",
+            "author": "HHHHHHHH",
+            "title": None,
+        }
+        img = rq.render("10:00", row, 800, 480, mode="production", theme="default")
+        text_left = (800 - rq.LAYOUTS["dense"]["max_width"]) // 2
+        black = rq.SPECTRA6["black"]
+        rows_with_ink = [
+            y for y in range(200, 470)
+            if any(img.getpixel((x, y)) == black for x in range(text_left, text_left + 120))
+        ]
+        # The author line is the last run of inked rows in the body column.
+        runs: list[list[int]] = []
+        for y in rows_with_ink:
+            if runs and y == runs[-1][-1] + 1:
+                runs[-1].append(y)
+            else:
+                runs.append([y])
+        cap_height = len(runs[-1])
+        assert cap_height >= 12, cap_height  # 18 px Playfair caps are ~13 px tall
+
+
+class TestRisographKnockout:
+    def test_clear_rect_is_knocked_back_to_paper_and_framed(self):
+        img = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
+        colors = rq.THEMES["risograph"]
+        rect = (60, 80, 740, 400)
+        rq.draw_risograph_border(img, colors, clear_rect=rect)
+        # Inside the pad (past both the red rule and the offset blue rule)
+        # the paper is clean white.
+        for x in range(rect[0] + 10, rect[2] - 10, 23):
+            for y in range(rect[1] + 10, rect[3] - 10, 17):
+                assert img.getpixel((x, y)) == rq.SPECTRA6["white"], (x, y)
+        # The two misregistered rules are present in the theme's inks.
+        assert img.getpixel((rect[0], (rect[1] + rect[3]) // 2)) == colors["text"]
+        assert img.getpixel((rect[0] + 5, (rect[1] + rect[3]) // 2)) == colors["accent"]
+
+    def test_render_threads_the_clear_rect(self):
+        row = {
+            "display_quote": "But I must consider. Come to me to-morrow at the office, at nine o\u2019clock.",
+            "matched_text": "nine o\u2019clock",
+            "author": "George Eliot",
+            "title": "Middlemarch",
+        }
+        img = rq.render("09:00", row, 800, 480, mode="production", theme="risograph")
+        # The chunky left bar (x 42-74, y 54-170) used to run solid under
+        # the first word. Inside the label its box is now paper, apart from
+        # the hanging quote mark's 50/50 blue stipple that deliberately
+        # overlaps it -- so well under half the box may be blue, where the
+        # bare border paints all of it.
+        blue = rq.SPECTRA6["blue"]
+        box = [(x, y) for x in range(62, 73) for y in range(120, 166)]
+        assert sum(img.getpixel(p) == blue for p in box) / len(box) < 0.5
+
+
+class TestKnockoutCoversByline:
+    def test_long_title_stays_inside_the_risograph_label(self):
+        """A short quote with a long title: the label's right edge used to
+        follow the quote lines alone, so the byline ran out of the panel
+        into the lower-right print bar (Codex review on #328)."""
+        row = {
+            "display_quote": "The clock struck nine as he came in.",
+            "matched_text": "struck nine",
+            "author": "Christopher Morley",
+            "title": "The Haunted Bookshop, Being a Further Account of Roger Mifflin and His Parnassus at Home",
+        }
+        img = rq.render("09:00", row, 800, 480, mode="production", theme="risograph")
+        red = rq.SPECTRA6["red"]
+        # The title paints red on paper; follow its row and check that every
+        # red pixel at the far right of the byline band is text-sized ink on
+        # white neighbours, not the solid print bar (x 712-744).
+        bar_columns = range(714, 742)
+        solid_rows = 0
+        for y in range(296, 412):
+            if all(img.getpixel((x, y)) == red for x in bar_columns):
+                solid_rows += 1
+        # The bar is 116 rows tall when untouched; the knockout must have
+        # removed the rows the byline band overlaps.
+        assert solid_rows < 116
+
+
+class TestAlchemyFaintFigure:
+    def test_inner_figure_is_a_stipple_not_a_solid_rule(self):
+        img = Image.new("RGB", (800, 480), rq.THEMES["alchemy"]["page_bg"])
+        rq.draw_alchemy_border(img, rq.THEMES["alchemy"])
+        blue = rq.SPECTRA6["blue"]
+        # Walk the outer ring's left edge (x = 400 - 222) over a 40 px
+        # band: no two vertically adjacent blue pixels, since the ring is
+        # gated to (x + y) parity.
+        x = 400 - 222
+        column = [img.getpixel((x, y)) == blue or img.getpixel((x + 1, y)) == blue for y in range(220, 260)]
+        assert any(column), "ring not painted where expected"
+        for px in (x, x + 1):
+            col = [img.getpixel((px, y)) == blue for y in range(220, 260)]
+            assert not any(a and b for a, b in zip(col, col[1:])), "solid blue run on the ring"
