@@ -31733,12 +31733,15 @@ def render_expedition_frame(time_str: str, quote_row: dict, width: int, height: 
 # with the matched phrase. Nothing prints a digit, nothing reads the wall
 # clock.
 #
-# **The medallion** is the School of the Wolf's: a silver disc (white, with
-# a black stipple shadow cast lower-right) in a double ring, carrying a
-# heraldic wolf's head in black ink — pricked ears, broad brow, open jaw,
-# white fangs, and the eyes the one yellow on the page besides the sun.
-# Drawn from a fixed point list in a 100-unit design box and scaled, so it
-# is the same wolf at every size.
+# **The medallion** is the School of the Wolf's, redrawn after the emblem
+# rather than traced from it (the original is CD Projekt's mark): a black
+# disc with a stipple shadow cast lower-right, in a silver double ring,
+# carrying the wolf in the emblem's own ink — a burst of eight spikes and
+# two horns, a faceted brow with facet lines cut back in black, slit eyes
+# with a yellow glint, and the long open jaw hanging below with its fangs
+# and tongue. Every polygon is a fixed point list in a 100-unit design box,
+# mirrored about the centre line and scaled, so it is the same wolf at
+# every size.
 #
 # **The page** is the ``tarot`` vellum recipe — a Y+W cream under a sparse
 # R+G foxing — inside a deckled edge: the page mask's outer band is eaten
@@ -31776,7 +31779,7 @@ _WITCHER_HEADER_Y = 48
 _WITCHER_HEADER_RULE_Y = 106
 _WITCHER_DIAL_CENTRE = (180, 254)
 _WITCHER_DIAL_RADIUS = 108
-_WITCHER_MEDALLION_RADIUS = 42
+_WITCHER_MEDALLION_RADIUS = 48
 _WITCHER_QUOTE_RECT = (330, 124, 742, 362)
 _WITCHER_ATTRIBUTION_TOP = 372
 _WITCHER_FOOT_Y = 404
@@ -31784,16 +31787,31 @@ _WITCHER_SIGNS_RIGHT = 742
 _WITCHER_CREAM_DENSITY = 0.14
 _WITCHER_FOXING_DENSITY = 0.03
 _WITCHER_PAGE: dict = {}
-# The wolf, in a 100-unit box, nose down. Head, then the two ears, then the
-# lower jaw; the fangs and eyes are cut back out of the ink.
-_WITCHER_WOLF_HEAD = (
-    (26, 28), (38, 22), (50, 26), (62, 22), (74, 28), (82, 44), (74, 58), (66, 66),
-    (62, 78), (50, 84), (38, 78), (34, 66), (26, 58), (18, 44),
+# The wolf, in a 100-unit box, after the School of the Wolf medallion: a
+# faceted head over a burst of spikes, with a long open jaw hanging below.
+# Drawn in the emblem's ink (white on the black disc); the eyes, nose, mouth
+# and facet lines are cut back out in black, the fangs and tongue laid back
+# in white. Every polygon is symmetric about x = 50; the right-hand copies
+# are mirrored at paint time.
+_WITCHER_WOLF_SPIKES_LEFT = (
+    ((42, 26), (10, 2), (6, 16), (34, 36)),            # the horn
+    ((36, 40), (2, 36), (4, 46), (36, 50)),             # the side spike
+    ((38, 54), (8, 68), (16, 76), (42, 62)),            # the lower diagonal
+    ((42, 64), (28, 94), (37, 96), (47, 70)),           # the lower spike
 )
-_WITCHER_WOLF_EARS = (((20, 30), (28, 4), (42, 24)), ((80, 30), (72, 4), (58, 24)))
-_WITCHER_WOLF_JAW = ((38, 86), (62, 86), (60, 96), (50, 100), (40, 96))
-_WITCHER_WOLF_FANGS = (((43, 78), (49, 78), (46, 90)), ((51, 78), (57, 78), (54, 90)))
-_WITCHER_WOLF_EYES = (((34, 42), (46, 50)), ((54, 42), (66, 50)))
+_WITCHER_WOLF_HEAD = (
+    (30, 28), (42, 22), (50, 26), (58, 22), (70, 28), (68, 46), (60, 58), (50, 64), (40, 58), (32, 46),
+)
+_WITCHER_WOLF_JAW = ((40, 60), (60, 60), (58, 98), (50, 102), (42, 98))
+_WITCHER_WOLF_MOUTH = ((43, 64), (57, 64), (55, 94), (50, 97), (45, 94))
+_WITCHER_WOLF_FANGS = (
+    ((44, 64), (48, 64), (46, 73)), ((52, 64), (56, 64), (54, 73)),       # upper
+    ((45, 94), (49, 94), (47, 85)), ((51, 94), (55, 94), (53, 85)),       # lower
+)
+_WITCHER_WOLF_TONGUE = ((47, 77), (53, 77), (50, 90))
+_WITCHER_WOLF_EYE_LEFT = ((35, 38), (46, 42), (46, 47), (37, 46))
+_WITCHER_WOLF_NOSE = ((45, 56), (55, 56), (50, 62))
+_WITCHER_WOLF_FACETS = (((50, 28), (50, 55)), ((38, 32), (47, 52)), ((62, 32), (53, 52)), ((36, 44), (44, 54)), ((64, 44), (56, 54)))
 _WITCHER_SIGNS = ("AARD", "IGNI", "YRDEN", "QUEN", "AXII")
 
 
@@ -31896,9 +31914,13 @@ def _witcher_wolf(scale: float, origin: tuple[float, float]):
     return lambda pts: [(ox + x * scale, oy + y * scale) for x, y in pts]
 
 
+def _witcher_mirror(pts):
+    return tuple((100 - x, y) for x, y in pts)
+
+
 def _witcher_paint_medallion(image: Image.Image) -> None:
-    """The Wolf School medallion at the dial's hub: a silver disc with a cast
-    shadow, a double ring, and the heraldic wolf in black ink."""
+    """The Wolf School medallion at the dial's hub: a black disc with a cast
+    shadow in a silver double ring, carrying the wolf in the emblem's ink."""
     draw = ImageDraw.Draw(image)
     black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
     cx, cy = _WITCHER_DIAL_CENTRE
@@ -31912,20 +31934,30 @@ def _witcher_paint_medallion(image: Image.Image) -> None:
         for x in range(cx - r + 4, cx + r + 5):
             if sp[x, y] and row[x % 4] < 8 and px[x, y] != black:
                 px[x, y] = black
-    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=white, outline=black, width=3)
-    draw.ellipse((cx - r + 6, cy - r + 6, cx + r - 6, cy + r - 6), outline=black, width=1)
-    size = (r - 10) * 2
-    place = _witcher_wolf(size / 100.0, (cx - size / 2, cy - size / 2 - 2))
-    for ear in _WITCHER_WOLF_EARS:
-        draw.polygon(place(ear), fill=black)
-    draw.polygon(place(_WITCHER_WOLF_HEAD), fill=black)
-    draw.polygon(place(_WITCHER_WOLF_JAW), fill=black)
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=black, outline=white, width=3)
+    draw.ellipse((cx - r + 5, cy - r + 5, cx + r - 5, cy + r - 5), outline=white, width=1)
+    # The emblem's box runs 2..102 vertically (the horn tips to the jaw), so
+    # it is centred on (50, 52) and scaled to sit inside the inner ring.
+    scale = (r - 12) * 2 / 100.0
+    place = _witcher_wolf(scale, (cx - 50 * scale, cy - 52 * scale))
+    for spike in _WITCHER_WOLF_SPIKES_LEFT:
+        draw.polygon(place(spike), fill=white)
+        draw.polygon(place(_witcher_mirror(spike)), fill=white)
+    draw.polygon(place(_WITCHER_WOLF_JAW), fill=white)
+    draw.polygon(place(_WITCHER_WOLF_HEAD), fill=white)
+    draw.polygon(place(_WITCHER_WOLF_MOUTH), fill=black)
     for fang in _WITCHER_WOLF_FANGS:
         draw.polygon(place(fang), fill=white)
-    for (ex0, ey0), (ex1, ey1) in _WITCHER_WOLF_EYES:
-        (ax, ay), (bx, by) = place(((ex0, ey0), (ex1, ey1)))
-        draw.ellipse((ax, ay, bx, by), fill=yellow)
-        draw.line([(ax + 2, (ay + by) / 2), (bx - 2, (ay + by) / 2)], fill=black, width=1)
+    draw.polygon(place(_WITCHER_WOLF_TONGUE), fill=white)
+    draw.polygon(place(_WITCHER_WOLF_EYE_LEFT), fill=black)
+    draw.polygon(place(_witcher_mirror(_WITCHER_WOLF_EYE_LEFT)), fill=black)
+    draw.polygon(place(_WITCHER_WOLF_NOSE), fill=black)
+    for a, b in _WITCHER_WOLF_FACETS:
+        draw.line(place((a, b)), fill=black, width=1)
+    # The eyes catch the one light on the page: a yellow glint in each slit.
+    for (ex, ey) in ((41, 43), (59, 43)):
+        gx, gy = place(((ex, ey),))[0]
+        draw.ellipse((gx - 1.5, gy - 1.5, gx + 1.5, gy + 1.5), fill=yellow)
 
 
 def _witcher_page() -> Image.Image:

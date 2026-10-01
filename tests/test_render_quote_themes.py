@@ -6144,9 +6144,9 @@ class TestWitcherFrame:
         cx, cy = rq._WITCHER_DIAL_CENTRE
         r = rq._WITCHER_MEDALLION_RADIUS
         counts = ink_counts(self._render().crop((cx - r, cy - r, cx + r, cy + r)))
-        assert counts.get(rq.SPECTRA6["black"], 0) > 900      # the wolf and the rings
-        assert counts.get(rq.SPECTRA6["white"], 0) > 1500     # the silver disc
-        assert counts.get(rq.SPECTRA6["yellow"], 0) > 40      # the eyes
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2500     # the disc and the cut-back features
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2500     # the emblem and the silver rings
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 20      # the glint in each eye
 
     def test_quote_is_black_with_a_tangerine_phrase(self):
         counts = ink_counts(self._render().crop(rq._WITCHER_QUOTE_RECT))
