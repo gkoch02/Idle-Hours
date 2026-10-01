@@ -1315,7 +1315,7 @@ THEMES = {
     },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
-    # is the hour, a silhouetted colony and Enforcer rim-lit beneath it,
+    # is the hour, a silhouetted colony rim-lit beneath it,
     # white Exo 2 prose with the matched phrase as an ember. These
     # literary-layout slots serve only the palette-only paths (see the note
     # above ``THEMES``).
@@ -29775,11 +29775,10 @@ def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: in
 # ---------------------------------------------------------------------------
 # The off-world colony of Carcosa under the eclipse that never ends. A *saros*
 # is the eighteen-year cycle on which eclipses repeat, and the game's whole
-# loop lives under one: a black sun hanging over a dead colony, a lone Soltari
-# Enforcer in a bulk suit standing beneath it with a shield on one arm, spores
+# loop lives under one: a black sun hanging over a dead colony, spores
 # drifting up through a sky that is red where it is not black. The page is
-# that shot — the corona, the ground, the figure — with the quote in the one
-# dark stretch of sky.
+# that shot — the corona and the ground, nobody standing on it — with the
+# quote in the one dark stretch of sky.
 #
 # **The corona is painted in continuous tone and dithered, not stippled.**
 # Light on this panel is a falling density of one ink, which is what
@@ -29811,14 +29810,15 @@ def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: in
 # byte-identically and the matched phrase carries the readable time. The
 # occlusion figure on the status line is derived from the same geometry.
 #
-# **The ground is silhouette plus rim light.** Spires, broken colony towers, a
-# bone arch and the Enforcer are black shapes drawn into one mask, which is
+# **The ground is silhouette plus rim light.** Spires, broken colony towers
+# and a bone arch are black shapes drawn into one mask, which is
 # then lit the way the sun above would light it: a rim mask is the shape minus
 # itself shifted two pixels *away* from the sun (so only the sun-facing edge
 # survives), weighted by the sky's own falloff and stippled yellow where the
 # light is strong, red where it is weak — the ``biomech`` wall's rim-light
-# trick, applied to flat cut-outs. Two blue points on the Enforcer's pack are
-# the suit's own lights, the only lit thing that is not the sun. The sky is
+# trick, applied to flat cut-outs. Nothing lit on the frame is not the sun:
+# the figure the first cut stood under the eclipse was dropped, and the one
+# blue on the page is the horizon haze. The sky is
 # quote-independent and cached per hour (``_SAROS_SKY_CACHE``, keyed on the
 # painter so the decoration fence measures a painter, not a cache).
 #
@@ -29841,9 +29841,7 @@ _SAROS_SKY_STEP = 4                       # the corona is sampled every N px, th
 _SAROS_SKY_REACH = 3.6                    # beyond this many radii the sky is black
 _SAROS_HORIZON = 390
 _SAROS_QUOTE_RECT = (48, 104, 376, 348)
-_SAROS_FIGURE_X = 560
 _SAROS_SEED = 0x5A205
-_SAROS_FIGURE_SCALE = 0.9                 # the Enforcer's height, in hundredths of a px
 _SAROS_SKY_PALETTE = [SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"],
                       SPECTRA6["blue"]]
 # Coronal streamers as (angle in degrees — screen axes, 0 = right, 90 = down —
@@ -30076,28 +30074,7 @@ def _saros_silhouette(size) -> Image.Image:
                       (x1 - 6, top + 2), (x1, top + 10), (x1, base)], fill=255)
     draw.line([(765, 304), (765, 236)], fill=255, width=2)
     draw.line([(758, 250), (772, 250)], fill=255, width=1)
-    # The Enforcer: back to us, shield on the left arm, rifle at the right.
-    _saros_figure(draw, _SAROS_FIGURE_X, _saros_ground_y(_SAROS_FIGURE_X) + 2)
     return mask
-
-
-def _saros_figure(draw: ImageDraw.ImageDraw, fx: float, fy: float) -> None:
-    """The Enforcer, back to us: boots planted, a bulk suit with a pack
-    across the shoulders, a round shield on the left arm, a rifle on the
-    right. Proportions in ``_SAROS_FIGURE_SCALE`` units of a 100 px figure."""
-    s = _SAROS_FIGURE_SCALE
-
-    def p(dx, dy):
-        return (fx + dx * s, fy - dy * s)
-
-    draw.polygon([p(-14, 0), p(-5, 0), p(-4, 46), p(-16, 44)], fill=255)
-    draw.polygon([p(5, 0), p(14, 0), p(16, 44), p(4, 46)], fill=255)
-    draw.polygon([p(-17, 42), p(17, 42), p(24, 78), p(-24, 78)], fill=255)
-    draw.rounded_rectangle([p(-28, 84), p(28, 62)], radius=int(7 * s), fill=255)
-    draw.rounded_rectangle([p(-11, 82), p(11, 54)], radius=int(4 * s), fill=255)
-    draw.ellipse([p(-10, 100), p(10, 80)], fill=255)
-    draw.ellipse([p(-48, 74), p(-22, 28)], fill=255)
-    draw.line([p(22, 52), p(40, 88)], fill=255, width=max(2, int(4 * s)))
 
 
 def _saros_bayer_field(size) -> Image.Image:
@@ -30127,17 +30104,7 @@ def _saros_paint_ground(image: Image.Image, falloff: Image.Image) -> None:
     weak = ImageChops.subtract(rim.point(lambda v: min(255, int(v * 1.5))), bayer).point(lambda v: 255 if v else 0)
     image.paste(SPECTRA6["red"], (0, 0), weak)
     image.paste(SPECTRA6["yellow"], (0, 0), strong)
-    # The suit's own lights: two blue points on the Enforcer's pack.
-    fx = _SAROS_FIGURE_X
-    fy = _saros_ground_y(fx) + 2
-    lamps = Image.new("L", size, 0)
-    lamp_draw = ImageDraw.Draw(lamps)
-    s = _SAROS_FIGURE_SCALE
-    for dx in (-6, 6):
-        lamp_draw.ellipse((fx + dx * s - 1, fy - 70 * s - 1, fx + dx * s + 1, fy - 70 * s + 1), fill=255)
-    paint_neon_mask(image, lamps, SPECTRA6["blue"], SPECTRA6["blue"], radius=2, gamma=1.4, cap=0.45,
-                    ground=frozenset({SPECTRA6["black"]}))
-    for layer in (shape, from_right, from_left, half, rim, bayer, strong, weak, lamps):
+    for layer in (shape, from_right, from_left, half, rim, bayer, strong, weak):
         layer.close()
 
 

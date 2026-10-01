@@ -5712,7 +5712,7 @@ class TestSarosFrame:
     """``saros`` — Housemarque's *Saros*, the eclipse over Carcosa.
 
     A black sun in a dithered corona whose phase is the hour, a sunset band
-    ringing the horizon with the colony and the Enforcer cut out of it, the
+    ringing the horizon with the colony cut out of it, the
     quote in the dark sky with the matched phrase as an ember.
     """
 
@@ -5752,7 +5752,7 @@ class TestSarosFrame:
         image = self._render()
         inks = distinct_inks(image)
         assert inks <= set(rq.SPECTRA6.values())
-        # Fire, sky, suit lights — and never green.
+        # Fire, sky, the horizon haze — and never green.
         for ink in ("black", "red", "yellow", "white", "blue"):
             assert rq.SPECTRA6[ink] in inks, ink
         assert rq.SPECTRA6["green"] not in inks
@@ -5800,14 +5800,12 @@ class TestSarosFrame:
         assert rq.SPECTRA6["blue"] not in distinct_inks(image.crop((420, 0, 800, 300)))
 
     def test_silhouettes_cut_the_dusk(self):
-        """The Enforcer stands black against the sunset band; the sky beside
-        him at the same height is lit."""
+        """The tallest colony tower stands black against the sunset band; the
+        sky beside it at the same height is lit."""
         image = self._render(time_str="12:00")
-        fx = rq._SAROS_FIGURE_X
-        fy = rq._saros_ground_y(fx) + 2
-        torso = image.crop((fx - 8, int(fy - 70), fx + 8, int(fy - 50)))
-        assert distinct_inks(torso) <= {rq.SPECTRA6["black"], rq.SPECTRA6["blue"]}
-        beside = image.crop((fx + 60, int(fy - 70), fx + 100, int(fy - 50)))
+        tower = image.crop((750, 330, 782, 362))
+        assert distinct_inks(tower) == {rq.SPECTRA6["black"]}
+        beside = image.crop((724, 330, 740, 362))
         assert rq.SPECTRA6["red"] in distinct_inks(beside) or rq.SPECTRA6["yellow"] in distinct_inks(beside)
 
     def test_quote_is_white_prose_with_an_ember_phrase(self):

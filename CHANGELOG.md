@@ -11,8 +11,8 @@ these entries under the new dated version heading.
 
 - New `saros` theme: Housemarque's *Saros* — a black sun in a dithered
   red-and-gold corona whose phase is the hour (the diamond-ring bead sits
-  where the hour hand would point; totality at twelve), the colony and an
-  Enforcer silhouetted against the sunset band beneath it, the quote in Exo 2
+  where the hour hand would point; totality at twelve), the colony
+  silhouetted against the sunset band beneath it, the quote in Exo 2
   with the matched phrase as an ember. Bundles Exo 2 and Michroma (OFL).
 
 ## [2.6.0] - 2026-09-26
