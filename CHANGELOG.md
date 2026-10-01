@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `expedition` theme: Sandfall's *Clair Obscur: Expedition 33* — the
+  Monolith from the Lumière promenade at dusk, dithered against the panel's
+  calibrated inks, with the Paintress painting the hour on the slab, a gust
+  of Gommage petals, a gas lamp and balustrade, and the quote as a journal
+  page in the game's own faces (IM Fell Double Pica, Bebas Neue, Cinzel
+  Decorative).
 - New `atropos` theme: night in the Overgrown Ruins of Housemarque's *Returnal*
   — a teal fog dithered to the cold inks, rain, Sentient statues, the Helios
   wreck, ember-lit tendrils and bullet-hell orbs, the quote as a translated
