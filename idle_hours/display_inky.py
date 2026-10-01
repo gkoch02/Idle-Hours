@@ -292,6 +292,11 @@ THEME_SATURATION: dict[str, float] = {
     # Dark-ground tier: the gentler push flattens the blooms and lets the
     # orange go rust (the ``bakelite`` / ``furies`` argument).
     "atropos": 0.7,
+    # Housemarque's *Saros* — a black sun in a dithered red-and-gold corona
+    # over a silhouetted colony. Dark-ground tier, the ``biomech`` /
+    # ``nocturne`` argument: every lit thing on the frame is a falling-density
+    # bloom or a diffusion dither on black, which the gentler tier flattens.
+    "saros": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

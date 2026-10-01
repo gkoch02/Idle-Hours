@@ -13,6 +13,11 @@ these entries under the new dated version heading.
   — a teal fog dithered to the cold inks, rain, Sentient statues, the Helios
   wreck, ember-lit tendrils and bullet-hell orbs, the quote as a translated
   xenoglyph cipher in Michroma and the hour as the cycle counter.
+- New `saros` theme: Housemarque's *Saros* — a black sun in a dithered
+  red-and-gold corona whose phase is the hour (the diamond-ring bead sits
+  where the hour hand would point; totality at twelve), the colony
+  silhouetted against the sunset band beneath it, the quote in Exo 2
+  with the matched phrase as an ember. Bundles Exo 2 and Michroma (OFL).
 
 ## [2.6.0] - 2026-09-26
 

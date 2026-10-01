@@ -108,6 +108,7 @@ CUSTOM_FRAME_THEMES = (
     "bosch",
     "semiotic",
     "atropos",
+    "saros",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

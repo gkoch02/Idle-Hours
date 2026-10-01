@@ -277,6 +277,7 @@ def parse_args() -> argparse.Namespace:
         "bosch",
         "semiotic",
         "atropos",
+        "saros",
         "diags",
     ]
     parser.add_argument(
