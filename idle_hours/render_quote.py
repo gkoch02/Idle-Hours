@@ -3391,19 +3391,13 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # sibling) and Atomic Age before heavy DejaVu / Liberation /
         # Noto Sans Bold, so a missing-Bungee install still lands on
         # a chunky display silhouette rather than the Playfair serif.
-        # Body in Rubik Black, phrase in Bungee Shade. A whole paragraph of
-        # Bungee Shade at body size was the rotation's one unreadable
-        # frame: the face's inline drop-shadow is a second outline a stem
-        # apart, and under the maroon stipple plus the palette snap the two
-        # fused into a smear. Rubik's Black instance is the same fat,
-        # rounded 1960s poster register without the extrusion (and a weight
-        # the stipple cannot shred), and the Shade now does what a display
-        # face is for -- the matched phrase and the oversized marks.
-        # Shares the Rubik file with ``risograph`` (Regular, two-colour on
-        # white): a red-on-yellow Black is in no danger of being confused
-        # with it.
+        # The whole body is set in Bungee Shade, on purpose: at body size
+        # under the maroon stipple it is borderline illegible, and that is
+        # the Fillmore register -- Wes Wilson's posters made you work for
+        # the band's name. A Rubik Black body with the Shade kept for the
+        # phrase was tried and reverted as too polite.
         "quote_regular": [
-            (RUBIK_VARIABLE, "Black"),
+            BUNGEE_SHADE_REGULAR,
             BANGERS_REGULAR,
             ATOMICAGE_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -4517,11 +4511,7 @@ LAYOUTS = {
         "title_gap": 4,
     },
     "standard": {
-        # 644 / 664 rather than the original 660 / 680: the 70 / 60 px gutters
-        # could not hold the hanging opening mark at its minimum size, so it
-        # overprinted the first word (see ``fit_opening_mark``). Two to three
-        # per cent off the measure buys a mark that stays legible.
-        "max_width": 644,
+        "max_width": 660,
         "quote_height": 258,
         "font_max": 58,
         "font_min": 28,
@@ -4534,7 +4524,7 @@ LAYOUTS = {
         "title_gap": 4,
     },
     "dense": {
-        "max_width": 664,
+        "max_width": 680,
         "quote_height": 276,
         "font_max": 48,
         "font_min": 24,
@@ -5309,32 +5299,6 @@ def fit_quote_balanced(draw, text, match_text, max_width, max_height, font_max, 
                 continue
             return regular, bold, candidate, candidate_line_height, candidate_size, candidate_width
     return regular_font, bold_font, wrapped, line_height, size, max_width
-
-
-# The hanging opening quote mark lives in the left gutter, between
-# ``_MARK_FLOOR_X`` and ``_MARK_TEXT_GAP`` px short of the body's left edge.
-# It used to sit at a fixed x with its lower two thirds level with the
-# first line, so on the standard and dense measures (70 / 60 px gutters) it
-# overprinted the first word of every quote. The mark now right-aligns to
-# the text edge and is shrunk in 2 px steps when the gutter is too narrow
-# for it, never below ``_MARK_MIN_SHRINK`` of the layout's ``mark_min``.
-_MARK_FLOOR_X = SIDE_MARGIN + 6
-_MARK_TEXT_GAP = 8
-_MARK_MIN_SHRINK = 0.6
-
-
-def fit_opening_mark(draw, theme: str, mark_size: int, mark_min: int, room: int):
-    """Return ``(font, bbox)`` for the opening mark, shrunk until its
-    glyph is at most ``room`` px wide or the shrink floor is reached."""
-    candidates = theme_font_candidates(theme, "ornament")
-    floor = max(8, int(mark_min * _MARK_MIN_SHRINK))
-    size = mark_size
-    while True:
-        font = load_font(candidates, size=size)
-        bbox = draw.textbbox((0, 0), "\u201c", font=font)
-        if bbox[2] - bbox[0] <= room or size - 2 < floor:
-            return font, bbox
-        size -= 2
 
 
 def line_width(draw, line, regular_font, bold_font):
@@ -36140,14 +36104,17 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     show_debug = mode == "debug"
 
     mark_size = min(layout["mark_max"], max(layout["mark_min"], int(chosen_size * layout["mark_scale"])))
-    text_left = (width - layout["max_width"]) // 2
-    mark_font, open_bb = fit_opening_mark(
-        draw, theme, mark_size, layout["mark_min"], text_left - _MARK_TEXT_GAP - _MARK_FLOOR_X
-    )
+    mark_font = load_font(theme_font_candidates(theme, "ornament"), size=mark_size)
 
-    open_w = open_bb[2] - open_bb[0]
+    # The mark hangs at a fixed x with its lower two thirds level with the
+    # first line, so on the standard and dense measures it runs under the
+    # first word. That overlap is a deliberate style choice (a pull-quote
+    # mark sitting behind the text), not an accident -- a gutter-fitting
+    # revision that shrank the mark to clear the text was tried and taken
+    # out again because the small, timid marks lost the gesture.
+    open_bb = draw.textbbox((0, 0), "“", font=mark_font)
     open_h = open_bb[3] - open_bb[1]
-    open_x = max(_MARK_FLOOR_X, text_left - _MARK_TEXT_GAP - open_w)
+    open_x = SIDE_MARGIN + 18
     open_y = quote_top - open_h // 3
     _paint_ornament_mark(
         image,

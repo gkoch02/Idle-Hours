@@ -16,10 +16,8 @@ these entries under the new dated version heading.
   typewriter and handwriting themes (`nightvision`, `circuit`, `dispatch`,
   `marker`, `chalkboard`, `placard`, `kanagawa`) are always ragged-right,
   a one-word last line is re-wrapped away (narrower measure first, then up
-  to 20% smaller type), the hanging opening quote mark no longer
-  overprints the first word on the standard and dense measures (now 644 /
-  664 px), and the byline floors at 18 / 16 px so it reads from across the
-  room. `assets/goodnight.png` is regenerated to match.
+  to 20% smaller type), and the byline floors at 18 / 16 px so it reads
+  from across the room. `assets/goodnight.png` is regenerated to match.
 - `risograph` knocks the body text out to a misregistered red-over-blue
   label so the print-test bars and circles no longer run under the first
   word and the attribution.
@@ -27,9 +25,6 @@ these entries under the new dated version heading.
   the text instead of solid hairlines through every line, and sets the
   matched phrase as a solid red rubric instead of a purple stipple that
   shredded MedievalSharp at body size.
-- `fillmore` sets its body in Rubik Black and keeps Bungee Shade for the
-  matched phrase and the quote marks; a whole paragraph of the 3D face
-  under the maroon stipple was unreadable.
 - New `witcher` theme: *The Witcher 3: Wild Hunt* — a bestiary page on
   deckled parchment in a dark binding, the meditation dial with the title's
   three claw slashes at its hub and a sun or moon on the hour's radius, the

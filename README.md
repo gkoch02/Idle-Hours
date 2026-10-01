@@ -292,7 +292,7 @@ Seventy-nine themes ship built-in, all constrained to the Spectra 6 panel palett
 | `placard`     | <img src="idle_hours/assets/previews/placard.png" width="240" alt="placard theme preview">         | white       | black | red    | Patrick Hand SC      | Hand-lettered sandwich board  |
 | `chanbara`    | <img src="idle_hours/assets/previews/chanbara.png" width="240" alt="chanbara theme preview">       | black       | white | red    | Shojumaru (brush)    | Samurai-cinema poster         |
 | `lcars`       | <img src="idle_hours/assets/previews/lcars.png" width="240" alt="lcars theme preview">             | black       | white | yellow | Antonio (condensed sans) | LCARS console (Okudagram) |
-| `fillmore`    | <img src="idle_hours/assets/previews/fillmore.png" width="240" alt="fillmore theme preview">       | yellow      | red   | blue   | Rubik Black + Bungee Shade | 1960s psychedelic concert poster |
+| `fillmore`    | <img src="idle_hours/assets/previews/fillmore.png" width="240" alt="fillmore theme preview">       | yellow      | red   | blue   | Bungee Shade (3D display) | 1960s psychedelic concert poster |
 | `firmament`   | <img src="idle_hours/assets/previews/firmament.png" width="240" alt="firmament theme preview">     | navy        | white | gold   | Cardo (humanist serif) | 17th-century celestial atlas |
 | `astrarium`   | <img src="idle_hours/assets/previews/astrarium.png" width="240" alt="astrarium theme preview">     | cream/white | black | tangerine | EB Garamond          | Astronomical-clock dashboard |
 | `kanagawa`    | <img src="idle_hours/assets/previews/kanagawa.png" width="240" alt="kanagawa theme preview">       | white       | black | red    | Yuji Boku (sumi-brush) | Hokusai-inspired seigaiha woodblock |

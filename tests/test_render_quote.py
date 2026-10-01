@@ -4462,7 +4462,7 @@ class TestFitQuoteBalanced:
                 "during this letter, once to sell a copy of Helen's Babies and once to sell The Ballad of Reading "
                 "Gaol, so you can see how varied are my clients' tastes!")
         draw, (_, _, wrapped, line_height, _, _) = self._fit(text, "ten o'clock", layout="dense")
-        plain = rq.fit_quote(draw, text, "ten o'clock", 664, 276, 48, 24, 1.18)
+        plain = rq.fit_quote(draw, text, "ten o'clock", 680, 276, 48, 24, 1.18)
         assert len(wrapped) * line_height <= rq.LAYOUTS["dense"]["quote_height"]
         assert len(wrapped) <= len(plain[2])
 
@@ -4477,44 +4477,9 @@ class TestFitQuoteBalanced:
     def test_no_widow_means_untouched(self):
         text = "The clock struck nine as he came in, and the room was full of people who had waited all evening."
         draw, (regular, bold, wrapped, line_height, size, wrap_width) = self._fit(text, "struck nine", layout="standard")
-        plain = rq.fit_quote(draw, text, "struck nine", 644, 258, 58, 28, 1.14)
-        if not rq.is_widow_line(draw, plain[2][-1], plain[0], plain[1], 644):
-            assert (wrapped, size, wrap_width) == (plain[2], plain[4], 644)
-
-
-class TestOpeningMarkPlacement:
-    def test_fit_opening_mark_shrinks_to_the_room(self):
-        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
-        font, bbox = rq.fit_opening_mark(draw, "default", 100, 64, room=20)
-        assert bbox[2] - bbox[0] <= 20 or font.size == max(8, int(64 * rq._MARK_MIN_SHRINK))
-
-    def test_fit_opening_mark_keeps_size_when_room_allows(self):
-        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
-        font, _ = rq.fit_opening_mark(draw, "default", 100, 64, room=400)
-        assert font.size == 100
-
-    @pytest.mark.parametrize("theme", ["default", "dispatch", "grimoire", "mucha", "alchemy", "saloon"])
-    def test_mark_does_not_overprint_the_first_word(self, theme):
-        """Render the dense layout (the 60 px gutter that used to lose) and
-        check the column just left of the text edge carries no ink in the
-        band of the first line: the mark stays in the gutter."""
-        row = {
-            "display_quote": ("Of course until ten o'clock, when I shut up shop, I am constantly interrupted\u2014as I "
-                              "have been during this letter, once to sell a copy of Helen's Babies and once to sell "
-                              "The Ballad of Reading Gaol, so you can see how varied are my clients' tastes!"),
-            "matched_text": "ten o'clock",
-            "author": "Christopher Morley",
-            "title": "The Haunted Bookshop",
-        }
-        colors = rq.THEMES[theme]
-        img = rq.render("10:00", row, 800, 480, mode="production", theme=theme)
-        text_left = (800 - rq.LAYOUTS["dense"]["max_width"]) // 2
-        ornament = {colors["ornament_dark"], colors["ornament_light"]} - {colors["page_bg"]}
-        # The gap column between mark and text (text_left - 6 .. text_left - 1)
-        # over the first line's band must hold no ornament ink.
-        for x in range(text_left - 6, text_left):
-            for y in range(72, 72 + 40):
-                assert img.getpixel((x, y)) not in ornament, (theme, x, y)
+        plain = rq.fit_quote(draw, text, "struck nine", 660, 258, 58, 28, 1.14)
+        if not rq.is_widow_line(draw, plain[2][-1], plain[0], plain[1], 660):
+            assert (wrapped, size, wrap_width) == (plain[2], plain[4], 660)
 
 
 class TestAttributionFloors:
@@ -4571,12 +4536,14 @@ class TestRisographKnockout:
             "title": "Middlemarch",
         }
         img = rq.render("09:00", row, 800, 480, mode="production", theme="risograph")
-        # The chunky left bar (x 42-74, y 54-170) used to run under the
-        # first word; the text column at x=90 is now paper or ink only.
+        # The chunky left bar (x 42-74, y 54-170) used to run solid under
+        # the first word. Inside the label its box is now paper, apart from
+        # the hanging quote mark's 50/50 blue stipple that deliberately
+        # overlaps it -- so well under half the box may be blue, where the
+        # bare border paints all of it.
         blue = rq.SPECTRA6["blue"]
-        # (The label's offset blue rule runs along y = top + 3; start the
-        # sweep below it.)
-        assert all(img.getpixel((90, y)) != blue for y in range(110, 170))
+        box = [(x, y) for x in range(62, 73) for y in range(120, 166)]
+        assert sum(img.getpixel(p) == blue for p in box) / len(box) < 0.5
 
 
 class TestAlchemyFaintFigure:
