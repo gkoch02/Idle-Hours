@@ -1319,7 +1319,7 @@ THEMES = {
     # Atropos. A custom frame (``render_atropos_frame``): a teal fog dithered
     # to the cold inks over a black plain, rain, Sentient statues, the wreck
     # of the Helios, ember-lit tendrils, bullet-hell orbs, a xenoglyph cipher
-    # slab and the scout's HUD in Michroma, the matched phrase in the HUD's
+    # slab, the translation in Saira and the scout's HUD in Michroma, the matched phrase in the HUD's
     # tangerine. These literary-layout slots serve only the palette-only
     # paths (see the note above ``THEMES``).
     "atropos": {
@@ -1352,7 +1352,7 @@ THEMES = {
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
     # is the hour, a silhouetted colony rim-lit beneath it,
-    # white Exo 2 prose with the matched phrase as an ember. These
+    # white Saira prose with the matched phrase as an ember. These
     # literary-layout slots serve only the palette-only paths (see the note
     # above ``THEMES``).
     "saros": {
@@ -2083,12 +2083,20 @@ BARLOWCOND_REGULAR = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-Regu
 BARLOWCOND_MEDIUM = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-Medium.ttf")
 BARLOWCOND_SEMIBOLD = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-SemiBold.ttf")
 BARLOWCOND_BOLD = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-Bold.ttf")
-# Michroma (saros wordmark + status chrome; the whole of atropos) — a wide geometric display sans; one
-# static weight. Exo 2 (saros body) is a variable sans whose default instance
+# Michroma (saros status chrome; atropos HUD chrome) — a wide geometric display sans; one
+# static weight, the nearest open face to Kellion (Returnal) and Korataki (Saros). Exo 2 (saros body fallback) is a variable sans whose default instance
 # is Thin, so every candidate pins a named instance.
 MICHROMA_REGULAR = str(BASE_DIR / "fonts/michroma/Michroma-Regular.ttf")
 EXO2_VARIABLE = str(BASE_DIR / "fonts/exo-2/Exo2[wght].ttf")
 EXO2_ITALIC_VARIABLE = str(BASE_DIR / "fonts/exo-2/Exo2-Italic[wght].ttf")
+# Saira (atropos + saros body) — a squared technical grotesque, the nearest open face to the
+# commercial body faces those games actually use (Returnal's Erbaum, Saros's Tamba Sans). A
+# variable font on weight and width whose default instance is Thin, so every candidate pins one.
+SAIRA_VARIABLE = str(BASE_DIR / "fonts/saira/Saira[wdth,wght].ttf")
+SAIRA_ITALIC_VARIABLE = str(BASE_DIR / "fonts/saira/Saira-Italic[wdth,wght].ttf")
+# Orbitron (saros wordmark) — a squared geometric display sans, the nearest open face to Arame,
+# Saros's main display face. Variable on weight, default Regular.
+ORBITRON_VARIABLE = str(BASE_DIR / "fonts/orbitron/Orbitron[wght].ttf")
 # Jura (Daniel Johnson / The Jura Project Authors, OFL) — a humanist
 # technical sans with calligraphic stroke endings, static Regular / Medium /
 # SemiBold / Bold. The Culture pair's body face: futurist without being a
@@ -3790,28 +3798,29 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "control": {
-        # Oswald — the free stand-in for the heavy condensed grotesque of the
-        # game's title cards (Univers / Helvetica Neue Condensed territory),
-        # pinned to Bold for the body as well as the phrase: a title card is
-        # heavy by definition, and the phrase earns its step from the Hiss red
-        # and its bloom rather than from weight (the comic / dispatch
-        # discipline). Antonio, the earlier stand-in, is the next fallback so
-        # a stripped install still lands on a condensed silhouette.
+        # Jost Bold — the game's title cards and logo are ITC Avant Garde
+        # Gothic Bold in tightly spaced caps (Fonts In Use; the Game Font
+        # Library lists it as the secondary face), and Jost is the bundle's
+        # geometric in that Futura / Avant Garde line. Pinned Bold for the
+        # body as well as the phrase: a title card is heavy by definition, and
+        # the phrase earns its step from the Hiss red and its bloom rather than
+        # from weight (the comic / dispatch discipline). Earlier revisions used
+        # Oswald and before it Antonio, condensed grotesques the game never
+        # sets anything in; Oswald stays as the fallback so a stripped install
+        # still lands on a heavy sans.
         "quote_regular": [
+            (JOST_VARIABLE, "Bold"),
             (OSWALD_VARIABLE, "Bold"),
-            (ANTONIO_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "quote_bold": [
+            (JOST_VARIABLE, "Bold"),
             (OSWALD_VARIABLE, "Bold"),
-            (ANTONIO_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
             *QUOTE_FONT_BOLD_CANDIDATES,
         ],
         "ornament": [
+            ARCHIVO_BOLD,
             (OSWALD_VARIABLE, "Bold"),
-            (ANTONIO_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -3891,13 +3900,16 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [BARLOWCOND_SEMIBOLD, (OSWALD_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "atropos": {
-        # Michroma — a wide, squared Eurostile-descended sans, the register of
-        # Returnal's HUD and title cards. One static Regular carries the body,
-        # the matched phrase (distinguished by its tangerine bloom, not by
-        # weight) and the chrome. Oxanium, the bundle's other techno sans, is
-        # the fallback before the system faces.
-        "quote_regular": [MICHROMA_REGULAR, (OXANIUM_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES],
-        "quote_bold": [MICHROMA_REGULAR, (OXANIUM_VARIABLE, "SemiBold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        # Returnal sets its running text in Erbaum, a squared text-weight
+        # grotesque (Game Font Library: main face), and its titles in Kellion,
+        # a wide squared display sans. Neither is open. Saira is the nearest
+        # open face to Erbaum and carries the body (Regular) and the matched
+        # phrase (SemiBold, distinguished mainly by its tangerine bloom);
+        # Michroma, the nearest to Kellion, stays on the HUD chrome. Earlier
+        # revisions set the body in Michroma too, a display face the game never
+        # uses for prose; it remains the fallback.
+        "quote_regular": [(SAIRA_VARIABLE, "Regular"), MICHROMA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(SAIRA_VARIABLE, "SemiBold"), MICHROMA_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [MICHROMA_REGULAR, (OXANIUM_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "expedition": {
@@ -3912,15 +3924,17 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [CINZELDECORATIVE_BOLD, CINZELDECORATIVE_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
-        # Exo 2 — a geometric-humanist techno sans with the register of a game
-        # HUD, pinned by instance (its default is Thin). Regular for the white
-        # body on black, SemiBold rather than Bold for the matched phrase, which
-        # carries a bloom that would close a Bold's counters (the trisolaris
-        # lesson). Titillium Web, the bundle's other technical sans, is the
-        # fallback before the system chain.
-        "quote_regular": [(EXO2_VARIABLE, "Regular"), TITILLIUM_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
-        "quote_bold": [(EXO2_VARIABLE, "SemiBold"), TITILLIUM_SEMIBOLD, *QUOTE_FONT_BOLD_CANDIDATES],
-        "ornament": [(EXO2_ITALIC_VARIABLE, "Italic"), TITILLIUM_ITALIC, *ORNAMENT_FONT_CANDIDATES],
+        # Saros sets its text in Tamba Sans, a squarish grotesque, its display
+        # in Arame and its chrome in Korataki (Game Font Library); none is
+        # open. Saira is the nearest open face to Tamba Sans: Regular for the
+        # white body on black, SemiBold rather than Bold for the matched
+        # phrase, which carries a bloom that would close a Bold's counters
+        # (the trisolaris lesson), Italic for the byline. Its default instance
+        # is Thin, so every candidate pins one. Exo 2, the earlier body face,
+        # is the fallback before the system chain.
+        "quote_regular": [(SAIRA_VARIABLE, "Regular"), (EXO2_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(SAIRA_VARIABLE, "SemiBold"), (EXO2_VARIABLE, "SemiBold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(SAIRA_ITALIC_VARIABLE, "Italic"), (EXO2_ITALIC_VARIABLE, "Italic"), *ORNAMENT_FONT_CANDIDATES],
     },
     "observation": {
         # IBM Plex Mono — the station's own terminal face: an engineered
@@ -24839,8 +24853,13 @@ def _control_paint_sign(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
     white = SPECTRA6["white"]
     draw.rectangle((x0, y0, x1, y1), fill=SPECTRA6["black"])
     _control_paint_seal(draw)
-    name_font = load_font([(OSWALD_VARIABLE, "Bold"), (ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=17)
-    sub_font = load_font([(OSWALD_VARIABLE, "Medium"), (ANTONIO_VARIABLE, "SemiBold"), *META_FONT_BOLD_CANDIDATES], size=10)
+    # The sign is UI, not a title card: the game's interface face is Altered
+    # Grotesk, a custom cut of Akzidenz-Grotesk, and Archivo is the bundle's
+    # Akzidenz-descended grotesque.
+    name_font = load_font([ARCHIVO_BOLD, (OSWALD_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=16)
+    # Bold at 10 px as well: Archivo Regular's hairlines shred on the black sign
+    # after the snap, the "small text" rule in CLAUDE.md.
+    sub_font = load_font([ARCHIVO_BOLD, (OSWALD_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=10)
     text_x = _CONTROL_SEAL_CENTRE[0] + _CONTROL_SEAL_RADIUS + 12
     name_w = draw_tracked(draw, (text_x, y0 + 5), "FEDERAL BUREAU OF CONTROL", name_font, white,
                           tracking=_CONTROL_TRACKING)
@@ -24848,8 +24867,9 @@ def _control_paint_sign(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
 
     # The credit column's budget is measured off the name run actually painted,
     # not a constant sized for one face: the Antonio -> Oswald switch grew the
-    # name by 36 px and a fixed budget let long titles overprint it.
-    credit_candidates = [(OSWALD_VARIABLE, "Medium"), (ANTONIO_VARIABLE, "SemiBold"), *META_FONT_BOLD_CANDIDATES]
+    # name by 36 px and a fixed budget let long titles overprint it; the
+    # Oswald -> Archivo switch widened it again.
+    credit_candidates = [ARCHIVO_BOLD, (OSWALD_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES]
     right = x1 - 14
     limit = right - (text_x + name_w + _CONTROL_SIGN_GAP)
     lines = _control_board_lines(quote_row)
@@ -29887,7 +29907,7 @@ def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: in
 # quote-independent and cached per hour (``_SAROS_SKY_CACHE``, keyed on the
 # painter so the decoration fence measures a painter, not a cache).
 #
-# **The quote** is Exo 2 (``_SAROS_QUOTE_RECT``, ragged-left — it reads as a
+# **The quote** is Saira (``_SAROS_QUOTE_RECT``, ragged-left — it reads as a
 # transmission, not a verse) pasted white over a black halo grown from its own
 # mask, so a stray speck of dithered corona never lands between two strokes;
 # the matched phrase is an ember, yellow core in a tangerine (``bakelite``)
@@ -30201,7 +30221,7 @@ def _saros_halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int = 7
 
 
 def _saros_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
-    """White Exo 2 prose over a black halo; the matched phrase an ember.
+    """White Saira prose over a black halo; the matched phrase an ember.
     Returns the block's bottom y."""
     prose, hot, bottom = wrap_quote_into_masks(
         draw, image.size, quote_row, _SAROS_QUOTE_RECT, theme="saros",
@@ -30225,7 +30245,7 @@ def _saros_paint_byline(image: Image.Image, quote_row: dict, top: int) -> None:
     text = " — ".join(p for p in (author, title) if p)
     if not text:
         return
-    font = load_font([(EXO2_ITALIC_VARIABLE, "Italic"), *META_FONT_CANDIDATES], 15)
+    font = load_font([(SAIRA_ITALIC_VARIABLE, "Italic"), (EXO2_ITALIC_VARIABLE, "Italic"), *META_FONT_CANDIDATES], 15)
     mask = Image.new("L", image.size, 0)
     draw = ImageDraw.Draw(mask)
     while draw.textlength(text, font=font) > x1 - x0 and len(text) > 8:
@@ -30240,7 +30260,9 @@ def _saros_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int
     the colony line beneath it and the eclipse status at the right."""
     white, yellow, black = SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["black"]
     x0 = _SAROS_QUOTE_RECT[0]
-    wordmark = load_font([MICHROMA_REGULAR, *META_FONT_BOLD_CANDIDATES], 22)
+    # Orbitron for the wordmark — the nearest open face to Arame, the game's
+    # main display face; Michroma, the Korataki stand-in, keeps the small chrome.
+    wordmark = load_font([(ORBITRON_VARIABLE, "Bold"), MICHROMA_REGULAR, *META_FONT_BOLD_CANDIDATES], 22)
     tracking = 6
     y = 30
     x = draw_tracked(draw, (x0, y), "SAR", wordmark, white, tracking=tracking) + x0
@@ -30333,7 +30355,10 @@ def render_saros_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # across the minutes of an hour by ``TestAtroposFrame``. Custom frames never
 # draw the debug banner, so the counter needs no ``_DEBUG_LABEL_RIGHT_INSET``.
 #
-# **Michroma** for everything: the wide, squared Eurostile-descended sans is
+# **Saira** for the translation, **Michroma** for the HUD. Returnal's running
+# text is Erbaum and its titles Kellion (Game Font Library), both commercial;
+# Saira is the nearest open face to the first and Michroma to the second. The
+# body used to be Michroma too — the wide, squared Eurostile-descended sans is
 # the register of the game's HUD and title cards; see ``docs/themes.md``.
 #
 # Composed at the canonical 800x480 and NEAREST-downsampled for a non-native
@@ -30794,7 +30819,7 @@ def _atropos_halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int =
 
 
 def _atropos_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """The translation: white Michroma over a black halo, the matched phrase
+    """The translation: white Saira over a black halo, the matched phrase
     a yellow core in the HUD's tangerine."""
     prose, hot, _ = wrap_quote_into_masks(
         draw, image.size, quote_row, _ATROPOS_QUOTE_RECT, theme="atropos",
@@ -30818,8 +30843,8 @@ def _atropos_paint_byline(image: Image.Image, quote_row: dict) -> None:
         return
     mask = Image.new("L", image.size, 0)
     md = ImageDraw.Draw(mask)
-    candidates = [MICHROMA_REGULAR, (OXANIUM_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES]
-    font, text = fit_text_to_width(md, byline, candidates, 12, x1 - x0, floor=9, tracking=1)
+    candidates = [(SAIRA_VARIABLE, "Medium"), MICHROMA_REGULAR, *META_FONT_BOLD_CANDIDATES]
+    font, text = fit_text_to_width(md, byline, candidates, 13, x1 - x0, floor=10, tracking=1)
     w = tracked_width(md, text, font, tracking=1)
     draw_tracked(md, ((x0 + x1 - w) / 2, _ATROPOS_BYLINE_BASELINE - 12), text, font, 255, tracking=1)
     _atropos_halo_paste(image, mask, SPECTRA6["white"], halo=3)

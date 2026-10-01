@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Three game themes move to the faces the games actually use, or the
+  nearest open ones (per Game Font Library): `control` sets its title card
+  in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the
+  translation in Saira with Michroma kept for the HUD; `saros` sets the body
+  in Saira and the wordmark in Orbitron with Michroma kept for the chrome.
+  Saira and Orbitron are new bundled faces (OFL, from Google Fonts).
 - New `expedition` theme: Sandfall's *Clair Obscur: Expedition 33* — the
   Monolith from the Lumière promenade at dusk, dithered against the panel's
   calibrated inks, with the Paintress painting the hour on the slab, a gust
