@@ -15,6 +15,14 @@ these entries under the new dated version heading.
   entry in Barlow Condensed with the matched phrase in the interface's
   tangerine, and the signs the entry is susceptible to at the foot. Archivo
   Narrow is a new bundled face (OFL, from Google Fonts).
+- New `hades` theme: *Hades II* — a boon at the Crossroads under the
+  moon: a dithered night with the moon's phase as the hour, Hecate's green
+  witchfire braziers on a ridge of cypresses and broken columns, and the
+  quote on a black-and-gold boon card in a Greek-key frieze with Chronos's
+  hourglass in the portrait medallion — the author as the god's name in
+  Caesar Dressing, white Spectral text with the matched phrase in gold, the
+  boon's rarity rolled from the quote. Caesar Dressing, Spectral SC and
+  Hammersmith One are new bundled faces (OFL, from Google Fonts).
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the

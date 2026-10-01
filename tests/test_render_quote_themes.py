@@ -6180,3 +6180,142 @@ class TestWitcherFrame:
         big = self._render()
         assert small.size == (320, 192)
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestHadesFrame:
+    """``hades`` — Hades II: a boon at the Crossroads under the moon.
+
+    The scene is cached once per process; the hour is the moon's phase; the
+    boon's rarity is rolled from the quote's digest.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestHadesFrame.ROW)),
+                         *size, mode="production", theme="hades")
+
+    @staticmethod
+    def _moon_box():
+        cx, cy = rq._HADES_MOON_CENTRE
+        r = rq._HADES_MOON_RADIUS
+        return (cx - r - 2, cy - r - 2, cx + r + 3, cy + r + 3)
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        image = self._render()
+        assert distinct_inks(image) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_moon_walks_twelve_phases_on_a_twelve_hour_clock(self):
+        crops = {h % 12: pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(self._moon_box())) for h in range(12)}
+        assert len(set(crops.values())) == 12
+        for h in range(12):
+            assert pixel_bytes(self._render(time_str=f"{h + 12:02d}:00").crop(self._moon_box())) == crops[h]
+        assert rq._hades_hour("13:00") == 1 and rq._hades_hour("00:10") == 12
+        assert rq._hades_hour("garbage") == 12
+
+    @staticmethod
+    def _disc_counts(image) -> dict:
+        """Ink counts inside the moon's disc, clear of the halo round it."""
+        cx, cy = rq._HADES_MOON_CENTRE
+        r = rq._HADES_MOON_RADIUS - 1
+        counts: dict = {}
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r, cx + r + 1):
+                if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                    ink = image.getpixel((x, y))
+                    counts[ink] = counts.get(ink, 0) + 1
+        return counts
+
+    def test_moon_is_full_at_twelve_and_new_at_six(self):
+        full = self._disc_counts(self._render(time_str="12:00"))
+        new = self._disc_counts(self._render(time_str="06:00"))
+        area = math.pi * rq._HADES_MOON_RADIUS ** 2
+        assert full.get(rq.SPECTRA6["white"], 0) > area * 0.6
+        assert new.get(rq.SPECTRA6["white"], 0) < area * 0.02
+        assert new.get(rq.SPECTRA6["black"], 0) > area * 0.7
+        assert new.get(rq.SPECTRA6["blue"], 0) > 60          # the rim keeps a new moon a moon
+        assert rq._hades_phase(12) == 0.5 and rq._hades_phase(6) == 0.0
+        assert rq._hades_phase(9) == 0.25 and rq._hades_phase(3) == 0.75
+
+    def test_scene_is_painted_once_per_process(self):
+        assert rq._hades_scene() is rq._hades_scene()
+
+    def test_sky_is_a_dithered_night_over_black_earth(self):
+        scene = rq._hades_scene()
+        sky = ink_counts(scene.crop((40, 60, 400, 100)))
+        assert sky.get(rq.SPECTRA6["blue"], 0) > 360 * 40 * 0.3
+        assert sky.get(rq.SPECTRA6["black"], 0) > 360 * 40 * 0.2
+        assert sky.get(rq.SPECTRA6["white"], 0) > 20            # stars
+        assert rq.SPECTRA6["green"] not in sky and rq.SPECTRA6["red"] not in sky
+        x0, y0, x1, y1 = rq._HADES_PANEL_RECT
+        earth = ink_counts(scene.crop((x1 + 4, y0 + 40, 800, y1 - 40)))
+        assert earth.get(rq.SPECTRA6["black"], 0) > (800 - x1 - 4) * (y1 - y0 - 80) * 0.9
+
+    def test_witchfire_burns_green_over_the_braziers(self):
+        scene = rq._hades_scene()
+        for bx in rq._HADES_BRAZIERS:
+            flame = ink_counts(scene.crop((bx - 20, rq._HADES_RIDGE_Y - 50, bx + 20, rq._HADES_RIDGE_Y)))
+            assert flame.get(rq.SPECTRA6["green"], 0) > 150
+            assert flame.get(rq.SPECTRA6["white"], 0) > 60
+
+    def test_card_carries_a_gold_frieze_and_an_hourglass(self):
+        scene = rq._hades_scene()
+        x0, y0, x1, y1 = rq._HADES_PANEL_RECT
+        top = rq._HADES_FRIEZE_TOP
+        frieze = ink_counts(scene.crop((x0 + 30, top, x1 - 30, top + 3 * rq._HADES_FRIEZE_UNIT)))
+        assert frieze.get(rq.SPECTRA6["yellow"], 0) > (x1 - x0 - 60) * 2
+        cx, cy = rq._HADES_MEDALLION_CENTRE
+        r = rq._HADES_MEDALLION_RADIUS
+        medallion = ink_counts(scene.crop((cx - r, cy - r, cx + r, cy + r)))
+        assert medallion.get(rq.SPECTRA6["yellow"], 0) > 1500       # rings, frame, sand
+        assert medallion.get(rq.SPECTRA6["red"], 0) > 80            # the sand's lattice
+        assert medallion.get(rq.SPECTRA6["blue"], 0) > 400          # the bloom
+
+    def test_quote_is_white_with_a_gold_phrase(self):
+        counts = ink_counts(self._render().crop(rq._HADES_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 300
+
+    def test_title_is_the_author_in_gold_with_a_red_stroke(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, author="Homer"))
+        header = (rq._HADES_TITLE_X, rq._HADES_TITLE_Y, rq._HADES_TITLE_RIGHT, rq._HADES_RULE_Y - 2)
+        assert pixel_bytes(a.crop(header)) != pixel_bytes(b.crop(header))
+        counts = ink_counts(a.crop(header))
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 800
+        assert counts.get(rq.SPECTRA6["red"], 0) > 200
+        # No author: the book's title stands in for the god's name.
+        c = self._render(dict(self.ROW, author=""))
+        assert ink_counts(c.crop(header)).get(rq.SPECTRA6["yellow"], 0) > 800
+
+    def test_rarity_is_rolled_from_the_quote(self):
+        rows = [dict(self.ROW, source_id=str(n), line_number=n) for n in range(1, 200)]
+        rolls = {rq._hades_rarity(make_row(**row)) for row in rows}
+        assert rolls == {0, 1, 2, 3, 4}
+        assert rq._hades_rarity(make_row(**self.ROW)) == rq._hades_rarity(make_row(**self.ROW))
+        foot = (rq._HADES_TITLE_X, rq._HADES_FOOT_Y, rq._HADES_TITLE_X + 200, rq._HADES_FOOT_Y + 20)
+        common = next(r for r in rows if rq._hades_rarity(make_row(**r)) == 0)
+        legendary = next(r for r in rows if rq._hades_rarity(make_row(**r)) == 4)
+        a, b = self._render(common), self._render(legendary)
+        assert pixel_bytes(a.crop(foot)) != pixel_bytes(b.crop(foot))
+        assert ink_counts(b.crop(foot)).get(rq.SPECTRA6["yellow"], 0) > ink_counts(a.crop(foot)).get(rq.SPECTRA6["yellow"], 0)
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
