@@ -5934,3 +5934,136 @@ class TestAtroposFrame:
             for x0, y0, x1, y1 in (rq._atropos_quote_keepout(), rq._ATROPOS_SLAB):
                 inside = cold.crop((x0 - 4, y0 - 4, x1 + 4, y1 + 4))
                 assert rq.SPECTRA6["yellow"] not in distinct_inks(inside), source_id
+
+
+class TestExpeditionFrame:
+    """``expedition`` — Sandfall's *Clair Obscur: Expedition 33*: the Monolith
+    from the Lumière promenade.
+
+    The dusk is painted in continuous tone and dithered against the panel's
+    calibrated inks; the painted hour, the gust of petals, the journal page
+    and the chrome go on top. The hour is the number on the Monolith; the
+    gust is seeded from the quote.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestExpeditionFrame.ROW)),
+                         *size, mode="production", theme="expedition")
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        assert distinct_inks(self._render()) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        """Hour only: nothing on the frame reads the clock's minute."""
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_number_on_the_monolith_follows_the_hour(self):
+        box = rq._EXPEDITION_NUMERAL_BOX
+        crops = {pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(box)) for h in range(1, 13)}
+        assert len(crops) == 12
+        assert rq._expedition_hour("13:00") == rq._expedition_hour("01:00") == 1
+        assert rq._expedition_hour("00:10") == rq._expedition_hour("12:10") == 12
+
+    def test_number_is_painted_in_the_box(self):
+        """The painted hour is a lit yellow core inside the Monolith's face;
+        its drips may run below the box but nothing else leaves it."""
+        x0, y0, x1, y1 = rq._EXPEDITION_NUMERAL_BOX
+        for hour in (1, 7, 12):
+            mask = rq._expedition_numeral_mask(hour)
+            assert mask is rq._expedition_numeral_mask(hour)
+            bx0, by0, bx1, by1 = mask.getbbox()
+            assert bx0 >= x0 - 12 and bx1 <= x1 + 12 and by0 >= y0 - 6 and by1 <= y1 + 64
+            counts = ink_counts(self._render(time_str=f"{hour:02d}:00").crop((x0, y0, x1, y1)))
+            assert counts.get(rq.SPECTRA6["yellow"], 0) > 800
+            assert counts.get(rq.SPECTRA6["white"], 0) > 150
+
+    def test_scene_is_quantised_against_the_calibrated_inks(self):
+        """A field of the panel's *measured* red must come back as pure red,
+        and the measured pink (red + white averaged) as a half-and-half
+        stipple of those two inks — proof the quantiser saw the measured
+        colours and the output was re-labelled with the nominal ones."""
+        measured_red = rq._EXPEDITION_PANEL_INKS["red"]
+        flat = Image.new("RGB", (64, 64), measured_red)
+        assert distinct_inks(rq._expedition_dither(flat, rq._EXPEDITION_SKY_INKS)) == {rq.SPECTRA6["red"]}
+        pink = tuple((a + b) // 2 for a, b in zip(measured_red, rq._EXPEDITION_PANEL_INKS["white"]))
+        counts = ink_counts(rq._expedition_dither(Image.new("RGB", (64, 64), pink), rq._EXPEDITION_SKY_INKS))
+        assert counts.get(rq.SPECTRA6["red"], 0) > 64 * 64 * 0.3
+        assert counts.get(rq.SPECTRA6["white"], 0) > 64 * 64 * 0.3
+        assert distinct_inks(rq._expedition_dither(flat, rq._EXPEDITION_SKY_INKS)) <= set(rq.SPECTRA6.values())
+
+    def test_sky_has_no_green_and_the_sea_has_some(self):
+        """Green stays out of the sky's quantiser; the water gets it back for the teal."""
+        background = rq._expedition_background()
+        sky = background.crop((0, 0, 800, rq._EXPEDITION_HORIZON))
+        assert rq.SPECTRA6["green"] not in distinct_inks(sky)
+        sea = background.crop((0, rq._EXPEDITION_HORIZON + 1, 540, rq._EXPEDITION_RAIL_TOP))
+        assert rq.SPECTRA6["green"] in distinct_inks(sea)
+
+    def test_background_is_painted_once_per_process(self):
+        assert rq._expedition_background() is rq._expedition_background()
+
+    def test_lamp_is_lit(self):
+        gx0, gy0, gx1, gy1 = rq._EXPEDITION_LAMP_GLASS
+        counts = ink_counts(self._render().crop((gx0, gy0, gx1, gy1)))
+        lit = counts.get(rq.SPECTRA6["yellow"], 0) + counts.get(rq.SPECTRA6["white"], 0)
+        assert lit > (gx1 - gx0) * (gy1 - gy0) * 0.6
+
+    def test_quote_is_white_with_the_phrase_in_paint(self):
+        counts = ink_counts(self._render().crop(rq._EXPEDITION_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000     # the prose
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 150     # the phrase's core
+        assert counts.get(rq.SPECTRA6["red"], 0) > 20         # and its halo
+
+    def test_wordmark_and_credo_are_painted(self):
+        image = self._render()
+        wordmark = ink_counts(image.crop(rq._EXPEDITION_WORDMARK_BOX))
+        assert wordmark.get(rq.SPECTRA6["white"], 0) > 400     # CLAIR OBSCUR / EXPEDITION 33
+        assert wordmark.get(rq.SPECTRA6["yellow"], 0) > 150    # the gold rule and its diamonds
+        credo = ink_counts(image.crop(rq._EXPEDITION_CREDO_BOX))
+        assert credo.get(rq.SPECTRA6["yellow"], 0) > 150
+
+    def test_gust_is_seeded_from_the_quote_and_keeps_out_of_the_page(self):
+        other = dict(self.ROW, display_quote="Nine o'clock came and went, and still nobody stirred in the house.",
+                     matched_text="Nine o'clock", source_id="999", line_number=7)
+        a = rq._expedition_gust(make_row(**self.ROW))
+        b = rq._expedition_gust(make_row(**other))
+        assert a and b and a != b
+        assert a == rq._expedition_gust(make_row(**self.ROW))
+        keepouts = (rq._expedition_quote_keepout(), rq._EXPEDITION_WORDMARK_BOX, rq._EXPEDITION_CREDO_BOX,
+                    rq._EXPEDITION_NUMERAL_BOX, rq._EXPEDITION_LAMP_BOX)
+        for source_id in ("141", "999", "7", "2701", "43"):
+            for x, y, size, _, density in rq._expedition_gust(make_row(**dict(self.ROW, source_id=source_id))):
+                assert size < y < rq._EXPEDITION_RAIL_TOP and 0 < x < 800
+                assert 0.3 <= density <= 0.7
+                for kx0, ky0, kx1, ky1 in keepouts:
+                    assert not (kx0 - size < x < kx1 + size and ky0 - size < y < ky1 + size), source_id
+        # The same quote is the same gust, byte for byte.
+        assert pixel_bytes(self._render()) == pixel_bytes(self._render())
+
+    def test_petals_are_pink(self):
+        """A petal is a red + white stipple: the gust's pixels carry both inks."""
+        background = rq._expedition_background().copy()
+        rq._expedition_paint_petals(background, make_row(**self.ROW))
+        diff = ImageChops.difference(background, rq._expedition_background()).convert("L").point(lambda v: 255 if v else 0)
+        touched = ink_counts(Image.composite(background, Image.new("RGB", background.size, (1, 2, 3)), diff))
+        assert touched.get(rq.SPECTRA6["white"], 0) > 300
+        assert touched.get(rq.SPECTRA6["red"], 0) > 300
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))

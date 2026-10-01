@@ -297,6 +297,11 @@ THEME_SATURATION: dict[str, float] = {
     # ``nocturne`` argument: every lit thing on the frame is a falling-density
     # bloom or a diffusion dither on black, which the gentler tier flattens.
     "saros": 0.7,
+    # Clair Obscur: Expedition 33 — a dusk dithered to the inks over a black
+    # zenith, with the painted hour, the lamp and the matched phrase all
+    # falling-density blooms. Dark-ground tier, the ``atropos`` / ``nocturne``
+    # argument: the gentler push flattens the blooms and rusts the paint.
+    "expedition": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
