@@ -115,6 +115,8 @@ CUSTOM_FRAME_THEMES = (
     "expanse",
     "beksinski",
     "goya",
+    "hal",
+    "lumon",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

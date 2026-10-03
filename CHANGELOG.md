@@ -65,6 +65,19 @@ these entries under the new dated version heading.
   Baskerville with the phrase in red, and the author and title on a Prado
   gallery label with an inventory number from the Gutenberg id. Libre
   Baskerville is a new bundled face (OFL, from Google Fonts).
+- New `hal` theme: *2001: A Space Odyssey* — the Discovery One's main
+  monitor as a solid blue flat with the hour's subsystem mnemonic on its
+  header, the quote in white Jost with the matched phrase Bold in yellow,
+  the twelve mnemonic tiles along the foot in the film's flat colours with
+  the hour's tile white, and HAL's red lens in its white bezel blooming
+  into the black beside the hibernation traces. No new fonts (Jost and
+  Michroma).
+- New `lumon` theme: *Severance* — the Macrodata Refinement terminal: a
+  vignetted blue CRT dithered to blue and black in a black bezel, the
+  file's town and its completion (the hour over twelve) in the header, a
+  grid of white digits with the hour's scary cluster boxed, the quote in
+  white IBM Plex Mono with the matched phrase Bold in yellow inside the
+  refiner's hover box, and the five bins along the foot. No new fonts.
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the

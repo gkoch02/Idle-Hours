@@ -151,6 +151,8 @@ THEME_ORDER: tuple[str, ...] = (
     "expanse",
     "beksinski",
     "goya",
+    "hal",
+    "lumon",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1440,6 +1442,42 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
+    },
+    # *2001: A Space Odyssey* (1968) — the Discovery One's monitors and HAL
+    # 9000. A custom frame (``render_hal_frame``): a solid blue main monitor
+    # with the hour's subsystem mnemonic in Michroma across its header, the
+    # quote in white Jost with the matched phrase Bold in yellow, the twelve
+    # mnemonic tiles along the foot in the film's flat colours with the
+    # hour's tile white, and HAL's red lens in its white bezel at the right.
+    # These literary-layout slots serve only the palette-only paths (see the
+    # note above ``THEMES``).
+    "hal": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # *Severance* (2022–) — the Macrodata Refinement terminal. A custom frame
+    # (``render_lumon_frame``): a vignetted blue CRT dithered to blue and
+    # black in a black bezel, the file's name and completion in the header
+    # (the completion is the hour over twelve), four rows of white digits
+    # with the hour's scary cluster boxed, the quote in white IBM Plex Mono
+    # with the matched phrase Bold in yellow inside the refiner's hover box,
+    # and the five bins along the foot. These literary-layout slots serve
+    # only the palette-only paths (see the note above ``THEMES``).
+    "lumon": {
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
     },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
@@ -4110,6 +4148,27 @@ THEME_FONTS: dict[str, dict[str, list]] = {
                        *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(LIBREBASKERVILLE_ITALIC_VARIABLE, "Italic"), (LIBREBASKERVILLE_VARIABLE, "Bold"),
                      *ORNAMENT_FONT_CANDIDATES],
+    },
+    "hal": {
+        # Jost — the bundle's Futura, the face of the film's signage and
+        # the register of its 1968 modernism — Regular for the white body on
+        # the blue monitor, Bold for the matched phrase, which carries the
+        # yellow. The chrome (mnemonics, nameplate, tile labels) is Michroma,
+        # the open Microgramma / Eurostile the monitors' squared capitals
+        # were set in; it takes the ornament slot.
+        "quote_regular": [(JOST_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(JOST_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "lumon": {
+        # IBM Plex Mono — the terminal's monospaced digits extended to the
+        # file's text: Regular for the white body, Bold for the matched
+        # phrase in yellow inside the hover box. The file name and the byline
+        # are Jost Medium / Regular; the wordmark is Michroma, the nearest
+        # open face to the company's wide geometric capitals.
+        "quote_regular": [PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [PLEXMONO_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(JOST_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
@@ -34411,6 +34470,540 @@ def render_goya_frame(time_str: str, quote_row: dict, width: int, height: int) -
 
 
 # ---------------------------------------------------------------------------
+# hal — *2001: A Space Odyssey* (1968): the Discovery One's monitors, HAL 9000
+# ---------------------------------------------------------------------------
+# Kubrick's Discovery is run from banks of small CRT monitors, and every one
+# of them is a flat field of a single saturated colour — red, blue, yellow,
+# green, white — with a three-letter mnemonic in the top corner naming the
+# subsystem it watches (COM, NAV, VEH, ATM, HIB, GDE, LIF, MEM, DMG, FLX,
+# CNT, NUC) and a few lines of white type or a schematic beneath. The film's
+# screen graphics were animated by hand in 1966-68, which is why they are the
+# one sci-fi interface that is *made of* solid flats: there was no raster to
+# shade. A six-ink panel renders exactly that register better than any other
+# in this file, and nothing else in the roster looks like it.
+#
+# **The page is the main monitor.** A blue field fills the left three
+# quarters, with the active subsystem's mnemonic in **Michroma** across its
+# header — Vernon Adams's open Microgramma / Eurostile, the wide squared face
+# the film's screens and labels set their capitals in — a seeded row of
+# readout bars beside it, a white rule under both, the quote in **Jost**
+# (the bundle's Futura, the film's signage face) in white with the matched
+# phrase Bold in yellow, and the author and title letterspaced along the foot
+# in the monitors' own tracked capitals.
+#
+# **The hour is which subsystem is up.** The twelve mnemonics sit as a row
+# of small tiles along the foot in the film's four tile colours in rotation;
+# the hour's tile is the white one and its mnemonic is the one on the main
+# monitor's header. "What is HAL watching at the moment?" is the question a
+# viewer answers to read the hour, and the matched phrase carries the
+# minute. The mnemonic order is fixed, so the tiles are byte-identical across
+# the minutes of an hour; nothing on the page reads the wall clock.
+#
+# **HAL's eye.** The right column is the faceplate: the blue nameplate above,
+# the lens below — a red disc in a white bezel with a yellow bloom at its
+# centre and a white catchlight, bleeding red into the black through
+# ``paint_neon_mask`` with ``ground`` pinned to black so the bloom cannot
+# eat the bezel — and under it the hibernation monitor's three life traces,
+# seeded per quote, in a white hairline frame. Every colour on the page is
+# one of the six inks painted solid; the only stipple is the two blooms.
+# Composed at the canonical 800x480 and NEAREST-downsampled otherwise (the
+# ``metro`` convention).
+# ---------------------------------------------------------------------------
+_HAL_SEED = 0x48414C39                # HAL9
+_HAL_MNEMONICS = ("COM", "NAV", "VEH", "ATM", "HIB", "GDE", "LIF", "MEM", "DMG", "FLX", "CNT", "NUC")
+_HAL_TILE_INKS = ("red", "yellow", "green", "blue")
+_HAL_MONITOR_RECT = (24, 24, 636, 384)
+_HAL_HEADER_RULE_Y = 94
+_HAL_QUOTE_RECT = (54, 108, 606, 338)
+_HAL_BYLINE_Y = 352
+_HAL_TILE_BAND = (24, 400, 636, 462)
+_HAL_TILE_GAP = 6
+_HAL_PLATE_RECT = (664, 24, 780, 92)
+_HAL_EYE_CENTRE = (722, 196)
+_HAL_EYE_RADIUS = 44
+_HAL_TRACE_RECT = (664, 292, 780, 462)
+
+
+def _hal_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — which subsystem is on the main monitor."""
+    return _expanse_hour(time_str)
+
+
+def _hal_mnemonic(hour: int) -> str:
+    return _HAL_MNEMONICS[(hour - 1) % 12]
+
+
+def _hal_tile_rects() -> list:
+    """The twelve foot tiles, left to right, one per hour."""
+    x0, y0, x1, y1 = _HAL_TILE_BAND
+    width = (x1 - x0 - 11 * _HAL_TILE_GAP) // 12
+    used = 12 * width + 11 * _HAL_TILE_GAP
+    start = x0 + (x1 - x0 - used) // 2
+    return [(start + i * (width + _HAL_TILE_GAP), y0, start + i * (width + _HAL_TILE_GAP) + width, y1)
+            for i in range(12)]
+
+
+def _hal_chrome_font(size: int):
+    """Michroma — the monitors' squared capitals — for every label."""
+    return load_font([MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES], size=size)
+
+
+def _hal_paint_monitor(image: Image.Image, hour: int, quote_row: dict) -> None:
+    """The main monitor: the blue field, the active mnemonic, a row of
+    readout bars seeded from the quote, and the rule under both."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _HAL_MONITOR_RECT
+    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=blue)
+    draw.text((x0 + 30, y0 + 20), _hal_mnemonic(hour), font=_hal_chrome_font(38), fill=white)
+    rng = random.Random(_HAL_SEED ^ _row_digest(quote_row))
+    bar_x = x1 - 30 - 12 * 15
+    for i in range(12):
+        h = rng.randint(6, 44)
+        bx = bar_x + i * 15
+        draw.rectangle((bx, y0 + 70 - h, bx + 9, y0 + 70), fill=white)
+    draw.rectangle((x0 + 30, _HAL_HEADER_RULE_Y, x1 - 30, _HAL_HEADER_RULE_Y + 2), fill=white)
+
+
+def _hal_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    """The quote's lines on the monitor, with the bold chunks positioned."""
+    x0, y0, x1, y1 = _HAL_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=36, font_min=16, line_height_mult=1.28, theme="hal",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _hal_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """White Jost on the blue field; the matched phrase Bold in yellow."""
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+
+
+def _hal_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title as the monitor's tracked capitals along its foot."""
+    x0 = _HAL_QUOTE_RECT[0]
+    measure = _HAL_QUOTE_RECT[2] - x0
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p.upper() for p in (author, title) if p]
+    if not parts:
+        return
+    text = "   /   ".join(parts)
+    font, text = fit_text_to_width(draw, text, [(JOST_VARIABLE, "Medium"), *META_FONT_CANDIDATES],
+                                   16, measure, floor=13, tracking=2)
+    draw_tracked(draw, (x0, _HAL_BYLINE_Y), text, font, SPECTRA6["white"], tracking=2)
+
+
+def _hal_paint_tiles(image: Image.Image, hour: int, quote_row: dict) -> None:
+    """The twelve subsystem tiles along the foot: the film's colours in
+    rotation, the hour's tile white, each with a seeded mini-readout."""
+    draw = ImageDraw.Draw(image)
+    rng = random.Random(_HAL_SEED + 7 + _row_digest(quote_row))
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    font = _hal_chrome_font(11)
+    for i, (x0, y0, x1, y1) in enumerate(_hal_tile_rects()):
+        active = (i + 1) == hour
+        ink = "white" if active else _HAL_TILE_INKS[i % len(_HAL_TILE_INKS)]
+        fill = SPECTRA6[ink]
+        label = black if ink in ("white", "yellow") else white
+        draw.rectangle((x0, y0, x1, y1), fill=fill)
+        name = _HAL_MNEMONICS[i]
+        tw = draw.textlength(name, font=font)
+        draw.text((x0 + (x1 - x0 - tw) / 2, y0 + 7), name, font=font, fill=label)
+        for b in range(4):
+            h = rng.randint(3, 18)
+            bx = x0 + 6 + b * 9
+            draw.rectangle((bx, y1 - 8 - h, bx + 5, y1 - 8), fill=label)
+        if active:
+            draw.rectangle((x0, y0 - 6, x1, y0 - 4), fill=white)
+
+
+def _hal_paint_plate(draw: ImageDraw.ImageDraw) -> None:
+    """The nameplate above the lens: HAL over 9000 on the blue plate."""
+    x0, y0, x1, y1 = _HAL_PLATE_RECT
+    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
+    draw.rectangle((x0, y0, x1, y1), fill=blue)
+    big, small = _hal_chrome_font(24), _hal_chrome_font(15)
+    cx = (x0 + x1) / 2
+    draw.text((cx - draw.textlength("HAL", font=big) / 2, y0 + 8), "HAL", font=big, fill=white)
+    draw.text((cx - draw.textlength("9000", font=small) / 2, y0 + 42), "9000", font=small, fill=white)
+
+
+def _hal_paint_eye(image: Image.Image) -> None:
+    """The lens: a red disc in a white bezel, a yellow bloom at its centre
+    with a white catchlight, and red light spilling into the black."""
+    cx, cy = _HAL_EYE_CENTRE
+    r = _HAL_EYE_RADIUS
+    draw = ImageDraw.Draw(image)
+    black, white, red, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"], SPECTRA6["yellow"]
+    draw.ellipse((cx - r - 6, cy - r - 6, cx + r + 6, cy + r + 6), fill=black, outline=white, width=3)
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=red)
+    glow = Image.new("L", image.size, 0)
+    ImageDraw.Draw(glow).ellipse((cx - 13, cy - 13, cx + 13, cy + 13), fill=255)
+    paint_neon_mask(image, glow, yellow, yellow, radius=9, gamma=1.8, cap=0.6, ground=(red,))
+    draw.ellipse((cx - 19, cy - 19, cx - 9, cy - 9), fill=white)
+    bloom = Image.new("L", image.size, 0)
+    ImageDraw.Draw(bloom).ellipse((cx - r - 8, cy - r - 8, cx + r + 8, cy + r + 8), fill=255)
+    paint_neon_mask(image, bloom, None, red, radius=12, gamma=2.0, cap=0.45, ground=(black,))
+    glow.close()
+    bloom.close()
+
+
+def _hal_paint_traces(image: Image.Image, quote_row: dict) -> None:
+    """The hibernation monitor under the lens: three life traces, seeded
+    from the quote, in a white hairline frame."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _HAL_TRACE_RECT
+    white = SPECTRA6["white"]
+    draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
+    draw.text((x0 + 8, y0 + 6), "HIB", font=_hal_chrome_font(11), fill=white)
+    rng = random.Random(_HAL_SEED + 11 + _row_digest(quote_row))
+    inner_top = y0 + 26
+    lane = (y1 - inner_top) // 3
+    for t in range(3):
+        base = inner_top + t * lane + lane // 2 + 6
+        amp = lane // 2 - 6
+        phase = rng.uniform(0, math.tau)
+        freq = rng.uniform(0.25, 0.55)
+        spike = rng.randint(6, 14)
+        points = []
+        for x in range(x0 + 8, x1 - 8):
+            v = math.sin((x - x0) * freq + phase) * amp * 0.45
+            if (x - x0) % 34 < 3:
+                v -= spike
+            points.append((x, round(base + v)))
+        draw.line(points, fill=white, width=1)
+
+
+def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Discovery's main monitor with the hour's subsystem up, HAL's eye
+    beside it (see the section comment above)."""
+    hour = _hal_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    _hal_paint_monitor(image, hour, quote_row)
+    draw = ImageDraw.Draw(image)
+    _hal_paint_quote(draw, _hal_layout(draw, quote_row))
+    _hal_paint_byline(draw, quote_row)
+    _hal_paint_tiles(image, hour, quote_row)
+    _hal_paint_plate(ImageDraw.Draw(image))
+    _hal_paint_eye(image)
+    _hal_paint_traces(image, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# lumon — *Severance* (2022–): the Macrodata Refinement terminal
+# ---------------------------------------------------------------------------
+# On the severed floor of Lumon Industries, Macrodata Refinement is four
+# people at four CRTs, each showing a file named after a town — Siena,
+# Dranesville, Tumwater, Cold Harbor — as a field of small white digits on a
+# deep blue screen. Some of the numbers "feel scary"; the refiner boxes the
+# cluster and sweeps it into one of five bins along the foot, and the file's
+# completion percentage in the header creeps up. Nobody is told what the
+# numbers are. The page is one of those terminals.
+#
+# **The screen is a vignetted blue CRT.** A continuous-tone field — the
+# panel's blue at the centre falling to black at the corners — is painted in
+# the calibrated ink space at a quarter of panel resolution, bicubic-upsampled
+# and Floyd–Steinberg dithered to blue and black (``_expedition_dither``),
+# so the vignette is error-diffused rather than latticed; a black bezel with
+# rounded corners frames it. Painted once per process (``_LUMON_SCENE``).
+#
+# **The header is the file's.** The file name, chosen from the show's twelve
+# towns by the quote's digest, in Jost Medium at the left; at the right the
+# Lumon mark — the globe with its latitude lines and the wordmark in Michroma,
+# the nearest open face to the company's wide geometric capitals — and the
+# completion line beneath it. **The hour is the completion.** A file is
+# refined over the working day, so the header reads ``N% Complete`` with
+# ``N = hour / 12``: one o'clock is 8%, noon and midnight are 100%, which on
+# the show is the day the file is finished. And the scary cluster carries it
+# twice: in the number grid of four rows by twenty-four columns beneath the
+# header, the boxed two-by-two cluster — its digits a size larger and
+# nudged off the grid, the way the scary ones swell — sits in the hour's
+# column pair, so the box walks left to right across the twelve hours.
+# Both are byte-identical across the minutes of an hour; the matched phrase
+# carries the minute.
+#
+# **The quote is the file's text, and the phrase is what feels scary.** The
+# body is IBM Plex Mono Regular in white — the terminal's monospaced digits
+# extended to a sentence — with the matched phrase Plex Mono Bold in yellow
+# inside a white hairline box: the refiner's hover. The author and title run
+# in Jost under the quote, and the five bins close the page, each a boxed
+# ``00``–``04`` with a progress bar whose fill is a white-and-blue stipple at
+# a level seeded from the quote.
+#
+# The MDR terminal's own faces are a custom design for the show (its wordmark
+# is set in a wide geometric close to Manifold Extended), so every register
+# here takes the nearest bundled open face: Plex Mono for the digits and the
+# body, Jost for the file name and the byline, Michroma for the wordmark.
+# Composed at the canonical 800x480 and NEAREST-downsampled otherwise (the
+# ``metro`` convention).
+# ---------------------------------------------------------------------------
+_LUMON_SEED = 0x4C554D4F              # LUMO
+_LUMON_FILES = ("Cold Harbor", "Siena", "Dranesville", "Tumwater", "Allentown", "Sunset Park",
+                "Lexington", "Nanning", "Moonbeam", "Lucknow", "Billings", "Wellington")
+_LUMON_INKS = ("blue", "black")
+_LUMON_BEZEL = 12
+_LUMON_BEZEL_RADIUS = 28
+_LUMON_HEADER_Y = 28
+_LUMON_RULE_Y = 82
+_LUMON_GRID_RECT = (44, 94, 756, 198)
+_LUMON_GRID_COLS = 24
+_LUMON_GRID_ROWS = 4
+_LUMON_QUOTE_RECT = (50, 214, 750, 386)
+_LUMON_BYLINE_Y = 392
+_LUMON_BINS_RECT = (44, 414, 756, 460)
+_LUMON_BIN_GAP = 12
+_LUMON_SCENE: dict = {}
+_LUMON_BLUE = _EXPEDITION_PANEL_INKS["blue"]
+_LUMON_BLACK = _EXPEDITION_PANEL_INKS["black"]
+
+
+def _lumon_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12."""
+    return _expanse_hour(time_str)
+
+
+def _lumon_completion(hour: int) -> int:
+    """The file's completion in percent: the hour over twelve."""
+    return round(hour * 100 / 12)
+
+
+def _lumon_file_name(quote_row: dict) -> str:
+    """The file's town, chosen by the quote."""
+    return _LUMON_FILES[_row_digest(quote_row) % len(_LUMON_FILES)]
+
+
+def _lumon_scene() -> Image.Image:
+    """The vignetted blue CRT inside its bezel, dithered. Painted once per
+    process."""
+    key = (_lumon_paint_screen,)
+    cached = _LUMON_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    image = Image.new("RGB", size, SPECTRA6["black"])
+    _lumon_paint_screen(image)
+    _LUMON_SCENE["frame"] = (key, image)
+    return image
+
+
+def _lumon_paint_screen(image: Image.Image) -> None:
+    """The blue field falling to black at the corners, error-diffused to the
+    two inks, inside a black rounded bezel."""
+    width, height = image.size
+    small = Image.new("RGB", (width // 4, height // 4))
+    sp = small.load()
+    cx, cy = small.size[0] / 2.0, small.size[1] / 2.0
+    rmax = math.hypot(cx, cy)
+    for y in range(small.size[1]):
+        for x in range(small.size[0]):
+            t = min(1.0, (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.8 * 0.85)
+            sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK))
+    field = _expedition_dither(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
+    b = _LUMON_BEZEL
+    mask = Image.new("L", (width, height), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((b, b, width - b, height - b), radius=_LUMON_BEZEL_RADIUS, fill=255)
+    image.paste(field, (0, 0), mask)
+    small.close()
+    field.close()
+    mask.close()
+
+
+def _lumon_paint_header(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The file name, the Lumon globe and wordmark, and the completion."""
+    white = SPECTRA6["white"]
+    x0, x1 = _LUMON_GRID_RECT[0], _LUMON_GRID_RECT[2]
+    name_font = load_font([(JOST_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=28)
+    draw.text((x0, _LUMON_HEADER_Y), _lumon_file_name(quote_row), font=name_font, fill=white)
+    # The globe: a circle with three latitude lines.
+    gx, gy, gr = x1 - 18, _LUMON_HEADER_Y + 20, 16
+    draw.ellipse((gx - gr, gy - gr, gx + gr, gy + gr), outline=white, width=2)
+    for dy, half in ((-8, 13), (0, 16), (8, 13)):
+        draw.line((gx - half, gy + dy, gx + half, gy + dy), fill=white, width=1)
+    draw.line((gx, gy - gr, gx, gy + gr), fill=white, width=1)
+    mark = load_font([MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES], size=14)
+    right = gx - gr - 12
+    draw.text((right - draw.textlength("LUMON", font=mark), _LUMON_HEADER_Y - 2), "LUMON", font=mark, fill=white)
+    line = f"{_lumon_completion(hour)}% Complete"
+    small = load_font([(JOST_VARIABLE, "Regular"), *META_FONT_CANDIDATES], size=16)
+    draw.text((right - draw.textlength(line, font=small), _LUMON_HEADER_Y + 22), line, font=small, fill=white)
+    draw.rectangle((x0, _LUMON_RULE_Y, x1, _LUMON_RULE_Y + 1), fill=white)
+
+
+def _lumon_grid_cells():
+    """The grid's cell boxes, row-major."""
+    x0, y0, x1, y1 = _LUMON_GRID_RECT
+    cw = (x1 - x0) / _LUMON_GRID_COLS
+    ch = (y1 - y0) / _LUMON_GRID_ROWS
+    return [[(x0 + c * cw, y0 + r * ch, x0 + (c + 1) * cw, y0 + (r + 1) * ch)
+             for c in range(_LUMON_GRID_COLS)] for r in range(_LUMON_GRID_ROWS)]
+
+
+def _lumon_cluster(hour: int) -> tuple[int, int]:
+    """The scary cluster's top-left cell ``(row, col)``: the middle rows,
+    the hour's column pair."""
+    return 1, 2 * (hour - 1)
+
+
+def _lumon_paint_grid(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The field of digits, seeded from the quote, with the hour's cluster
+    boxed, a size larger and nudged off the grid."""
+    white = SPECTRA6["white"]
+    rng = random.Random(_LUMON_SEED ^ _row_digest(quote_row))
+    cells = _lumon_grid_cells()
+    plain = load_font([PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES], size=17)
+    scary = load_font([PLEXMONO_BOLD, *QUOTE_FONT_BOLD_CANDIDATES], size=23)
+    row0, col0 = _lumon_cluster(hour)
+    for r, row in enumerate(cells):
+        for c, (cx0, cy0, cx1, cy1) in enumerate(row):
+            digit = str(rng.randint(0, 9))
+            in_cluster = row0 <= r <= row0 + 1 and col0 <= c <= col0 + 1
+            font = scary if in_cluster else plain
+            dx = rng.randint(-2, 2) if in_cluster else 0
+            dy = rng.randint(-2, 2) if in_cluster else 0
+            tw = draw.textlength(digit, font=font)
+            th = _font_ascent(font)
+            draw.text((cx0 + (cx1 - cx0 - tw) / 2 + dx, cy0 + (cy1 - cy0 - th) / 2 - 2 + dy), digit, font=font,
+                      fill=white)
+    bx0, by0 = cells[row0][col0][0], cells[row0][col0][1]
+    bx1, by1 = cells[row0 + 1][col0 + 1][2], cells[row0 + 1][col0 + 1][3]
+    draw.rectangle((round(bx0) - 3, round(by0) - 3, round(bx1) + 3, round(by1) + 3), outline=white, width=1)
+
+
+def _lumon_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    """The quote's lines on the terminal, with the bold chunks positioned."""
+    x0, y0, x1, y1 = _LUMON_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=30, font_min=14, line_height_mult=1.32, theme="lumon",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
+            x += w
+        y += line_height
+    return placed
+
+
+def _lumon_hover_boxes(draw: ImageDraw.ImageDraw, placed) -> list:
+    """One box per run of bold chunks on a line — the phrase, not each
+    word — trimmed to the run's inked extent."""
+    boxes = []
+    run = None
+    for x, y, chunk, font, is_bold, w, lh in placed:
+        if not is_bold or not chunk.strip():
+            if run is not None and (not is_bold or run[1] != y):
+                boxes.append(run)
+                run = None
+            if is_bold and run is not None:
+                run = (run[0], run[1], x + w, run[3])
+            continue
+        lead = draw.textlength(chunk, font=font) - draw.textlength(chunk.lstrip(), font=font)
+        trail = draw.textlength(chunk, font=font) - draw.textlength(chunk.rstrip(), font=font)
+        x0, x1 = round(x + lead), round(x + w - trail)
+        if run is not None and run[1] == y:
+            run = (run[0], y, x1, lh)
+        else:
+            if run is not None:
+                boxes.append(run)
+            run = (x0, y, x1, lh)
+    if run is not None:
+        boxes.append(run)
+    return [(x0 - 3, y - 2, x1 + 2, y + lh - 6) for x0, y, x1, lh in boxes]
+
+
+def _lumon_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """White Plex Mono; the matched phrase Bold in yellow inside the
+    refiner's white hover box."""
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for box in _lumon_hover_boxes(draw, placed):
+        draw.rectangle(box, outline=white, width=1)
+    for x, y, chunk, font, is_bold, w, lh in placed:
+        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+
+
+def _lumon_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title under the quote, in Jost."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    x0 = _LUMON_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, " — ".join(parts), [(JOST_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
+                                   17, _LUMON_QUOTE_RECT[2] - x0, floor=13)
+    draw.text((x0, _LUMON_BYLINE_Y), text, font=font, fill=SPECTRA6["white"])
+
+
+def _lumon_paint_bins(image: Image.Image, quote_row: dict) -> None:
+    """The five bins along the foot, each boxed with a stippled progress bar
+    at a level seeded from the quote."""
+    draw = ImageDraw.Draw(image)
+    white, blue = SPECTRA6["white"], SPECTRA6["blue"]
+    x0, y0, x1, y1 = _LUMON_BINS_RECT
+    width = (x1 - x0 - 4 * _LUMON_BIN_GAP) // 5
+    rng = random.Random(_LUMON_SEED + 3 + _row_digest(quote_row))
+    label = load_font([PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES], size=15)
+    small = load_font([PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES], size=12)
+    for i in range(5):
+        bx0 = x0 + i * (width + _LUMON_BIN_GAP)
+        bx1 = bx0 + width
+        draw.rectangle((bx0, y0, bx1, y1), outline=white, width=1)
+        draw.text((bx0 + 8, y0 + 5), f"0{i}", font=label, fill=white)
+        level = rng.randint(4, 96)
+        pct = f"{level}%"
+        draw.text((bx1 - 8 - draw.textlength(pct, font=small), y0 + 7), pct, font=small, fill=white)
+        bar = (bx0 + 8, y1 - 16, bx1 - 8, y1 - 7)
+        draw.rectangle(bar, outline=white, width=1)
+        fill_w = round((bar[2] - bar[0] - 4) * level / 100)
+        if fill_w > 0:
+            _fill_swatch_stipple(image, (bar[0] + 2, bar[1] + 2, bar[0] + 2 + fill_w, bar[3] - 1), blue, white, 0.5)
+
+
+def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Macrodata Refinement terminal with the hour's file completion and
+    the scary cluster in the hour's column (see the section comment above)."""
+    hour = _lumon_hour(time_str)
+    image = _lumon_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _lumon_paint_header(draw, hour, quote_row)
+    _lumon_paint_grid(draw, hour, quote_row)
+    _lumon_paint_quote(draw, _lumon_layout(draw, quote_row))
+    _lumon_paint_byline(draw, quote_row)
+    _lumon_paint_bins(image, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
 # cardcatalog — a library catalogue card with a date-due stamp grid
 # ---------------------------------------------------------------------------
 # The most on-brand object in the rotation: the one theme that is *about books
@@ -37371,6 +37964,10 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_beksinski_frame(time_str, quote_row, width, height)
     if theme == "goya":
         return render_goya_frame(time_str, quote_row, width, height)
+    if theme == "hal":
+        return render_hal_frame(time_str, quote_row, width, height)
+    if theme == "lumon":
+        return render_lumon_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
