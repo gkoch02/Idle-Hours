@@ -318,6 +318,11 @@ THEME_SATURATION: dict[str, float] = {
     # with a black grain; the harder tier would push it to lemon, and the
     # plain's umber is solid red and black that needs no help.
     "beksinski": 0.5,
+    # Goya's Black Paintings — a dithered ochre-and-umber void over a black
+    # slope, every tone a yellow / black / red stipple. Coloured-ground tier,
+    # the ``pulp`` / ``comic`` argument: at the gentler push the stipple's
+    # yellow greys toward mustard and the void stops reading as ochre.
+    "goya": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
