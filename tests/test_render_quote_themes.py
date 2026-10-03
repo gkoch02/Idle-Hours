@@ -7376,7 +7376,8 @@ class TestYorhaFrame(_CustomFrameCase):
 
 
 class TestHitchhikerFrame(_CustomFrameCase):
-    """``hitchhiker`` — a Guide entry on the author, with the hour's planet
+    """``hitchhiker`` — a Guide entry on the author with its two figures: the
+    Babel fish under a raster, and the galaxy chart with the hour's sector
     marked YOU ARE HERE."""
 
     THEME = "hitchhiker"
@@ -7389,23 +7390,65 @@ class TestHitchhikerFrame(_CustomFrameCase):
 
     def test_entry_is_the_author_and_the_quote_white_with_yellow(self):
         a, b = self._render(), self._render(dict(self.ROW, author="Homer"))
-        band = (78, rq._HITCHHIKER_ENTRY_Y + 10, 760, rq._HITCHHIKER_ENTRY_Y + 46)
+        band = (62, rq._HITCHHIKER_ENTRY_Y + 10, 456, rq._HITCHHIKER_ENTRY_Y + 46)
         assert pixel_bytes(a.crop(band)) != pixel_bytes(b.crop(band))
         counts = ink_counts(a.crop(rq._HITCHHIKER_QUOTE_RECT))
         assert counts.get(rq.SPECTRA6["white"], 0) > 2000 and counts.get(rq.SPECTRA6["yellow"], 0) > 200
         assert rq.theme_font_candidates("hitchhiker", "quote_regular")[0] == rq.MICHROMA_REGULAR
+        # Each line of the entry is headed by a marker in the inks in rotation.
+        markers = ink_counts(a.crop((rq._HITCHHIKER_QUOTE_RECT[0] - 20, rq._HITCHHIKER_QUOTE_RECT[1],
+                                     rq._HITCHHIKER_QUOTE_RECT[0] - 10, rq._HITCHHIKER_QUOTE_RECT[3])))
+        assert {rq.SPECTRA6["blue"], rq.SPECTRA6["green"], rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]} <= set(markers)
 
-    def test_hour_planet_is_the_large_one_with_the_label(self):
-        centres = rq._hitchhiker_planet_centres()
-        assert len(centres) == 12
+    def test_lettering_wobbles_but_is_seeded(self):
+        """Hand-animated cels: the same text sets the same way every time,
+        and a glyph run is not a straight ``draw.text`` of the string."""
+        font = rq._hitchhiker_font(20)
+        a = Image.new("RGB", (400, 40), "black")
+        rq._hitchhiker_draw(ImageDraw.Draw(a), (4, 4), "DON'T PANIC", font, "white", rq.random.Random(7))
+        b = Image.new("RGB", (400, 40), "black")
+        rq._hitchhiker_draw(ImageDraw.Draw(b), (4, 4), "DON'T PANIC", font, "white", rq.random.Random(7))
+        c = Image.new("RGB", (400, 40), "black")
+        ImageDraw.Draw(c).text((4, 4), "DON'T PANIC", font=font, fill="white")
+        assert pixel_bytes(a) == pixel_bytes(b)
+        assert pixel_bytes(a) != pixel_bytes(c)
+
+    def test_babel_fish_is_yellow_under_a_raster_with_its_organs(self):
+        image = self._render()
+        fish = ink_counts(image.crop(rq._HITCHHIKER_FISH_RECT))
+        assert fish.get(rq.SPECTRA6["yellow"], 0) > 4000
+        for ink in ("blue", "green", "red", "white"):
+            assert fish.get(rq.SPECTRA6[ink], 0) > 100, ink
+        cx, cy = rq._hitchhiker_fish_centre()
+        # The raster: one row in three is black across the yellow body.
+        body = image.crop((cx - 50, cy + 20, cx - 14, cy + 26))        # the belly, clear of the organs
+        rows = [set(ink_counts(body.crop((0, r, 36, r + 1)))) for r in range(6)]
+        assert sum(1 for r in rows if r == {rq.SPECTRA6["black"]}) == 2
+        assert sum(1 for r in rows if r == {rq.SPECTRA6["yellow"]}) >= 3
+        assert pixel_bytes(image.crop(rq._HITCHHIKER_FISH_RECT)) == \
+            pixel_bytes(self._render(time_str="03:00").crop(rq._HITCHHIKER_FISH_RECT))
+
+    def test_hour_is_the_outlined_sector(self):
+        cx, cy = rq._HITCHHIKER_GALAXY_CENTRE
+        radius = rq._HITCHHIKER_GALAXY_RADIUS
         for hour in (1, 5, 12):
             image = self._render(time_str=f"{hour:02d}:25")
-            filled = []
-            for cx, cy in centres:
-                counts = ink_counts(image.crop((round(cx) - 16, round(cy) - 16, round(cx) + 16, round(cy) + 16)))
-                filled.append(32 * 32 - counts.get(rq.SPECTRA6["black"], 0))
-            assert max(range(12), key=filled.__getitem__) == hour - 1, hour
-            cx, cy = centres[hour - 1]
-            band = image.crop((max(0, round(cx) - 170), round(cy) - 40, min(800, round(cx) + 170), round(cy) - 18))
-            assert ink_counts(band).get(rq.SPECTRA6["yellow"], 0) > 100, hour
-            assert ink_counts(image.crop((770, round(cy) - 40, 800, round(cy) - 18))).get(rq.SPECTRA6["yellow"], 0) == 0
+            a0, a1 = rq._hitchhiker_sector_angle(hour)
+            am = (a0 + a1) / 2
+            ex, ey = cx + (radius - 12) * math.cos(am), cy + (radius - 12) * math.sin(am)
+            earth = ink_counts(image.crop((round(ex) - 8, round(ey) - 8, round(ex) + 8, round(ey) + 8)))
+            assert earth.get(rq.SPECTRA6["yellow"], 0) > 10 and earth.get(rq.SPECTRA6["blue"], 0) > 4, hour
+            # The opposite sector carries no yellow ring.
+            ox, oy = cx + (radius - 12) * math.cos(am + math.pi), cy + (radius - 12) * math.sin(am + math.pi)
+            assert ink_counts(image.crop((round(ox) - 8, round(oy) - 8, round(ox) + 8, round(oy) + 8))).get(
+                rq.SPECTRA6["yellow"], 0) < 6, hour
+        assert rq._hitchhiker_sector_angle(12)[0] < rq._hitchhiker_sector_angle(1)[0]
+
+    def test_galaxy_is_a_seeded_spiral_in_its_chart(self):
+        image = self._render()
+        chart = ink_counts(image.crop(rq._HITCHHIKER_GALAXY_RECT))
+        assert chart.get(rq.SPECTRA6["white"], 0) > 150                # the stars and the labels
+        assert chart.get(rq.SPECTRA6["blue"], 0) > 400                 # the sector lines and the ring
+        label = ink_counts(image.crop((rq._HITCHHIKER_GALAXY_RECT[2] - 112, rq._HITCHHIKER_GALAXY_RECT[1] + 58,
+                                       rq._HITCHHIKER_GALAXY_RECT[2] - 4, rq._HITCHHIKER_GALAXY_RECT[1] + 90)))
+        assert label.get(rq.SPECTRA6["yellow"], 0) > 100                # YOU ARE HERE

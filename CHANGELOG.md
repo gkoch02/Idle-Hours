@@ -85,27 +85,38 @@ these entries under the new dated version heading.
   open Gotham, for the number grid the show sets in a Gotham-like sans;
   the header and byline are Inter, for the show's Forma DJR.
 - New `dsky` theme: the Apollo Guidance Computer's display and keyboard
-  on a black panel beside the quote — the lamp matrix, the keypad, and
-  the display with the hour in its PROG register and telemetry seeded
-  from the quote in true seven-segment strokes, white in a green bloom.
-  Real hardware; Jost throughout; no new fonts.
-- New `oblivion` theme: *Oblivion* — the Sky Tower's white desk in
-  hairlines and tracked capitals, the quote in Exo 2 Light (the open
-  face in the family of Blender, the film's UI typeface) with the
-  matched phrase in red, a compass dial with the hour's bearing marked,
-  and the twelve hydro rigs along the foot with the hour's filled. No
-  new fonts.
-- New `yorha` theme: *NieR: Automata* — the YoRHa archives on a cream
-  dot-grid ground, twelve archive rows with the hour's inverted, the
-  book's title over the entry, the quote in EB Garamond — the closest
-  open face to the game's unidentified classical UI serif — with the
-  matched phrase knocked out white of a black box as the selected item.
-  No new fonts.
+  as a modelled unit on a dithered grey console — a shaded rim, dark-glass
+  windows with a reflection, domed keycaps on a recessed tray, screws, a
+  shadow — with the hour in its PROG register and telemetry seeded from
+  the quote in true seven-segment strokes, white in a green bloom; the
+  quote typed in Special Elite on a cream flight-plan card clipped beside
+  it, the matched phrase in red ink. Real hardware; no new fonts.
+- New `oblivion` theme: *Oblivion* — the Sky Tower's light table: grey
+  glass dithered in continuous tone with a white pool under the quote and
+  frosted panes, a contour map of the sector with the twelve hydro rigs
+  on the terrain and a dial over it, a drone shaded Blinn-Phong with a
+  red lens blooming into the glass, the quote in Exo 2 Light (the open
+  face in the family of Blender, the film's UI typeface) with the matched
+  phrase in red; the hour's rig is red on the map, its bearing on the
+  dial, its cell filled in the status row. No new fonts.
+- New `yorha` theme: *NieR: Automata* — the YoRHa archives: a cream
+  sheet dithered in continuous tone with a vignette, the blurred ruined
+  city along the foot and the diagonal hatch, crisp panels with soft
+  shadows and corner ticks, the tab bar open at INTEL under the crest,
+  Pod 042 modelled below the menu, twelve archive rows with the hour's
+  inverted, the book's title over the entry, the quote in EB Garamond —
+  the closest open face to the game's unidentified classical UI serif —
+  with the matched phrase knocked out white of a black box as the
+  selected item. No new fonts.
 - New `hitchhiker` theme: the 1981 BBC *Hitchhiker's Guide to the
-  Galaxy* — a Guide entry on the quoted author in white Michroma under
-  the yellow masthead and the DON'T PANIC badge, the matched phrase in
-  yellow, and twelve flat-colour planets along the foot with the hour's
-  marked YOU ARE HERE. No new fonts.
+  Galaxy* — a Guide entry on the quoted author, hand-animated glyph by
+  glyph in white Michroma with coloured line markers under the yellow
+  masthead and the DON'T PANIC badge, the matched phrase in yellow,
+  Figure 1 the Babel fish in cross-section under a CRT raster with its
+  organs in the inks and numbered callouts, and Figure 2 the galaxy as a
+  seeded spiral in a sector chart where the hour's sector is outlined
+  with the Earth ringed inside it and YOU ARE HERE on a leader. No new
+  fonts.
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the
