@@ -35563,12 +35563,14 @@ def _oblivion_pool(size, box, blur: int) -> Image.Image:
     return mask.filter(ImageFilter.GaussianBlur(blur))
 
 
-def _oblivion_paint_glass(scene: Image.Image) -> None:
+def _oblivion_paint_glass(scene: Image.Image) -> Image.Image:
     """The light table in continuous tone: grey glass, the white pool under
-    the quote, the frosted panes, the drone's shadow, the grain."""
+    the quote, the frosted panes, the drone's shadow, the grain. Returns the
+    pool's mask, whose saturated heart is cleaned after the dither."""
     size = scene.size
     scene.paste(Image.new("RGB", size, _oblivion_tone(0.07)), (0, 0))
-    pool = _oblivion_pool(size, (-60, 30, 540, 430), 50)
+    # Saturated inside so the pool's heart is clean white; the blur only softens its edge.
+    pool = _oblivion_pool(size, (-60, 30, 540, 430), 50).point(lambda v: min(255, v * 2))
     scene.paste(Image.new("RGB", size, _OBLIVION_WHITE), (0, 0), pool)
     # The panes: the map and the two strips, a shade darker with soft edges.
     for rect in (_OBLIVION_MAP_RECT, _OBLIVION_WAVE_RECT, _OBLIVION_RIG_BAND):
@@ -35586,8 +35588,8 @@ def _oblivion_paint_glass(scene: Image.Image) -> None:
     grain = ImageChops.multiply(grain, pool.point(lambda v: 255 - v))
     scene.paste(ImageChops.subtract(ImageChops.add(scene, Image.merge("RGB", (grain, grain, grain))),
                                     Image.new("RGB", size, (3, 3, 3))))
-    pool.close()
     shadow.close()
+    return pool
 
 
 def _oblivion_paint_drone_tone(scene: Image.Image) -> None:
@@ -35657,9 +35659,15 @@ def _oblivion_scene() -> Image.Image:
         return cached[1]
     size = (800, 480)
     scene = Image.new("RGB", size, _OBLIVION_WHITE)
-    _oblivion_paint_glass(scene)
+    pool = _oblivion_paint_glass(scene)
     _oblivion_paint_drone_tone(scene)
     image = _expedition_dither(scene, _OBLIVION_INKS)
+    # Error diffusion carries the grey glass's residue a little way into the
+    # pool; its saturated heart is wiped back to white, which is what the lit
+    # centre of a light table is.
+    if pool is not None:        # the decoration fence neuters the glass painter
+        image.paste(Image.new("RGB", size, SPECTRA6["white"]), (0, 0), pool.point(lambda v: 255 if v == 255 else 0))
+        pool.close()
     image.paste(Image.new("RGB", size, SPECTRA6["black"]), (0, 0), _oblivion_contours(size))
     _OBLIVION_SCENE["frame"] = (key, image)
     return image
