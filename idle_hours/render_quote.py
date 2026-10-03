@@ -153,6 +153,10 @@ THEME_ORDER: tuple[str, ...] = (
     "goya",
     "hal",
     "lumon",
+    "dsky",
+    "oblivion",
+    "yorha",
+    "hitchhiker",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1477,6 +1481,58 @@ THEMES = {
         "accent": SPECTRA6["yellow"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # The Apollo DSKY — a custom frame (``render_dsky_frame``): black panel, white Jost
+    # quote with a yellow phrase, the display's segments white in a green bloom.
+    # These literary-layout slots serve only the palette-only paths.
+    "dsky": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["green"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # *Oblivion* (2013) — a custom frame (``render_oblivion_frame``): white desk,
+    # black hairlines, Jost Light quote with the phrase in red.
+    # These literary-layout slots serve only the palette-only paths.
+    "oblivion": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # *NieR: Automata* — a custom frame (``render_yorha_frame``): cream dot-grid ground,
+    # black Jura, the phrase knocked out white of a black box.
+    # These literary-layout slots serve only the palette-only paths.
+    "yorha": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["yellow"],
+        "accent": SPECTRA6["black"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # The 1981 BBC Guide — a custom frame (``render_hitchhiker_frame``): black screen,
+    # white Michroma entry with the phrase in yellow, flat-colour planets.
+    # These literary-layout slots serve only the palette-only paths.
+    "hitchhiker": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["green"],
+        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
@@ -4169,6 +4225,39 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [PLEXMONO_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(JOST_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "dsky": {
+        # Jost — NASA silkscreened its panels in Futura Demi, and the
+        # flight documentation of the era is Futura too. Regular body, Bold
+        # phrase in lamp yellow, Medium for every panel label.
+        "quote_regular": [(JOST_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(JOST_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(JOST_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "oblivion": {
+        # Jost at its lightest weight that holds on the panel: GMUNK's
+        # screens set their capitals in a light geometric sans, and solid
+        # black on the white ink survives a Light stem where a stipple
+        # would not. Medium for the matched phrase, in red.
+        "quote_regular": [(JOST_VARIABLE, "Light"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(JOST_VARIABLE, "Medium"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(JOST_VARIABLE, "Regular"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "yorha": {
+        # Jura — a light humanist technical sans, the nearest bundled face
+        # to the game's custom UI face. Regular body; Bold for the matched
+        # phrase, knocked out white of its black box.
+        "quote_regular": [JURA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [JURA_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [JURA_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "hitchhiker": {
+        # Michroma — the square-shouldered monoline of the series' hand-
+        # lettered computer screens. One static weight, so the matched
+        # phrase is told apart by its yellow, not its weight.
+        "quote_regular": [MICHROMA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [MICHROMA_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
@@ -35086,6 +35175,755 @@ def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
 
 # ---------------------------------------------------------------------------
+# dsky — the Apollo Guidance Computer's display and keyboard (1966–1972)
+# ---------------------------------------------------------------------------
+# The DSKY ("disky") was the astronauts' face of the Apollo Guidance
+# Computer: a black anodised panel with a matrix of fourteen warning lamps
+# at the left, an electroluminescent display at the right — PROG, VERB and
+# NOUN in two digits each over three five-digit signed registers — and a
+# nineteen-key keypad below. A crew spoke to it in verb-noun pairs (VERB 06
+# NOUN 62: display velocity, altitude rate and altitude) and read the answer
+# off green segments glowing out of the dark. Real hardware, so there is
+# nothing to licence and nothing to approximate; the geometry here is the
+# Block II unit's.
+#
+# **The page is the panel.** Nomenclature along the top in the tracked
+# capitals NASA's panels were silkscreened in (Futura Demi; **Jost** here),
+# the quote on the left in Jost with the matched phrase Bold in yellow —
+# the lamps' colour — and the byline beneath it as a panel label. The DSKY
+# fills the right third in a hairlined bezel: the lamp matrix with every
+# lamp drawn dark and outlined (a lit lamp is an alarm, and nothing is
+# wrong), the display, the keypad in its real arrangement.
+#
+# **The hour is the program.** The AGC's major modes were numbered programs
+# (P00 idle, P11 boost monitor, P63 braking…), and the PROG register shows
+# the one running: here it is the hour, 01 to 12, pinned across the
+# minutes. VERB 06 NOUN 62 stays up and the three registers carry
+# telemetry seeded from the quote, so a different passage is a different
+# moment in the flight. The matched phrase carries the minute.
+#
+# **The segments glow.** Each digit is drawn into a mask as true
+# seven-segment strokes (``_dsky_segments``), then painted white-hot with a
+# green bloom through ``paint_neon_mask`` with ``ground`` pinned to black:
+# the panel's green is too dark to carry a 3 px stroke on its own, and a
+# white core in a green halo is what an EL segment looks like at a metre.
+# COMP ACTY is the one lamp lit, in solid green. Composed at 800x480 and
+# NEAREST-downsampled otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_DSKY_SEED = 0x44534B59               # DSKY
+_DSKY_QUOTE_RECT = (36, 92, 452, 392)
+_DSKY_BYLINE_Y = 410
+_DSKY_BEZEL = (480, 20, 784, 462)
+_DSKY_LAMP_ORIGIN = (494, 40)
+_DSKY_LAMP_SIZE = (62, 22)
+_DSKY_LAMP_GAP = (6, 5)
+_DSKY_LAMPS = (("UPLINK", "TEMP"), ("NO ATT", "GIMBAL"), ("STBY", "PROG"), ("KEY REL", "RESTART"),
+               ("OPR ERR", "TRACKER"), ("", "ALT"), ("", "VEL"))
+_DSKY_DISPLAY_RECT = (642, 40, 772, 226)
+_DSKY_KEYPAD_ORIGIN = (494, 248)
+_DSKY_KEY = 36
+_DSKY_KEY_GAP = 5
+_DSKY_KEYS = (("VERB", "+", "7", "8", "9", "CLR", "ENTR"),
+              ("NOUN", "-", "4", "5", "6", "PRO", "RSET"),
+              ("", "0", "1", "2", "3", "KEY\nREL", ""))
+_DSKY_VERB, _DSKY_NOUN = "06", "62"
+# Seven-segment encodings: a top, b upper right, c lower right, d bottom,
+# e lower left, f upper left, g middle.
+_DSKY_SEGMENTS = {
+    "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd",
+    "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", "+": "g|", " ": "",
+}
+
+
+def _dsky_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — the program in the PROG register."""
+    return _expanse_hour(time_str)
+
+
+def _dsky_segments(ch: str) -> str:
+    return _DSKY_SEGMENTS.get(ch, "")
+
+
+def _dsky_draw_glyph(draw: ImageDraw.ImageDraw, x: int, y: int, ch: str, *, h: int = 22, w: int = 12,
+                     t: int = 3) -> None:
+    """One seven-segment character into an ``L`` mask at (x, y)."""
+    segs = _dsky_segments(ch)
+    mid = y + h // 2
+    if "a" in segs:
+        draw.rectangle((x + 1, y, x + w - 1, y + t - 1), fill=255)
+    if "b" in segs:
+        draw.rectangle((x + w - t, y + 1, x + w - 1, mid - 1), fill=255)
+    if "c" in segs:
+        draw.rectangle((x + w - t, mid + 1, x + w - 1, y + h - 1), fill=255)
+    if "d" in segs:
+        draw.rectangle((x + 1, y + h - t, x + w - 1, y + h - 1), fill=255)
+    if "e" in segs:
+        draw.rectangle((x, mid + 1, x + t - 1, y + h - 1), fill=255)
+    if "f" in segs:
+        draw.rectangle((x, y + 1, x + t - 1, mid - 1), fill=255)
+    if "g" in segs:
+        draw.rectangle((x + 1, mid - t // 2, x + w - 1, mid - t // 2 + t - 1), fill=255)
+    if "|" in segs:
+        draw.rectangle((x + w // 2 - t // 2, mid - 6, x + w // 2 - t // 2 + t - 1, mid + 6), fill=255)
+
+
+def _dsky_registers(quote_row: dict) -> list[str]:
+    """Three signed five-digit registers of telemetry, seeded from the quote."""
+    rng = random.Random(_DSKY_SEED ^ _row_digest(quote_row))
+    return [f"{rng.choice('+-')}{rng.randint(0, 99999):05d}" for _ in range(3)]
+
+
+def _dsky_label_font(size: int):
+    return load_font([(JOST_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=size)
+
+
+def _dsky_paint_nomenclature(draw: ImageDraw.ImageDraw) -> None:
+    """The panel's silkscreen: the unit's name along the top and a rule."""
+    white = SPECTRA6["white"]
+    font = _dsky_label_font(13)
+    draw_tracked(draw, (36, 30), "APOLLO GUIDANCE COMPUTER", font, white, tracking=3)
+    draw_tracked(draw, (452, 30), "DSKY", font, white, tracking=3, anchor_right=True)
+    draw.rectangle((36, 52, 452, 52), fill=white)
+
+
+def _dsky_paint_bezel(draw: ImageDraw.ImageDraw) -> None:
+    x0, y0, x1, y1 = _DSKY_BEZEL
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=8, outline=SPECTRA6["white"], width=2)
+
+
+def _dsky_paint_lamps(draw: ImageDraw.ImageDraw) -> None:
+    """The warning-lamp matrix, every lamp dark and outlined."""
+    white = SPECTRA6["white"]
+    font = _dsky_label_font(10)
+    ox, oy = _DSKY_LAMP_ORIGIN
+    w, h = _DSKY_LAMP_SIZE
+    gx, gy = _DSKY_LAMP_GAP
+    for r, row in enumerate(_DSKY_LAMPS):
+        for c, label in enumerate(row):
+            x = ox + c * (w + gx)
+            y = oy + r * (h + gy)
+            draw.rectangle((x, y, x + w, y + h), outline=white, width=1)
+            if label:
+                tw = draw.textlength(label, font=font)
+                draw.text((x + (w - tw) / 2, y + 5), label, font=font, fill=white)
+
+
+def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
+    """PROG / VERB / NOUN and the three registers as glowing segments; the
+    COMP ACTY lamp lit in green."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _DSKY_DISPLAY_RECT
+    white, green, black = SPECTRA6["white"], SPECTRA6["green"], SPECTRA6["black"]
+    draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
+    font = _dsky_label_font(10)
+    # COMP ACTY: the computer-activity lamp, lit.
+    draw.rectangle((x0 + 8, y0 + 8, x0 + 40, y0 + 36), fill=green)
+    draw.text((x0 + 10, y0 + 11), "COMP", font=font, fill=black)
+    draw.text((x0 + 10, y0 + 22), "ACTY", font=font, fill=black)
+    mask = Image.new("L", image.size, 0)
+    md = ImageDraw.Draw(mask)
+    pair_x = x1 - 8 - 2 * 16
+    draw.text((pair_x, y0 + 8), "PROG", font=font, fill=white)
+    for i, ch in enumerate(f"{hour:02d}"):
+        _dsky_draw_glyph(md, pair_x + i * 16, y0 + 22, ch, h=18, w=11)
+    row_y = y0 + 52
+    for label, value, lx in (("VERB", _DSKY_VERB, x0 + 8), ("NOUN", _DSKY_NOUN, pair_x)):
+        draw.text((lx, row_y), label, font=font, fill=white)
+        for i, ch in enumerate(value):
+            _dsky_draw_glyph(md, lx + i * 16, row_y + 14, ch, h=18, w=11)
+    draw.rectangle((x0 + 8, row_y + 40, x1 - 8, row_y + 40), fill=white)
+    reg_y = row_y + 48
+    for r, value in enumerate(_dsky_registers(quote_row)):
+        y = reg_y + r * 40
+        for i, ch in enumerate(value):
+            _dsky_draw_glyph(md, x0 + 10 + i * 19, y, ch, h=24, w=13)
+        if r < 2:
+            draw.rectangle((x0 + 8, y + 32, x1 - 8, y + 32), fill=white)
+    paint_neon_mask(image, mask, white, green, radius=4, gamma=1.4, cap=0.6, ground=(black,))
+    mask.close()
+
+
+def _dsky_paint_keypad(draw: ImageDraw.ImageDraw) -> None:
+    """The nineteen keys in the Block II arrangement."""
+    white = SPECTRA6["white"]
+    font = _dsky_label_font(10)
+    ox, oy = _DSKY_KEYPAD_ORIGIN
+    k, g = _DSKY_KEY, _DSKY_KEY_GAP
+    for r, row in enumerate(_DSKY_KEYS):
+        for c, label in enumerate(row):
+            if not label:
+                continue
+            x = ox + c * (k + g)
+            y = oy + r * (k + g)
+            draw.rounded_rectangle((x, y, x + k, y + k), radius=4, outline=white, width=1)
+            lines = label.split("\n")
+            ty = y + (k - 12 * len(lines)) / 2
+            for line in lines:
+                tw = draw.textlength(line, font=font)
+                draw.text((x + (k - tw) / 2, ty), line, font=font, fill=white)
+                ty += 12
+
+
+def _dsky_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _DSKY_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=34, font_min=16, line_height_mult=1.3, theme="dsky",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _dsky_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+
+
+def _dsky_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title as a panel label under the quote."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p.upper() for p in (author, title) if p]
+    if not parts:
+        return
+    x0 = _DSKY_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, "   ·   ".join(parts), [(JOST_VARIABLE, "Medium"), *META_FONT_CANDIDATES],
+                                   16, _DSKY_QUOTE_RECT[2] - x0, floor=13, tracking=2)
+    draw_tracked(draw, (x0, _DSKY_BYLINE_Y), text, font, SPECTRA6["white"], tracking=2)
+
+
+def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Apollo DSKY with the hour in its PROG register (see the section
+    comment above)."""
+    hour = _dsky_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    _dsky_paint_nomenclature(draw)
+    _dsky_paint_quote(draw, _dsky_layout(draw, quote_row))
+    _dsky_paint_byline(draw, quote_row)
+    _dsky_paint_bezel(draw)
+    _dsky_paint_lamps(draw)
+    _dsky_paint_keypad(draw)
+    _dsky_paint_display(image, hour, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# oblivion — *Oblivion* (2013): the Sky Tower's interface
+# ---------------------------------------------------------------------------
+# Joseph Kosinski's film is remembered for its screens, designed by GMUNK
+# (Bradley Munkowitz) and his team: white glass, hairline geometry, light
+# geometric capitals, a great deal of empty space, and one warm accent for
+# anything alive or wrong. The Sky Tower's desk is a light table whose
+# whole surface is the interface; the bubble ship's canopy is a circle of
+# readouts; the drones' status is a ring. Nothing is dark, nothing is
+# dense, and the typography is as light as the film could get away with.
+#
+# **The page is the desk.** The panel's white — the cool grey-white of its
+# ink, which is the film's — carries thin black rules and corner brackets,
+# the quote in **Jost Light** (the bundle's Futura at its lightest weight
+# that still holds on the panel) with the matched phrase Jost Medium in
+# red, the one accent, and a header in tracked capitals: the tech's number
+# and the Tet link. A compass dial fills the right: three hairline rings,
+# a crosshair, twelve ticks, small bearing labels. Along the foot run the
+# twelve hydro rigs the tower watches, each a hairline box with a seeded
+# output bar.
+#
+# **The hour is the rig, and the bearing.** The hour's rig box is filled
+# black with its label knocked out and a red marker, and the dial's tick at
+# the hour's place on a clock face is a red wedge with a red dot inside the
+# ring: the drone is on station at that bearing. Both are pinned across
+# the minutes of an hour; the matched phrase carries the minute. Composed
+# at 800x480 and NEAREST-downsampled otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_OBLIVION_SEED = 0x4F424C56           # OBLV
+_OBLIVION_QUOTE_RECT = (40, 110, 470, 372)
+_OBLIVION_BYLINE_Y = 386
+_OBLIVION_DIAL_CENTRE = (630, 248)
+_OBLIVION_DIAL_RADII = (122, 96, 40)
+_OBLIVION_RIG_BAND = (40, 418, 760, 456)
+_OBLIVION_RIG_GAP = 8
+
+
+def _oblivion_hour(time_str: str) -> int:
+    return _expanse_hour(time_str)
+
+
+def _oblivion_font(size: int, instance: str = "Light"):
+    return load_font([(JOST_VARIABLE, instance), *META_FONT_CANDIDATES], size=size)
+
+
+def _oblivion_polar(radius: float, hour: int) -> tuple[float, float]:
+    cx, cy = _OBLIVION_DIAL_CENTRE
+    a = math.radians((hour % 12) * 30)
+    return cx + radius * math.sin(a), cy - radius * math.cos(a)
+
+
+def _oblivion_rig_rects() -> list:
+    x0, y0, x1, y1 = _OBLIVION_RIG_BAND
+    width = (x1 - x0 - 11 * _OBLIVION_RIG_GAP) // 12
+    return [(x0 + i * (width + _OBLIVION_RIG_GAP), y0, x0 + i * (width + _OBLIVION_RIG_GAP) + width, y1)
+            for i in range(12)]
+
+
+def _oblivion_paint_chrome(draw: ImageDraw.ImageDraw) -> None:
+    """Corner brackets, the header's tracked capitals, and the rules."""
+    black = SPECTRA6["black"]
+    for (x, y), (dx, dy) in (((20, 20), (1, 1)), ((780, 20), (-1, 1)), ((20, 460), (1, -1)), ((780, 460), (-1, -1))):
+        draw.line((x, y, x + 18 * dx, y), fill=black, width=1)
+        draw.line((x, y, x, y + 18 * dy), fill=black, width=1)
+    font = _oblivion_font(13, "Regular")
+    draw_tracked(draw, (40, 44), "TECH 49", _oblivion_font(22, "Regular"), black, tracking=4)
+    draw_tracked(draw, (40, 74), "TOWER 49   ·   TET LINK ESTABLISHED", font, black, tracking=3)
+    draw_tracked(draw, (760, 48), "SKY TOWER", font, black, tracking=3, anchor_right=True)
+    draw_tracked(draw, (760, 68), "DRONE 166   ONLINE", font, black, tracking=3, anchor_right=True)
+    draw.line((40, 96, 760, 96), fill=black, width=1)
+    draw.line((40, 406, 760, 406), fill=black, width=1)
+
+
+def _oblivion_paint_dial(draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """The compass: hairline rings, a crosshair, twelve ticks, the hour's
+    tick as a red wedge and a red dot on station."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    cx, cy = _OBLIVION_DIAL_CENTRE
+    r0, r1, r2 = _OBLIVION_DIAL_RADII
+    for r in (r0, r1, r2):
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=black, width=1)
+    draw.line((cx - r2 - 10, cy, cx + r2 + 10, cy), fill=black, width=1)
+    draw.line((cx, cy - r2 - 10, cx, cy + r2 + 10), fill=black, width=1)
+    font = _oblivion_font(11, "Regular")
+    for h in range(1, 13):
+        (ax, ay), (bx, by) = _oblivion_polar(r0, h), _oblivion_polar(r0 - 10, h)
+        draw.line((ax, ay, bx, by), fill=black, width=1)
+        lx, ly = _oblivion_polar(r0 + 14, h)
+        label = f"{(h % 12) * 30:03d}"
+        draw.text((lx - draw.textlength(label, font=font) / 2, ly - 6), label, font=font, fill=black)
+    a = math.radians((hour % 12) * 30)
+    wedge = [(cx + r0 * math.sin(a + d), cy - r0 * math.cos(a + d)) for d in (-0.055, 0.055)]
+    wedge += [(cx + (r0 - 14) * math.sin(a + d), cy - (r0 - 14) * math.cos(a + d)) for d in (0.055, -0.055)]
+    draw.polygon(wedge, fill=red)
+    dx, dy = _oblivion_polar((r1 + r2) / 2, hour)
+    draw.ellipse((dx - 5, dy - 5, dx + 5, dy + 5), fill=red)
+    draw.ellipse((dx - 9, dy - 9, dx + 9, dy + 9), outline=black, width=1)
+
+
+def _oblivion_paint_rigs(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The twelve hydro rigs along the foot; the hour's filled and marked."""
+    black, white, red = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"]
+    rng = random.Random(_OBLIVION_SEED ^ _row_digest(quote_row))
+    font = _oblivion_font(10, "Regular")
+    for i, (x0, y0, x1, y1) in enumerate(_oblivion_rig_rects()):
+        active = (i + 1) == hour
+        draw.rectangle((x0, y0, x1, y1), fill=black if active else white, outline=black, width=1)
+        ink = white if active else black
+        draw.text((x0 + 5, y0 + 4), f"RIG {i + 1:02d}", font=font, fill=ink)
+        level = rng.randint(2, 10)
+        draw.rectangle((x0 + 5, y1 - 10, x0 + 5 + level * 4, y1 - 6), fill=ink)
+        if active:
+            draw.ellipse((x1 - 12, y0 + 5, x1 - 5, y0 + 12), fill=red)
+
+
+def _oblivion_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _OBLIVION_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=34, font_min=18, line_height_mult=1.34, theme="oblivion",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _oblivion_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
+
+
+def _oblivion_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p.upper() for p in (author, title) if p]
+    if not parts:
+        return
+    x0 = _OBLIVION_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, "   ·   ".join(parts), [(JOST_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
+                                   14, _OBLIVION_QUOTE_RECT[2] - x0, floor=12, tracking=3)
+    draw_tracked(draw, (x0, _OBLIVION_BYLINE_Y), text, font, SPECTRA6["black"], tracking=3)
+
+
+def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Sky Tower's desk with the hour's rig and bearing (see the section
+    comment above)."""
+    hour = _oblivion_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["white"])
+    draw = ImageDraw.Draw(image)
+    _oblivion_paint_chrome(draw)
+    _oblivion_paint_dial(draw, hour)
+    _oblivion_paint_quote(draw, _oblivion_layout(draw, quote_row))
+    _oblivion_paint_byline(draw, quote_row)
+    _oblivion_paint_rigs(draw, hour, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# yorha — *NieR: Automata* (2017): the YoRHa system menu, Intel › Archives
+# ---------------------------------------------------------------------------
+# Automata's interface is the quietest thing in a loud game: a parchment-
+# cream ground under a fine dot grid, a left-hand menu of boxed items in a
+# small dark sans, and the selected item inverted — a dark bar with light
+# text. Every pause screen is the android's own system; the archives under
+# Intel are where the game keeps its letters, reports and fragments of
+# books, which is where a literary clock belongs.
+#
+# **The page is the archives screen.** The cream is the panel's white with
+# a yellow quarter (the ``lumon`` housing's recipe), and the dot grid runs
+# across the whole of it in black at a fourteen-pixel pitch — sparse enough
+# to sit behind the type without touching it. A dark header bar carries the
+# section (INTEL — ARCHIVES) at the left and the unit at the right. The
+# twelve archive entries run down the left as boxed rows; the right pane
+# carries the open entry: the book's title over a rule, the quote in
+# **Jura** — the nearest bundled face to the game's light humanist UI sans,
+# whose own face is custom — in black, the matched phrase Bold knocked out
+# of a black box the way the game highlights the selected item, and the
+# author on the foot.
+#
+# **The hour is the open entry.** ARCHIVE 01 to 12 are the twelve hours;
+# the hour's row is the inverted one, and the pane's counter reads the same
+# number over twelve. Pinned across the minutes; the matched phrase carries
+# the minute. Composed at 800x480 and NEAREST-downsampled otherwise (the
+# ``metro`` convention).
+# ---------------------------------------------------------------------------
+_YORHA_DOT_PITCH = 14
+_YORHA_HEADER_RECT = (0, 18, 800, 56)
+_YORHA_MENU_RECT = (30, 78, 226, 440)
+_YORHA_PANE_RECT = (254, 78, 770, 440)
+_YORHA_QUOTE_RECT = (272, 136, 752, 392)
+_YORHA_BYLINE_Y = 410
+_YORHA_SCENE: dict = {}
+
+
+def _yorha_hour(time_str: str) -> int:
+    return _expanse_hour(time_str)
+
+
+def _yorha_font(size: int, weight: str = "Regular"):
+    files = {"Regular": JURA_REGULAR, "Medium": JURA_MEDIUM, "SemiBold": JURA_SEMIBOLD, "Bold": JURA_BOLD}
+    return load_font([files[weight], *META_FONT_CANDIDATES], size=size)
+
+
+def _yorha_scene() -> Image.Image:
+    """The cream ground under its dot grid. Painted once per process."""
+    key = (_yorha_paint_ground,)
+    cached = _YORHA_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    image = Image.new("RGB", (800, 480), SPECTRA6["white"])
+    _yorha_paint_ground(image)
+    _YORHA_SCENE["frame"] = (key, image)
+    return image
+
+
+def _yorha_paint_ground(image: Image.Image) -> None:
+    width, height = image.size
+    _fill_swatch_stipple(image, (0, 0, width, height), SPECTRA6["white"], SPECTRA6["yellow"], 0.25)
+    px = image.load()
+    black = SPECTRA6["black"]
+    for y in range(_YORHA_DOT_PITCH // 2, height, _YORHA_DOT_PITCH):
+        for x in range(_YORHA_DOT_PITCH // 2, width, _YORHA_DOT_PITCH):
+            px[x, y] = black
+
+
+def _yorha_paint_header(draw: ImageDraw.ImageDraw) -> None:
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    draw.rectangle(_YORHA_HEADER_RECT, fill=black)
+    font = _yorha_font(17, "SemiBold")
+    draw_tracked(draw, (30, _YORHA_HEADER_RECT[1] + 10), "INTEL  —  ARCHIVES", font, white, tracking=2)
+    small = _yorha_font(13, "Medium")
+    draw_tracked(draw, (770, _YORHA_HEADER_RECT[1] + 12), "YoRHa  ·  UNIT 2B  ·  POD 042", small, white,
+                 tracking=2, anchor_right=True)
+
+
+def _yorha_menu_rows() -> list:
+    x0, y0, x1, y1 = _YORHA_MENU_RECT
+    step = (y1 - y0) // 12
+    return [(x0, y0 + i * step, x1, y0 + i * step + step - 4) for i in range(12)]
+
+
+def _yorha_paint_menu(draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """The twelve archive rows; the hour's inverted."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    font = _yorha_font(14, "Medium")
+    for i, (x0, y0, x1, y1) in enumerate(_yorha_menu_rows()):
+        active = (i + 1) == hour
+        draw.rectangle((x0, y0, x1, y1), fill=black if active else None, outline=black, width=1)
+        draw.text((x0 + 12, y0 + 6), f"ARCHIVE {i + 1:02d}", font=font, fill=white if active else black)
+        if active:
+            draw.polygon([(x1 - 16, y0 + 8), (x1 - 8, (y0 + y1) / 2), (x1 - 16, y1 - 8)], fill=white)
+
+
+def _yorha_paint_pane(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The open entry's frame: the title over a rule, the counter."""
+    black = SPECTRA6["black"]
+    x0, y0, x1, y1 = _YORHA_PANE_RECT
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip() or "Untitled"
+    font, text = fit_text_to_width(draw, title, [JURA_BOLD, *META_FONT_BOLD_CANDIDATES], 20, x1 - x0 - 120, floor=14)
+    draw.text((x0 + 18, y0 + 14), text, font=font, fill=black)
+    counter = f"{hour:02d} / 12"
+    small = _yorha_font(13, "Medium")
+    draw.text((x1 - 18 - draw.textlength(counter, font=small), y0 + 18), counter, font=small, fill=black)
+    draw.line((x0 + 18, y0 + 46, x1 - 18, y0 + 46), fill=black, width=1)
+
+
+def _yorha_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _YORHA_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=30, font_min=16, line_height_mult=1.38, theme="yorha",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
+            x += w
+        y += line_height
+    return placed
+
+
+def _yorha_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """Black Jura; the matched phrase white, knocked out of a black box per
+    run — the selected item."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    for box in _lumon_hover_boxes(draw, placed):
+        draw.rectangle(box, fill=black)
+    for x, y, chunk, font, is_bold, w, lh in placed:
+        draw.text((x, y), chunk, font=font, fill=white if is_bold else black)
+
+
+def _yorha_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    author = (quote_row.get("author") or "").strip()
+    if not author:
+        return
+    x0 = _YORHA_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, author, [JURA_SEMIBOLD, *META_FONT_BOLD_CANDIDATES], 16,
+                                   _YORHA_QUOTE_RECT[2] - x0, floor=13)
+    draw.text((x0, _YORHA_BYLINE_Y), text, font=font, fill=SPECTRA6["black"])
+
+
+def render_yorha_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The YoRHa archives with the hour's entry open (see the section
+    comment above)."""
+    hour = _yorha_hour(time_str)
+    image = _yorha_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _yorha_paint_header(draw)
+    _yorha_paint_menu(draw, hour)
+    _yorha_paint_pane(draw, hour, quote_row)
+    _yorha_paint_quote(draw, _yorha_layout(draw, quote_row))
+    _yorha_paint_byline(draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# hitchhiker — *The Hitchhiker's Guide to the Galaxy* (BBC, 1981): the Guide
+# ---------------------------------------------------------------------------
+# The television series' Guide entries were animated by Rod Lord's team at
+# Pearce Studios, by hand, cel by cel, to look like a computer display no
+# computer of 1981 could draw: black screens, square-shouldered capitals in
+# cyan, yellow, green and white laid down a line at a time, diagrams in
+# flat colour with hairline leaders, and the cover's DON'T PANIC in large
+# friendly letters. The book is a book that reads itself out, which is the
+# nearest thing to a literary clock in the canon.
+#
+# **The page is an entry.** The Guide's name runs along the top in tracked
+# yellow **Michroma** — Vernon Adams's open Microgramma, the square-
+# shouldered monoline the series' lettering was drawn in the register of —
+# with the DON'T PANIC badge at the right; the entry's subject is the
+# quoted author (the Guide has an entry on everything), in white capitals
+# under a green ENTRY label, with a stack of flat colour bars at its left
+# in the series' leader style; the entry's text is the quote, in white
+# Michroma with the matched phrase in yellow; a SEE ALSO line gives the
+# book.
+#
+# **The hour is where you are.** Along the foot run twelve planets in the
+# series' flat-colour diagram style — discs, rings, bands, each in one of
+# the inks — and the hour's one is larger, with a leader and the label YOU
+# ARE HERE. Pinned across the minutes of an hour; the matched phrase
+# carries the minute. Composed at 800x480 and NEAREST-downsampled
+# otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_HITCHHIKER_SEED = 0x48484747         # HHGG
+_HITCHHIKER_ENTRY_Y = 60
+_HITCHHIKER_QUOTE_RECT = (40, 128, 760, 348)
+_HITCHHIKER_SEEALSO_Y = 360
+_HITCHHIKER_STRIP = (40, 400, 760, 462)
+_HITCHHIKER_PLANET_INKS = ("blue", "green", "yellow", "red", "white")
+
+
+def _hitchhiker_hour(time_str: str) -> int:
+    return _expanse_hour(time_str)
+
+
+def _hitchhiker_font(size: int):
+    return load_font([MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES], size=size)
+
+
+def _hitchhiker_paint_masthead(draw: ImageDraw.ImageDraw) -> None:
+    """The Guide's name, a rule, and the DON'T PANIC badge."""
+    yellow, black = SPECTRA6["yellow"], SPECTRA6["black"]
+    draw_tracked(draw, (40, 20), "THE HITCH HIKER'S GUIDE TO THE GALAXY", _hitchhiker_font(13), yellow, tracking=2)
+    draw.rectangle((40, 44, 760, 45), fill=yellow)
+    font = _hitchhiker_font(12)
+    label = "DON'T PANIC"
+    tw = draw.textlength(label, font=font)
+    draw.rounded_rectangle((760 - tw - 20, 14, 760, 38), radius=6, fill=yellow)
+    draw.text((760 - tw - 10, 19), label, font=font, fill=black)
+
+
+def _hitchhiker_paint_entry(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The entry's subject — the author — under an ENTRY label, with the
+    colour bars at its left."""
+    white, green = SPECTRA6["white"], SPECTRA6["green"]
+    y = _HITCHHIKER_ENTRY_Y
+    for i, ink in enumerate(("blue", "green", "yellow", "red")):
+        draw.rectangle((40, y + i * 12, 64, y + i * 12 + 8), fill=SPECTRA6[ink])
+    draw.text((78, y - 2), "ENTRY", font=_hitchhiker_font(12), fill=green)
+    subject = (quote_row.get("author") or "").strip() or "ANONYMOUS"
+    font, text = fit_text_to_width(draw, subject.upper(), [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"),
+                                                            *ORNAMENT_FONT_CANDIDATES], 26, 660, floor=16)
+    draw.text((78, y + 14), text, font=font, fill=white)
+
+
+def _hitchhiker_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _HITCHHIKER_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=26, font_min=13, line_height_mult=1.5, theme="hitchhiker",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _hitchhiker_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+
+
+def _hitchhiker_paint_seealso(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    if not title:
+        return
+    font, text = fit_text_to_width(draw, "SEE ALSO:  " + title.upper(), [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"),
+                                                                           *ORNAMENT_FONT_CANDIDATES], 13, 720,
+                                   floor=11)
+    draw.text((40, _HITCHHIKER_SEEALSO_Y), text, font=font, fill=SPECTRA6["white"])
+
+
+def _hitchhiker_planet_centres() -> list:
+    x0, y0, x1, y1 = _HITCHHIKER_STRIP
+    step = (x1 - x0) / 12
+    return [(x0 + step * (i + 0.5), y0 + 24) for i in range(12)]
+
+
+def _hitchhiker_paint_planets(draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """Twelve planets in flat colour along the foot; the hour's larger,
+    with a leader and YOU ARE HERE."""
+    black, yellow = SPECTRA6["black"], SPECTRA6["yellow"]
+    rng = random.Random(_HITCHHIKER_SEED)
+    kinds = [rng.choice(("disc", "ring", "band", "moon")) for _ in range(12)]
+    draw.rectangle((40, _HITCHHIKER_STRIP[1] - 8, 760, _HITCHHIKER_STRIP[1] - 7), fill=SPECTRA6["blue"])
+    for i, (cx, cy) in enumerate(_hitchhiker_planet_centres()):
+        active = (i + 1) == hour
+        r = 15 if active else 9
+        ink = SPECTRA6[_HITCHHIKER_PLANET_INKS[i % len(_HITCHHIKER_PLANET_INKS)]]
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=ink)
+        kind = kinds[i]
+        if kind == "ring":
+            draw.ellipse((cx - r - 6, cy - r // 3, cx + r + 6, cy + r // 3), outline=ink, width=2)
+        elif kind == "band":
+            draw.line((cx - r + 1, cy - 2, cx + r - 1, cy - 2), fill=black, width=1)
+            draw.line((cx - r + 2, cy + 3, cx + r - 2, cy + 3), fill=black, width=1)
+        elif kind == "moon":
+            draw.ellipse((cx + r + 2, cy - r, cx + r + 6, cy - r + 4), fill=ink)
+        if active:
+            # The leader runs away from the nearer edge so the label stays on the page.
+            font = _hitchhiker_font(11)
+            side = -1 if cx > 520 else 1
+            draw.line((cx, cy - r - 2, cx, cy - r - 12), fill=yellow, width=1)
+            draw.line((cx, cy - r - 12, cx + 30 * side, cy - r - 12), fill=yellow, width=1)
+            label = "YOU ARE HERE"
+            lx = cx + 36 if side > 0 else cx - 36 - draw.textlength(label, font=font)
+            draw.text((lx, cy - r - 20), label, font=font, fill=yellow)
+
+
+def render_hitchhiker_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A Guide entry on the quoted author, with the hour's planet marked
+    (see the section comment above)."""
+    hour = _hitchhiker_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    _hitchhiker_paint_masthead(draw)
+    _hitchhiker_paint_entry(draw, quote_row)
+    _hitchhiker_paint_quote(draw, _hitchhiker_layout(draw, quote_row))
+    _hitchhiker_paint_seealso(draw, quote_row)
+    _hitchhiker_paint_planets(draw, hour)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
 # cardcatalog — a library catalogue card with a date-due stamp grid
 # ---------------------------------------------------------------------------
 # The most on-brand object in the rotation: the one theme that is *about books
@@ -38050,6 +38888,14 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_hal_frame(time_str, quote_row, width, height)
     if theme == "lumon":
         return render_lumon_frame(time_str, quote_row, width, height)
+    if theme == "dsky":
+        return render_dsky_frame(time_str, quote_row, width, height)
+    if theme == "oblivion":
+        return render_oblivion_frame(time_str, quote_row, width, height)
+    if theme == "yorha":
+        return render_yorha_frame(time_str, quote_row, width, height)
+    if theme == "hitchhiker":
+        return render_hitchhiker_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

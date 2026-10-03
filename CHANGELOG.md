@@ -82,6 +82,25 @@ these entries under the new dated version heading.
   refiner's hover box, and the five bins along the foot, all in a beige
   housing with the same raster and a blue leak onto the recessed glass
   edge. No new fonts.
+- New `dsky` theme: the Apollo Guidance Computer's display and keyboard
+  on a black panel beside the quote — the lamp matrix, the keypad, and
+  the display with the hour in its PROG register and telemetry seeded
+  from the quote in true seven-segment strokes, white in a green bloom.
+  Real hardware; Jost throughout; no new fonts.
+- New `oblivion` theme: *Oblivion* — the Sky Tower's white desk in
+  hairlines and tracked capitals, the quote in Jost Light with the
+  matched phrase in red, a compass dial with the hour's bearing marked,
+  and the twelve hydro rigs along the foot with the hour's filled. No
+  new fonts.
+- New `yorha` theme: *NieR: Automata* — the YoRHa archives on a cream
+  dot-grid ground, twelve archive rows with the hour's inverted, the
+  book's title over the entry, the quote in Jura with the matched phrase
+  knocked out white of a black box as the selected item. No new fonts.
+- New `hitchhiker` theme: the 1981 BBC *Hitchhiker's Guide to the
+  Galaxy* — a Guide entry on the quoted author in white Michroma under
+  the yellow masthead and the DON'T PANIC badge, the matched phrase in
+  yellow, and twelve flat-colour planets along the foot with the hour's
+  marked YOU ARE HERE. No new fonts.
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the

@@ -117,6 +117,10 @@ CUSTOM_FRAME_THEMES = (
     "goya",
     "hal",
     "lumon",
+    "dsky",
+    "oblivion",
+    "yorha",
+    "hitchhiker",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

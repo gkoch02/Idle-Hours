@@ -286,6 +286,10 @@ def parse_args() -> argparse.Namespace:
         "goya",
         "hal",
         "lumon",
+        "dsky",
+        "oblivion",
+        "yorha",
+        "hitchhiker",
         "diags",
     ]
     parser.add_argument(
