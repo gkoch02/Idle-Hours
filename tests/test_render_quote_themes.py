@@ -7162,47 +7162,90 @@ class TestDskyFrame(_CustomFrameCase):
 
 
 class TestOblivionFrame(_CustomFrameCase):
-    """``oblivion`` — the Sky Tower's white desk: the hour's rig filled and
-    the hour's bearing marked on the dial."""
+    """``oblivion`` — the Sky Tower's light table: dithered glass, a contour
+    map with the rigs on it, a shaded drone, the hour's rig and bearing."""
 
     THEME = "oblivion"
     SATURATION = 0.5
 
-    def test_quote_is_light_black_with_a_red_phrase(self):
+    def test_quote_is_light_black_with_a_red_phrase_on_clean_white(self):
         assert rq.theme_font_candidates("oblivion", "quote_regular")[0] == (rq.EXO2_VARIABLE, "Light")
         counts = ink_counts(self._render().crop(rq._OBLIVION_QUOTE_RECT))
         assert counts.get(rq.SPECTRA6["black"], 0) > 2000
         assert counts.get(rq.SPECTRA6["red"], 0) > 300
         assert distinct_inks(self._render()) == {rq.SPECTRA6["white"], rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+        # The pool: the glass under the quote is pure white in the scene.
+        x0, y0, x1, y1 = rq._OBLIVION_QUOTE_RECT
+        pool = ink_counts(rq._oblivion_scene().crop(rq._OBLIVION_QUOTE_RECT))
+        assert pool.get(rq.SPECTRA6["black"], 0) < (x1 - x0) * (y1 - y0) * 0.03     # grain at the pool's edge only
+        assert set(ink_counts(rq._oblivion_scene().crop((x0, y0, x0 + 200, y0 + 120)))) == {rq.SPECTRA6["white"]}
 
-    def test_hour_is_the_filled_rig(self):
+    def test_glass_is_dithered_tone_and_cached(self):
+        scene = rq._oblivion_scene()
+        assert scene is rq._oblivion_scene()
+        edge = ink_counts(scene.crop((600, 20, 780, 40)))
+        area = 180 * 20
+        assert 0.02 * area < edge.get(rq.SPECTRA6["black"], 0) < 0.2 * area
+        x0, y0, x1, y1 = rq._OBLIVION_MAP_RECT
+        pane = ink_counts(scene.crop((x0 + 20, y1 - 60, x0 + 80, y1 - 20)))
+        assert pane.get(rq.SPECTRA6["black"], 0) > edge.get(rq.SPECTRA6["black"], 0) * (60 * 40) / area
+
+    def test_map_has_contours_but_the_dial_is_clear(self):
+        contours = rq._oblivion_contours((800, 480))
+        x0, y0, x1, y1 = rq._OBLIVION_MAP_RECT
+        assert contours.crop((x0, y0, x1, y1)).getbbox() is not None
+        assert contours.crop((0, 0, x0 - 1, 480)).getbbox() is None
+        cx, cy = rq._OBLIVION_DIAL_CENTRE
+        half = int(rq._OBLIVION_DIAL_RADII[1] / math.sqrt(2)) - 2      # a square inside the middle ring
+        assert contours.crop((cx - half, cy - half, cx + half, cy + half)).getbbox() is None
+
+    def test_drone_is_a_shaded_sphere_with_a_red_lens(self):
+        image = self._render()
+        cx, cy = rq._OBLIVION_DRONE_CENTRE
+        r = rq._OBLIVION_DRONE_RADIUS
+        hull = ink_counts(image.crop((cx - r, cy - r, cx + r, cy + r)))
+        assert hull.get(rq.SPECTRA6["red"], 0) > 150
+        assert hull.get(rq.SPECTRA6["white"], 0) > (2 * r) ** 2 * 0.4
+        # Lit upper-left quadrant is whiter than the lower-right terminator.
+        ul = ink_counts(image.crop((cx - r + 4, cy - r + 4, cx - 12, cy - 12))).get(rq.SPECTRA6["black"], 0)
+        lr = ink_counts(image.crop((cx + 12, cy + 12, cx + r - 4, cy + r - 4))).get(rq.SPECTRA6["black"], 0)
+        assert lr > ul
+
+    def test_hour_is_the_filled_rig_cell(self):
         rects = rq._oblivion_rig_rects()
-        assert len(rects) == 12
+        assert len(rects) == 12 and len(rq._oblivion_rig_points()) == 12
         for hour in (1, 6, 12):
             image = self._render(time_str=f"{hour:02d}:10")
-            for i, rect in enumerate(rects):
-                counts = ink_counts(image.crop(rect))
-                area = (rect[2] - rect[0]) * (rect[3] - rect[1])
-                black = counts.get(rq.SPECTRA6["black"], 0)
-                if i + 1 == hour:
-                    assert black > area * 0.6 and counts.get(rq.SPECTRA6["red"], 0) > 20, (hour, i)
-                else:
-                    assert black < area * 0.3 and rq.SPECTRA6["red"] not in counts, (hour, i)
+            for i, (x0, y0, x1, y1) in enumerate(rects):
+                cell = ink_counts(image.crop((x0 + 1, y0 + 15, x1, y1 - 4)))
+                area = (x1 - x0 - 1) * (y1 - y0 - 19)
+                black = cell.get(rq.SPECTRA6["black"], 0)
+                assert (black > area * 0.6) == (i + 1 == hour), (hour, i)
+                assert (rq.SPECTRA6["red"] in ink_counts(image.crop((x0, y0, x1 + 1, y1 + 1)))) == (i + 1 == hour)
+
+    def test_hours_rig_is_red_on_the_map(self):
+        points = rq._oblivion_rig_points()
+        for hour in (2, 8):
+            image = self._render(time_str=f"{hour:02d}:00")
+            x, y = points[hour - 1]
+            assert ink_counts(image.crop((x - 7, y - 7, x + 7, y + 7))).get(rq.SPECTRA6["red"], 0) > 80
+            ox, oy = points[(hour + 5) % 12]
+            assert rq.SPECTRA6["red"] not in ink_counts(image.crop((ox - 4, oy - 4, ox + 4, oy + 4)))
 
     def test_dial_marks_the_hours_bearing(self):
         r0 = rq._OBLIVION_DIAL_RADII[0]
         for hour in (3, 9, 12):
             image = self._render(time_str=f"{hour:02d}:00")
-            x, y = rq._oblivion_polar(r0 - 7, hour)
+            x, y = rq._oblivion_polar(r0 - 6, hour)
             assert ink_counts(image.crop((x - 8, y - 8, x + 8, y + 8))).get(rq.SPECTRA6["red"], 0) > 40, hour
-            ox, oy = rq._oblivion_polar(r0 - 7, (hour + 6) % 12 or 12)
-            assert rq.SPECTRA6["red"] not in ink_counts(image.crop((ox - 8, oy - 8, ox + 8, oy + 8))), hour
+            dx, dy = rq._oblivion_polar(sum(rq._OBLIVION_DIAL_RADII[1:]) / 2, hour)
+            assert ink_counts(image.crop((dx - 6, dy - 6, dx + 6, dy + 6))).get(rq.SPECTRA6["red"], 0) > 40, hour
 
-    def test_dial_is_hairline_rings(self):
-        cx, cy = rq._OBLIVION_DIAL_CENTRE
-        r2 = rq._OBLIVION_DIAL_RADII[2]
-        inner = ink_counts(self._render().crop((cx - r2 + 4, cy - r2 + 4, cx + r2 - 4, cy + r2 - 4)))
-        assert inner.get(rq.SPECTRA6["white"], 0) > (2 * r2 - 8) ** 2 * 0.9
+    def test_data_is_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        assert pixel_bytes(a.crop(rq._OBLIVION_WAVE_RECT)) != pixel_bytes(b.crop(rq._OBLIVION_WAVE_RECT))
+        assert pixel_bytes(a.crop(rq._oblivion_numeral_rect())) != pixel_bytes(b.crop(rq._oblivion_numeral_rect()))
 
 
 class TestYorhaFrame(_CustomFrameCase):
