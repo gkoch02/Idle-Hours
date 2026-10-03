@@ -148,6 +148,7 @@ THEME_ORDER: tuple[str, ...] = (
     "expedition",
     "witcher",
     "hades",
+    "beksinski",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1384,6 +1385,23 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
+    },
+    # Zdzisław Beksiński's fantastic period — a procession across a dead
+    # plain toward a cathedral of bone under a dust-coloured haze. A custom
+    # frame (``render_beksinski_frame``): the haze and the plain dithered
+    # to umber, ochre and bone, the hour as the number of figures in the
+    # file, black Old Standard text in the haze with the matched phrase in
+    # red. These literary-layout slots serve only the palette-only paths
+    # (see the note above ``THEMES``).
+    "beksinski": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["red"],
+        "faint": SPECTRA6["yellow"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
     },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
@@ -4000,6 +4018,16 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [SPECTRAL_MEDIUM, ALEGREYA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [SPECTRAL_SEMIBOLD, ALEGREYA_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [CAESARDRESSING_REGULAR, CINZELDECORATIVE_BOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "beksinski": {
+        # Old Standard TT — the Didone of Central and Eastern European book
+        # printing through the twentieth century, the letter a Polish novel
+        # of Beksiński's time was set in: Regular for the black body in the
+        # haze, Bold for the matched phrase in red. Shared with ``newsprint``
+        # and ``intaglio``.
+        "quote_regular": [OLDSTANDARD_REGULAR, *QUOTE_FONT_SEMIBOLD_CANDIDATES],
+        "quote_bold": [OLDSTANDARD_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [OLDSTANDARD_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
@@ -32922,6 +32950,374 @@ def render_hades_frame(time_str: str, quote_row: dict, width: int, height: int) 
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
 
+# ---------------------------------------------------------------------------
+# beksinski — Zdzisław Beksiński's fantastic period (c. 1964–1983): a
+# procession across a dead plain toward a cathedral of bone
+# ---------------------------------------------------------------------------
+# Beksiński painted in oils on hardboard, never titled a work, and said he
+# wanted to paint as if he were photographing dreams. The paintings of his
+# fantastic period share one world: a plain under a hazy, dust-coloured sky
+# with a dim sun behind it, a vast structure on the horizon grown rather than
+# built — spires of bone and sinew with pointed openings the light comes
+# through, roots or tendons running down into the ground — and figures,
+# emaciated, hooded or bandaged, walking toward it in a line. The page is
+# that painting. The quote is set in the haze, where his skies are the only
+# light, and the time is read off the plain.
+#
+# **The procession is the hour.** One figure per hour: a single walker at
+# one, a file of twelve at twelve, led from the cathedral's foot back along
+# the road, so the line grows through the day and the leader never moves.
+# Hour-only, pinned byte-identical across the minutes of an hour by
+# ``TestBeksinskiFrame``; the minute stays with the matched phrase. Nothing
+# prints a digit, nothing reads the wall clock. Each figure is a hooded
+# cloak with a ragged hem and a forward stoop, black, with a one-pixel
+# bone-white line down its edge toward the cathedral — the glow catching
+# it — which is what keeps a black figure legible on the dark plain, along
+# with the ash-pale road it walks on.
+#
+# **The sky and the plain are painted in continuous tone and dithered**, the
+# ``expedition`` / ``hades`` posture: a per-row gradient from a smoky umber
+# zenith to a bone-ochre glow at the horizon, a horizontal streak and a
+# broad smudge of seeded noise for the scraped-oil facture, the sun's glow
+# pooled behind the spires, a vignette that lets the edges fall into the
+# dark, then Floyd–Steinberg against the calibrated inks and re-labelled
+# nominal. **No green and no blue anywhere**: Beksiński's palette of this
+# period is umber, rust, ochre and bone, and with green admitted the plain's
+# umber came out of the quantiser as red-and-green confetti (see the
+# ``hades`` note on green specks). The umber is red and black with a yellow
+# fleck, the haze white and yellow with a black grain, the rust rim light
+# red. The plain is lighter at the horizon than at the foot — atmospheric
+# perspective, the one depth cue a flat dither keeps.
+#
+# **The cathedral** is an ``L`` mask: a mound, six tapering spires with
+# ragged, seeded edges and a bulge along their length so they read as bone
+# rather than as cones, pinnacles clustered round each, buttresses that run
+# from the body down into the plain as tendons, pointed-arch windows and an
+# oculus knocked through so the haze shows through the bone. It goes into
+# the continuous-tone scene before the dither as a near-black body with a
+# grain, and a **rim light** — the mask minus itself offset down-right,
+# blurred — in rust on the faces that look toward the sun. Roots drip from
+# the foundation into the plain. A low ruin stands far off on the left
+# horizon in the haze's own colour, which is what makes the plain wide.
+# After the dither, ``paint_craquelure`` crazes the plain and the bone with a
+# sparse bone-white net, the cracked ground of every one of these paintings;
+# the sky is left alone, and the byline's footprint is kept out of the net.
+#
+# **Type.** Beksiński set no type, so the face is the period's rather than
+# the painter's: **Old Standard TT** (Alexey Kryukov, OFL) — the Didone of
+# Central and Eastern European book printing through the twentieth century,
+# the letter a Polish novel of 1970 was set in — Regular for the black body
+# on the haze, Bold for the matched phrase in solid red, the panel's dried-
+# blood ink and the only saturated colour on the page. The byline is the
+# same face in bone-white on the plain at the foot. Shared with ``newsprint``
+# and ``intaglio``; the fonts are already bundled.
+#
+# The scene — sky, sun, ruin, cathedral, plain, craquelure — is quote- and
+# hour-independent and painted once per process (``_BEKSINSKI_SCENE``,
+# keyed on the painters themselves). Composed at the canonical 800x480 and
+# NEAREST-downsampled otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_BEKSINSKI_SEED = 0x5A42               # ZB
+_BEKSINSKI_HORIZON = 318
+_BEKSINSKI_QUOTE_RECT = (46, 42, 490, 266)
+_BEKSINSKI_BYLINE_XY = (46, 444)
+_BEKSINSKI_BYLINE_WIDTH = 420
+_BEKSINSKI_SUN = (584, 126, 34)        # centre x, centre y, radius
+_BEKSINSKI_TOWER = (548, 762)          # the cathedral's footprint on the horizon
+_BEKSINSKI_ROAD = ((112, 430), (496, 354))   # near end .. far end of the road
+_BEKSINSKI_RUIN_X = (74, 108, 150)     # the far ruin's spires, on the left horizon
+_BEKSINSKI_SKY_INKS = ("black", "red", "yellow", "white")
+_BEKSINSKI_GROUND_INKS = ("black", "red", "yellow", "white")
+# Haze, zenith to horizon, in the calibrated space: smoky umber to a
+# bone-ochre glow. Then the plain, hazed at its far edge and falling to
+# near-black at the foot.
+_BEKSINSKI_SKY_STOPS = (
+    (0, (112, 98, 80)), (110, (142, 128, 96)), (230, (168, 156, 112)),
+    (_BEKSINSKI_HORIZON, (184, 172, 124)),
+)
+_BEKSINSKI_GROUND_STOPS = (
+    (_BEKSINSKI_HORIZON, (132, 112, 84)), (_BEKSINSKI_HORIZON + 26, (82, 58, 42)),
+    (390, (54, 38, 32)), (480, (30, 26, 24)),
+)
+_BEKSINSKI_SUN_GLOW = (214, 206, 166)
+_BEKSINSKI_SUN_DISC = (206, 198, 154)
+_BEKSINSKI_ROAD_TONE = (104, 88, 72)
+_BEKSINSKI_RUIN_TONE = (128, 112, 88)
+_BEKSINSKI_BODY = (38, 31, 29)
+_BEKSINSKI_RIM = (128, 68, 36)
+_BEKSINSKI_ROOT = (24, 20, 20)
+# (centre x offset from the footprint's left edge, height, base width, lean)
+_BEKSINSKI_SPIRES = (
+    (22, 150, 40, -0.02), (58, 236, 52, -0.01), (100, 296, 60, 0.0),
+    (142, 254, 54, 0.015), (180, 196, 44, 0.03), (206, 128, 34, 0.05),
+)
+_BEKSINSKI_SCENE: dict = {}
+
+
+def _beksinski_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — the number of figures in the file."""
+    try:
+        hour = int(str(time_str).split(":", 1)[0])
+    except ValueError:
+        hour = 12
+    return hour % 12 or 12
+
+
+def _beksinski_spindle(rng: random.Random, cx: float, base: float, h: float, w: float,
+                       lean: float = 0.0) -> list[tuple[float, float]]:
+    """A tapering spire with ragged edges and a bulge along its length — a
+    bone, not a cone — as a polygon."""
+    left, right = [], []
+    steps = max(6, int(h) // 14)
+    for i in range(steps + 1):
+        t = i / steps
+        y = base - h * t
+        half = (w * 0.5 * (1 - t) ** 0.72 + 1.5) * (1 + 0.12 * math.sin(t * math.pi * 3.1 + cx))
+        x = cx + lean * h * t
+        left.append((x - half + rng.uniform(-2.5, 2.5), y))
+        right.append((x + half + rng.uniform(-2.5, 2.5), y))
+    return left + right[::-1]
+
+
+def _beksinski_arch(cx: float, y_bottom: float, w: float, h: float) -> list[tuple[float, float]]:
+    """A pointed arch, apex up, as a polygon."""
+    half = w / 2
+    return [(cx - half, y_bottom), (cx - half, y_bottom - h + half), (cx, y_bottom - h),
+            (cx + half, y_bottom - h + half), (cx + half, y_bottom)]
+
+
+def _beksinski_tower_mask(size: tuple[int, int]) -> Image.Image:
+    """The cathedral as an ``L`` mask: mound, spires, pinnacles, buttresses,
+    with the windows and the oculus knocked through."""
+    mask = Image.new("L", size, 0)
+    md = ImageDraw.Draw(mask)
+    rng = random.Random(_BEKSINSKI_SEED + 3)
+    base = _BEKSINSKI_HORIZON + 4
+    x0, x1 = _BEKSINSKI_TOWER
+    md.polygon([(x0 - 30, base), (x0 - 10, base - 40), (x0 + 30, base - 70), ((x0 + x1) // 2, base - 92),
+                (x1 - 40, base - 70), (x1 + 2, base - 36), (x1 + 24, base)], fill=255)
+    spires = [(x0 + dx, h, w, lean) for dx, h, w, lean in _BEKSINSKI_SPIRES]
+    for cx, h, w, lean in spires:
+        md.polygon(_beksinski_spindle(rng, cx, base, h, w, lean), fill=255)
+        for _ in range(rng.randint(2, 4)):
+            dx = rng.uniform(-w * 0.55, w * 0.55)
+            md.polygon(_beksinski_spindle(rng, cx + dx, base - h * rng.uniform(0.25, 0.55),
+                                          h * rng.uniform(0.18, 0.34), w * 0.3), fill=255)
+    # Buttresses: tendons from the body down into the plain on both flanks,
+    # thickening as they land.
+    for sx, sy, ex, ey, w in ((x0 + 10, base - 120, x0 - 56, base + 2, 9),
+                              (x0 + 40, base - 200, x0 - 22, base + 2, 7),
+                              (x1 - 20, base - 100, x1 + 44, base + 2, 8),
+                              (x1 - 60, base - 170, x1 + 16, base + 2, 6)):
+        pts = []
+        for i in range(9):
+            t = i / 8
+            pts.append((sx + (ex - sx) * t * t, sy + (ey - sy) * (1 - (1 - t) ** 2), w * (0.5 + t)))
+        for (ax, ay, aw), (bx, by, _) in zip(pts, pts[1:]):
+            md.line([(ax, ay), (bx, by)], fill=255, width=int(aw))
+    # Windows: pointed arches through each spire, the haze showing through.
+    for cx, h, w, lean in spires:
+        for k in range(max(1, int(h // 70))):
+            y = base - 30 - k * (h * 0.26)
+            ww = max(5, int(w * 0.22 * (1 - k * 0.18)))
+            x = cx + lean * (base - y) + rng.uniform(-2, 2)
+            md.polygon(_beksinski_arch(x, y, ww, int(ww * 2.6)), fill=0)
+    cx = spires[2][0]
+    oy = base - 150
+    md.ellipse((cx - 13, oy - 13, cx + 13, oy + 13), fill=0)
+    md.ellipse((cx - 5, oy - 5, cx + 5, oy + 5), fill=255)
+    return mask
+
+
+def _beksinski_paint_sky(scene: Image.Image) -> None:
+    """The haze and the plain in continuous tone: the gradients, the scraped
+    facture, the sun behind the haze, the road, the far ruin, the vignette."""
+    width, height = scene.size
+    hz = _BEKSINSKI_HORIZON
+    column = Image.new("RGB", (1, height))
+    cp = column.load()
+    for y in range(height):
+        cp[0, y] = _expedition_lerp_stops(_BEKSINSKI_SKY_STOPS if y < hz else _BEKSINSKI_GROUND_STOPS, y)
+    scene.paste(column.resize((width, height), Image.Resampling.NEAREST), (0, 0))
+    # Scraped-oil facture: a horizontal streak and a broad smudge, both
+    # centred on zero so the gradient's stops stay where they were set.
+    streak = _expedition_noise((width, height), (48, 18), _BEKSINSKI_SEED + 1).point(lambda v: v // 10)
+    smudge = _expedition_noise((width, height), (7, 5), _BEKSINSKI_SEED + 2).point(lambda v: v // 12)
+    grain = ImageChops.add(streak, smudge)
+    tint = Image.merge("RGB", (grain, grain, grain))
+    scene.paste(ImageChops.subtract(ImageChops.add(scene, tint), Image.new("RGB", scene.size, (23, 23, 23))))
+    # The sun: a pale disc behind the haze, its glow pooled round it. It sits
+    # behind the left spires, so the cathedral is seen against the light.
+    sx, sy, sr = _BEKSINSKI_SUN
+    halo = Image.new("L", scene.size, 0)
+    ImageDraw.Draw(halo).ellipse((sx - sr * 2.4, sy - sr * 2.4, sx + sr * 2.4, sy + sr * 2.4), fill=255)
+    halo = halo.filter(ImageFilter.GaussianBlur(34)).point(lambda v: int(v * 0.34))
+    scene.paste(Image.new("RGB", scene.size, _BEKSINSKI_SUN_GLOW), (0, 0), halo)
+    disc = Image.new("L", scene.size, 0)
+    ImageDraw.Draw(disc).ellipse((sx - sr, sy - sr, sx + sr, sy + sr), fill=255)
+    disc = disc.filter(ImageFilter.GaussianBlur(3)).point(lambda v: int(v * 0.7))
+    scene.paste(Image.new("RGB", scene.size, _BEKSINSKI_SUN_DISC), (0, 0), disc)
+    # A ruin far off on the left horizon, in the haze's own colour: three
+    # spires of the same construction, which is what makes the plain wide.
+    rng = random.Random(_BEKSINSKI_SEED + 9)
+    ruin = Image.new("L", scene.size, 0)
+    rd = ImageDraw.Draw(ruin)
+    for rx, h, w in zip(_BEKSINSKI_RUIN_X, (34, 58, 42), (14, 20, 16)):
+        rd.polygon(_beksinski_spindle(rng, rx, hz + 1, h, w), fill=255)
+    scene.paste(Image.new("RGB", scene.size, _BEKSINSKI_RUIN_TONE), (0, 0), ruin)
+    # The road: a pale ash track across the plain, wider as it nears.
+    (nx, ny), (fx, fy) = _BEKSINSKI_ROAD
+    road = Image.new("L", scene.size, 0)
+    ImageDraw.Draw(road).polygon([(nx - 70, ny + 16), (fx - 10, fy - 4), (fx + 30, fy - 2),
+                                  (nx + 90, ny + 30), (nx - 10, ny + 34)], fill=255)
+    road = road.filter(ImageFilter.GaussianBlur(9)).point(lambda v: int(v * 0.75))
+    scene.paste(Image.new("RGB", scene.size, _BEKSINSKI_ROAD_TONE), (0, 0), road)
+    # A vignette: the edges fall into the dark, the way the oils do.
+    vignette = Image.new("L", scene.size, 0)
+    ImageDraw.Draw(vignette).ellipse((-120, -90, width + 120, height + 90), fill=255)
+    vignette = vignette.filter(ImageFilter.GaussianBlur(70)).point(lambda v: 180 + v * 75 // 255)
+    scene.paste(Image.composite(scene, Image.new("RGB", scene.size, (0, 0, 0)), vignette))
+
+
+def _beksinski_paint_tower(scene: Image.Image, mask: Image.Image) -> None:
+    """The cathedral in continuous tone: a dark grained body on ``mask``, a
+    rust rim light on the faces toward the sun, roots into the plain."""
+    body = Image.new("RGB", scene.size, _BEKSINSKI_BODY)
+    grain = _expedition_noise(scene.size, (20, 40), _BEKSINSKI_SEED + 4).point(lambda v: v // 9)
+    scene.paste(ImageChops.add(body, Image.merge("RGB", (grain, grain, grain))), (0, 0), mask)
+    rim = ImageChops.subtract(mask, ImageChops.offset(mask, 3, 2)).filter(ImageFilter.GaussianBlur(1.2))
+    rim = ImageChops.multiply(rim, mask).point(lambda v: min(255, v * 2))
+    scene.paste(Image.new("RGB", scene.size, _BEKSINSKI_RIM), (0, 0), rim)
+    draw = ImageDraw.Draw(scene)
+    rng = random.Random(_BEKSINSKI_SEED + 5)
+    x0, x1 = _BEKSINSKI_TOWER
+    for _ in range(10):
+        x = rng.uniform(x0 - 10, x1 + 20)
+        length = rng.uniform(24, 84)
+        pts = [(x, _BEKSINSKI_HORIZON)]
+        for i in range(1, 6):
+            x += rng.uniform(-9, 9)
+            pts.append((x, _BEKSINSKI_HORIZON + length * i / 5))
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            width = max(1, int(5 - 4 * (ay - _BEKSINSKI_HORIZON) / length))
+            draw.line([(ax, ay), (bx, by)], fill=_BEKSINSKI_ROOT, width=width)
+
+
+def _beksinski_scene() -> Image.Image:
+    """The painting without its figures: haze, sun, ruin, cathedral, plain,
+    craquelure. Painted once per process."""
+    key = (_beksinski_paint_sky, _beksinski_paint_tower)
+    cached = _BEKSINSKI_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    _beksinski_paint_sky(scene)
+    tower = _beksinski_tower_mask(size)
+    _beksinski_paint_tower(scene, tower)
+    sky = _expedition_dither(scene, _BEKSINSKI_SKY_INKS)
+    ground = _expedition_dither(scene, _BEKSINSKI_GROUND_INKS)
+    # The plain and the bone are one surface for the craquelure; the sky is
+    # not crazed, and the byline's footprint is kept out of the net.
+    surface = Image.new("L", size, 0)
+    ImageDraw.Draw(surface).rectangle((0, _BEKSINSKI_HORIZON, size[0], size[1]), fill=255)
+    surface = ImageChops.lighter(surface, tower)
+    image = Image.composite(ground, sky, surface)
+    keep = Image.new("L", size, 0)
+    bx, by = _BEKSINSKI_BYLINE_XY
+    ImageDraw.Draw(keep).rectangle((bx - 4, by - 2, bx + _BEKSINSKI_BYLINE_WIDTH + 20, by + 24), fill=255)
+    paint_craquelure(image, surface, seed=_BEKSINSKI_SEED + 6, cell=(26, 16), jitter=0.4, drop=0.25,
+                     dark=SPECTRA6["black"], light=SPECTRA6["white"], light_share=0.16, keep_out=keep)
+    _BEKSINSKI_SCENE["frame"] = (key, image)
+    return image
+
+
+def _beksinski_figure(cx: float, cy: float, h: float, lean: float) -> list[tuple[float, float]]:
+    """A hooded, stooped walker standing on ``(cx, cy)``, ``h`` tall, leaning
+    ``lean`` of its height toward the cathedral, with a ragged hem."""
+    hw, sw, bw = h * 0.11, h * 0.16, h * 0.22
+    top = cy - h
+    lx = lean * h
+    hem = [(cx + bw * (-1 + 2 * i / 6), cy - (3 if i % 2 else 0) * (h / 40)) for i in range(7)]
+    return ([(cx + lx, top), (cx + lx + hw, top + h * 0.14), (cx + lx * 0.7 + sw, top + h * 0.36),
+             (cx + lx * 0.3 + sw * 0.9, top + h * 0.62), (cx + bw, cy)]
+            + hem[::-1][1:-1]
+            + [(cx - bw, cy), (cx + lx * 0.3 - sw * 0.9, top + h * 0.62), (cx + lx * 0.7 - sw, top + h * 0.36),
+               (cx + lx - hw, top + h * 0.14)])
+
+
+def _beksinski_paint_figures(image: Image.Image, hour: int) -> None:
+    """The procession: one figure per hour, led from the cathedral's foot
+    back along the road, so the file grows through the day."""
+    draw = ImageDraw.Draw(image)
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    rng = random.Random(_BEKSINSKI_SEED + 7)
+    (nx, ny), (fx, fy) = _BEKSINSKI_ROAD
+    # Every figure's jitter is drawn whether or not it walks today, so the
+    # ones that do stand where they always stand.
+    walk = [(rng.uniform(-0.012, 0.012), rng.uniform(-5, 5), rng.uniform(0.02, 0.1), rng.uniform(0.8, 1.0))
+            for _ in range(12)]
+    for k in range(hour):
+        jt, jy, lean, stoop = walk[k]
+        t = 1 - k / 12 - 0.03 + jt
+        cx = nx + (fx - nx) * t
+        cy = ny + (fy - ny) * t + jy * (1 - t)
+        h = (58 - 32 * t) * stoop
+        body = _beksinski_figure(cx, cy, h, lean)
+        draw.polygon(body, fill=black)
+        if h > 30:
+            draw.line([(cx + lean * h + h * 0.18, cy - h * 0.7), (cx + h * 0.21, cy + 2)], fill=black, width=1)
+        # The glow catches the edge toward the cathedral: a bone-white line.
+        draw.line(body[1:4], fill=white, width=1)
+
+
+def _beksinski_paint_quote(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The quote in the haze: black Old Standard, ragged right, the matched
+    phrase Bold in solid red."""
+    x0, y0, x1, y1 = _BEKSINSKI_QUOTE_RECT
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=32, font_min=15, line_height_mult=1.3, theme="beksinski",
+    )
+    y = y0
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            draw.text((x, y + (ascent - _font_ascent(font))), chunk, font=font, fill=red if is_bold else black)
+            x += int(round(draw.textlength(chunk, font=font)))
+        y += line_height
+
+
+def _beksinski_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title in bone-white on the plain at the foot."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
+    text = " — ".join(part for part in (author, title) if part)
+    if not text:
+        return
+    font, text = fit_text_to_width(draw, text, [OLDSTANDARD_REGULAR, *META_FONT_CANDIDATES], 17,
+                                   _BEKSINSKI_BYLINE_WIDTH, floor=13)
+    draw.text(_BEKSINSKI_BYLINE_XY, text, font=font, fill=SPECTRA6["white"])
+
+
+def render_beksinski_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A procession toward a cathedral of bone (see the section comment above)."""
+    hour = _beksinski_hour(time_str)
+    image = _beksinski_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _beksinski_paint_figures(image, hour)
+    _beksinski_paint_quote(draw, quote_row)
+    _beksinski_paint_byline(draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 
 # ---------------------------------------------------------------------------
 # cardcatalog — a library catalogue card with a date-due stamp grid
@@ -35878,6 +36274,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_witcher_frame(time_str, quote_row, width, height)
     if theme == "hades":
         return render_hades_frame(time_str, quote_row, width, height)
+    if theme == "beksinski":
+        return render_beksinski_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

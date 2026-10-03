@@ -309,6 +309,10 @@ THEME_SATURATION: dict[str, float] = {
     # the moon's halo, the witchfire and the medallion's bloom are all
     # falling-density stipples on black, which the gentler tier flattens.
     "hades": 0.7,
+    # Beksiński — a dust-coloured haze over two thirds of the canvas, W+Y
+    # with a black grain; the harder tier would push it to lemon, and the
+    # plain's umber is solid red and black that needs no help.
+    "beksinski": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

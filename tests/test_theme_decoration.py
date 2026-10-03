@@ -112,6 +112,7 @@ CUSTOM_FRAME_THEMES = (
     "expedition",
     "witcher",
     "hades",
+    "beksinski",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its
