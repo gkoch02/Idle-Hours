@@ -4238,11 +4238,12 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [(INTER_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "dsky": {
-        # Jost — NASA silkscreened its panels in Futura Demi, and the
-        # flight documentation of the era is Futura too. Regular body, Bold
-        # phrase in lamp yellow, Medium for every panel label.
-        "quote_regular": [(JOST_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
-        "quote_bold": [(JOST_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        # Special Elite — the quote is typed on a flight-plan card, and the
+        # flight plans were cut on a typewriter; one weight, so the matched
+        # phrase is told apart by its red ink. Jost Medium (NASA silkscreened
+        # its panels in Futura Demi) for every legend on the unit.
+        "quote_regular": [SPECIALELITE_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [SPECIALELITE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(JOST_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "oblivion": {
@@ -35194,55 +35195,71 @@ def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # dsky — the Apollo Guidance Computer's display and keyboard (1966–1972)
 # ---------------------------------------------------------------------------
 # The DSKY ("disky") was the astronauts' face of the Apollo Guidance
-# Computer: a black anodised panel with a matrix of fourteen warning lamps
-# at the left, an electroluminescent display at the right — PROG, VERB and
-# NOUN in two digits each over three five-digit signed registers — and a
-# nineteen-key keypad below. A crew spoke to it in verb-noun pairs (VERB 06
-# NOUN 62: display velocity, altitude rate and altitude) and read the answer
-# off green segments glowing out of the dark. Real hardware, so there is
-# nothing to licence and nothing to approximate; the geometry here is the
-# Block II unit's.
+# Computer: a black anodised unit set into the grey main display console,
+# with a matrix of fourteen warning lamps behind smoked glass at the left,
+# an electroluminescent display behind dark glass at the right — PROG, VERB
+# and NOUN in two digits each over three signed five-digit registers — and
+# nineteen keys below. A crew spoke to it in verb-noun pairs (VERB 06 NOUN
+# 62: display velocity, altitude rate and altitude) and read the answer off
+# green segments glowing out of the dark. Real hardware, so there is nothing
+# to licence and nothing to approximate; the geometry here is the Block II
+# unit's, and beside it on the panel is what every crew kept beside it: a
+# page of the flight plan, typed, clipped to the console.
 #
-# **The page is the panel.** Nomenclature along the top in the tracked
-# capitals NASA's panels were silkscreened in (Futura Demi; **Jost** here),
-# the quote on the left in Jost with the matched phrase Bold in yellow —
-# the lamps' colour — and the byline beneath it as a panel label. The DSKY
-# fills the right third in a hairlined bezel: the lamp matrix with every
-# lamp drawn dark and outlined (a lit lamp is an alarm, and nothing is
-# wrong), the display, the keypad in its real arrangement.
+# **The console is painted in continuous tone and dithered.** The panel is
+# the Apollo console's grey — a mid tone in the calibrated ink space with a
+# horizontal brushed grain — and the unit on it is modelled, not drawn: the
+# face plate is a raised black rim shaded under the upper-left light
+# (``_furies_shade``), the keycaps are nineteen domes with a lit edge and a
+# core shadow, the screws are shaded discs, the lamp and display windows
+# are recessed dark glass with a diagonal reflection across the display,
+# and the unit throws a soft shadow on the panel. All of that is one scene
+# Floyd–Steinberg dithered to white and black (``_expedition_dither``), so
+# the greys are error-diffused tone; the legends, the segments, the lit
+# lamp and the type go on after.
+#
+# **The flight plan is paper.** A cream card — the panel's white with a
+# yellow quarter — clipped to the console at its top edge, with its own
+# shadow in the scene beneath. The quote is typed on it in **Special
+# Elite** (the typewriter the flight plans were cut on) in black, with the
+# matched phrase in red the way the pen-and-ink updates were, under a typed
+# header and over a typed byline.
 #
 # **The hour is the program.** The AGC's major modes were numbered programs
 # (P00 idle, P11 boost monitor, P63 braking…), and the PROG register shows
 # the one running: here it is the hour, 01 to 12, pinned across the
-# minutes. VERB 06 NOUN 62 stays up and the three registers carry
-# telemetry seeded from the quote, so a different passage is a different
-# moment in the flight. The matched phrase carries the minute.
-#
-# **The segments glow.** Each digit is drawn into a mask as true
-# seven-segment strokes (``_dsky_segments``), then painted white-hot with a
-# green bloom through ``paint_neon_mask`` with ``ground`` pinned to black:
-# the panel's green is too dark to carry a 3 px stroke on its own, and a
-# white core in a green halo is what an EL segment looks like at a metre.
-# COMP ACTY is the one lamp lit, in solid green. Composed at 800x480 and
-# NEAREST-downsampled otherwise (the ``metro`` convention).
+# minutes. VERB 06 NOUN 62 stays up and the three registers carry telemetry
+# seeded from the quote, so a different passage is a different moment in the
+# flight; the matched phrase carries the minute. **The segments glow:** each
+# digit is drawn into a mask as true seven-segment strokes
+# (``_dsky_draw_glyph``), then painted white-hot with a green bloom through
+# ``paint_neon_mask`` with ``ground`` pinned to black. COMP ACTY is the one
+# lamp lit, in solid green. Composed at 800x480 and NEAREST-downsampled
+# otherwise (the ``metro`` convention).
 # ---------------------------------------------------------------------------
 _DSKY_SEED = 0x44534B59               # DSKY
-_DSKY_QUOTE_RECT = (36, 92, 452, 392)
-_DSKY_BYLINE_Y = 410
-_DSKY_BEZEL = (480, 20, 784, 462)
-_DSKY_LAMP_ORIGIN = (494, 40)
-_DSKY_LAMP_SIZE = (62, 22)
-_DSKY_LAMP_GAP = (6, 5)
+_DSKY_INKS = ("white", "black")
+_DSKY_PANEL = 0.52                    # the console grey, as a fraction of the way to black
+_DSKY_CARD_RECT = (30, 34, 452, 452)
+_DSKY_QUOTE_RECT = (54, 104, 428, 384)
+_DSKY_BYLINE_Y = 404
+_DSKY_UNIT_RECT = (476, 18, 786, 464)
+_DSKY_RIM = 10
+_DSKY_LAMP_WINDOW = (494, 40, 632, 230)
+_DSKY_LAMP_ORIGIN = (501, 48)
+_DSKY_LAMP_SIZE = (60, 21)
+_DSKY_LAMP_GAP = (5, 5)
 _DSKY_LAMPS = (("UPLINK", "TEMP"), ("NO ATT", "GIMBAL"), ("STBY", "PROG"), ("KEY REL", "RESTART"),
                ("OPR ERR", "TRACKER"), ("", "ALT"), ("", "VEL"))
-_DSKY_DISPLAY_RECT = (642, 40, 772, 226)
-_DSKY_KEYPAD_ORIGIN = (494, 248)
+_DSKY_DISPLAY_RECT = (642, 40, 770, 230)
+_DSKY_KEYPAD_ORIGIN = (497, 252)
 _DSKY_KEY = 36
 _DSKY_KEY_GAP = 5
 _DSKY_KEYS = (("VERB", "+", "7", "8", "9", "CLR", "ENTR"),
               ("NOUN", "-", "4", "5", "6", "PRO", "RSET"),
               ("", "0", "1", "2", "3", "KEY\nREL", ""))
 _DSKY_VERB, _DSKY_NOUN = "06", "62"
+_DSKY_SCENE: dict = {}
 # Seven-segment encodings: a top, b upper right, c lower right, d bottom,
 # e lower left, f upper left, g middle.
 _DSKY_SEGMENTS = {
@@ -35254,6 +35271,11 @@ _DSKY_SEGMENTS = {
 def _dsky_hour(time_str: str) -> int:
     """The 12-hour clock hour, 1..12 — the program in the PROG register."""
     return _expanse_hour(time_str)
+
+
+def _dsky_tone(t: float) -> tuple[int, int, int]:
+    """A grey ``t`` of the way from the white ink to the black ink."""
+    return tuple(round(w + (k - w) * t) for w, k in zip(_EXPEDITION_PANEL_INKS["white"], _EXPEDITION_PANEL_INKS["black"]))
 
 
 def _dsky_segments(ch: str) -> str:
@@ -35293,35 +35315,162 @@ def _dsky_label_font(size: int):
     return load_font([(JOST_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=size)
 
 
-def _dsky_paint_nomenclature(draw: ImageDraw.ImageDraw) -> None:
-    """The panel's silkscreen: the unit's name along the top and a rule."""
-    white = SPECTRA6["white"]
-    font = _dsky_label_font(13)
-    draw_tracked(draw, (36, 30), "APOLLO GUIDANCE COMPUTER", font, white, tracking=3)
-    draw_tracked(draw, (452, 30), "DSKY", font, white, tracking=3, anchor_right=True)
-    draw.rectangle((36, 52, 452, 52), fill=white)
+def _dsky_key_rects() -> list:
+    rects = []
+    ox, oy = _DSKY_KEYPAD_ORIGIN
+    k, g = _DSKY_KEY, _DSKY_KEY_GAP
+    for r, row in enumerate(_DSKY_KEYS):
+        for c, label in enumerate(row):
+            if label:
+                x, y = ox + c * (k + g), oy + r * (k + g)
+                rects.append((x, y, x + k, y + k, label))
+    return rects
 
 
-def _dsky_paint_bezel(draw: ImageDraw.ImageDraw) -> None:
-    x0, y0, x1, y1 = _DSKY_BEZEL
-    draw.rounded_rectangle((x0, y0, x1, y1), radius=8, outline=SPECTRA6["white"], width=2)
-
-
-def _dsky_paint_lamps(draw: ImageDraw.ImageDraw) -> None:
-    """The warning-lamp matrix, every lamp dark and outlined."""
-    white = SPECTRA6["white"]
-    font = _dsky_label_font(10)
+def _dsky_lamp_rects() -> list:
+    rects = []
     ox, oy = _DSKY_LAMP_ORIGIN
     w, h = _DSKY_LAMP_SIZE
     gx, gy = _DSKY_LAMP_GAP
     for r, row in enumerate(_DSKY_LAMPS):
         for c, label in enumerate(row):
-            x = ox + c * (w + gx)
-            y = oy + r * (h + gy)
-            draw.rectangle((x, y, x + w, y + h), outline=white, width=1)
-            if label:
-                tw = draw.textlength(label, font=font)
-                draw.text((x + (w - tw) / 2, y + 5), label, font=font, fill=white)
+            x, y = ox + c * (w + gx), oy + r * (h + gy)
+            rects.append((x, y, x + w, y + h, label))
+    return rects
+
+
+def _dsky_paint_console(scene: Image.Image) -> None:
+    """The grey panel with its brushed grain, the unit's shadow and the
+    card's shadow."""
+    size = scene.size
+    scene.paste(Image.new("RGB", size, _dsky_tone(_DSKY_PANEL)), (0, 0))
+    grain = _expedition_noise(size, (200, 9), _DSKY_SEED + 1).point(lambda v: v * 14 // 255)
+    scene.paste(ImageChops.subtract(ImageChops.add(scene, Image.merge("RGB", (grain, grain, grain))),
+                                    Image.new("RGB", size, (7, 7, 7))))
+    for rect, blur, depth in ((_DSKY_UNIT_RECT, 6, 0.86), (_DSKY_CARD_RECT, 4, 0.80)):
+        shadow = Image.new("L", size, 0)
+        ImageDraw.Draw(shadow).rounded_rectangle((rect[0] + 5, rect[1] + 6, rect[2] + 7, rect[3] + 8), radius=8, fill=255)
+        shadow = shadow.filter(ImageFilter.GaussianBlur(blur)).point(lambda v: int(v * 0.8))
+        scene.paste(Image.new("RGB", size, _dsky_tone(depth)), (0, 0), shadow)
+        shadow.close()
+
+
+def _dsky_paint_unit(scene: Image.Image) -> None:
+    """The unit in tone: the black face plate with a raised, lit rim, the
+    recessed windows, the reflection, the keycaps, the screws."""
+    size = scene.size
+    x0, y0, x1, y1 = _DSKY_UNIT_RECT
+    draw = ImageDraw.Draw(scene)
+    # The face plate, and the rim modelled as a ring under the upper-left light.
+    plate = Image.new("L", size, 0)
+    ImageDraw.Draw(plate).rounded_rectangle((x0, y0, x1, y1), radius=10, fill=255)
+    rim = ImageChops.subtract(plate, plate.filter(ImageFilter.MinFilter(2 * _DSKY_RIM + 1)))
+    shaded = _furies_shade(rim, _dsky_tone(0.80), _dsky_tone(0.40), _dsky_tone(0.97), offset=5, blur=3)
+    scene.paste(Image.new("RGB", size, _dsky_tone(0.90)), (0, 0), plate)
+    scene.paste(shaded, (0, 0), rim)
+    # The windows: recessed dark glass, a touch lighter at their top edge.
+    for wx0, wy0, wx1, wy1 in (_DSKY_LAMP_WINDOW, _DSKY_DISPLAY_RECT):
+        draw.rectangle((wx0, wy0, wx1, wy1), fill=_dsky_tone(0.96))
+        draw.rectangle((wx0, wy0, wx1, wy0 + 2), fill=_dsky_tone(0.70))
+        draw.rectangle((wx0, wy0, wx0 + 2, wy1), fill=_dsky_tone(0.78))
+    # The unlit lamps: smoked glass a shade above the window.
+    for lx0, ly0, lx1, ly1, label in _dsky_lamp_rects():
+        draw.rectangle((lx0, ly0, lx1, ly1), fill=_dsky_tone(0.92))
+    # A reflection across the display glass.
+    reflection = Image.new("L", size, 0)
+    dx0, dy0, dx1, dy1 = _DSKY_DISPLAY_RECT
+    ImageDraw.Draw(reflection).polygon([(dx0 + 30, dy0), (dx0 + 70, dy0), (dx1, dy1 - 70), (dx1, dy1 - 30)], fill=255)
+    reflection = reflection.filter(ImageFilter.GaussianBlur(6)).point(lambda v: int(v * 0.22))
+    scene.paste(Image.new("RGB", size, _dsky_tone(0.40)), (0, 0), reflection)
+    # The keypad: a recessed grey tray, and on it the keycaps — near-black
+    # domes with a lit upper-left edge and a core shadow, so each key reads
+    # as a dark square on the lighter tray.
+    rects = _dsky_key_rects()
+    tx0 = min(r[0] for r in rects) - 8
+    ty0 = min(r[1] for r in rects) - 8
+    tx1 = max(r[2] for r in rects) + 8
+    ty1 = max(r[3] for r in rects) + 8
+    draw.rounded_rectangle((tx0, ty0, tx1, ty1), radius=6, fill=_dsky_tone(0.62))
+    draw.rectangle((tx0, ty0, tx1, ty0 + 2), fill=_dsky_tone(0.80))
+    keys = Image.new("L", size, 0)
+    kd = ImageDraw.Draw(keys)
+    for kx0, ky0, kx1, ky1, label in rects:
+        kd.rounded_rectangle((kx0, ky0, kx1, ky1), radius=6, fill=255)
+    caps = _furies_shade(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
+    scene.paste(caps, (0, 0), keys)
+    # Screws at the plate's corners.
+    for sx, sy in ((x0 + 14, y0 + 14), (x1 - 14, y0 + 14), (x0 + 14, y1 - 14), (x1 - 14, y1 - 14)):
+        screw = Image.new("L", size, 0)
+        ImageDraw.Draw(screw).ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=255)
+        head = _furies_shade(screw, _dsky_tone(0.55), _dsky_tone(0.20), _dsky_tone(0.92), offset=3, blur=2)
+        scene.paste(head, (0, 0), screw)
+        screw.close()
+    for m in (plate, rim, shaded, reflection, keys, caps):
+        m.close()
+
+
+def _dsky_scene() -> Image.Image:
+    """The console, the unit and the card — everything the hour and the
+    quote do not touch — dithered. Painted once per process."""
+    key = (_dsky_paint_console, _dsky_paint_unit, _dsky_paint_card)
+    cached = _DSKY_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["white"])
+    _dsky_paint_console(scene)
+    _dsky_paint_unit(scene)
+    image = _expedition_dither(scene, _DSKY_INKS)
+    _dsky_paint_card(image)
+    _DSKY_SCENE["frame"] = (key, image)
+    return image
+
+
+def _dsky_paint_card(image: Image.Image) -> None:
+    """The flight-plan card after the dither: cream paper, a hairline edge,
+    the clip at its head, the typed header and rule."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _DSKY_CARD_RECT
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    _fill_swatch_stipple(image, (x0, y0, x1, y1), white, SPECTRA6["yellow"], 0.25)
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+    # The clip: a bulldog clip's two plates and its loop, in solid inks.
+    cx = (x0 + x1) // 2
+    draw.rounded_rectangle((cx - 34, y0 - 10, cx + 34, y0 + 14), radius=4, fill=black)
+    draw.rectangle((cx - 30, y0 - 6, cx + 30, y0 + 10), outline=white, width=1)
+    draw.arc((cx - 16, y0 - 22, cx + 16, y0 + 2), 180, 360, fill=black, width=4)
+    font = load_font([SPECIALELITE_REGULAR, *META_FONT_CANDIDATES], size=13)
+    draw.text((x0 + 24, y0 + 30), "APOLLO FLIGHT PLAN      CSM/LM TIMELINE", font=font, fill=black)
+    draw.text((x1 - 24 - draw.textlength("PAGE 3-61", font=font), y0 + 30), "PAGE 3-61", font=font, fill=black)
+    draw.line((x0 + 24, y0 + 52, x1 - 24, y0 + 52), fill=black, width=1)
+    for hx in range(x0 + 10, x1 - 10, 2):
+        draw.point((hx, y0 + 18), fill=black)
+
+
+def _dsky_paint_legends(draw: ImageDraw.ImageDraw) -> None:
+    """After the dither: the lamp words, the key caps' legends, the window
+    labels and the nameplate."""
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    font = _dsky_label_font(10)
+    for lx0, ly0, lx1, ly1, label in _dsky_lamp_rects():
+        draw.rectangle((lx0, ly0, lx1, ly1), outline=black, width=1)
+        if label:
+            tw = draw.textlength(label, font=font)
+            draw.text((lx0 + (lx1 - lx0 - tw) / 2, ly0 + 5), label, font=font, fill=white,
+                      stroke_width=1, stroke_fill=black)
+    for kx0, ky0, kx1, ky1, label in _dsky_key_rects():
+        lines = label.split("\n")
+        ty = ky0 + (_DSKY_KEY - 12 * len(lines)) / 2
+        for line in lines:
+            tw = draw.textlength(line, font=font)
+            draw.text((kx0 + (_DSKY_KEY - tw) / 2, ty), line, font=font, fill=white, stroke_width=1, stroke_fill=black)
+            ty += 12
+    small = _dsky_label_font(9)
+    ux0, uy0, ux1, uy1 = _DSKY_UNIT_RECT
+    label = "DSKY  ·  BLOCK II"
+    lx = (ux0 + ux1) / 2 - tracked_width(draw, label, small, tracking=2) / 2
+    draw.rectangle((lx - 6, uy1 - 24, lx + tracked_width(draw, label, small, tracking=2) + 6, uy1 - 10), fill=black)
+    draw_tracked(draw, (lx, uy1 - 22), label, small, white, tracking=2)
 
 
 def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
@@ -35330,9 +35479,7 @@ def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
     draw = ImageDraw.Draw(image)
     x0, y0, x1, y1 = _DSKY_DISPLAY_RECT
     white, green, black = SPECTRA6["white"], SPECTRA6["green"], SPECTRA6["black"]
-    draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
     font = _dsky_label_font(10)
-    # COMP ACTY: the computer-activity lamp, lit.
     draw.rectangle((x0 + 8, y0 + 8, x0 + 40, y0 + 36), fill=green)
     draw.text((x0 + 10, y0 + 11), "COMP", font=font, fill=black)
     draw.text((x0 + 10, y0 + 22), "ACTY", font=font, fill=black)
@@ -35359,33 +35506,12 @@ def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
     mask.close()
 
 
-def _dsky_paint_keypad(draw: ImageDraw.ImageDraw) -> None:
-    """The nineteen keys in the Block II arrangement."""
-    white = SPECTRA6["white"]
-    font = _dsky_label_font(10)
-    ox, oy = _DSKY_KEYPAD_ORIGIN
-    k, g = _DSKY_KEY, _DSKY_KEY_GAP
-    for r, row in enumerate(_DSKY_KEYS):
-        for c, label in enumerate(row):
-            if not label:
-                continue
-            x = ox + c * (k + g)
-            y = oy + r * (k + g)
-            draw.rounded_rectangle((x, y, x + k, y + k), radius=4, outline=white, width=1)
-            lines = label.split("\n")
-            ty = y + (k - 12 * len(lines)) / 2
-            for line in lines:
-                tw = draw.textlength(line, font=font)
-                draw.text((x + (k - tw) / 2, ty), line, font=font, fill=white)
-                ty += 12
-
-
 def _dsky_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
     x0, y0, x1, y1 = _DSKY_QUOTE_RECT
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     regular, bold, wrapped, line_height, _ = fit_quote(
         draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=34, font_min=16, line_height_mult=1.3, theme="dsky",
+        x1 - x0, y1 - y0, font_max=28, font_min=15, line_height_mult=1.42, theme="dsky",
     )
     placed = []
     y = y0
@@ -35402,37 +35528,36 @@ def _dsky_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
 
 
 def _dsky_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
-    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    """Typed on the card: black, with the matched phrase in red ink."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
     for x, y, chunk, font, is_bold in placed:
-        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+        draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
 
 
 def _dsky_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """Author and title as a panel label under the quote."""
+    """Author and title typed under the quote."""
     author = (quote_row.get("author") or "").strip()
     title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
     parts = [p.upper() for p in (author, title) if p]
     if not parts:
         return
     x0 = _DSKY_QUOTE_RECT[0]
-    font, text = fit_text_to_width(draw, "   ·   ".join(parts), [(JOST_VARIABLE, "Medium"), *META_FONT_CANDIDATES],
-                                   16, _DSKY_QUOTE_RECT[2] - x0, floor=13, tracking=2)
-    draw_tracked(draw, (x0, _DSKY_BYLINE_Y), text, font, SPECTRA6["white"], tracking=2)
+    font, text = fit_text_to_width(draw, "  /  ".join(parts), [SPECIALELITE_REGULAR, *META_FONT_CANDIDATES],
+                                   14, _DSKY_QUOTE_RECT[2] - x0, floor=12)
+    draw.text((x0, _DSKY_BYLINE_Y), text, font=font, fill=SPECTRA6["black"])
 
 
 def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The Apollo DSKY with the hour in its PROG register (see the section
-    comment above)."""
+    """The Apollo DSKY on its console, the hour in its PROG register, the
+    quote typed on the flight plan beside it (see the section comment above)."""
     hour = _dsky_hour(time_str)
-    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    image = _dsky_scene().copy()
     draw = ImageDraw.Draw(image)
-    _dsky_paint_nomenclature(draw)
+    _dsky_paint_legends(draw)
+    _dsky_paint_display(image, hour, quote_row)
+    draw = ImageDraw.Draw(image)
     _dsky_paint_quote(draw, _dsky_layout(draw, quote_row))
     _dsky_paint_byline(draw, quote_row)
-    _dsky_paint_bezel(draw)
-    _dsky_paint_lamps(draw)
-    _dsky_paint_keypad(draw)
-    _dsky_paint_display(image, hour, quote_row)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)

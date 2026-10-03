@@ -7087,7 +7087,8 @@ class _CustomFrameCase:
             first = rq.theme_font_candidates(self.THEME, role)[0]
             path = first[0] if isinstance(first, tuple) else first
             assert pathlib.Path(path).exists(), path
-            assert (pathlib.Path(path).parent / "OFL.txt").exists()
+            licence = pathlib.Path(path).parent
+            assert (licence / "OFL.txt").exists() or (licence / "LICENSE.txt").exists()
 
     def test_on_palette_and_deterministic(self):
         image = self._render()
@@ -7108,8 +7109,8 @@ class _CustomFrameCase:
 
 
 class TestDskyFrame(_CustomFrameCase):
-    """``dsky`` — the Apollo Guidance Computer's display and keyboard: the
-    hour in the PROG register, the registers seeded from the quote."""
+    """``dsky`` — the Apollo DSKY on its console: the modelled unit dithered
+    to the inks, the hour in PROG, the quote typed on the flight-plan card."""
 
     THEME = "dsky"
 
@@ -7127,10 +7128,37 @@ class TestDskyFrame(_CustomFrameCase):
         assert all(r[0] in "+-" and len(r) == 6 and r[1:].isdigit() for r in regs)
         assert regs != rq._dsky_registers(make_row(**dict(self.ROW, source_id="1727", line_number=9)))
 
-    def test_display_glows_white_in_green_on_black(self):
+    def test_console_is_dithered_grey_and_cached(self):
+        scene = rq._dsky_scene()
+        assert scene is rq._dsky_scene()
+        panel = ink_counts(scene.crop((460, 100, 474, 400)))
+        area = 14 * 300
+        assert 0.3 * area < panel.get(rq.SPECTRA6["black"], 0) < 0.75 * area
+        # The unit's shadow falls on the panel below and right of it.
+        below = ink_counts(scene.crop((500, 466, 780, 476))).get(rq.SPECTRA6["black"], 0) / (280 * 10)
+        clear = ink_counts(scene.crop((460, 2, 780, 12))).get(rq.SPECTRA6["black"], 0) / (320 * 10)
+        assert below > clear
+
+    def test_card_is_cream_paper_with_a_clip(self):
+        image = self._render()
+        x0, y0, x1, y1 = rq._DSKY_CARD_RECT
+        paper = ink_counts(image.crop((x0 + 20, y1 - 40, x1 - 20, y1 - 10)))
+        assert set(paper) <= {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"], rq.SPECTRA6["black"]}
+        assert abs(paper[rq.SPECTRA6["yellow"]] / sum(paper.values()) - 0.25) < 0.02
+        cx = (x0 + x1) // 2
+        clip = ink_counts(image.crop((cx - 30, y0 - 8, cx + 30, y0 + 12)))
+        assert clip.get(rq.SPECTRA6["black"], 0) > 600
+
+    def test_quote_is_typed_black_with_a_red_phrase(self):
+        assert rq.theme_font_candidates("dsky", "quote_regular")[0] == rq.SPECIALELITE_REGULAR
+        counts = ink_counts(self._render().crop(rq._DSKY_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["red"], 0) > 300
+
+    def test_display_glows_white_in_green_on_dark_glass(self):
         image = self._render()
         counts = ink_counts(image.crop(rq._DSKY_DISPLAY_RECT))
-        assert counts.get(rq.SPECTRA6["white"], 0) > 1500       # the segments and the frame
+        assert counts.get(rq.SPECTRA6["white"], 0) > 1200       # the segments
         assert counts.get(rq.SPECTRA6["green"], 0) > 1500       # the bloom and COMP ACTY
         assert counts.get(rq.SPECTRA6["black"], 0) > 8000
         assert rq.SPECTRA6["yellow"] not in counts and rq.SPECTRA6["red"] not in counts
@@ -7140,25 +7168,24 @@ class TestDskyFrame(_CustomFrameCase):
         prog = (x1 - 8 - 2 * 16 - 4, y0 + 18, x1 - 4, y0 + 44)
         a, b = self._render(time_str="02:30"), self._render(time_str="11:30")
         assert pixel_bytes(a.crop(prog)) != pixel_bytes(b.crop(prog))
-        # VERB / NOUN never change: the same display row across hours.
         verb = (x0 + 4, y0 + 50, x0 + 44, y0 + 88)
         assert pixel_bytes(a.crop(verb)) == pixel_bytes(b.crop(verb))
 
-    def test_lamps_are_dark_and_keypad_outlined(self):
+    def test_keys_are_modelled_domes_with_legends(self):
         image = self._render()
-        ox, oy = rq._DSKY_LAMP_ORIGIN
-        w, h = rq._DSKY_LAMP_SIZE
-        lamp = ink_counts(image.crop((ox + 2, oy + 2, ox + w - 2, oy + h - 2)))
-        assert lamp.get(rq.SPECTRA6["black"], 0) > (w - 4) * (h - 4) * 0.7
-        assert set(lamp) <= {rq.SPECTRA6["black"], rq.SPECTRA6["white"]}
-        kx, ky = rq._DSKY_KEYPAD_ORIGIN
-        key = ink_counts(image.crop((kx, ky, kx + rq._DSKY_KEY + 1, ky + rq._DSKY_KEY + 1)))
-        assert 100 < key.get(rq.SPECTRA6["white"], 0) < 600
-
-    def test_quote_is_white_with_a_yellow_phrase(self):
-        counts = ink_counts(self._render().crop(rq._DSKY_QUOTE_RECT))
-        assert counts.get(rq.SPECTRA6["white"], 0) > 3000
-        assert counts.get(rq.SPECTRA6["yellow"], 0) > 300
+        kx0, ky0, kx1, ky1, label = rq._dsky_key_rects()[2]        # "7"
+        assert label == "7"
+        cap = ink_counts(image.crop((kx0, ky0, kx1 + 1, ky1 + 1)))
+        assert cap.get(rq.SPECTRA6["white"], 0) > 60                # the lit edge and the legend
+        assert cap.get(rq.SPECTRA6["black"], 0) > (rq._DSKY_KEY ** 2) * 0.6
+        # The tray between the keys is a lighter grey than the caps.
+        gap = ink_counts(image.crop((kx1 + 1, ky0 + 6, kx1 + rq._DSKY_KEY_GAP, ky1 - 6)))
+        assert gap.get(rq.SPECTRA6["white"], 0) / max(1, sum(gap.values())) > 0.25
+        # The lit edge: the cap's upper-left corner is whiter than its lower-right.
+        ul = ink_counts(image.crop((kx0 + 1, ky0 + 1, kx0 + 9, ky0 + 9))).get(rq.SPECTRA6["white"], 0)
+        lr = ink_counts(image.crop((kx1 - 9, ky1 - 9, kx1 - 1, ky1 - 1))).get(rq.SPECTRA6["white"], 0)
+        assert ul > lr
+        assert len(rq._dsky_key_rects()) == 19 and len(rq._dsky_lamp_rects()) == 14
 
 
 class TestOblivionFrame(_CustomFrameCase):
