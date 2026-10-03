@@ -39,6 +39,13 @@ these entries under the new dated version heading.
   Caesar Dressing, white Spectral text with the matched phrase in gold, the
   boon's rarity rolled from the quote. Caesar Dressing, Spectral SC and
   Hammersmith One are new bundled faces (OFL, from Google Fonts).
+- New `goya` theme: Francisco de Goya's *Pinturas negras* — *El Perro*: the
+  ochre void painted in continuous tone and dithered to black, yellow, red
+  and white over a crazed plaster, the dark slope at the foot with the dog's
+  head turned up toward the matched phrase, the quote in black Libre
+  Baskerville with the phrase in red, and the author and title on a Prado
+  gallery label with an inventory number from the Gutenberg id. Libre
+  Baskerville is a new bundled face (OFL, from Google Fonts).
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the

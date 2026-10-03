@@ -309,6 +309,11 @@ THEME_SATURATION: dict[str, float] = {
     # the moon's halo, the witchfire and the medallion's bloom are all
     # falling-density stipples on black, which the gentler tier flattens.
     "hades": 0.7,
+    # Goya's Black Paintings — a dithered ochre-and-umber void over a black
+    # slope, every tone a yellow / black / red stipple. Coloured-ground tier,
+    # the ``pulp`` / ``comic`` argument: at the gentler push the stipple's
+    # yellow greys toward mustard and the void stops reading as ochre.
+    "goya": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

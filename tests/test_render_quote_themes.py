@@ -1876,7 +1876,7 @@ class TestFixedGeometryFramesDownscale:
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
                              "plaque", "daguerreotype", "autochrome", "photo", "tarot", "vinyl",
                              "control", "observation", "trisolaris", "biomech", "codex",
-                             "culture", "orbital", "furies", "bosch", "saros")
+                             "culture", "orbital", "furies", "bosch", "saros", "goya")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -6313,6 +6313,171 @@ class TestHadesFrame:
         a, b = self._render(common), self._render(legendary)
         assert pixel_bytes(a.crop(foot)) != pixel_bytes(b.crop(foot))
         assert ink_counts(b.crop(foot)).get(rq.SPECTRA6["yellow"], 0) > ink_counts(a.crop(foot)).get(rq.SPECTRA6["yellow"], 0)
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestGoyaFrame:
+    """``goya`` — Goya's *Pinturas negras*: *El Perro*, the quote written into
+    the ochre void and the dog looking up at the time.
+
+    The void, slope and craze are cached once per process; the dog's pitch is
+    taken from the matched phrase's position; the label is the Prado's.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+    DOG_BOX = (150, 180, 380, 372)
+    NO_BLUE_GREEN = {rq.SPECTRA6["black"], rq.SPECTRA6["red"], rq.SPECTRA6["yellow"], rq.SPECTRA6["white"]}
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestGoyaFrame.ROW)),
+                         *size, mode="production", theme="goya")
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert "goya" in rq.THEMES
+        assert "goya" in rq.THEME_ORDER
+        assert "goya" not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION["goya"] == 0.7
+        assert rq.theme_font_candidates("goya", "quote_regular")[0] == (rq.LIBREBASKERVILLE_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("goya", "quote_bold")[0] == (rq.LIBREBASKERVILLE_VARIABLE, "Bold")
+        for path in (rq.LIBREBASKERVILLE_VARIABLE, rq.LIBREBASKERVILLE_ITALIC_VARIABLE):
+            assert pathlib.Path(path).exists(), path
+        assert (pathlib.Path(rq.LIBREBASKERVILLE_VARIABLE).parent / "OFL.txt").exists()
+
+    def test_bold_instance_is_pinned_off_the_axis_default(self):
+        """The roman's default instance is Regular; the Bold the matched
+        phrase is set in must be a different drawing."""
+        from PIL import ImageFont
+        pinned = rq.load_font([(rq.LIBREBASKERVILLE_VARIABLE, "Bold")], size=40)
+        bare = ImageFont.truetype(rq.LIBREBASKERVILLE_VARIABLE, 40)
+        glyph = "Hamburgefonts"
+
+        def ink(font):
+            img = Image.new("L", (400, 60), 0)
+            ImageDraw.Draw(img).text((0, 0), glyph, font=font, fill=255)
+            return sum(img.point(lambda v: 1 if v > 127 else 0).histogram()[1:])
+
+        assert ink(pinned) > ink(bare)
+
+    def test_a_painting_carries_no_clock(self):
+        first = pixel_bytes(self._render(time_str="14:30"))
+        for time_str in ("00:00", "03:05", "09:59", "23:45", "bogus"):
+            assert pixel_bytes(self._render(time_str=time_str)) == first
+
+    def test_on_palette_deterministic_and_earth_only(self):
+        """Goya's earths in four inks: never blue, never green."""
+        image = self._render()
+        assert distinct_inks(image) == self.NO_BLUE_GREEN
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_scene_is_painted_once_per_process(self):
+        assert rq._goya_scene() is rq._goya_scene()
+
+    def test_void_is_a_dithered_ochre_over_a_black_slope(self):
+        scene = rq._goya_scene()
+        void = ink_counts(scene.crop((0, 120, 800, 300)))
+        area = 800 * 180
+        assert void.get(rq.SPECTRA6["yellow"], 0) > area * 0.3
+        assert void.get(rq.SPECTRA6["black"], 0) > area * 0.12
+        assert void.get(rq.SPECTRA6["red"], 0) > area * 0.03
+        assert void.get(rq.SPECTRA6["white"], 0) > area * 0.03
+        assert set(void) <= self.NO_BLUE_GREEN
+        # The slope is a warm black: mostly black ink with a red-and-yellow
+        # fleck that makes it umber rather than ink, never a flat fill.
+        slope = ink_counts(scene.crop((600, 410, 800, 480)))
+        assert slope.get(rq.SPECTRA6["black"], 0) > 200 * 70 * 0.75
+        assert slope.get(rq.SPECTRA6["red"], 0) > 200 * 70 * 0.05
+        # The slope rises to the right: black at the top of the slope's
+        # left end, and black already at a row on the right that is still
+        # void on the left.
+        left = ink_counts(scene.crop((0, 392, 120, 480)))
+        right = ink_counts(scene.crop((680, 330, 800, 350)))
+        assert left.get(rq.SPECTRA6["black"], 0) > 120 * 88 * 0.75
+        assert right.get(rq.SPECTRA6["black"], 0) > 120 * 20 * 0.6
+        assert ink_counts(scene.crop((0, 330, 120, 350))).get(rq.SPECTRA6["black"], 0) < 120 * 20 * 0.5
+
+    def test_craze_is_part_of_the_cached_scene(self):
+        """The net goes on the cached scene, so the quote is never cracked
+        through: the cache key names ``paint_craquelure``."""
+        rq._goya_scene()
+        assert rq.paint_craquelure in rq._GOYA_SCENE["frame"][0]
+
+    def test_gaze_follows_the_matched_phrase(self):
+        def placed(x, y, bold=True):
+            return [(x, y, "two", None, bold, 40, 40)]
+        px, py = rq._GOYA_DOG_PIVOT
+        high = rq._goya_gaze(placed(px + 300, 60))
+        low = rq._goya_gaze(placed(px + 300, 260))
+        assert rq._GOYA_GAZE_MIN <= low < high <= rq._GOYA_GAZE_MAX
+        assert rq._goya_gaze(placed(px + 500, py)) == rq._GOYA_GAZE_MIN          # level: clamped up
+        assert rq._goya_gaze(placed(px - 100, 60)) == rq._GOYA_GAZE_MAX          # behind: the full lift
+        assert rq._goya_gaze(placed(px + 300, 60, bold=False)) == rq._GOYA_GAZE_DEFAULT
+        assert rq._goya_gaze([]) == rq._GOYA_GAZE_DEFAULT
+
+    def test_dog_turns_with_the_quote(self):
+        """Two quotes whose phrases land in different places get two dogs;
+        the void around the dog is the same scene."""
+        early = dict(self.ROW, display_quote="Half past two, and the long afternoon slipped quietly away from "
+                                             "them all while the clock went on striking in the hall below.")
+        late = dict(self.ROW, display_quote="The long afternoon slipped quietly away from them all while the "
+                                            "clock went on striking in the hall below, until half past two.")
+        a, b = self._render(early), self._render(late)
+        assert pixel_bytes(a.crop(self.DOG_BOX)) != pixel_bytes(b.crop(self.DOG_BOX))
+        assert pixel_bytes(a.crop((420, 300, 800, 370))) == pixel_bytes(b.crop((420, 300, 800, 370)))
+
+    def test_dog_has_an_eye_and_stands_above_the_slope(self):
+        image = self._render()
+        dog = ink_counts(image.crop(self.DOG_BOX))
+        assert dog.get(rq.SPECTRA6["white"], 0) > 0                # the catchlight
+        assert dog.get(rq.SPECTRA6["red"], 0) > 300                # umber is a red-flecked stipple
+        assert dog.get(rq.SPECTRA6["black"], 0) > 2000
+        # Without the dog the same box is the void over the slope's edge.
+        scene = ink_counts(rq._goya_scene().crop(self.DOG_BOX))
+        assert dog.get(rq.SPECTRA6["yellow"], 0) < scene.get(rq.SPECTRA6["yellow"], 0)
+
+    def test_quote_is_black_with_a_red_phrase(self):
+        counts = ink_counts(self._render().crop(rq._GOYA_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 3000
+        assert counts.get(rq.SPECTRA6["red"], 0) > 400
+        plain = dict(self.ROW, matched_text="")
+        scene = ink_counts(rq._goya_scene().crop(rq._GOYA_QUOTE_RECT))
+        assert ink_counts(self._render(plain).crop(rq._GOYA_QUOTE_RECT)).get(rq.SPECTRA6["red"], 0) \
+            <= scene.get(rq.SPECTRA6["red"], 0)
+
+    def test_label_is_the_prados(self):
+        a = self._render()
+        box = rq._GOYA_LABEL_RECT
+        counts = ink_counts(a.crop(box))
+        area = (box[2] - box[0]) * (box[3] - box[1])
+        assert counts.get(rq.SPECTRA6["white"], 0) > area * 0.6
+        assert counts.get(rq.SPECTRA6["black"], 0) > 800
+        assert set(counts) == {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}
+        b = self._render(dict(self.ROW, author="Homer", title="The Odyssey", source_id="1727"))
+        assert pixel_bytes(a.crop(box)) != pixel_bytes(b.crop(box))
+        c = self._render(dict(self.ROW, author="", title=""))
+        assert ink_counts(c.crop(box)).get(rq.SPECTRA6["black"], 0) > 400    # Anónimo and the medium lines
+
+    def test_inventory_number_is_the_prados_form(self):
+        assert rq._goya_inventory({"source_id": "141"}) == "P000141"
+        assert rq._goya_inventory({"source_id": 1727}) == "P001727"
+        assert rq._goya_inventory({"source_id": "pg2701"}) == "P002701"
+        assert rq._goya_inventory({"source_id": "12345678"}) == "P345678"
+        assert rq._goya_inventory({}) == "P000767"                # El Perro's own number
+        assert rq._goya_inventory({"source_id": "local"}) == "P000767"
 
     def test_downscales_the_canonical_frame(self):
         small = self._render(size=(320, 192))
