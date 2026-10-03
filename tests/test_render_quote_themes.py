@@ -1876,7 +1876,8 @@ class TestFixedGeometryFramesDownscale:
     FIXED_GEOMETRY_FRAMES = ("vhs", "cardcatalog", "metro", "bakelite", "intaglio", "nocturne",
                              "plaque", "daguerreotype", "autochrome", "photo", "tarot", "vinyl",
                              "control", "observation", "trisolaris", "biomech", "codex",
-                             "culture", "orbital", "furies", "bosch", "saros", "goya")
+                             "culture", "orbital", "furies", "bosch", "saros", "goya",
+                             "hal", "lumon", "dsky", "oblivion", "yorha", "hitchhiker")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -6783,3 +6784,671 @@ class TestGoyaFrame:
         big = self._render()
         assert small.size == (320, 192)
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestHalFrame:
+    """``hal`` — *2001: A Space Odyssey*: the Discovery's main monitor with
+    the hour's subsystem up, HAL's eye beside it.
+
+    Solid flats only (the one stipple is the two blooms), the hour is which
+    mnemonic is on the header and which foot tile is white, and nothing
+    reads the wall clock.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestHalFrame.ROW)),
+                         *size, mode="production", theme="hal")
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert "hal" in rq.THEMES
+        assert "hal" in rq.THEME_ORDER
+        assert "hal" not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION["hal"] == 0.7
+        assert rq.theme_font_candidates("hal", "quote_regular")[0] == (rq.JOST_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("hal", "quote_bold")[0] == (rq.JOST_VARIABLE, "Bold")
+        assert rq.theme_font_candidates("hal", "ornament")[0] == rq.MICHROMA_REGULAR
+        for path in (rq.JOST_VARIABLE, rq.MICHROMA_REGULAR):
+            assert pathlib.Path(path).exists(), path
+            assert (pathlib.Path(path).parent / "OFL.txt").exists()
+
+    def test_hour_parsing(self):
+        assert rq._hal_hour("00:10") == 12
+        assert rq._hal_hour("12:00") == 12
+        assert rq._hal_hour("13:45") == 1
+        assert rq._hal_hour("08:55") == 8
+        assert rq._hal_hour("bogus") == 12
+        assert len(rq._HAL_MNEMONICS) == 12 and len(set(rq._HAL_MNEMONICS)) == 12
+        assert rq._hal_mnemonic(1) == "COM" and rq._hal_mnemonic(12) == "NUC"
+
+    def test_on_palette_and_deterministic(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_monitor_is_a_blue_flat_under_scanlines_with_white_type(self):
+        image = self._render()
+        counts = ink_counts(image.crop(rq._HAL_MONITOR_RECT))
+        area = (rq._HAL_MONITOR_RECT[2] - rq._HAL_MONITOR_RECT[0]) * (rq._HAL_MONITOR_RECT[3] - rq._HAL_MONITOR_RECT[1])
+        assert counts.get(rq.SPECTRA6["blue"], 0) > area * 0.55
+        assert counts.get(rq.SPECTRA6["white"], 0) > 3000
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 300           # the matched phrase
+        assert rq.SPECTRA6["red"] not in counts and rq.SPECTRA6["green"] not in counts
+        # The raster: one row in four is black where the field was blue, and
+        # the rows between are untouched, in an empty patch of the screen.
+        x0, y0 = rq._HAL_MONITOR_RECT[0] + 300, rq._HAL_MONITOR_RECT[1] + 240
+        patch = image.crop((x0, y0 - (y0 - rq._HAL_MONITOR_RECT[1]) % rq._HAL_SCANLINE_PERIOD, x0 + 40, y0 + 40))
+        rows = [ink_counts(patch.crop((0, r, 40, r + 1))) for r in range(rq._HAL_SCANLINE_PERIOD)]
+        assert rows[0] == {rq.SPECTRA6["black"]: 40}
+        assert all(row == {rq.SPECTRA6["blue"]: 40} for row in rows[1:])
+        # The type is never cut by the raster: the phrase's yellow count is the
+        # same with and without the scanline pass.
+        assert counts.get(rq.SPECTRA6["yellow"], 0) == ink_counts(
+            self._render().crop(rq._HAL_MONITOR_RECT)).get(rq.SPECTRA6["yellow"], 0)
+
+    def test_screen_light_leaks_onto_the_housing(self):
+        """Blue in the black band between the glass and the housing hairline."""
+        image = self._render()
+        band = image.crop((rq._HAL_MONITOR_RECT[0] + 60, rq._HAL_HOUSING_RECT[1] + 1,
+                           rq._HAL_MONITOR_RECT[2] - 60, rq._HAL_MONITOR_RECT[1]))
+        counts = ink_counts(band)
+        assert 0 < counts.get(rq.SPECTRA6["blue"], 0) < band.size[0] * band.size[1] * 0.6
+        assert counts.get(rq.SPECTRA6["black"], 0) > 0
+
+    def test_ship_is_drawn_in_wireframe(self):
+        counts = ink_counts(self._render().crop(rq._HAL_SHIP_RECT))
+        area = (rq._HAL_SHIP_RECT[2] - rq._HAL_SHIP_RECT[0]) * (rq._HAL_SHIP_RECT[3] - rq._HAL_SHIP_RECT[1])
+        assert counts.get(rq.SPECTRA6["black"], 0) > area * 0.8
+        assert 300 < counts.get(rq.SPECTRA6["white"], 0) < area * 0.2
+
+    def test_hour_is_which_tile_is_white(self):
+        tiles = rq._hal_tile_rects()
+        assert len(tiles) == 12
+        for hour in (1, 7, 12):
+            image = self._render(time_str=f"{hour:02d}:20")
+            for i, rect in enumerate(tiles):
+                counts = ink_counts(image.crop(rect))
+                area = (rect[2] - rect[0]) * (rect[3] - rect[1])
+                white = counts.get(rq.SPECTRA6["white"], 0)
+                if i + 1 == hour:
+                    assert white > area * 0.6, (hour, i)
+                else:
+                    assert white < area * 0.25, (hour, i)          # the label and bars only
+                    assert counts.get(rq.SPECTRA6[rq._HAL_TILE_INKS[i % 4]], 0) > area * 0.6
+
+    def test_tiles_are_pinned_across_the_minutes_of_an_hour(self):
+        a = self._render(time_str="09:00")
+        for time_str in ("09:05", "09:33", "09:59", "21:17"):
+            assert pixel_bytes(self._render(time_str=time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(time_str="10:00")) != pixel_bytes(a)
+
+    def test_header_names_the_hours_subsystem(self):
+        """The header mnemonic changes with the hour; the quote does not."""
+        a, b = self._render(time_str="03:30"), self._render(time_str="04:30")
+        header = (rq._HAL_MONITOR_RECT[0], rq._HAL_MONITOR_RECT[1], 300, rq._HAL_HEADER_RULE_Y)
+        assert pixel_bytes(a.crop(header)) != pixel_bytes(b.crop(header))
+        assert pixel_bytes(a.crop(rq._HAL_QUOTE_RECT)) == pixel_bytes(b.crop(rq._HAL_QUOTE_RECT))
+
+    def test_eye_is_red_in_a_white_bezel_with_a_yellow_core(self):
+        cx, cy = rq._HAL_EYE_CENTRE
+        r = rq._HAL_EYE_RADIUS
+        image = self._render()
+        iris = ink_counts(image.crop((cx - r, cy - r, cx + r, cy + r)))
+        assert iris.get(rq.SPECTRA6["red"], 0) > (2 * r) ** 2 * 0.45
+        assert iris.get(rq.SPECTRA6["yellow"], 0) > 200
+        assert iris.get(rq.SPECTRA6["white"], 0) > 40                 # the catchlight
+        # The bloom: red spilled into the black around the bezel, sparse.
+        ring = ink_counts(image.crop((cx - r - 24, cy - r - 24, cx + r + 24, cy - r - 10)))
+        assert 0 < ring.get(rq.SPECTRA6["red"], 0) < 28 * 14 * 0.6
+
+    def test_readouts_are_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        assert pixel_bytes(a.crop(rq._HAL_TRACE_RECT)) != pixel_bytes(b.crop(rq._HAL_TRACE_RECT))
+        assert pixel_bytes(a.crop(rq._HAL_PLATE_RECT)) == pixel_bytes(b.crop(rq._HAL_PLATE_RECT))
+
+    def test_byline_is_tracked_capitals(self):
+        a = self._render()
+        band = (rq._HAL_QUOTE_RECT[0], rq._HAL_BYLINE_Y, rq._HAL_QUOTE_RECT[2], rq._HAL_BYLINE_Y + 18)
+        assert ink_counts(a.crop(band)).get(rq.SPECTRA6["white"], 0) > 300
+        c = self._render(dict(self.ROW, author="", title="", source_id="", source_path=""))
+        assert ink_counts(c.crop(band)).get(rq.SPECTRA6["white"], 0) == 0
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestLumonFrame:
+    """``lumon`` — *Severance*: the Macrodata Refinement terminal.
+
+    The vignetted blue CRT is cached once per process; the hour is the file's
+    completion and the scary cluster's column; the matched phrase sits in
+    the refiner's hover box.
+    """
+
+    ROW = TestHalFrame.ROW
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestLumonFrame.ROW)),
+                         *size, mode="production", theme="lumon")
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert "lumon" in rq.THEMES
+        assert "lumon" in rq.THEME_ORDER
+        assert "lumon" not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION["lumon"] == 0.7
+        assert rq.theme_font_candidates("lumon", "quote_regular")[0] == (rq.MONTSERRAT_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("lumon", "quote_bold")[0] == (rq.MONTSERRAT_VARIABLE, "Bold")
+        assert rq.theme_font_candidates("lumon", "ornament")[0] == (rq.INTER_VARIABLE, "Medium")
+        for path in (rq.MONTSERRAT_VARIABLE, rq.MONTSERRAT_ITALIC_VARIABLE, rq.INTER_VARIABLE, rq.MICHROMA_REGULAR):
+            assert pathlib.Path(path).exists(), path
+            assert (pathlib.Path(path).parent / "OFL.txt").exists()
+
+    def test_completion_is_the_hour_over_twelve(self):
+        assert rq._lumon_completion(1) == 8
+        assert rq._lumon_completion(6) == 50
+        assert rq._lumon_completion(12) == 100
+        assert rq._lumon_hour("00:30") == 12 and rq._lumon_hour("13:05") == 1
+
+    def test_cluster_walks_the_hours_column_pair(self):
+        assert rq._lumon_cluster(1) == (1, 0)
+        assert rq._lumon_cluster(12) == (1, 22)
+        cols = {rq._lumon_cluster(h)[1] for h in range(1, 13)}
+        assert len(cols) == 12 and max(cols) + 1 < rq._LUMON_GRID_COLS
+
+    def test_on_palette_deterministic_and_cached(self):
+        image = self._render()
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("blue", "black", "white", "yellow")}
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+        assert rq._lumon_scene() is rq._lumon_scene()
+
+    def test_screen_is_blue_at_the_centre_and_darker_at_the_corners(self):
+        scene = rq._lumon_scene()
+        centre = ink_counts(scene.crop((300, 200, 500, 280)))
+        assert centre.get(rq.SPECTRA6["blue"], 0) > 200 * 80 * 0.95
+        corner = ink_counts(scene.crop((20, 20, 120, 80)))
+        assert corner.get(rq.SPECTRA6["black"], 0) > 100 * 60 * 0.3
+        assert corner.get(rq.SPECTRA6["blue"], 0) > 100 * 60 * 0.2
+        # The housing outside the glass is the terminal's beige: a white
+        # stipple with a yellow quarter, and nothing else.
+        housing = ink_counts(scene.crop((0, 0, 8, 480)))
+        assert set(housing) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        assert housing[rq.SPECTRA6["yellow"]] == 8 * 480 // 4
+        # Inside it, the recessed edge is black with the screen's light leaking on.
+        gap = ink_counts(scene.crop((200, rq._LUMON_HOUSING + 1, 600, rq._LUMON_BEZEL)))
+        assert gap.get(rq.SPECTRA6["black"], 0) > 0 and gap.get(rq.SPECTRA6["blue"], 0) > 0
+        assert set(ink_counts(scene)) == {rq.SPECTRA6["blue"], rq.SPECTRA6["black"],
+                                          rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+
+    def test_scanlines_cross_the_screen_but_not_the_type(self):
+        image = self._render()
+        b = rq._LUMON_BEZEL
+        # In the centre, where the field is pure blue, one row in four is black.
+        y = b + ((300 - b) // rq._LUMON_SCANLINE_PERIOD) * rq._LUMON_SCANLINE_PERIOD
+        assert ink_counts(image.crop((300, y, 340, y + 1))) == {rq.SPECTRA6["black"]: 40}
+        assert ink_counts(image.crop((300, y + 1, 340, y + 2))) == {rq.SPECTRA6["blue"]: 40}
+        # The phrase's yellow is untouched by the raster.
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        placed = rq._lumon_layout(draw, make_row(**self.ROW))
+        bold = [p for p in placed if p[4] and p[2].strip()]
+        x0, y0 = bold[0][0], bold[0][1]
+        chunk = image.crop((x0, y0, x0 + bold[0][5], y0 + bold[0][6]))
+        assert ink_counts(chunk).get(rq.SPECTRA6["yellow"], 0) > 100
+
+    def test_hour_moves_the_cluster_and_the_completion_only(self):
+        a, b = self._render(time_str="03:30"), self._render(time_str="04:30")
+        assert pixel_bytes(a.crop(rq._LUMON_GRID_RECT)) != pixel_bytes(b.crop(rq._LUMON_GRID_RECT))
+        header_right = (500, rq._LUMON_HEADER_Y, 760, rq._LUMON_RULE_Y)
+        assert pixel_bytes(a.crop(header_right)) != pixel_bytes(b.crop(header_right))
+        assert pixel_bytes(a.crop(rq._LUMON_QUOTE_RECT)) == pixel_bytes(b.crop(rq._LUMON_QUOTE_RECT))
+        assert pixel_bytes(a.crop(rq._LUMON_BINS_RECT)) == pixel_bytes(b.crop(rq._LUMON_BINS_RECT))
+        for time_str in ("03:00", "03:59", "15:12"):
+            assert pixel_bytes(self._render(time_str=time_str)) == pixel_bytes(a)
+
+    def test_cluster_box_sits_in_the_hours_columns(self):
+        cells = rq._lumon_grid_cells()
+        for hour in (1, 5, 12):
+            image = self._render(time_str=f"{hour:02d}:10")
+            row0, col0 = rq._lumon_cluster(hour)
+            x0, y0 = cells[row0][col0][:2]
+            x1, y1 = cells[row0 + 1][col0 + 1][2:]
+            box = image.crop((round(x0) - 4, round(y0) - 4, round(x1) + 4, round(y1) + 4))
+            edge = ink_counts(box.crop((0, 0, box.size[0], 2)))
+            assert edge.get(rq.SPECTRA6["white"], 0) > box.size[0] * 0.8, hour
+
+    def test_phrase_is_yellow_in_one_hover_box(self):
+        image = self._render()
+        counts = ink_counts(image.crop(rq._LUMON_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 300
+        assert counts.get(rq.SPECTRA6["white"], 0) > 3000
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        placed = rq._lumon_layout(draw, make_row(**self.ROW))
+        assert len(rq._lumon_hover_boxes(draw, placed)) == 1
+        plain = dict(self.ROW, matched_text="")
+        assert rq.SPECTRA6["yellow"] not in ink_counts(self._render(plain).crop(rq._LUMON_QUOTE_RECT))
+
+    def test_hover_box_spans_a_phrase_broken_across_lines(self):
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        font = rq.load_font([(rq.MONTSERRAT_VARIABLE, "Bold")], size=20)
+        placed = [(50, 100, "half", font, True, 40, 26), (90, 100, " ", font, True, 10, 26),
+                  (100, 100, "past", font, True, 40, 26), (50, 126, "two", font, True, 30, 26)]
+        boxes = rq._lumon_hover_boxes(draw, placed)
+        assert len(boxes) == 2
+        assert boxes[0][0] < 50 and boxes[0][2] > 139 and boxes[1][1] == 124
+
+    def test_file_name_and_bins_are_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        assert rq._lumon_file_name(make_row(**self.ROW)) in rq._LUMON_FILES
+        assert pixel_bytes(a.crop(rq._LUMON_BINS_RECT)) != pixel_bytes(b.crop(rq._LUMON_BINS_RECT))
+        bins = ink_counts(a.crop(rq._LUMON_BINS_RECT))
+        assert bins.get(rq.SPECTRA6["white"], 0) > 2000
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class _CustomFrameCase:
+    """Shared checks for the four hour-pinned frames added together."""
+
+    THEME = ""
+    SATURATION = 0.7
+    ROW = TestHalFrame.ROW
+
+    @classmethod
+    def _render(cls, row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert self.THEME not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION[self.THEME] == self.SATURATION
+        for role in ("quote_regular", "quote_bold", "ornament"):
+            first = rq.theme_font_candidates(self.THEME, role)[0]
+            path = first[0] if isinstance(first, tuple) else first
+            assert pathlib.Path(path).exists(), path
+            licence = pathlib.Path(path).parent
+            assert (licence / "OFL.txt").exists() or (licence / "LICENSE.txt").exists()
+
+    def test_on_palette_and_deterministic(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_pinned_across_the_minutes_of_an_hour(self):
+        a = self._render(time_str="09:00")
+        for time_str in ("09:05", "09:33", "09:59", "21:17"):
+            assert pixel_bytes(self._render(time_str=time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(time_str="10:00")) != pixel_bytes(a)
+        assert pixel_bytes(self._render(time_str="bogus")) == pixel_bytes(self._render(time_str="00:00"))
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(self._render().resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestDskyFrame(_CustomFrameCase):
+    """``dsky`` — the Apollo DSKY on its console: the modelled unit dithered
+    to the inks, the hour in PROG, the quote typed on the flight-plan card."""
+
+    THEME = "dsky"
+
+    def test_segment_encodings(self):
+        assert rq._dsky_segments("8") == "abcdefg"
+        assert rq._dsky_segments("1") == "bc"
+        assert rq._dsky_segments("0") == "abcdef"
+        assert rq._dsky_segments("+") == "g|" and rq._dsky_segments("-") == "g"
+        assert rq._dsky_segments("x") == ""
+        assert all(len(rq._dsky_segments(d)) >= 2 for d in "0123456789")
+
+    def test_registers_are_signed_five_digit_and_seeded(self):
+        regs = rq._dsky_registers(make_row(**self.ROW))
+        assert len(regs) == 3
+        assert all(r[0] in "+-" and len(r) == 6 and r[1:].isdigit() for r in regs)
+        assert regs != rq._dsky_registers(make_row(**dict(self.ROW, source_id="1727", line_number=9)))
+
+    def test_console_is_dithered_grey_and_cached(self):
+        scene = rq._dsky_scene()
+        assert scene is rq._dsky_scene()
+        panel = ink_counts(scene.crop((460, 100, 474, 400)))
+        area = 14 * 300
+        assert 0.3 * area < panel.get(rq.SPECTRA6["black"], 0) < 0.75 * area
+        # The unit's shadow falls on the panel below and right of it.
+        below = ink_counts(scene.crop((500, 466, 780, 476))).get(rq.SPECTRA6["black"], 0) / (280 * 10)
+        clear = ink_counts(scene.crop((460, 2, 780, 12))).get(rq.SPECTRA6["black"], 0) / (320 * 10)
+        assert below > clear
+
+    def test_card_is_cream_paper_with_a_clip(self):
+        image = self._render()
+        x0, y0, x1, y1 = rq._DSKY_CARD_RECT
+        paper = ink_counts(image.crop((x0 + 20, y1 - 40, x1 - 20, y1 - 10)))
+        assert set(paper) <= {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"], rq.SPECTRA6["black"]}
+        assert abs(paper[rq.SPECTRA6["yellow"]] / sum(paper.values()) - 0.25) < 0.02
+        cx = (x0 + x1) // 2
+        clip = ink_counts(image.crop((cx - 30, y0 - 8, cx + 30, y0 + 12)))
+        assert clip.get(rq.SPECTRA6["black"], 0) > 600
+
+    def test_quote_is_typed_black_with_a_red_phrase(self):
+        assert rq.theme_font_candidates("dsky", "quote_regular")[0] == rq.SPECIALELITE_REGULAR
+        counts = ink_counts(self._render().crop(rq._DSKY_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["red"], 0) > 300
+
+    def test_display_glows_white_in_green_on_dark_glass(self):
+        image = self._render()
+        counts = ink_counts(image.crop(rq._DSKY_DISPLAY_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 1200       # the segments
+        assert counts.get(rq.SPECTRA6["green"], 0) > 1500       # the bloom and COMP ACTY
+        assert counts.get(rq.SPECTRA6["black"], 0) > 8000
+        assert rq.SPECTRA6["yellow"] not in counts and rq.SPECTRA6["red"] not in counts
+
+    def test_prog_register_is_the_hour(self):
+        x0, y0, x1, _ = rq._DSKY_DISPLAY_RECT
+        prog = (x1 - 8 - 2 * 16 - 4, y0 + 18, x1 - 4, y0 + 44)
+        a, b = self._render(time_str="02:30"), self._render(time_str="11:30")
+        assert pixel_bytes(a.crop(prog)) != pixel_bytes(b.crop(prog))
+        verb = (x0 + 4, y0 + 50, x0 + 44, y0 + 88)
+        assert pixel_bytes(a.crop(verb)) == pixel_bytes(b.crop(verb))
+
+    def test_keys_are_modelled_domes_with_legends(self):
+        image = self._render()
+        kx0, ky0, kx1, ky1, label = rq._dsky_key_rects()[2]        # "7"
+        assert label == "7"
+        cap = ink_counts(image.crop((kx0, ky0, kx1 + 1, ky1 + 1)))
+        assert cap.get(rq.SPECTRA6["white"], 0) > 60                # the lit edge and the legend
+        assert cap.get(rq.SPECTRA6["black"], 0) > (rq._DSKY_KEY ** 2) * 0.6
+        # The tray between the keys is a lighter grey than the caps.
+        gap = ink_counts(image.crop((kx1 + 1, ky0 + 6, kx1 + rq._DSKY_KEY_GAP, ky1 - 6)))
+        assert gap.get(rq.SPECTRA6["white"], 0) / max(1, sum(gap.values())) > 0.25
+        # The lit edge: the cap's upper-left corner is whiter than its lower-right.
+        ul = ink_counts(image.crop((kx0 + 1, ky0 + 1, kx0 + 9, ky0 + 9))).get(rq.SPECTRA6["white"], 0)
+        lr = ink_counts(image.crop((kx1 - 9, ky1 - 9, kx1 - 1, ky1 - 1))).get(rq.SPECTRA6["white"], 0)
+        assert ul > lr
+        assert len(rq._dsky_key_rects()) == 19 and len(rq._dsky_lamp_rects()) == 14
+
+
+class TestOblivionFrame(_CustomFrameCase):
+    """``oblivion`` — the Sky Tower's light table: dithered glass, a contour
+    map with the rigs on it, a shaded drone, the hour's rig and bearing."""
+
+    THEME = "oblivion"
+    SATURATION = 0.5
+
+    def test_quote_is_light_black_with_a_red_phrase_on_clean_white(self):
+        assert rq.theme_font_candidates("oblivion", "quote_regular")[0] == (rq.EXO2_VARIABLE, "Light")
+        counts = ink_counts(self._render().crop(rq._OBLIVION_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["red"], 0) > 300
+        assert distinct_inks(self._render()) == {rq.SPECTRA6["white"], rq.SPECTRA6["black"], rq.SPECTRA6["red"]}
+        # The pool: the glass under the quote is pure white in the scene.
+        x0, y0, x1, y1 = rq._OBLIVION_QUOTE_RECT
+        pool = ink_counts(rq._oblivion_scene().crop(rq._OBLIVION_QUOTE_RECT))
+        assert pool.get(rq.SPECTRA6["black"], 0) < (x1 - x0) * (y1 - y0) * 0.03     # grain at the pool's edge only
+        assert set(ink_counts(rq._oblivion_scene().crop((x0, y0, x0 + 200, y0 + 120)))) == {rq.SPECTRA6["white"]}
+
+    def test_glass_is_dithered_tone_and_cached(self):
+        scene = rq._oblivion_scene()
+        assert scene is rq._oblivion_scene()
+        edge = ink_counts(scene.crop((600, 20, 780, 40)))
+        area = 180 * 20
+        assert 0.02 * area < edge.get(rq.SPECTRA6["black"], 0) < 0.2 * area
+        x0, y0, x1, y1 = rq._OBLIVION_MAP_RECT
+        pane = ink_counts(scene.crop((x0 + 20, y1 - 60, x0 + 80, y1 - 20)))
+        assert pane.get(rq.SPECTRA6["black"], 0) > edge.get(rq.SPECTRA6["black"], 0) * (60 * 40) / area
+
+    def test_map_has_contours_but_the_dial_is_clear(self):
+        contours = rq._oblivion_contours((800, 480))
+        x0, y0, x1, y1 = rq._OBLIVION_MAP_RECT
+        assert contours.crop((x0, y0, x1, y1)).getbbox() is not None
+        assert contours.crop((0, 0, x0 - 1, 480)).getbbox() is None
+        cx, cy = rq._OBLIVION_DIAL_CENTRE
+        half = int(rq._OBLIVION_DIAL_RADII[1] / math.sqrt(2)) - 2      # a square inside the middle ring
+        assert contours.crop((cx - half, cy - half, cx + half, cy + half)).getbbox() is None
+
+    def test_drone_is_a_shaded_sphere_with_a_red_lens(self):
+        image = self._render()
+        cx, cy = rq._OBLIVION_DRONE_CENTRE
+        r = rq._OBLIVION_DRONE_RADIUS
+        hull = ink_counts(image.crop((cx - r, cy - r, cx + r, cy + r)))
+        assert hull.get(rq.SPECTRA6["red"], 0) > 150
+        assert hull.get(rq.SPECTRA6["white"], 0) > (2 * r) ** 2 * 0.4
+        # Lit upper-left quadrant is whiter than the lower-right terminator.
+        ul = ink_counts(image.crop((cx - r + 4, cy - r + 4, cx - 12, cy - 12))).get(rq.SPECTRA6["black"], 0)
+        lr = ink_counts(image.crop((cx + 12, cy + 12, cx + r - 4, cy + r - 4))).get(rq.SPECTRA6["black"], 0)
+        assert lr > ul
+
+    def test_hour_is_the_filled_rig_cell(self):
+        rects = rq._oblivion_rig_rects()
+        assert len(rects) == 12 and len(rq._oblivion_rig_points()) == 12
+        for hour in (1, 6, 12):
+            image = self._render(time_str=f"{hour:02d}:10")
+            for i, (x0, y0, x1, y1) in enumerate(rects):
+                cell = ink_counts(image.crop((x0 + 1, y0 + 15, x1, y1 - 4)))
+                area = (x1 - x0 - 1) * (y1 - y0 - 19)
+                black = cell.get(rq.SPECTRA6["black"], 0)
+                assert (black > area * 0.6) == (i + 1 == hour), (hour, i)
+                assert (rq.SPECTRA6["red"] in ink_counts(image.crop((x0, y0, x1 + 1, y1 + 1)))) == (i + 1 == hour)
+
+    def test_hours_rig_is_red_on_the_map(self):
+        points = rq._oblivion_rig_points()
+        for hour in (2, 8):
+            image = self._render(time_str=f"{hour:02d}:00")
+            x, y = points[hour - 1]
+            assert ink_counts(image.crop((x - 7, y - 7, x + 7, y + 7))).get(rq.SPECTRA6["red"], 0) > 80
+            ox, oy = points[(hour + 5) % 12]
+            assert rq.SPECTRA6["red"] not in ink_counts(image.crop((ox - 4, oy - 4, ox + 4, oy + 4)))
+
+    def test_dial_marks_the_hours_bearing(self):
+        r0 = rq._OBLIVION_DIAL_RADII[0]
+        for hour in (3, 9, 12):
+            image = self._render(time_str=f"{hour:02d}:00")
+            x, y = rq._oblivion_polar(r0 - 6, hour)
+            assert ink_counts(image.crop((x - 8, y - 8, x + 8, y + 8))).get(rq.SPECTRA6["red"], 0) > 40, hour
+            dx, dy = rq._oblivion_polar(sum(rq._OBLIVION_DIAL_RADII[1:]) / 2, hour)
+            assert ink_counts(image.crop((dx - 6, dy - 6, dx + 6, dy + 6))).get(rq.SPECTRA6["red"], 0) > 40, hour
+
+    def test_data_is_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        assert pixel_bytes(a.crop(rq._OBLIVION_WAVE_RECT)) != pixel_bytes(b.crop(rq._OBLIVION_WAVE_RECT))
+        assert pixel_bytes(a.crop(rq._oblivion_numeral_rect())) != pixel_bytes(b.crop(rq._oblivion_numeral_rect()))
+
+
+class TestYorhaFrame(_CustomFrameCase):
+    """``yorha`` — the YoRHa archives: a dithered cream sheet with the blurred
+    city and the hatch, crisp panels with shadows, Pod 042, the hour's row
+    inverted and the phrase knocked out of a black box."""
+
+    THEME = "yorha"
+    SATURATION = 0.5
+
+    def test_set_in_a_classical_serif(self):
+        assert rq.theme_font_candidates("yorha", "quote_regular")[0] == rq.EBGARAMOND_REGULAR
+        assert rq.theme_font_candidates("yorha", "quote_bold")[0] == rq.EBGARAMOND_BOLD
+
+    def test_bold_instance_is_pinned_off_the_axis_default(self):
+        """Montserrat's default instance is Regular; the Bold the lumon phrase
+        and scary digits use must be a different drawing."""
+        from PIL import ImageFont
+        pinned = rq.load_font([(rq.MONTSERRAT_VARIABLE, "Bold")], size=40)
+        bare = ImageFont.truetype(rq.MONTSERRAT_VARIABLE, 40)
+
+        def ink(font):
+            img = Image.new("L", (400, 60), 0)
+            ImageDraw.Draw(img).text((0, 0), "Hamburgefonts", font=font, fill=255)
+            return sum(img.point(lambda v: 1 if v > 127 else 0).histogram()[1:])
+
+        assert ink(pinned) > ink(bare)
+
+    def test_sheet_is_three_ink_tone_and_cached(self):
+        scene = rq._yorha_scene()
+        assert scene is rq._yorha_scene()
+        assert set(ink_counts(scene)) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"], rq.SPECTRA6["black"]}
+        # The open sheet between the menu and the pane: cream with the hatch's black.
+        gap = ink_counts(scene.crop((232, 100, 248, 380)))
+        total = sum(gap.values())
+        assert 0.1 < gap.get(rq.SPECTRA6["yellow"], 0) / total < 0.45
+        assert 0 < gap.get(rq.SPECTRA6["black"], 0) / total < 0.3
+        # The corners are darker than the middle of the sheet.
+        corner = ink_counts(scene.crop((0, 60, 24, 76))).get(rq.SPECTRA6["black"], 0) / (24 * 16)
+        assert corner > gap.get(rq.SPECTRA6["black"], 0) / total
+
+    def test_panels_are_crisp_cream_with_shadows(self):
+        scene = rq._yorha_scene()
+        x0, y0, x1, y1 = rq._YORHA_PANE_RECT
+        face = ink_counts(scene.crop((x0 + 40, y0 + 60, x0 + 200, y0 + 140)))
+        area = 160 * 80
+        assert abs(face[rq.SPECTRA6["yellow"]] / area - 0.125) < 0.02
+        assert face.get(rq.SPECTRA6["black"], 0) < area * 0.02          # only the dot grid
+        # The shadow: darker just below the pane's foot than above its head.
+        below = ink_counts(scene.crop((x0 + 40, y1 + 2, x1 - 40, y1 + 8))).get(rq.SPECTRA6["black"], 0)
+        above = ink_counts(scene.crop((x0 + 40, y0 - 8, x1 - 40, y0 - 2))).get(rq.SPECTRA6["black"], 0)
+        assert below > above * 1.5
+
+    def test_pod_is_modelled_with_a_lens(self):
+        image = self._render()
+        cx, cy = rq._YORHA_POD_CENTRE
+        pod = ink_counts(image.crop((cx - 60, cy - 42, cx + 48, cy + 22)))
+        assert pod.get(rq.SPECTRA6["black"], 0) > 900
+        assert pod.get(rq.SPECTRA6["white"], 0) > 1500
+        lens = ink_counts(image.crop((cx + 24, cy - 8, cx + 41, cy + 9)))
+        assert lens.get(rq.SPECTRA6["black"], 0) > 120 and lens.get(rq.SPECTRA6["white"], 0) > 4
+
+    def test_hour_is_the_inverted_row(self):
+        rows = rq._yorha_menu_rows()
+        assert len(rows) == 12
+        for hour in (1, 7, 12):
+            image = self._render(time_str=f"{hour:02d}:40")
+            for i, (x0, y0, x1, y1) in enumerate(rows):
+                counts = ink_counts(image.crop((x0 + 2, y0 + 2, x1 - 2, y1 - 2)))
+                area = (x1 - x0 - 4) * (y1 - y0 - 4)
+                black = counts.get(rq.SPECTRA6["black"], 0)
+                assert (black > area * 0.6) == (i + 1 == hour), (hour, i)
+
+    def test_phrase_is_knocked_out_of_a_black_box(self):
+        image = self._render()
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        boxes = rq._lumon_hover_boxes(draw, rq._yorha_layout(draw, make_row(**self.ROW)))
+        assert len(boxes) == 1
+        box = ink_counts(image.crop(boxes[0]))
+        area = (boxes[0][2] - boxes[0][0]) * (boxes[0][3] - boxes[0][1])
+        assert box.get(rq.SPECTRA6["black"], 0) > area * 0.5
+        assert box.get(rq.SPECTRA6["white"], 0) > 100
+        plain = dict(self.ROW, matched_text="")
+        pane = ink_counts(self._render(plain).crop(rq._YORHA_QUOTE_RECT))
+        assert pane.get(rq.SPECTRA6["black"], 0) < ink_counts(image.crop(rq._YORHA_QUOTE_RECT))[rq.SPECTRA6["black"]]
+
+    def test_pane_titles_the_book_and_counts_the_hour(self):
+        a = self._render(time_str="03:00")
+        b = self._render(dict(self.ROW, title="The Odyssey"), time_str="03:00")
+        c = self._render(time_str="04:00")
+        head = (rq._YORHA_PANE_RECT[0], rq._YORHA_PANE_RECT[1], rq._YORHA_PANE_RECT[2], rq._YORHA_PANE_RECT[1] + 44)
+        assert pixel_bytes(a.crop(head)) != pixel_bytes(b.crop(head))
+        assert pixel_bytes(a.crop(head)) != pixel_bytes(c.crop(head))
+        assert pixel_bytes(a.crop(rq._YORHA_QUOTE_RECT)) == pixel_bytes(c.crop(rq._YORHA_QUOTE_RECT))
+
+    def test_tab_bar_opens_intel_under_the_crest(self):
+        image = self._render()
+        bar = ink_counts(image.crop(rq._YORHA_HEADER_RECT))
+        assert bar.get(rq.SPECTRA6["black"], 0) > 800 * 36 * 0.8
+        assert bar.get(rq.SPECTRA6["white"], 0) > 1500                   # the tabs, the open tab's box, the crest
+
+
+class TestHitchhikerFrame(_CustomFrameCase):
+    """``hitchhiker`` — a Guide entry on the author with its two figures: the
+    Babel fish under a raster, and the galaxy chart with the hour's sector
+    marked YOU ARE HERE."""
+
+    THEME = "hitchhiker"
+
+    def test_masthead_is_yellow_with_the_badge(self):
+        image = self._render()
+        assert ink_counts(image.crop((40, 14, 760, 46))).get(rq.SPECTRA6["yellow"], 0) > 1200
+        badge = ink_counts(image.crop((660, 16, 758, 36)))
+        assert badge.get(rq.SPECTRA6["yellow"], 0) > 800 and badge.get(rq.SPECTRA6["black"], 0) > 80
+
+    def test_entry_is_the_author_and_the_quote_white_with_yellow(self):
+        a, b = self._render(), self._render(dict(self.ROW, author="Homer"))
+        band = (62, rq._HITCHHIKER_ENTRY_Y + 10, 456, rq._HITCHHIKER_ENTRY_Y + 46)
+        assert pixel_bytes(a.crop(band)) != pixel_bytes(b.crop(band))
+        counts = ink_counts(a.crop(rq._HITCHHIKER_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000 and counts.get(rq.SPECTRA6["yellow"], 0) > 200
+        assert rq.theme_font_candidates("hitchhiker", "quote_regular")[0] == rq.MICHROMA_REGULAR
+        # Each line of the entry is headed by a marker in the inks in rotation.
+        markers = ink_counts(a.crop((rq._HITCHHIKER_QUOTE_RECT[0] - 20, rq._HITCHHIKER_QUOTE_RECT[1],
+                                     rq._HITCHHIKER_QUOTE_RECT[0] - 10, rq._HITCHHIKER_QUOTE_RECT[3])))
+        assert {rq.SPECTRA6["blue"], rq.SPECTRA6["green"], rq.SPECTRA6["yellow"], rq.SPECTRA6["red"]} <= set(markers)
+
+    def test_lettering_wobbles_but_is_seeded(self):
+        """Hand-animated cels: the same text sets the same way every time,
+        and a glyph run is not a straight ``draw.text`` of the string."""
+        font = rq._hitchhiker_font(20)
+        a = Image.new("RGB", (400, 40), "black")
+        rq._hitchhiker_draw(ImageDraw.Draw(a), (4, 4), "DON'T PANIC", font, "white", rq.random.Random(7))
+        b = Image.new("RGB", (400, 40), "black")
+        rq._hitchhiker_draw(ImageDraw.Draw(b), (4, 4), "DON'T PANIC", font, "white", rq.random.Random(7))
+        c = Image.new("RGB", (400, 40), "black")
+        ImageDraw.Draw(c).text((4, 4), "DON'T PANIC", font=font, fill="white")
+        assert pixel_bytes(a) == pixel_bytes(b)
+        assert pixel_bytes(a) != pixel_bytes(c)
+
+    def test_babel_fish_is_yellow_under_a_raster_with_its_organs(self):
+        image = self._render()
+        fish = ink_counts(image.crop(rq._HITCHHIKER_FISH_RECT))
+        assert fish.get(rq.SPECTRA6["yellow"], 0) > 4000
+        for ink in ("blue", "green", "red", "white"):
+            assert fish.get(rq.SPECTRA6[ink], 0) > 100, ink
+        cx, cy = rq._hitchhiker_fish_centre()
+        # The raster: one row in three is black across the yellow body.
+        body = image.crop((cx - 50, cy + 20, cx - 14, cy + 26))        # the belly, clear of the organs
+        rows = [set(ink_counts(body.crop((0, r, 36, r + 1)))) for r in range(6)]
+        assert sum(1 for r in rows if r == {rq.SPECTRA6["black"]}) == 2
+        assert sum(1 for r in rows if r == {rq.SPECTRA6["yellow"]}) >= 3
+        assert pixel_bytes(image.crop(rq._HITCHHIKER_FISH_RECT)) == \
+            pixel_bytes(self._render(time_str="03:00").crop(rq._HITCHHIKER_FISH_RECT))
+
+    def test_hour_is_the_outlined_sector(self):
+        cx, cy = rq._HITCHHIKER_GALAXY_CENTRE
+        radius = rq._HITCHHIKER_GALAXY_RADIUS
+        for hour in (1, 5, 12):
+            image = self._render(time_str=f"{hour:02d}:25")
+            a0, a1 = rq._hitchhiker_sector_angle(hour)
+            am = (a0 + a1) / 2
+            ex, ey = cx + (radius - 12) * math.cos(am), cy + (radius - 12) * math.sin(am)
+            earth = ink_counts(image.crop((round(ex) - 8, round(ey) - 8, round(ex) + 8, round(ey) + 8)))
+            assert earth.get(rq.SPECTRA6["yellow"], 0) > 10 and earth.get(rq.SPECTRA6["blue"], 0) > 4, hour
+            # The opposite sector carries no yellow ring.
+            ox, oy = cx + (radius - 12) * math.cos(am + math.pi), cy + (radius - 12) * math.sin(am + math.pi)
+            assert ink_counts(image.crop((round(ox) - 8, round(oy) - 8, round(ox) + 8, round(oy) + 8))).get(
+                rq.SPECTRA6["yellow"], 0) < 6, hour
+        assert rq._hitchhiker_sector_angle(12)[0] < rq._hitchhiker_sector_angle(1)[0]
+
+    def test_galaxy_is_a_seeded_spiral_in_its_chart(self):
+        image = self._render()
+        chart = ink_counts(image.crop(rq._HITCHHIKER_GALAXY_RECT))
+        assert chart.get(rq.SPECTRA6["white"], 0) > 150                # the stars and the labels
+        assert chart.get(rq.SPECTRA6["blue"], 0) > 400                 # the sector lines and the ring
+        label = ink_counts(image.crop((rq._HITCHHIKER_GALAXY_RECT[2] - 112, rq._HITCHHIKER_GALAXY_RECT[1] + 58,
+                                       rq._HITCHHIKER_GALAXY_RECT[2] - 4, rq._HITCHHIKER_GALAXY_RECT[1] + 90)))
+        assert label.get(rq.SPECTRA6["yellow"], 0) > 100                # YOU ARE HERE

@@ -323,6 +323,28 @@ THEME_SATURATION: dict[str, float] = {
     # the ``pulp`` / ``comic`` argument: at the gentler push the stipple's
     # yellow greys toward mustard and the void stops reading as ochre.
     "goya": 0.7,
+    # 2001's Discovery monitors — solid red / yellow / blue / green flats on
+    # black with white type, and HAL's red lens blooming into the black.
+    # Dark-ground tier: the gentler push greys the blue monitor toward slate
+    # and softens the one bloom on the page.
+    "hal": 0.7,
+    # Severance's MDR terminal — a blue CRT dithered to blue and black in a
+    # black bezel, white digits and a yellow phrase. Dark / coloured-ground
+    # tier, the ``blueprint`` argument: the blue has to stay blue, not slate.
+    "lumon": 0.7,
+    # The Apollo DSKY — black panel, white type, segments in a green bloom.
+    # Dark-ground tier.
+    "dsky": 0.7,
+    # Oblivion — the white desk, black hairlines, one red accent. Light tier:
+    # the page is the panel's white, and a harder push only reddens the dot.
+    "oblivion": 0.5,
+    # NieR — a cream W+Y stipple ground under a dot grid, black type. Light
+    # tier, the ``letter`` / ``witcher`` argument: the harder push turns the
+    # cream's yellow quarter to lemon.
+    "yorha": 0.5,
+    # The 1981 Guide — black screen, white and yellow lettering, flat-colour
+    # planets. Dark-ground tier.
+    "hitchhiker": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

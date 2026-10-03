@@ -151,6 +151,12 @@ THEME_ORDER: tuple[str, ...] = (
     "expanse",
     "beksinski",
     "goya",
+    "hal",
+    "lumon",
+    "dsky",
+    "oblivion",
+    "yorha",
+    "hitchhiker",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1441,6 +1447,94 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
+    # *2001: A Space Odyssey* (1968) — the Discovery One's monitors and HAL
+    # 9000. A custom frame (``render_hal_frame``): a solid blue main monitor
+    # with the hour's subsystem mnemonic in Michroma across its header, the
+    # quote in white Jost with the matched phrase Bold in yellow, the twelve
+    # mnemonic tiles along the foot in the film's flat colours with the
+    # hour's tile white, and HAL's red lens in its white bezel at the right.
+    # These literary-layout slots serve only the palette-only paths (see the
+    # note above ``THEMES``).
+    "hal": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["blue"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # *Severance* (2022–) — the Macrodata Refinement terminal. A custom frame
+    # (``render_lumon_frame``): a vignetted blue CRT dithered to blue and
+    # black in a black bezel, the file's name and completion in the header
+    # (the completion is the hour over twelve), four rows of white digits
+    # with the hour's scary cluster boxed, the quote in white IBM Plex Mono
+    # with the matched phrase Bold in yellow inside the refiner's hover box,
+    # and the five bins along the foot. These literary-layout slots serve
+    # only the palette-only paths (see the note above ``THEMES``).
+    "lumon": {
+        "page_bg": SPECTRA6["blue"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # The Apollo DSKY — a custom frame (``render_dsky_frame``): black panel, white Jost
+    # quote with a yellow phrase, the display's segments white in a green bloom.
+    # These literary-layout slots serve only the palette-only paths.
+    "dsky": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["green"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
+    # *Oblivion* (2013) — a custom frame (``render_oblivion_frame``): white desk,
+    # black hairlines, Jost Light quote with the phrase in red.
+    # These literary-layout slots serve only the palette-only paths.
+    "oblivion": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # *NieR: Automata* — a custom frame (``render_yorha_frame``): cream dot-grid ground,
+    # black Jura, the phrase knocked out white of a black box.
+    # These literary-layout slots serve only the palette-only paths.
+    "yorha": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["yellow"],
+        "accent": SPECTRA6["black"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
+    },
+    # The 1981 BBC Guide — a custom frame (``render_hitchhiker_frame``): black screen,
+    # white Michroma entry with the phrase in yellow, flat-colour planets.
+    # These literary-layout slots serve only the palette-only paths.
+    "hitchhiker": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["green"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
+    },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
     # is the hour, a silhouetted colony rim-lit beneath it,
@@ -2227,6 +2321,15 @@ SHARETECHMONO_REGULAR = str(BASE_DIR / "fonts/share-tech-mono/ShareTechMono-Regu
 # theme's "type does all the work" identity even when the preferred
 # face is absent.
 INTER_VARIABLE = str(BASE_DIR / "fonts/inter/Inter-Variable.ttf")
+# Montserrat (Julieta Ulanovsky, OFL) — the ``lumon`` digits and body. The
+# MDR terminal's number grid is set in a Gotham-like geometric sans (the
+# fan consensus; its header text in Forma DJR, its wordmark in Manifold
+# Extended CF — all commercial), and Montserrat is the open face drawn in
+# the same Buenos Aires-signage register as Gotham: round, even, geometric
+# digits that sit square in a grid. Variable on weight; the default
+# instance is Regular, and every candidate still pins a name.
+MONTSERRAT_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat[wght].ttf")
+MONTSERRAT_ITALIC_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat-Italic[wght].ttf")
 # Fraunces — Undercase Type (OFL). A variable "soft" old-style serif with
 # optical-size, softness, weight and wonk axes; the typeface of the Between
 # Us web app, whose iOS build substitutes the system New York. Used by the
@@ -4110,6 +4213,66 @@ THEME_FONTS: dict[str, dict[str, list]] = {
                        *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(LIBREBASKERVILLE_ITALIC_VARIABLE, "Italic"), (LIBREBASKERVILLE_VARIABLE, "Bold"),
                      *ORNAMENT_FONT_CANDIDATES],
+    },
+    "hal": {
+        # Jost — the bundle's Futura, the face of the film's signage and
+        # the register of its 1968 modernism — Regular for the white body on
+        # the blue monitor, Bold for the matched phrase, which carries the
+        # yellow. The chrome (mnemonics, nameplate, tile labels) is Michroma,
+        # the open Microgramma / Eurostile the monitors' squared capitals
+        # were set in; it takes the ornament slot.
+        "quote_regular": [(JOST_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(JOST_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "lumon": {
+        # Montserrat — the open Gotham, the face the MDR terminal's number
+        # grid is set in the register of: Regular for the white body, Bold
+        # for the matched phrase in yellow inside the hover box, Medium and
+        # Bold for the digits. The file name, the completion and the byline
+        # are Inter (the open neo-grotesque standing in for the show's Forma
+        # DJR); the wordmark is Michroma (for Manifold Extended CF, itself
+        # drawn after Microgramma).
+        "quote_regular": [(MONTSERRAT_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(MONTSERRAT_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(INTER_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "dsky": {
+        # Special Elite — the quote is typed on a flight-plan card, and the
+        # flight plans were cut on a typewriter; one weight, so the matched
+        # phrase is told apart by its red ink. Jost Medium (NASA silkscreened
+        # its panels in Futura Demi) for every legend on the unit.
+        "quote_regular": [SPECIALELITE_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [SPECIALELITE_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(JOST_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "oblivion": {
+        # Exo 2 — the film's screens are set in Blender (Nik Thoenen,
+        # Gestalten; commercial), an angular geometric sans with squared
+        # bowls, and Exo 2 is the bundle's open face in that family. Light
+        # for the body (solid black on the white ink survives a Light stem
+        # where a stipple would not), Medium for the matched phrase in red,
+        # Regular for the chrome.
+        "quote_regular": [(EXO2_VARIABLE, "Light"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(EXO2_VARIABLE, "Medium"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(EXO2_VARIABLE, "Regular"), *ORNAMENT_FONT_CANDIDATES],
+    },
+    "yorha": {
+        # EB Garamond — Automata's interface is set in a refined classical
+        # serif (unidentified; custom or unreleased), and EB Garamond is the
+        # closest open face to it. Regular body; Bold for the matched
+        # phrase, knocked out white of its black box.
+        "quote_regular": [EBGARAMOND_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [EBGARAMOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [EBGARAMOND_BOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "hitchhiker": {
+        # Michroma — the square-shouldered monoline of the series' hand-
+        # lettered computer screens. One static weight, so the matched
+        # phrase is told apart by its yellow, not its weight.
+        "quote_regular": [MICHROMA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [MICHROMA_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
@@ -34411,6 +34574,2034 @@ def render_goya_frame(time_str: str, quote_row: dict, width: int, height: int) -
 
 
 # ---------------------------------------------------------------------------
+# hal — *2001: A Space Odyssey* (1968): the Discovery One's monitors, HAL 9000
+# ---------------------------------------------------------------------------
+# Kubrick's Discovery is run from banks of small CRT monitors, and every one
+# of them is a flat field of a single saturated colour — red, blue, yellow,
+# green, white — with a three-letter mnemonic in the top corner naming the
+# subsystem it watches (COM, NAV, VEH, ATM, HIB, GDE, LIF, MEM, DMG, FLX,
+# CNT, NUC) and a few lines of white type or a schematic beneath. The film's
+# screen graphics were animated by hand in 1966-68, which is why they are the
+# one sci-fi interface that is *made of* solid flats: there was no raster to
+# shade. A six-ink panel renders exactly that register better than any other
+# in this file, and nothing else in the roster looks like it.
+#
+# **The page is the main monitor.** A blue field fills the left three
+# quarters, with the active subsystem's mnemonic in **Michroma** across its
+# header — Vernon Adams's open Microgramma / Eurostile, the wide squared face
+# the film's screens and labels set their capitals in — a seeded row of
+# readout bars beside it, a white rule under both, the quote in **Jost**
+# (the bundle's Futura, the film's signage face) in white with the matched
+# phrase Bold in yellow, and the author and title letterspaced along the foot
+# in the monitors' own tracked capitals.
+#
+# **The hour is which subsystem is up.** The twelve mnemonics sit as a row
+# of small tiles along the foot in the film's four tile colours in rotation;
+# the hour's tile is the white one and its mnemonic is the one on the main
+# monitor's header. "What is HAL watching at the moment?" is the question a
+# viewer answers to read the hour, and the matched phrase carries the
+# minute. The mnemonic order is fixed, so the tiles are byte-identical across
+# the minutes of an hour; nothing on the page reads the wall clock.
+#
+# **HAL's eye.** The right column is the faceplate: the blue nameplate above,
+# the lens below — a red disc in a white bezel with a yellow bloom at its
+# centre and a white catchlight, bleeding red into the black through
+# ``paint_neon_mask`` with ``ground`` pinned to black so the bloom cannot
+# eat the bezel — and under it the hibernation monitor's three life traces,
+# seeded per quote, in a white hairline frame. Every colour on the page is
+# one of the six inks painted solid; the only stipple is the two blooms.
+# Composed at the canonical 800x480 and NEAREST-downsampled otherwise (the
+# ``metro`` convention).
+# ---------------------------------------------------------------------------
+_HAL_SEED = 0x48414C39                # HAL9
+_HAL_MNEMONICS = ("COM", "NAV", "VEH", "ATM", "HIB", "GDE", "LIF", "MEM", "DMG", "FLX", "CNT", "NUC")
+_HAL_TILE_INKS = ("red", "yellow", "green", "blue")
+_HAL_HOUSING_RECT = (16, 16, 644, 392)   # the monitor's housing, a hairline on black
+_HAL_MONITOR_RECT = (26, 26, 634, 382)   # the screen inside it
+_HAL_SCREEN_RADIUS = 20
+_HAL_HEADER_RULE_Y = 96
+_HAL_QUOTE_RECT = (56, 110, 604, 338)
+_HAL_BYLINE_Y = 352
+_HAL_TILE_BAND = (24, 402, 636, 462)
+_HAL_TILE_GAP = 6
+_HAL_PLATE_RECT = (664, 24, 780, 92)
+_HAL_EYE_CENTRE = (722, 196)
+_HAL_EYE_RADIUS = 44
+_HAL_SHIP_RECT = (664, 292, 780, 370)   # VEH: the Discovery in wireframe
+_HAL_TRACE_RECT = (664, 378, 780, 462)  # HIB: the life traces
+_HAL_SCANLINE_PERIOD = 4
+
+
+def _crt_paint_scanlines(image: Image.Image, rect, ground, *, period: int = 4, phase: int = 0) -> None:
+    """Raster lines over a CRT: every ``period``-th row inside ``rect`` goes
+    black where it holds one of the ``ground`` inks — the glyphs and
+    graphics painted over the phosphor are left solid, so the screen gains
+    the texture of a tube without the type losing weight. One in four is
+    the coarsest spacing that still reads as lines rather than stripes at
+    the panel's pitch, and the lightest darkening that still reads at all."""
+    x0, y0, x1, y1 = rect
+    width, height = image.size
+    x0, y0, x1, y1 = max(0, x0), max(0, y0), min(width, x1), min(height, y1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    px = image.load()
+    black = SPECTRA6["black"]
+    ground = set(ground)
+    for y in range(y0, y1):
+        if (y - y0 + phase) % period:
+            continue
+        for x in range(x0, x1):
+            if px[x, y] in ground:
+                px[x, y] = black
+
+
+def _hal_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — which subsystem is on the main monitor."""
+    return _expanse_hour(time_str)
+
+
+def _hal_mnemonic(hour: int) -> str:
+    return _HAL_MNEMONICS[(hour - 1) % 12]
+
+
+def _hal_tile_rects() -> list:
+    """The twelve foot tiles, left to right, one per hour."""
+    x0, y0, x1, y1 = _HAL_TILE_BAND
+    width = (x1 - x0 - 11 * _HAL_TILE_GAP) // 12
+    used = 12 * width + 11 * _HAL_TILE_GAP
+    start = x0 + (x1 - x0 - used) // 2
+    return [(start + i * (width + _HAL_TILE_GAP), y0, start + i * (width + _HAL_TILE_GAP) + width, y1)
+            for i in range(12)]
+
+
+def _hal_chrome_font(size: int):
+    """Michroma — the monitors' squared capitals — for every label."""
+    return load_font([MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES], size=size)
+
+
+def _hal_paint_monitor(image: Image.Image, hour: int, quote_row: dict) -> None:
+    """The main monitor: the blue field, the active mnemonic, a row of
+    readout bars seeded from the quote, and the rule under both."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _HAL_MONITOR_RECT
+    blue, white, black = SPECTRA6["blue"], SPECTRA6["white"], SPECTRA6["black"]
+    # The housing: a hairline on the black, and the phosphor's light leaking
+    # onto it from the glass.
+    draw.rounded_rectangle(_HAL_HOUSING_RECT, radius=_HAL_SCREEN_RADIUS + 8, fill=black, outline=white, width=1)
+    glass = Image.new("L", image.size, 0)
+    ImageDraw.Draw(glass).rounded_rectangle((x0, y0, x1, y1), radius=_HAL_SCREEN_RADIUS, fill=255)
+    paint_neon_mask(image, glass, None, blue, radius=7, gamma=1.6, cap=0.5, ground=(black,))
+    glass.close()
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=_HAL_SCREEN_RADIUS, fill=blue)
+    # The mnemonic in its title box, the way the film's screens caption
+    # themselves, and a seeded bar chart beside it.
+    font = _hal_chrome_font(36)
+    name = _hal_mnemonic(hour)
+    tw = draw.textlength(name, font=font)
+    draw.rectangle((x0 + 28, y0 + 18, x0 + 28 + tw + 24, y0 + 72), outline=white, width=2)
+    draw.text((x0 + 40, y0 + 24), name, font=font, fill=white)
+    rng = random.Random(_HAL_SEED ^ _row_digest(quote_row))
+    bar_x = x1 - 30 - 12 * 15
+    for i in range(12):
+        h = rng.randint(6, 44)
+        bx = bar_x + i * 15
+        draw.rectangle((bx, y0 + 70 - h, bx + 9, y0 + 70), fill=white)
+    draw.rectangle((bar_x - 2, y0 + 71, x1 - 30, y0 + 72), fill=white)
+    draw.rectangle((x0 + 28, _HAL_HEADER_RULE_Y, x1 - 30, _HAL_HEADER_RULE_Y + 2), fill=white)
+
+
+def _hal_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    """The quote's lines on the monitor, with the bold chunks positioned."""
+    x0, y0, x1, y1 = _HAL_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=36, font_min=16, line_height_mult=1.28, theme="hal",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _hal_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """White Jost on the blue field; the matched phrase Bold in yellow."""
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+
+
+def _hal_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title as the monitor's tracked capitals along its foot."""
+    x0 = _HAL_QUOTE_RECT[0]
+    measure = _HAL_QUOTE_RECT[2] - x0
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p.upper() for p in (author, title) if p]
+    if not parts:
+        return
+    text = "   /   ".join(parts)
+    font, text = fit_text_to_width(draw, text, [(JOST_VARIABLE, "Medium"), *META_FONT_CANDIDATES],
+                                   16, measure, floor=13, tracking=2)
+    draw_tracked(draw, (x0, _HAL_BYLINE_Y), text, font, SPECTRA6["white"], tracking=2)
+
+
+def _hal_paint_tiles(image: Image.Image, hour: int, quote_row: dict) -> None:
+    """The twelve subsystem tiles along the foot: the film's colours in
+    rotation, the hour's tile white, each with a seeded mini-readout."""
+    draw = ImageDraw.Draw(image)
+    rng = random.Random(_HAL_SEED + 7 + _row_digest(quote_row))
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    font = _hal_chrome_font(11)
+    for i, (x0, y0, x1, y1) in enumerate(_hal_tile_rects()):
+        active = (i + 1) == hour
+        ink = "white" if active else _HAL_TILE_INKS[i % len(_HAL_TILE_INKS)]
+        fill = SPECTRA6[ink]
+        label = black if ink in ("white", "yellow") else white
+        draw.rounded_rectangle((x0, y0, x1, y1), radius=5, fill=fill)
+        name = _HAL_MNEMONICS[i]
+        tw = draw.textlength(name, font=font)
+        draw.text((x0 + (x1 - x0 - tw) / 2, y0 + 7), name, font=font, fill=label)
+        for b in range(4):
+            h = rng.randint(3, 18)
+            bx = x0 + 6 + b * 9
+            draw.rectangle((bx, y1 - 8 - h, bx + 5, y1 - 8), fill=label)
+        _crt_paint_scanlines(image, (x0, y0, x1 + 1, y1 + 1), (fill,), period=_HAL_SCANLINE_PERIOD, phase=1)
+        if active:
+            draw.rectangle((x0, y0 - 8, x1, y0 - 6), fill=white)
+
+
+def _hal_paint_plate(draw: ImageDraw.ImageDraw) -> None:
+    """The nameplate above the lens: HAL over 9000 on the blue plate."""
+    x0, y0, x1, y1 = _HAL_PLATE_RECT
+    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
+    draw.rectangle((x0, y0, x1, y1), fill=blue)
+    big, small = _hal_chrome_font(24), _hal_chrome_font(15)
+    cx = (x0 + x1) / 2
+    draw.text((cx - draw.textlength("HAL", font=big) / 2, y0 + 8), "HAL", font=big, fill=white)
+    draw.text((cx - draw.textlength("9000", font=small) / 2, y0 + 42), "9000", font=small, fill=white)
+
+
+def _hal_paint_eye(image: Image.Image) -> None:
+    """The lens: a red disc in a white bezel, a yellow bloom at its centre
+    with a white catchlight, and red light spilling into the black."""
+    cx, cy = _HAL_EYE_CENTRE
+    r = _HAL_EYE_RADIUS
+    draw = ImageDraw.Draw(image)
+    black, white, red, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"], SPECTRA6["yellow"]
+    draw.ellipse((cx - r - 6, cy - r - 6, cx + r + 6, cy + r + 6), fill=black, outline=white, width=3)
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=red)
+    glow = Image.new("L", image.size, 0)
+    ImageDraw.Draw(glow).ellipse((cx - 13, cy - 13, cx + 13, cy + 13), fill=255)
+    paint_neon_mask(image, glow, yellow, yellow, radius=9, gamma=1.8, cap=0.6, ground=(red,))
+    draw.ellipse((cx - 19, cy - 19, cx - 9, cy - 9), fill=white)
+    bloom = Image.new("L", image.size, 0)
+    ImageDraw.Draw(bloom).ellipse((cx - r - 8, cy - r - 8, cx + r + 8, cy + r + 8), fill=255)
+    paint_neon_mask(image, bloom, None, red, radius=12, gamma=2.0, cap=0.45, ground=(black,))
+    glow.close()
+    bloom.close()
+
+
+def _hal_paint_ship(draw: ImageDraw.ImageDraw) -> None:
+    """The vehicle monitor under the lens: the Discovery One in white
+    wireframe — the command sphere, the spine of fuel tanks, the engine
+    block — the kind of schematic the film's screens drew by hand."""
+    x0, y0, x1, y1 = _HAL_SHIP_RECT
+    white = SPECTRA6["white"]
+    draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
+    draw.text((x0 + 8, y0 + 6), "VEH", font=_hal_chrome_font(11), fill=white)
+    cy = y0 + 50
+    sx = x0 + 10
+    draw.ellipse((sx, cy - 11, sx + 22, cy + 11), outline=white, width=1)
+    draw.ellipse((sx + 6, cy - 5, sx + 16, cy + 5), outline=white, width=1)
+    draw.line((sx + 22, cy, x1 - 26, cy), fill=white, width=1)
+    for i in range(5):
+        bx = sx + 30 + i * 11
+        draw.rectangle((bx, cy - 4, bx + 7, cy + 4), outline=white, width=1)
+    draw.rectangle((x1 - 26, cy - 8, x1 - 10, cy + 8), outline=white, width=1)
+    draw.line((x1 - 10, cy - 5, x1 - 6, cy - 5), fill=white, width=1)
+    draw.line((x1 - 10, cy + 5, x1 - 6, cy + 5), fill=white, width=1)
+    draw.line((sx + 24, cy - 18, sx + 24, cy + 18), fill=white, width=1)
+    draw.line((sx + 18, cy - 18, sx + 30, cy - 18), fill=white, width=1)
+
+
+def _hal_paint_traces(image: Image.Image, quote_row: dict) -> None:
+    """The hibernation monitor under the ship: two life traces, seeded
+    from the quote, in a white hairline frame."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _HAL_TRACE_RECT
+    white = SPECTRA6["white"]
+    draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
+    draw.text((x0 + 8, y0 + 6), "HIB", font=_hal_chrome_font(11), fill=white)
+    rng = random.Random(_HAL_SEED + 11 + _row_digest(quote_row))
+    inner_top = y0 + 24
+    lane = (y1 - inner_top) // 2
+    for t in range(2):
+        base = inner_top + t * lane + lane // 2 + 6
+        amp = lane // 2 - 6
+        phase = rng.uniform(0, math.tau)
+        freq = rng.uniform(0.25, 0.55)
+        spike = rng.randint(6, 14)
+        points = []
+        for x in range(x0 + 8, x1 - 8):
+            v = math.sin((x - x0) * freq + phase) * amp * 0.45
+            if (x - x0) % 34 < 3:
+                v -= spike
+            points.append((x, round(base + v)))
+        draw.line(points, fill=white, width=1)
+
+
+def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Discovery's main monitor with the hour's subsystem up, HAL's eye
+    beside it (see the section comment above)."""
+    hour = _hal_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    _hal_paint_monitor(image, hour, quote_row)
+    draw = ImageDraw.Draw(image)
+    _hal_paint_quote(draw, _hal_layout(draw, quote_row))
+    _hal_paint_byline(draw, quote_row)
+    _crt_paint_scanlines(image, _HAL_MONITOR_RECT, (SPECTRA6["blue"],), period=_HAL_SCANLINE_PERIOD)
+    _hal_paint_tiles(image, hour, quote_row)
+    _hal_paint_plate(ImageDraw.Draw(image))
+    _crt_paint_scanlines(image, _HAL_PLATE_RECT, (SPECTRA6["blue"],), period=_HAL_SCANLINE_PERIOD)
+    _hal_paint_eye(image)
+    draw = ImageDraw.Draw(image)
+    _hal_paint_ship(draw)
+    _hal_paint_traces(image, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# lumon — *Severance* (2022–): the Macrodata Refinement terminal
+# ---------------------------------------------------------------------------
+# On the severed floor of Lumon Industries, Macrodata Refinement is four
+# people at four CRTs, each showing a file named after a town — Siena,
+# Dranesville, Tumwater, Cold Harbor — as a field of small white digits on a
+# deep blue screen. Some of the numbers "feel scary"; the refiner boxes the
+# cluster and sweeps it into one of five bins along the foot, and the file's
+# completion percentage in the header creeps up. Nobody is told what the
+# numbers are. The page is one of those terminals.
+#
+# **The screen is a vignetted blue CRT.** A continuous-tone field — the
+# panel's blue at the centre falling to black at the corners — is painted in
+# the calibrated ink space at a quarter of panel resolution, bicubic-upsampled
+# and Floyd–Steinberg dithered to blue and black (``_expedition_dither``),
+# so the vignette is error-diffused rather than latticed; a black bezel with
+# rounded corners frames it. Painted once per process (``_LUMON_SCENE``).
+#
+# **The header is the file's.** The file name, chosen from the show's twelve
+# towns by the quote's digest, in Jost Medium at the left; at the right the
+# Lumon mark — the globe with its latitude lines and the wordmark in Michroma,
+# the nearest open face to the company's wide geometric capitals — and the
+# completion line beneath it. **The hour is the completion.** A file is
+# refined over the working day, so the header reads ``N% Complete`` with
+# ``N = hour / 12``: one o'clock is 8%, noon and midnight are 100%, which on
+# the show is the day the file is finished. And the scary cluster carries it
+# twice: in the number grid of four rows by twenty-four columns beneath the
+# header, the boxed two-by-two cluster — its digits a size larger and
+# nudged off the grid, the way the scary ones swell — sits in the hour's
+# column pair, so the box walks left to right across the twelve hours.
+# Both are byte-identical across the minutes of an hour; the matched phrase
+# carries the minute.
+#
+# **The quote is the file's text, and the phrase is what feels scary.** The
+# body is Montserrat Regular in white — the digits' own face extended to a
+# sentence — with the matched phrase Montserrat Bold in yellow
+# inside a white hairline box: the refiner's hover. The author and title run
+# in Jost under the quote, and the five bins close the page, each a boxed
+# ``00``–``04`` with a progress bar whose fill is a white-and-blue stipple at
+# a level seeded from the quote.
+#
+# The MDR terminal's own faces are a custom design for the show (its wordmark
+# is set in a wide geometric close to Manifold Extended), so every register
+# here takes the nearest open face: Montserrat (the open Gotham) for the
+# digits and the body, Inter (for Forma DJR) for the file name, the
+# completion and the byline, Michroma (for Manifold Extended) for the
+# wordmark.
+# Composed at the canonical 800x480 and NEAREST-downsampled otherwise (the
+# ``metro`` convention).
+# ---------------------------------------------------------------------------
+_LUMON_SEED = 0x4C554D4F              # LUMO
+_LUMON_FILES = ("Cold Harbor", "Siena", "Dranesville", "Tumwater", "Allentown", "Sunset Park",
+                "Lexington", "Nanning", "Moonbeam", "Lucknow", "Billings", "Wellington")
+_LUMON_INKS = ("blue", "black")
+_LUMON_HOUSING = 10                   # the beige housing, a W+Y stipple
+_LUMON_GAP = 6                        # the recessed black edge of the glass
+_LUMON_BEZEL = _LUMON_HOUSING + _LUMON_GAP
+_LUMON_BEZEL_RADIUS = 26
+_LUMON_SCANLINE_PERIOD = 4
+_LUMON_HEADER_Y = 28
+_LUMON_RULE_Y = 82
+_LUMON_GRID_RECT = (44, 94, 756, 198)
+_LUMON_GRID_COLS = 24
+_LUMON_GRID_ROWS = 4
+_LUMON_QUOTE_RECT = (50, 214, 750, 386)
+_LUMON_BYLINE_Y = 392
+_LUMON_BINS_RECT = (44, 414, 756, 460)
+_LUMON_BIN_GAP = 12
+_LUMON_SCENE: dict = {}
+_LUMON_BLUE = _EXPEDITION_PANEL_INKS["blue"]
+_LUMON_BLACK = _EXPEDITION_PANEL_INKS["black"]
+
+
+def _lumon_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12."""
+    return _expanse_hour(time_str)
+
+
+def _lumon_completion(hour: int) -> int:
+    """The file's completion in percent: the hour over twelve."""
+    return round(hour * 100 / 12)
+
+
+def _lumon_file_name(quote_row: dict) -> str:
+    """The file's town, chosen by the quote."""
+    return _LUMON_FILES[_row_digest(quote_row) % len(_LUMON_FILES)]
+
+
+def _lumon_scene() -> Image.Image:
+    """The vignetted blue CRT inside its bezel, dithered. Painted once per
+    process."""
+    key = (_lumon_paint_screen,)
+    cached = _LUMON_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    image = Image.new("RGB", size, SPECTRA6["black"])
+    _lumon_paint_screen(image)
+    _LUMON_SCENE["frame"] = (key, image)
+    return image
+
+
+def _lumon_paint_screen(image: Image.Image) -> None:
+    """The blue field falling to black at the corners, error-diffused to the
+    two inks, in a recessed black edge inside a beige housing, with the
+    phosphor's light leaking onto the edge."""
+    width, height = image.size
+    small = Image.new("RGB", (width // 4, height // 4))
+    sp = small.load()
+    cx, cy = small.size[0] / 2.0, small.size[1] / 2.0
+    rmax = math.hypot(cx, cy)
+    for y in range(small.size[1]):
+        for x in range(small.size[0]):
+            t = min(1.0, (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.8 * 0.85)
+            sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK))
+    field = _expedition_dither(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
+    # The housing: the beige of the show's terminals, white with a yellow
+    # quarter, with the glass opening cut out of it.
+    _fill_swatch_stipple(image, (0, 0, width, height), SPECTRA6["white"], SPECTRA6["yellow"], 0.25)
+    h = _LUMON_HOUSING
+    ImageDraw.Draw(image).rounded_rectangle((h, h, width - h, height - h), radius=_LUMON_BEZEL_RADIUS + _LUMON_GAP,
+                                            fill=SPECTRA6["black"])
+    b = _LUMON_BEZEL
+    mask = Image.new("L", (width, height), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((b, b, width - b, height - b), radius=_LUMON_BEZEL_RADIUS, fill=255)
+    paint_neon_mask(image, mask, None, SPECTRA6["blue"], radius=5, gamma=1.6, cap=0.5, ground=(SPECTRA6["black"],))
+    image.paste(field, (0, 0), mask)
+    small.close()
+    field.close()
+    mask.close()
+
+
+def _lumon_paint_header(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The file name, the Lumon globe and wordmark, and the completion."""
+    white = SPECTRA6["white"]
+    x0, x1 = _LUMON_GRID_RECT[0], _LUMON_GRID_RECT[2]
+    name_font = load_font([(INTER_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=26)
+    draw.text((x0, _LUMON_HEADER_Y), _lumon_file_name(quote_row), font=name_font, fill=white)
+    # The globe: a circle with three latitude lines.
+    gx, gy, gr = x1 - 18, _LUMON_HEADER_Y + 20, 16
+    draw.ellipse((gx - gr, gy - gr, gx + gr, gy + gr), outline=white, width=2)
+    for dy, half in ((-8, 13), (0, 16), (8, 13)):
+        draw.line((gx - half, gy + dy, gx + half, gy + dy), fill=white, width=1)
+    draw.line((gx, gy - gr, gx, gy + gr), fill=white, width=1)
+    mark = load_font([MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES], size=14)
+    right = gx - gr - 12
+    draw.text((right - draw.textlength("LUMON", font=mark), _LUMON_HEADER_Y - 2), "LUMON", font=mark, fill=white)
+    line = f"{_lumon_completion(hour)}% Complete"
+    small = load_font([(INTER_VARIABLE, "Regular"), *META_FONT_CANDIDATES], size=15)
+    draw.text((right - draw.textlength(line, font=small), _LUMON_HEADER_Y + 22), line, font=small, fill=white)
+    draw.rectangle((x0, _LUMON_RULE_Y, x1, _LUMON_RULE_Y + 1), fill=white)
+
+
+def _lumon_grid_cells():
+    """The grid's cell boxes, row-major."""
+    x0, y0, x1, y1 = _LUMON_GRID_RECT
+    cw = (x1 - x0) / _LUMON_GRID_COLS
+    ch = (y1 - y0) / _LUMON_GRID_ROWS
+    return [[(x0 + c * cw, y0 + r * ch, x0 + (c + 1) * cw, y0 + (r + 1) * ch)
+             for c in range(_LUMON_GRID_COLS)] for r in range(_LUMON_GRID_ROWS)]
+
+
+def _lumon_cluster(hour: int) -> tuple[int, int]:
+    """The scary cluster's top-left cell ``(row, col)``: the middle rows,
+    the hour's column pair."""
+    return 1, 2 * (hour - 1)
+
+
+def _lumon_paint_grid(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The field of digits, seeded from the quote, with the hour's cluster
+    boxed, a size larger and nudged off the grid."""
+    white = SPECTRA6["white"]
+    rng = random.Random(_LUMON_SEED ^ _row_digest(quote_row))
+    cells = _lumon_grid_cells()
+    plain = load_font([(MONTSERRAT_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES], size=17)
+    scary = load_font([(MONTSERRAT_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES], size=23)
+    row0, col0 = _lumon_cluster(hour)
+    for r, row in enumerate(cells):
+        for c, (cx0, cy0, cx1, cy1) in enumerate(row):
+            digit = str(rng.randint(0, 9))
+            in_cluster = row0 <= r <= row0 + 1 and col0 <= c <= col0 + 1
+            font = scary if in_cluster else plain
+            dx = rng.randint(-2, 2) if in_cluster else 0
+            dy = rng.randint(-2, 2) if in_cluster else 0
+            tw = draw.textlength(digit, font=font)
+            th = _font_ascent(font)
+            draw.text((cx0 + (cx1 - cx0 - tw) / 2 + dx, cy0 + (cy1 - cy0 - th) / 2 - 2 + dy), digit, font=font,
+                      fill=white)
+    bx0, by0 = cells[row0][col0][0], cells[row0][col0][1]
+    bx1, by1 = cells[row0 + 1][col0 + 1][2], cells[row0 + 1][col0 + 1][3]
+    draw.rectangle((round(bx0) - 3, round(by0) - 3, round(bx1) + 3, round(by1) + 3), outline=white, width=1)
+
+
+def _lumon_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    """The quote's lines on the terminal, with the bold chunks positioned."""
+    x0, y0, x1, y1 = _LUMON_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=30, font_min=14, line_height_mult=1.32, theme="lumon",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
+            x += w
+        y += line_height
+    return placed
+
+
+def _lumon_hover_boxes(draw: ImageDraw.ImageDraw, placed) -> list:
+    """One box per run of bold chunks on a line — the phrase, not each
+    word — trimmed to the run's inked extent."""
+    boxes = []
+    run = None
+    for x, y, chunk, font, is_bold, w, lh in placed:
+        if not is_bold or not chunk.strip():
+            if run is not None and (not is_bold or run[1] != y):
+                boxes.append(run)
+                run = None
+            if is_bold and run is not None:
+                run = (run[0], run[1], x + w, run[3])
+            continue
+        lead = draw.textlength(chunk, font=font) - draw.textlength(chunk.lstrip(), font=font)
+        trail = draw.textlength(chunk, font=font) - draw.textlength(chunk.rstrip(), font=font)
+        x0, x1 = round(x + lead), round(x + w - trail)
+        if run is not None and run[1] == y:
+            run = (run[0], y, x1, lh)
+        else:
+            if run is not None:
+                boxes.append(run)
+            run = (x0, y, x1, lh)
+    if run is not None:
+        boxes.append(run)
+    return [(x0 - 3, y - 2, x1 + 2, y + lh - 6) for x0, y, x1, lh in boxes]
+
+
+def _lumon_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """White Montserrat; the matched phrase Bold in yellow inside the
+    refiner's white hover box."""
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for box in _lumon_hover_boxes(draw, placed):
+        draw.rectangle(box, outline=white, width=1)
+    for x, y, chunk, font, is_bold, w, lh in placed:
+        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+
+
+def _lumon_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title under the quote, in Inter."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return
+    x0 = _LUMON_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, " — ".join(parts), [(INTER_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
+                                   16, _LUMON_QUOTE_RECT[2] - x0, floor=13)
+    draw.text((x0, _LUMON_BYLINE_Y), text, font=font, fill=SPECTRA6["white"])
+
+
+def _lumon_paint_bins(image: Image.Image, quote_row: dict) -> None:
+    """The five bins along the foot, each boxed with a stippled progress bar
+    at a level seeded from the quote."""
+    draw = ImageDraw.Draw(image)
+    white, blue = SPECTRA6["white"], SPECTRA6["blue"]
+    x0, y0, x1, y1 = _LUMON_BINS_RECT
+    width = (x1 - x0 - 4 * _LUMON_BIN_GAP) // 5
+    rng = random.Random(_LUMON_SEED + 3 + _row_digest(quote_row))
+    label = load_font([(MONTSERRAT_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES], size=14)
+    small = load_font([(MONTSERRAT_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES], size=11)
+    for i in range(5):
+        bx0 = x0 + i * (width + _LUMON_BIN_GAP)
+        bx1 = bx0 + width
+        draw.rectangle((bx0, y0, bx1, y1), outline=white, width=1)
+        draw.text((bx0 + 8, y0 + 5), f"0{i}", font=label, fill=white)
+        level = rng.randint(4, 96)
+        pct = f"{level}%"
+        draw.text((bx1 - 8 - draw.textlength(pct, font=small), y0 + 7), pct, font=small, fill=white)
+        bar = (bx0 + 8, y1 - 16, bx1 - 8, y1 - 7)
+        draw.rectangle(bar, outline=white, width=1)
+        fill_w = round((bar[2] - bar[0] - 4) * level / 100)
+        if fill_w > 0:
+            _fill_swatch_stipple(image, (bar[0] + 2, bar[1] + 2, bar[0] + 2 + fill_w, bar[3] - 1), blue, white, 0.5)
+
+
+def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Macrodata Refinement terminal with the hour's file completion and
+    the scary cluster in the hour's column (see the section comment above)."""
+    hour = _lumon_hour(time_str)
+    image = _lumon_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _lumon_paint_header(draw, hour, quote_row)
+    _lumon_paint_grid(draw, hour, quote_row)
+    _lumon_paint_quote(draw, _lumon_layout(draw, quote_row))
+    _lumon_paint_byline(draw, quote_row)
+    _lumon_paint_bins(image, quote_row)
+    b = _LUMON_BEZEL
+    _crt_paint_scanlines(image, (b, b, 800 - b, 480 - b), (SPECTRA6["blue"],), period=_LUMON_SCANLINE_PERIOD)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# dsky — the Apollo Guidance Computer's display and keyboard (1966–1972)
+# ---------------------------------------------------------------------------
+# The DSKY ("disky") was the astronauts' face of the Apollo Guidance
+# Computer: a black anodised unit set into the grey main display console,
+# with a matrix of fourteen warning lamps behind smoked glass at the left,
+# an electroluminescent display behind dark glass at the right — PROG, VERB
+# and NOUN in two digits each over three signed five-digit registers — and
+# nineteen keys below. A crew spoke to it in verb-noun pairs (VERB 06 NOUN
+# 62: display velocity, altitude rate and altitude) and read the answer off
+# green segments glowing out of the dark. Real hardware, so there is nothing
+# to licence and nothing to approximate; the geometry here is the Block II
+# unit's, and beside it on the panel is what every crew kept beside it: a
+# page of the flight plan, typed, clipped to the console.
+#
+# **The console is painted in continuous tone and dithered.** The panel is
+# the Apollo console's grey — a mid tone in the calibrated ink space with a
+# horizontal brushed grain — and the unit on it is modelled, not drawn: the
+# face plate is a raised black rim shaded under the upper-left light
+# (``_furies_shade``), the keycaps are nineteen domes with a lit edge and a
+# core shadow, the screws are shaded discs, the lamp and display windows
+# are recessed dark glass with a diagonal reflection across the display,
+# and the unit throws a soft shadow on the panel. All of that is one scene
+# Floyd–Steinberg dithered to white and black (``_expedition_dither``), so
+# the greys are error-diffused tone; the legends, the segments, the lit
+# lamp and the type go on after.
+#
+# **The flight plan is paper.** A cream card — the panel's white with a
+# yellow quarter — clipped to the console at its top edge, with its own
+# shadow in the scene beneath. The quote is typed on it in **Special
+# Elite** (the typewriter the flight plans were cut on) in black, with the
+# matched phrase in red the way the pen-and-ink updates were, under a typed
+# header and over a typed byline.
+#
+# **The hour is the program.** The AGC's major modes were numbered programs
+# (P00 idle, P11 boost monitor, P63 braking…), and the PROG register shows
+# the one running: here it is the hour, 01 to 12, pinned across the
+# minutes. VERB 06 NOUN 62 stays up and the three registers carry telemetry
+# seeded from the quote, so a different passage is a different moment in the
+# flight; the matched phrase carries the minute. **The segments glow:** each
+# digit is drawn into a mask as true seven-segment strokes
+# (``_dsky_draw_glyph``), then painted white-hot with a green bloom through
+# ``paint_neon_mask`` with ``ground`` pinned to black. COMP ACTY is the one
+# lamp lit, in solid green. Composed at 800x480 and NEAREST-downsampled
+# otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_DSKY_SEED = 0x44534B59               # DSKY
+_DSKY_INKS = ("white", "black")
+_DSKY_PANEL = 0.52                    # the console grey, as a fraction of the way to black
+_DSKY_CARD_RECT = (30, 34, 452, 452)
+_DSKY_QUOTE_RECT = (54, 104, 428, 384)
+_DSKY_BYLINE_Y = 404
+_DSKY_UNIT_RECT = (476, 18, 786, 464)
+_DSKY_RIM = 10
+_DSKY_LAMP_WINDOW = (494, 40, 632, 230)
+_DSKY_LAMP_ORIGIN = (501, 48)
+_DSKY_LAMP_SIZE = (60, 21)
+_DSKY_LAMP_GAP = (5, 5)
+_DSKY_LAMPS = (("UPLINK", "TEMP"), ("NO ATT", "GIMBAL"), ("STBY", "PROG"), ("KEY REL", "RESTART"),
+               ("OPR ERR", "TRACKER"), ("", "ALT"), ("", "VEL"))
+_DSKY_DISPLAY_RECT = (642, 40, 770, 230)
+_DSKY_KEYPAD_ORIGIN = (497, 252)
+_DSKY_KEY = 36
+_DSKY_KEY_GAP = 5
+_DSKY_KEYS = (("VERB", "+", "7", "8", "9", "CLR", "ENTR"),
+              ("NOUN", "-", "4", "5", "6", "PRO", "RSET"),
+              ("", "0", "1", "2", "3", "KEY\nREL", ""))
+_DSKY_VERB, _DSKY_NOUN = "06", "62"
+_DSKY_SCENE: dict = {}
+# Seven-segment encodings: a top, b upper right, c lower right, d bottom,
+# e lower left, f upper left, g middle.
+_DSKY_SEGMENTS = {
+    "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd",
+    "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", "+": "g|", " ": "",
+}
+
+
+def _dsky_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — the program in the PROG register."""
+    return _expanse_hour(time_str)
+
+
+def _dsky_tone(t: float) -> tuple[int, int, int]:
+    """A grey ``t`` of the way from the white ink to the black ink."""
+    return tuple(round(w + (k - w) * t) for w, k in zip(_EXPEDITION_PANEL_INKS["white"], _EXPEDITION_PANEL_INKS["black"]))
+
+
+def _dsky_segments(ch: str) -> str:
+    return _DSKY_SEGMENTS.get(ch, "")
+
+
+def _dsky_draw_glyph(draw: ImageDraw.ImageDraw, x: int, y: int, ch: str, *, h: int = 22, w: int = 12,
+                     t: int = 3) -> None:
+    """One seven-segment character into an ``L`` mask at (x, y)."""
+    segs = _dsky_segments(ch)
+    mid = y + h // 2
+    if "a" in segs:
+        draw.rectangle((x + 1, y, x + w - 1, y + t - 1), fill=255)
+    if "b" in segs:
+        draw.rectangle((x + w - t, y + 1, x + w - 1, mid - 1), fill=255)
+    if "c" in segs:
+        draw.rectangle((x + w - t, mid + 1, x + w - 1, y + h - 1), fill=255)
+    if "d" in segs:
+        draw.rectangle((x + 1, y + h - t, x + w - 1, y + h - 1), fill=255)
+    if "e" in segs:
+        draw.rectangle((x, mid + 1, x + t - 1, y + h - 1), fill=255)
+    if "f" in segs:
+        draw.rectangle((x, y + 1, x + t - 1, mid - 1), fill=255)
+    if "g" in segs:
+        draw.rectangle((x + 1, mid - t // 2, x + w - 1, mid - t // 2 + t - 1), fill=255)
+    if "|" in segs:
+        draw.rectangle((x + w // 2 - t // 2, mid - 6, x + w // 2 - t // 2 + t - 1, mid + 6), fill=255)
+
+
+def _dsky_registers(quote_row: dict) -> list[str]:
+    """Three signed five-digit registers of telemetry, seeded from the quote."""
+    rng = random.Random(_DSKY_SEED ^ _row_digest(quote_row))
+    return [f"{rng.choice('+-')}{rng.randint(0, 99999):05d}" for _ in range(3)]
+
+
+def _dsky_label_font(size: int):
+    return load_font([(JOST_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=size)
+
+
+def _dsky_key_rects() -> list:
+    rects = []
+    ox, oy = _DSKY_KEYPAD_ORIGIN
+    k, g = _DSKY_KEY, _DSKY_KEY_GAP
+    for r, row in enumerate(_DSKY_KEYS):
+        for c, label in enumerate(row):
+            if label:
+                x, y = ox + c * (k + g), oy + r * (k + g)
+                rects.append((x, y, x + k, y + k, label))
+    return rects
+
+
+def _dsky_lamp_rects() -> list:
+    rects = []
+    ox, oy = _DSKY_LAMP_ORIGIN
+    w, h = _DSKY_LAMP_SIZE
+    gx, gy = _DSKY_LAMP_GAP
+    for r, row in enumerate(_DSKY_LAMPS):
+        for c, label in enumerate(row):
+            x, y = ox + c * (w + gx), oy + r * (h + gy)
+            rects.append((x, y, x + w, y + h, label))
+    return rects
+
+
+def _dsky_paint_console(scene: Image.Image) -> None:
+    """The grey panel with its brushed grain, the unit's shadow and the
+    card's shadow."""
+    size = scene.size
+    scene.paste(Image.new("RGB", size, _dsky_tone(_DSKY_PANEL)), (0, 0))
+    grain = _expedition_noise(size, (200, 9), _DSKY_SEED + 1).point(lambda v: v * 14 // 255)
+    scene.paste(ImageChops.subtract(ImageChops.add(scene, Image.merge("RGB", (grain, grain, grain))),
+                                    Image.new("RGB", size, (7, 7, 7))))
+    for rect, blur, depth in ((_DSKY_UNIT_RECT, 6, 0.86), (_DSKY_CARD_RECT, 4, 0.80)):
+        shadow = Image.new("L", size, 0)
+        ImageDraw.Draw(shadow).rounded_rectangle((rect[0] + 5, rect[1] + 6, rect[2] + 7, rect[3] + 8), radius=8, fill=255)
+        shadow = shadow.filter(ImageFilter.GaussianBlur(blur)).point(lambda v: int(v * 0.8))
+        scene.paste(Image.new("RGB", size, _dsky_tone(depth)), (0, 0), shadow)
+        shadow.close()
+
+
+def _dsky_paint_unit(scene: Image.Image) -> None:
+    """The unit in tone: the black face plate with a raised, lit rim, the
+    recessed windows, the reflection, the keycaps, the screws."""
+    size = scene.size
+    x0, y0, x1, y1 = _DSKY_UNIT_RECT
+    draw = ImageDraw.Draw(scene)
+    # The face plate, and the rim modelled as a ring under the upper-left light.
+    plate = Image.new("L", size, 0)
+    ImageDraw.Draw(plate).rounded_rectangle((x0, y0, x1, y1), radius=10, fill=255)
+    rim = ImageChops.subtract(plate, plate.filter(ImageFilter.MinFilter(2 * _DSKY_RIM + 1)))
+    shaded = _furies_shade(rim, _dsky_tone(0.80), _dsky_tone(0.40), _dsky_tone(0.97), offset=5, blur=3)
+    scene.paste(Image.new("RGB", size, _dsky_tone(0.90)), (0, 0), plate)
+    scene.paste(shaded, (0, 0), rim)
+    # The windows: recessed dark glass, a touch lighter at their top edge.
+    for wx0, wy0, wx1, wy1 in (_DSKY_LAMP_WINDOW, _DSKY_DISPLAY_RECT):
+        draw.rectangle((wx0, wy0, wx1, wy1), fill=_dsky_tone(0.96))
+        draw.rectangle((wx0, wy0, wx1, wy0 + 2), fill=_dsky_tone(0.70))
+        draw.rectangle((wx0, wy0, wx0 + 2, wy1), fill=_dsky_tone(0.78))
+    # The unlit lamps: smoked glass a shade above the window.
+    for lx0, ly0, lx1, ly1, label in _dsky_lamp_rects():
+        draw.rectangle((lx0, ly0, lx1, ly1), fill=_dsky_tone(0.92))
+    # A reflection across the display glass.
+    reflection = Image.new("L", size, 0)
+    dx0, dy0, dx1, dy1 = _DSKY_DISPLAY_RECT
+    ImageDraw.Draw(reflection).polygon([(dx0 + 30, dy0), (dx0 + 70, dy0), (dx1, dy1 - 70), (dx1, dy1 - 30)], fill=255)
+    reflection = reflection.filter(ImageFilter.GaussianBlur(6)).point(lambda v: int(v * 0.22))
+    scene.paste(Image.new("RGB", size, _dsky_tone(0.40)), (0, 0), reflection)
+    # The keypad: a recessed grey tray, and on it the keycaps — near-black
+    # domes with a lit upper-left edge and a core shadow, so each key reads
+    # as a dark square on the lighter tray.
+    rects = _dsky_key_rects()
+    tx0 = min(r[0] for r in rects) - 8
+    ty0 = min(r[1] for r in rects) - 8
+    tx1 = max(r[2] for r in rects) + 8
+    ty1 = max(r[3] for r in rects) + 8
+    draw.rounded_rectangle((tx0, ty0, tx1, ty1), radius=6, fill=_dsky_tone(0.62))
+    draw.rectangle((tx0, ty0, tx1, ty0 + 2), fill=_dsky_tone(0.80))
+    keys = Image.new("L", size, 0)
+    kd = ImageDraw.Draw(keys)
+    for kx0, ky0, kx1, ky1, label in rects:
+        kd.rounded_rectangle((kx0, ky0, kx1, ky1), radius=6, fill=255)
+    caps = _furies_shade(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
+    scene.paste(caps, (0, 0), keys)
+    # Screws at the plate's corners.
+    for sx, sy in ((x0 + 14, y0 + 14), (x1 - 14, y0 + 14), (x0 + 14, y1 - 14), (x1 - 14, y1 - 14)):
+        screw = Image.new("L", size, 0)
+        ImageDraw.Draw(screw).ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=255)
+        head = _furies_shade(screw, _dsky_tone(0.55), _dsky_tone(0.20), _dsky_tone(0.92), offset=3, blur=2)
+        scene.paste(head, (0, 0), screw)
+        screw.close()
+    for m in (plate, rim, shaded, reflection, keys, caps):
+        m.close()
+
+
+def _dsky_scene() -> Image.Image:
+    """The console, the unit and the card — everything the hour and the
+    quote do not touch — dithered. Painted once per process."""
+    key = (_dsky_paint_console, _dsky_paint_unit, _dsky_paint_card)
+    cached = _DSKY_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["white"])
+    _dsky_paint_console(scene)
+    _dsky_paint_unit(scene)
+    image = _expedition_dither(scene, _DSKY_INKS)
+    _dsky_paint_card(image)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)       # the card's typed header is antialiased
+    _DSKY_SCENE["frame"] = (key, image)
+    return image
+
+
+def _dsky_paint_card(image: Image.Image) -> None:
+    """The flight-plan card after the dither: cream paper, a hairline edge,
+    the clip at its head, the typed header and rule."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _DSKY_CARD_RECT
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    _fill_swatch_stipple(image, (x0, y0, x1, y1), white, SPECTRA6["yellow"], 0.25)
+    draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
+    # The clip: a bulldog clip's two plates and its loop, in solid inks.
+    cx = (x0 + x1) // 2
+    draw.rounded_rectangle((cx - 34, y0 - 10, cx + 34, y0 + 14), radius=4, fill=black)
+    draw.rectangle((cx - 30, y0 - 6, cx + 30, y0 + 10), outline=white, width=1)
+    draw.arc((cx - 16, y0 - 22, cx + 16, y0 + 2), 180, 360, fill=black, width=4)
+    font = load_font([SPECIALELITE_REGULAR, *META_FONT_CANDIDATES], size=13)
+    draw.text((x0 + 24, y0 + 30), "APOLLO FLIGHT PLAN      CSM/LM TIMELINE", font=font, fill=black)
+    draw.text((x1 - 24 - draw.textlength("PAGE 3-61", font=font), y0 + 30), "PAGE 3-61", font=font, fill=black)
+    draw.line((x0 + 24, y0 + 52, x1 - 24, y0 + 52), fill=black, width=1)
+    for hx in range(x0 + 10, x1 - 10, 2):
+        draw.point((hx, y0 + 18), fill=black)
+
+
+def _dsky_paint_legends(draw: ImageDraw.ImageDraw) -> None:
+    """After the dither: the lamp words, the key caps' legends, the window
+    labels and the nameplate."""
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    font = _dsky_label_font(10)
+    for lx0, ly0, lx1, ly1, label in _dsky_lamp_rects():
+        draw.rectangle((lx0, ly0, lx1, ly1), outline=black, width=1)
+        if label:
+            tw = draw.textlength(label, font=font)
+            draw.text((lx0 + (lx1 - lx0 - tw) / 2, ly0 + 5), label, font=font, fill=white,
+                      stroke_width=1, stroke_fill=black)
+    for kx0, ky0, kx1, ky1, label in _dsky_key_rects():
+        lines = label.split("\n")
+        ty = ky0 + (_DSKY_KEY - 12 * len(lines)) / 2
+        for line in lines:
+            tw = draw.textlength(line, font=font)
+            draw.text((kx0 + (_DSKY_KEY - tw) / 2, ty), line, font=font, fill=white, stroke_width=1, stroke_fill=black)
+            ty += 12
+    small = _dsky_label_font(9)
+    ux0, uy0, ux1, uy1 = _DSKY_UNIT_RECT
+    label = "DSKY  ·  BLOCK II"
+    lx = (ux0 + ux1) / 2 - tracked_width(draw, label, small, tracking=2) / 2
+    draw.rectangle((lx - 6, uy1 - 24, lx + tracked_width(draw, label, small, tracking=2) + 6, uy1 - 10), fill=black)
+    draw_tracked(draw, (lx, uy1 - 22), label, small, white, tracking=2)
+
+
+def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
+    """PROG / VERB / NOUN and the three registers as glowing segments; the
+    COMP ACTY lamp lit in green."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _DSKY_DISPLAY_RECT
+    white, green, black = SPECTRA6["white"], SPECTRA6["green"], SPECTRA6["black"]
+    font = _dsky_label_font(10)
+    draw.rectangle((x0 + 8, y0 + 8, x0 + 40, y0 + 36), fill=green)
+    draw.text((x0 + 10, y0 + 11), "COMP", font=font, fill=black)
+    draw.text((x0 + 10, y0 + 22), "ACTY", font=font, fill=black)
+    mask = Image.new("L", image.size, 0)
+    md = ImageDraw.Draw(mask)
+    pair_x = x1 - 8 - 2 * 16
+    draw.text((pair_x, y0 + 8), "PROG", font=font, fill=white)
+    for i, ch in enumerate(f"{hour:02d}"):
+        _dsky_draw_glyph(md, pair_x + i * 16, y0 + 22, ch, h=18, w=11)
+    row_y = y0 + 52
+    for label, value, lx in (("VERB", _DSKY_VERB, x0 + 8), ("NOUN", _DSKY_NOUN, pair_x)):
+        draw.text((lx, row_y), label, font=font, fill=white)
+        for i, ch in enumerate(value):
+            _dsky_draw_glyph(md, lx + i * 16, row_y + 14, ch, h=18, w=11)
+    draw.rectangle((x0 + 8, row_y + 40, x1 - 8, row_y + 40), fill=white)
+    reg_y = row_y + 48
+    for r, value in enumerate(_dsky_registers(quote_row)):
+        y = reg_y + r * 40
+        for i, ch in enumerate(value):
+            _dsky_draw_glyph(md, x0 + 10 + i * 19, y, ch, h=24, w=13)
+        if r < 2:
+            draw.rectangle((x0 + 8, y + 32, x1 - 8, y + 32), fill=white)
+    paint_neon_mask(image, mask, white, green, radius=4, gamma=1.4, cap=0.6, ground=(black,))
+    mask.close()
+
+
+def _dsky_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _DSKY_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=28, font_min=15, line_height_mult=1.42, theme="dsky",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _dsky_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """Typed on the card: black, with the matched phrase in red ink."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
+
+
+def _dsky_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """Author and title typed under the quote."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p.upper() for p in (author, title) if p]
+    if not parts:
+        return
+    x0 = _DSKY_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, "  /  ".join(parts), [SPECIALELITE_REGULAR, *META_FONT_CANDIDATES],
+                                   14, _DSKY_QUOTE_RECT[2] - x0, floor=12)
+    draw.text((x0, _DSKY_BYLINE_Y), text, font=font, fill=SPECTRA6["black"])
+
+
+def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Apollo DSKY on its console, the hour in its PROG register, the
+    quote typed on the flight plan beside it (see the section comment above)."""
+    hour = _dsky_hour(time_str)
+    image = _dsky_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _dsky_paint_legends(draw)
+    _dsky_paint_display(image, hour, quote_row)
+    draw = ImageDraw.Draw(image)
+    _dsky_paint_quote(draw, _dsky_layout(draw, quote_row))
+    _dsky_paint_byline(draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# oblivion — *Oblivion* (2013): the Sky Tower's light table
+# ---------------------------------------------------------------------------
+# Joseph Kosinski's film is remembered for its screens, designed by GMUNK
+# (Bradley Munkowitz) and his team and set in Blender: the Sky Tower's desk is
+# a light table whose whole glass surface is the interface — a white glow
+# pooled under the hand, frosted panes overlapping at slightly different
+# tones, hairline geometry, a topographic map of the sector with the hydro
+# rigs on it, a drone's status as a ring, waveforms, columns of tiny
+# numerals, and one warm accent for anything alive or wrong. The desk is a
+# physical thing the light comes *through*, which is what the first cut of
+# this theme — black lines on flat white — missed.
+#
+# **The glass is painted in continuous tone and dithered.** A field in the
+# calibrated ink space: pale grey at the edges, a white pool at the upper
+# left where the quote sits (a light table is brightest where you work),
+# the panes laid in as slightly darker rectangles with soft edges (frosted
+# glass, lit from beneath), the drone's shadow as a blurred grey ellipse, a
+# fine grain for the glass; then Floyd–Steinberg to white and black
+# (``_expedition_dither``), so the pool, the panes and the shadow are all
+# error-diffused tone rather than lattice. Everything crisp — the hairlines,
+# the type, the red — goes on after the dither.
+#
+# **The map is contours.** A seeded value-noise height field clipped to the
+# map pane, sliced at eight levels; each level's mask minus its own 3x3
+# erosion is a one-pixel contour, painted black. The twelve hydro rigs sit on
+# the terrain at seeded positions as hairline glyphs with their numbers, the
+# tower at the centre, and a dial around it: three rings, a crosshair,
+# twelve ticks with bearings. **The drone** hovers over the map's corner — a
+# sphere whose height field is a blurred disc, shaded Blinn-Phong under the
+# upper-left light (``shade_height_field``) and dithered with the glass, two
+# side pods modelled with ``_furies_shade``, and the red lens painted after
+# the dither with a white catchlight and a red bloom into the glass.
+#
+# **The hour is the rig, and the bearing.** The hour's rig is the red one on
+# the map, with a leader to its number; the dial's tick at the hour's place
+# on a clock face is a red wedge with a red dot on station; and the rig
+# status row along the foot has the hour's cell filled black with a red
+# marker, so the hour reads from across the room. All pinned across the
+# minutes; the matched phrase carries the minute. The waveform strip and the
+# numeral columns are seeded from the quote, so each passage is a different
+# shift on the desk. Composed at 800x480 and NEAREST-downsampled otherwise
+# (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_OBLIVION_SEED = 0x4F424C56           # OBLV
+_OBLIVION_INKS = ("white", "black")
+_OBLIVION_QUOTE_RECT = (40, 112, 450, 366)
+_OBLIVION_BYLINE_Y = 380
+_OBLIVION_MAP_RECT = (470, 104, 770, 398)
+_OBLIVION_DIAL_CENTRE = (600, 270)
+_OBLIVION_DIAL_RADII = (112, 86, 34)
+_OBLIVION_DRONE_CENTRE = (728, 146)
+_OBLIVION_DRONE_RADIUS = 34
+_OBLIVION_WAVE_RECT = (40, 416, 450, 458)
+_OBLIVION_RIG_BAND = (470, 416, 770, 458)
+_OBLIVION_RIG_GAP = 4
+_OBLIVION_CONTOUR_LEVELS = 5
+_OBLIVION_SCENE: dict = {}
+# Calibrated tones for the glass: the panel's white is the pool; the glass
+# proper is a shade below it; a pane a shade below that; the shadow darker.
+_OBLIVION_WHITE = _EXPEDITION_PANEL_INKS["white"]
+_OBLIVION_BLACK = _EXPEDITION_PANEL_INKS["black"]
+
+
+def _oblivion_hour(time_str: str) -> int:
+    return _expanse_hour(time_str)
+
+
+def _oblivion_tone(t: float) -> tuple[int, int, int]:
+    """A grey ``t`` of the way from the white ink to the black ink."""
+    return tuple(round(w + (k - w) * t) for w, k in zip(_OBLIVION_WHITE, _OBLIVION_BLACK))
+
+
+def _oblivion_font(size: int, instance: str = "Light"):
+    return load_font([(EXO2_VARIABLE, instance), *META_FONT_CANDIDATES], size=size)
+
+
+def _oblivion_polar(radius: float, hour: int) -> tuple[float, float]:
+    cx, cy = _OBLIVION_DIAL_CENTRE
+    a = math.radians((hour % 12) * 30)
+    return cx + radius * math.sin(a), cy - radius * math.cos(a)
+
+
+def _oblivion_rig_rects() -> list:
+    x0, y0, x1, y1 = _OBLIVION_RIG_BAND
+    width = (x1 - x0 - 11 * _OBLIVION_RIG_GAP) // 12
+    return [(x0 + i * (width + _OBLIVION_RIG_GAP), y0, x0 + i * (width + _OBLIVION_RIG_GAP) + width, y1)
+            for i in range(12)]
+
+
+def _oblivion_numeral_rect() -> tuple[int, int, int, int]:
+    """The column of readouts at the map's upper left, under its label."""
+    x0, y0, x1, y1 = _OBLIVION_MAP_RECT
+    return (x0 + 4, y0 + 22, x0 + 62, y0 + 92)
+
+
+def _oblivion_rig_points() -> list:
+    """The twelve rigs' positions on the map, seeded, kept off the dial's
+    hub and inside the pane."""
+    rng = random.Random(_OBLIVION_SEED + 3)
+    x0, y0, x1, y1 = _OBLIVION_MAP_RECT
+    cx, cy = _OBLIVION_DIAL_CENTRE
+    points = []
+    while len(points) < 12:
+        x, y = rng.randint(x0 + 22, x1 - 22), rng.randint(y0 + 22, y1 - 22)
+        if math.hypot(x - cx, y - cy) < _OBLIVION_DIAL_RADII[2] + 14:
+            continue
+        if math.hypot(x - _OBLIVION_DRONE_CENTRE[0], y - _OBLIVION_DRONE_CENTRE[1]) < _OBLIVION_DRONE_RADIUS + 26:
+            continue
+        nx0, ny0, nx1, ny1 = _oblivion_numeral_rect()
+        if nx0 - 12 <= x <= nx1 + 20 and ny0 - 12 <= y <= ny1 + 12:
+            continue
+        if any(math.hypot(x - px, y - py) < 30 for px, py in points):
+            continue
+        points.append((x, y))
+    return points
+
+
+def _oblivion_pool(size, box, blur: int) -> Image.Image:
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).ellipse(box, fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(blur))
+
+
+def _oblivion_paint_glass(scene: Image.Image) -> Image.Image:
+    """The light table in continuous tone: grey glass, the white pool under
+    the quote, the frosted panes, the drone's shadow, the grain. Returns the
+    pool's mask, whose saturated heart is cleaned after the dither."""
+    size = scene.size
+    scene.paste(Image.new("RGB", size, _oblivion_tone(0.07)), (0, 0))
+    # Saturated inside so the pool's heart is clean white; the blur only softens its edge.
+    pool = _oblivion_pool(size, (-60, 30, 540, 430), 50).point(lambda v: min(255, v * 2))
+    scene.paste(Image.new("RGB", size, _OBLIVION_WHITE), (0, 0), pool)
+    # The panes: the map and the two strips, a shade darker with soft edges.
+    for rect in (_OBLIVION_MAP_RECT, _OBLIVION_WAVE_RECT, _OBLIVION_RIG_BAND):
+        pane = Image.new("L", size, 0)
+        ImageDraw.Draw(pane).rectangle(rect, fill=255)
+        pane = pane.filter(ImageFilter.GaussianBlur(2)).point(lambda v: int(v * 0.55))
+        scene.paste(Image.new("RGB", size, _oblivion_tone(0.13)), (0, 0), pane)
+    # The drone's shadow on the glass beneath it.
+    dx, dy = _OBLIVION_DRONE_CENTRE
+    r = _OBLIVION_DRONE_RADIUS
+    shadow = _oblivion_pool(size, (dx - r + 2, dy + r + 6, dx + r + 12, dy + r + 22), 6).point(lambda v: int(v * 0.4))
+    scene.paste(Image.new("RGB", size, _oblivion_tone(0.34)), (0, 0), shadow)
+    # The glass's grain, kept out of the pool so the quote sits on clean white.
+    grain = _expedition_noise(size, (120, 72), _OBLIVION_SEED + 1).point(lambda v: v * 6 // 255)
+    grain = ImageChops.multiply(grain, pool.point(lambda v: 255 - v))
+    scene.paste(ImageChops.subtract(ImageChops.add(scene, Image.merge("RGB", (grain, grain, grain))),
+                                    Image.new("RGB", size, (3, 3, 3))))
+    shadow.close()
+    return pool
+
+
+def _oblivion_paint_drone_tone(scene: Image.Image) -> None:
+    """The drone before the dither: a shaded sphere and two shaded pods."""
+    size = scene.size
+    cx, cy = _OBLIVION_DRONE_CENTRE
+    r = _OBLIVION_DRONE_RADIUS
+    pods = Image.new("L", size, 0)
+    pd = ImageDraw.Draw(pods)
+    pd.rounded_rectangle((cx - r - 16, cy - 9, cx - r + 8, cy + 11), radius=5, fill=255)
+    pd.rounded_rectangle((cx + r - 8, cy - 9, cx + r + 16, cy + 11), radius=5, fill=255)
+    shaded = _furies_shade(pods, _oblivion_tone(0.34), _oblivion_tone(0.08), _oblivion_tone(0.66), offset=4, blur=3)
+    disc = Image.new("L", size, 0)
+    ImageDraw.Draw(disc).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+    field = disc.filter(ImageFilter.GaussianBlur(r * 0.55))
+    tone = shade_height_field(field, relief=0.03, ambient=0.18, diffuse=0.75, specular=0.9, shininess=30)
+    # Map the shading onto the white hull: lit faces to the white ink, the
+    # terminator toward a mid grey, never full black — it is white plastic.
+    def hull_tone(v, lo=60, hi=150):
+        t = max(0.0, min(1.0, (v - lo) / (hi - lo)))
+        return _oblivion_tone(0.55 * (1.0 - t))
+
+    lut = [hull_tone(v) for v in range(256)]
+    hull = Image.merge("RGB", tuple(tone.point([lut[v][c] for v in range(256)]) for c in range(3)))
+    scene.paste(hull, (0, 0), disc)
+    # The pods, mounted either side of the hull.
+    scene.paste(shaded, (0, 0), ImageChops.subtract(pods, disc))
+    for m in (pods, shaded, disc, field, tone, hull):
+        m.close()
+
+
+def _oblivion_contours(size) -> Image.Image:
+    """The map's contour lines as an ``L`` mask: a seeded height field
+    sliced at eight levels, each slice's one-pixel rim."""
+    x0, y0, x1, y1 = _OBLIVION_MAP_RECT
+    w, h = x1 - x0, y1 - y0
+    field = _expedition_noise((w, h), (5, 4), _OBLIVION_SEED + 2)
+    lines = Image.new("L", (w, h), 0)
+    for level in range(1, _OBLIVION_CONTOUR_LEVELS + 1):
+        cut = round(255 * level / (_OBLIVION_CONTOUR_LEVELS + 1))
+        slab = field.point(lambda v, c=cut: 255 if v >= c else 0)
+        rim = ImageChops.subtract(slab, slab.filter(ImageFilter.MinFilter(3)))
+        lines = ImageChops.lighter(lines, rim)
+    mask = Image.new("L", size, 0)
+    mask.paste(lines, (x0 + 1, y0 + 1))
+    inner = Image.new("L", size, 0)
+    idr = ImageDraw.Draw(inner)
+    idr.rectangle((x0 + 2, y0 + 2, x1 - 2, y1 - 2), fill=255)
+    # The hub of the dial and the drone's station are clear glass.
+    cx, cy = _OBLIVION_DIAL_CENTRE
+    r1 = _OBLIVION_DIAL_RADII[1]
+    idr.ellipse((cx - r1, cy - r1, cx + r1, cy + r1), fill=0)
+    # And the numeral column at the pane's lower right.
+    idr.rectangle(_oblivion_numeral_rect(), fill=0)
+    dx, dy = _OBLIVION_DRONE_CENTRE
+    dr = _OBLIVION_DRONE_RADIUS + 4
+    idr.ellipse((dx - dr, dy - dr, dx + dr, dy + dr), fill=0)
+    return ImageChops.multiply(mask, inner)
+
+
+def _oblivion_scene() -> Image.Image:
+    """The glass, the panes, the drone and the contours — everything the
+    hour and the quote do not touch. Painted once per process."""
+    key = (_oblivion_paint_glass, _oblivion_paint_drone_tone, _oblivion_contours)
+    cached = _OBLIVION_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    scene = Image.new("RGB", size, _OBLIVION_WHITE)
+    pool = _oblivion_paint_glass(scene)
+    _oblivion_paint_drone_tone(scene)
+    image = _expedition_dither(scene, _OBLIVION_INKS)
+    # Error diffusion carries the grey glass's residue a little way into the
+    # pool; its saturated heart is wiped back to white, which is what the lit
+    # centre of a light table is.
+    if pool is not None:        # the decoration fence neuters the glass painter
+        image.paste(Image.new("RGB", size, SPECTRA6["white"]), (0, 0), pool.point(lambda v: 255 if v == 255 else 0))
+        pool.close()
+    image.paste(Image.new("RGB", size, SPECTRA6["black"]), (0, 0), _oblivion_contours(size))
+    _OBLIVION_SCENE["frame"] = (key, image)
+    return image
+
+
+def _oblivion_paint_chrome(draw: ImageDraw.ImageDraw) -> None:
+    """Corner brackets, the header's tracked capitals, the pane borders and
+    the rules."""
+    black = SPECTRA6["black"]
+    for (x, y), (dx, dy) in (((20, 20), (1, 1)), ((780, 20), (-1, 1)), ((20, 460), (1, -1)), ((780, 460), (-1, -1))):
+        draw.line((x, y, x + 18 * dx, y), fill=black, width=1)
+        draw.line((x, y, x, y + 18 * dy), fill=black, width=1)
+    font = _oblivion_font(13, "Regular")
+    draw_tracked(draw, (40, 44), "TECH 49", _oblivion_font(22, "Regular"), black, tracking=4)
+    draw_tracked(draw, (40, 74), "TOWER 49   ·   TET LINK ESTABLISHED", font, black, tracking=3)
+    draw_tracked(draw, (760, 48), "SKY TOWER", font, black, tracking=3, anchor_right=True)
+    draw_tracked(draw, (760, 68), "DRONE 166   ONLINE", font, black, tracking=3, anchor_right=True)
+    draw.line((40, 96, 760, 96), fill=black, width=1)
+    for rect in (_OBLIVION_MAP_RECT, _OBLIVION_WAVE_RECT, _OBLIVION_RIG_BAND):
+        draw.rectangle(rect, outline=black, width=1)
+    small = _oblivion_font(9, "Regular")
+    x0, y0, x1, y1 = _OBLIVION_MAP_RECT
+    draw.rectangle((x0 + 1, y0 + 1, x0 + 118, y0 + 18), fill=SPECTRA6["white"])
+    draw_tracked(draw, (x0 + 8, y0 + 6), "SECTOR 17   ·   TOPO", small, black, tracking=2)
+    draw_tracked(draw, (_OBLIVION_WAVE_RECT[0] + 8, _OBLIVION_WAVE_RECT[1] + 4), "HYDRO FLOW", small, black, tracking=2)
+    draw_tracked(draw, (_OBLIVION_RIG_BAND[0] + 8, _OBLIVION_RIG_BAND[1] - 12), "RIG STATUS", small, black, tracking=2)
+
+
+def _oblivion_paint_dial(draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """The dial over the map: hairline rings, a crosshair, twelve ticks, the
+    hour's tick as a red wedge and a red dot on station."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    cx, cy = _OBLIVION_DIAL_CENTRE
+    r0, r1, r2 = _OBLIVION_DIAL_RADII
+    for r in (r0, r1, r2):
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=black, width=1)
+    draw.line((cx - r2 - 8, cy, cx + r2 + 8, cy), fill=black, width=1)
+    draw.line((cx, cy - r2 - 8, cx, cy + r2 + 8), fill=black, width=1)
+    draw.rectangle((cx - 4, cy - 4, cx + 4, cy + 4), fill=black)
+    font = _oblivion_font(10, "Regular")
+    for h in range(1, 13):
+        (ax, ay), (bx, by) = _oblivion_polar(r0, h), _oblivion_polar(r0 - 8, h)
+        draw.line((ax, ay, bx, by), fill=black, width=1)
+        lx, ly = _oblivion_polar(r0 + 11, h)
+        label = f"{(h % 12) * 30:03d}"
+        draw.text((lx - draw.textlength(label, font=font) / 2, ly - 5), label, font=font, fill=black)
+    a = math.radians((hour % 12) * 30)
+    wedge = [(cx + r0 * math.sin(a + d), cy - r0 * math.cos(a + d)) for d in (-0.06, 0.06)]
+    wedge += [(cx + (r0 - 12) * math.sin(a + d), cy - (r0 - 12) * math.cos(a + d)) for d in (0.06, -0.06)]
+    draw.polygon(wedge, fill=red)
+    dx, dy = _oblivion_polar((r1 + r2) / 2, hour)
+    draw.ellipse((dx - 5, dy - 5, dx + 5, dy + 5), fill=red)
+    draw.ellipse((dx - 9, dy - 9, dx + 9, dy + 9), outline=black, width=1)
+
+
+def _oblivion_paint_rigs(image: Image.Image, hour: int) -> None:
+    """The rigs on the map as hairline glyphs with their numbers; the hour's
+    in red with a leader. And the status row along the foot, the hour's
+    cell filled."""
+    draw = ImageDraw.Draw(image)
+    black, white, red = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"]
+    font = _oblivion_font(9, "Regular")
+    for i, (x, y) in enumerate(_oblivion_rig_points()):
+        active = (i + 1) == hour
+        if active:
+            draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=red)
+            draw.ellipse((x - 10, y - 10, x + 10, y + 10), outline=red, width=1)
+            # The leader runs toward the pane's centre so the label stays inside it.
+            side = -1 if x > (_OBLIVION_MAP_RECT[0] + _OBLIVION_MAP_RECT[2]) / 2 else 1
+            draw.line((x + 10 * side, y, x + 24 * side, y - 12), fill=red, width=1)
+            label = f"RIG {i + 1:02d}"
+            lx = x + 26 if side > 0 else x - 26 - draw.textlength(label, font=font)
+            draw.text((lx, y - 18), label, font=font, fill=red, stroke_width=2, stroke_fill=white)
+        else:
+            draw.ellipse((x - 5, y - 5, x + 5, y + 5), fill=white, outline=black, width=1)
+            draw.ellipse((x - 1, y - 1, x + 1, y + 1), fill=black)
+            draw.text((x + 8, y - 5), f"{i + 1:02d}", font=font, fill=black, stroke_width=2, stroke_fill=white)
+    cell_font = _oblivion_font(9, "Regular")
+    for i, (x0, y0, x1, y1) in enumerate(_oblivion_rig_rects()):
+        active = (i + 1) == hour
+        draw.rectangle((x0, y0 + 14, x1, y1 - 4), fill=black if active else None, outline=black, width=1)
+        ink = white if active else black
+        label = f"{i + 1:02d}"
+        draw.text((x0 + (x1 - x0 - draw.textlength(label, font=cell_font)) / 2, y0 + 17), label, font=cell_font,
+                  fill=ink)
+        if active:
+            draw.ellipse(((x0 + x1) / 2 - 3, y1 - 15, (x0 + x1) / 2 + 3, y1 - 9), fill=red)
+        else:
+            draw.rectangle(((x0 + x1) / 2 - 4, y1 - 13, (x0 + x1) / 2 + 4, y1 - 11), fill=black)
+
+
+def _oblivion_paint_drone_detail(image: Image.Image) -> None:
+    """After the dither: the lens, its catchlight, a red bloom into the
+    glass, and the hull's seam."""
+    draw = ImageDraw.Draw(image)
+    cx, cy = _OBLIVION_DRONE_CENTRE
+    r = _OBLIVION_DRONE_RADIUS
+    black, white, red = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"]
+    lx, ly = cx - 8, cy - 4
+    glow = Image.new("L", image.size, 0)
+    ImageDraw.Draw(glow).ellipse((lx - 9, ly - 9, lx + 9, ly + 9), fill=255)
+    paint_neon_mask(image, glow, None, red, radius=5, gamma=1.8, cap=0.4, ground=(white,))
+    glow.close()
+    draw.ellipse((lx - 9, ly - 9, lx + 9, ly + 9), fill=red, outline=black, width=1)
+    draw.ellipse((lx - 4, ly - 4, lx + 4, ly + 4), fill=black)
+    draw.ellipse((lx - 6, ly - 7, lx - 3, ly - 4), fill=white)
+    draw.arc((cx - r, cy - r, cx + r, cy + r), 200, 340, fill=black, width=1)
+    for x0, x1 in ((cx - r - 16, cx - r + 8), (cx + r - 8, cx + r + 16)):
+        draw.rounded_rectangle((x0, cy - 9, x1, cy + 11), radius=5, outline=black, width=1)
+
+
+def _oblivion_paint_data(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The waveform strip and the numeral columns, seeded from the quote."""
+    black = SPECTRA6["black"]
+    rng = random.Random(_OBLIVION_SEED ^ _row_digest(quote_row))
+    x0, y0, x1, y1 = _OBLIVION_WAVE_RECT
+    base = (y0 + y1) / 2 + 7
+    amp = (y1 - y0) / 2 - 14
+    phases = [(rng.uniform(0, math.tau), rng.uniform(0.04, 0.12), rng.uniform(0.3, 1.0)) for _ in range(3)]
+    points = []
+    for x in range(x0 + 6, x1 - 6):
+        v = sum(math.sin(x * f + p) * a for p, f, a in phases) / 2.2
+        points.append((x, base + v * amp))
+    draw.line(points, fill=black, width=1)
+    for x in range(x0 + 6, x1 - 6, 20):
+        draw.line((x, y1 - 5, x, y1 - 2), fill=black, width=1)
+    font = _oblivion_font(9, "Regular")
+    mx0, my0, mx1, my1 = _OBLIVION_MAP_RECT
+    nx0, ny0, nx1, ny1 = _oblivion_numeral_rect()
+    for i in range(6):
+        draw.text((nx0 + 4, ny0 + 2 + i * 11), f"{rng.randint(0, 9999):04d}.{rng.randint(0, 9)}", font=font,
+                  fill=black)
+
+
+def _oblivion_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _OBLIVION_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=34, font_min=18, line_height_mult=1.34, theme="oblivion",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
+            x += w
+        y += line_height
+    return placed
+
+
+def _oblivion_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    for x, y, chunk, font, is_bold in placed:
+        draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
+
+
+def _oblivion_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    parts = [p.upper() for p in (author, title) if p]
+    if not parts:
+        return
+    x0 = _OBLIVION_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, "   ·   ".join(parts), [(EXO2_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
+                                   14, _OBLIVION_QUOTE_RECT[2] - x0, floor=12, tracking=3)
+    draw_tracked(draw, (x0, _OBLIVION_BYLINE_Y), text, font, SPECTRA6["black"], tracking=3)
+
+
+def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Sky Tower's light table with the hour's rig and bearing (see the
+    section comment above)."""
+    hour = _oblivion_hour(time_str)
+    image = _oblivion_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _oblivion_paint_chrome(draw)
+    _oblivion_paint_dial(draw, hour)
+    _oblivion_paint_rigs(image, hour)
+    _oblivion_paint_drone_detail(image)
+    draw = ImageDraw.Draw(image)
+    _oblivion_paint_data(draw, quote_row)
+    _oblivion_paint_quote(draw, _oblivion_layout(draw, quote_row))
+    _oblivion_paint_byline(draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# yorha — *NieR: Automata* (2017): the YoRHa system menu, Intel › Archives
+# ---------------------------------------------------------------------------
+# Automata's interface is the quietest thing in a loud game: the pause
+# screen lays a parchment-cream sheet over the blurred world, hatched with
+# fine diagonals and dotted on a grid, with a dark tab bar across the top,
+# a left-hand menu of boxed rows with corner ticks and the selected row
+# inverted, a content pane with a rule under its title, and Pod 042 — the
+# android's floating support unit — hovering at the edge of it all. The
+# archives under Intel are where the game keeps its letters, reports and
+# fragments of books, which is where a literary clock belongs.
+#
+# **The sheet is painted in continuous tone and dithered to three inks.**
+# The cream is the panel's white with a yellow quarter, laid in the
+# calibrated ink space with a vignette toward the corners, the blurred
+# silhouettes of the ruined city along the foot (the world behind the
+# menu), the diagonal hatch as a faint darkening, the pane and the menu
+# rows as a lighter cream with soft shadows beneath them, and the Pod
+# modelled in grey under the upper-left light (``_furies_shade``). All of
+# it is Floyd–Steinberg dithered to white, yellow and black
+# (``_expedition_dither``), so the vignette, the shadows and the Pod's
+# shading are error-diffused tone; the hairlines, the corner ticks, the
+# dot grid, the tab bar, the crest and the type go on after.
+#
+# **The hour is the open entry.** ARCHIVE 01 to 12 are the twelve hours;
+# the hour's row is the inverted one with a white pointer, and the pane's
+# counter reads the same number over twelve. The quote is the entry's text
+# in **EB Garamond** — the closest open face to the game's unidentified
+# classical UI serif — with the matched phrase Bold knocked out white of a
+# black box, the way the game marks the selected item; the book's title
+# heads the pane and the author closes it. Pinned across the minutes; the
+# matched phrase carries the minute. One glitch sliver at the pane's foot,
+# the game's own tic, is seeded from the quote. Composed at 800x480 and
+# NEAREST-downsampled otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_YORHA_SEED = 0x594F5248              # YORH
+_YORHA_INKS = ("white", "yellow", "black")
+_YORHA_DOT_PITCH = 16
+_YORHA_HATCH_PITCH = 9
+_YORHA_HEADER_RECT = (0, 18, 800, 54)
+_YORHA_TABS = ("MAP", "QUESTS", "ITEMS", "WEAPONS", "SKILLS", "INTEL", "SYSTEM")
+_YORHA_MENU_RECT = (30, 76, 226, 388)
+_YORHA_POD_CENTRE = (112, 428)
+_YORHA_PANE_RECT = (254, 76, 770, 448)
+_YORHA_QUOTE_RECT = (272, 134, 752, 398)
+_YORHA_BYLINE_Y = 416
+_YORHA_SCENE: dict = {}
+
+
+def _yorha_hour(time_str: str) -> int:
+    return _expanse_hour(time_str)
+
+
+def _yorha_cream(y: float, k: float = 0.0) -> tuple[int, int, int]:
+    """A calibrated mix: white with ``y`` of yellow and ``k`` of black."""
+    w, yel, blk = (_EXPEDITION_PANEL_INKS[n] for n in ("white", "yellow", "black"))
+    return tuple(round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk))
+
+
+def _yorha_font(size: int, weight: str = "Regular"):
+    """EB Garamond: the two static cuts, with the lighter labels on Regular
+    and the emphasised ones on Bold."""
+    file = EBGARAMOND_BOLD if weight in ("SemiBold", "Bold") else EBGARAMOND_REGULAR
+    return load_font([file, *META_FONT_CANDIDATES], size=size)
+
+
+def _yorha_menu_rows() -> list:
+    x0, y0, x1, y1 = _YORHA_MENU_RECT
+    step = (y1 - y0) // 12
+    return [(x0, y0 + i * step, x1, y0 + i * step + step - 4) for i in range(12)]
+
+
+def _yorha_scene() -> Image.Image:
+    """The sheet, the panels, the shadows and the Pod — everything the hour
+    and the quote do not touch — dithered and ruled. Painted once per
+    process."""
+    key = (_yorha_paint_ground, _yorha_paint_panels, _yorha_paint_pod_tone, _yorha_paint_rules)
+    cached = _YORHA_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    scene = Image.new("RGB", size, _yorha_cream(0.25))
+    _yorha_paint_ground(scene)
+    _yorha_paint_panels(scene)
+    _yorha_paint_pod_tone(scene)
+    image = _expedition_dither(scene, _YORHA_INKS)
+    _yorha_paint_rules(image)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)       # the tab bar's type is antialiased
+    _YORHA_SCENE["frame"] = (key, image)
+    return image
+
+
+def _yorha_paint_ground(scene: Image.Image) -> None:
+    """The cream sheet in tone: a vignette, the blurred city along the foot,
+    and the diagonal hatch."""
+    size = scene.size
+    width, height = size
+    vignette = Image.new("L", (width // 4, height // 4), 0)
+    vp = vignette.load()
+    cx, cy = vignette.size[0] / 2.0, vignette.size[1] / 2.0
+    rmax = math.hypot(cx, cy)
+    for y in range(vignette.size[1]):
+        for x in range(vignette.size[0]):
+            t = (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.6
+            vp[x, y] = int(255 * min(1.0, t * 0.5))
+    vignette = vignette.resize(size, Image.Resampling.BICUBIC)
+    scene.paste(Image.new("RGB", size, _yorha_cream(0.22, 0.42)), (0, 0), vignette)
+    # The city: blurred silhouettes along the foot, the world behind the menu.
+    rng = random.Random(_YORHA_SEED + 1)
+    city = Image.new("L", size, 0)
+    cd = ImageDraw.Draw(city)
+    x = -20
+    while x < width + 20:
+        w = rng.randint(24, 70)
+        h = rng.randint(30, 110)
+        cd.rectangle((x, height - h, x + w, height + 20), fill=rng.randint(120, 220))
+        x += w + rng.randint(4, 18)
+    city = city.filter(ImageFilter.GaussianBlur(9)).point(lambda v: int(v * 0.55))
+    scene.paste(Image.new("RGB", size, _yorha_cream(0.18, 0.62)), (0, 0), city)
+    # The hatch: fine diagonals, a shade darker, that dither to faint dashes.
+    hatch = Image.new("L", size, 0)
+    hd = ImageDraw.Draw(hatch)
+    for d in range(-height, width + height, _YORHA_HATCH_PITCH):
+        hd.line((d, 0, d + height, height), fill=255, width=1)
+    scene.paste(Image.new("RGB", size, _yorha_cream(0.30, 0.16)), (0, 0), hatch.point(lambda v: int(v * 0.55)))
+    for m in (vignette, city, hatch):
+        m.close()
+
+
+def _yorha_panel_rects() -> list:
+    return [_YORHA_PANE_RECT, *_yorha_menu_rows()]
+
+
+def _yorha_paint_panels(scene: Image.Image) -> None:
+    """The pane and the menu rows in tone: their soft shadows on the sheet,
+    and a lighter cream under them (the fill itself is laid crisp after the
+    dither — error diffusion worms at a light density, and a page should
+    not)."""
+    size = scene.size
+    panels = Image.new("L", size, 0)
+    pd = ImageDraw.Draw(panels)
+    for rect in _yorha_panel_rects():
+        pd.rectangle(rect, fill=255)
+    shadow = _furies_shift(panels, 4, 5).filter(ImageFilter.GaussianBlur(4)).point(lambda v: int(v * 0.7))
+    scene.paste(Image.new("RGB", size, _yorha_cream(0.20, 0.5)), (0, 0), shadow)
+    scene.paste(Image.new("RGB", size, _yorha_cream(0.12)), (0, 0), panels)
+    panels.close()
+    shadow.close()
+
+
+def _yorha_fill_panel(image: Image.Image, rect) -> None:
+    """A panel's face: white with a yellow eighth on the 4x4 Bayer tile."""
+    x0, y0, x1, y1 = rect
+    px = image.load()
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    for y in range(y0, y1 + 1):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0, x1 + 1):
+            px[x, y] = yellow if row[x % 4] < 2 else white
+
+
+def _yorha_paint_pod_tone(scene: Image.Image) -> None:
+    """Pod 042 in tone: a capsule hull shaded under the upper-left light,
+    its face plate, its fins, and its shadow on the sheet."""
+    size = scene.size
+    cx, cy = _YORHA_POD_CENTRE
+    shadow = Image.new("L", size, 0)
+    ImageDraw.Draw(shadow).ellipse((cx - 52, cy + 30, cx + 56, cy + 44), fill=255)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(5)).point(lambda v: int(v * 0.6))
+    scene.paste(Image.new("RGB", size, _yorha_cream(0.18, 0.55)), (0, 0), shadow)
+    hull = Image.new("L", size, 0)
+    hd = ImageDraw.Draw(hull)
+    hd.rounded_rectangle((cx - 58, cy - 20, cx + 38, cy + 20), radius=20, fill=255)
+    hd.polygon([(cx - 40, cy - 20), (cx - 18, cy - 40), (cx, cy - 20)], fill=255)          # the dorsal fin
+    hd.polygon([(cx - 48, cy + 18), (cx - 64, cy + 34), (cx - 26, cy + 20)], fill=255)     # the ventral fin
+    body = _furies_shade(hull, _yorha_cream(0.12, 0.16), _yorha_cream(0.06, 0.0), _yorha_cream(0.16, 0.58),
+                         offset=6, blur=4)
+    scene.paste(body, (0, 0), hull)
+    face = Image.new("L", size, 0)
+    ImageDraw.Draw(face).rounded_rectangle((cx + 16, cy - 15, cx + 46, cy + 15), radius=7, fill=255)
+    plate = _furies_shade(face, _yorha_cream(0.10, 0.70), _yorha_cream(0.08, 0.34), _yorha_cream(0.12, 0.92),
+                          offset=3, blur=2)
+    scene.paste(plate, (0, 0), face)
+    for m in (shadow, hull, body, face, plate):
+        m.close()
+
+
+def _yorha_paint_rules(image: Image.Image) -> None:
+    """After the dither: the dot grid, the pane's and rows' hairlines with
+    their corner ticks, the tab bar with the crest, and the Pod's lens,
+    antenna and legend."""
+    for rect in _yorha_panel_rects():
+        _yorha_fill_panel(image, rect)
+    draw = ImageDraw.Draw(image)
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    width, height = image.size
+    px = image.load()
+    p = _YORHA_DOT_PITCH
+    for y in range(p // 2, height, p):
+        for x in range(p // 2, width, p):
+            if px[x, y] != black:
+                px[x, y] = black
+    for rect in (_YORHA_PANE_RECT, *_yorha_menu_rows()):
+        x0, y0, x1, y1 = rect
+        draw.rectangle(rect, outline=black, width=1)
+        for (x, y), (dx, dy) in (((x0, y0), (1, 1)), ((x1, y0), (-1, 1)), ((x0, y1), (1, -1)), ((x1, y1), (-1, -1))):
+            draw.line((x, y, x + 5 * dx, y), fill=black, width=2)
+            draw.line((x, y, x, y + 5 * dy), fill=black, width=2)
+    # The tab bar, with INTEL open.
+    draw.rectangle(_YORHA_HEADER_RECT, fill=black)
+    font = _yorha_font(15, "Regular")
+    x = 30
+    for tab in _YORHA_TABS:
+        tw = draw.textlength(tab, font=font)
+        if tab == "INTEL":
+            draw.rectangle((x - 8, _YORHA_HEADER_RECT[1] + 6, x + tw + 8, _YORHA_HEADER_RECT[3] - 6), fill=white)
+            draw.text((x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=black)
+        else:
+            draw.text((x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=white)
+        x += tw + 26
+    # The crest: a ring with its wing bars, and the unit beside it.
+    cx, cy = 752, (_YORHA_HEADER_RECT[1] + _YORHA_HEADER_RECT[3]) // 2
+    draw.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), outline=white, width=2)
+    draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), fill=white)
+    for i in range(3):
+        draw.line((cx - 14 - i * 5, cy - 4 + i * 4, cx - 24 - i * 5, cy - 4 + i * 4), fill=white, width=1)
+        draw.line((cx + 14 + i * 5, cy - 4 + i * 4, cx + 24 + i * 5, cy - 4 + i * 4), fill=white, width=1)
+    small = _yorha_font(14, "Regular")
+    draw_tracked(draw, (cx - 48, cy - 8), "UNIT 2B", small, white, tracking=2, anchor_right=True)
+    # The Pod's silhouette, lens, antenna and legend.
+    pxc, pyc = _YORHA_POD_CENTRE
+    draw.rounded_rectangle((pxc - 58, pyc - 20, pxc + 38, pyc + 20), radius=20, outline=black, width=1)
+    draw.polygon([(pxc - 40, pyc - 20), (pxc - 18, pyc - 40), (pxc, pyc - 20)], outline=black)
+    draw.polygon([(pxc - 48, pyc + 18), (pxc - 64, pyc + 34), (pxc - 26, pyc + 20)], outline=black)
+    draw.rounded_rectangle((pxc + 16, pyc - 15, pxc + 46, pyc + 15), radius=7, outline=black, width=1)
+    draw.ellipse((pxc + 24, pyc - 8, pxc + 40, pyc + 8), fill=black)
+    draw.ellipse((pxc + 28, pyc - 5, pxc + 32, pyc - 1), fill=white)
+    draw.line((pxc - 18, pyc - 40, pxc - 18, pyc - 54), fill=black, width=1)
+    draw.ellipse((pxc - 20, pyc - 58, pxc - 16, pyc - 54), fill=black)
+    draw.text((pxc + 56, pyc - 7), "POD 042", font=_yorha_font(13, "Bold"), fill=black, stroke_width=2,
+              stroke_fill=white)
+
+
+def _yorha_paint_menu(draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """The twelve archive rows' labels; the hour's row inverted."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    font = _yorha_font(16, "Regular")
+    for i, (x0, y0, x1, y1) in enumerate(_yorha_menu_rows()):
+        active = (i + 1) == hour
+        if active:
+            draw.rectangle((x0, y0, x1, y1), fill=black)
+            draw.polygon([(x1 - 16, y0 + 7), (x1 - 8, (y0 + y1) / 2), (x1 - 16, y1 - 7)], fill=white)
+        else:
+            draw.rectangle((x0 + 8, (y0 + y1) / 2 - 3, x0 + 14, (y0 + y1) / 2 + 3), outline=black, width=1)
+        draw.text((x0 + 22, y0 + 3), f"ARCHIVE {i + 1:02d}", font=font, fill=white if active else black)
+
+
+def _yorha_paint_pane(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> None:
+    """The open entry's head: the title over a rule, the counter."""
+    black = SPECTRA6["black"]
+    x0, y0, x1, y1 = _YORHA_PANE_RECT
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip() or "Untitled"
+    font, text = fit_text_to_width(draw, title, [EBGARAMOND_BOLD, *META_FONT_BOLD_CANDIDATES], 22, x1 - x0 - 120, floor=15)
+    draw.text((x0 + 18, y0 + 14), text, font=font, fill=black)
+    counter = f"{hour:02d} / 12"
+    small = _yorha_font(15, "Regular")
+    draw.text((x1 - 18 - draw.textlength(counter, font=small), y0 + 18), counter, font=small, fill=black)
+    draw.line((x0 + 18, y0 + 46, x1 - 18, y0 + 46), fill=black, width=1)
+
+
+def _yorha_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _YORHA_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=34, font_min=18, line_height_mult=1.34, theme="yorha",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
+            x += w
+        y += line_height
+    return placed
+
+
+def _yorha_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
+    """Black EB Garamond; the matched phrase white, knocked out of a black
+    box per run — the selected item."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    for box in _lumon_hover_boxes(draw, placed):
+        draw.rectangle(box, fill=black)
+    for x, y, chunk, font, is_bold, w, lh in placed:
+        draw.text((x, y), chunk, font=font, fill=white if is_bold else black)
+
+
+def _yorha_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    author = (quote_row.get("author") or "").strip()
+    if not author:
+        return
+    x0 = _YORHA_QUOTE_RECT[0]
+    font, text = fit_text_to_width(draw, author, [EBGARAMOND_REGULAR, *META_FONT_CANDIDATES], 18,
+                                   _YORHA_QUOTE_RECT[2] - x0, floor=13)
+    draw.text((x0, _YORHA_BYLINE_Y), text, font=font, fill=SPECTRA6["black"])
+
+
+def _yorha_paint_glitch(image: Image.Image, quote_row: dict) -> None:
+    """One sliver of the pane's foot shifted sideways — the game's tic."""
+    rng = random.Random(_YORHA_SEED ^ _row_digest(quote_row))
+    x0, y0, x1, y1 = _YORHA_PANE_RECT
+    y = rng.randint(y1 - 60, y1 - 12)
+    h = rng.randint(2, 4)
+    shift = rng.choice((-6, -4, 4, 6))
+    band = image.crop((x0 + 1, y, x1, y + h))
+    image.paste(band, (x0 + 1 + shift, y))
+    band.close()
+
+
+def render_yorha_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The YoRHa archives with the hour's entry open (see the section
+    comment above)."""
+    hour = _yorha_hour(time_str)
+    image = _yorha_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _yorha_paint_menu(draw, hour)
+    _yorha_paint_pane(draw, hour, quote_row)
+    _yorha_paint_quote(draw, _yorha_layout(draw, quote_row))
+    _yorha_paint_byline(draw, quote_row)
+    _yorha_paint_glitch(image, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
+# hitchhiker — *The Hitchhiker's Guide to the Galaxy* (BBC, 1981): the Guide
+# ---------------------------------------------------------------------------
+# The television series' Guide entries were animated by Rod Lord's team at
+# Pearce Studios, by hand, cel by cel and backlit, to look like a computer
+# display no computer of 1981 could draw: black screens, square-shouldered
+# capitals in cyan, yellow, green and white laid down a line at a time with
+# a coloured marker at the head of each, diagrams in flat colour with
+# hairline leaders and numbered callouts — the Babel fish in cross-section
+# above all — and the cover's DON'T PANIC in large friendly letters. The
+# book is a book that reads itself out, which is the nearest thing to a
+# literary clock in the canon.
+#
+# **The page is an entry, with its figures.** The Guide's name runs along
+# the top in tracked yellow **Michroma** (Vernon Adams's open Microgramma,
+# the square-shouldered monoline the series' lettering was drawn in the
+# register of) with the DON'T PANIC badge at the right; the entry's subject
+# is the quoted author — the Guide has an entry on everything — in white
+# capitals under a green ENTRY label with the series' stack of colour bars;
+# the entry's text is the quote in white with the matched phrase in yellow,
+# each line headed by a marker in the inks in rotation. **The lettering is
+# hand-animated:** every glyph of the title and the text is set one at a
+# time with a seeded one-pixel registration wobble (``_hitchhiker_draw``),
+# which is what cel lettering looks like when it holds on screen.
+#
+# **Figure 1 is the Babel fish**, in the series' own diagram: a yellow fish
+# under a CRT raster with its brainwave sensor in blue, its telepathic
+# matrix in green, its gills in red and its nerve in white, and five
+# numbered callouts on hairline leaders. **Figure 2 is the galaxy**, a
+# seeded two-armed spiral of white and yellow stars in a boxed chart with
+# twelve radial sector lines in blue — and that is the clock. **The hour is
+# where you are:** the hour's sector, counted clockwise from the top like a
+# clock face, is outlined in yellow with the Earth as a ringed dot inside
+# it and a leader to YOU ARE HERE. Pinned across the minutes; the matched
+# phrase carries the minute. Composed at 800x480 and NEAREST-downsampled
+# otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_HITCHHIKER_SEED = 0x48484747         # HHGG
+_HITCHHIKER_ENTRY_Y = 58
+_HITCHHIKER_QUOTE_RECT = (62, 116, 456, 392)
+_HITCHHIKER_SEEALSO_Y = 414
+_HITCHHIKER_FISH_RECT = (474, 102, 770, 268)
+_HITCHHIKER_GALAXY_RECT = (474, 286, 770, 462)
+_HITCHHIKER_GALAXY_CENTRE = (596, 384)
+_HITCHHIKER_GALAXY_RADIUS = 62
+_HITCHHIKER_MARKER_INKS = ("blue", "green", "yellow", "red")
+_HITCHHIKER_CALLOUTS = (
+    ("1", "BRAINWAVE SENSOR"), ("2", "TELEPATHIC MATRIX"), ("3", "GILL SLITS"),
+    ("4", "NERVE SIGNAL"), ("5", "THOUGHT OUTFLOW"),
+)
+
+
+def _hitchhiker_hour(time_str: str) -> int:
+    return _expanse_hour(time_str)
+
+
+def _hitchhiker_font(size: int):
+    return load_font([MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES], size=size)
+
+
+def _hitchhiker_draw(draw: ImageDraw.ImageDraw, xy, text: str, font, fill, rng: random.Random, *,
+                     tracking: float = 0.0) -> float:
+    """Hand-animated lettering: each glyph set on its own with a seeded
+    one-pixel registration wobble. Returns the run's width."""
+    x, y = xy
+    start = x
+    for ch in text:
+        if ch != " ":
+            draw.text((x + rng.choice((-1, 0, 0, 1)), y + rng.choice((-1, 0, 0, 1))), ch, font=font, fill=fill)
+        x += draw.textlength(ch, font=font) + tracking
+    return x - start
+
+
+def _hitchhiker_paint_masthead(draw: ImageDraw.ImageDraw) -> None:
+    """The Guide's name, a rule, and the DON'T PANIC badge."""
+    yellow, black = SPECTRA6["yellow"], SPECTRA6["black"]
+    rng = random.Random(_HITCHHIKER_SEED + 1)
+    _hitchhiker_draw(draw, (40, 20), "THE HITCH HIKER'S GUIDE TO THE GALAXY", _hitchhiker_font(13), yellow, rng,
+                     tracking=2)
+    draw.rectangle((40, 44, 760, 45), fill=yellow)
+    font = _hitchhiker_font(12)
+    label = "DON'T PANIC"
+    tw = draw.textlength(label, font=font)
+    draw.rounded_rectangle((760 - tw - 20, 14, 760, 38), radius=6, fill=yellow)
+    draw.text((760 - tw - 10, 19), label, font=font, fill=black)
+
+
+def _hitchhiker_paint_entry(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The entry's subject — the author — under an ENTRY label, with the
+    colour bars at its left."""
+    white, green = SPECTRA6["white"], SPECTRA6["green"]
+    y = _HITCHHIKER_ENTRY_Y
+    for i, ink in enumerate(_HITCHHIKER_MARKER_INKS):
+        draw.rectangle((40, y + i * 11, 54, y + i * 11 + 7), fill=SPECTRA6[ink])
+    draw.text((62, y - 2), "ENTRY", font=_hitchhiker_font(11), fill=green)
+    subject = (quote_row.get("author") or "").strip() or "ANONYMOUS"
+    font, text = fit_text_to_width(draw, subject.upper(), [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"),
+                                                            *ORNAMENT_FONT_CANDIDATES], 24, 394, floor=14)
+    _hitchhiker_draw(draw, (62, y + 13), text, font, white, random.Random(_HITCHHIKER_SEED ^ _row_digest(quote_row)))
+
+
+def _hitchhiker_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
+    x0, y0, x1, y1 = _HITCHHIKER_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=22, font_min=12, line_height_mult=1.55, theme="hitchhiker",
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, line_height))
+            x += w
+        y += line_height
+    return placed
+
+
+def _hitchhiker_paint_quote(draw: ImageDraw.ImageDraw, placed, quote_row: dict) -> None:
+    """The entry's text, hand-lettered: white with the matched phrase in
+    yellow, each line headed by a marker in the inks in rotation."""
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    rng = random.Random(_HITCHHIKER_SEED + 2 + _row_digest(quote_row))
+    lines = sorted({y for _, y, *_ in placed})
+    for i, y in enumerate(lines):
+        lh = next(p[5] for p in placed if p[1] == y)
+        ink = SPECTRA6[_HITCHHIKER_MARKER_INKS[i % len(_HITCHHIKER_MARKER_INKS)]]
+        draw.rectangle((_HITCHHIKER_QUOTE_RECT[0] - 18, y + lh // 2 - 7, _HITCHHIKER_QUOTE_RECT[0] - 12, y + lh // 2 - 1),
+                       fill=ink)
+    for x, y, chunk, font, is_bold, lh in placed:
+        _hitchhiker_draw(draw, (x, y), chunk, font, yellow if is_bold else white, rng)
+
+
+def _hitchhiker_paint_seealso(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    if not title:
+        return
+    font, text = fit_text_to_width(draw, "SEE ALSO:  " + title.upper(), [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"),
+                                                                           *ORNAMENT_FONT_CANDIDATES], 12, 416,
+                                   floor=10)
+    draw.text((40, _HITCHHIKER_SEEALSO_Y), text, font=font, fill=SPECTRA6["white"])
+
+
+def _hitchhiker_fish_centre() -> tuple[int, int]:
+    x0, y0, x1, y1 = _HITCHHIKER_FISH_RECT
+    return x0 + 134, y0 + 76
+
+
+def _hitchhiker_fish_outline() -> list:
+    """The Babel fish in side view, a spline through its control points."""
+    x0, y0, x1, y1 = _HITCHHIKER_FISH_RECT
+    cx, cy = _hitchhiker_fish_centre()
+    body = [(cx - 118, cy), (cx - 96, cy - 22), (cx - 50, cy - 36), (cx + 10, cy - 32), (cx + 70, cy - 18),
+            (cx + 108, cy - 6), (cx + 132, cy - 28), (cx + 144, cy - 24), (cx + 130, cy), (cx + 144, cy + 24),
+            (cx + 132, cy + 28), (cx + 108, cy + 6), (cx + 70, cy + 18), (cx + 10, cy + 32), (cx - 50, cy + 36),
+            (cx - 96, cy + 22)]
+    return _furies_spline(body, closed=True, samples=6)
+
+
+def _hitchhiker_paint_fish(image: Image.Image) -> None:
+    """Figure 1: the Babel fish in cross-section under a CRT raster, its
+    organs in the inks, five numbered callouts on leaders."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _HITCHHIKER_FISH_RECT
+    white, yellow, blue, green, red, black = (SPECTRA6[k] for k in ("white", "yellow", "blue", "green", "red", "black"))
+    draw.rectangle((x0, y0, x1, y1), outline=blue, width=1)
+    draw.text((x0 + 8, y0 + 6), "FIG. 1   BABEL FISH", font=_hitchhiker_font(10), fill=green)
+    cx, cy = _hitchhiker_fish_centre()
+    outline = [(round(x), round(y)) for x, y in _hitchhiker_fish_outline()]
+    draw.polygon(outline, fill=yellow)
+    _crt_paint_scanlines(image, (x0 + 1, y0 + 1, x1, y1), (yellow,), period=3, phase=1)
+    draw = ImageDraw.Draw(image)
+    draw.line(outline + [outline[0]], fill=white, width=1)
+    # The organs.
+    draw.ellipse((cx - 108, cy - 7, cx - 94, cy + 7), fill=black)                   # the eye
+    draw.ellipse((cx - 104, cy - 5, cx - 99, cy), fill=white)
+    for i in range(3):
+        draw.arc((cx - 86 + i * 7, cy - 18, cx - 70 + i * 7, cy + 18), 300, 60, fill=red, width=2)   # the gills
+    draw.ellipse((cx - 56, cy - 22, cx - 14, cy + 4), fill=blue, outline=white, width=1)          # the sensor
+    draw.ellipse((cx - 44, cy - 14, cx - 30, cy - 4), outline=white, width=1)
+    matrix = [(cx - 12 + i * 10, cy + (10 if i % 2 else 18)) for i in range(10)]                     # the matrix
+    draw.line(matrix, fill=green, width=2)
+    draw.line((cx - 14, cy - 8, cx + 110, cy - 2), fill=white, width=1)                              # the nerve
+    for i in range(4):
+        draw.line((cx + 20 + i * 24, cy - 6, cx + 26 + i * 24, cy - 14), fill=white, width=1)
+    draw.polygon([(cx + 130, cy - 2), (cx + 152, cy - 10), (cx + 152, cy + 6)], fill=green)         # the outflow
+    # Callouts: numbered discs on the organs, and the legend in two columns
+    # under the rule.
+    anchors = ((cx - 36, cy - 10), (cx + 30, cy + 14), (cx - 78, cy - 10), (cx + 70, cy - 4), (cx + 144, cy - 2))
+    font = _hitchhiker_font(9)
+    rule_y = y1 - 42
+    draw.line((x0 + 8, rule_y, x1 - 8, rule_y), fill=blue, width=1)
+    for i, ((n, label), (ax, ay)) in enumerate(zip(_HITCHHIKER_CALLOUTS, anchors)):
+        tx = x0 + 8 + (0 if i < 3 else 150)
+        ty = rule_y + 5 + (i % 3) * 12
+        draw.ellipse((ax - 5, ay - 5, ax + 5, ay + 5), fill=black, outline=white, width=1)
+        draw.text((ax - 2, ay - 6), n, font=font, fill=white)
+        draw.text((tx, ty), f"{n} {label}", font=font, fill=white)
+
+
+def _hitchhiker_sector_angle(hour: int) -> tuple[float, float]:
+    """The hour's sector on the chart: thirty degrees, clockwise from the
+    top, like a clock face."""
+    start = math.radians((hour % 12) * 30 - 90 - 15)
+    return start, start + math.radians(30)
+
+
+def _hitchhiker_paint_galaxy(draw: ImageDraw.ImageDraw, hour: int) -> None:
+    """Figure 2: the galaxy as a seeded two-armed spiral of stars in a boxed
+    chart with twelve sector lines; the hour's sector outlined, the Earth
+    ringed in it, and YOU ARE HERE on a leader."""
+    x0, y0, x1, y1 = _HITCHHIKER_GALAXY_RECT
+    white, yellow, blue = SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["blue"]
+    draw.rectangle((x0, y0, x1, y1), outline=blue, width=1)
+    draw.text((x0 + 8, y0 + 6), "FIG. 2   SECTOR ZZ9 PLURAL Z ALPHA", font=_hitchhiker_font(9), fill=SPECTRA6["green"])
+    cx, cy = _HITCHHIKER_GALAXY_CENTRE
+    radius = _HITCHHIKER_GALAXY_RADIUS
+    for h in range(12):
+        a = math.radians(h * 30 - 90 - 15)
+        draw.line((cx, cy, cx + (radius + 10) * math.cos(a), cy + (radius + 10) * math.sin(a)), fill=blue, width=1)
+    draw.ellipse((cx - radius - 10, cy - radius - 10, cx + radius + 10, cy + radius + 10), outline=blue, width=1)
+    rng = random.Random(_HITCHHIKER_SEED + 3)
+    for arm in (0.0, math.pi):
+        for i in range(140):
+            t = i / 140.0
+            a = arm + t * 2.6 * math.pi
+            r = 4 + t * (radius - 4)
+            jitter = rng.gauss(0, 3 + 6 * t)
+            px = cx + r * math.cos(a) + jitter
+            py = cy + r * math.sin(a) + rng.gauss(0, 3 + 6 * t)
+            if math.hypot(px - cx, py - cy) > radius:
+                continue
+            draw.point((round(px), round(py)), fill=yellow if rng.random() < 0.25 else white)
+    draw.ellipse((cx - 5, cy - 5, cx + 5, cy + 5), fill=white)
+    a0, a1 = _hitchhiker_sector_angle(hour)
+    wedge = [(cx, cy)] + [(cx + (radius + 10) * math.cos(a0 + (a1 - a0) * k / 8), cy + (radius + 10) * math.sin(a0 + (a1 - a0) * k / 8))
+                          for k in range(9)]
+    draw.line(wedge + [(cx, cy)], fill=yellow, width=2)
+    am = (a0 + a1) / 2
+    ex, ey = cx + (radius - 12) * math.cos(am), cy + (radius - 12) * math.sin(am)
+    draw.ellipse((ex - 2, ey - 2, ex + 2, ey + 2), fill=blue)
+    draw.ellipse((ex - 6, ey - 6, ex + 6, ey + 6), outline=yellow, width=1)
+    # The leader runs to the chart's free right column, where the label lives.
+    lx, ly = x1 - 112, y0 + 60
+    draw.line((ex + 6 * math.cos(am), ey + 6 * math.sin(am), lx - 6, ly + 6), fill=yellow, width=1)
+    draw.text((lx, ly), "YOU ARE", font=_hitchhiker_font(10), fill=yellow)
+    draw.text((lx, ly + 14), "HERE", font=_hitchhiker_font(10), fill=yellow)
+    draw.text((lx, ly + 40), "MOSTLY", font=_hitchhiker_font(9), fill=white)
+    draw.text((lx, ly + 52), "HARMLESS", font=_hitchhiker_font(9), fill=white)
+
+
+def render_hitchhiker_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A Guide entry on the quoted author with its two figures, the hour's
+    sector marked (see the section comment above)."""
+    hour = _hitchhiker_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    _hitchhiker_paint_masthead(draw)
+    _hitchhiker_paint_entry(draw, quote_row)
+    _hitchhiker_paint_quote(draw, _hitchhiker_layout(draw, quote_row), quote_row)
+    _hitchhiker_paint_seealso(draw, quote_row)
+    _hitchhiker_paint_fish(image)
+    draw = ImageDraw.Draw(image)
+    _hitchhiker_paint_galaxy(draw, hour)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
 # cardcatalog — a library catalogue card with a date-due stamp grid
 # ---------------------------------------------------------------------------
 # The most on-brand object in the rotation: the one theme that is *about books
@@ -37371,6 +39562,18 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_beksinski_frame(time_str, quote_row, width, height)
     if theme == "goya":
         return render_goya_frame(time_str, quote_row, width, height)
+    if theme == "hal":
+        return render_hal_frame(time_str, quote_row, width, height)
+    if theme == "lumon":
+        return render_lumon_frame(time_str, quote_row, width, height)
+    if theme == "dsky":
+        return render_dsky_frame(time_str, quote_row, width, height)
+    if theme == "oblivion":
+        return render_oblivion_frame(time_str, quote_row, width, height)
+    if theme == "yorha":
+        return render_yorha_frame(time_str, quote_row, width, height)
+    if theme == "hitchhiker":
+        return render_hitchhiker_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

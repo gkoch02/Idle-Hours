@@ -65,6 +65,58 @@ these entries under the new dated version heading.
   Baskerville with the phrase in red, and the author and title on a Prado
   gallery label with an inventory number from the Gutenberg id. Libre
   Baskerville is a new bundled face (OFL, from Google Fonts).
+- New `hal` theme: *2001: A Space Odyssey* — the Discovery One's main
+  monitor as a solid blue flat with the hour's subsystem mnemonic on its
+  header, the quote in white Jost with the matched phrase Bold in yellow,
+  the twelve mnemonic tiles along the foot in the film's flat colours with
+  the hour's tile white, and HAL's red lens in its white bezel blooming
+  into the black beside the Discovery in wireframe and the hibernation
+  traces. The screens are tubes, not blocks: a one-in-four raster over the
+  ground under the type, a hairlined housing the phosphor leaks onto, and
+  a title box round the mnemonic. No new fonts (Jost and Michroma).
+- New `lumon` theme: *Severance* — the Macrodata Refinement terminal: a
+  vignetted blue CRT dithered to blue and black in a black bezel, the
+  file's town and its completion (the hour over twelve) in the header, a
+  grid of white digits with the hour's scary cluster boxed, the quote in
+  white Montserrat with the matched phrase Bold in yellow inside the
+  refiner's hover box, and the five bins along the foot, all in a beige
+  housing with the same raster and a blue leak onto the recessed glass
+  edge. Montserrat is a new bundled face (OFL, from Google Fonts) — the
+  open Gotham, for the number grid the show sets in a Gotham-like sans;
+  the header and byline are Inter, for the show's Forma DJR.
+- New `dsky` theme: the Apollo Guidance Computer's display and keyboard
+  as a modelled unit on a dithered grey console — a shaded rim, dark-glass
+  windows with a reflection, domed keycaps on a recessed tray, screws, a
+  shadow — with the hour in its PROG register and telemetry seeded from
+  the quote in true seven-segment strokes, white in a green bloom; the
+  quote typed in Special Elite on a cream flight-plan card clipped beside
+  it, the matched phrase in red ink. Real hardware; no new fonts.
+- New `oblivion` theme: *Oblivion* — the Sky Tower's light table: grey
+  glass dithered in continuous tone with a white pool under the quote and
+  frosted panes, a contour map of the sector with the twelve hydro rigs
+  on the terrain and a dial over it, a drone shaded Blinn-Phong with a
+  red lens blooming into the glass, the quote in Exo 2 Light (the open
+  face in the family of Blender, the film's UI typeface) with the matched
+  phrase in red; the hour's rig is red on the map, its bearing on the
+  dial, its cell filled in the status row. No new fonts.
+- New `yorha` theme: *NieR: Automata* — the YoRHa archives: a cream
+  sheet dithered in continuous tone with a vignette, the blurred ruined
+  city along the foot and the diagonal hatch, crisp panels with soft
+  shadows and corner ticks, the tab bar open at INTEL under the crest,
+  Pod 042 modelled below the menu, twelve archive rows with the hour's
+  inverted, the book's title over the entry, the quote in EB Garamond —
+  the closest open face to the game's unidentified classical UI serif —
+  with the matched phrase knocked out white of a black box as the
+  selected item. No new fonts.
+- New `hitchhiker` theme: the 1981 BBC *Hitchhiker's Guide to the
+  Galaxy* — a Guide entry on the quoted author, hand-animated glyph by
+  glyph in white Michroma with coloured line markers under the yellow
+  masthead and the DON'T PANIC badge, the matched phrase in yellow,
+  Figure 1 the Babel fish in cross-section under a CRT raster with its
+  organs in the inks and numbered callouts, and Figure 2 the galaxy as a
+  seeded spiral in a sector chart where the hour's sector is outlined
+  with the Earth ringed inside it and YOU ARE HERE on a leader. No new
+  fonts.
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the
