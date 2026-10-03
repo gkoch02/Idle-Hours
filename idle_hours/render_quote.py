@@ -33001,15 +33001,21 @@ def render_hades_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # earth with all six inks (the scrape's ochre and rust need yellow and red),
 # and the frame with black and white only, since graphite has no colour.
 #
-# **Loplop is a paper cut-out**, as he is in the collage novels: a white
-# silhouette with torn edges on the painted forest — a long neck, a round
-# head in profile with a ringed eye and a yellow beak turned toward the
-# card, an easel-tall body hatched with the diagonal line-work of a wood
-# engraving, stick legs, and an arm reaching out to hold the card. Painted
-# white rather than black because a black bird would vanish into the
-# trunks; the engraving hatch is what makes the white read as paper rather
-# than as a hole. The small white dove on the trunk tops is *Forest and
-# Dove*'s, caged by the forest.
+# **Loplop is cut from an engraving**, as he is in the collage novels: a
+# bird-headed man in a Victorian frock coat, pasted on the painted forest.
+# The figure is built as a set of part masks — hanging arm, trousers,
+# shoes, coat, shirt front, neck, head, beak, raised arm, hand — cut out as
+# one white silhouette and then given the engraver's lines: a one-pixel
+# contour along every part's edge (inner contours included, so collar,
+# lapel and sleeve read as drawn), dense 45° hatching on the coat with a
+# sparse cross-hatch over it, a lighter opposite hatch on the trousers,
+# the shirt front and the skull left as the paper's white. The head is a
+# domed skull with a crest of feathers, a ringed eye, and a long,
+# tapering, slightly down-curved beak in yellow turned toward the card;
+# the neck is an S; the near hand rests on the card's edge, fingers over
+# the paper, holding it up — *Loplop présente*. White rather than black
+# because a black bird vanishes into the trunks. The small white dove on
+# the trunk tops is *Forest and Dove*'s, caged by the forest.
 #
 # **The card is a pasted page**: torn edges, cream (Y+W Bayer, the
 # ``cardcatalog`` wash) so it is a different paper from Loplop's white, the
@@ -33039,10 +33045,9 @@ _ERNST_TRUNK_TOP_MIN = 184             # no splinter reaches the arc (peaks rise
 _ERNST_CARD_RECT = (252, 246, 760, 444)
 _ERNST_QUOTE_RECT = (276, 266, 738, 392)
 _ERNST_BYLINE_Y = 410
-_ERNST_LOPLOP_HEAD = (150, 218)
+_ERNST_LOPLOP_HEAD = (150, 214)
 _ERNST_LOPLOP_HEAD_R = 21
-_ERNST_LOPLOP_BODY = ((120, 270), (182, 270), (196, 404), (106, 404))
-_ERNST_LOPLOP_ARM = ((190, 310), (254, 304))
+_ERNST_LOPLOP_COAT = (112, 262, 192, 396)   # shoulders to hem
 _ERNST_DOVE_XY = (498, 208)
 _ERNST_LABEL_XY = (44, 42)
 _ERNST_SKY_INKS = ("black", "blue", "white")
@@ -33264,67 +33269,144 @@ def _ernst_paint_dove(image: Image.Image) -> None:
     draw.point((x + 12, y - 2), fill=black)
 
 
+def _ernst_bezier(p0, p1, p2, n: int = 10) -> list:
+    """Points along a quadratic Bézier — the only curve the figure needs."""
+    pts = []
+    for k in range(n + 1):
+        t = k / n
+        pts.append((
+            (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
+            (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1],
+        ))
+    return pts
+
+
+def _ernst_loplop_parts(size) -> dict:
+    """Loplop's anatomy as ``L`` masks, back to front: a bird-headed man in a
+    frock coat, the figure of the collage novels. Each part is a mask so the
+    figure can be cut out as one silhouette and then given engraved contours
+    along every part's edge, inner contours included."""
+    hx, hy = _ERNST_LOPLOP_HEAD
+    rx, ry = _ERNST_LOPLOP_HEAD_R, _ERNST_LOPLOP_HEAD_R - 3
+    cx0, cy0, cx1, cy1 = _ERNST_LOPLOP_COAT
+    mid = (cx0 + cx1) // 2
+    parts: dict = {}
+
+    def mask(name):
+        m = Image.new("L", size, 0)
+        parts[name] = m
+        return ImageDraw.Draw(m)
+
+    # The far arm hangs at the side, behind the coat's edge.
+    d = mask("arm_far")
+    d.line([(cx0 + 8, cy0 + 10), (cx0 - 2, cy0 + 70), (cx0 + 4, cy0 + 92)], fill=255, width=14, joint="curve")
+    d.ellipse((cx0 - 4, cy0 + 86, cx0 + 12, cy0 + 104), fill=255)
+    # Trousers and shoes.
+    d = mask("legs")
+    d.polygon([(mid - 26, cy1 - 4), (mid - 4, cy1 - 4), (mid - 6, _ERNST_GROUND_Y + 2), (mid - 28, _ERNST_GROUND_Y + 2)], fill=255)
+    d.polygon([(mid + 4, cy1 - 4), (mid + 26, cy1 - 4), (mid + 28, _ERNST_GROUND_Y + 2), (mid + 6, _ERNST_GROUND_Y + 2)], fill=255)
+    d = mask("shoes")
+    d.ellipse((mid - 42, _ERNST_GROUND_Y - 4, mid - 4, _ERNST_GROUND_Y + 6), fill=255)
+    d.ellipse((mid + 4, _ERNST_GROUND_Y - 4, mid + 42, _ERNST_GROUND_Y + 6), fill=255)
+    # The coat: shoulders, a waist, a flared skirt.
+    d = mask("coat")
+    d.polygon([(cx0 + 4, cy0), (cx1 - 4, cy0), (cx1, cy0 + 40), (cx1 - 8, cy0 + 74), (cx1, cy1),
+               (cx0, cy1), (cx0 + 8, cy0 + 74), (cx0, cy0 + 40)], fill=255)
+    # The shirt front, a V between the lapels.
+    d = mask("shirt")
+    d.polygon([(mid - 11, cy0), (mid + 11, cy0), (mid, cy0 + 58)], fill=255)
+    # The neck, an S from the collar to the skull.
+    d = mask("neck")
+    left = _ernst_bezier((hx - 7, hy + ry - 4), (hx - 14, hy + 30), (mid - 8, cy0 + 2))
+    right = _ernst_bezier((hx + 7, hy + ry - 4), (hx + 2, hy + 30), (mid + 8, cy0 + 2))
+    d.polygon(left + list(reversed(right)), fill=255)
+    # The head: a domed skull, a crest of three feathers off the back of it.
+    d = mask("head")
+    d.ellipse((hx - rx, hy - ry, hx + rx, hy + ry), fill=255)
+    d.polygon(_ernst_bezier((hx - rx + 6, hy - 6), (hx - rx - 10, hy - 24), (hx - rx - 20, hy - 10))
+              + [(hx - rx + 4, hy + 2)], fill=255)
+    d.polygon(_ernst_bezier((hx - rx + 6, hy), (hx - rx - 14, hy - 10), (hx - rx - 22, hy + 4))
+              + [(hx - rx + 4, hy + 8)], fill=255)
+    # The beak: long, tapering, a little down-curved, toward the card.
+    d = mask("beak")
+    tip = (hx + rx + 36, hy + 10)
+    upper = _ernst_bezier((hx + rx - 6, hy - 9), (hx + rx + 18, hy - 7), tip)
+    lower = _ernst_bezier((hx + rx - 6, hy + 7), (hx + rx + 16, hy + 8), tip)
+    d.polygon(upper + list(reversed(lower)), fill=255)
+    # The near arm, raised to hold the card, and its hand on the card's edge.
+    d = mask("arm_near")
+    d.line([(cx1 - 8, cy0 + 10), (cx1 + 30, cy0 + 36), (_ERNST_CARD_RECT[0] + 2, cy0 + 40)], fill=255, width=15, joint="curve")
+    d = mask("hand")
+    hx1 = _ERNST_CARD_RECT[0]
+    d.ellipse((hx1 - 8, cy0 + 30, hx1 + 10, cy0 + 50), fill=255)
+    return parts
+
+
 def _ernst_paint_loplop(image: Image.Image) -> None:
-    """Loplop, Superior of Birds, presenting: a white paper cut-out with torn
-    edges — head in profile, ringed eye, yellow beak toward the card, a long
-    neck, a hatched easel body, stick legs, and the arm that holds the card."""
+    """Loplop, Superior of Birds, presenting: a bird-headed man in a frock
+    coat cut from a wood engraving — a white silhouette with engraved
+    contours along every part, directional hatching on the coat and
+    trousers, a ringed eye, a yellow beak toward the card, and his near hand
+    on the card's edge."""
     width, height = image.size
     white, black, yellow = SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["yellow"]
-    rng = random.Random(_ERNST_SEED + 7)
-    hx, hy = _ERNST_LOPLOP_HEAD
-    r = _ERNST_LOPLOP_HEAD_R
-    cut = Image.new("L", (width, height), 0)
-    cd = ImageDraw.Draw(cut)
-    # The body, torn; the neck; the head.
-    (bx0, by0), (bx1, _), (bx2, by2), (bx3, _) = _ERNST_LOPLOP_BODY
-    body = []
-    for k in range(13):
-        t = k / 12
-        body.append((bx0 + (bx3 - bx0) * t + rng.randint(-2, 2), by0 + (by2 - by0) * t))
-    for k in range(13):
-        t = k / 12
-        body.append((bx3 + (bx2 - bx3) * t, by2 + rng.randint(-2, 2)))
-    for k in range(13):
-        t = k / 12
-        body.append((bx2 + (bx1 - bx2) * t + rng.randint(-2, 2), by2 + (by0 - by2) * t))
-    for k in range(13):
-        t = k / 12
-        body.append((bx1 + (bx0 - bx1) * t, by0 + rng.randint(-2, 2)))
-    cd.polygon(body, fill=255)
-    cd.polygon([(hx - 7, hy + r - 6), (hx + 7, hy + r - 6), (hx + 12, by0 + 2), (hx - 12, by0 + 2)], fill=255)
-    cd.ellipse((hx - r, hy - r, hx + r, hy + r), fill=255)
-    # A crest of three feathers off the back of the head.
-    for dy, length in ((-10, 16), (-4, 20), (3, 15)):
-        cd.line([(hx - r + 4, hy + dy), (hx - r - length, hy + dy - 8)], fill=255, width=3)
-    image.paste(white, (0, 0), cut)
-    # The engraving hatch across the body, held off the torn edge so the edge
-    # stays paper: 45° lines every 5 px, clipped to the eroded body.
-    body_mask = Image.new("L", (width, height), 0)
-    ImageDraw.Draw(body_mask).polygon(body, fill=255)
-    inner = body_mask.filter(ImageFilter.MinFilter(7))
-    hatch = Image.new("L", (width, height), 0)
-    hd = ImageDraw.Draw(hatch)
-    for c in range(-height, width + height, 5):
-        hd.line([(c, 0), (c + height, height)], fill=255, width=1)
-    for c in range(-height, width + height, 14):
-        hd.line([(c + height, 0), (c, height)], fill=255, width=1)
-    image.paste(black, (0, 0), ImageChops.multiply(hatch, inner))
-    for m in (cut, body_mask, inner, hatch):
-        m.close()
+    parts = _ernst_loplop_parts((width, height))
+    order = ("arm_far", "legs", "shoes", "coat", "shirt", "neck", "head", "beak", "arm_near", "hand")
+    silhouette = Image.new("L", (width, height), 0)
+    for name in order:
+        silhouette = ImageChops.lighter(silhouette, parts[name])
+    image.paste(white, (0, 0), silhouette)
+    image.paste(black, (0, 0), parts["shoes"])
+    image.paste(yellow, (0, 0), parts["beak"])
+
+    def hatch(angle_right: bool, spacing: int) -> Image.Image:
+        m = Image.new("L", (width, height), 0)
+        d = ImageDraw.Draw(m)
+        for c in range(-height, width + height, spacing):
+            if angle_right:
+                d.line([(c, 0), (c + height, height)], fill=255, width=1)
+            else:
+                d.line([(c + height, 0), (c, height)], fill=255, width=1)
+        return m
+
+    # Engraving tone, held off every contour by an eroded mask: dense 45°
+    # lines on the coat and sleeves, a lighter opposite hatch on the trousers,
+    # the shirt and head left as the paper's white.
+    coat_tone = ImageChops.lighter(ImageChops.lighter(parts["coat"], parts["arm_far"]), parts["arm_near"])
+    coat_tone = ImageChops.subtract(coat_tone, parts["shirt"].filter(ImageFilter.MaxFilter(5)))
+    coat_tone = ImageChops.subtract(coat_tone, parts["hand"].filter(ImageFilter.MaxFilter(5)))
+    image.paste(black, (0, 0), ImageChops.multiply(hatch(True, 4), coat_tone.filter(ImageFilter.MinFilter(5))))
+    image.paste(black, (0, 0), ImageChops.multiply(hatch(False, 11), coat_tone.filter(ImageFilter.MinFilter(9))))
+    image.paste(black, (0, 0), ImageChops.multiply(hatch(False, 5), parts["legs"].filter(ImageFilter.MinFilter(5))))
+    image.paste(black, (0, 0), ImageChops.multiply(hatch(True, 7), parts["neck"].filter(ImageFilter.MinFilter(5))))
+    # Contours: each part's one-pixel edge, so the figure has the inner lines
+    # of an engraving — collar, sleeve, lapel — and not just an outline. Parts
+    # drawn later cover the contours of what they overlap.
+    for name in order:
+        part = parts[name]
+        edge = ImageChops.subtract(part, part.filter(ImageFilter.MinFilter(3)))
+        image.paste(black, (0, 0), edge)
     draw = ImageDraw.Draw(image)
-    # Eye, beak, legs, arm.
-    ex, ey = hx + 5, hy - 5
+    hx, hy = _ERNST_LOPLOP_HEAD
+    rx = _ERNST_LOPLOP_HEAD_R
+    cx0, cy0, cx1, cy1 = _ERNST_LOPLOP_COAT
+    mid = (cx0 + cx1) // 2
+    # The eye, the line of the mouth along the beak, the lapels and buttons,
+    # the fingers on the card.
+    ex, ey = hx + 6, hy - 6
     draw.ellipse((ex - 6, ey - 6, ex + 6, ey + 6), outline=black, width=2)
     draw.ellipse((ex - 2, ey - 2, ex + 2, ey + 2), fill=black)
-    draw.polygon([(hx + r - 4, hy - 7), (hx + r - 4, hy + 7), (hx + r + 30, hy + 1)], fill=yellow, outline=black)
-    draw.line([(hx + r - 4, hy + 1), (hx + r + 22, hy + 1)], fill=black, width=1)
-    for lx, fx in ((bx3 + 26, -1), (bx2 - 26, 1)):
-        draw.line([(lx, by2), (lx + fx * 4, _ERNST_GROUND_Y + 6)], fill=white, width=3)
-        draw.line([(lx + fx * 4 - 8, _ERNST_GROUND_Y + 6), (lx + fx * 4 + 10, _ERNST_GROUND_Y + 6)], fill=white, width=3)
-    (ax0, ay0), (ax1, ay1) = _ERNST_LOPLOP_ARM
-    draw.line([(ax0, ay0), (ax1, ay1)], fill=white, width=4)
-    for dy in (-6, 0, 6):
-        draw.line([(ax1 - 6, ay1), (ax1 + 2, ay1 + dy)], fill=white, width=2)
+    draw.line(_ernst_bezier((hx + rx - 6, hy - 1), (hx + rx + 16, hy + 1), (hx + rx + 34, hy + 9)), fill=black, width=1)
+    draw.line([(mid - 11, cy0), (mid - 4, cy0 + 22), (mid, cy0 + 58)], fill=black, width=2)
+    draw.line([(mid + 11, cy0), (mid + 4, cy0 + 22), (mid, cy0 + 58)], fill=black, width=2)
+    for by in (cy0 + 70, cy0 + 88, cy0 + 106):
+        draw.ellipse((mid - 2, by - 2, mid + 2, by + 2), fill=black)
+    fx = _ERNST_CARD_RECT[0] + 2
+    for dy in (34, 40, 46):
+        draw.line([(fx - 4, cy0 + dy), (fx + 8, cy0 + dy + 2)], fill=black, width=1)
+    for m in parts.values():
+        m.close()
+    silhouette.close()
 
 
 def _ernst_paint_card(image: Image.Image) -> None:
@@ -33365,7 +33447,7 @@ def _ernst_scene() -> Image.Image:
     """The page without its quote or its hour: frame, sky, forest, earth,
     dove, Loplop, card, label. Painted once per process."""
     key = (_ernst_paint_frame, _ernst_paint_sky, _ernst_paint_forest, _ernst_paint_dove,
-           _ernst_paint_loplop, _ernst_paint_card, _ernst_paint_label)
+           _ernst_paint_card, _ernst_paint_loplop, _ernst_paint_label)
     cached = _ERNST_SCENE.get("frame")
     if cached is not None and cached[0] == key:
         return cached[1]
@@ -33384,8 +33466,8 @@ def _ernst_scene() -> Image.Image:
     f = _ERNST_FRAME
     ImageDraw.Draw(image).rectangle((f - 1, f - 1, size[0] - f, size[1] - f), outline=SPECTRA6["black"], width=1)
     _ernst_paint_dove(image)
-    _ernst_paint_loplop(image)
     _ernst_paint_card(image)
+    _ernst_paint_loplop(image)
     _ernst_paint_label(image)
     _ERNST_SCENE["frame"] = (key, image)
     return image

@@ -13,7 +13,7 @@ these entries under the new dated version heading.
   painted stand of scraped petrified trunks and a grey-blue sky dithered to
   the inks inside a frottage wood-grain frame, Ernst's hollow ring sun
   hanging at one of twelve places across the sky as the hour, and Loplop,
-  his bird alter ego, as a hatched white paper cut-out presenting the quote
+  his bird alter ego, as a frock-coated bird-headed man cut from an engraving presenting the quote
   on a torn cream collage card — black Libre Bodoni with the matched phrase
   pasted on as a red cut-out strip, the byline as the plate caption. Libre
   Bodoni is a new bundled face (OFL, from Google Fonts).

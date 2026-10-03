@@ -6440,19 +6440,27 @@ class TestErnstFrame:
         edge = ink_counts(scene.crop((x0 + 20, y0 - 3, x1 - 20, y0 + 4)))
         assert len(set(edge) - {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}) >= 1
 
-    def test_loplop_is_a_white_cut_out_with_a_ringed_eye_and_a_yellow_beak(self):
+    def test_loplop_is_an_engraved_bird_man_in_a_frock_coat(self):
         scene = rq._ernst_scene()
         hx, hy = rq._ERNST_LOPLOP_HEAD
         r = rq._ERNST_LOPLOP_HEAD_R
-        head = ink_counts(scene.crop((hx - r, hy - r, hx + r + 34, hy + r)))
-        assert head.get(rq.SPECTRA6["white"], 0) > math.pi * r * r * 0.6
-        assert head.get(rq.SPECTRA6["black"], 0) > 60                # the eye's ring and pupil
-        assert head.get(rq.SPECTRA6["yellow"], 0) > 80               # the beak
-        (bx0, by0), _, (bx2, by2), (bx3, _) = rq._ERNST_LOPLOP_BODY
-        body = ink_counts(scene.crop((bx0 + 8, by0 + 8, bx2 - 8, by2 - 8)))
-        total = sum(body.values())
-        assert body.get(rq.SPECTRA6["white"], 0) > total * 0.5     # paper
-        assert body.get(rq.SPECTRA6["black"], 0) > total * 0.12    # the engraving hatch
+        head = ink_counts(scene.crop((hx - r, hy - r, hx + r + 40, hy + r)))
+        assert head.get(rq.SPECTRA6["white"], 0) > math.pi * r * (r - 3) * 0.5
+        assert head.get(rq.SPECTRA6["black"], 0) > 100               # contours, the eye's ring and pupil
+        assert head.get(rq.SPECTRA6["yellow"], 0) > 150              # the beak
+        cx0, cy0, cx1, cy1 = rq._ERNST_LOPLOP_COAT
+        coat = ink_counts(scene.crop((cx0 + 10, cy0 + 10, cx1 - 10, cy1 - 10)))
+        total = sum(coat.values())
+        assert set(coat) == {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}   # paper and ink, nothing else
+        assert coat[rq.SPECTRA6["white"]] > total * 0.45                 # the paper
+        assert coat[rq.SPECTRA6["black"]] > total * 0.2                  # the engraving hatch and contours
+        # The near hand rests on the card: white and black over the card's cream.
+        hand = ink_counts(scene.crop((rq._ERNST_CARD_RECT[0] - 8, cy0 + 30, rq._ERNST_CARD_RECT[0] + 10, cy0 + 50)))
+        assert hand.get(rq.SPECTRA6["black"], 0) > 20
+        # Shoes are solid black.
+        mid = (cx0 + cx1) // 2
+        shoes = ink_counts(scene.crop((mid - 40, rq._ERNST_GROUND_Y - 3, mid + 40, rq._ERNST_GROUND_Y + 5)))
+        assert shoes.get(rq.SPECTRA6["black"], 0) > 300
 
     def test_quote_is_black_bodoni_with_the_phrase_on_a_pasted_strip(self):
         with_phrase = ink_counts(self._render().crop(rq._ERNST_QUOTE_RECT))
