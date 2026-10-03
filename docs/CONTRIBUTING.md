@@ -206,7 +206,7 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
-Eighty themes ship today — see the `THEME_ORDER` tuple for the
+Eighty-two themes ship today — see the `THEME_ORDER` tuple for the
 canonical list, the README theme table for previews, and
 [`docs/themes.md`](themes.md) for the design notes behind each one. Some are palette + font
 swaps on the shared literary layout, some add a border painter, and the

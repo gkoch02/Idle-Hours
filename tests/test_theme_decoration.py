@@ -112,6 +112,8 @@ CUSTOM_FRAME_THEMES = (
     "expedition",
     "witcher",
     "hades",
+    "expanse",
+    "beksinski",
     "goya",
 )
 

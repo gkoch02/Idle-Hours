@@ -39,6 +39,25 @@ these entries under the new dated version heading.
   Caesar Dressing, white Spectral text with the matched phrase in gold, the
   boon's rarity rolled from the quote. Caesar Dressing, Spectral SC and
   Hammersmith One are new bundled faces (OFL, from Google Fonts).
+- New `expanse` theme: *The Expanse* — the Rocinante's console in the
+  show's screen-graphics grammar: an orbital strip across the top with the
+  stations as column heads and two trajectories curving through, black
+  glass panels with their corners cut, a tactical plot whose tracked
+  contact sits at the hour's bearing with its track and intercept and a
+  row of arc gauges beneath, the quote as an incoming tightbeam in a
+  bracketed feed frame — white Barlow with the matched phrase and the
+  sender in the MCRN's orange — over a command line with the transmission
+  ID, a boxed contacts list with silhouettes, and a foot of status pills,
+  a waveform chart and `//` system text, all dealt from the quote. Barlow
+  is a new bundled face (OFL, from Google Fonts).
+- New `beksinski` theme: Zdzisław Beksiński's fantastic period — a
+  procession across a dead plain toward a cathedral of bone, under a
+  dust-coloured haze with a dim sun behind the spires. The haze and the
+  plain are dithered to umber, ochre and bone with no green or blue in
+  them, the cathedral is a bone silhouette with a rust rim light and the
+  haze showing through its windows, and the hour is the number of hooded
+  figures on the road. The quote is set in black Old Standard TT in the
+  haze with the matched phrase in red; no new fonts.
 - New `goya` theme: Francisco de Goya's *Pinturas negras* — *El Perro*: the
   ochre void painted in continuous tone and dithered to black, yellow, red
   and white over a crazed plaster, the dark slope at the foot with the dog's
