@@ -7276,8 +7276,9 @@ class TestOblivionFrame(_CustomFrameCase):
 
 
 class TestYorhaFrame(_CustomFrameCase):
-    """``yorha`` — the YoRHa archives: the hour's row inverted, the phrase
-    knocked out of a black box on the cream dot grid."""
+    """``yorha`` — the YoRHa archives: a dithered cream sheet with the blurred
+    city and the hatch, crisp panels with shadows, Pod 042, the hour's row
+    inverted and the phrase knocked out of a black box."""
 
     THEME = "yorha"
     SATURATION = 0.5
@@ -7300,16 +7301,39 @@ class TestYorhaFrame(_CustomFrameCase):
 
         assert ink(pinned) > ink(bare)
 
-    def test_ground_is_cream_under_a_dot_grid_and_cached(self):
+    def test_sheet_is_three_ink_tone_and_cached(self):
         scene = rq._yorha_scene()
         assert scene is rq._yorha_scene()
-        counts = ink_counts(scene)
-        assert set(counts) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"], rq.SPECTRA6["black"]}
-        assert abs(counts[rq.SPECTRA6["yellow"]] / (800 * 480) - 0.25) < 0.01
-        p = rq._YORHA_DOT_PITCH // 2
-        assert scene.getpixel((p, p)) == rq.SPECTRA6["black"]
-        assert scene.getpixel((p + rq._YORHA_DOT_PITCH, p)) == rq.SPECTRA6["black"]
-        assert scene.getpixel((p + 1, p)) != rq.SPECTRA6["black"]
+        assert set(ink_counts(scene)) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"], rq.SPECTRA6["black"]}
+        # The open sheet between the menu and the pane: cream with the hatch's black.
+        gap = ink_counts(scene.crop((232, 100, 248, 380)))
+        total = sum(gap.values())
+        assert 0.1 < gap.get(rq.SPECTRA6["yellow"], 0) / total < 0.45
+        assert 0 < gap.get(rq.SPECTRA6["black"], 0) / total < 0.3
+        # The corners are darker than the middle of the sheet.
+        corner = ink_counts(scene.crop((0, 60, 24, 76))).get(rq.SPECTRA6["black"], 0) / (24 * 16)
+        assert corner > gap.get(rq.SPECTRA6["black"], 0) / total
+
+    def test_panels_are_crisp_cream_with_shadows(self):
+        scene = rq._yorha_scene()
+        x0, y0, x1, y1 = rq._YORHA_PANE_RECT
+        face = ink_counts(scene.crop((x0 + 40, y0 + 60, x0 + 200, y0 + 140)))
+        area = 160 * 80
+        assert abs(face[rq.SPECTRA6["yellow"]] / area - 0.125) < 0.02
+        assert face.get(rq.SPECTRA6["black"], 0) < area * 0.02          # only the dot grid
+        # The shadow: darker just below the pane's foot than above its head.
+        below = ink_counts(scene.crop((x0 + 40, y1 + 2, x1 - 40, y1 + 8))).get(rq.SPECTRA6["black"], 0)
+        above = ink_counts(scene.crop((x0 + 40, y0 - 8, x1 - 40, y0 - 2))).get(rq.SPECTRA6["black"], 0)
+        assert below > above * 1.5
+
+    def test_pod_is_modelled_with_a_lens(self):
+        image = self._render()
+        cx, cy = rq._YORHA_POD_CENTRE
+        pod = ink_counts(image.crop((cx - 60, cy - 42, cx + 48, cy + 22)))
+        assert pod.get(rq.SPECTRA6["black"], 0) > 900
+        assert pod.get(rq.SPECTRA6["white"], 0) > 1500
+        lens = ink_counts(image.crop((cx + 24, cy - 8, cx + 41, cy + 9)))
+        assert lens.get(rq.SPECTRA6["black"], 0) > 120 and lens.get(rq.SPECTRA6["white"], 0) > 4
 
     def test_hour_is_the_inverted_row(self):
         rows = rq._yorha_menu_rows()
@@ -7331,7 +7355,6 @@ class TestYorhaFrame(_CustomFrameCase):
         area = (boxes[0][2] - boxes[0][0]) * (boxes[0][3] - boxes[0][1])
         assert box.get(rq.SPECTRA6["black"], 0) > area * 0.5
         assert box.get(rq.SPECTRA6["white"], 0) > 100
-        assert rq.SPECTRA6["yellow"] not in box
         plain = dict(self.ROW, matched_text="")
         pane = ink_counts(self._render(plain).crop(rq._YORHA_QUOTE_RECT))
         assert pane.get(rq.SPECTRA6["black"], 0) < ink_counts(image.crop(rq._YORHA_QUOTE_RECT))[rq.SPECTRA6["black"]]
@@ -7344,6 +7367,12 @@ class TestYorhaFrame(_CustomFrameCase):
         assert pixel_bytes(a.crop(head)) != pixel_bytes(b.crop(head))
         assert pixel_bytes(a.crop(head)) != pixel_bytes(c.crop(head))
         assert pixel_bytes(a.crop(rq._YORHA_QUOTE_RECT)) == pixel_bytes(c.crop(rq._YORHA_QUOTE_RECT))
+
+    def test_tab_bar_opens_intel_under_the_crest(self):
+        image = self._render()
+        bar = ink_counts(image.crop(rq._YORHA_HEADER_RECT))
+        assert bar.get(rq.SPECTRA6["black"], 0) > 800 * 36 * 0.8
+        assert bar.get(rq.SPECTRA6["white"], 0) > 1500                   # the tabs, the open tab's box, the crest
 
 
 class TestHitchhikerFrame(_CustomFrameCase):
