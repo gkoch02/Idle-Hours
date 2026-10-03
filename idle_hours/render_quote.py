@@ -148,6 +148,7 @@ THEME_ORDER: tuple[str, ...] = (
     "expedition",
     "witcher",
     "hades",
+    "ernst",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1385,6 +1386,22 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
+    # Max Ernst — a grattage forest under the ring sun, Loplop presenting
+    # the quote. A custom frame (``render_ernst_frame``): a dithered painted
+    # forest in a frottage frame, the ring's place in the sky as the hour,
+    # and the quote on a torn cream collage card in Libre Bodoni with the
+    # matched phrase pasted on as a red cut-out. These literary-layout slots
+    # serve only the palette-only paths (see the note above ``THEMES``).
+    "ernst": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["green"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
     # is the hour, a silhouetted colony rim-lit beneath it,
@@ -2367,6 +2384,12 @@ SPECTRALSC_SEMIBOLD = str(BASE_DIR / "fonts/spectral-sc/SpectralSC-SemiBold.ttf"
 # Hammersmith One (hades chrome) — Sorkin Type's open Johnston, the nearest
 # open face to P22 Underground, the game's main interface face.
 HAMMERSMITHONE_REGULAR = str(BASE_DIR / "fonts/hammersmith-one/HammersmithOne-Regular.ttf")
+# Libre Bodoni (ernst) — Pablo Impallari's revival of the nineteenth-century
+# Bodoni types, the Didone of the French printing Ernst cut his collage
+# novels from. Variable on weight (Regular..Bold) with a separate italic
+# file; the default instance is Regular, but every candidate pins one anyway.
+LIBREBODONI_VARIABLE = str(BASE_DIR / "fonts/libre-bodoni/LibreBodoni[wght].ttf")
+LIBREBODONI_ITALIC_VARIABLE = str(BASE_DIR / "fonts/libre-bodoni/LibreBodoni-Italic[wght].ttf")
 
 # Almendra + Almendra Display (Ana Sanfelippo, OFL) — a calligraphic book face
 # whose pen-cut wedges and faintly unsettled rhythm read as fin-de-siècle
@@ -4000,6 +4023,17 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [SPECTRAL_MEDIUM, ALEGREYA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [SPECTRAL_SEMIBOLD, ALEGREYA_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [CAESARDRESSING_REGULAR, CINZELDECORATIVE_BOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "ernst": {
+        # Libre Bodoni — the Didone of the nineteenth-century French pages
+        # Ernst's collage novels were cut from, and of their captions: Regular
+        # for the black body on the cream card, Bold for the matched phrase
+        # pasted on in red, Italic for the plate caption. The hairlines are
+        # Impallari's sturdier screen cut, not Bodoni Moda's, so the body
+        # survives the palette snap at caption sizes. Playfair is the fallback.
+        "quote_regular": [(LIBREBODONI_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(LIBREBODONI_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(LIBREBODONI_ITALIC_VARIABLE, "Italic"), *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
@@ -32924,6 +32958,527 @@ def render_hades_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
 
 # ---------------------------------------------------------------------------
+# ernst — Max Ernst (1891–1976): a grattage forest under the ring sun, with
+# Loplop presenting the quote as a pasted engraving
+# ---------------------------------------------------------------------------
+# Ernst invented three ways of letting a picture make itself, and all three
+# are on this page. **Frottage** (1925, *Histoire Naturelle*): paper laid on
+# floorboards and rubbed with graphite, so the wood's grain surfaces as
+# drawing — the frame round the canvas is one of those rubbings, grain
+# running along each side and mitred at the corners. **Grattage** (the
+# *Forest* paintings, 1927–28, *Forest and Dove* in the Tate): paint scraped
+# off a canvas laid over textured objects, which is where the petrified
+# forests come from — ragged vertical trunks striated by the scrape, dark
+# green, umber and black with ochre and rust showing through, under a cold
+# sky, and always, hanging above them, a pale **ring**: a sun or moon with a
+# hole through it. And **collage**, the cut-and-pasted Victorian wood
+# engravings of *La Femme 100 têtes* (1929) and *Une Semaine de Bonté*
+# (1934), in which his bird alter ego **Loplop**, "Superior of Birds",
+# appears again and again holding up a framed picture for the viewer —
+# the *Loplop présente* series (1930–32). Here Loplop presents the quote.
+#
+# **The ring is the hour.** Each *Forest* hangs its ring at a different
+# place in the sky; this one hangs it at twelve, walking a shallow arc
+# from the left of the sky at one o'clock to the right at twelve, highest
+# in the middle of the clock, the path a sun takes. Hour-only, pinned
+# byte-identical across the minutes of an hour by ``TestErnstFrame``; the
+# minute stays with the matched phrase. Nothing prints a digit, nothing
+# reads the wall clock. The hole is a hole: the dithered sky shows through
+# it, as it does in the paintings. No trunk reaches the arc.
+#
+# **The forest is painted in continuous tone and dithered**, the
+# ``expedition`` / ``hades`` posture, because grattage *is* continuous tone:
+# the scrape lifts paint by degrees. Each trunk is a jagged polygon — sides
+# jittered down their length, a splintered top of peaks and valleys — filled
+# with a base tone and two streak fields from ``_expedition_noise`` with
+# fine cells across and coarse cells down, which is what stretched value
+# noise looks like: vertical striations that drift. One field lifts the
+# tone toward the trunk's highlight (ochre, rust, moss or bone), the other
+# drops it into shadow. A back row of narrower trunks is blended toward the
+# horizon tone so it recedes. Three quantisers, composited by the masks the
+# scene already has: the sky without red (a grey-teal has no warmth to find
+# there, and six-ink error diffusion would invent some), the forest and
+# earth with all six inks (the scrape's ochre and rust need yellow and red),
+# and the frame with black and white only, since graphite has no colour.
+#
+# **Loplop is a paper cut-out**, as he is in the collage novels: a white
+# silhouette with torn edges on the painted forest — a long neck, a round
+# head in profile with a ringed eye and a yellow beak turned toward the
+# card, an easel-tall body hatched with the diagonal line-work of a wood
+# engraving, stick legs, and an arm reaching out to hold the card. Painted
+# white rather than black because a black bird would vanish into the
+# trunks; the engraving hatch is what makes the white read as paper rather
+# than as a hole. The small white dove on the trunk tops is *Forest and
+# Dove*'s, caged by the forest.
+#
+# **The card is a pasted page**: torn edges, cream (Y+W Bayer, the
+# ``cardcatalog`` wash) so it is a different paper from Loplop's white, the
+# quote set in **Libre Bodoni** — the Didone of the nineteenth-century
+# French printing the collage novels were cut from, and the register their
+# captions were set in — with the matched phrase pasted on as a *second*
+# cut-out: a white strip in a hairline black rule with the words in red
+# Bold, the Dada ransom-note device of a word clipped from another page.
+# The byline is the plate caption, in Libre Bodoni Italic. A small white
+# label in the sky reads LOPLOP PRÉSENTE in Jost, the open Futura, the
+# geometric sans of the Paris reviews the series ran in.
+#
+# The scene — frame, sky, forest, earth, dove, Loplop, card — is quote- and
+# hour-independent and painted once per process (``_ERNST_SCENE``, keyed on
+# the painters themselves). Composed at the canonical 800x480 and
+# NEAREST-downsampled otherwise (the ``metro`` convention).
+# ---------------------------------------------------------------------------
+_ERNST_SEED = 0x4C4F50                 # LOP
+_ERNST_FRAME = 24                      # the frottage frame band
+_ERNST_SKY_BOTTOM = 232                # the sky gradient's last stop
+_ERNST_GROUND_Y = 432
+_ERNST_RING_RADIUS = 34
+_ERNST_RING_HOLE = 13
+_ERNST_RING_X = (98, 702)              # one o'clock .. twelve
+_ERNST_RING_Y = (118, 72)              # the arc's ends, and its crown
+_ERNST_TRUNK_TOP_MIN = 184             # no splinter reaches the arc (peaks rise 14 above)
+_ERNST_CARD_RECT = (252, 246, 760, 444)
+_ERNST_QUOTE_RECT = (276, 266, 738, 392)
+_ERNST_BYLINE_Y = 410
+_ERNST_LOPLOP_HEAD = (150, 218)
+_ERNST_LOPLOP_HEAD_R = 21
+_ERNST_LOPLOP_BODY = ((120, 270), (182, 270), (196, 404), (106, 404))
+_ERNST_LOPLOP_ARM = ((190, 310), (254, 304))
+_ERNST_DOVE_XY = (498, 208)
+_ERNST_LABEL_XY = (44, 42)
+_ERNST_SKY_INKS = ("black", "blue", "white")
+_ERNST_FOREST_INKS = ("black", "blue", "green", "red", "yellow", "white")
+_ERNST_FRAME_INKS = ("black", "white")
+# A cold sky, top to the horizon, in the calibrated space: deep grey-blue to
+# a pale grey — the sky of *Forest and Dove*.
+_ERNST_SKY_STOPS = ((0, (40, 56, 86)), (120, (72, 92, 110)), (_ERNST_SKY_BOTTOM, (116, 130, 132)))
+_ERNST_UNDERGROWTH_Y = 298             # below this the gaps between trunks are forest, not sky
+_ERNST_UNDERGROWTH = (30, 42, 34)
+_ERNST_EARTH = (30, 33, 36)
+# Trunk base tones and the highlights the scrape lifts them toward, both in
+# the calibrated space: dark green, umber, bottle green, blue-black; ochre,
+# rust, moss, bone.
+_ERNST_BASES = ((30, 42, 34), (44, 34, 28), (34, 56, 40), (30, 34, 42))
+_ERNST_HIGHLIGHTS = ((150, 130, 44), (110, 52, 30), (84, 112, 60), (140, 146, 136))
+_ERNST_SHADOW = (26, 28, 30)
+_ERNST_DISTANCE = (54, 68, 80)           # the back row recedes toward this, not toward the sky
+_ERNST_SCENE: dict = {}
+
+
+def _ernst_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — where the ring hangs."""
+    try:
+        hour = int(str(time_str).split(":", 1)[0])
+    except ValueError:
+        hour = 12
+    return hour % 12 or 12
+
+
+def _ernst_ring_centre(hour: int) -> tuple[int, int]:
+    """The ring's centre for the hour: a shallow arc across the sky, left at
+    one, right at twelve, highest in the middle of the clock."""
+    t = (hour - 1) / 11.0
+    x0, x1 = _ERNST_RING_X
+    y_end, y_crown = _ERNST_RING_Y
+    return round(x0 + (x1 - x0) * t), round(y_end - (y_end - y_crown) * math.sin(math.pi * t))
+
+
+def _ernst_body_font(size: int, bold: bool = False):
+    """Libre Bodoni, Regular or Bold — the Didone of the collage novels' source pages."""
+    if bold:
+        return load_font([(LIBREBODONI_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES], size=size)
+    return load_font([(LIBREBODONI_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES], size=size)
+
+
+def _ernst_label_font(size: int):
+    """Jost Medium — the open Futura — for the pasted label."""
+    return load_font([(JOST_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=size)
+
+
+def _ernst_blend(a, b, t: float) -> tuple[int, int, int]:
+    return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+
+
+def _ernst_torn_polygon(rect, rng: random.Random, step: int = 11, tear: int = 3) -> list:
+    """A rectangle's outline with a torn paper edge: a vertex every ``step``
+    pixels, each pulled in or out by up to ``tear``."""
+    x0, y0, x1, y1 = rect
+    pts = []
+    for x in range(x0, x1, step):
+        pts.append((x, y0 + rng.randint(-tear, tear)))
+    for y in range(y0, y1, step):
+        pts.append((x1 + rng.randint(-tear, tear), y))
+    for x in range(x1, x0, -step):
+        pts.append((x, y1 + rng.randint(-tear, tear)))
+    for y in range(y1, y0, -step):
+        pts.append((x0 + rng.randint(-tear, tear), y))
+    return pts
+
+
+def _ernst_trunks() -> list[dict]:
+    """The forest's trunks, seeded: a back row of narrow muted trunks and a
+    front row of broad ones, each stratified across the width so the rows
+    read as a stand rather than a clump."""
+    rng = random.Random(_ERNST_SEED + 1)
+    trunks = []
+    span = (_ERNST_FRAME, 800 - _ERNST_FRAME)
+    for row, count, (wmin, wmax), (tmin, tmax) in (
+        (0, 16, (24, 46), (_ERNST_TRUNK_TOP_MIN, _ERNST_TRUNK_TOP_MIN + 46)),
+        (1, 11, (44, 92), (_ERNST_TRUNK_TOP_MIN + 6, _ERNST_TRUNK_TOP_MIN + 78)),
+    ):
+        pitch = (span[1] - span[0]) / count
+        for k in range(count):
+            trunks.append(dict(
+                row=row,
+                cx=span[0] + pitch * (k + rng.uniform(0.2, 0.8)),
+                w=rng.randint(wmin, wmax),
+                top=rng.randint(tmin, tmax),
+                base=rng.randrange(len(_ERNST_BASES)),
+                hi=rng.randrange(len(_ERNST_HIGHLIGHTS)),
+                lean=rng.uniform(-0.05, 0.05),
+                seed=rng.randrange(1 << 20),
+            ))
+    return trunks
+
+
+def _ernst_trunk_polygon(trunk: dict) -> list:
+    """A petrified trunk: sides jittered down their length, leaning a little,
+    and a splintered top of alternating peaks and valleys."""
+    rng = random.Random(trunk["seed"])
+    cx, w, top, lean = trunk["cx"], trunk["w"], trunk["top"], trunk["lean"]
+    foot = _ERNST_GROUND_Y + 8
+    jit = max(1, round(w * 0.12))
+    left, right = [], []
+    for y in range(foot, top, -34):
+        dx = lean * (foot - y)
+        left.append((cx - w / 2 + dx + rng.randint(-jit, jit), y))
+        right.append((cx + w / 2 + dx + rng.randint(-jit, jit), y))
+    dx = lean * (foot - top)
+    spikes = 3 + w // 12
+    crown = []
+    for k in range(spikes + 1):
+        x = cx - w / 2 + dx + w * k / spikes
+        if k % 2 == 0:
+            crown.append((x, top - rng.randint(0, 14)))
+        else:
+            crown.append((x, top + rng.randint(10, 44)))
+    return left + crown + list(reversed(right))
+
+
+def _ernst_paint_frame(scene: Image.Image, band: Image.Image) -> None:
+    """The frottage frame: graphite rubbed over floorboards, grain along
+    each side, mitred at the corners — a continuous-tone grey the frame
+    quantiser takes to black and white."""
+    width, height = scene.size
+    f = _ERNST_FRAME
+    warp_x = _tarot_noise(max(2, width // 24), 1, _ERNST_SEED + 2).resize((width, 1), Image.Resampling.BICUBIC).load()
+    warp_y = _tarot_noise(1, max(2, height // 24), _ERNST_SEED + 3).resize((1, height), Image.Resampling.BICUBIC).load()
+    rng = random.Random(_ERNST_SEED + 4)
+    px = scene.load()
+    bp = band.load()
+    for y in range(height):
+        # Only the band's own pixels are visited, in raster order (the order
+        # the jitter is drawn in, so the rubbing is byte-identical).
+        xs = range(width) if (y < f or y >= height - f) else (*range(f), *range(width - f, width))
+        for x in xs:
+            d = min(x, y, width - 1 - x, height - 1 - y)
+            if d in (x, width - 1 - x):
+                phase = x * 0.15 + warp_y[0, y] / 255.0 * 3.2
+            else:
+                phase = y * 0.15 + warp_x[x, 0] / 255.0 * 3.2
+            grain = (0.5 + 0.5 * math.cos(2 * math.pi * phase)) ** 4
+            tone = 168 - 130 * grain + rng.randint(-9, 9)
+            tone = max(26, min(196, round(tone)))
+            px[x, y] = (tone, tone, tone + 2)
+            bp[x, y] = 255
+
+
+def _ernst_paint_sky(scene: Image.Image) -> None:
+    """The cold sky in continuous tone: the gradient and a brush facture."""
+    width, height = scene.size
+    column = Image.new("RGB", (1, height))
+    cp = column.load()
+    for y in range(height):
+        cp[0, y] = _expedition_lerp_stops(_ERNST_SKY_STOPS, y)
+    scene.paste(column.resize((width, height), Image.Resampling.NEAREST), (0, 0))
+    grain = _expedition_noise((width, height), (48, 20), _ERNST_SEED + 5).point(lambda v: v // 16)
+    tint = Image.merge("RGB", (grain, grain, grain))
+    scene.paste(ImageChops.subtract(ImageChops.add(scene, tint), Image.new("RGB", scene.size, (8, 8, 8))))
+
+
+def _ernst_paint_forest(scene: Image.Image, mask: Image.Image) -> None:
+    """The grattage forest: every trunk a base tone scraped toward its
+    highlight by one streak field and into shadow by another, the back row
+    blended toward the horizon; then the black earth. Each pixel painted is
+    also set in ``mask`` for the forest quantiser."""
+    width, height = scene.size
+    # The undergrowth: below the trunk tops the gaps between trunks are deep
+    # forest, not sky, so the stand reads as a wall the way Ernst's do.
+    under = Image.new("RGB", (width, _ERNST_GROUND_Y - _ERNST_UNDERGROWTH_Y), _ERNST_UNDERGROWTH)
+    murk = _expedition_noise(under.size, (40, 5), _ERNST_SEED + 10).point(lambda v: v // 10)
+    under = ImageChops.add(under, Image.merge("RGB", (murk, murk, murk)))
+    fade = Image.new("L", under.size, 255)
+    ImageDraw.Draw(fade).rectangle((0, 0, width, 30), fill=0)
+    fade = fade.filter(ImageFilter.GaussianBlur(14))
+    scene.paste(under, (0, _ERNST_UNDERGROWTH_Y), fade)
+    mask.paste(fade, (0, _ERNST_UNDERGROWTH_Y))
+    for trunk in sorted(_ernst_trunks(), key=lambda t: t["row"]):
+        poly = _ernst_trunk_polygon(trunk)
+        x0 = int(math.floor(min(x for x, _ in poly)))
+        x1 = int(math.ceil(max(x for x, _ in poly)))
+        y0 = int(math.floor(min(y for _, y in poly)))
+        y1 = int(math.ceil(max(y for _, y in poly)))
+        w, h = x1 - x0 + 1, y1 - y0 + 1
+        shape = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(shape).polygon([(x - x0, y - y0) for x, y in poly], fill=255)
+        base = _ERNST_BASES[trunk["base"]]
+        hi = _ERNST_HIGHLIGHTS[trunk["hi"]]
+        shadow = _ERNST_SHADOW
+        if trunk["row"] == 0:
+            base, hi, shadow = (_ernst_blend(c, _ERNST_DISTANCE, 0.5) for c in (base, hi, shadow))
+        fill = Image.new("RGB", (w, h), base)
+        streak = _expedition_noise((w, h), (max(2, w // 3), 6), trunk["seed"] + 1)
+        fill.paste(Image.new("RGB", (w, h), hi), (0, 0), streak.point(lambda v: 0 if v < 168 else min(255, (v - 168) * 3)))
+        shade = _expedition_noise((w, h), (max(2, w // 2), 4), trunk["seed"] + 2)
+        fill.paste(Image.new("RGB", (w, h), shadow), (0, 0), shade.point(lambda v: 0 if v > 84 else min(255, (84 - v) * 3)))
+        scene.paste(fill, (x0, y0), shape)
+        mask.paste(255, (x0, y0), shape)
+    earth = Image.new("RGB", (width, height - _ERNST_GROUND_Y), _ERNST_EARTH)
+    speck = _expedition_noise(earth.size, (80, 6), _ERNST_SEED + 6).point(lambda v: v // 24)
+    earth = ImageChops.add(earth, Image.merge("RGB", (speck, speck, speck)))
+    scene.paste(earth, (0, _ERNST_GROUND_Y))
+    mask.paste(255, (0, _ERNST_GROUND_Y, width, height))
+
+
+def _ernst_paint_dove(image: Image.Image) -> None:
+    """*Forest and Dove*'s dove: a small white bird on the trunk tops, in a
+    black hairline so it holds on a pale patch of sky."""
+    draw = ImageDraw.Draw(image)
+    x, y = _ERNST_DOVE_XY
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    body = [(x - 12, y), (x - 4, y - 6), (x + 6, y - 7), (x + 13, y - 3), (x + 12, y + 2),
+            (x + 4, y + 6), (x - 6, y + 6), (x - 16, y + 9), (x - 14, y + 3)]
+    draw.polygon(body, fill=white, outline=black)
+    draw.polygon([(x - 2, y - 6), (x + 2, y - 16), (x + 9, y - 7)], fill=white, outline=black)
+    draw.ellipse((x + 8, y - 4, x + 15, y + 2), fill=white, outline=black)
+    draw.polygon([(x + 15, y - 1), (x + 20, y), (x + 15, y + 1)], fill=black)
+    draw.point((x + 12, y - 2), fill=black)
+
+
+def _ernst_paint_loplop(image: Image.Image) -> None:
+    """Loplop, Superior of Birds, presenting: a white paper cut-out with torn
+    edges — head in profile, ringed eye, yellow beak toward the card, a long
+    neck, a hatched easel body, stick legs, and the arm that holds the card."""
+    width, height = image.size
+    white, black, yellow = SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["yellow"]
+    rng = random.Random(_ERNST_SEED + 7)
+    hx, hy = _ERNST_LOPLOP_HEAD
+    r = _ERNST_LOPLOP_HEAD_R
+    cut = Image.new("L", (width, height), 0)
+    cd = ImageDraw.Draw(cut)
+    # The body, torn; the neck; the head.
+    (bx0, by0), (bx1, _), (bx2, by2), (bx3, _) = _ERNST_LOPLOP_BODY
+    body = []
+    for k in range(13):
+        t = k / 12
+        body.append((bx0 + (bx3 - bx0) * t + rng.randint(-2, 2), by0 + (by2 - by0) * t))
+    for k in range(13):
+        t = k / 12
+        body.append((bx3 + (bx2 - bx3) * t, by2 + rng.randint(-2, 2)))
+    for k in range(13):
+        t = k / 12
+        body.append((bx2 + (bx1 - bx2) * t + rng.randint(-2, 2), by2 + (by0 - by2) * t))
+    for k in range(13):
+        t = k / 12
+        body.append((bx1 + (bx0 - bx1) * t, by0 + rng.randint(-2, 2)))
+    cd.polygon(body, fill=255)
+    cd.polygon([(hx - 7, hy + r - 6), (hx + 7, hy + r - 6), (hx + 12, by0 + 2), (hx - 12, by0 + 2)], fill=255)
+    cd.ellipse((hx - r, hy - r, hx + r, hy + r), fill=255)
+    # A crest of three feathers off the back of the head.
+    for dy, length in ((-10, 16), (-4, 20), (3, 15)):
+        cd.line([(hx - r + 4, hy + dy), (hx - r - length, hy + dy - 8)], fill=255, width=3)
+    image.paste(white, (0, 0), cut)
+    # The engraving hatch across the body, held off the torn edge so the edge
+    # stays paper: 45° lines every 5 px, clipped to the eroded body.
+    body_mask = Image.new("L", (width, height), 0)
+    ImageDraw.Draw(body_mask).polygon(body, fill=255)
+    inner = body_mask.filter(ImageFilter.MinFilter(7))
+    hatch = Image.new("L", (width, height), 0)
+    hd = ImageDraw.Draw(hatch)
+    for c in range(-height, width + height, 5):
+        hd.line([(c, 0), (c + height, height)], fill=255, width=1)
+    for c in range(-height, width + height, 14):
+        hd.line([(c + height, 0), (c, height)], fill=255, width=1)
+    image.paste(black, (0, 0), ImageChops.multiply(hatch, inner))
+    for m in (cut, body_mask, inner, hatch):
+        m.close()
+    draw = ImageDraw.Draw(image)
+    # Eye, beak, legs, arm.
+    ex, ey = hx + 5, hy - 5
+    draw.ellipse((ex - 6, ey - 6, ex + 6, ey + 6), outline=black, width=2)
+    draw.ellipse((ex - 2, ey - 2, ex + 2, ey + 2), fill=black)
+    draw.polygon([(hx + r - 4, hy - 7), (hx + r - 4, hy + 7), (hx + r + 30, hy + 1)], fill=yellow, outline=black)
+    draw.line([(hx + r - 4, hy + 1), (hx + r + 22, hy + 1)], fill=black, width=1)
+    for lx, fx in ((bx3 + 26, -1), (bx2 - 26, 1)):
+        draw.line([(lx, by2), (lx + fx * 4, _ERNST_GROUND_Y + 6)], fill=white, width=3)
+        draw.line([(lx + fx * 4 - 8, _ERNST_GROUND_Y + 6), (lx + fx * 4 + 10, _ERNST_GROUND_Y + 6)], fill=white, width=3)
+    (ax0, ay0), (ax1, ay1) = _ERNST_LOPLOP_ARM
+    draw.line([(ax0, ay0), (ax1, ay1)], fill=white, width=4)
+    for dy in (-6, 0, 6):
+        draw.line([(ax1 - 6, ay1), (ax1 + 2, ay1 + dy)], fill=white, width=2)
+
+
+def _ernst_paint_card(image: Image.Image) -> None:
+    """The pasted page: a torn-edged cream card over the forest."""
+    width, height = image.size
+    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
+    rng = random.Random(_ERNST_SEED + 8)
+    card = Image.new("L", (width, height), 0)
+    ImageDraw.Draw(card).polygon(_ernst_torn_polygon(_ERNST_CARD_RECT, rng), fill=255)
+    image.paste(white, (0, 0), card)
+    cream = Image.new("L", (width, height), 0)
+    cp = cream.load()
+    x0, y0, x1, y1 = _ERNST_CARD_RECT
+    for y in range(y0 - 4, min(height, y1 + 5)):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0 - 4, min(width, x1 + 5)):
+            if row[x % 4] < 2:
+                cp[x, y] = 255
+    image.paste(yellow, (0, 0), ImageChops.multiply(card, cream))
+    card.close()
+    cream.close()
+
+
+def _ernst_paint_label(image: Image.Image) -> None:
+    """A white label pasted on the sky: LOPLOP PRÉSENTE, in the open Futura."""
+    draw = ImageDraw.Draw(image)
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    font = _ernst_label_font(13)
+    text = "LOPLOP PRÉSENTE"
+    w = tracked_width(draw, text, font, tracking=4)
+    x, y = _ERNST_LABEL_XY
+    rng = random.Random(_ERNST_SEED + 9)
+    draw.polygon(_ernst_torn_polygon((x - 10, y - 7, round(x + w + 10), y + 22), rng, step=9, tear=2), fill=white)
+    draw_tracked(draw, (x, y), text, font, black, tracking=4)
+
+
+def _ernst_scene() -> Image.Image:
+    """The page without its quote or its hour: frame, sky, forest, earth,
+    dove, Loplop, card, label. Painted once per process."""
+    key = (_ernst_paint_frame, _ernst_paint_sky, _ernst_paint_forest, _ernst_paint_dove,
+           _ernst_paint_loplop, _ernst_paint_card, _ernst_paint_label)
+    cached = _ERNST_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    size = (800, 480)
+    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    forest = Image.new("L", size, 0)
+    band = Image.new("L", size, 0)
+    _ernst_paint_sky(scene)
+    _ernst_paint_forest(scene, forest)
+    _ernst_paint_frame(scene, band)
+    image = _expedition_dither(scene, _ERNST_SKY_INKS)
+    image = Image.composite(_expedition_dither(scene, _ERNST_FOREST_INKS), image, forest)
+    image = Image.composite(_expedition_dither(scene, _ERNST_FRAME_INKS), image, band)
+    forest.close()
+    band.close()
+    f = _ERNST_FRAME
+    ImageDraw.Draw(image).rectangle((f - 1, f - 1, size[0] - f, size[1] - f), outline=SPECTRA6["black"], width=1)
+    _ernst_paint_dove(image)
+    _ernst_paint_loplop(image)
+    _ernst_paint_card(image)
+    _ernst_paint_label(image)
+    _ERNST_SCENE["frame"] = (key, image)
+    return image
+
+
+def _ernst_paint_ring(image: Image.Image, hour: int) -> None:
+    """The ring sun at the hour's place in the sky: a white annulus in a
+    black hairline, the dithered sky showing through the hole."""
+    cx, cy = _ernst_ring_centre(hour)
+    r, hole = _ERNST_RING_RADIUS, _ERNST_RING_HOLE
+    annulus = Image.new("L", image.size, 0)
+    ad = ImageDraw.Draw(annulus)
+    ad.ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+    ad.ellipse((cx - hole, cy - hole, cx + hole, cy + hole), fill=0)
+    image.paste(SPECTRA6["white"], (0, 0), annulus)
+    annulus.close()
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=SPECTRA6["black"], width=1)
+    draw.ellipse((cx - hole, cy - hole, cx + hole, cy + hole), outline=SPECTRA6["black"], width=1)
+
+
+def _ernst_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The quote on the card in black Libre Bodoni, ragged right, with the
+    matched phrase pasted on as a white cut-out strip in red Bold."""
+    x0, y0, x1, y1 = _ERNST_QUOTE_RECT
+    black, white, red = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["red"]
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=30, font_min=14, line_height_mult=1.32, theme="ernst",
+    )
+    y = y0
+    ascent = _font_ascent(quote_font)
+    bold_asc, bold_desc = quote_font_bold.getmetrics()
+    for line in wrapped:
+        # One strip per contiguous bold run — a phrase clipped from a page
+        # comes as one piece of paper, not a word at a time — laid down before
+        # any text so the strip never covers a neighbouring glyph.
+        x = x0
+        runs = []
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            w = int(round(draw.textlength(chunk, font=font)))
+            if is_bold and chunk.strip():
+                if runs and runs[-1][2]:
+                    runs[-1][1] = x + w
+                else:
+                    runs.append([x, x + w, True])
+            elif runs and not is_bold:
+                runs[-1][2] = False
+            x += w
+        bold_y = y + (ascent - _font_ascent(quote_font_bold))
+        for rx0, rx1, _ in runs:
+            draw.rectangle((rx0 - 4, bold_y - 1, rx1 + 4, bold_y + bold_asc + bold_desc), fill=white, outline=black, width=1)
+        x = x0
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (ascent - _font_ascent(font))
+            draw.text((x, chunk_y), chunk, font=font, fill=red if is_bold else black)
+            x += int(round(draw.textlength(chunk, font=font)))
+        y += line_height
+
+
+def _ernst_paint_byline(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The plate caption: author and title in Libre Bodoni Italic at the
+    foot of the card."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    caption = " — ".join(part for part in (author, title) if part)
+    if not caption:
+        return
+    x0, _, x1, _ = _ERNST_QUOTE_RECT
+    font, text = fit_text_to_width(draw, caption, [(LIBREBODONI_ITALIC_VARIABLE, "Italic"), *ORNAMENT_FONT_CANDIDATES],
+                                   18, x1 - x0, floor=14)
+    draw.text((x0, _ERNST_BYLINE_Y), text, font=font, fill=SPECTRA6["black"])
+
+
+def render_ernst_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A grattage forest under the ring sun, Loplop presenting the quote (see
+    the section comment above)."""
+    hour = _ernst_hour(time_str)
+    image = _ernst_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _ernst_paint_ring(image, hour)
+    _ernst_paint_quote(image, draw, quote_row)
+    _ernst_paint_byline(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
 # cardcatalog — a library catalogue card with a date-due stamp grid
 # ---------------------------------------------------------------------------
 # The most on-brand object in the rotation: the one theme that is *about books
@@ -35878,6 +36433,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_witcher_frame(time_str, quote_row, width, height)
     if theme == "hades":
         return render_hades_frame(time_str, quote_row, width, height)
+    if theme == "ernst":
+        return render_ernst_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

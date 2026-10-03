@@ -281,6 +281,7 @@ def parse_args() -> argparse.Namespace:
         "expedition",
         "witcher",
         "hades",
+        "ernst",
         "diags",
     ]
     parser.add_argument(

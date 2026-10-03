@@ -9,6 +9,14 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `ernst` theme: Max Ernst — a grattage forest under the ring sun: a
+  painted stand of scraped petrified trunks and a grey-blue sky dithered to
+  the inks inside a frottage wood-grain frame, Ernst's hollow ring sun
+  hanging at one of twelve places across the sky as the hour, and Loplop,
+  his bird alter ego, as a hatched white paper cut-out presenting the quote
+  on a torn cream collage card — black Libre Bodoni with the matched phrase
+  pasted on as a red cut-out strip, the byline as the plate caption. Libre
+  Bodoni is a new bundled face (OFL, from Google Fonts).
 - Literary-layout themes (the thirty-eight that share `render`'s text path)
   set type better: justification is decided per block and never opens
   rivers (no line with under three gaps or more than 0.45 em per gap is

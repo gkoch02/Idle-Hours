@@ -6319,3 +6319,165 @@ class TestHadesFrame:
         big = self._render()
         assert small.size == (320, 192)
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestErnstFrame:
+    """``ernst`` — Max Ernst: a grattage forest under the ring sun, Loplop
+    presenting the quote on a pasted page.
+
+    The scene is cached once per process; the hour is where the ring hangs;
+    the matched phrase is a cut-out strip.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestErnstFrame.ROW)),
+                         *size, mode="production", theme="ernst")
+
+    @staticmethod
+    def _ring_box(hour: int):
+        cx, cy = rq._ernst_ring_centre(hour)
+        r = rq._ERNST_RING_RADIUS + 2
+        return (cx - r, cy - r, cx + r + 1, cy + r + 1)
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        image = self._render()
+        assert distinct_inks(image) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_ring_hangs_at_twelve_places_on_a_twelve_hour_clock(self):
+        white, black = rq.SPECTRA6["white"], rq.SPECTRA6["black"]
+        area = math.pi * rq._ERNST_RING_RADIUS ** 2 - math.pi * rq._ERNST_RING_HOLE ** 2
+        centres = set()
+        for h in range(1, 13):
+            image = self._render(time_str=f"{h:02d}:00")
+            counts = ink_counts(image.crop(self._ring_box(h)))
+            assert counts.get(white, 0) > area * 0.8, h
+            assert counts.get(black, 0) > 100, h                   # the hairline rims
+            # Every other hour's place holds no ring now: the sky's white stipple
+            # is there, and a neighbour's box overlaps this ring's edge, but
+            # nothing like a ring's worth of white.
+            elsewhere = max(ink_counts(image.crop(self._ring_box(other))).get(white, 0)
+                            for other in range(1, 13) if other != h)
+            assert counts[white] > elsewhere + area * 0.4, h
+            centres.add(rq._ernst_ring_centre(h))
+        assert len(centres) == 12
+        xs = [rq._ernst_ring_centre(h)[0] for h in range(1, 13)]
+        assert xs == sorted(xs)                                       # left to right, one to twelve
+        assert rq._ernst_ring_centre(6)[1] < rq._ernst_ring_centre(1)[1]   # highest mid-clock
+        for h in range(1, 13):
+            assert pixel_bytes(self._render(time_str=f"{(h % 12) + 12:02d}:00")) == \
+                pixel_bytes(self._render(time_str=f"{h % 12:02d}:00"))
+        assert rq._ernst_hour("13:00") == 1 and rq._ernst_hour("00:10") == 12
+        assert rq._ernst_hour("garbage") == 12
+
+    def test_the_hole_in_the_ring_shows_the_sky(self):
+        image = self._render(time_str="06:00")
+        cx, cy = rq._ernst_ring_centre(6)
+        hole = rq._ERNST_RING_HOLE - 3
+        counts = ink_counts(image.crop((cx - hole, cy - hole, cx + hole + 1, cy + hole + 1)))
+        assert counts.get(rq.SPECTRA6["white"], 0) < (2 * hole + 1) ** 2 * 0.5
+        assert counts.get(rq.SPECTRA6["blue"], 0) + counts.get(rq.SPECTRA6["black"], 0) > 40
+
+    def test_no_trunk_reaches_the_ring_arc(self):
+        for trunk in rq._ernst_trunks():
+            assert min(y for _, y in rq._ernst_trunk_polygon(trunk)) > rq._ERNST_RING_Y[0] + rq._ERNST_RING_RADIUS
+
+    def test_scene_is_painted_once_per_process(self):
+        assert rq._ernst_scene() is rq._ernst_scene()
+
+    def test_frame_is_a_graphite_rubbing_in_black_and_white(self):
+        scene = rq._ernst_scene()
+        f = rq._ERNST_FRAME
+        for box in ((0, 0, 800, f - 2), (0, 480 - f + 2, 800, 480), (0, 0, f - 2, 480), (800 - f + 2, 0, 800, 480)):
+            counts = ink_counts(scene.crop(box))
+            assert set(counts) <= {rq.SPECTRA6["black"], rq.SPECTRA6["white"]}, box
+            total = sum(counts.values())
+            assert 0.15 < counts.get(rq.SPECTRA6["black"], 0) / total < 0.7, box   # grain, not a slab
+
+    def test_sky_is_grey_blue_with_no_warmth(self):
+        scene = rq._ernst_scene()
+        sky = ink_counts(scene.crop((300, 30, 760, 130)))
+        assert set(sky) <= {rq.SPECTRA6["black"], rq.SPECTRA6["blue"], rq.SPECTRA6["white"]}
+        assert sky.get(rq.SPECTRA6["blue"], 0) > 460 * 100 * 0.2
+
+    def test_forest_is_dark_trunks_with_a_scraped_highlight(self):
+        scene = rq._ernst_scene()
+        x0, y0, x1, y1 = rq._ERNST_CARD_RECT
+        treeline = ink_counts(scene.crop((x0, rq._ERNST_TRUNK_TOP_MIN + 20, x1, y0 - 6)))
+        total = sum(treeline.values())
+        assert treeline.get(rq.SPECTRA6["black"], 0) > total * 0.3
+        assert treeline.get(rq.SPECTRA6["green"], 0) > total * 0.03
+        left = ink_counts(scene.crop((rq._ERNST_FRAME + 2, 300, 104, rq._ERNST_GROUND_Y)))
+        total = sum(left.values())
+        assert left.get(rq.SPECTRA6["black"], 0) + left.get(rq.SPECTRA6["green"], 0) > total * 0.5
+        assert left.get(rq.SPECTRA6["yellow"], 0) + left.get(rq.SPECTRA6["red"], 0) > 200   # the scrape
+        earth = ink_counts(scene.crop((204, rq._ERNST_GROUND_Y + 3, x0 - 4, 480 - rq._ERNST_FRAME - 3)))
+        assert earth.get(rq.SPECTRA6["black"], 0) > sum(earth.values()) * 0.8
+
+    def test_card_is_cream_paper_with_torn_edges(self):
+        scene = rq._ernst_scene()
+        x0, y0, x1, y1 = rq._ERNST_CARD_RECT
+        inner = ink_counts(scene.crop((x0 + 40, y0 + 40, x1 - 40, y1 - 40)))
+        assert set(inner) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        total = sum(inner.values())
+        assert 0.08 < inner[rq.SPECTRA6["yellow"]] / total < 0.2
+        # The edge is torn: the row just inside the nominal top edge is not all paper.
+        edge = ink_counts(scene.crop((x0 + 20, y0 - 3, x1 - 20, y0 + 4)))
+        assert len(set(edge) - {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}) >= 1
+
+    def test_loplop_is_a_white_cut_out_with_a_ringed_eye_and_a_yellow_beak(self):
+        scene = rq._ernst_scene()
+        hx, hy = rq._ERNST_LOPLOP_HEAD
+        r = rq._ERNST_LOPLOP_HEAD_R
+        head = ink_counts(scene.crop((hx - r, hy - r, hx + r + 34, hy + r)))
+        assert head.get(rq.SPECTRA6["white"], 0) > math.pi * r * r * 0.6
+        assert head.get(rq.SPECTRA6["black"], 0) > 60                # the eye's ring and pupil
+        assert head.get(rq.SPECTRA6["yellow"], 0) > 80               # the beak
+        (bx0, by0), _, (bx2, by2), (bx3, _) = rq._ERNST_LOPLOP_BODY
+        body = ink_counts(scene.crop((bx0 + 8, by0 + 8, bx2 - 8, by2 - 8)))
+        total = sum(body.values())
+        assert body.get(rq.SPECTRA6["white"], 0) > total * 0.5     # paper
+        assert body.get(rq.SPECTRA6["black"], 0) > total * 0.12    # the engraving hatch
+
+    def test_quote_is_black_bodoni_with_the_phrase_on_a_pasted_strip(self):
+        with_phrase = ink_counts(self._render().crop(rq._ERNST_QUOTE_RECT))
+        assert with_phrase.get(rq.SPECTRA6["black"], 0) > 2000
+        assert with_phrase.get(rq.SPECTRA6["red"], 0) > 150
+        without = ink_counts(self._render(dict(self.ROW, matched_text="")).crop(rq._ERNST_QUOTE_RECT))
+        assert without.get(rq.SPECTRA6["red"], 0) == 0
+        # The strip is plain white paper over the cream: it covers the cream's yellow dots.
+        assert with_phrase.get(rq.SPECTRA6["yellow"], 0) < without.get(rq.SPECTRA6["yellow"], 0) - 300
+
+    def test_byline_is_the_plate_caption(self):
+        x0, _, x1, _ = rq._ERNST_QUOTE_RECT
+        foot = (x0, rq._ERNST_BYLINE_Y, x1, rq._ERNST_BYLINE_Y + 22)
+        a = self._render()
+        b = self._render(dict(self.ROW, author="Homer"))
+        assert pixel_bytes(a.crop(foot)) != pixel_bytes(b.crop(foot))
+        assert ink_counts(a.crop(foot)).get(rq.SPECTRA6["black"], 0) > 300
+        # Title only when there is no author; nothing at all when there is neither.
+        c = self._render(dict(self.ROW, author=""))
+        assert ink_counts(c.crop(foot)).get(rq.SPECTRA6["black"], 0) > 150
+        d = self._render(dict(self.ROW, author="", title="", source_id="", source_path=""))
+        assert ink_counts(d.crop(foot)).get(rq.SPECTRA6["black"], 0) == 0
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
