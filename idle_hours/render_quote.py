@@ -148,6 +148,7 @@ THEME_ORDER: tuple[str, ...] = (
     "expedition",
     "witcher",
     "hades",
+    "expanse",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1385,6 +1386,23 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
+    # *The Expanse* (2015–2022) — the Rocinante's console. A custom frame
+    # (``render_expanse_frame``): dark glass panels with their corners cut,
+    # a tactical plot whose tracked contact sits at the hour's bearing, and
+    # the quote as an incoming tightbeam — white Barlow with the matched
+    # phrase and the sender in the MCRN's orange, cyan gauges across the
+    # foot. These literary-layout slots serve only the palette-only paths
+    # (see the note above ``THEMES``).
+    "expanse": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
+    },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
     # is the hour, a silhouetted colony rim-lit beneath it,
@@ -2122,6 +2140,15 @@ BARLOWCOND_REGULAR = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-Regu
 BARLOWCOND_MEDIUM = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-Medium.ttf")
 BARLOWCOND_SEMIBOLD = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-SemiBold.ttf")
 BARLOWCOND_BOLD = str(BASE_DIR / "fonts/barlow-condensed/BarlowCondensed-Bold.ttf")
+# Barlow (expanse) — Jeremy Tribby's DIN-descended grotesque at text width,
+# the nearest open face to the modified DIN Pro *The Expanse* sets the
+# Rocinante's screens in: Regular for the white transmission, SemiBold for
+# the matched phrase, Bold for the sender; Barlow Condensed (above) takes
+# the tracked labels. Four static weights.
+BARLOW_REGULAR = str(BASE_DIR / "fonts/barlow/Barlow-Regular.ttf")
+BARLOW_MEDIUM = str(BASE_DIR / "fonts/barlow/Barlow-Medium.ttf")
+BARLOW_SEMIBOLD = str(BASE_DIR / "fonts/barlow/Barlow-SemiBold.ttf")
+BARLOW_BOLD = str(BASE_DIR / "fonts/barlow/Barlow-Bold.ttf")
 # Michroma (saros status chrome; atropos HUD chrome) — a wide geometric display sans; one
 # static weight, the nearest open face to Kellion (Returnal) and Korataki (Saros). Exo 2 (saros body fallback) is a variable sans whose default instance
 # is Thin, so every candidate pins a named instance.
@@ -4000,6 +4027,15 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [SPECTRAL_MEDIUM, ALEGREYA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [SPECTRAL_SEMIBOLD, ALEGREYA_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [CAESARDRESSING_REGULAR, CINZELDECORATIVE_BOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "expanse": {
+        # Barlow — the open DIN, for a console the show sets in a modified
+        # DIN Pro: Regular for the white transmission on black glass,
+        # SemiBold for the matched phrase, which is told apart by its
+        # orange. Barlow Condensed is the fallback and the labels' face.
+        "quote_regular": [BARLOW_REGULAR, BARLOWCOND_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [BARLOW_SEMIBOLD, BARLOWCOND_SEMIBOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BARLOW_BOLD, BARLOWCOND_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
@@ -32924,6 +32960,471 @@ def render_hades_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
 
 # ---------------------------------------------------------------------------
+# expanse — *The Expanse* (2015–2022): the Rocinante's console
+# ---------------------------------------------------------------------------
+# The Roci is a Martian warship flown by four people who are not a navy, and
+# her screens look like it: dark glass over the bulkhead, thin-lined panels
+# with the corners cut, data in a condensed DIN with the tracking opened out,
+# the MCRN's orange on anything that needs a hand on it, cool blue-white on
+# anything that is only being read, and a command line under the chrome
+# because the ship was built for her crew, not for a customer. The page is
+# one of her displays: a tactical plot at the left, a comms panel in the
+# middle carrying an incoming tightbeam — the quote — and the ship's state
+# across the foot.
+#
+# **The hour is a bearing.** The tactical plot's one tracked contact sits on
+# the outer ring at the hour's place on a clock face — "contact, two o'clock"
+# is how a pilot has always called a bearing — with its track arced through
+# it in blue and the intercept dashed in orange from the Roci at the centre.
+# The bearing readout under the plot (``BRG 060``) names the same hour in
+# degrees. Hour-only, pinned byte-identical across the minutes of an hour by
+# ``TestExpanseFrame``; the minute stays with the matched phrase, and the
+# frame never reads the wall clock.
+#
+# **Colour is the ship's.** The MCRN orange is an R+Y stipple: a 50/50
+# amber for the matched phrase and the sender line (``gothic``'s recipe, for
+# the same reason — on a black ground the red-biased tangerine goes dim), and
+# the hazard chevrons are plain yellow on black. The plot's rings, the panel
+# rules and the grid are the panel's own blue, solid, since a hairline cannot
+# carry a stipple; the gauge fills are a B+W sky-blue checker, which at panel
+# distance is the console's cyan. Nominal pips are green, the armed PDC tag
+# and an empty tank are red, and the running text is white: the console
+# surfaces all six inks and synthesises nothing it does not need.
+#
+# **Type is the show's, or the nearest open face.** The Rocinante's graphics
+# are set in a modified DIN Pro (HUDS+GUIS); DIN is not open, so the body is
+# **Barlow** (Jeremy Tribby, OFL), the Google Fonts DIN descendant — Regular
+# for the white transmission, SemiBold for the matched phrase in amber, Bold
+# for the sender — with the bundle's **Barlow Condensed** for the tracked
+# labels and **Share Tech Mono** for the readouts and the command line.
+#
+# **The ship's state is the quote's.** ``_row_digest`` fills the six gauges
+# at the foot, the signal strength and the transmission ID, so a different
+# quote is a different moment aboard and the same quote is always the same
+# one. Nothing is random; nothing prints a digit the time could be read from.
+#
+# The chrome — ground, status bar, panel outlines, rings, hazard stripes,
+# labels — is quote- and hour-independent and painted once per process
+# (``_EXPANSE_SCENE``, keyed on the painters themselves). Composed at the
+# canonical 800x480 and NEAREST-downsampled otherwise (the ``metro``
+# convention).
+# ---------------------------------------------------------------------------
+_EXPANSE_SEED = 0x524F4349            # ROCI
+_EXPANSE_GRID_PITCH = 23              # coprime with the 4x4 / 8x8 Bayer tiles
+_EXPANSE_BAR_Y = 49                   # the status bar's rule
+_EXPANSE_PLOT_RECT = (24, 60, 266, 392)
+_EXPANSE_PLOT_CENTRE = (145, 226)
+_EXPANSE_PLOT_RINGS = (34, 68, 102)
+_EXPANSE_CONTACT_RADIUS = 86
+_EXPANSE_STATIC_CONTACTS = ((48, 215), (46, 318))   # (radius, bearing) of the unknowns
+_EXPANSE_COMMS_RECT = (288, 60, 776, 392)
+_EXPANSE_HEADER_H = 26
+_EXPANSE_SENDER_Y = 100
+_EXPANSE_QUOTE_RECT = (312, 134, 752, 318)
+_EXPANSE_SOURCE_Y = 332
+_EXPANSE_PROMPT_Y = 366
+_EXPANSE_FOOT_RECT = (24, 408, 776, 470)
+_EXPANSE_GAUGE_SEGMENTS = 12
+_EXPANSE_GAUGES = ("THRUST", "REACTOR", "FUEL", "O2", "H2O", "DELTA-V")
+_EXPANSE_GAUGE_UNITS = ("G", "%", "%", "%", "%", "KM/S")
+_EXPANSE_SYSTEMS = (("REACTOR", "green"), ("EPSTEIN", "green"), ("RCS", "yellow"), ("PDC", "red"))
+_EXPANSE_CHAMFER = 12
+_EXPANSE_SCENE: dict = {}
+
+
+def _expanse_hour(time_str: str) -> int:
+    """The 12-hour clock hour, 1..12 — the contact's bearing."""
+    try:
+        hour = int(str(time_str).split(":", 1)[0])
+    except ValueError:
+        hour = 12
+    return hour % 12 or 12
+
+
+def _expanse_bearing(hour: int) -> int:
+    """The contact's bearing in degrees clockwise from north: twelve is 000."""
+    return (hour % 12) * 30
+
+
+def _expanse_polar(radius: float, bearing_deg: float) -> tuple[float, float]:
+    """A point on the plot at ``radius`` and a bearing clockwise from north."""
+    cx, cy = _EXPANSE_PLOT_CENTRE
+    a = math.radians(bearing_deg)
+    return cx + radius * math.sin(a), cy - radius * math.cos(a)
+
+
+def _expanse_label_font(size: int):
+    """Barlow Condensed Medium — the tracked DIN-style labels."""
+    return load_font([BARLOWCOND_MEDIUM, BARLOW_MEDIUM, *META_FONT_CANDIDATES], size=size)
+
+
+def _expanse_label_bold_font(size: int):
+    """Barlow Condensed SemiBold — the panel headers."""
+    return load_font([BARLOWCOND_SEMIBOLD, BARLOW_SEMIBOLD, *META_FONT_BOLD_CANDIDATES], size=size)
+
+
+def _expanse_mono_font(size: int):
+    """Share Tech Mono — the readouts and the command line."""
+    return load_font([SHARETECHMONO_REGULAR, SPACEMONO_REGULAR, *META_FONT_CANDIDATES], size=size)
+
+
+def _expanse_chamfered(rect, cut: int, corners=("tr", "bl")) -> list:
+    """A rectangle's outline, clockwise from the top left, with the named
+    corners cut at 45 degrees — the console's panel shape."""
+    x0, y0, x1, y1 = rect
+    pts: list = []
+    pts += [(x0, y0 + cut), (x0 + cut, y0)] if "tl" in corners else [(x0, y0)]
+    pts += [(x1 - cut, y0), (x1, y0 + cut)] if "tr" in corners else [(x1, y0)]
+    pts += [(x1, y1 - cut), (x1 - cut, y1)] if "br" in corners else [(x1, y1)]
+    pts += [(x0 + cut, y1), (x0, y1 - cut)] if "bl" in corners else [(x0, y1)]
+    return pts
+
+
+def _expanse_paint_bracket(draw: ImageDraw.ImageDraw, x: int, y: int, dx: int, dy: int, ink, length: int = 14,
+                           width: int = 2) -> None:
+    """An L-shaped corner bracket at ``(x, y)`` opening toward ``(dx, dy)``."""
+    draw.line([(x, y), (x + dx * length, y)], fill=ink, width=width)
+    draw.line([(x, y), (x, y + dy * length)], fill=ink, width=width)
+
+
+def _expanse_dashed(draw: ImageDraw.ImageDraw, points: list, ink, on: int = 6, off: int = 5, width: int = 1) -> None:
+    """A polyline drawn as dashes, the dash phase carried across vertices."""
+    run, lit = 0.0, True
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        seg = math.hypot(bx - ax, by - ay)
+        t = 0.0
+        while t < seg:
+            step = min(seg - t, (on if lit else off) - run)
+            if lit:
+                draw.line([(ax + (bx - ax) * t / seg, ay + (by - ay) * t / seg),
+                           (ax + (bx - ax) * (t + step) / seg, ay + (by - ay) * (t + step) / seg)],
+                          fill=ink, width=width)
+            t += step
+            run += step
+            if run >= (on if lit else off) - 1e-6:
+                run, lit = 0.0, not lit
+
+
+def _expanse_paint_amber_rect(image: Image.Image, rect) -> None:
+    """The MCRN orange as a block: red + yellow at 1/2 : 1/2."""
+    _fill_swatch_stipple(image, rect, SPECTRA6["red"], SPECTRA6["yellow"], 0.5)
+
+
+def _expanse_paint_cyan_rect(image: Image.Image, rect) -> None:
+    """The console's cyan as a block: blue + white at 1/2 : 1/2."""
+    _fill_swatch_stipple(image, rect, SPECTRA6["blue"], SPECTRA6["white"], 0.5)
+
+
+def _expanse_paint_ground(image: Image.Image) -> None:
+    """Black glass with a sparse blue dot grid, so the panels sit on a
+    surface rather than in a void."""
+    px = image.load()
+    blue = SPECTRA6["blue"]
+    w, h = image.size
+    for y in range(6, h, _EXPANSE_GRID_PITCH):
+        for x in range(6, w, _EXPANSE_GRID_PITCH):
+            px[x, y] = blue
+
+
+def _expanse_paint_status_bar(image: Image.Image) -> None:
+    """The ship's name and class at the left, the systems with their
+    status pips at the right, over a blue rule with an orange lead."""
+    draw = ImageDraw.Draw(image)
+    black, white, blue, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["blue"], SPECTRA6["yellow"]
+    # The MCRN tag: an orange block with the service in black.
+    draw.rectangle((24, 10, 90, 34), fill=black)
+    _expanse_paint_amber_rect(image, (24, 10, 90, 34))
+    tag = _expanse_label_bold_font(16)
+    draw_tracked(draw, (24 + (66 - tracked_width(draw, "MCRN", tag, tracking=2)) / 2, 14), "MCRN", tag, black, tracking=2)
+    name = load_font([BARLOW_SEMIBOLD, BARLOWCOND_SEMIBOLD, *META_FONT_BOLD_CANDIDATES], size=20)
+    draw_tracked(draw, (102, 10), "ROCINANTE", name, white, tracking=3)
+    draw_tracked(draw, (104, 32), "CORVETTE-CLASS LIGHT FRIGATE", _expanse_label_font(11), white, tracking=2)
+    # The systems, right to left.
+    label = _expanse_label_font(12)
+    x = 776
+    for system, ink in reversed(_EXPANSE_SYSTEMS):
+        w = tracked_width(draw, system, label, tracking=2)
+        x -= w
+        draw_tracked(draw, (x, 14), system, label, white, tracking=2)
+        x -= 14
+        draw.ellipse((x - 2, 17, x + 6, 25), fill=SPECTRA6[ink], outline=white, width=1)
+        x -= 22
+    # The rule: blue across, with an orange lead under the name.
+    draw.line([(24, _EXPANSE_BAR_Y), (776, _EXPANSE_BAR_Y)], fill=blue, width=1)
+    draw.rectangle((24, _EXPANSE_BAR_Y - 1, 268, _EXPANSE_BAR_Y + 1), fill=black)
+    _expanse_paint_amber_rect(image, (24, _EXPANSE_BAR_Y - 1, 268, _EXPANSE_BAR_Y + 2))
+    draw.polygon([(268, _EXPANSE_BAR_Y - 1), (276, _EXPANSE_BAR_Y + 1), (268, _EXPANSE_BAR_Y + 2)], fill=yellow)
+
+
+def _expanse_paint_panel(image: Image.Image, rect, title: str, *, corners=("tr", "bl"), header: bool = True) -> None:
+    """A console panel: black glass in a chamfered blue hairline, orange
+    brackets on the square corners, and a header strip with its title."""
+    draw = ImageDraw.Draw(image)
+    black, blue, yellow, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["yellow"], SPECTRA6["white"]
+    x0, y0, x1, y1 = rect
+    outline = _expanse_chamfered(rect, _EXPANSE_CHAMFER, corners)
+    draw.polygon(outline, fill=black)
+    draw.line(outline + [outline[0]], fill=blue, width=1)
+    for cx, cy, dx, dy, name in ((x0, y0, 1, 1, "tl"), (x1, y0, -1, 1, "tr"), (x1, y1, -1, -1, "br"), (x0, y1, 1, -1, "bl")):
+        if name not in corners:
+            _expanse_paint_bracket(draw, cx, cy, dx, dy, yellow)
+    if header:
+        hy = y0 + _EXPANSE_HEADER_H
+        draw.line([(x0, hy), (x1, hy)], fill=blue, width=1)
+        font = _expanse_label_bold_font(14)
+        w = tracked_width(draw, title, font, tracking=3)
+        draw.rectangle((x0 + 1, y0 + 1, x0 + w + 26, hy - 1), fill=black)
+        _expanse_paint_amber_rect(image, (x0 + 1, y0 + 1, x0 + 10, hy - 1))
+        draw_tracked(draw, (x0 + 20, y0 + 6), title, font, white, tracking=3)
+
+
+def _expanse_paint_plot(image: Image.Image) -> None:
+    """The tactical plot: range rings with bearing ticks, a gapped
+    crosshair, the Roci as a white chevron at the centre, and two unknown
+    contacts as hollow blue triangles."""
+    draw = ImageDraw.Draw(image)
+    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
+    cx, cy = _EXPANSE_PLOT_CENTRE
+    for r in _EXPANSE_PLOT_RINGS:
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=blue, width=1)
+    outer = _EXPANSE_PLOT_RINGS[-1]
+    for k in range(36):
+        length = 7 if k % 3 == 0 else 3
+        (ax, ay), (bx, by) = _expanse_polar(outer, k * 10), _expanse_polar(outer + length, k * 10)
+        draw.line([(ax, ay), (bx, by)], fill=blue if k % 3 else white, width=1)
+    font = _expanse_mono_font(11)
+    for bearing, text in ((0, "000"), (90, "090"), (180, "180"), (270, "270")):
+        tx, ty = _expanse_polar(outer + 17, bearing)
+        draw.text((tx, ty), text, font=font, fill=white, anchor="mm")
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        draw.line([(cx + dx * 10, cy + dy * 10), (cx + dx * (outer - 4), cy + dy * (outer - 4))], fill=blue, width=1)
+    draw.polygon([(cx, cy - 7), (cx + 6, cy + 6), (cx, cy + 2), (cx - 6, cy + 6)], fill=white)
+    for radius, bearing in _EXPANSE_STATIC_CONTACTS:
+        px_, py_ = _expanse_polar(radius, bearing)
+        draw.polygon([(px_, py_ - 6), (px_ + 6, py_ + 5), (px_ - 6, py_ + 5)], outline=blue, width=1)
+    x0, y0, x1, y1 = _EXPANSE_PLOT_RECT
+    draw_tracked(draw, (x0 + 12, y1 - 36), "SENSORS", _expanse_label_font(11), white, tracking=2)
+    draw.ellipse((x0 + 68, y1 - 34, x0 + 76, y1 - 26), fill=SPECTRA6["green"], outline=white, width=1)
+    draw_tracked(draw, (x1 - 12, y1 - 36), "NOMINAL", _expanse_label_font(11), white, tracking=2, anchor_right=True)
+
+
+def _expanse_paint_hazard(image: Image.Image, rect) -> None:
+    """Yellow-on-black hazard chevrons."""
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = rect
+    draw.rectangle(rect, fill=SPECTRA6["black"])
+    h = y1 - y0
+    for x in range(x0 - h, x1, 12):
+        draw.line([(x, y1), (x + h, y0)], fill=SPECTRA6["yellow"], width=4)
+    draw.rectangle((x0 - 6, y0, x0 - 1, y1), fill=SPECTRA6["black"])
+    draw.rectangle((x1 + 1, y0, x1 + h + 6, y1), fill=SPECTRA6["black"])
+
+
+def _expanse_paint_foot(image: Image.Image) -> None:
+    """The readout strip's chrome: a panel with hazard chevrons at its
+    left and the gauge labels, the values left for the quote to fill."""
+    _expanse_paint_panel(image, _EXPANSE_FOOT_RECT, "", corners=("tl", "br"), header=False)
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, y1 = _EXPANSE_FOOT_RECT
+    _expanse_paint_hazard(image, (x0 + 22, y0 + 12, x0 + 58, y1 - 12))
+    draw.line([(x0 + 76, y0 + 10), (x0 + 76, y1 - 10)], fill=SPECTRA6["blue"], width=1)
+    label = _expanse_label_font(11)
+    for k, name in enumerate(_EXPANSE_GAUGES):
+        gx = x0 + 92 + k * 112
+        draw_tracked(draw, (gx, y0 + 9), name, label, SPECTRA6["white"], tracking=2)
+
+
+def _expanse_scene() -> Image.Image:
+    """The console without its transmission: ground, status bar, the two
+    panels, the plot and the readout strip. Painted once per process."""
+    key = (_expanse_paint_ground, _expanse_paint_status_bar, _expanse_paint_panel, _expanse_paint_plot,
+           _expanse_paint_foot, _expanse_paint_hazard)
+    cached = _EXPANSE_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    _expanse_paint_ground(image)
+    _expanse_paint_status_bar(image)
+    _expanse_paint_panel(image, _EXPANSE_PLOT_RECT, "TACTICAL")
+    _expanse_paint_plot(image)
+    _expanse_paint_panel(image, _EXPANSE_COMMS_RECT, "COMMS")
+    draw = ImageDraw.Draw(image)
+    x0, y0, x1, _ = _EXPANSE_COMMS_RECT
+    draw_tracked(draw, (x0 + 118, y0 + 6), "INCOMING TRANSMISSION", _expanse_label_font(14), SPECTRA6["white"], tracking=3)
+    draw_tracked(draw, (x1 - 16, y0 + 7), "TIGHTBEAM · ENCRYPTED", _expanse_label_font(12), SPECTRA6["white"], tracking=2,
+                 anchor_right=True)
+    draw_tracked(draw, (x0 + 24, _EXPANSE_SENDER_Y + 6), "FROM", _expanse_label_font(11), SPECTRA6["white"], tracking=2)
+    draw.line([(x0 + 24, _EXPANSE_QUOTE_RECT[1] - 10), (x1 - 24, _EXPANSE_QUOTE_RECT[1] - 10)], fill=SPECTRA6["blue"], width=1)
+    draw.line([(x0 + 24, _EXPANSE_SOURCE_Y - 8), (x1 - 24, _EXPANSE_SOURCE_Y - 8)], fill=SPECTRA6["blue"], width=1)
+    draw_tracked(draw, (x0 + 24, _EXPANSE_SOURCE_Y + 3), "SRC", _expanse_label_font(11), SPECTRA6["white"], tracking=2)
+    draw_tracked(draw, (x1 - 150, _EXPANSE_SOURCE_Y + 3), "SIGNAL", _expanse_label_font(11), SPECTRA6["white"], tracking=2)
+    _expanse_paint_foot(image)
+    _EXPANSE_SCENE["frame"] = (key, image)
+    return image
+
+
+def _expanse_paint_contact(image: Image.Image, hour: int) -> None:
+    """The tracked contact at the hour's bearing: its track arced through
+    it in blue, the intercept dashed in orange from the Roci, an orange
+    diamond in brackets with a white core and an amber bloom, and the
+    bearing readout under the plot."""
+    draw = ImageDraw.Draw(image)
+    black, white, blue, yellow, red = (SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["blue"],
+                                       SPECTRA6["yellow"], SPECTRA6["red"])
+    bearing = _expanse_bearing(hour)
+    r = _EXPANSE_CONTACT_RADIUS
+    # A flyby: the track passes through the contact and bows outward at both ends.
+    track = [_expanse_polar(r + 14 * ((a - bearing) / 48) ** 2, a) for a in range(bearing - 48, bearing + 49, 4)]
+    _expanse_dashed(draw, track, blue, on=7, off=5)
+    tx, ty = _expanse_polar(r, bearing)
+    _expanse_dashed(draw, [(_EXPANSE_PLOT_CENTRE), (tx, ty)], yellow, on=4, off=4)
+    glow = Image.new("L", image.size, 0)
+    ImageDraw.Draw(glow).polygon([(tx, ty - 7), (tx + 7, ty), (tx, ty + 7), (tx - 7, ty)], fill=255)
+    paint_neon_mask(image, glow, yellow, yellow, radius=7, gamma=1.6, cap=0.55, tile=BAYER_8x8,
+                    glow_minor=red, glow_minor_share=0.4, ground=frozenset({black, blue}))
+    glow.close()
+    draw.polygon([(tx, ty - 3), (tx + 3, ty), (tx, ty + 3), (tx - 3, ty)], fill=white)
+    for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        _expanse_paint_bracket(draw, int(tx + sx * 12), int(ty + sy * 12), -sx, -sy, yellow, length=6, width=1)
+    x0, y0, x1, y1 = _EXPANSE_PLOT_RECT
+    draw.rectangle((x0 + 2, y1 - 22, x1 - 2, y1 - 2), fill=black)
+    draw_tracked(draw, (x0 + 12, y1 - 20), "CONTACT", _expanse_label_font(11), yellow, tracking=2)
+    draw_tracked(draw, (x1 - 12, y1 - 21), f"BRG {bearing:03d}  CLOSING", _expanse_mono_font(13), white, tracking=0,
+                 anchor_right=True)
+
+
+def _expanse_paint_sender(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The sender — the author, or the book when there is none — in Barlow
+    Bold capitals, the MCRN orange."""
+    author = (quote_row.get("author") or "").strip()
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
+    name = (author or title or "UNKNOWN STATION").upper()
+    x0, _, x1, _ = _EXPANSE_COMMS_RECT
+    font, text = fit_text_to_width(draw, name, [BARLOW_BOLD, BARLOWCOND_BOLD, *META_FONT_BOLD_CANDIDATES],
+                                   22, x1 - x0 - 110, floor=16, tracking=2)
+    x = float(x0 + 64)
+    for ch in text:
+        draw_text_dithered(image, (int(round(x)), _EXPANSE_SENDER_Y), ch, font, SPECTRA6["red"], SPECTRA6["yellow"],
+                           light_density=0.5)
+        x += draw.textlength(ch, font=font) + 2
+
+
+def _expanse_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The transmission: white Barlow, ragged right, the matched phrase
+    SemiBold in the MCRN orange."""
+    x0, y0, x1, y1 = _EXPANSE_QUOTE_RECT
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=38, font_min=14, line_height_mult=1.3, theme="expanse",
+    )
+    # A short transmission sits in the middle of the panel rather than
+    # leaving the glass under it dark.
+    y = y0 + max(0, (y1 - y0 - len(wrapped) * line_height) // 2)
+    ascent = _font_ascent(quote_font)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = quote_font_bold if is_bold else quote_font
+            chunk_y = y + (ascent - _font_ascent(font))
+            if is_bold and chunk.strip():
+                draw_text_dithered(image, (x, chunk_y), chunk, font, SPECTRA6["red"], SPECTRA6["yellow"], light_density=0.5)
+            elif not is_bold:
+                draw.text((x, chunk_y), chunk, font=font, fill=SPECTRA6["white"])
+            x += int(round(draw.textlength(chunk, font=font)))
+        y += line_height
+
+
+def _expanse_gauges(quote_row: dict) -> tuple[int, ...]:
+    """Six gauge fills, 0..12 segments each, dealt from the row digest."""
+    d = _row_digest(quote_row)
+    return tuple((d >> (5 * k)) % (_EXPANSE_GAUGE_SEGMENTS + 1) for k in range(len(_EXPANSE_GAUGES)))
+
+
+def _expanse_signal(quote_row: dict) -> int:
+    """Signal strength, 1..8 bars, from the row digest."""
+    return 1 + (_row_digest(quote_row) >> 30) % 8
+
+
+def _expanse_tx_id(quote_row: dict) -> str:
+    """The transmission's ID: four hex digits of the row digest."""
+    return f"TX-{_row_digest(quote_row) & 0xFFFF:04X}"
+
+
+def _expanse_paint_segments(image: Image.Image, draw: ImageDraw.ImageDraw, x: int, y: int, filled: int, total: int,
+                            *, cell: int = 8, gap: int = 3, height: int = 8, ink: str = "cyan") -> None:
+    """A segmented bar: lit cells in cyan (or the named ink), the rest as
+    blue hairline boxes."""
+    for k in range(total):
+        rect = (x + k * (cell + gap), y, x + k * (cell + gap) + cell - 1, y + height - 1)
+        if k < filled:
+            if ink == "cyan":
+                _expanse_paint_cyan_rect(image, (rect[0], rect[1], rect[2] + 1, rect[3] + 1))
+            elif ink == "amber":
+                _expanse_paint_amber_rect(image, (rect[0], rect[1], rect[2] + 1, rect[3] + 1))
+            else:
+                draw.rectangle(rect, fill=SPECTRA6[ink])
+        else:
+            draw.rectangle(rect, outline=SPECTRA6["blue"], width=1)
+
+
+def _expanse_paint_source(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The foot of the comms panel: the book as the source, the signal
+    bars, and the command line with the transmission ID."""
+    x0, _, x1, y1 = _EXPANSE_COMMS_RECT
+    white = SPECTRA6["white"]
+    title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
+    if title:
+        font, text = fit_text_to_width(draw, title.upper(), [BARLOWCOND_MEDIUM, BARLOW_MEDIUM, *META_FONT_CANDIDATES],
+                                       14, x1 - x0 - 260, floor=12, tracking=1)
+        draw_tracked(draw, (x0 + 60, _EXPANSE_SOURCE_Y + 1), text, font, white, tracking=1)
+    _expanse_paint_segments(image, draw, x1 - 96, _EXPANSE_SOURCE_Y + 3, _expanse_signal(quote_row), 8, cell=6, gap=3,
+                            height=10)
+    mono = _expanse_mono_font(13)
+    prompt = f"> comms.rx tightbeam --decrypt ok  [{_expanse_tx_id(quote_row)}]"
+    draw.text((x0 + 24, _EXPANSE_PROMPT_Y), prompt, font=mono, fill=white)
+    cursor_x = x0 + 24 + draw.textlength(prompt + " ", font=mono)
+    _expanse_paint_amber_rect(image, (int(cursor_x), _EXPANSE_PROMPT_Y + 2, int(cursor_x) + 8, _EXPANSE_PROMPT_Y + 14))
+
+
+def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The six gauges at the foot: segmented bars in cyan, amber when
+    high, red when near empty, with a value in the mono beneath."""
+    x0, y0, x1, y1 = _EXPANSE_FOOT_RECT
+    mono = _expanse_mono_font(12)
+    for k, filled in enumerate(_expanse_gauges(quote_row)):
+        gx = x0 + 92 + k * 112
+        ink = "amber" if filled >= 10 else "red" if filled <= 2 else "cyan"
+        _expanse_paint_segments(image, draw, gx, y0 + 26, filled, _EXPANSE_GAUGE_SEGMENTS, cell=6, gap=2, height=9, ink=ink)
+        unit = _EXPANSE_GAUGE_UNITS[k]
+        if unit == "G":
+            value = f"{filled / 12 * 1.2:.2f} {unit}"
+        elif unit == "%":
+            value = f"{round(filled / 12 * 100):d} {unit}"
+        else:
+            value = f"{filled / 12 * 7.6:.1f} {unit}"
+        draw.text((gx, y0 + 39), value, font=mono, fill=SPECTRA6["white"])
+
+
+def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Rocinante's console with the quote as an incoming tightbeam (see
+    the section comment above)."""
+    hour = _expanse_hour(time_str)
+    del time_str
+    image = _expanse_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _expanse_paint_contact(image, hour)
+    _expanse_paint_sender(image, draw, quote_row)
+    _expanse_paint_quote(image, draw, quote_row)
+    _expanse_paint_source(image, draw, quote_row)
+    _expanse_paint_readouts(image, draw, quote_row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+# ---------------------------------------------------------------------------
 # cardcatalog — a library catalogue card with a date-due stamp grid
 # ---------------------------------------------------------------------------
 # The most on-brand object in the rotation: the one theme that is *about books
@@ -35878,6 +36379,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_witcher_frame(time_str, quote_row, width, height)
     if theme == "hades":
         return render_hades_frame(time_str, quote_row, width, height)
+    if theme == "expanse":
+        return render_expanse_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

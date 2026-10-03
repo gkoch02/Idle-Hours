@@ -309,6 +309,10 @@ THEME_SATURATION: dict[str, float] = {
     # the moon's halo, the witchfire and the medallion's bloom are all
     # falling-density stipples on black, which the gentler tier flattens.
     "hades": 0.7,
+    # The Expanse — the Rocinante's console: black glass, with the MCRN
+    # orange and the cyan gauges both two-ink stipples on black and the
+    # contact an amber bloom, which the gentler tier flattens.
+    "expanse": 0.7,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler

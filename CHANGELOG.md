@@ -39,6 +39,13 @@ these entries under the new dated version heading.
   Caesar Dressing, white Spectral text with the matched phrase in gold, the
   boon's rarity rolled from the quote. Caesar Dressing, Spectral SC and
   Hammersmith One are new bundled faces (OFL, from Google Fonts).
+- New `expanse` theme: *The Expanse* — the Rocinante's console: black
+  glass panels with their corners cut, a tactical plot whose tracked
+  contact sits at the hour's bearing with its track and intercept, the
+  quote as an incoming tightbeam in white Barlow with the matched phrase
+  and the sender in the MCRN's orange, a command line with the
+  transmission ID, and six cyan gauges across the foot dealt from the
+  quote. Barlow is a new bundled face (OFL, from Google Fonts).
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the
