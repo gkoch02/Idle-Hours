@@ -6483,3 +6483,138 @@ class TestExpanseFrame:
         big = self._render()
         assert small.size == (320, 192)
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestBeksinskiFrame:
+    """``beksinski`` — a procession across a dead plain toward a cathedral
+    of bone.
+
+    The scene is cached once per process; the hour is the number of figures
+    in the file; the quote sits in the haze and the byline on the plain.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestBeksinskiFrame.ROW)),
+                         *size, mode="production", theme="beksinski")
+
+    @staticmethod
+    def _road_box():
+        (nx, ny), (fx, fy) = rq._BEKSINSKI_ROAD
+        return (nx - 40, fy - 70, fx + 40, ny + 12)
+
+    def test_on_palette_with_no_green_and_no_blue(self):
+        inks = distinct_inks(self._render())
+        assert inks == {rq.SPECTRA6[k] for k in ("black", "red", "yellow", "white")}
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_the_file_is_one_figure_per_hour(self):
+        """Neutering the painter leaves the empty road; every hour adds black
+        to it, and twelve hours is the same count as midnight."""
+        box = self._road_box()
+        road = self._render(time_str="12:00")
+        empty = rq._beksinski_scene().crop(box)
+        baseline = ink_counts(empty).get(rq.SPECTRA6["black"], 0)
+        added = []
+        for hour in range(1, 13):
+            crop = self._render(time_str=f"{hour:02d}:00").crop(box)
+            added.append(ink_counts(crop).get(rq.SPECTRA6["black"], 0) - baseline)
+        assert added[0] > 60                                   # one walker at one
+        assert all(b > a for a, b in zip(added, added[1:]))   # each hour adds a figure
+        assert pixel_bytes(self._render(time_str="00:00")) == pixel_bytes(road)
+        assert rq._beksinski_hour("13:00") == 1 and rq._beksinski_hour("00:10") == 12
+        assert rq._beksinski_hour("garbage") == 12
+
+    def test_the_leader_stands_at_the_cathedrals_foot_from_one_oclock(self):
+        """The file grows backward along the road: the leader's pixels at one
+        are the same at twelve."""
+        (nx, ny), (fx, fy) = rq._BEKSINSKI_ROAD
+        head = (fx - 24, fy - 40, fx + 24, fy + 6)
+        one = self._render(time_str="01:00").crop(head)
+        assert ink_counts(one).get(rq.SPECTRA6["black"], 0) > 60
+        assert pixel_bytes(one) == pixel_bytes(self._render(time_str="12:00").crop(head))
+
+    def test_scene_is_painted_once_per_process(self):
+        assert rq._beksinski_scene() is rq._beksinski_scene()
+
+    def test_haze_is_a_dithered_ochre_over_an_umber_plain(self):
+        scene = rq._beksinski_scene()
+        hz = rq._BEKSINSKI_HORIZON
+        haze = ink_counts(scene.crop((40, 180, 460, hz - 10)))
+        area = 420 * (hz - 190)
+        assert haze.get(rq.SPECTRA6["white"], 0) > area * 0.3
+        assert haze.get(rq.SPECTRA6["yellow"], 0) > area * 0.15
+        assert haze.get(rq.SPECTRA6["black"], 0) < area * 0.2
+        plain = ink_counts(scene.crop((40, hz + 40, 460, 436)))
+        area = 420 * (436 - hz - 40)
+        assert plain.get(rq.SPECTRA6["black"], 0) > area * 0.45
+        assert plain.get(rq.SPECTRA6["red"], 0) > area * 0.1
+        assert plain.get(rq.SPECTRA6["white"], 0) < area * 0.1
+
+    def test_cathedral_is_bone_with_a_rust_rim_and_windows_of_haze(self):
+        scene = rq._beksinski_scene()
+        mask = rq._beksinski_tower_mask(scene.size)
+        x0, x1 = rq._BEKSINSKI_TOWER
+        hz = rq._BEKSINSKI_HORIZON
+        bbox = mask.getbbox()
+        assert bbox[0] < x0 - 20 and bbox[2] > x1 + 20 and bbox[1] < 60   # buttresses and spires
+        bone = ink_counts(Image.composite(scene, Image.new("RGB", scene.size, rq.SPECTRA6["blue"]), mask))
+        inside = sum(bone.values()) - bone.get(rq.SPECTRA6["blue"], 0)
+        assert bone.get(rq.SPECTRA6["black"], 0) > inside * 0.5
+        assert bone.get(rq.SPECTRA6["red"], 0) > inside * 0.08             # the rim light
+        # The windows: light inside the footprint, above the horizon, off the mask.
+        holes = Image.new("L", scene.size, 0)
+        ImageDraw.Draw(holes).rectangle((x0 + 20, hz - 120, x1 - 20, hz - 10), fill=255)
+        holes = ImageChops.subtract(holes, mask)
+        through = ink_counts(Image.composite(scene, Image.new("RGB", scene.size, rq.SPECTRA6["blue"]), holes))
+        assert through.get(rq.SPECTRA6["white"], 0) + through.get(rq.SPECTRA6["yellow"], 0) > 400
+
+    def test_figures_carry_a_bone_white_edge(self):
+        """White pixels the figures add — their lit edge — net of the road's
+        own white they cover (a figure hides more than its line adds)."""
+        box = self._road_box()
+        white = rq.SPECTRA6["white"]
+        empty = rq._beksinski_scene().crop(box)
+        full = self._render(time_str="12:00").crop(box)
+        ep, fp = empty.load(), full.load()
+        new_white = sum(1 for y in range(empty.size[1]) for x in range(empty.size[0])
+                        if fp[x, y] == white and ep[x, y] != white)
+        assert new_white > 12 * 8
+
+    def test_quote_is_black_in_the_haze_with_a_red_phrase(self):
+        counts = ink_counts(self._render().crop(rq._BEKSINSKI_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["black"], 0) > 2500
+        assert counts.get(rq.SPECTRA6["red"], 0) > 300
+        # The haze under the text is still mostly light.
+        assert counts.get(rq.SPECTRA6["white"], 0) > counts.get(rq.SPECTRA6["black"], 0)
+
+    def test_byline_is_bone_white_on_the_plain(self):
+        bx, by = rq._BEKSINSKI_BYLINE_XY
+        foot = (bx, by, bx + rq._BEKSINSKI_BYLINE_WIDTH, by + 22)
+        a = self._render()
+        b = self._render(dict(self.ROW, author="Homer"))
+        assert pixel_bytes(a.crop(foot)) != pixel_bytes(b.crop(foot))
+        assert ink_counts(a.crop(foot)).get(rq.SPECTRA6["white"], 0) > 300
+        # Nothing: the foot is the bare plain.
+        c = self._render(dict(self.ROW, author="", title="", source_id="", source_path=""))
+        assert pixel_bytes(c.crop(foot)) == pixel_bytes(rq._beksinski_scene().crop(foot))
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))

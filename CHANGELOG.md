@@ -50,6 +50,14 @@ these entries under the new dated version heading.
   ID, a boxed contacts list with silhouettes, and a foot of status pills,
   a waveform chart and `//` system text, all dealt from the quote. Barlow
   is a new bundled face (OFL, from Google Fonts).
+- New `beksinski` theme: Zdzisław Beksiński's fantastic period — a
+  procession across a dead plain toward a cathedral of bone, under a
+  dust-coloured haze with a dim sun behind the spires. The haze and the
+  plain are dithered to umber, ochre and bone with no green or blue in
+  them, the cathedral is a bone silhouette with a rust rim light and the
+  haze showing through its windows, and the hour is the number of hooded
+  figures on the road. The quote is set in black Old Standard TT in the
+  haze with the matched phrase in red; no new fonts.
 - Three game themes move to the faces the games actually use, or the
   nearest open ones (per Game Font Library): `control` sets its title card
   in Jost Bold and its sign in Archivo instead of Oswald; `atropos` sets the
