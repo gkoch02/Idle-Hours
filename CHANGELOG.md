@@ -78,24 +78,29 @@ these entries under the new dated version heading.
   vignetted blue CRT dithered to blue and black in a black bezel, the
   file's town and its completion (the hour over twelve) in the header, a
   grid of white digits with the hour's scary cluster boxed, the quote in
-  white IBM Plex Mono with the matched phrase Bold in yellow inside the
+  white Montserrat with the matched phrase Bold in yellow inside the
   refiner's hover box, and the five bins along the foot, all in a beige
   housing with the same raster and a blue leak onto the recessed glass
-  edge. No new fonts.
+  edge. Montserrat is a new bundled face (OFL, from Google Fonts) — the
+  open Gotham, for the number grid the show sets in a Gotham-like sans;
+  the header and byline are Inter, for the show's Forma DJR.
 - New `dsky` theme: the Apollo Guidance Computer's display and keyboard
   on a black panel beside the quote — the lamp matrix, the keypad, and
   the display with the hour in its PROG register and telemetry seeded
   from the quote in true seven-segment strokes, white in a green bloom.
   Real hardware; Jost throughout; no new fonts.
 - New `oblivion` theme: *Oblivion* — the Sky Tower's white desk in
-  hairlines and tracked capitals, the quote in Jost Light with the
+  hairlines and tracked capitals, the quote in Exo 2 Light (the open
+  face in the family of Blender, the film's UI typeface) with the
   matched phrase in red, a compass dial with the hour's bearing marked,
   and the twelve hydro rigs along the foot with the hour's filled. No
   new fonts.
 - New `yorha` theme: *NieR: Automata* — the YoRHa archives on a cream
   dot-grid ground, twelve archive rows with the hour's inverted, the
-  book's title over the entry, the quote in Jura with the matched phrase
-  knocked out white of a black box as the selected item. No new fonts.
+  book's title over the entry, the quote in EB Garamond — the closest
+  open face to the game's unidentified classical UI serif — with the
+  matched phrase knocked out white of a black box as the selected item.
+  No new fonts.
 - New `hitchhiker` theme: the 1981 BBC *Hitchhiker's Guide to the
   Galaxy* — a Guide entry on the quoted author in white Michroma under
   the yellow masthead and the DON'T PANIC badge, the matched phrase in

@@ -347,10 +347,10 @@ Eighty-eight themes ship built-in, all constrained to the Spectra 6 panel palett
 | `beksinski` | <img src="idle_hours/assets/previews/beksinski.png" width="240" alt="beksinski theme preview"> | white       | black | red    | Old Standard TT      | Beksiński: a procession to a cathedral of bone |
 | `goya` | <img src="idle_hours/assets/previews/goya.png" width="240" alt="goya theme preview"> | yellow      | black | red | Libre Baskerville | Goya's *Black Paintings*: *El Perro* |
 | `hal` | <img src="idle_hours/assets/previews/hal.png" width="240" alt="hal theme preview"> | black       | white | yellow | Jost + Michroma | *2001: A Space Odyssey*: the Discovery's monitors and HAL's eye |
-| `lumon` | <img src="idle_hours/assets/previews/lumon.png" width="240" alt="lumon theme preview"> | blue        | white | yellow | IBM Plex Mono + Jost | *Severance*: the Macrodata Refinement terminal |
+| `lumon` | <img src="idle_hours/assets/previews/lumon.png" width="240" alt="lumon theme preview"> | blue        | white | yellow | Montserrat + Inter | *Severance*: the Macrodata Refinement terminal |
 | `dsky` | <img src="idle_hours/assets/previews/dsky.png" width="240" alt="dsky theme preview"> | black       | white | yellow | Jost | The Apollo Guidance Computer's DSKY |
-| `oblivion` | <img src="idle_hours/assets/previews/oblivion.png" width="240" alt="oblivion theme preview"> | white       | black | red    | Jost Light | *Oblivion*: the Sky Tower's desk |
-| `yorha` | <img src="idle_hours/assets/previews/yorha.png" width="240" alt="yorha theme preview"> | white       | black | black  | Jura | *NieR: Automata*: the YoRHa archives |
+| `oblivion` | <img src="idle_hours/assets/previews/oblivion.png" width="240" alt="oblivion theme preview"> | white       | black | red    | Exo 2 Light | *Oblivion*: the Sky Tower's desk |
+| `yorha` | <img src="idle_hours/assets/previews/yorha.png" width="240" alt="yorha theme preview"> | white       | black | black  | EB Garamond | *NieR: Automata*: the YoRHa archives |
 | `hitchhiker` | <img src="idle_hours/assets/previews/hitchhiker.png" width="240" alt="hitchhiker theme preview"> | black       | white | yellow | Michroma | The 1981 BBC *Hitchhiker's Guide* entry |
 | `diags`       | <img src="idle_hours/assets/previews/diags.png" width="240" alt="diags theme preview">             | white       | black | red    | DejaVu Sans          | Calibration / status panel    |
 

@@ -2321,6 +2321,15 @@ SHARETECHMONO_REGULAR = str(BASE_DIR / "fonts/share-tech-mono/ShareTechMono-Regu
 # theme's "type does all the work" identity even when the preferred
 # face is absent.
 INTER_VARIABLE = str(BASE_DIR / "fonts/inter/Inter-Variable.ttf")
+# Montserrat (Julieta Ulanovsky, OFL) — the ``lumon`` digits and body. The
+# MDR terminal's number grid is set in a Gotham-like geometric sans (the
+# fan consensus; its header text in Forma DJR, its wordmark in Manifold
+# Extended CF — all commercial), and Montserrat is the open face drawn in
+# the same Buenos Aires-signage register as Gotham: round, even, geometric
+# digits that sit square in a grid. Variable on weight; the default
+# instance is Regular, and every candidate still pins a name.
+MONTSERRAT_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat[wght].ttf")
+MONTSERRAT_ITALIC_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat-Italic[wght].ttf")
 # Fraunces — Undercase Type (OFL). A variable "soft" old-style serif with
 # optical-size, softness, weight and wonk axes; the typeface of the Between
 # Us web app, whose iOS build substitutes the system New York. Used by the
@@ -4217,14 +4226,16 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [MICHROMA_REGULAR, (JOST_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "lumon": {
-        # IBM Plex Mono — the terminal's monospaced digits extended to the
-        # file's text: Regular for the white body, Bold for the matched
-        # phrase in yellow inside the hover box. The file name and the byline
-        # are Jost Medium / Regular; the wordmark is Michroma, the nearest
-        # open face to the company's wide geometric capitals.
-        "quote_regular": [PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
-        "quote_bold": [PLEXMONO_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
-        "ornament": [(JOST_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
+        # Montserrat — the open Gotham, the face the MDR terminal's number
+        # grid is set in the register of: Regular for the white body, Bold
+        # for the matched phrase in yellow inside the hover box, Medium and
+        # Bold for the digits. The file name, the completion and the byline
+        # are Inter (the open neo-grotesque standing in for the show's Forma
+        # DJR); the wordmark is Michroma (for Manifold Extended CF, itself
+        # drawn after Microgramma).
+        "quote_regular": [(MONTSERRAT_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(MONTSERRAT_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(INTER_VARIABLE, "Medium"), MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
     "dsky": {
         # Jost — NASA silkscreened its panels in Futura Demi, and the
@@ -4235,21 +4246,24 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [(JOST_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "oblivion": {
-        # Jost at its lightest weight that holds on the panel: GMUNK's
-        # screens set their capitals in a light geometric sans, and solid
-        # black on the white ink survives a Light stem where a stipple
-        # would not. Medium for the matched phrase, in red.
-        "quote_regular": [(JOST_VARIABLE, "Light"), *QUOTE_FONT_REGULAR_CANDIDATES],
-        "quote_bold": [(JOST_VARIABLE, "Medium"), *QUOTE_FONT_BOLD_CANDIDATES],
-        "ornament": [(JOST_VARIABLE, "Regular"), *ORNAMENT_FONT_CANDIDATES],
+        # Exo 2 — the film's screens are set in Blender (Nik Thoenen,
+        # Gestalten; commercial), an angular geometric sans with squared
+        # bowls, and Exo 2 is the bundle's open face in that family. Light
+        # for the body (solid black on the white ink survives a Light stem
+        # where a stipple would not), Medium for the matched phrase in red,
+        # Regular for the chrome.
+        "quote_regular": [(EXO2_VARIABLE, "Light"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(EXO2_VARIABLE, "Medium"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(EXO2_VARIABLE, "Regular"), *ORNAMENT_FONT_CANDIDATES],
     },
     "yorha": {
-        # Jura — a light humanist technical sans, the nearest bundled face
-        # to the game's custom UI face. Regular body; Bold for the matched
+        # EB Garamond — Automata's interface is set in a refined classical
+        # serif (unidentified; custom or unreleased), and EB Garamond is the
+        # closest open face to it. Regular body; Bold for the matched
         # phrase, knocked out white of its black box.
-        "quote_regular": [JURA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
-        "quote_bold": [JURA_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
-        "ornament": [JURA_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+        "quote_regular": [EBGARAMOND_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [EBGARAMOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [EBGARAMOND_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "hitchhiker": {
         # Michroma — the square-shouldered monoline of the series' hand-
@@ -34901,8 +34915,8 @@ def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) ->
 # carries the minute.
 #
 # **The quote is the file's text, and the phrase is what feels scary.** The
-# body is IBM Plex Mono Regular in white — the terminal's monospaced digits
-# extended to a sentence — with the matched phrase Plex Mono Bold in yellow
+# body is Montserrat Regular in white — the digits' own face extended to a
+# sentence — with the matched phrase Montserrat Bold in yellow
 # inside a white hairline box: the refiner's hover. The author and title run
 # in Jost under the quote, and the five bins close the page, each a boxed
 # ``00``–``04`` with a progress bar whose fill is a white-and-blue stipple at
@@ -34910,8 +34924,10 @@ def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) ->
 #
 # The MDR terminal's own faces are a custom design for the show (its wordmark
 # is set in a wide geometric close to Manifold Extended), so every register
-# here takes the nearest bundled open face: Plex Mono for the digits and the
-# body, Jost for the file name and the byline, Michroma for the wordmark.
+# here takes the nearest open face: Montserrat (the open Gotham) for the
+# digits and the body, Inter (for Forma DJR) for the file name, the
+# completion and the byline, Michroma (for Manifold Extended) for the
+# wordmark.
 # Composed at the canonical 800x480 and NEAREST-downsampled otherwise (the
 # ``metro`` convention).
 # ---------------------------------------------------------------------------
@@ -35001,7 +35017,7 @@ def _lumon_paint_header(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -
     """The file name, the Lumon globe and wordmark, and the completion."""
     white = SPECTRA6["white"]
     x0, x1 = _LUMON_GRID_RECT[0], _LUMON_GRID_RECT[2]
-    name_font = load_font([(JOST_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=28)
+    name_font = load_font([(INTER_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=26)
     draw.text((x0, _LUMON_HEADER_Y), _lumon_file_name(quote_row), font=name_font, fill=white)
     # The globe: a circle with three latitude lines.
     gx, gy, gr = x1 - 18, _LUMON_HEADER_Y + 20, 16
@@ -35013,7 +35029,7 @@ def _lumon_paint_header(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -
     right = gx - gr - 12
     draw.text((right - draw.textlength("LUMON", font=mark), _LUMON_HEADER_Y - 2), "LUMON", font=mark, fill=white)
     line = f"{_lumon_completion(hour)}% Complete"
-    small = load_font([(JOST_VARIABLE, "Regular"), *META_FONT_CANDIDATES], size=16)
+    small = load_font([(INTER_VARIABLE, "Regular"), *META_FONT_CANDIDATES], size=15)
     draw.text((right - draw.textlength(line, font=small), _LUMON_HEADER_Y + 22), line, font=small, fill=white)
     draw.rectangle((x0, _LUMON_RULE_Y, x1, _LUMON_RULE_Y + 1), fill=white)
 
@@ -35039,8 +35055,8 @@ def _lumon_paint_grid(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> 
     white = SPECTRA6["white"]
     rng = random.Random(_LUMON_SEED ^ _row_digest(quote_row))
     cells = _lumon_grid_cells()
-    plain = load_font([PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES], size=17)
-    scary = load_font([PLEXMONO_BOLD, *QUOTE_FONT_BOLD_CANDIDATES], size=23)
+    plain = load_font([(MONTSERRAT_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES], size=17)
+    scary = load_font([(MONTSERRAT_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES], size=23)
     row0, col0 = _lumon_cluster(hour)
     for r, row in enumerate(cells):
         for c, (cx0, cy0, cx1, cy1) in enumerate(row):
@@ -35108,7 +35124,7 @@ def _lumon_hover_boxes(draw: ImageDraw.ImageDraw, placed) -> list:
 
 
 def _lumon_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
-    """White Plex Mono; the matched phrase Bold in yellow inside the
+    """White Montserrat; the matched phrase Bold in yellow inside the
     refiner's white hover box."""
     white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
     for box in _lumon_hover_boxes(draw, placed):
@@ -35118,15 +35134,15 @@ def _lumon_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
 
 
 def _lumon_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """Author and title under the quote, in Jost."""
+    """Author and title under the quote, in Inter."""
     author = (quote_row.get("author") or "").strip()
     title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip()
     parts = [p for p in (author, title) if p]
     if not parts:
         return
     x0 = _LUMON_QUOTE_RECT[0]
-    font, text = fit_text_to_width(draw, " — ".join(parts), [(JOST_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
-                                   17, _LUMON_QUOTE_RECT[2] - x0, floor=13)
+    font, text = fit_text_to_width(draw, " — ".join(parts), [(INTER_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
+                                   16, _LUMON_QUOTE_RECT[2] - x0, floor=13)
     draw.text((x0, _LUMON_BYLINE_Y), text, font=font, fill=SPECTRA6["white"])
 
 
@@ -35138,8 +35154,8 @@ def _lumon_paint_bins(image: Image.Image, quote_row: dict) -> None:
     x0, y0, x1, y1 = _LUMON_BINS_RECT
     width = (x1 - x0 - 4 * _LUMON_BIN_GAP) // 5
     rng = random.Random(_LUMON_SEED + 3 + _row_digest(quote_row))
-    label = load_font([PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES], size=15)
-    small = load_font([PLEXMONO_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES], size=12)
+    label = load_font([(MONTSERRAT_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES], size=14)
+    small = load_font([(MONTSERRAT_VARIABLE, "Medium"), *QUOTE_FONT_REGULAR_CANDIDATES], size=11)
     for i in range(5):
         bx0 = x0 + i * (width + _LUMON_BIN_GAP)
         bx1 = bx0 + width
@@ -35436,9 +35452,10 @@ def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -
 #
 # **The page is the desk.** The panel's white — the cool grey-white of its
 # ink, which is the film's — carries thin black rules and corner brackets,
-# the quote in **Jost Light** (the bundle's Futura at its lightest weight
-# that still holds on the panel) with the matched phrase Jost Medium in
-# red, the one accent, and a header in tracked capitals: the tech's number
+# the quote in **Exo 2 Light** — the film's screens are set in Blender,
+# an angular geometric sans, and Exo 2 is the bundle's open face in that
+# family, at the lightest weight that still holds on the panel — with the
+# matched phrase Exo 2 Medium in red, the one accent, and a header in tracked capitals: the tech's number
 # and the Tet link. A compass dial fills the right: three hairline rings,
 # a crosshair, twelve ticks, small bearing labels. Along the foot run the
 # twelve hydro rigs the tower watches, each a hairline box with a seeded
@@ -35465,7 +35482,7 @@ def _oblivion_hour(time_str: str) -> int:
 
 
 def _oblivion_font(size: int, instance: str = "Light"):
-    return load_font([(JOST_VARIABLE, instance), *META_FONT_CANDIDATES], size=size)
+    return load_font([(EXO2_VARIABLE, instance), *META_FONT_CANDIDATES], size=size)
 
 
 def _oblivion_polar(radius: float, hour: int) -> tuple[float, float]:
@@ -35572,7 +35589,7 @@ def _oblivion_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     if not parts:
         return
     x0 = _OBLIVION_QUOTE_RECT[0]
-    font, text = fit_text_to_width(draw, "   ·   ".join(parts), [(JOST_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
+    font, text = fit_text_to_width(draw, "   ·   ".join(parts), [(EXO2_VARIABLE, "Regular"), *META_FONT_CANDIDATES],
                                    14, _OBLIVION_QUOTE_RECT[2] - x0, floor=12, tracking=3)
     draw_tracked(draw, (x0, _OBLIVION_BYLINE_Y), text, font, SPECTRA6["black"], tracking=3)
 
@@ -35611,8 +35628,9 @@ def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: in
 # section (INTEL — ARCHIVES) at the left and the unit at the right. The
 # twelve archive entries run down the left as boxed rows; the right pane
 # carries the open entry: the book's title over a rule, the quote in
-# **Jura** — the nearest bundled face to the game's light humanist UI sans,
-# whose own face is custom — in black, the matched phrase Bold knocked out
+# **EB Garamond** — Automata's interface is set in a refined classical
+# serif that has never been identified, and EB Garamond is the closest
+# open face to it — in black, the matched phrase Bold knocked out
 # of a black box the way the game highlights the selected item, and the
 # author on the foot.
 #
@@ -35636,8 +35654,10 @@ def _yorha_hour(time_str: str) -> int:
 
 
 def _yorha_font(size: int, weight: str = "Regular"):
-    files = {"Regular": JURA_REGULAR, "Medium": JURA_MEDIUM, "SemiBold": JURA_SEMIBOLD, "Bold": JURA_BOLD}
-    return load_font([files[weight], *META_FONT_CANDIDATES], size=size)
+    """EB Garamond: the two static cuts, with the lighter labels on Regular
+    and the emphasised ones on Bold."""
+    file = EBGARAMOND_BOLD if weight in ("SemiBold", "Bold") else EBGARAMOND_REGULAR
+    return load_font([file, *META_FONT_CANDIDATES], size=size)
 
 
 def _yorha_scene() -> Image.Image:
@@ -35665,9 +35685,9 @@ def _yorha_paint_ground(image: Image.Image) -> None:
 def _yorha_paint_header(draw: ImageDraw.ImageDraw) -> None:
     black, white = SPECTRA6["black"], SPECTRA6["white"]
     draw.rectangle(_YORHA_HEADER_RECT, fill=black)
-    font = _yorha_font(17, "SemiBold")
-    draw_tracked(draw, (30, _YORHA_HEADER_RECT[1] + 10), "INTEL  —  ARCHIVES", font, white, tracking=2)
-    small = _yorha_font(13, "Medium")
+    font = _yorha_font(19, "SemiBold")
+    draw_tracked(draw, (30, _YORHA_HEADER_RECT[1] + 8), "INTEL  —  ARCHIVES", font, white, tracking=2)
+    small = _yorha_font(15, "Regular")
     draw_tracked(draw, (770, _YORHA_HEADER_RECT[1] + 12), "YoRHa  ·  UNIT 2B  ·  POD 042", small, white,
                  tracking=2, anchor_right=True)
 
@@ -35681,11 +35701,11 @@ def _yorha_menu_rows() -> list:
 def _yorha_paint_menu(draw: ImageDraw.ImageDraw, hour: int) -> None:
     """The twelve archive rows; the hour's inverted."""
     black, white = SPECTRA6["black"], SPECTRA6["white"]
-    font = _yorha_font(14, "Medium")
+    font = _yorha_font(16, "Regular")
     for i, (x0, y0, x1, y1) in enumerate(_yorha_menu_rows()):
         active = (i + 1) == hour
         draw.rectangle((x0, y0, x1, y1), fill=black if active else None, outline=black, width=1)
-        draw.text((x0 + 12, y0 + 6), f"ARCHIVE {i + 1:02d}", font=font, fill=white if active else black)
+        draw.text((x0 + 12, y0 + 4), f"ARCHIVE {i + 1:02d}", font=font, fill=white if active else black)
         if active:
             draw.polygon([(x1 - 16, y0 + 8), (x1 - 8, (y0 + y1) / 2), (x1 - 16, y1 - 8)], fill=white)
 
@@ -35696,10 +35716,10 @@ def _yorha_paint_pane(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> 
     x0, y0, x1, y1 = _YORHA_PANE_RECT
     draw.rectangle((x0, y0, x1, y1), outline=black, width=1)
     title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "").strip() or "Untitled"
-    font, text = fit_text_to_width(draw, title, [JURA_BOLD, *META_FONT_BOLD_CANDIDATES], 20, x1 - x0 - 120, floor=14)
+    font, text = fit_text_to_width(draw, title, [EBGARAMOND_BOLD, *META_FONT_BOLD_CANDIDATES], 22, x1 - x0 - 120, floor=15)
     draw.text((x0 + 18, y0 + 14), text, font=font, fill=black)
     counter = f"{hour:02d} / 12"
-    small = _yorha_font(13, "Medium")
+    small = _yorha_font(15, "Regular")
     draw.text((x1 - 18 - draw.textlength(counter, font=small), y0 + 18), counter, font=small, fill=black)
     draw.line((x0 + 18, y0 + 46, x1 - 18, y0 + 46), fill=black, width=1)
 
@@ -35709,7 +35729,7 @@ def _yorha_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     regular, bold, wrapped, line_height, _ = fit_quote(
         draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=30, font_min=16, line_height_mult=1.38, theme="yorha",
+        x1 - x0, y1 - y0, font_max=34, font_min=18, line_height_mult=1.34, theme="yorha",
     )
     placed = []
     y = y0
@@ -35726,7 +35746,7 @@ def _yorha_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
 
 
 def _yorha_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
-    """Black Jura; the matched phrase white, knocked out of a black box per
+    """Black EB Garamond; the matched phrase white, knocked out of a black box per
     run — the selected item."""
     black, white = SPECTRA6["black"], SPECTRA6["white"]
     for box in _lumon_hover_boxes(draw, placed):
@@ -35740,7 +35760,7 @@ def _yorha_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     if not author:
         return
     x0 = _YORHA_QUOTE_RECT[0]
-    font, text = fit_text_to_width(draw, author, [JURA_SEMIBOLD, *META_FONT_BOLD_CANDIDATES], 16,
+    font, text = fit_text_to_width(draw, author, [EBGARAMOND_REGULAR, *META_FONT_CANDIDATES], 18,
                                    _YORHA_QUOTE_RECT[2] - x0, floor=13)
     draw.text((x0, _YORHA_BYLINE_Y), text, font=font, fill=SPECTRA6["black"])
 

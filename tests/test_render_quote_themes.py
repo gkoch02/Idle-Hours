@@ -6953,10 +6953,10 @@ class TestLumonFrame:
         assert "lumon" in rq.THEME_ORDER
         assert "lumon" not in rq.CYCLE_EXCLUDED_THEMES
         assert display_inky.THEME_SATURATION["lumon"] == 0.7
-        assert rq.theme_font_candidates("lumon", "quote_regular")[0] == rq.PLEXMONO_REGULAR
-        assert rq.theme_font_candidates("lumon", "quote_bold")[0] == rq.PLEXMONO_BOLD
-        assert rq.theme_font_candidates("lumon", "ornament")[0] == (rq.JOST_VARIABLE, "Medium")
-        for path in (rq.PLEXMONO_REGULAR, rq.PLEXMONO_BOLD, rq.JOST_VARIABLE, rq.MICHROMA_REGULAR):
+        assert rq.theme_font_candidates("lumon", "quote_regular")[0] == (rq.MONTSERRAT_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("lumon", "quote_bold")[0] == (rq.MONTSERRAT_VARIABLE, "Bold")
+        assert rq.theme_font_candidates("lumon", "ornament")[0] == (rq.INTER_VARIABLE, "Medium")
+        for path in (rq.MONTSERRAT_VARIABLE, rq.MONTSERRAT_ITALIC_VARIABLE, rq.INTER_VARIABLE, rq.MICHROMA_REGULAR):
             assert pathlib.Path(path).exists(), path
             assert (pathlib.Path(path).parent / "OFL.txt").exists()
 
@@ -7045,7 +7045,7 @@ class TestLumonFrame:
 
     def test_hover_box_spans_a_phrase_broken_across_lines(self):
         draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
-        font = rq.load_font([rq.PLEXMONO_BOLD], size=20)
+        font = rq.load_font([(rq.MONTSERRAT_VARIABLE, "Bold")], size=20)
         placed = [(50, 100, "half", font, True, 40, 26), (90, 100, " ", font, True, 10, 26),
                   (100, 100, "past", font, True, 40, 26), (50, 126, "two", font, True, 30, 26)]
         boxes = rq._lumon_hover_boxes(draw, placed)
@@ -7169,7 +7169,7 @@ class TestOblivionFrame(_CustomFrameCase):
     SATURATION = 0.5
 
     def test_quote_is_light_black_with_a_red_phrase(self):
-        assert rq.theme_font_candidates("oblivion", "quote_regular")[0] == (rq.JOST_VARIABLE, "Light")
+        assert rq.theme_font_candidates("oblivion", "quote_regular")[0] == (rq.EXO2_VARIABLE, "Light")
         counts = ink_counts(self._render().crop(rq._OBLIVION_QUOTE_RECT))
         assert counts.get(rq.SPECTRA6["black"], 0) > 2000
         assert counts.get(rq.SPECTRA6["red"], 0) > 300
@@ -7211,6 +7211,24 @@ class TestYorhaFrame(_CustomFrameCase):
 
     THEME = "yorha"
     SATURATION = 0.5
+
+    def test_set_in_a_classical_serif(self):
+        assert rq.theme_font_candidates("yorha", "quote_regular")[0] == rq.EBGARAMOND_REGULAR
+        assert rq.theme_font_candidates("yorha", "quote_bold")[0] == rq.EBGARAMOND_BOLD
+
+    def test_bold_instance_is_pinned_off_the_axis_default(self):
+        """Montserrat's default instance is Regular; the Bold the lumon phrase
+        and scary digits use must be a different drawing."""
+        from PIL import ImageFont
+        pinned = rq.load_font([(rq.MONTSERRAT_VARIABLE, "Bold")], size=40)
+        bare = ImageFont.truetype(rq.MONTSERRAT_VARIABLE, 40)
+
+        def ink(font):
+            img = Image.new("L", (400, 60), 0)
+            ImageDraw.Draw(img).text((0, 0), "Hamburgefonts", font=font, fill=255)
+            return sum(img.point(lambda v: 1 if v > 127 else 0).histogram()[1:])
+
+        assert ink(pinned) > ink(bare)
 
     def test_ground_is_cream_under_a_dot_grid_and_cached(self):
         scene = rq._yorha_scene()
