@@ -6321,6 +6321,170 @@ class TestHadesFrame:
         assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
 
 
+class TestExpanseFrame:
+    """``expanse`` — The Expanse: the Rocinante's console with the quote as
+    an incoming tightbeam.
+
+    The chrome is cached once per process; the hour is the tracked contact's
+    bearing on the tactical plot; the ship's state is dealt from the quote's
+    digest.
+    """
+
+    ROW = dict(
+        display_quote="It was about half past two when the clock struck and the "
+                      "afternoon slipped quietly away from them.",
+        matched_text="half past two",
+        author="Edith Wharton",
+        title="The House of Mirth",
+        source_id="141",
+        line_number=482,
+    )
+
+    @staticmethod
+    def _render(row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or TestExpanseFrame.ROW)),
+                         *size, mode="production", theme="expanse")
+
+    @staticmethod
+    def _plot_box():
+        cx, cy = rq._EXPANSE_PLOT_CENTRE
+        r = rq._EXPANSE_PLOT_RINGS[-1] + 4
+        return (cx - r, cy - r, cx + r, cy + r)
+
+    def test_on_palette_and_surfaces_all_six_inks(self):
+        image = self._render()
+        assert distinct_inks(image) == set(rq.SPECTRA6.values())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        first = pixel_bytes(self._render(time_str="09:00"))
+        for minute in (5, 17, 30, 59):
+            assert pixel_bytes(self._render(time_str=f"09:{minute:02d}")) == first
+
+    def test_contact_walks_twelve_bearings_on_a_twelve_hour_clock(self):
+        crops = {h % 12: pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(self._plot_box())) for h in range(12)}
+        assert len(set(crops.values())) == 12
+        for h in range(12):
+            assert pixel_bytes(self._render(time_str=f"{h + 12:02d}:00").crop(self._plot_box())) == crops[h]
+        assert rq._expanse_hour("13:00") == 1 and rq._expanse_hour("00:10") == 12
+        assert rq._expanse_hour("garbage") == 12
+        assert rq._expanse_bearing(12) == 0 and rq._expanse_bearing(3) == 90 and rq._expanse_bearing(9) == 270
+
+    def test_contact_sits_at_the_hours_bearing(self):
+        r = rq._EXPANSE_CONTACT_RADIUS
+        for hour in (12, 3, 6, 9, 2):
+            image = self._render(time_str=f"{hour:02d}:00")
+            tx, ty = rq._expanse_polar(r, rq._expanse_bearing(hour))
+            box = (int(tx) - 13, int(ty) - 13, int(tx) + 14, int(ty) + 14)
+            counts = ink_counts(image.crop(box))
+            assert counts.get(rq.SPECTRA6["white"], 0) >= 9           # the core
+            assert counts.get(rq.SPECTRA6["yellow"], 0) > 40           # diamond, brackets, bloom
+            # The opposite bearing is empty plot: rings and crosshair only.
+            ox, oy = rq._expanse_polar(r, rq._expanse_bearing(hour) + 180)
+            far = ink_counts(image.crop((int(ox) - 13, int(oy) - 13, int(ox) + 14, int(oy) + 14)))
+            assert rq.SPECTRA6["yellow"] not in far
+
+    def test_bearing_readout_names_the_hour(self):
+        x0, _, x1, _ = rq._EXPANSE_LIST_RECT
+        ry = rq._EXPANSE_LIST_ROW_Y + rq._EXPANSE_LIST_ROW_H
+        band = (x0 + 40, ry + 22, x1 - 10, ry + 36)
+        a = self._render(time_str="02:00").crop(band)
+        b = self._render(time_str="07:00").crop(band)
+        assert pixel_bytes(a) != pixel_bytes(b)
+        assert ink_counts(a).get(rq.SPECTRA6["yellow"], 0) > 60
+
+    def test_scene_is_painted_once_per_process(self):
+        assert rq._expanse_scene() is rq._expanse_scene()
+
+    def test_plot_is_blue_rings_on_black_glass(self):
+        scene = rq._expanse_scene()
+        counts = ink_counts(scene.crop(self._plot_box()))
+        area = (2 * rq._EXPANSE_PLOT_RINGS[-1] + 8) ** 2
+        assert counts.get(rq.SPECTRA6["black"], 0) > area * 0.85
+        assert counts.get(rq.SPECTRA6["blue"], 0) > 900             # three gapped rings, ticks, crosshair
+        assert counts.get(rq.SPECTRA6["white"], 0) > 40              # the Roci and the cardinal labels
+        assert rq.SPECTRA6["yellow"] not in counts                   # no contact before the hour is known
+
+    def test_panels_are_chamfered_glass_with_orange_brackets(self):
+        scene = rq._expanse_scene()
+        x0, y0, x1, y1 = rq._EXPANSE_FEED_RECT
+        cut = rq._EXPANSE_CHAMFER
+        # The cut corner carries no outline pixel; the square corner carries a bracket.
+        assert scene.getpixel((x1, y0)) == rq.SPECTRA6["black"]
+        assert scene.getpixel((x1 - cut // 2, y0 + cut // 2)) == rq.SPECTRA6["blue"]
+        bracket = ink_counts(scene.crop((x0, y0, x0 + 16, y0 + 16)))
+        assert bracket.get(rq.SPECTRA6["yellow"], 0) >= 40
+        header = ink_counts(scene.crop((x0 + 1, y0 + 1, x0 + 8, y0 + rq._EXPANSE_HEADER_H)))
+        assert header.get(rq.SPECTRA6["red"], 0) > 30 and header.get(rq.SPECTRA6["yellow"], 0) > 30
+        # The feed's own frame round the quote: a blue hairline with white brackets.
+        fx0, fy0, fx1, fy1 = rq._EXPANSE_FRAME_RECT
+        assert scene.getpixel((fx0, (fy0 + fy1) // 2)) == rq.SPECTRA6["blue"]
+        assert ink_counts(scene.crop((fx0 - 4, fy0 - 4, fx0 + 8, fy0 + 8))).get(rq.SPECTRA6["white"], 0) >= 12
+
+    def test_orbital_strip_tag_and_list_carry_the_chrome(self):
+        scene = rq._expanse_scene()
+        tag = ink_counts(scene.crop((24, 8, 70, 24)))
+        assert tag.get(rq.SPECTRA6["red"], 0) > 200 and tag.get(rq.SPECTRA6["yellow"], 0) > 200
+        x0, y0, x1, y1 = rq._EXPANSE_ORBIT_RECT
+        orbit = ink_counts(scene.crop((x0, y0, x1, y1 + 1)))
+        assert orbit.get(rq.SPECTRA6["blue"], 0) > 500              # rules, the dashed track
+        assert orbit.get(rq.SPECTRA6["yellow"], 0) > 400             # the second track, the ring, the giant
+        assert orbit.get(rq.SPECTRA6["red"], 0) > 60                 # the giant's bands and half its disc
+        assert orbit.get(rq.SPECTRA6["white"], 0) > 150              # station names, planets, the ship marker
+        lx0, ly0, lx1, ly1 = rq._EXPANSE_LIST_RECT
+        rows = ink_counts(scene.crop((lx0 + 8, rq._EXPANSE_LIST_ROW_Y, lx1 - 8, rq._EXPANSE_LIST_ROW_Y + 4 * rq._EXPANSE_LIST_ROW_H)))
+        assert rows.get(rq.SPECTRA6["blue"], 0) > 600                # four boxed rows and their leaders
+        assert rows.get(rq.SPECTRA6["white"], 0) > 120               # silhouettes and names
+        scatter = ink_counts(scene.crop(rq._EXPANSE_SCATTER_RECT))
+        assert scatter.get(rq.SPECTRA6["white"], 0) > 10
+
+    def test_quote_is_white_with_an_orange_phrase(self):
+        counts = ink_counts(self._render().crop(rq._EXPANSE_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["red"], 0) > 150
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 150
+
+    def test_sender_is_the_author_in_orange(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, author="Homer"))
+        x0, _, x1, _ = rq._EXPANSE_FEED_RECT
+        band = (x0 + 50, rq._EXPANSE_SENDER_Y, x1 - 20, rq._EXPANSE_SENDER_Y + 24)
+        assert pixel_bytes(a.crop(band)) != pixel_bytes(b.crop(band))
+        counts = ink_counts(a.crop(band))
+        assert counts.get(rq.SPECTRA6["red"], 0) > 200
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 200
+        # No author: the book stands in for the sender.
+        c = self._render(dict(self.ROW, author=""))
+        assert ink_counts(c.crop(band)).get(rq.SPECTRA6["yellow"], 0) > 200
+
+    def test_ships_state_is_dealt_from_the_quote(self):
+        rows = [dict(self.ROW, source_id=str(n), line_number=n) for n in range(1, 120)]
+        gauges = {rq._expanse_gauges(make_row(**row)) for row in rows}
+        assert len(gauges) > 100
+        assert all(0 <= g <= 12 for sweeps in gauges for g in sweeps)
+        pills = {rq._expanse_pills(make_row(**row)) for row in rows}
+        assert len(pills) > 100
+        assert {ink for grid in pills for row in grid for ink in row} == {"green", "amber", "red", "dark"}
+        assert {rq._expanse_signal(make_row(**row)) for row in rows} <= set(range(1, 9))
+        assert rq._expanse_gauges(make_row(**self.ROW)) == rq._expanse_gauges(make_row(**self.ROW))
+        assert rq._expanse_tx_id(make_row(**self.ROW)).startswith("TX-")
+        foot = (rq._EXPANSE_FOOT_RECT[0] + 30, rq._EXPANSE_FOOT_RECT[1] + 6, rq._EXPANSE_FOOT_RECT[2] - 6, rq._EXPANSE_FOOT_RECT[3] - 4)
+        a, b = self._render(rows[0]), self._render(rows[1])
+        assert pixel_bytes(a.crop(foot)) != pixel_bytes(b.crop(foot))
+        chart = ink_counts(a.crop(rq._EXPANSE_CHART_RECT))
+        assert chart.get(rq.SPECTRA6["blue"], 0) > 500 and chart.get(rq.SPECTRA6["white"], 0) > 500   # the cyan area
+        gx = rq._EXPANSE_ARC_GAUGE_XS[0]
+        gy, r = rq._EXPANSE_ARC_GAUGE_Y, rq._EXPANSE_ARC_GAUGE_R
+        dial = (gx - r - 1, gy - r - 1, gx + r + 2, gy + r + 2)
+        assert pixel_bytes(a.crop(dial)) != pixel_bytes(self._render(rows[5]).crop(dial)) or \
+            rq._expanse_gauges(make_row(**rows[0]))[0] == rq._expanse_gauges(make_row(**rows[5]))[0]
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        big = self._render()
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(big.resize((320, 192), Image.Resampling.NEAREST))
+
+
 class TestBeksinskiFrame:
     """``beksinski`` — a procession across a dead plain toward a cathedral
     of bone.
