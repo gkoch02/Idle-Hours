@@ -34512,16 +34512,43 @@ def render_goya_frame(time_str: str, quote_row: dict, width: int, height: int) -
 _HAL_SEED = 0x48414C39                # HAL9
 _HAL_MNEMONICS = ("COM", "NAV", "VEH", "ATM", "HIB", "GDE", "LIF", "MEM", "DMG", "FLX", "CNT", "NUC")
 _HAL_TILE_INKS = ("red", "yellow", "green", "blue")
-_HAL_MONITOR_RECT = (24, 24, 636, 384)
-_HAL_HEADER_RULE_Y = 94
-_HAL_QUOTE_RECT = (54, 108, 606, 338)
+_HAL_HOUSING_RECT = (16, 16, 644, 392)   # the monitor's housing, a hairline on black
+_HAL_MONITOR_RECT = (26, 26, 634, 382)   # the screen inside it
+_HAL_SCREEN_RADIUS = 20
+_HAL_HEADER_RULE_Y = 96
+_HAL_QUOTE_RECT = (56, 110, 604, 338)
 _HAL_BYLINE_Y = 352
-_HAL_TILE_BAND = (24, 400, 636, 462)
+_HAL_TILE_BAND = (24, 402, 636, 462)
 _HAL_TILE_GAP = 6
 _HAL_PLATE_RECT = (664, 24, 780, 92)
 _HAL_EYE_CENTRE = (722, 196)
 _HAL_EYE_RADIUS = 44
-_HAL_TRACE_RECT = (664, 292, 780, 462)
+_HAL_SHIP_RECT = (664, 292, 780, 370)   # VEH: the Discovery in wireframe
+_HAL_TRACE_RECT = (664, 378, 780, 462)  # HIB: the life traces
+_HAL_SCANLINE_PERIOD = 4
+
+
+def _crt_paint_scanlines(image: Image.Image, rect, ground, *, period: int = 4, phase: int = 0) -> None:
+    """Raster lines over a CRT: every ``period``-th row inside ``rect`` goes
+    black where it holds one of the ``ground`` inks — the glyphs and
+    graphics painted over the phosphor are left solid, so the screen gains
+    the texture of a tube without the type losing weight. One in four is
+    the coarsest spacing that still reads as lines rather than stripes at
+    the panel's pitch, and the lightest darkening that still reads at all."""
+    x0, y0, x1, y1 = rect
+    width, height = image.size
+    x0, y0, x1, y1 = max(0, x0), max(0, y0), min(width, x1), min(height, y1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    px = image.load()
+    black = SPECTRA6["black"]
+    ground = set(ground)
+    for y in range(y0, y1):
+        if (y - y0 + phase) % period:
+            continue
+        for x in range(x0, x1):
+            if px[x, y] in ground:
+                px[x, y] = black
 
 
 def _hal_hour(time_str: str) -> int:
@@ -34553,16 +34580,30 @@ def _hal_paint_monitor(image: Image.Image, hour: int, quote_row: dict) -> None:
     readout bars seeded from the quote, and the rule under both."""
     draw = ImageDraw.Draw(image)
     x0, y0, x1, y1 = _HAL_MONITOR_RECT
-    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
-    draw.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=blue)
-    draw.text((x0 + 30, y0 + 20), _hal_mnemonic(hour), font=_hal_chrome_font(38), fill=white)
+    blue, white, black = SPECTRA6["blue"], SPECTRA6["white"], SPECTRA6["black"]
+    # The housing: a hairline on the black, and the phosphor's light leaking
+    # onto it from the glass.
+    draw.rounded_rectangle(_HAL_HOUSING_RECT, radius=_HAL_SCREEN_RADIUS + 8, fill=black, outline=white, width=1)
+    glass = Image.new("L", image.size, 0)
+    ImageDraw.Draw(glass).rounded_rectangle((x0, y0, x1, y1), radius=_HAL_SCREEN_RADIUS, fill=255)
+    paint_neon_mask(image, glass, None, blue, radius=7, gamma=1.6, cap=0.5, ground=(black,))
+    glass.close()
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=_HAL_SCREEN_RADIUS, fill=blue)
+    # The mnemonic in its title box, the way the film's screens caption
+    # themselves, and a seeded bar chart beside it.
+    font = _hal_chrome_font(36)
+    name = _hal_mnemonic(hour)
+    tw = draw.textlength(name, font=font)
+    draw.rectangle((x0 + 28, y0 + 18, x0 + 28 + tw + 24, y0 + 72), outline=white, width=2)
+    draw.text((x0 + 40, y0 + 24), name, font=font, fill=white)
     rng = random.Random(_HAL_SEED ^ _row_digest(quote_row))
     bar_x = x1 - 30 - 12 * 15
     for i in range(12):
         h = rng.randint(6, 44)
         bx = bar_x + i * 15
         draw.rectangle((bx, y0 + 70 - h, bx + 9, y0 + 70), fill=white)
-    draw.rectangle((x0 + 30, _HAL_HEADER_RULE_Y, x1 - 30, _HAL_HEADER_RULE_Y + 2), fill=white)
+    draw.rectangle((bar_x - 2, y0 + 71, x1 - 30, y0 + 72), fill=white)
+    draw.rectangle((x0 + 28, _HAL_HEADER_RULE_Y, x1 - 30, _HAL_HEADER_RULE_Y + 2), fill=white)
 
 
 def _hal_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
@@ -34621,7 +34662,7 @@ def _hal_paint_tiles(image: Image.Image, hour: int, quote_row: dict) -> None:
         ink = "white" if active else _HAL_TILE_INKS[i % len(_HAL_TILE_INKS)]
         fill = SPECTRA6[ink]
         label = black if ink in ("white", "yellow") else white
-        draw.rectangle((x0, y0, x1, y1), fill=fill)
+        draw.rounded_rectangle((x0, y0, x1, y1), radius=5, fill=fill)
         name = _HAL_MNEMONICS[i]
         tw = draw.textlength(name, font=font)
         draw.text((x0 + (x1 - x0 - tw) / 2, y0 + 7), name, font=font, fill=label)
@@ -34629,8 +34670,9 @@ def _hal_paint_tiles(image: Image.Image, hour: int, quote_row: dict) -> None:
             h = rng.randint(3, 18)
             bx = x0 + 6 + b * 9
             draw.rectangle((bx, y1 - 8 - h, bx + 5, y1 - 8), fill=label)
+        _crt_paint_scanlines(image, (x0, y0, x1 + 1, y1 + 1), (fill,), period=_HAL_SCANLINE_PERIOD, phase=1)
         if active:
-            draw.rectangle((x0, y0 - 6, x1, y0 - 4), fill=white)
+            draw.rectangle((x0, y0 - 8, x1, y0 - 6), fill=white)
 
 
 def _hal_paint_plate(draw: ImageDraw.ImageDraw) -> None:
@@ -34664,8 +34706,31 @@ def _hal_paint_eye(image: Image.Image) -> None:
     bloom.close()
 
 
+def _hal_paint_ship(draw: ImageDraw.ImageDraw) -> None:
+    """The vehicle monitor under the lens: the Discovery One in white
+    wireframe — the command sphere, the spine of fuel tanks, the engine
+    block — the kind of schematic the film's screens drew by hand."""
+    x0, y0, x1, y1 = _HAL_SHIP_RECT
+    white = SPECTRA6["white"]
+    draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
+    draw.text((x0 + 8, y0 + 6), "VEH", font=_hal_chrome_font(11), fill=white)
+    cy = y0 + 50
+    sx = x0 + 10
+    draw.ellipse((sx, cy - 11, sx + 22, cy + 11), outline=white, width=1)
+    draw.ellipse((sx + 6, cy - 5, sx + 16, cy + 5), outline=white, width=1)
+    draw.line((sx + 22, cy, x1 - 26, cy), fill=white, width=1)
+    for i in range(5):
+        bx = sx + 30 + i * 11
+        draw.rectangle((bx, cy - 4, bx + 7, cy + 4), outline=white, width=1)
+    draw.rectangle((x1 - 26, cy - 8, x1 - 10, cy + 8), outline=white, width=1)
+    draw.line((x1 - 10, cy - 5, x1 - 6, cy - 5), fill=white, width=1)
+    draw.line((x1 - 10, cy + 5, x1 - 6, cy + 5), fill=white, width=1)
+    draw.line((sx + 24, cy - 18, sx + 24, cy + 18), fill=white, width=1)
+    draw.line((sx + 18, cy - 18, sx + 30, cy - 18), fill=white, width=1)
+
+
 def _hal_paint_traces(image: Image.Image, quote_row: dict) -> None:
-    """The hibernation monitor under the lens: three life traces, seeded
+    """The hibernation monitor under the ship: two life traces, seeded
     from the quote, in a white hairline frame."""
     draw = ImageDraw.Draw(image)
     x0, y0, x1, y1 = _HAL_TRACE_RECT
@@ -34673,9 +34738,9 @@ def _hal_paint_traces(image: Image.Image, quote_row: dict) -> None:
     draw.rectangle((x0, y0, x1, y1), outline=white, width=1)
     draw.text((x0 + 8, y0 + 6), "HIB", font=_hal_chrome_font(11), fill=white)
     rng = random.Random(_HAL_SEED + 11 + _row_digest(quote_row))
-    inner_top = y0 + 26
-    lane = (y1 - inner_top) // 3
-    for t in range(3):
+    inner_top = y0 + 24
+    lane = (y1 - inner_top) // 2
+    for t in range(2):
         base = inner_top + t * lane + lane // 2 + 6
         amp = lane // 2 - 6
         phase = rng.uniform(0, math.tau)
@@ -34699,9 +34764,13 @@ def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) ->
     draw = ImageDraw.Draw(image)
     _hal_paint_quote(draw, _hal_layout(draw, quote_row))
     _hal_paint_byline(draw, quote_row)
+    _crt_paint_scanlines(image, _HAL_MONITOR_RECT, (SPECTRA6["blue"],), period=_HAL_SCANLINE_PERIOD)
     _hal_paint_tiles(image, hour, quote_row)
     _hal_paint_plate(ImageDraw.Draw(image))
+    _crt_paint_scanlines(image, _HAL_PLATE_RECT, (SPECTRA6["blue"],), period=_HAL_SCANLINE_PERIOD)
     _hal_paint_eye(image)
+    draw = ImageDraw.Draw(image)
+    _hal_paint_ship(draw)
     _hal_paint_traces(image, quote_row)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
     if (width, height) != (800, 480):
@@ -34761,8 +34830,11 @@ _LUMON_SEED = 0x4C554D4F              # LUMO
 _LUMON_FILES = ("Cold Harbor", "Siena", "Dranesville", "Tumwater", "Allentown", "Sunset Park",
                 "Lexington", "Nanning", "Moonbeam", "Lucknow", "Billings", "Wellington")
 _LUMON_INKS = ("blue", "black")
-_LUMON_BEZEL = 12
-_LUMON_BEZEL_RADIUS = 28
+_LUMON_HOUSING = 10                   # the beige housing, a W+Y stipple
+_LUMON_GAP = 6                        # the recessed black edge of the glass
+_LUMON_BEZEL = _LUMON_HOUSING + _LUMON_GAP
+_LUMON_BEZEL_RADIUS = 26
+_LUMON_SCANLINE_PERIOD = 4
 _LUMON_HEADER_Y = 28
 _LUMON_RULE_Y = 82
 _LUMON_GRID_RECT = (44, 94, 756, 198)
@@ -34808,7 +34880,8 @@ def _lumon_scene() -> Image.Image:
 
 def _lumon_paint_screen(image: Image.Image) -> None:
     """The blue field falling to black at the corners, error-diffused to the
-    two inks, inside a black rounded bezel."""
+    two inks, in a recessed black edge inside a beige housing, with the
+    phosphor's light leaking onto the edge."""
     width, height = image.size
     small = Image.new("RGB", (width // 4, height // 4))
     sp = small.load()
@@ -34819,9 +34892,16 @@ def _lumon_paint_screen(image: Image.Image) -> None:
             t = min(1.0, (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.8 * 0.85)
             sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK))
     field = _expedition_dither(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
+    # The housing: the beige of the show's terminals, white with a yellow
+    # quarter, with the glass opening cut out of it.
+    _fill_swatch_stipple(image, (0, 0, width, height), SPECTRA6["white"], SPECTRA6["yellow"], 0.25)
+    h = _LUMON_HOUSING
+    ImageDraw.Draw(image).rounded_rectangle((h, h, width - h, height - h), radius=_LUMON_BEZEL_RADIUS + _LUMON_GAP,
+                                            fill=SPECTRA6["black"])
     b = _LUMON_BEZEL
     mask = Image.new("L", (width, height), 0)
     ImageDraw.Draw(mask).rounded_rectangle((b, b, width - b, height - b), radius=_LUMON_BEZEL_RADIUS, fill=255)
+    paint_neon_mask(image, mask, None, SPECTRA6["blue"], radius=5, gamma=1.6, cap=0.5, ground=(SPECTRA6["black"],))
     image.paste(field, (0, 0), mask)
     small.close()
     field.close()
@@ -34997,6 +35077,8 @@ def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _lumon_paint_quote(draw, _lumon_layout(draw, quote_row))
     _lumon_paint_byline(draw, quote_row)
     _lumon_paint_bins(image, quote_row)
+    b = _LUMON_BEZEL
+    _crt_paint_scanlines(image, (b, b, 800 - b, 480 - b), (SPECTRA6["blue"],), period=_LUMON_SCANLINE_PERIOD)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)

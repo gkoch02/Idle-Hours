@@ -6837,13 +6837,40 @@ class TestHalFrame:
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
         assert pixel_bytes(image) == pixel_bytes(self._render())
 
-    def test_monitor_is_a_solid_blue_flat_with_white_type(self):
-        counts = ink_counts(self._render().crop(rq._HAL_MONITOR_RECT))
+    def test_monitor_is_a_blue_flat_under_scanlines_with_white_type(self):
+        image = self._render()
+        counts = ink_counts(image.crop(rq._HAL_MONITOR_RECT))
         area = (rq._HAL_MONITOR_RECT[2] - rq._HAL_MONITOR_RECT[0]) * (rq._HAL_MONITOR_RECT[3] - rq._HAL_MONITOR_RECT[1])
-        assert counts.get(rq.SPECTRA6["blue"], 0) > area * 0.8
+        assert counts.get(rq.SPECTRA6["blue"], 0) > area * 0.55
         assert counts.get(rq.SPECTRA6["white"], 0) > 3000
         assert counts.get(rq.SPECTRA6["yellow"], 0) > 300           # the matched phrase
         assert rq.SPECTRA6["red"] not in counts and rq.SPECTRA6["green"] not in counts
+        # The raster: one row in four is black where the field was blue, and
+        # the rows between are untouched, in an empty patch of the screen.
+        x0, y0 = rq._HAL_MONITOR_RECT[0] + 300, rq._HAL_MONITOR_RECT[1] + 240
+        patch = image.crop((x0, y0 - (y0 - rq._HAL_MONITOR_RECT[1]) % rq._HAL_SCANLINE_PERIOD, x0 + 40, y0 + 40))
+        rows = [ink_counts(patch.crop((0, r, 40, r + 1))) for r in range(rq._HAL_SCANLINE_PERIOD)]
+        assert rows[0] == {rq.SPECTRA6["black"]: 40}
+        assert all(row == {rq.SPECTRA6["blue"]: 40} for row in rows[1:])
+        # The type is never cut by the raster: the phrase's yellow count is the
+        # same with and without the scanline pass.
+        assert counts.get(rq.SPECTRA6["yellow"], 0) == ink_counts(
+            self._render().crop(rq._HAL_MONITOR_RECT)).get(rq.SPECTRA6["yellow"], 0)
+
+    def test_screen_light_leaks_onto_the_housing(self):
+        """Blue in the black band between the glass and the housing hairline."""
+        image = self._render()
+        band = image.crop((rq._HAL_MONITOR_RECT[0] + 60, rq._HAL_HOUSING_RECT[1] + 1,
+                           rq._HAL_MONITOR_RECT[2] - 60, rq._HAL_MONITOR_RECT[1]))
+        counts = ink_counts(band)
+        assert 0 < counts.get(rq.SPECTRA6["blue"], 0) < band.size[0] * band.size[1] * 0.6
+        assert counts.get(rq.SPECTRA6["black"], 0) > 0
+
+    def test_ship_is_drawn_in_wireframe(self):
+        counts = ink_counts(self._render().crop(rq._HAL_SHIP_RECT))
+        area = (rq._HAL_SHIP_RECT[2] - rq._HAL_SHIP_RECT[0]) * (rq._HAL_SHIP_RECT[3] - rq._HAL_SHIP_RECT[1])
+        assert counts.get(rq.SPECTRA6["black"], 0) > area * 0.8
+        assert 300 < counts.get(rq.SPECTRA6["white"], 0) < area * 0.2
 
     def test_hour_is_which_tile_is_white(self):
         tiles = rq._hal_tile_rects()
@@ -6947,7 +6974,7 @@ class TestLumonFrame:
 
     def test_on_palette_deterministic_and_cached(self):
         image = self._render()
-        assert distinct_inks(image) <= {rq.SPECTRA6[k] for k in ("blue", "black", "white", "yellow")}
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("blue", "black", "white", "yellow")}
         assert pixel_bytes(image) == pixel_bytes(self._render())
         assert rq._lumon_scene() is rq._lumon_scene()
 
@@ -6958,9 +6985,31 @@ class TestLumonFrame:
         corner = ink_counts(scene.crop((20, 20, 120, 80)))
         assert corner.get(rq.SPECTRA6["black"], 0) > 100 * 60 * 0.3
         assert corner.get(rq.SPECTRA6["blue"], 0) > 100 * 60 * 0.2
-        # The bezel outside the rounded screen is solid black.
-        assert ink_counts(scene.crop((0, 0, 8, 480))) == {rq.SPECTRA6["black"]: 8 * 480}
-        assert set(ink_counts(scene)) == {rq.SPECTRA6["blue"], rq.SPECTRA6["black"]}
+        # The housing outside the glass is the terminal's beige: a white
+        # stipple with a yellow quarter, and nothing else.
+        housing = ink_counts(scene.crop((0, 0, 8, 480)))
+        assert set(housing) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        assert housing[rq.SPECTRA6["yellow"]] == 8 * 480 // 4
+        # Inside it, the recessed edge is black with the screen's light leaking on.
+        gap = ink_counts(scene.crop((200, rq._LUMON_HOUSING + 1, 600, rq._LUMON_BEZEL)))
+        assert gap.get(rq.SPECTRA6["black"], 0) > 0 and gap.get(rq.SPECTRA6["blue"], 0) > 0
+        assert set(ink_counts(scene)) == {rq.SPECTRA6["blue"], rq.SPECTRA6["black"],
+                                          rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+
+    def test_scanlines_cross_the_screen_but_not_the_type(self):
+        image = self._render()
+        b = rq._LUMON_BEZEL
+        # In the centre, where the field is pure blue, one row in four is black.
+        y = b + ((300 - b) // rq._LUMON_SCANLINE_PERIOD) * rq._LUMON_SCANLINE_PERIOD
+        assert ink_counts(image.crop((300, y, 340, y + 1))) == {rq.SPECTRA6["black"]: 40}
+        assert ink_counts(image.crop((300, y + 1, 340, y + 2))) == {rq.SPECTRA6["blue"]: 40}
+        # The phrase's yellow is untouched by the raster.
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        placed = rq._lumon_layout(draw, make_row(**self.ROW))
+        bold = [p for p in placed if p[4] and p[2].strip()]
+        x0, y0 = bold[0][0], bold[0][1]
+        chunk = image.crop((x0, y0, x0 + bold[0][5], y0 + bold[0][6]))
+        assert ink_counts(chunk).get(rq.SPECTRA6["yellow"], 0) > 100
 
     def test_hour_moves_the_cluster_and_the_completion_only(self):
         a, b = self._render(time_str="03:30"), self._render(time_str="04:30")
