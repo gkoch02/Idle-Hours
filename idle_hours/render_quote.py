@@ -2249,10 +2249,9 @@ ANTONIO_VARIABLE = str(BASE_DIR / "fonts/antonio/Antonio-Variable.ttf")
 # the heavy condensed grotesque of *Control*'s title cards; variable Weight
 # axis with ExtraLight..Bold named instances. Used by ``control``.
 OSWALD_VARIABLE = str(BASE_DIR / "fonts/oswald/Oswald-Variable.ttf")
-# IBM Plex Mono (IBM, OFL) — static Regular / Medium / SemiBold / Bold cuts,
+# IBM Plex Mono (IBM, OFL) — static Medium / SemiBold / Bold cuts,
 # converted losslessly from IBM's published WOFF to sfnt. The S.A.M. terminal
 # face of ``observation``.
-PLEXMONO_REGULAR = str(BASE_DIR / "fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf")
 PLEXMONO_MEDIUM = str(BASE_DIR / "fonts/ibm-plex-mono/IBMPlexMono-Medium.ttf")
 PLEXMONO_SEMIBOLD = str(BASE_DIR / "fonts/ibm-plex-mono/IBMPlexMono-SemiBold.ttf")
 PLEXMONO_BOLD = str(BASE_DIR / "fonts/ibm-plex-mono/IBMPlexMono-Bold.ttf")
@@ -2311,11 +2310,10 @@ SAIRA_ITALIC_VARIABLE = str(BASE_DIR / "fonts/saira/Saira-Italic[wdth,wght].ttf"
 # Saros's main display face. Variable on weight, default Regular.
 ORBITRON_VARIABLE = str(BASE_DIR / "fonts/orbitron/Orbitron[wght].ttf")
 # Jura (Daniel Johnson / The Jura Project Authors, OFL) — a humanist
-# technical sans with calligraphic stroke endings, static Regular / Medium /
-# SemiBold / Bold. The Culture pair's body face: futurist without being a
+# technical sans with calligraphic stroke endings, static Medium / SemiBold /
+# Bold. The Culture pair's body face: futurist without being a
 # spaceship font, which suits a civilisation whose Minds are urbane rather than
 # martial.
-JURA_REGULAR = str(BASE_DIR / "fonts/jura/Jura-Regular.ttf")
 JURA_MEDIUM = str(BASE_DIR / "fonts/jura/Jura-Medium.ttf")
 JURA_SEMIBOLD = str(BASE_DIR / "fonts/jura/Jura-SemiBold.ttf")
 JURA_BOLD = str(BASE_DIR / "fonts/jura/Jura-Bold.ttf")
@@ -2344,7 +2342,6 @@ INTER_VARIABLE = str(BASE_DIR / "fonts/inter/Inter-Variable.ttf")
 # digits that sit square in a grid. Variable on weight; the default
 # instance is Regular, and every candidate still pins a name.
 MONTSERRAT_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat[wght].ttf")
-MONTSERRAT_ITALIC_VARIABLE = str(BASE_DIR / "fonts/montserrat/Montserrat-Italic[wght].ttf")
 # Fraunces — Undercase Type (OFL). A variable "soft" old-style serif with
 # optical-size, softness, weight and wonk axes; the typeface of the Between
 # Us web app, whose iOS build substitutes the system New York. Used by the
