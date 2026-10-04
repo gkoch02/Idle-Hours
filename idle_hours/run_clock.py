@@ -290,6 +290,7 @@ def parse_args() -> argparse.Namespace:
         "oblivion",
         "yorha",
         "hitchhiker",
+        "escritoire",
         "diags",
     ]
     parser.add_argument(

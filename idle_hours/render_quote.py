@@ -157,6 +157,7 @@ THEME_ORDER: tuple[str, ...] = (
     "oblivion",
     "yorha",
     "hitchhiker",
+    "escritoire",
     "diags",
 )
 # Themes registered in THEMES but deliberately excluded from the button-B / web
@@ -1535,6 +1536,20 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
+    # A handwritten letter on a writing desk, seen at an angle: cream paper
+    # on dark mahogany, black ink with the matched phrase in blue, brass out
+    # of focus beyond the sheet. A custom frame (``render_escritoire_frame``);
+    # these colours are the literary-layout fallback and the card mode's.
+    "escritoire": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["yellow"],
+        "accent": SPECTRA6["blue"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["black"],
+    },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
     # is the hour, a silhouetted colony rim-lit beneath it,
@@ -2564,6 +2579,25 @@ ALMENDRA_DISPLAY = str(BASE_DIR / "fonts/almendra/AlmendraDisplay-Regular.ttf")
 # move — Fondamento ships no bold). `codex` is its sole consumer.
 FONDAMENTO_REGULAR = str(BASE_DIR / "fonts/fondamento/Fondamento-Regular.ttf")
 FONDAMENTO_ITALIC = str(BASE_DIR / "fonts/fondamento/Fondamento-Italic.ttf")
+
+# The pen hand ``letter`` and ``escritoire`` share: Dancing Script pinned by
+# instance, then slanted sans stand-ins so a host without it still gets a
+# hand-ish italic rather than an upright face. One list, so the two themes
+# cannot drift apart.
+_HAND_SCRIPT_REGULAR = [
+    (DANCINGSCRIPT_VARIABLE, "Regular"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
+    *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+]
+_HAND_SCRIPT_BOLD = [
+    (DANCINGSCRIPT_VARIABLE, "Bold"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+    *QUOTE_FONT_BOLD_CANDIDATES,
+]
 
 THEME_FONTS: dict[str, dict[str, list]] = {
     "default": {
@@ -4273,6 +4307,15 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_bold": [MICHROMA_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [MICHROMA_REGULAR, *ORNAMENT_FONT_CANDIDATES],
     },
+    "escritoire": {
+        # The ``letter`` theme's hand: Dancing Script pinned Regular for the
+        # body and Bold for the matched phrase and the signature. Pinyon's
+        # copperplate is closer to a real letter but hairline, and shreds
+        # once the warp has shrunk it.
+        "quote_regular": _HAND_SCRIPT_REGULAR,
+        "quote_bold": _HAND_SCRIPT_BOLD,
+        "ornament": [(DANCINGSCRIPT_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
+    },
     "saros": {
         # Saros sets its text in Tamba Sans, a squarish grotesque, its display
         # in Arame and its chrome in Korataki (Game Font Library); none is
@@ -4426,20 +4469,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     # Bold first so the marks stay a pen hand even if the copperplate is
     # missing.
     "letter": {
-        "quote_regular": [
-            (DANCINGSCRIPT_VARIABLE, "Regular"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            (DANCINGSCRIPT_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
+        "quote_regular": _HAND_SCRIPT_REGULAR,
+        "quote_bold": _HAND_SCRIPT_BOLD,
         "ornament": [
             PINYONSCRIPT_REGULAR,
             (DANCINGSCRIPT_VARIABLE, "Bold"),
@@ -39327,6 +39358,474 @@ def render_photo_frame(time_str: str, quote_row: dict, width: int, height: int) 
     return image
 
 
+# ---------------------------------------------------------------------------
+# escritoire — a handwritten letter on a writing desk, seen at an angle
+# ---------------------------------------------------------------------------
+# The quote is the last paragraph of a letter lying on a dark mahogany desk,
+# seen from the writer's chair rather than from directly above: the sheet is a
+# trapezoid whose far edge is about three fifths the width of its near edge,
+# rolled a few degrees so its right side sits higher. Past the sheet the desk
+# runs into shadow, where a lamp catches a row of out-of-focus brass (an
+# inkwell, a pen stand, a sander) and a second pen lies further back. A black
+# lacquer fountain pen with a gold band and nib lies across the top of the
+# page, its nib resting where the writing stopped.
+#
+# **Only the near half of the page is legible, on purpose.** A sheet at this
+# angle cannot carry readable text all the way up: at the far edge a glyph is
+# 60% of its near-edge size, and at the panel's resolution that is noise. So
+# the far, foreshortened band carries the *earlier* lines of the letter as
+# faint asemic script (``_codex_script``, seeded from the row so a different
+# quote is a different letter), and the quote is written into the near band
+# where the perspective costs it least. The faint band is what sells the
+# depth; the quote never pays for it.
+#
+# **The page is laid out flat, then warped.** The quote is fitted and wrapped
+# on an upright 900x560 sheet at twice the resolution, with the same
+# ``fit_quote_balanced`` the literary layout uses and the ``letter`` theme's
+# Dancing Script, as three ``"L"`` masks (prose, matched phrase, faint
+# script). Each mask is carried through one perspective transform onto a
+# double-size canvas with bicubic sampling, box-reduced to the panel and
+# thresholded, so every ink pixel lands solid. Warping a finished RGB frame
+# instead was the obvious first idea and the wrong one: the resampled glyph
+# edges come out as a grey fringe that the palette snap turns into a ragged
+# black-and-white stipple, and a script face has nothing to spare.
+#
+# **Inks.** The prose is black, the matched phrase blue — fountain-pen ink,
+# and the one accent that reads as *ink* rather than decoration on cream. The
+# paper is white with a yellow stipple that thickens toward the near, shadowed
+# corner and thins under the lamp. The desk is black with a red stipple pooled
+# under the lamp and a faint grain. The brass is a shaded cylinder ramp
+# through black, red, yellow and white, blurred before it is stippled so it
+# reads as out of focus, with a dim reflection on the polished desk below
+# each piece. Gold on the pen is 5/8 red to 3/8 yellow, the tangerine-side
+# mix the recipe catalogue recommends over a washed-out 50/50.
+#
+# **Cost.** The desk, the brass and the empty sheet are the same for every
+# quote, and the cache below keeps them for an in-process caller (the contact
+# sheet, the curator's preview grid). It does nothing for the appliance, which
+# starts a fresh renderer per repaint, so the scene has to be cheap to build
+# from cold: the smooth fields (the lamp pool, the paper's warmth) are computed
+# at quarter resolution and scaled up, and the per-pixel passes are confined to
+# the bounding boxes they touch. The cache is keyed on the painters themselves
+# (the ``expanse`` convention), so the decoration fence's neutered painters
+# rebuild it rather than being masked by a warm copy.
+#
+# No clock: ``time_str`` is deleted at entry, the daguerreotype rule. Fixed
+# geometry, composed at 800x480 and NEAREST-downsampled.
+
+_ESCRITOIRE_SEED = 0x45534352          # ESCR
+_ESCRITOIRE_SS = 2                     # supersample for the sheet masks
+_ESCRITOIRE_SHEET = (900, 560)         # the upright sheet, in sheet units
+# The sheet's corners on the canvas (TL, TR, BR, BL). The near corners run off
+# the panel, as a sheet does when it is close enough to write on.
+_ESCRITOIRE_QUAD = ((168, 158), (706, 128), (860, 512), (-70, 470))
+_ESCRITOIRE_LAMP = (560, 150)          # the light pool's centre on the desk
+_ESCRITOIRE_LEFT = 100                 # the writing's left margin, sheet units
+_ESCRITOIRE_MEASURE = 600              # the quote's measure, sheet units
+_ESCRITOIRE_FAINT_TOP = 62             # the first faint line's baseline
+_ESCRITOIRE_FAINT_PITCH = 44
+_ESCRITOIRE_BAND = (196, 520)          # the near band the quote is centred in
+# (font_max, font_min) per layout, in sheet units. The hero sizes are large on
+# purpose: a short quote set at a dense size leaves the near band half empty.
+_ESCRITOIRE_SIZES = {"hero": (64, 38), "standard": (50, 30), "dense": (42, 26)}
+# The size of last resort. The clock never picks a quote that needs it, but the
+# curator previews raw rows of up to ~470 characters, which overflow the band
+# at every layout floor; they get smaller rather than running off the page.
+_ESCRITOIRE_FLOOR = 18
+_ESCRITOIRE_SIG_MAX = 38               # the signature's largest size, sheet units
+_ESCRITOIRE_TITLE_MAX = 26             # the title's under it
+_ESCRITOIRE_LINE_MULT = 1.36
+_ESCRITOIRE_FIELD_SCALE = 4            # the smooth fields' downsampling factor
+# The pen, nib tip to cap end, and its half-width at the nib end.
+_ESCRITOIRE_PEN = ((262.0, 212.0), (738.0, 102.0), 10.0)
+# The brass on the far side of the desk: (x0, x1, top, foot) per piece. The
+# tops run off the panel; the feet stand on the desk behind the sheet.
+_ESCRITOIRE_BRASS = ((520, 600, -20, 150), (640, 700, -30, 120), (722, 792, 20, 170))
+_ESCRITOIRE_SCENE: dict = {}
+
+
+def _escritoire_solve(a: list, b: list) -> list:
+    """Solve a small dense linear system by Gaussian elimination."""
+    n = len(a)
+    m = [row[:] + [b[i]] for i, row in enumerate(a)]
+    for c in range(n):
+        p = max(range(c, n), key=lambda r: abs(m[r][c]))
+        m[c], m[p] = m[p], m[c]
+        for r in range(n):
+            if r != c:
+                f = m[r][c] / m[c][c]
+                for k in range(c, n + 1):
+                    m[r][k] -= f * m[c][k]
+    return [m[i][n] / m[i][i] for i in range(n)]
+
+
+@functools.lru_cache(maxsize=None)
+def _escritoire_coeffs(scale: int = 1) -> tuple:
+    """Pillow's PERSPECTIVE coefficients mapping the canvas onto the sheet
+    (output to input, which is the direction Pillow samples in)."""
+    sw, sh = _ESCRITOIRE_SHEET
+    sheet = ((0, 0), (sw, 0), (sw, sh), (0, sh))
+    a, b = [], []
+    for (x, y), (u, v) in zip(_ESCRITOIRE_QUAD, sheet):
+        x, y, u, v = x * scale, y * scale, u * scale, v * scale
+        a.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        a.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+        b += [u, v]
+    return tuple(_escritoire_solve(a, b))
+
+
+def _escritoire_field(size, fn) -> Image.Image:
+    """A smooth ``"L"`` field from ``fn(x, y) -> 0..1``, sampled every
+    ``_ESCRITOIRE_FIELD_SCALE`` pixels and scaled up bilinearly. The lamp pool
+    and the paper's warmth have no detail finer than tens of pixels, and
+    evaluating them per pixel was most of a cold render."""
+    step = _ESCRITOIRE_FIELD_SCALE
+    width, height = size
+    cols, rows = width // step + 2, height // step + 2
+    data = bytes(int(255 * min(1.0, max(0.0, fn(x * step, y * step))))
+                 for y in range(rows) for x in range(cols))
+    small = Image.frombytes("L", (cols, rows), data)
+    return small.resize((cols * step, rows * step), Image.Resampling.BILINEAR).crop((0, 0, width, height))
+
+
+def _escritoire_stipple(density: Image.Image) -> Image.Image:
+    """``"L"`` density (0-255) to a 0/255 ordered-dither mask on ``BAYER_8x8``."""
+    threshold = _ESCRITOIRE_SCENE.get(("tile", density.size))
+    if threshold is None:
+        width, height = density.size
+        tile = bytes(BAYER_8x8[y % 8][x % 8] * 4 + 2 for y in range(height) for x in range(width))
+        threshold = Image.frombytes("L", density.size, tile)
+        _ESCRITOIRE_SCENE[("tile", density.size)] = threshold
+    return ImageChops.subtract(density, threshold).point(lambda v: 255 if v else 0)
+
+
+def _escritoire_sheet_mask(size) -> Image.Image:
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).polygon(_ESCRITOIRE_QUAD, fill=255)
+    return mask
+
+
+def _escritoire_paint_desk(image: Image.Image) -> None:
+    """Black mahogany with a red stipple pooled under the lamp and a faint
+    grain running across the desk."""
+    width, height = image.size
+    lx, ly = _ESCRITOIRE_LAMP
+    pool = _escritoire_field(
+        (width, height), lambda x, y: max(0.0, 1.0 - math.hypot(x - lx, (y - ly) * 1.6) / 520) ** 1.6)
+    # The grain is a per-row brightening of the pool, 0.26..0.31 of full.
+    grain = bytes(int(255 * (0.26 + 0.05 * (0.5 + 0.5 * math.sin(y * 0.55 + 1.8 * math.sin(y * 0.07)))) / 0.31)
+                  for y in range(height))
+    grain_img = Image.frombytes("L", (1, height), grain).resize((width, height), Image.Resampling.NEAREST)
+    density = ImageChops.multiply(pool, grain_img).point(lambda v: int(255 * 0.04 + v * 0.31))
+    image.paste(SPECTRA6["black"], (0, 0, width, height))
+    image.paste(SPECTRA6["red"], (0, 0), _escritoire_stipple(density))
+
+
+def _escritoire_paint_shadow(image: Image.Image) -> None:
+    """The sheet's shadow, cast down and to the right onto the desk: a soft
+    black stipple, painted before the brass so it falls on the desk only.
+
+    The shift must not wrap. The sheet runs off the bottom and right of the
+    panel, and ``ImageChops.offset`` carried those rows round to the top,
+    where they blacked out a band of lamp light and brass."""
+    sheet = _escritoire_sheet_mask(image.size)
+    shadow = _furies_shift(sheet, 6, 9).filter(ImageFilter.GaussianBlur(7))
+    image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(ImageChops.subtract(shadow, sheet)))
+
+
+def _escritoire_paint_brass(image: Image.Image) -> None:
+    """The out-of-focus brass on the far side: shaded cylinders on a
+    black-red-yellow-white ramp, blurred before they are stippled, each with a
+    dim reflection on the desk below its foot, and one more pen lying further
+    back on the left."""
+    width, height = image.size
+    lum = Image.new("L", (width, height), 0)
+    alpha = Image.new("L", (width, height), 0)
+    lp, ap = lum.load(), alpha.load()
+
+    def cylinder(x0, x1, y0, y1, gain=1.0, fade=None):
+        cx, half = (x0 + x1) / 2, (x1 - x0) / 2
+        for y in range(max(0, y0), min(height, y1)):
+            a = 255 if fade is None else int(255 * fade(y))
+            for x in range(max(0, int(x0)), min(width, int(x1) + 1)):
+                t = (x - cx) / half
+                if abs(t) > 1:
+                    continue
+                body = math.sqrt(1 - t * t)
+                glint = math.exp(-((t + 0.42) / 0.16) ** 2)
+                lp[x, y] = max(lp[x, y], int(255 * gain * min(1.0, 0.12 + 0.42 * body + 0.45 * glint)))
+                ap[x, y] = max(ap[x, y], a)
+
+    for x0, x1, top, foot in _ESCRITOIRE_BRASS:
+        cylinder(x0, x1, top, foot)
+        # A moulding a third of the way down, and the wider foot.
+        ring = top + (foot - top) * 2 // 3
+        cylinder(x0 - 4, x1 + 4, ring, ring + 8, gain=0.8)
+        cylinder(x0 - 8, x1 + 8, foot - 14, foot, gain=0.9)
+        # The reflection: the foot's colours, mirrored and fading into the desk.
+        cylinder(x0 - 6, x1 + 6, foot, foot + 44, gain=0.75,
+                 fade=lambda y, f=foot: 0.4 * max(0.0, 1 - (y - f) / 44))
+    # The pen lying further back: a black barrel with brass at both ends.
+    draw_a = ImageDraw.Draw(alpha)
+    draw_l = ImageDraw.Draw(lum)
+    for (x0, y0, x1, y1), caps in (((60, 118, 250, 140), (60, 92, 220, 250)),
+                                   ((20, 70, 140, 94), (20, 44, 116, 140))):
+        draw_a.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=255)
+        draw_l.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=30)
+        for c0, c1 in (caps[:2], caps[2:]):
+            draw_l.rectangle((c0, y0 + 2, c1, y1 - 2), fill=130)
+        draw_l.line((x0 + 30, y0 + 6, x1 - 30, y0 + 6), fill=150, width=2)
+    lum = lum.filter(ImageFilter.GaussianBlur(4))
+    alpha = alpha.filter(ImageFilter.GaussianBlur(5))
+    # Ramp black < red < yellow < white, two adjacent inks mixed by the tile.
+    ramp = (SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"])
+    px, lp, ap = image.load(), lum.load(), alpha.load()
+    sheet = _escritoire_sheet_mask((width, height)).load()
+    bx0, by0, bx1, by1 = alpha.getbbox() or (0, 0, 0, 0)
+    for y in range(by0, by1):
+        row = BAYER_8x8[y % 8]
+        for x in range(bx0, bx1):
+            a = ap[x, y]
+            if a < 8 or sheet[x, y]:
+                continue
+            rank = row[x % 8]
+            if rank >= a / 4:
+                continue
+            level = lp[x, y] / 255 * 3
+            step = min(2, int(level))
+            px[x, y] = ramp[step + 1] if rank < (level - step) * 64 else ramp[step]
+
+
+def _escritoire_paint_sheet(image: Image.Image) -> None:
+    """The cream paper: white with a yellow stipple warming toward the near,
+    shadowed corner and thinning under the lamp."""
+    sw, sh = _ESCRITOIRE_SHEET
+    a, b, c, d, e, f, g, h = _escritoire_coeffs()
+
+    def warm(x, y):
+        den = g * x + h * y + 1
+        if den <= 1e-6:
+            return 0.0
+        u, v = (a * x + b * y + c) / den, (d * x + e * y + f) / den
+        return 0.05 + 0.22 * min(1.0, max(0.0, 0.55 * v / sh + 0.45 * (1 - u / sw))) ** 1.3
+
+    sheet = _escritoire_sheet_mask(image.size)
+    yellow = ImageChops.multiply(_escritoire_stipple(_escritoire_field(image.size, warm)), sheet)
+    image.paste(SPECTRA6["white"], (0, 0), sheet)
+    image.paste(SPECTRA6["yellow"], (0, 0), yellow)
+
+
+def _escritoire_scene() -> Image.Image:
+    """The desk, its shadow, the brass and the empty sheet: identical for
+    every quote. Cached keyed on the painters (see the section comment)."""
+    key = (_escritoire_paint_desk, _escritoire_paint_shadow, _escritoire_paint_brass, _escritoire_paint_sheet)
+    cached = _ESCRITOIRE_SCENE.get("frame")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    scene = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    _escritoire_paint_desk(scene)
+    _escritoire_paint_shadow(scene)
+    _escritoire_paint_brass(scene)
+    _escritoire_paint_sheet(scene)
+    _ESCRITOIRE_SCENE["frame"] = (key, scene)
+    return scene
+
+
+def _escritoire_layout(quote_row: dict) -> dict:
+    """Fit the quote and its signature into the near band of the upright
+    sheet. Returns the fitted fonts, the wrapped lines, and the block's top and
+    bottom in sheet units (``block``)."""
+    ss = _ESCRITOIRE_SS
+    probe = ImageDraw.Draw(Image.new("L", (1, 1)))
+    text = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    match_text = quote_row.get("matched_text") or ""
+    font_max, font_min = _ESCRITOIRE_SIZES[choose_layout(text)]
+    band_top, band_bottom = _ESCRITOIRE_BAND
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row) or ""
+    # Room for the signature as it will actually be set: one line per field
+    # present, at the capped sizes, plus the gap above it. An upper bound, so
+    # the fitted block plus its signature cannot outgrow the band.
+    reserve = (int(_ESCRITOIRE_SIG_MAX * 1.15) if author else 0) + (int(_ESCRITOIRE_TITLE_MAX * 1.2) if title else 0)
+    if reserve:
+        reserve += int(font_max * _ESCRITOIRE_LINE_MULT * 0.3)
+    room = (band_bottom - band_top - reserve) * ss
+
+    def fit(floor):
+        return fit_quote_balanced(probe, text, match_text, _ESCRITOIRE_MEASURE * ss, room,
+                                  font_max * ss, floor * ss, _ESCRITOIRE_LINE_MULT, theme="escritoire")
+
+    reg, bold, wrapped, line_h, size, _ = fit(font_min)
+    if len(wrapped) * line_h > room and font_min > _ESCRITOIRE_FLOOR:
+        reg, bold, wrapped, line_h, size, _ = fit(_ESCRITOIRE_FLOOR)
+    # The signature follows the hand's size but stops short of shouting on a
+    # hero quote, and keeps the byline floors legible on a dense one.
+    sig_size = min(max(int(size * 0.8), 18 * ss), _ESCRITOIRE_SIG_MAX * ss)
+    title_size = min(max(int(size * 0.56), 16 * ss), _ESCRITOIRE_TITLE_MAX * ss)
+    sig_h = (int(sig_size * 1.15) if author else 0) + (int(title_size * 1.2) if title else 0)
+    gap = int(line_h * 0.3) if sig_h else 0
+    total = len(wrapped) * line_h + gap + sig_h
+    top = max(band_top * ss, (band_top * ss + band_bottom * ss - total) // 2)
+    if top + total > band_bottom * ss:
+        # Even the last-resort size overflowed: lift the block into the faint
+        # band, which only ever holds filler, rather than off the near edge.
+        top = max(_ESCRITOIRE_FAINT_TOP * ss, band_bottom * ss - total)
+    return {"regular": reg, "bold": bold, "lines": wrapped, "line_h": line_h, "size": size,
+            "author": author, "title": title, "sig_size": sig_size, "title_size": title_size,
+            "gap": gap, "top": top, "block": (top / ss, (top + total) / ss)}
+
+
+def _escritoire_masks(quote_row: dict, layout: dict) -> tuple[Image.Image, Image.Image, Image.Image]:
+    """Write the letter onto the upright sheet as (prose, phrase, faint) masks
+    at the supersampled resolution."""
+    ss = _ESCRITOIRE_SS
+    size = (_ESCRITOIRE_SHEET[0] * ss, _ESCRITOIRE_SHEET[1] * ss)
+    prose, phrase, faint = (Image.new("L", size, 0) for _ in range(3))
+    dp, dph, df = ImageDraw.Draw(prose), ImageDraw.Draw(phrase), ImageDraw.Draw(faint)
+    left = _ESCRITOIRE_LEFT * ss
+    right = (_ESCRITOIRE_SHEET[0] - 70) * ss
+
+    # The earlier lines of the letter, down to just above the quote.
+    rng = random.Random(_ESCRITOIRE_SEED ^ _row_digest(quote_row))
+    base = _ESCRITOIRE_FAINT_TOP * ss
+    last = layout["top"] - int(layout["line_h"] * 0.55)
+    while base + _ESCRITOIRE_FAINT_PITCH * ss <= last:
+        x = left + rng.uniform(0, 18) * ss
+        _codex_script(df, x, base, right, xh=12 * ss, rng=rng, fill=255, width=ss)
+        base += _ESCRITOIRE_FAINT_PITCH * ss
+    if base <= last:
+        # The paragraph before the quote ends part-way across.
+        _codex_script(df, left + rng.uniform(0, 18) * ss, base, right - rng.uniform(140, 320) * ss,
+                      xh=12 * ss, rng=rng, fill=255, width=ss)
+
+    y = layout["top"]
+    ascent = max(_font_ascent(layout["regular"]), _font_ascent(layout["bold"]))
+    for line in layout["lines"]:
+        x = left
+        for chunk, is_bold in _trim_line(line):
+            font = layout["bold"] if is_bold else layout["regular"]
+            offset = ascent - _font_ascent(font)
+            (dph if is_bold else dp).text((x, y + offset), chunk, font=font, fill=255)
+            x += dp.textlength(chunk, font=font)
+        y += layout["line_h"]
+    y += layout["gap"]
+    sig_right = left + _ESCRITOIRE_MEASURE * ss
+    if layout["author"]:
+        font = load_font(theme_font_candidates("escritoire", "quote_bold"), size=layout["sig_size"])
+        author = _metro_ellipsize(dp, layout["author"], font, _ESCRITOIRE_MEASURE * ss)
+        dp.text((sig_right - dp.textlength(author, font=font), y), author, font=font, fill=255)
+        y += int(layout["sig_size"] * 1.15)
+    if layout["title"]:
+        font = load_font(theme_font_candidates("escritoire", "quote_regular"), size=layout["title_size"])
+        title = _metro_ellipsize(dp, layout["title"], font, _ESCRITOIRE_MEASURE * ss)
+        dp.text((sig_right - dp.textlength(title, font=font), y), title, font=font, fill=255)
+    return prose, phrase, faint
+
+
+def _escritoire_warp(mask: Image.Image, threshold: int) -> Image.Image:
+    """Carry a supersampled sheet mask onto the canvas: bicubic perspective at
+    twice the panel size, a 2:1 box reduce, then a hard threshold so the ink
+    lands solid instead of as a grey fringe."""
+    ss = _ESCRITOIRE_SS
+    big = mask.transform((800 * ss, 480 * ss), Image.Transform.PERSPECTIVE, _escritoire_coeffs(ss),
+                         resample=Image.Resampling.BICUBIC)
+    return big.reduce(ss).point(lambda v: 255 if v >= threshold else 0)
+
+
+def _escritoire_paint_letter(image: Image.Image, quote_row: dict) -> None:
+    """The letter: faint earlier lines stippled in black, the quote solid
+    black, the matched phrase solid blue, all clipped to the paper."""
+    layout = _escritoire_layout(quote_row)
+    prose, phrase, faint = _escritoire_masks(quote_row, layout)
+    paper = _escritoire_sheet_mask(image.size)
+    faint = ImageChops.multiply(_escritoire_warp(faint, 110),
+                                _escritoire_stipple(Image.new("L", image.size, 104)))
+    image.paste(SPECTRA6["black"], (0, 0), ImageChops.multiply(faint, paper))
+    image.paste(SPECTRA6["black"], (0, 0), ImageChops.multiply(_escritoire_warp(prose, 120), paper))
+    image.paste(SPECTRA6["blue"], (0, 0), ImageChops.multiply(_escritoire_warp(phrase, 120), paper))
+
+
+def _escritoire_pen_axis() -> tuple:
+    (ax, ay), (bx, by), radius = _ESCRITOIRE_PEN
+    length = math.hypot(bx - ax, by - ay)
+    return ax, ay, (bx - ax) / length, (by - ay) / length, length, radius
+
+
+def _escritoire_paint_pen(image: Image.Image) -> None:
+    """The fountain pen across the far band, nib toward the quote: black
+    lacquer, a gold section band, cap ring, clip and finial, a gold nib with its
+    slit and breather hole, a dotted highlight along the barrel, a shadow on
+    the paper. It tapers a little toward the cap so it recedes with the page."""
+    ax, ay, ux, uy, length, r = _escritoire_pen_axis()
+    nx, ny = -uy, ux
+    black, gold = SPECTRA6["black"], SPECTRA6["green"]     # green is a sentinel for gold
+
+    def taper(t):
+        return 1.0 - 0.15 * t / length
+
+    def section(draw, t0, t1, rad, fill):
+        draw.polygon([(ax + ux * t + nx * rad * taper(t) * s, ay + uy * t + ny * rad * taper(t) * s)
+                      for t, s in ((t0, 1), (t1, 1), (t1, -1), (t0, -1))], fill=fill)
+
+    shadow = Image.new("L", image.size, 0)
+    section(ImageDraw.Draw(shadow), 0, length, r + 1, 255)
+    shadow = _furies_shift(shadow, 5, 10).filter(ImageFilter.GaussianBlur(5))
+    shadow = Image.eval(shadow, lambda v: v * 44 // 64)
+    image.paste(black, (0, 0), _escritoire_stipple(shadow))
+
+    draw = ImageDraw.Draw(image)
+    draw.polygon([(ax, ay), (ax + ux * 46 + nx * 7, ay + uy * 46 + ny * 7),
+                  (ax + ux * 46 - nx * 7, ay + uy * 46 - ny * 7)], fill=gold)
+    section(draw, 44, 120, r * 0.8, black)
+    section(draw, 120, 134, r * 0.95, gold)
+    section(draw, 134, length - 72, r, black)
+    section(draw, length - 72, length - 64, r * 1.1, gold)
+    section(draw, length - 64, length - 4, r * 1.1, black)
+    for t, rad in ((44, r * 0.8), (length - 4, r * 1.1)):
+        rr, cx, cy = rad * taper(t), ax + ux * t, ay + uy * t
+        draw.ellipse((cx - rr, cy - rr, cx + rr, cy + rr), fill=black)
+    cx, cy = ax + ux * (length - 2), ay + uy * (length - 2)
+    draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=gold)
+    clip = -(r - 1)
+    draw.line([(ax + ux * (length - 60) + nx * clip, ay + uy * (length - 60) + ny * clip),
+               (ax + ux * (length - 12) + nx * clip, ay + uy * (length - 12) + ny * clip)], fill=gold, width=3)
+    draw.line([(ax + ux * 4, ay + uy * 4), (ax + ux * 34, ay + uy * 34)], fill=black, width=1)
+    cx, cy = ax + ux * 34, ay + uy * 34
+    draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=black)
+    px = image.load()
+    width, height = image.size
+    for t in range(50, int(length) - 70, 3):
+        off = -(r * taper(t) - 4)
+        hx, hy = int(ax + ux * t + nx * off), int(ay + uy * t + ny * off)
+        if 0 <= hx < width and 0 <= hy < height:
+            px[hx, hy] = SPECTRA6["white"]
+    # Gold: 5/8 red, 3/8 yellow, on the ordered tile, over the pen's own box.
+    reach = int(r * 1.1) + 6
+    x0, x1 = max(0, int(min(ax, ax + ux * length)) - reach), min(width, int(max(ax, ax + ux * length)) + reach + 1)
+    y0, y1 = max(0, int(min(ay, ay + uy * length)) - reach), min(height, int(max(ay, ay + uy * length)) + reach + 1)
+    for y in range(y0, y1):
+        row = BAYER_8x8[y % 8]
+        for x in range(x0, x1):
+            if px[x, y] == gold:
+                px[x, y] = SPECTRA6["yellow"] if row[x % 8] < 24 else SPECTRA6["red"]
+
+
+def render_escritoire_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """A handwritten letter on a writing desk, seen at an angle (see the
+    section comment above).
+
+    ``time_str`` is unused by design: the matched phrase carries the time.
+    """
+    del time_str
+    image = _escritoire_scene().copy()
+    _escritoire_paint_letter(image, quote_row)
+    _escritoire_paint_pen(image)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     # Swap characters the theme's text faces cannot draw for ASCII stand-ins
     # before any layout or frame dispatch, so custom frames get it too.
@@ -39431,6 +39930,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return render_yorha_frame(time_str, quote_row, width, height)
     if theme == "hitchhiker":
         return render_hitchhiker_frame(time_str, quote_row, width, height)
+    if theme == "escritoire":
+        return render_escritoire_frame(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
