@@ -7455,10 +7455,22 @@ class TestHitchhikerFrame(_CustomFrameCase):
         assert label.get(rq.SPECTRA6["yellow"], 0) > 100                # YOU ARE HERE
 
 
+def _escritoire_to_canvas(u: float, v: float) -> tuple[float, float]:
+    """Sheet units to canvas pixels: the closed-form inverse of
+    ``rq._escritoire_coeffs`` (the renderer only ever maps the other way)."""
+    a, b, c, d, e, f, g, h = rq._escritoire_coeffs()
+    m11, m12, m21, m22 = a - g * u, b - h * u, d - g * v, e - h * v
+    det = m11 * m22 - m12 * m21
+    return ((u - c) * m22 - (v - f) * m12) / det, ((v - f) * m11 - (u - c) * m21) / det
+
+
 class TestEscritoireFrame:
     """``escritoire`` — a handwritten letter on a writing desk, seen at an
     angle: the quote laid out flat, warped into perspective, with faint
-    earlier lines in the foreshortened band and brass out of focus beyond."""
+    earlier lines in the foreshortened band and brass out of focus beyond.
+
+    Not a ``_CustomFrameCase``: that base asserts the frame changes with the
+    hour, and this one deliberately carries no clock."""
 
     THEME = "escritoire"
     ROW = dict(display_quote="At half past two Mr. and Mrs. Irving left, and everybody went to "
@@ -7485,6 +7497,10 @@ class TestEscritoireFrame:
             first = rq.theme_font_candidates(self.THEME, role)[0]
             assert first[0] == rq.DANCINGSCRIPT_VARIABLE and first[1] in ("Regular", "Bold")
             assert (pathlib.Path(first[0]).parent / "OFL.txt").exists()
+        # The hand is the letter theme's, shared rather than copied, so the
+        # two fallback chains cannot drift apart.
+        for role in ("quote_regular", "quote_bold"):
+            assert rq.THEME_FONTS[self.THEME][role] is rq.THEME_FONTS["letter"][role]
 
     def test_on_palette_deterministic_and_clockless(self):
         image = self._render()
@@ -7506,7 +7522,7 @@ class TestEscritoireFrame:
     def test_sheet_mapping_round_trips(self):
         coeffs = rq._escritoire_coeffs()
         for u, v in ((0, 0), (900, 0), (450, 300), (100, 520)):
-            x, y = rq._escritoire_to_canvas(u, v)
+            x, y = _escritoire_to_canvas(u, v)
             a, b, c, d, e, f, g, h = coeffs
             den = g * x + h * y + 1
             assert abs((a * x + b * y + c) / den - u) < 1e-6
@@ -7535,7 +7551,7 @@ class TestEscritoireFrame:
         assert band_top <= top and bottom <= band_bottom + 1
         left, right = rq._ESCRITOIRE_LEFT, rq._ESCRITOIRE_LEFT + rq._ESCRITOIRE_MEASURE
         for u, v in ((left, top), (right, top), (left, bottom), (right, bottom)):
-            x, y = rq._escritoire_to_canvas(u, v)
+            x, y = _escritoire_to_canvas(u, v)
             assert 8 <= x <= 792 and 8 <= y <= 472, (row_name, u, v, x, y)
         # Sizes stay above the floor a script face needs after the warp.
         assert layout["size"] >= rq._ESCRITOIRE_SIZES[rq.choose_layout(row["display_quote"])][1] * rq._ESCRITOIRE_SS
@@ -7576,3 +7592,59 @@ class TestEscritoireFrame:
         bare = make_row(**dict(self.ROW, author="", title=""))
         layout = rq._escritoire_layout(bare)
         assert layout["author"] == "" and layout["title"] == rq.fallback_title(bare)
+
+    def test_extreme_lengths_shrink_rather_than_overflow(self):
+        """The curator previews raw rows of up to ~470 characters, far past
+        anything the clock picks; they must still end inside the band."""
+        sentence = "At half past two the whole household went down to the river to see them off. "
+        row = make_row(**dict(self.ROW, display_quote=(sentence * 6).strip()))
+        assert len(row["display_quote"]) > 460
+        layout = rq._escritoire_layout(row)
+        assert layout["block"][1] <= rq._ESCRITOIRE_BAND[1] + 1
+        assert layout["size"] >= rq._ESCRITOIRE_FLOOR * rq._ESCRITOIRE_SS
+        for u in (rq._ESCRITOIRE_LEFT, rq._ESCRITOIRE_LEFT + rq._ESCRITOIRE_MEASURE):
+            for v in layout["block"]:
+                x, y = _escritoire_to_canvas(u, v)
+                assert 8 <= x <= 792 and 8 <= y <= 472
+
+    def test_signature_reserve_follows_the_fields_present(self):
+        """Room is reserved per signature line present, not a fixed two lines:
+        without an author the quote has more of the band and sets no smaller,
+        and the block ends no lower."""
+        for row in (self.HERO, self.ROW, self.DENSE):
+            full = rq._escritoire_layout(make_row(**row))
+            untitled = rq._escritoire_layout(make_row(**dict(row, author="")))
+            assert untitled["author"] == "" and untitled["title"] == row["title"]
+            assert untitled["size"] >= full["size"]
+            assert untitled["block"][1] <= rq._ESCRITOIRE_BAND[1] + 1
+        # On the dense row, which is height-bound, the freed line buys a larger
+        # size outright.
+        dense_full = rq._escritoire_layout(make_row(**self.DENSE))
+        dense_bare = rq._escritoire_layout(make_row(**dict(self.DENSE, author="")))
+        assert dense_bare["size"] > dense_full["size"]
+
+    def test_missing_display_quote_renders(self):
+        for value in ("", None):
+            image = self._render(dict(self.ROW, display_quote=value, matched_text=""))
+            assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+
+    def test_shadow_does_not_wrap_onto_the_top_rows(self):
+        """The sheet runs off the bottom of the panel; a wrapping shift carried
+        its shadow round to rows 0-25 and blacked out the lamp light there."""
+        image = Image.new("RGB", (800, 480), rq.SPECTRA6["red"])
+        rq._escritoire_paint_shadow(image)
+        assert ink_counts(image.crop((0, 0, 800, 40))) == {rq.SPECTRA6["red"]: 800 * 40}
+        # It does land below and right of the sheet's near edges.
+        assert ink_counts(image.crop((0, 440, 800, 480))).get(rq.SPECTRA6["black"], 0) > 100
+
+    def test_scene_cache_rebuilds_when_a_painter_changes(self, monkeypatch):
+        """The cache is keyed on the painters, so a neutered painter is seen
+        even when an earlier render warmed it (the decoration fence relies on
+        this)."""
+        warm = rq._escritoire_scene()
+        for name in ("_escritoire_paint_desk", "_escritoire_paint_shadow",
+                     "_escritoire_paint_brass", "_escritoire_paint_sheet"):
+            with monkeypatch.context() as m:
+                m.setattr(rq, name, lambda image: None)
+                assert pixel_bytes(rq._escritoire_scene()) != pixel_bytes(warm), name
+        assert pixel_bytes(rq._escritoire_scene()) == pixel_bytes(warm)
