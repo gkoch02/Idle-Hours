@@ -20,6 +20,7 @@ import os
 import re
 from pathlib import Path
 
+from idle_hours import runtime_webhook
 from idle_hours.runtime_log import _log
 
 DEFAULT_TELEMETRY_PATH = "~/.idle-hours/telemetry.jsonl"
@@ -113,14 +114,9 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     # An explicit ``ts`` on the caller's entry wins, as it does in the file.
     entry = {"ts": _now_ts(), **entry}
     _append_entry(telemetry_path, entry, fsync=True)
-    # Lazy import: webhook config is read at the call boundary so a test that
-    # never configures one pays no import cost. The module is tiny anyway,
-    # but the deferred import also keeps the import graph clean —
-    # ``runtime_webhook`` doesn't depend on us, so there's no cycle.
-    from idle_hours.runtime_webhook import get_config, post_event
-    url, all_events = get_config()
+    url, all_events = runtime_webhook.get_config()
     if url:
-        post_event(url, entry, send_all=all_events)
+        runtime_webhook.post_event(url, entry, send_all=all_events)
 
 
 def _now_ts() -> str:

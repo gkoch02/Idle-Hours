@@ -53,7 +53,8 @@ These are the surfaces where a security bug would matter:
   state, and trigger renders / theme changes / shutdown. Report auth bypass,
   path traversal, injection (including via the `<source_id>:<line_number>`
   override keys), or writes outside the intended paths. Validation lives in
-  `web_server.validate_overrides_payload` /
+  `web_server.validate_overrides_payload` (which runs
+  `pick_quote.sanitize_overrides` in strict mode) /
   `web_server.validate_content_overrides_payload` and rejects unknown fields,
   bad key shapes, and wrong-type values with 400.
 - **Read-only endpoints with corpus reach (`GET /api/search`,

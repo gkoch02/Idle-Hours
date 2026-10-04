@@ -130,10 +130,10 @@ PREVIEW_MIN_HEIGHT = 60
 PREVIEW_MAX_WIDTH = 800
 PREVIEW_MAX_HEIGHT = 480
 BUCKET_PATH_RE = re.compile(r"^/api/bucket/(?P<bucket>h(?:[1-9]|1[0-2])_[a-z_]+)$")
-# Per-row content-override key: "<source_id>:<line_number>". Source IDs are
-# numeric strings in the corpus (Gutenberg IDs like "141"); line_number is a
-# positive int. Matches what ``apply_content_overrides.row_key`` produces.
-CONTENT_OVERRIDE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+:\d+$")
+# Per-row key "<source_id>:<line_number>", shared by content overrides and
+# ban_quote_keys. The picker owns the rule, so its loader and this module
+# accept exactly the same keys.
+_is_quote_key = pick_quote_module.is_quote_key
 LOCALHOST_HOSTS = {"", "127.0.0.1", "localhost", "::1"}
 # The Host-header check needs its own set. LOCALHOST_HOSTS carries ``""``
 # because ``_parse_bind`` normalises an empty *bind* host to 127.0.0.1 — an
@@ -544,23 +544,15 @@ SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _is_id(value: object) -> bool:
-    """Accept string/int source IDs, but reject booleans.
-
-    ``bool`` is a subclass of ``int`` in Python, so a bare ``isinstance(..., int)``
-    would accept ``True`` and coerce it to ``"True"`` downstream. Explicitly
-    exclude it so the on-disk file only ever contains strings and ints.
-    """
-    if isinstance(value, bool):
-        return False
-    return isinstance(value, (str, int))
 
 
 def validate_overrides_payload(payload: object) -> dict:
     """Return a cleaned overrides dict, or raise ``ValueError`` with a caller-safe message.
 
     Validates and normalises the four schema keys of
-    ``assets/selection_overrides.json`` and returns only those. The wholesale
+    ``assets/selection_overrides.json`` with ``pick_quote.sanitize_overrides``
+    in strict mode, the same function the runtime loader uses leniently, and
+    returns only those keys. The wholesale
     save (``_api_overrides_post``) layers them over the submitted document so
     an operator's own extra top-level keys (a ``_comment``, a field from a
     newer schema) survive the editor round-trip, as they already do through
@@ -580,35 +572,8 @@ def validate_overrides_payload(payload: object) -> dict:
             "payload must contain at least one of "
             f"{OVERRIDES_KEYS} — refusing to treat empty body as a wipe"
         )
-    ban = payload.get("ban_source_ids", [])
-    boost = payload.get("boost_source_ids", [])
-    preferred = payload.get("preferred_buckets", {})
-    ban_quote_keys = payload.get("ban_quote_keys", [])
-    if not isinstance(ban, list) or not all(_is_id(x) for x in ban):
-        raise ValueError("ban_source_ids must be a list of string/int ids")
-    if not isinstance(boost, list) or not all(_is_id(x) for x in boost):
-        raise ValueError("boost_source_ids must be a list of string/int ids")
-    if not isinstance(preferred, dict):
-        raise ValueError("preferred_buckets must be an object")
-    if not isinstance(ban_quote_keys, list):
-        raise ValueError("ban_quote_keys must be a list of '<source_id>:<line_number>' strings")
-    for entry in ban_quote_keys:
-        if not isinstance(entry, str) or not CONTENT_OVERRIDE_KEY_RE.match(entry):
-            raise ValueError(
-                f"ban_quote_keys entry {entry!r} must be of the form '<source_id>:<line_number>'"
-            )
-    valid_buckets = pick_quote_module.valid_bucket_names()
-    for key, value in preferred.items():
-        if key not in valid_buckets:
-            raise ValueError(f"preferred_buckets key {key!r} is not a valid bucket")
-        if not _is_id(value):
-            raise ValueError(f"preferred_buckets[{key!r}] must be a string/int source id")
-    return {
-        "ban_source_ids": [str(x) for x in ban],
-        "boost_source_ids": [str(x) for x in boost],
-        "preferred_buckets": {k: str(v) for k, v in preferred.items()},
-        "ban_quote_keys": list(ban_quote_keys),
-    }
+    cleaned = pick_quote_module.sanitize_overrides(payload, strict=True)
+    return {key: cleaned[key] for key in OVERRIDES_KEYS}
 
 
 def serialize_overrides(payload: dict) -> bytes:
@@ -707,7 +672,7 @@ def validate_content_overrides_payload(payload: object) -> dict:
         raise ValueError(f"expected JSON object, got {type(payload).__name__}")
     cleaned: dict[str, dict] = {}
     for key, value in payload.items():
-        if not isinstance(key, str) or not CONTENT_OVERRIDE_KEY_RE.match(key):
+        if not _is_quote_key(key):
             raise ValueError(f"override key {key!r} must be of the form '<source_id>:<line_number>'")
         if not isinstance(value, dict):
             raise ValueError(f"override for {key!r} must be a JSON object")
@@ -1480,40 +1445,17 @@ class CuratorHandler(BaseHTTPRequestHandler):
         })
 
     def _api_setup_post(self) -> None:
-        """Mark the first-run wizard complete; optionally apply a chosen theme.
+        """Mark the first-run wizard complete, optionally applying ``{"theme": name}``.
 
-        Body shape: ``{"theme": "<name>"?}``. When ``theme`` is present the
-        target is applied via the same ``run_clock.action_theme`` path the
-        web dropdown uses, so the panel updates and ``manual_theme`` is
-        persisted.
+        The theme goes through ``run_clock.action_theme``, as the web dropdown does.
+        An unknown theme returns 400, a render in flight 409, and any other theme
+        failure 500; in each case ``setup_complete`` stays False so the wizard
+        reappears with the old theme still on the panel. A failed state.json write is
+        logged and swallowed, leaving the in-memory flag True for this session.
 
-        Failure handling:
-
-        * **Unknown theme** → 400, ``setup_complete`` stays False so the
-          wizard reappears with no state mutation.
-        * **Render in flight (``error: "busy"``)** → 409, ``setup_complete``
-          stays False. Re-flipping setup_complete=True without a successful
-          theme apply would close the wizard while the panel still shows
-          the old theme — confusing UX. The operator's next click will
-          retry once the in-flight render finishes.
-        * **Generic 5xx from action_theme** → 500, same rollback. Theme
-          handler errors are not the operator's problem to debug from a
-          wizard.
-        * **Persist failure (state.json write)** → log and swallow; the
-          in-memory flag stays True so the current session works. The
-          wizard will retry on next reload if state.json is genuinely
-          unwritable.
-
-        State-mutation discipline: the ``setup_complete`` flip and the
-        ``save_runtime_state`` call are both inside ``state.lock`` to
-        match the persist seams in ``runtime_actions.action_theme`` /
-        ``action_quiet``. Without this, a near-simultaneous button-press
-        snapshot taken between our flip and our save could persist a
-        ``setup_complete=False`` over our True, silently re-triggering
-        the wizard on next page load.
-
-        Returns the same shape as ``GET /api/setup`` so the UI doesn't need
-        a follow-up request to update its in-memory state.
+        The flag flip and the save both happen under ``state.lock``, as in
+        ``runtime_actions``, so a concurrent button snapshot cannot persist False over
+        True. Returns the ``GET /api/setup`` shape so the UI needs no follow-up fetch.
         """
         from idle_hours import run_clock
         ctx = self._ctx()
@@ -1995,7 +1937,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ctx = self._ctx()
         body = self._read_json_body()
         key = body.get("key") if isinstance(body, dict) else None
-        if not isinstance(key, str) or not CONTENT_OVERRIDE_KEY_RE.match(key.strip()):
+        if not isinstance(key, str) or not _is_quote_key(key.strip()):
             raise ValueError("key must be of the form '<source_id>:<line_number>'")
         key = key.strip()
         with _OVERRIDES_LOCK:

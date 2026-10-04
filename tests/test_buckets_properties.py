@@ -97,47 +97,27 @@ class TestBucketForTimeExhaustive:
 
 
 class TestNeighborBucketsProperties:
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_contains_exactly_12_buckets(self, bucket):
-        assert len(neighbor_buckets(bucket)) == 12
+    """Each property is checked for all 144 buckets in one test. The failure
+    message names the bucket, so one test per bucket would add count, not
+    information."""
 
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_self_is_first(self, bucket):
-        assert neighbor_buckets(bucket)[0] == bucket
+    def test_is_a_permutation_of_its_own_hour(self):
+        for bucket in _all_buckets():
+            hour = bucket.split("_", 1)[0]
+            neighbors = neighbor_buckets(bucket)
+            expected = {f"{hour}_{state}" for state in BUCKET_ORDER}
+            assert len(neighbors) == 12, bucket
+            assert set(neighbors) == expected, f"{bucket}: {neighbors}"
 
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_all_unique(self, bucket):
-        neighbors = neighbor_buckets(bucket)
-        assert len(set(neighbors)) == len(neighbors), f"duplicate neighbor: {neighbors}"
-
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_all_share_same_hour(self, bucket):
-        """The fallback walker never crosses hour boundaries — a 3:02 quote
-        can fall back to 3:05 or 3:10 but never to 4:00 or 2:55."""
-        hour_part = bucket.split("_", 1)[0]
-        for neighbor in neighbor_buckets(bucket):
-            assert neighbor.startswith(f"{hour_part}_"), f"{neighbor} escapes hour {hour_part}"
-
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_all_neighbors_are_valid_buckets(self, bucket):
-        known = set(_all_buckets())
-        for neighbor in neighbor_buckets(bucket):
-            assert neighbor in known, f"invalid neighbor {neighbor!r}"
-
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_distance_ordering_is_alternating(self, bucket):
-        """Neighbours appear in order 0, -1, +1, -2, +2, … relative to the
-        starting state index. This is what pick_quote documents."""
-        state = bucket.split("_", 1)[1]
-        idx = BUCKET_ORDER.index(state)
-        distances = []
-        for neighbor in neighbor_buckets(bucket):
-            n_state = neighbor.split("_", 1)[1]
-            distances.append(BUCKET_ORDER.index(n_state) - idx)
-        # Absolute distances must be non-decreasing.
-        abs_dists = [abs(d) for d in distances]
-        for i in range(1, len(abs_dists)):
-            assert abs_dists[i] >= abs_dists[i - 1], f"non-monotonic distance order: {abs_dists}"
+    def test_order_is_nearest_first_earlier_wins_ties(self):
+        """Offsets run 0, -1, +1, -2, +2, … and continue one-sided once an edge
+        of the hour is reached. Within an hour the states are a line from :00
+        to :55, not a circle, so ``five_to`` never wraps onto ``exact``."""
+        for bucket in _all_buckets():
+            idx = BUCKET_ORDER.index(bucket.split("_", 1)[1])
+            offsets = [BUCKET_ORDER.index(n.split("_", 1)[1]) - idx for n in neighbor_buckets(bucket)]
+            expected = sorted(range(-idx, len(BUCKET_ORDER) - idx), key=lambda d: (abs(d), d))
+            assert offsets == expected, f"{bucket}: {offsets}"
 
 
 class TestBucketInvariants:
@@ -172,12 +152,11 @@ class TestNeighborBucketsRealMinuteOrder:
     "ten to four" one. The linear walk is already nearest-first.
     """
 
-    @pytest.mark.parametrize("bucket", _all_buckets())
-    def test_nth_neighbour_never_further_in_minutes_than_next(self, bucket):
-        base = DEFAULT_BUCKET_MINUTES[bucket.split("_", 1)[1]]
-        dists = [abs(DEFAULT_BUCKET_MINUTES[n.split("_", 1)[1]] - base) for n in neighbor_buckets(bucket)]
-        for i in range(1, len(dists)):
-            assert dists[i] >= dists[i - 1], f"non-monotonic minute distance: {dists}"
+    def test_nth_neighbour_never_further_in_minutes_than_next(self):
+        for bucket in _all_buckets():
+            base = DEFAULT_BUCKET_MINUTES[bucket.split("_", 1)[1]]
+            dists = [abs(DEFAULT_BUCKET_MINUTES[n.split("_", 1)[1]] - base) for n in neighbor_buckets(bucket)]
+            assert dists == sorted(dists), f"{bucket}: non-monotonic minute distance {dists}"
 
     def test_five_to_is_late_in_its_own_hour(self):
         assert bucket_for_time("03:55") == "h3_five_to"

@@ -209,6 +209,15 @@ class TestArchaicReversedCompound:
     def test_parse_and_with_unknown_word_returns_none(self):
         assert parse_number_word("five and banana") is None
 
+    def test_tens_before_unit_is_not_a_reversed_compound(self):
+        # The private copy this script used to carry accepted these; the miner never did.
+        assert parse_number_word("twenty and five") is None
+        assert parse_number_word("one and one") is None
+
+    def test_shares_the_miners_parser(self):
+        from idle_hours.gutenberg_time_miner import normalize_number_phrase
+        assert parse_number_word is normalize_number_phrase
+
     def test_infer_hyphenated_past(self):
         result = infer_time_from_quote(
             "I shall be passing here at five-and-twenty minutes past seven."

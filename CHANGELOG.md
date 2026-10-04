@@ -15,6 +15,22 @@ these entries under the new dated version heading.
   phrase in blue fountain-pen ink. Faint asemic lines fill the
   foreshortened far band, a fountain pen lies across them, and brass
   stands sit out of focus beyond the sheet.
+- A hand-edited `selection_overrides.json` with a field of the wrong type no
+  longer breaks the clock or bans the wrong book. A `null` list used to raise
+  on every pick and freeze the panel in render backoff, and a ban written as
+  the string `"141"` banned sources 1 and 4 instead of 141. Each field is now
+  checked on its own: a bad field or entry is dropped with a warning and the
+  rest of the file still applies.
+- The wheel no longer ships four unused Spectral SC font weights (about 1 MiB).
+- `idle-hours contact-sheet` applies your bans and boosts again. It was
+  loading overrides from a path that stopped existing in the package move, so
+  the QA sheet could show quotes the panel never would. A new `--overrides`
+  flag points it at an appliance's relocated copy.
+- A problem in `selection_overrides.json` is reported once per edit of the
+  file rather than on every pick, and the render subprocess no longer repeats
+  it.
+- A banned-quote key with a trailing newline or non-ASCII digits is now
+  rejected instead of being saved as a ban that could never match.
 - Literary-layout themes (the thirty-eight that share `render`'s text path)
   set type better: justification is decided per block and never opens
   rivers (no line with under three gaps or more than 0.45 em per gap is

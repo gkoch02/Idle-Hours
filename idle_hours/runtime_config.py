@@ -127,38 +127,20 @@ def load_config(
     hhmm_validator: Callable[[str], str] | None = None,
     choices_map: dict[str, list[str]] | None = None,
 ) -> dict[str, object]:
-    """Load ``path`` and return a mapping of argparse dest → value.
+    """Load ``path`` and return a mapping of argparse dest to value.
 
-    ``path`` of ``None`` returns ``{}`` (no-op, keeps argparse defaults).
+    ``None`` returns ``{}``. A path that does not exist exits with
+    :data:`EXIT_CONFIG_ERROR`, because an explicit ``--config`` typo should fail
+    loudly at startup. Anything wrong inside a readable file (bad TOML, non-table
+    root, unknown key, wrong type, value outside ``choices_map``) is warned about
+    on stderr and skipped; the surviving keys are returned.
 
-    ``path`` pointing at a non-existent file is treated as a hard error
-    (``SystemExit`` with :data:`EXIT_CONFIG_ERROR`) rather than silently
-    falling back: the user
-    passed ``--config FOO``, so a missing FOO is a typo they want to
-    hear about loudly at startup, not an implicit "run with defaults"
-    signal.
-
-    Malformed TOML, unreadable file contents, a non-table root, unknown
-    keys, and type mismatches all log a stderr warning and are skipped.
-    The loader never raises on a file it *could* read; the stream of
-    warnings plus the surviving good keys is the contract.
-
-    ``hhmm_validator`` is injected by ``run_clock`` so its argparse
-    ``type=`` callable and the config path report identical errors. When
-    omitted, :func:`validate_hhmm` is used instead, so a caller that only
-    wants one key out of a config file (``idle-hours health --config``) need
-    not import the orchestrator. Note the injection direction is load-bearing:
-    this module must never import ``run_clock``, or the runtime modules'
-    acyclic import graph breaks — which is why the rule itself lives here and
-    ``run_clock._valid_hhmm`` wraps it, rather than the reverse.
-
-    ``choices_map`` mirrors argparse's own ``choices=`` gate for the
-    subset of keys that declare one (``mode``, ``theme``, …). Without
-    this, a typoed ``mode = "produciton"`` would flow through
-    ``set_defaults`` unchecked and surface only when the render
-    subprocess's own parser rejected it hours later. Built by
-    ``run_clock.parse_args`` from the live parser's actions so the
-    source of truth stays single-seated.
+    ``hhmm_validator`` lets ``run_clock`` share its argparse ``type=`` callable so
+    both paths report identical errors; it defaults to :func:`validate_hhmm`. The
+    rule lives here, not in ``run_clock``, because this module must never import
+    the orchestrator. ``choices_map`` is built by ``run_clock.parse_args`` from the
+    live parser, so a typo such as ``mode = "produciton"`` fails here rather than
+    in a render subprocess hours later.
     """
     if path is None:
         return {}

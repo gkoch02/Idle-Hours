@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -319,11 +320,11 @@ class TestSchemaVersion:
         Sweeps all 144 canonical buckets' committed rows via the current
         resolver so we know the DB is loadable + current.
         """
-        from pathlib import Path
-        repo_root = Path(__file__).resolve().parent.parent
-        db_path = repo_root / "assets" / "quote_database.jsonl"
-        if not db_path.exists():
-            pytest.skip("assets/quote_database.jsonl not committed")
+        # The DB is committed, so a missing file is a failure, not a skip. This
+        # test used to look under the pre-package ``assets/`` path and skipped
+        # on every run without anyone noticing.
+        db_path = Path(pick_quote.DEFAULT_DATABASE_PATH)
+        assert db_path.is_file(), f"committed baked database missing: {db_path}"
         rows = pick_quote.load_rows(db_path)
         baked = [r for r in rows if "baked_score" in r]
         assert baked, "committed database has no baked rows"

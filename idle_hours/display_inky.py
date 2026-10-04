@@ -18,503 +18,105 @@ MAX_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = (1, 4)  # sleeps between attempt 1→2 and 2→3
 NON_RETRYABLE_EXCEPTIONS = (FileNotFoundError, PermissionError)
 
-# Per-theme saturation defaults. The Spectra 6 panel renders dark backgrounds with
-# a different waveform than light ones; pushing saturation slightly higher on the
-# dark theme keeps accent colours from looking muddy. Unknown themes fall back to
-# the ``default`` entry via ``resolve_saturation``.
-#
-# Light themes keep the gentler 0.5 to avoid blown-out accent reds / blues; dark
-# themes and the green-on-black ``nightvision`` use 0.7 to keep the accent pop.
-# ``newsprint`` is intentionally low-contrast (no colour accent) so 0.5 matches
-# the perceptual brief — pushing it higher would start tinting the blacks.
+# Per-theme saturation passed to ``inky.set_image``. One rule sets the tier:
+# a light page ground takes 0.5, which keeps accents from blowing out on white;
+# a dark or coloured ground, or one dominated by falling-density blooms, takes
+# 0.7, which stops accents going muddy against it. Entries carry a comment only
+# where they depart from that rule. These are starting values, not measured on
+# a panel; ``--saturation`` overrides them. Every theme in
+# ``render_quote.THEMES`` must have an entry (a test enforces it).
 THEME_SATURATION: dict[str, float] = {
-    "default": 0.5,
-    "dark": 0.7,
-    "scholar": 0.5,
-    "newsprint": 0.5,
-    "nightvision": 0.7,
-    # Cyanotype blueprint: blue ground (the only theme to claim Spectra 6's
-    # blue as a *page background*), white ink for every mark. Same coloured-
-    # ground tier as ``atomic`` / ``comic`` so the white-on-blue marks stay
-    # crisp against the panel's anchored blue.
-    "blueprint": 0.7,
-    # Light white-background themes inherit the default 0.5 starting point —
-    # same empirical tier as ``default`` / ``scholar`` / ``newsprint``. These
-    # defaults are sensible initial values and are easy to override at runtime
-    # via ``--saturation`` if real-panel calibration suggests otherwise.
-    "illuminated": 0.5,
-    "bauhaus": 0.5,
-    # Black ground with a chromatic accent — same tier as ``dark`` /
-    # ``nightvision`` so the rubric red and white body don't desaturate
-    # against the panel's anchored black.
-    "gothic": 0.7,
-    # Non-standard grounds (``risograph`` has no black ink to anchor the
-    # two spot colours; ``comic`` has a high-chroma yellow ground rather
-    # than white) start at the 0.7 tier used by dark-background themes,
-    # on the reasoning that the accent hues need a little more push to
-    # stay visibly distinct from a non-white, non-black neighbour.
-    # Revisit once we have real-panel samples — `--saturation` overrides.
-    "risograph": 0.7,
-    "comic": 0.7,
-    # White ground with chromatic accent — same tier as ``default`` /
-    # ``scholar`` / ``newsprint`` / ``blueprint`` / ``illuminated`` /
-    # ``bauhaus``. Black typewriter ink + red rubber stamp on white
-    # paper sits squarely in the light-background tier.
-    "dispatch": 0.5,
-    # Saturated green ground (the only theme whose page_bg is green) —
-    # same tier as other coloured-ground / non-white themes (`comic` /
-    # `risograph` / `dark` / `nightvision`) so the red atomic accents
-    # and oversized red quote marks don't desaturate against the
-    # vivid Sputnik-green background.
-    "atomic": 0.7,
-    # White ground but the decorative border lights up every Spectra 6
-    # spot colour the panel can produce (red / yellow / blue / green /
-    # black). Push to the higher 0.7 tier so all four chromatic accents
-    # in the dashed perimeter and corner asterisks stay punchy — at the
-    # default 0.5 the green dashes can read pale-mint against the white
-    # paper rather than as confident marker ink. Black body text isn't
-    # affected by saturation either way.
-    "marker": 0.7,
-    # White ground / black body / red accent — same chromatic pressure
-    # as ``default`` / ``dispatch`` so the gentler 0.5 tier is the
-    # right starting point. The saloon theme's red foxing speckles
-    # are sparse enough that they read as aged-paper texture at any
-    # saturation; pushing higher would risk turning the speckles into
-    # vivid spots that compete with the body text. Override at runtime
-    # via ``--saturation`` if real-panel calibration suggests otherwise.
-    "saloon": 0.5,
-    # Light limestone ground / black body / red rubrum accent — same
-    # palette shape as ``default`` / ``dispatch`` / ``saloon`` so the
-    # gentler 0.5 tier is the natural starting point. The Roman theme's
-    # stone-grain speckles are sparse and confined to the outer margin
-    # ring; pushing saturation higher would risk turning the SPQR
-    # cartouche and mid-edge interpunct dots into vivid spots that
-    # compete with the body inscription. Override via ``--saturation``
-    # after real-panel calibration if the rubrum reads too pale.
-    "roman": 0.5,
-    # Yellow parchment ground + black body + red matched-phrase rubric
-    # + blue Hermetic ornaments. The yellow ground places this in the
-    # coloured-ground tier alongside ``comic`` (also yellow page_bg),
-    # so 0.7 keeps the red rubricated accent and the blue magic-circle
-    # sigils crisp against the parchment — at 0.5 the corner pentagrams
-    # would dither into a muted lavender against the yellow rather than
-    # reading as the sharp red ritual marks they should be.
-    "alchemy": 0.7,
-    # Black ground / white IM Fell English body / red Eagle Lake
-    # matched phrase. Same chromatic-on-dark profile as ``gothic`` and
-    # ``nightvision`` — push the red accent and oversized red quote
-    # marks so they don't desaturate against the panel's anchored
-    # black ground.
-    "grimoire": 0.7,
-    # White ground / black body / red accent paired with Righteous. Same
-    # chromatic-on-light profile as ``default`` / ``dispatch`` / ``saloon`` /
-    # ``roman`` — the gentler 0.5 tier keeps the red rising-sun fan and
-    # the stepped corner ornaments crisp without over-saturating the
-    # body's black ink. Override via ``--saturation`` if real-panel
-    # calibration suggests otherwise.
-    "deco": 0.5,
-    # White ground / blue Iceland body / green matched-phrase accent. Two
-    # chromatic ink colours on a light ground — same tier as the other
-    # white-ground themes. The green accent reads cleanly on white at 0.5;
-    # pushing higher would risk muddying the body's blue against the
-    # frost-crystal accent ornaments.
-    "glacier": 0.5,
-    # Black slate ground / white chalk body / yellow chalk-stick matched
-    # phrase. Same chromatic-on-dark profile as ``dark`` / ``gothic`` /
-    # ``nightvision`` / ``grimoire`` — push the yellow accent so it doesn't
-    # desaturate to a muddy ochre against the panel's anchored black.
-    "chalkboard": 0.7,
-    # White sign-paper ground / black hand-printed body / red highlight
-    # accent. Same chromatic-on-light profile as ``default`` / ``deco`` /
-    # ``dispatch`` / ``saloon`` / ``roman`` — the gentler 0.5 tier keeps
-    # the red thumbtack corner accents crisp without over-saturating the
-    # body's black ink. Override via ``--saturation`` if real-panel
-    # calibration suggests otherwise.
-    "placard": 0.5,
-    # Black ink-sky ground with a load-bearing red rising-sun disc that
-    # dominates the bottom-right quadrant of the page. Same chromatic-
-    # on-dark profile as ``dark`` / ``gothic`` / ``grimoire`` /
-    # ``nightvision`` / ``chalkboard`` — push the red disc and accent so
-    # the dramatic blood-sun reads vivid rather than half-dithering into
-    # a muted brick-red against the panel's anchored black.
-    "chanbara": 0.7,
-    # Black computer-console ground with synthesised tangerine elbow + yellow /
-    # coral / red pill buttons on the sidebar. Same chromatic-on-dark profile
-    # as ``dark`` / ``gothic`` / ``grimoire`` / ``nightvision`` / ``chalkboard``
-    # / ``chanbara`` — push the R+Y biased tangerine and the standalone yellow
-    # so the LCARS console reads as the bright Okudagram orange rather than a
-    # muddied amber against the panel's anchored black.
-    "lcars": 0.7,
-    # Diagnostic / status panel — white ground, black body, red accent.
-    # Same chromatic-on-light profile as ``default`` / ``deco`` /
-    # ``saloon`` / ``roman`` so the gentler 0.5 tier is the natural
-    # starting point. The synthesised-stipple swatches are the whole
-    # point of the diags frame: their perceived hues depend on adjacent-
-    # pixel averaging at panel distance, so over-saturation would shift
-    # the calibration target.
-    "diags": 0.5,
-    # sampler — counted cross-stitch embroidery on a cream Aida-cloth ground.
-    # White/cream ground with red + green + blue + yellow floss stitches, so the
-    # gentler white-ground 0.5 tier keeps the floss colours calibrated rather
-    # than blown out.
-    "sampler": 0.5,
-    # lieder — engraved art-song manuscript. White page under the 1-in-8 cream
-    # Layer-0 wash, black plate engraving, and red confined to the sung phrase
-    # (its lyric, noteheads and slur). Same chromatic-red-on-light profile as
-    # ``default`` / ``dispatch`` / ``saloon`` / ``roman`` / ``letter``, so the
-    # gentler 0.5 tier applies: the red is a small fraction of the page by
-    # design and pushing it harder would turn the sung phrase into a blot
-    # against the fine black staff rules it sits on.
-    "lieder": 0.5,
-    # izakaya — neon alley at night. Black ground, and every lit element is a
-    # bloom: one ink at a falling density rather than a solid fill. Those halos
-    # are exactly what a low saturation would flatten, so this takes the 0.7
-    # dark-ground tier alongside ``dark`` / ``outrun`` / ``questline``. The tube
-    # cores are white and yellow and carry legibility on their own, so the push
-    # lands on the coloured gas where it is wanted.
-    "izakaya": 0.7,
-    # abyssal — deep sea. Dark blue-to-black gradient ground, and the lit
-    # elements (caustic net, marine snow, jellyfish, the quote's blooms) are all
-    # falling-density stipples, which is exactly what a low saturation flattens.
-    # Takes the 0.7 dark-ground tier alongside ``izakaya`` for the same reason.
-    "abyssal": 0.7,
-    "pride": 0.5,
-    "pulp": 0.7,
-    "synoptic": 0.5,
-    "vhs": 0.7,
-    # Bakelite console — black CRT glass under a warm scanline field, and
-    # every lit glyph is a falling-density red halo around a yellow or white
-    # core. A bloom is exactly what the gentler tier flattens, so this takes
-    # the dark-ground 0.7 alongside ``izakaya`` / ``abyssal`` for the same
-    # reason; the butterscotch moulding around it also needs the push to stay
-    # a caramel rather than reading as bare paper.
-    "bakelite": 0.7,
-    "cardcatalog": 0.5,
-    # White map stock with four native route inks. The lighter tier keeps the
-    # yellow line visible without blowing out the red/blue interchange marks.
-    "metro": 0.5,
-    # Banknote engraving — white paper, black intaglio line-work, green tint
-    # plate, red serial. Same chromatic-on-light profile as ``default`` /
-    # ``dispatch``, and the whole face is 1 px line-work: pushing the
-    # saturation harder gains nothing on a page whose tone is carried by line
-    # weight, so the gentler tier applies.
-    "intaglio": 0.5,
-    # Whistler nocturne — black night ground, and every lit element (shore
-    # lights, reflections, the rocket's sparks, the matched phrase) is a
-    # falling-density synthesised-gold bloom, exactly what the gentler tier
-    # flattens. Takes the dark-ground 0.7 alongside ``izakaya`` / ``abyssal``
-    # / ``bakelite`` for the same reason.
-    "nocturne": 0.7,
-    # Patinated bronze plaque — a saturated forest-teal 3-ink ground whose
-    # whole story is chroma (verdigris vs gold), the same coloured-ground
-    # argument as ``atomic`` / ``circuit``. The relief highlights are white
-    # and carry legibility on their own, so the push lands on the metals.
-    "plaque": 0.7,
-    # Cased daguerreotype — the silver plate is achromatic and the brass mat
-    # already saturated; the gentler tier keeps the R+G tarnish a soft sepia
-    # instead of a hard speckle, the same light-ground argument as ``tarot``.
-    "daguerreotype": 0.5,
-    # Autochrome plate — a six-ink-dithered colour photograph on a white-ground
-    # mount. The plate's own grain is already a full-palette stipple and the
-    # cream caption card dominates the right third, so it takes the gentler
-    # white-ground tier; pushing harder would harden the pastel grain the
-    # process is known for into poster colour.
-    "autochrome": 0.5,
-    # Operator photograph — an unknown picture conditioned into the pastel band
-    # that dithers to grain, so it lands in the same place autochrome does and
-    # takes the same gentler tier. A dark photograph is still mostly a
-    # full-palette stipple, not a flat dark ground.
-    "photo": 0.5,
-    # Between Us, light — white paper with a faint cream wash, black Fraunces
-    # body, solid-red italic matched phrase and small stippled legend dots.
-    # Same chromatic-on-light profile as ``default`` / ``placard``; the
-    # gentler tier keeps the terracotta accent a warm brick rather than a
-    # fire-engine red against the cream.
-    "betweenus": 0.5,
-    # Between Us, dark — the app's warm brown-black paper on the panel's
-    # anchored black, with an R+Y amber matched phrase and white-lifted legend
-    # tints. Same chromatic-on-dark profile as ``dark`` / ``gothic``: push the
-    # amber so it reads as apricot rather than desaturating to mud.
-    "betweenus_dark": 0.7,
-    # The King in Yellow — black night over Carcosa, solid yellow curtains,
-    # Sign and suns. Dark-ground tier, same as ``dark`` / ``grimdark``: the
-    # yellow is the whole point and must not desaturate toward mustard.
-    "carcosa": 0.7,
-    # Remedy's Control — the Astral Plane: white void, black condensed prose,
-    # K+W stipple blocks and a red Hiss phrase blooming into the white. Same
-    # chromatic-on-light profile as ``default`` / ``swiss``; the gentler tier
-    # keeps the coral halo a stain rather than a fire-engine smear.
-    "control": 0.5,
-    # No Code's Observation — S.A.M.'s camera feed: black space, a banded
-    # Saturn in two-ink mixes, a blue-blooming anomaly, a tangerine-haloed
-    # yellow phrase. Dark-ground tier, same as ``outrun`` / ``nocturne``: the
-    # stippled bands and blooms are exactly what the gentler tier flattens.
-    "observation": 0.7,
-    # Liu Cixin's *The Three-Body Problem* — a black sky whose suns, their
-    # tangerine wakes and the sunlit matched phrase are all falling-density
-    # blooms or sparse stipple. Dark-ground tier, the ``nocturne`` /
-    # ``bakelite`` argument: a low saturation flattens exactly those.
-    "trisolaris": 0.7,
-    # Giger/Beksinski — a K+W airbrushed wall round a blood-red dusk and an
-    # ember-bloomed phrase on near-black. Dark-ground tier: the dithered sky
-    # and the bloom are exactly what the gentler tier flattens.
-    "biomech": 0.7,
-    # Codex Seraphinianus — cream page, black script and pen-hand prose, a
-    # full-palette plant plate. White-ground tier: the plate's inks are
-    # already native or documented two-ink mixes, and pushing saturation
-    # harder would blot the 1 px asemic script lines.
-    "codex": 0.5,
-    # The Culture — a Mind's signal in deep space beside a tilted Orbital:
-    # black ground, a stippled ring surface, green and blue blooms. Dark-ground
-    # tier, same argument as ``observation``.
-    "culture": 0.7,
-    # The Culture's Arch from a plate: a sky that is blue by day and black by
-    # night under a stippled ring. The white card and the day sky dominate
-    # most hours, so the gentler light-ground tier, like ``control``.
-    "orbital": 0.5,
-    # Bacon's 1944 triptych on a black gallery wall — a cadmium-orange R+Y
-    # ground, grey figures and gilt frames. Dark-ground tier, same as
-    # ``observation`` / ``nocturne``: the separated orange and the orange
-    # phrase need the push to stay cadmium rather than rust on black.
-    "furies": 0.7,
-    # Bosch's Garden of Earthly Delights — an open triptych in two-ink oil
-    # mixes (sky, meadow, flesh, rose) on a cream banderole, with a black Hell
-    # wing lit by fire. Light-ground tier: most of the canvas is pale Paradise
-    # and Garden, and the harder tier would push the rose and flesh mixes
-    # toward poster colour.
-    "bosch": 0.5,
-    # Cobb's Semiotic Standard — saturated sign tiles and hazard stripes on a
-    # black bulkhead. Dark-ground tier: the yellow stripes and the red / green
-    # / blue sign frames need the push to stay flag-bright against the black.
-    "semiotic": 0.7,
-    # Returnal's Atropos — a black night under a teal fog dithered to blue +
-    # green, with every light a falling-density tangerine or violet bloom.
-    # Dark-ground tier: the gentler push flattens the blooms and lets the
-    # orange go rust (the ``bakelite`` / ``furies`` argument).
-    "atropos": 0.7,
-    # Housemarque's *Saros* — a black sun in a dithered red-and-gold corona
-    # over a silhouetted colony. Dark-ground tier, the ``biomech`` /
-    # ``nocturne`` argument: every lit thing on the frame is a falling-density
-    # bloom or a diffusion dither on black, which the gentler tier flattens.
-    "saros": 0.7,
-    # Clair Obscur: Expedition 33 — a dusk dithered to the inks over a black
-    # zenith, with the painted hour, the lamp and the matched phrase all
-    # falling-density blooms. Dark-ground tier, the ``atropos`` / ``nocturne``
-    # argument: the gentler push flattens the blooms and rusts the paint.
-    "expedition": 0.7,
-    # The Witcher 3 — a cream parchment page in a dark binding; the page
-    # dominates, and the harder tier would push its Y+W cream to lemon.
-    "witcher": 0.5,
-    # Hades II — a dithered night over the Crossroads and a black boon card;
-    # the moon's halo, the witchfire and the medallion's bloom are all
-    # falling-density stipples on black, which the gentler tier flattens.
-    "hades": 0.7,
-    # The Expanse — the Rocinante's console: black glass, with the MCRN
-    # orange, the cyan gauge sweeps and the chart area all two-ink stipples
-    # on black and the contact an amber bloom, which the gentler tier
-    # flattens.
-    "expanse": 0.7,
-    # Beksiński — a dust-coloured haze over two thirds of the canvas, W+Y
-    # with a black grain; the harder tier would push it to lemon, and the
-    # plain's umber is solid red and black that needs no help.
-    "beksinski": 0.5,
-    # Goya's Black Paintings — a dithered ochre-and-umber void over a black
-    # slope, every tone a yellow / black / red stipple. Coloured-ground tier,
-    # the ``pulp`` / ``comic`` argument: at the gentler push the stipple's
-    # yellow greys toward mustard and the void stops reading as ochre.
-    "goya": 0.7,
-    # 2001's Discovery monitors — solid red / yellow / blue / green flats on
-    # black with white type, and HAL's red lens blooming into the black.
-    # Dark-ground tier: the gentler push greys the blue monitor toward slate
-    # and softens the one bloom on the page.
-    "hal": 0.7,
-    # Severance's MDR terminal — a blue CRT dithered to blue and black in a
-    # black bezel, white digits and a yellow phrase. Dark / coloured-ground
-    # tier, the ``blueprint`` argument: the blue has to stay blue, not slate.
-    "lumon": 0.7,
-    # The Apollo DSKY — black panel, white type, segments in a green bloom.
-    # Dark-ground tier.
-    "dsky": 0.7,
-    # Oblivion — the white desk, black hairlines, one red accent. Light tier:
-    # the page is the panel's white, and a harder push only reddens the dot.
-    "oblivion": 0.5,
-    # NieR — a cream W+Y stipple ground under a dot grid, black type. Light
-    # tier, the ``letter`` / ``witcher`` argument: the harder push turns the
-    # cream's yellow quarter to lemon.
-    "yorha": 0.5,
-    # The 1981 Guide — black screen, white and yellow lettering, flat-colour
-    # planets. Dark-ground tier.
-    "hitchhiker": 0.7,
-    # A handwritten letter on a desk — the cream sheet fills most of the
-    # frame, and its W+Y stipple goes lemon at the harder tier (the ``yorha``
-    # argument). The brass bloom is small enough to hold at 0.5, which is
-    # what the first panel test was judged at.
-    "escritoire": 0.5,
-    # Swiss International / modernist — white ground, black Inter body,
-    # red accent. Same chromatic-on-light profile as ``default`` /
-    # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
-    # 0.5 tier is the natural starting point. The single 6 px red
-    # square is the only chromatic ink on the page besides the matched
-    # phrase; over-saturation would turn that quiet accent into a
-    # competing focal point against the deliberately minimal grid.
-    "swiss": 0.5,
-    # Herbarium / pressed-plant specimen sheet — white ground (with
-    # cream Layer-0 wash), black IM Fell body, olive-stippled matched
-    # phrase. Same chromatic-on-light profile as ``default`` /
-    # ``placard`` — the matched phrase synthesises olive via a Y+G
-    # stipple, and the pressed-leaf graphic uses the same recipe, so
-    # the 0.5 tier preserves the dried-leaf colour the period
-    # specimens actually develop. Pushing higher would saturate the
-    # olive into a brighter chartreuse that breaks the aged-specimen
-    # register.
-    "herbarium": 0.5,
-    # Mucha / Art Nouveau — cream-washed white ground, body painted
-    # via maroon stipple, matched phrase via cyan stipple. Both body
-    # and accent are synthesised colours that depend on adjacent-
-    # pixel averaging, so the 0.5 tier preserves the period palette
-    # of Belle-Époque posters. Pushing higher risks shifting the
-    # body's maroon into a more saturated red and the matched
-    # phrase's cyan into a brighter sky-blue, breaking the warm-cool
-    # contrast the theme depends on.
-    "mucha": 0.5,
-    # Fillmore / 1960s psychedelic poster — yellow ground with all
-    # six Spectra-6 inks visible simultaneously. Same chromatic-on-
-    # coloured-ground profile as ``comic`` (also yellow page_bg) —
-    # the 0.7 tier keeps the green blob, blue blob, red body, and
-    # blue matched phrase confidently saturated against the warm
-    # yellow ground rather than half-fading into the page.
-    "fillmore": 0.7,
-    # Firmament / 17th-century celestial atlas — navy (B+K stipple)
-    # ground with chromatic ornaments (yellow stars, sky-blue moon,
-    # tangerine + cyan Saturn, lavender Milky Way). Same dark-ground
-    # tier as ``dark`` / ``nightvision`` / ``gothic`` / ``chanbara``
-    # so the matched-phrase cream (Y+W) and the synthesised ornament
-    # tones stay punchy against the navy ground rather than fading
-    # into a dim mid-tone.
-    "firmament": 0.7,
-    # Astrarium / astronomical-clock dashboard — cream-washed white
-    # ground, black serif body, tangerine matched phrase (R+Y 5/8:3/8
-    # — same recipe ``deco`` uses), with teal (G+B) and sepia (R+G)
-    # ring quadrants on the dial. Same chromatic-on-light profile as
-    # ``deco`` / ``dispatch`` / ``herbarium`` / ``mucha`` — the
-    # gentler 0.5 tier preserves the dashboard's mid-tone
-    # halftone-stipple register. Pushing higher would saturate the
-    # synthesised tangerine into a brighter fluorescent orange that
-    # breaks the editorial / instrument-panel reading the layout is
-    # going for.
+    # Light ground.
     "astrarium": 0.5,
-    # Kanagawa / stylised Japanese seascape — white washi-paper ground
-    # with a seigaiha textile band (indigo half-disks + white concentric
-    # arcs + navy deepest-row post-pass) anchored at the bottom, a
-    # cream-tinted rounded paper panel knocked out for the body text,
-    # and a red rounded-rectangle hanko seal in the bottom-right corner.
-    # Same chromatic-on-light profile as ``default`` / ``mucha`` /
-    # ``deco`` / ``placard``; the 0.5 tier preserves the cream-panel
-    # vellum register and the navy deepest-row reading — pushing higher
-    # would saturate the panel's Y+W cream into a brighter lemon yellow
-    # and shift the navy stipple toward solid indigo.
-    "kanagawa": 0.5,
-    # Marquee / 1930s movie-palace facade — black ground, yellow
-    # bulb-light border, big chunky Bungee Shade time digits in white,
-    # Cardo Italic quote body with red matched-phrase accent. Same
-    # dark-ground tier as ``dark`` / ``lcars`` / ``firmament`` /
-    # ``gothic`` / ``nightvision`` so the yellow bulb-lights, the
-    # white Cardo body, and the red matched-phrase accent all stay
-    # confidently chromatic against the panel's anchored black.
-    "marquee": 0.7,
-    # Tarot / major-arcana card — cream-washed white ground (Y+W
-    # Bayer wash, same recipe as ``illuminated`` / ``herbarium`` /
-    # ``mucha`` / ``astrarium``), doubled red+black rubricated border,
-    # Tyrian-purple matched-phrase card name. Same chromatic-on-light
-    # profile as ``illuminated`` / ``mucha`` / ``astrarium`` — the
-    # gentler 0.5 tier preserves the rubricated red and the synthesised
-    # purple register without over-saturating the corner pentagrams.
-    "tarot": 0.5,
-    # Vinyl / turntable + record label — cream-washed sleeve ground
-    # (right half) plus a solid black vinyl disk (left half). The
-    # sleeve is the dominant region visually, and the black disk has
-    # no synthesised colour that needs a saturation boost — the red
-    # label and red stylus arm are solid Spectra 6 red. Same
-    # chromatic-on-light profile as ``default`` / ``deco`` /
-    # ``astrarium`` so the gentler 0.5 tier is the natural starting
-    # point. The matched-phrase tangerine (R+Y 5:3) on the sleeve
-    # uses the same recipe ``astrarium`` does and reads correctly at
-    # this saturation.
-    "vinyl": 0.5,
-    # Cartograph / antique cartographer's chart — cream Y+W Bayer-
-    # washed white ground with sparse R+G sepia foxing, two
-    # diagonal-corner R+G sepia coastlines, an R+Y tangerine compass
-    # rose, a solid-black sea-serpent margin doodle, three Latin
-    # place-name labels in sepia, and a doubled red+black rubricated
-    # cartouche knockout around the body text. Same chromatic-on-
-    # light profile as ``default`` / ``deco`` / ``astrarium`` /
-    # ``herbarium`` / ``tarot`` — the gentler 0.5 tier preserves the
-    # cream-foxed parchment register and keeps the synthesised
-    # sepia / tangerine tones reading as period inks rather than
-    # over-saturating into vivid crayon spots that would compete
-    # with the body text. Pushing higher would shift the foxing
-    # scatter toward distinct red+green specks instead of averaging
-    # into rust-brown, breaking the aged-paper illusion the layer
-    # builds.
+    "autochrome": 0.5,
+    "bauhaus": 0.5,
+    "beksinski": 0.5,
+    "betweenus": 0.5,
+    "bosch": 0.5,
+    "cardcatalog": 0.5,
     "cartograph": 0.5,
-    # Vitrail / Gothic stained-glass cathedral window. Although the
-    # literary quote sits on a clear white-glass cartouche, the dominant
-    # visual mass is heavily-saturated colored glass (solid red / blue /
-    # yellow / green panes plus the jewel-tone Bayer stipples and the
-    # twelve-petal rose window) covering nearly the whole canvas. Like
-    # ``marquee`` / ``comic`` / ``atomic`` / ``blueprint`` and the other
-    # saturated / colored-ground themes, the 0.7 tier keeps those jewel
-    # tones punchy at panel viewing distance instead of desaturating them
-    # toward muddy mid-tones. The white cartouche has no chroma to scale,
-    # so the higher tier costs nothing there.
-    "vitrail": 0.7,
-    # Questline / pixel RPG dialogue. Black night-sky ground with a
-    # sky-blue/green pixel scene and a navy (blue+black) dialogue box; the
-    # white body text and yellow matched-phrase accent need the dark-ground
-    # 0.7 tier to stay crisp against the saturated blue/green field rather
-    # than washing out toward mid-tones at panel viewing distance.
-    "questline": 0.7,
-    # Chrono / 16-bit SNES JRPG. Gradient twilight-blue sky and a translucent
-    # navy→blue dialogue window dominate the canvas; the white body, yellow
-    # matched-phrase accent, and the synthesised gradient tones all need the
-    # dark-ground 0.7 tier to stay punchy against the saturated blue field.
-    "chrono": 0.7,
-    # Outrun / synthwave. A black-ground neon sunset: the warm gradient sun,
-    # the cyan/magenta perspective grid, and the synthesised cyan matched
-    # phrase all need the dark-ground 0.7 tier so the neon tones stay vivid
-    # against the panel's anchored black rather than washing toward mid-tones.
-    "outrun": 0.7,
-    # Grimdark / Imperial Gothic — black void ground, bone-white body, gold
-    # (yellow) Aquila + imperial trim, blood-red inner rule, and a forge-amber
-    # (R+Y 5:3) matched phrase. Same dark-ground profile as ``dark`` /
-    # ``gothic`` / ``marquee`` / ``firmament`` — the 0.7 tier keeps the gold
-    # trim, the red accents, and the synthesised forge-amber glow confidently
-    # chromatic against the panel's anchored black rather than fading toward a
-    # dim mid-tone.
-    "grimdark": 0.7,
-    # Circuit / printed circuit board. The flat-green ``page_bg`` is darkened
-    # to deep FR-4 soldermask (G+K 1:1 forest green) by the border painter's
-    # Layer 0, so it joins the dark / coloured-ground tier — the gold (yellow)
-    # copper traces + matched-phrase accent and the white silkscreen text need
-    # the 0.7 push to stay crisp against the saturated green board rather than
-    # washing toward mid-tones at panel viewing distance.
-    "circuit": 0.7,
-    # Wax-sealed letter. A near-white aged-paper ground (faint 1-in-8
-    # yellow cream wash) with black script body and a red wax seal.
-    # Same chromatic-on-light profile as ``default`` / ``dispatch`` /
-    # ``saloon`` — the gentler 0.5 tier keeps the sealing-wax red and the
-    # cream wash reading as warm period tones rather than over-saturating
-    # the seal into a fire-engine spot that would fight the quiet
-    # handwritten body.
+    "codex": 0.5,
+    "control": 0.5,
+    "daguerreotype": 0.5,
+    "deco": 0.5,
+    "default": 0.5,
+    "diags": 0.5,
+    "dispatch": 0.5,
+    "escritoire": 0.5,
+    "glacier": 0.5,
+    "herbarium": 0.5,
+    "illuminated": 0.5,
+    "intaglio": 0.5,
+    "kanagawa": 0.5,
     "letter": 0.5,
-    # Anna Atkins cyanotype. A deep Prussian-blue ground (the dithered
-    # photogram plate, blue/black stipple) carrying ghostly white specimens,
-    # white Caslon body text, and a sky-blue (B+W) matched phrase. Joins the
-    # dark / non-white-ground tier — the white-on-deep-blue needs the 0.7 push
-    # so the Prussian ground stays a rich saturated blue and the sky-blue
-    # matched phrase reads cool rather than washing toward grey at panel
-    # viewing distance.
+    "lieder": 0.5,
+    "metro": 0.5,
+    "mucha": 0.5,
+    "newsprint": 0.5,
+    "oblivion": 0.5,
+    "orbital": 0.5,
+    "photo": 0.5,
+    "placard": 0.5,
+    "pride": 0.5,
+    "roman": 0.5,
+    "saloon": 0.5,
+    "sampler": 0.5,
+    "scholar": 0.5,
+    "swiss": 0.5,
+    "synoptic": 0.5,
+    "tarot": 0.5,
+    "vinyl": 0.5,
+    "witcher": 0.5,
+    "yorha": 0.5,
+    # Dark, coloured or bloom-heavy ground.
+    "abyssal": 0.7,
+    "alchemy": 0.7,
     "anna_atkins": 0.7,
+    "atomic": 0.7,
+    "atropos": 0.7,
+    "bakelite": 0.7,
+    "betweenus_dark": 0.7,
+    "biomech": 0.7,
+    "blueprint": 0.7,
+    "carcosa": 0.7,
+    "chalkboard": 0.7,
+    "chanbara": 0.7,
+    "chrono": 0.7,
+    "circuit": 0.7,
+    "comic": 0.7,
+    "culture": 0.7,
+    "dark": 0.7,
+    "dsky": 0.7,
+    "expanse": 0.7,
+    "expedition": 0.7,
+    "fillmore": 0.7,
+    "firmament": 0.7,
+    "furies": 0.7,
+    "gothic": 0.7,
+    "goya": 0.7,
+    "grimdark": 0.7,
+    "grimoire": 0.7,
+    "hades": 0.7,
+    "hal": 0.7,
+    "hitchhiker": 0.7,
+    "izakaya": 0.7,
+    "lcars": 0.7,
+    "lumon": 0.7,
+    "marker": 0.7,  # white ground, but the border uses every chromatic ink and green reads mint at 0.5
+    "marquee": 0.7,
+    "nightvision": 0.7,
+    "nocturne": 0.7,
+    "observation": 0.7,
+    "outrun": 0.7,
+    "plaque": 0.7,
+    "pulp": 0.7,
+    "questline": 0.7,
+    "risograph": 0.7,  # two spot inks and no black to anchor them
+    "saros": 0.7,
+    "semiotic": 0.7,  # the frame paints a black bulkhead over the white page ground
+    "trisolaris": 0.7,
+    "vhs": 0.7,
+    "vitrail": 0.7,  # coloured glass covers nearly the whole canvas around a white cartouche
 }
 
 
