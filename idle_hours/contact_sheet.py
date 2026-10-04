@@ -48,6 +48,12 @@ def parse_args() -> argparse.Namespace:
         default="production",
         help="Render mode. Defaults to production so the debug footer does not dominate small tiles.",
     )
+    parser.add_argument(
+        "--overrides",
+        default=pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        help="Selection-overrides JSON to apply. Point it at the appliance's relocated copy "
+        "so the sheet shows what the panel would.",
+    )
     return parser.parse_args()
 
 
@@ -121,6 +127,7 @@ def build_sheet(
     theme: str,
     mode: str,
     log=print,
+    overrides_path: str = pick_quote_module.DEFAULT_OVERRIDES_PATH,
 ) -> Image.Image:
     cell_w = tile_w
     cell_h = tile_h + caption_h
@@ -133,7 +140,7 @@ def build_sheet(
     # so rendering from the baker-filtered DB would hide rows that a curator
     # might want to audit.
     rows = pick_quote_module.load_rows(pick_quote_module.resolve_path(pick_quote_module.DEFAULT_INPUT_PATH))
-    overrides = pick_quote_module.load_overrides(pick_quote_module.resolve_path("assets/selection_overrides.json"))
+    overrides = pick_quote_module.load_overrides(pick_quote_module.resolve_path(overrides_path))
     total = ROWS * COLS
     for row_idx, hour in enumerate(range(1, 13)):
         for col_idx, state in enumerate(BUCKET_ORDER):
@@ -158,6 +165,7 @@ def main() -> int:
         args.theme,
         args.mode,
         log=lambda msg: print(msg, file=sys.stderr, flush=True),
+        overrides_path=args.overrides,
     )
     output = Path(args.output).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -1570,49 +1570,20 @@ def _in_backoff_skip(state: RuntimeState) -> bool:
 
 
 def _maybe_emit_heartbeat(state: RuntimeState, telemetry_path: str | None) -> None:
-    """Emit a loop-liveness telemetry marker, throttled to HEARTBEAT_INTERVAL_SECONDS.
+    """Emit a loop-liveness telemetry marker and ping systemd, at most every HEARTBEAT_INTERVAL_SECONDS.
 
-    Without this, there is no positive "the loop is ticking" signal during
-    quiet hours or between bucket changes — ``idle_hours_health.py`` can only
-    tell that renders happened, not that the loop is alive and idle. The
-    throttle is wall-clock (``time.monotonic``) so a 1s test loop doesn't
-    flood telemetry even though a 60s appliance loop emits once per tick.
+    The heartbeat is the only positive "loop is alive" signal during quiet hours
+    and between bucket changes, which is what ``idle_hours_health`` reads. The
+    throttle uses ``time.monotonic`` so a fast test loop does not flood telemetry.
 
-    On the same cadence we pet systemd's watchdog via ``sd_notify(WATCHDOG=1)``
-    when ``$NOTIFY_SOCKET`` is set. The heartbeat and the watchdog ping
-    share a trigger so an appliance supervised by systemd's ``WatchdogSec``
-    restarts for exactly the same class of wedge that shows up as silence in
-    ``idle_hours_health.py``. Off-socket (dev hosts, unit tests) the watchdog
-    call is a no-op. The ping is OUTSIDE the telemetry-path gate so an
-    operator who disabled telemetry still gets supervised. It is INSIDE the
-    throttle gate so the watchdog cadence tracks the heartbeat cadence
-    exactly.
-
-    WatchdogSec budget: this function is NOT the only thing that pings. An
-    earlier revision bounded the worst-case ping interval by how long a single
-    tick could take before returning here — ``RENDER_TIMEOUT_SECONDS (45) +
-    DISPLAY_TIMEOUT_SECONDS (60) + interval_seconds (60) = 165s``, against a
-    shipped ``WatchdogSec=180s``. That arithmetic was wrong in a way the ~15s
-    margin hid (#236): it counted the loop *performing* a render but not the
-    loop *waiting* for someone else's. The main loop takes ``render_lock``
-    blocking, and three paths can hold it for a full render-plus-display — the
-    button-C source-card restore timer (deliberately blocking, so the card is
-    always taken down), ``runtime_quiet.enter_quiet``, and any web/button
-    action that won ``_button_render_gate`` a moment earlier. The real bound
-    was ``wait (≤105s) + 45 + 60 + 60 = 270s``, i.e. systemd killing a working
-    appliance — costing a cold-start frame and ~20s of visible downtime on a
-    Spectra 6 panel.
-
-    So the ping is now decoupled from tick duration: ``render_now`` pings at
-    each subprocess boundary (success *and* timeout), ``runtime_quiet``'s
-    quiet-image push does the same, and the main loop pings immediately before
-    its blocking acquire. The worst-case interval between two pings is then a
-    single subprocess timeout (``DISPLAY_TIMEOUT_SECONDS``, 60s) or the
-    inter-tick sleep (``interval_seconds``, 60s) — whichever is larger, not
-    their sum — leaving ``WatchdogSec=180s`` a comfortable ~3x margin that no
-    longer degrades under lock contention. This function keeps its own ping so
-    a quiet-hours night, a dedup-skipped tick, or a backoff window (none of
-    which render at all) still pet the timer.
+    The ``WATCHDOG=1`` ping sits outside the telemetry gate, so supervision works
+    with telemetry off, and inside the throttle, so both share one cadence. This is
+    not the only ping: ``render_now`` and the quiet-image push ping at every
+    subprocess boundary, and the main loop pings before its blocking
+    ``render_lock`` acquire. That keeps the worst gap between pings to one
+    subprocess timeout or one inter-tick sleep, not their sum plus a lock wait,
+    which matters for ``WatchdogSec`` (see #236). The ping here covers ticks that
+    never render: quiet hours, dedup skips and backoff windows.
     """
     now = time.monotonic()
     with state.lock:

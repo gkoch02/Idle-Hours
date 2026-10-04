@@ -205,37 +205,18 @@ def render_quiet_frame(
 ) -> None:
     """Put the sleep frame on the panel. **Caller must hold ``state.render_lock``.**
 
-    The three-way ``--quiet-image`` dispatch, extracted from :func:`enter_quiet`
-    so every path that needs a sleep frame shares one definition of what that
-    is. Before the extraction only ``enter_quiet`` understood the ``"auto"``
-    sentinel: ``runtime_actions.action_quiet`` (button D short-press) and
-    ``run_clock``'s button-D long-press shutdown preamble both called
-    ``_display_quiet_image(args.quiet_image, ...)`` directly, so on an install
-    configured with ``--quiet-image auto`` they tried to *copy a file literally
-    named* ``auto`` and raised ``FileNotFoundError``. That was an opt-in
-    footgun while the default was a real path; it became the default's problem
-    the moment ``--quiet-image`` started defaulting to ``auto``.
+    This is the one implementation of ``--quiet-image``, shared by every path that
+    puts the panel to sleep, so none of them can treat ``"auto"`` as a filename:
 
-    The branches:
+    * ``"auto"`` renders the bundled sleep quote (``mode='goodnight'``, no corpus
+      row, no history append) in the resolved quiet theme.
+    * ``"<path>"`` copies a static PNG and ignores the theme.
+    * ``""`` renders the corpus quote for ``--quiet-start`` in the quiet theme.
 
-    * ``"auto"`` — render the bundled sleep quote through the normal literary
-      layout in the resolved quiet theme. ``mode='goodnight'`` tells
-      ``render_quote.py`` to use :data:`render_quote.SLEEP_QUOTE_ROW` rather
-      than consulting the picker, so there is no corpus row and no history
-      append.
-    * ``"<path>"`` — copy a static PNG. Ignores the theme entirely, which is
-      the point for an operator supplying their own image.
-    * ``""`` — render the ``--quiet-start`` corpus quote as the last frame of
-      the night, in the quiet theme.
-
-    ``manual_only`` distinguishes a button-D / web toggle from the scheduled
-    rising edge, and decides only *which time the rendered frame claims*:
-    a scheduled entry renders ``--quiet-start`` (the documented
-    "last quote of the night" contract), while a manual toggle must render the
-    current time — ``--quiet-start`` is unrelated to the moment the operator
-    pressed the button, and using it painted a 22:00 quote onto the panel at
-    two in the afternoon. ``or time_str`` covers a ``--quiet-off`` install
-    where ``--quiet-start`` is unset entirely.
+    ``manual_only`` marks a button-D or web toggle. It decides only which time a
+    rendered frame claims: a scheduled entry renders ``--quiet-start``, a manual
+    one renders the current time. ``or time_str`` covers ``--quiet-off`` installs,
+    where ``--quiet-start`` is unset.
     """
     from idle_hours import run_clock  # lazy: circular import, and keeps test patches on
                       # run_clock._display_quiet_image / run_clock.render_now working.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import json
 import os
@@ -278,27 +279,18 @@ _SCHEMA_VERDICT_CACHE: dict[str, tuple[tuple[int, int], int | None]] = {}
 # file that goes missing → reappears → goes missing again warns each time
 # rather than being permanently suppressed by a stale entry.
 _DEGRADED_WARNED: dict[str, str] = {}
+# Parsed selection overrides keyed by resolved path -> (stat stamp, result).
+# Parsing, and so every warning about the file, happens once per version of
+# it rather than on every pick.
+_OVERRIDES_CACHE: dict[str, tuple[tuple[int, int, int, int], dict]] = {}
 
-# Set by ``run_clock.render_now`` in the render subprocess's environment.
-#
-# The latches above are module-level, so they only span one process — and
-# ``run_clock`` forks a fresh ``render_quote.py`` for every repaint, which
-# starts with empty globals and re-emits the same warning. That left a
-# persistently stale bake writing one warning per render (~200-290/day on the
-# appliance) despite the documented once-per-file-version behaviour: the
-# in-process ``peek_quote_id`` half was latched, the subprocess half was not.
-#
-# The parent is the long-lived process that owns the latch, and it peeks
-# before every render it spawns (the main loop's bucket-change branch and the
-# ``--once`` path both call ``peek_quote_id`` first), so it has already warned
-# for this version of the file. The child's warning is pure duplication.
-#
-# An environment variable rather than a CLI flag, deliberately:
-# ``run_clock._corpus_render_args`` documents that the subprocess argv may only
-# carry flags an operator's own ``--render-script`` would recognise, because an
-# unrecognised flag exits argparse with status 2 — failing every tick and
-# sliding the appliance into render backoff. An unknown env var is ignored by
-# any renderer, so this cannot break a custom one.
+# Set by ``run_clock.render_now`` in the render subprocess's environment. The
+# warning latches here (corpus degradation and selection-overrides problems)
+# are per process, and every repaint forks a fresh renderer with empty
+# globals. The parent peeks before every render it spawns, so it has already
+# warned for the current version of each file and the child stays quiet. It
+# is an environment variable, not a flag, because an operator's own
+# ``--render-script`` would reject an unknown flag and fail every tick.
 SUPPRESS_WARNINGS_ENV = "IDLE_HOURS_SUPPRESS_CORPUS_WARNINGS"
 
 
@@ -312,7 +304,7 @@ def _degradation_warnings_suppressed() -> bool:
 
 
 def clear_corpus_cache() -> None:
-    """Drop all cached corpus rows, schema verdicts, and warning latches.
+    """Drop all cached corpus rows, schema verdicts, parsed overrides and warning latches.
 
     Test isolation / manual invalidation. The warning latches are cleared
     alongside the rows so a test asserting on a degradation warning isn't
@@ -322,6 +314,7 @@ def clear_corpus_cache() -> None:
         _CORPUS_CACHE.clear()
         _SCHEMA_VERDICT_CACHE.clear()
         _DEGRADED_WARNED.clear()
+        _OVERRIDES_CACHE.clear()
 
 
 def _warn_degraded_once(path_key: str, reason: str, message: str) -> None:
@@ -388,22 +381,20 @@ def valid_bucket_names() -> set[str]:
     return {f"h{hour}_{state}" for hour in range(1, 13) for state in BUCKET_ORDER}
 
 
-# Backwards-compatible alias. External callers (e.g. web_server) use the public name.
-_valid_bucket_names = valid_bucket_names
+# One shape for a per-row key, shared with the curator UI's validators. Use
+# ``fullmatch``: ``$`` would accept a trailing newline, and ``\d`` would accept
+# non-ASCII digits, and neither key could ever match a row.
+QUOTE_KEY_RE = re.compile(r"[A-Za-z0-9_.-]+:[0-9]+")
 
 
-def _warn_unknown_preferred_buckets(overrides: dict) -> None:
-    preferred = overrides.get("preferred_buckets") or {}
-    if not isinstance(preferred, dict):
-        return
-    valid = valid_bucket_names()
-    unknown = sorted(key for key in preferred if key not in valid)
-    if unknown:
-        print(
-            f"warning: assets/selection_overrides.json preferred_buckets has unknown buckets: {', '.join(unknown)}",
-            file=sys.stderr,
-            flush=True,
-        )
+def is_quote_key(value: object) -> bool:
+    """True for a ``"<source_id>:<line_number>"`` string."""
+    return isinstance(value, str) and QUOTE_KEY_RE.fullmatch(value) is not None
+
+
+def is_source_id(value: object) -> bool:
+    """True for a string or int source id. ``bool`` is an ``int`` subclass, so reject it."""
+    return isinstance(value, (str, int)) and not isinstance(value, bool)
 
 
 def _empty_overrides() -> dict:
@@ -415,38 +406,108 @@ def _empty_overrides() -> dict:
     }
 
 
-def load_overrides(path: Path) -> dict:
-    """Load the selection-overrides sidecar, failing open on any defect.
+def _overrides_warning(path: Path | None, message: str) -> None:
+    if _degradation_warnings_suppressed():
+        return
+    print(f"warning: selection overrides {path}: {message}", file=sys.stderr, flush=True)
 
-    Hand-editing this file is the documented curation workflow, and this
-    loader sits on the per-tick render hot path — a truncated save or a
-    non-object root must degrade to "no bans/boosts applied" with a stderr
-    warning, not raise and freeze the panel in render-failure backoff
-    (issue #186). Mirrors ``apply_content_overrides.load_overrides``.
+
+def sanitize_overrides(raw: dict, path: Path | None = None, *, strict: bool = False) -> dict:
+    """Return ``raw`` with every schema field coerced to the shape the picker reads.
+
+    The one validator for ``selection_overrides.json``, used in two modes:
+
+    * lenient (the runtime loader): each problem is warned about and only the
+      offending field or entry is dropped, so one typo never lifts every ban;
+    * strict (the curator UI's save): the first problem raises ``ValueError``
+      with a message fit to return to the operator.
+
+    Ids come back as strings. Unknown top-level keys are kept; the picker
+    ignores them.
     """
-    if not path.exists():
-        return _empty_overrides()
+
+    def problem(message: str) -> None:
+        if strict:
+            raise ValueError(message)
+        _overrides_warning(path, f"{message}; ignored")
+
+    cleaned = dict(raw)
+    for field in ("ban_source_ids", "boost_source_ids"):
+        value = raw.get(field, [])
+        if not isinstance(value, list):
+            problem(f"{field} must be a list of string/int ids, got {type(value).__name__}")
+            value = []
+        for entry in value:
+            if not is_source_id(entry):
+                problem(f"{field} entry {entry!r} is not a string/int id")
+        cleaned[field] = [str(x) for x in value if is_source_id(x)]
+
+    keys = raw.get("ban_quote_keys", [])
+    if not isinstance(keys, list):
+        problem(f"ban_quote_keys must be a list of '<source_id>:<line_number>' strings, got {type(keys).__name__}")
+        keys = []
+    for entry in keys:
+        if not is_quote_key(entry):
+            problem(f"ban_quote_keys entry {entry!r} must be of the form '<source_id>:<line_number>'")
+    cleaned["ban_quote_keys"] = [k for k in keys if is_quote_key(k)]
+
+    preferred = raw.get("preferred_buckets", {})
+    if not isinstance(preferred, dict):
+        problem(f"preferred_buckets must be an object, got {type(preferred).__name__}")
+        preferred = {}
+    valid = valid_bucket_names()
+    kept = {}
+    for bucket, source_id in preferred.items():
+        if bucket not in valid:
+            problem(f"preferred_buckets key {bucket!r} is not a valid bucket")
+        elif not is_source_id(source_id):
+            problem(f"preferred_buckets[{bucket!r}] must be a string/int source id")
+        else:
+            kept[bucket] = str(source_id)
+    cleaned["preferred_buckets"] = kept
+    return cleaned
+
+
+def _parse_overrides(path: Path) -> dict:
     try:
         overrides = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
-        print(
-            f"warning: selection overrides {path}: unreadable or invalid JSON ({exc}); "
-            "continuing with no overrides",
-            file=sys.stderr,
-        )
+        _overrides_warning(path, f"unreadable or invalid JSON ({exc}); continuing with no overrides")
         return _empty_overrides()
     if not isinstance(overrides, dict):
-        print(
-            f"warning: selection overrides {path}: root is not a JSON object; "
-            "continuing with no overrides",
-            file=sys.stderr,
-        )
+        _overrides_warning(path, "root is not a JSON object; continuing with no overrides")
         return _empty_overrides()
-    _warn_unknown_preferred_buckets(overrides)
-    # Older v1 sidecar files predate ban_quote_keys; default it so the rest of
-    # the picker doesn't have to special-case its absence.
-    overrides.setdefault("ban_quote_keys", [])
-    return overrides
+    return sanitize_overrides(overrides, path)
+
+
+def load_overrides(path: Path) -> dict:
+    """Load the selection-overrides sidecar, failing open on any defect.
+
+    This runs on every pick, and hand-editing the file is the documented way to
+    curate. An unreadable file or a non-object root degrades to no overrides with
+    a warning; a malformed field degrades on its own (see ``sanitize_overrides``).
+    Raising here would freeze the panel in render-failure backoff.
+
+    The parsed result is cached on the file's stat stamp, so the file is parsed,
+    and any warning printed, once per version of it. Callers get a copy.
+    """
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return _empty_overrides()
+    except OSError as exc:
+        _overrides_warning(path, f"cannot stat ({exc}); continuing with no overrides")
+        return _empty_overrides()
+    stamp = (st.st_mtime_ns, st.st_ctime_ns, st.st_size, st.st_ino)
+    key = str(path)
+    with _CORPUS_CACHE_LOCK:
+        hit = _OVERRIDES_CACHE.get(key)
+    if hit is not None and hit[0] == stamp:
+        return copy.deepcopy(hit[1])
+    parsed = _parse_overrides(path)
+    with _CORPUS_CACHE_LOCK:
+        _OVERRIDES_CACHE[key] = (stamp, parsed)
+    return copy.deepcopy(parsed)
 
 
 def metadata_bonus(row: dict) -> int:
@@ -1110,40 +1171,17 @@ def _schema_mismatch_cached(
 
 
 def _resolve_corpus(database_path: str | None, input_path: str) -> list[dict]:
-    """Prefer the baked database; fall back to the raw corpus if missing or schema-mismatched.
+    """Prefer the baked database; fall back to the raw corpus if it is missing, empty or schema-mismatched.
 
-    The baked DB (``DEFAULT_DATABASE_PATH``) is the canonical runtime input and
-    ships committed in the repo, so on a healthy install this always hits the
-    first branch. The fallback exists as a defensive guardrail for three cases:
+    A mismatched ``schema_version`` would score against a misaligned tuple and
+    produce wrong picks without crashing, so it is treated like a missing file.
+    Each fallback warns on stderr once per version of the file, not once per pick
+    (#234): a re-bake that is still wrong warns again. The latch lives in this
+    process, so ``run_clock`` sets :data:`SUPPRESS_WARNINGS_ENV` for its render
+    subprocess, whose parent has already warned.
 
-    * the baked file is missing entirely (e.g. someone pointed ``--database``
-      at a stale path, or a partial checkout);
-    * the baked file exists but is empty (e.g. a crashed bake left a zero-byte
-      placeholder); and
-    * the baked file's ``schema_version`` disagrees with
-      :data:`BAKED_SCORE_SCHEMA_VERSION` — the baker that produced the file
-      stamped a ``baked_score`` layout this ``pick_quote`` doesn't understand,
-      so scoring it would produce drifted picks without crashing.
-
-    All three fall back to the raw corpus rather than crashing the loop, and
-    all three log a stderr warning so the operator notices they're running on
-    the slower raw-scoring path. That warning is emitted **once per version of
-    the file**, not once per pick (#234): the appliance picks twice per tick
-    (the in-process ``peek_quote_id`` plus the ``render_quote.py`` subprocess),
-    so an unlatched warning wrote ~2,900 identical lines a day into the same
-    journald stream the loop uses for real events. Latching on the file's
-    identity rather than latching forever is deliberate — a re-bake that is
-    still wrong warns again, which is the signal an operator is waiting for.
-
-    The latch spans one process, so ``run_clock`` sets
-    :data:`SUPPRESS_WARNINGS_ENV` in the render subprocess's environment — a
-    fresh child would otherwise start with empty globals and re-warn on every
-    repaint. The parent peeks before every render it spawns, so it has already
-    warned for this version of the file; see that constant's comment.
-
-    A falsy ``database_path`` (empty string / ``None``) skips the baked path
-    entirely without warning — the bake-equivalence tests use this to exercise
-    the raw path on purpose.
+    A falsy ``database_path`` skips the baked path silently; the bake-equivalence
+    tests use that to exercise the raw path.
     """
     if database_path:
         path = resolve_path(database_path)

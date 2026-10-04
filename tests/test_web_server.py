@@ -2056,6 +2056,22 @@ class TestBanQuoteKeys:
         assert status == 400
         assert "source_id" in _json_body(body)["error"]
 
+    @pytest.mark.parametrize("key", ["141:482\n", "141:\u0664\u0668\u0662", "141:482abc"])
+    def test_post_rejects_keys_that_can_never_match(self, live_server, key):
+        """A trailing newline or non-ASCII digits used to pass, so the ban was
+        saved and the quote kept rendering."""
+        server, _, _ = live_server
+        status, _body = _post(server, "/api/overrides", {"ban_quote_keys": [key]})
+        assert status == 400
+        # The ban endpoint trims whitespace first, so it may store the clean
+        # key; it must never store one that cannot match a row.
+        status, _body = _post(server, "/api/overrides/ban", {"key": key})
+        if status == 200:
+            status, body = _get(server, "/api/overrides")
+            assert all(pick_quote.is_quote_key(k) for k in _json_body(body)["ban_quote_keys"])
+        else:
+            assert status == 400
+
     def test_post_rejects_non_list_ban_quote_keys(self, live_server):
         server, _, _ = live_server
         status, body = _post(server, "/api/overrides", {

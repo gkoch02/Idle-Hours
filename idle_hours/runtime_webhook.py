@@ -191,41 +191,20 @@ def post_event(
     timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     alert_modes: Iterable[str] | None = None,
 ) -> None:
-    """Maybe POST ``entry`` to ``webhook_url`` on a background thread.
+    """Maybe POST ``entry`` to ``webhook_url`` on a background daemon thread.
 
-    No-op when ``webhook_url`` is empty/None or ``entry`` doesn't pass the
-    filter. The network call runs on a fresh daemon thread so the caller
-    (typically inside the render hot path) returns immediately. Failures
-    are logged but never re-raised — webhooks are best-effort
-    observability, not a render-critical path.
+    No-op when the URL is empty or ``entry`` fails the filter. Failures are logged,
+    never raised. In-flight posts are capped by :data:`_inflight_semaphore`; once
+    :data:`_WEBHOOK_MAX_INFLIGHT` is reached, new events are dropped with one
+    stderr line, not queued. The cap only fills when the endpoint is already
+    unresponsive, so the dropped events are often the alarming ones: treat this as
+    "alert me", and rely on the fsynced telemetry sidecar for anything that must
+    not be lost. A ``ThreadPoolExecutor`` was rejected because its non-daemon
+    workers would block process exit on a wedged endpoint.
 
-    **Over-cap events are dropped, not queued.** A fault storm (rapid
-    back-to-back errors against a wedged endpoint) could otherwise spawn
-    unbounded threads, each pinned for the 5s urlopen timeout, so new
-    threads are gated by :data:`_inflight_semaphore` — a non-blocking
-    acquire against a cap of :data:`_WEBHOOK_MAX_INFLIGHT`. When the cap
-    is reached the event is discarded with a single stderr line and never
-    retried. There is no backlog and no ordering guarantee: with a 5s
-    timeout, the 5th event inside any 5s window is simply gone.
-
-    That trade is deliberate (see the comment on
-    :data:`_WEBHOOK_MAX_INFLIGHT`), but it is worth knowing which events
-    it discards — the cap only fills when the endpoint is already
-    unresponsive, and the entries queueing up behind it are exactly the
-    ``backoff`` / ``*_timeout`` / ``buttons_dead`` records that say the
-    appliance is in trouble. Treat this as "alert me", not as a delivery
-    guarantee; anything that must not be lost belongs in the telemetry
-    sidecar, which is written synchronously and fsynced.
-
-    A ``ThreadPoolExecutor`` would give ordering and a bounded backlog,
-    but its workers are non-daemon by default and would block process
-    exit against precisely the wedged endpoint the timeout guard exists
-    for — hence the semaphore.
-
-    ``send_all`` widens the filter to "everything except heartbeats and
-    successful renders." ``alert_modes`` overrides the default whitelist
-    entirely (passing ``[]`` with ``send_all=False`` effectively disables
-    notifications without un-setting the URL).
+    ``send_all`` widens the filter to everything except heartbeats and successful
+    renders. ``alert_modes`` replaces the default whitelist; ``[]`` with
+    ``send_all=False`` disables notifications without clearing the URL.
     """
     if not webhook_url:
         return

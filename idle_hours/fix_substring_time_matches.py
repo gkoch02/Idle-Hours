@@ -2,12 +2,10 @@
 """Fix substring-collision time metadata like 'five minutes' inside 'thirty-five minutes'.
 
 MIGRATION / REPAIR TOOL. The current ``gutenberg_time_miner.py`` regex
-captures the longest *standard* time phrase (regex alternation tries compound
-number forms like ``thirty-five`` before the bare ``five``), so fresh harvests
-mostly do not produce substring-collision rows — but the archaic reversed
-compound ("five-and-twenty minutes past eight" = 8:25) still slips through as
-the bare trailing phrase ("twenty minutes past eight" = 8:20), so this script
-stays in the pipeline to repair that class.
+resolves overlapping matches longest-first and parses the archaic reversed
+compound ("five-and-twenty minutes past eight" = 8:25), so fresh harvests do
+not produce substring-collision rows. This script repairs rows mined before
+those fixes.
 
 It also repairs the quarter / half class: legacy ``oclock_word`` rows mined
 on "ten o'clock" inside "half-past ten o'clock" / "a quarter after eight
@@ -28,36 +26,10 @@ from pathlib import Path
 
 from idle_hours.atomic_io import atomic_write_lines
 from idle_hours.buckets import minute_bucket as bucket_for_minute
+from idle_hours.gutenberg_time_miner import daypart_for_hour, normalize_number_phrase
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
-
-
-NUMBER_WORDS = {
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-    "eleven": 11,
-    "twelve": 12,
-    "thirteen": 13,
-    "fourteen": 14,
-    "fifteen": 15,
-    "sixteen": 16,
-    "seventeen": 17,
-    "eighteen": 18,
-    "nineteen": 19,
-    "twenty": 20,
-    "thirty": 30,
-    "forty": 40,
-    "fifty": 50,
-}
 
 TIME_PATTERN = re.compile(
     r"\b(?P<minute_word>"
@@ -97,13 +69,6 @@ QUARTER_HALF_PATTERN = re.compile(
 # ``override_originals`` ledger would record the repaired value as the one
 # to restore.
 _TIME_FIELDS = ("matched_text", "hour", "minute", "normalized_time")
-
-
-def daypart_for_hour(hour: int) -> str:
-    """The miner's hour → daypart rule (``gutenberg_time_miner.daypart_for_hour``)."""
-    from idle_hours.gutenberg_time_miner import daypart_for_hour as _miner_daypart
-
-    return _miner_daypart(hour)
 
 
 def infer_quarter_half_from_quote(display_quote: str, current_matched: str | None):
@@ -202,22 +167,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_number_word(text: str) -> int | None:
-    text = text.lower().replace('-', ' ').strip()
-    if text in NUMBER_WORDS:
-        return NUMBER_WORDS[text]
-    parts = text.split()
-    if len(parts) == 2 and parts[0] in NUMBER_WORDS and parts[1] in NUMBER_WORDS:
-        return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[1]]
-    # Archaic reversed compound: "five and twenty" = 25.
-    if (
-        len(parts) == 3
-        and parts[1] == 'and'
-        and parts[0] in NUMBER_WORDS
-        and parts[2] in NUMBER_WORDS
-    ):
-        return NUMBER_WORDS[parts[0]] + NUMBER_WORDS[parts[2]]
-    return None
+# One number-word parser for the whole pipeline; a private copy here drifted
+# and accepted forms the miner rejects ("twenty and five", "one and one").
+parse_number_word = normalize_number_phrase
 
 
 def infer_time_from_quote(display_quote: str, current_matched: str | None = None):

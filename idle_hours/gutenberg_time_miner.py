@@ -57,7 +57,6 @@ NUMBER_WORDS = {
 }
 
 HOUR_WORDS = {k: v for k, v in NUMBER_WORDS.items() if 1 <= v <= 12}
-MINUTE_WORDS = NUMBER_WORDS.copy()
 DAYPART_KEYWORDS = {
     "dawn": "dawn",
     "daybreak": "dawn",

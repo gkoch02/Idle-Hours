@@ -3452,9 +3452,10 @@ class TestDrawTextDithered:
         thousand inked pixels — plenty for ratio assertions even after
         the ≥128 antialias threshold trims edge pixels.
         """
-        font_path = Path("fonts/PlayfairDisplay-Regular.ttf")
-        if not font_path.exists():
-            pytest.skip(f"bundled font missing: {font_path}")
+        # Anchored on the package, not the CWD: the CWD-relative form stopped
+        # resolving after the package move and skipped these tests silently.
+        font_path = Path(rq.BASE_DIR) / "fonts" / "PlayfairDisplay-Regular.ttf"
+        assert font_path.is_file(), f"bundled font missing: {font_path}"
         from PIL import ImageFont
         font = ImageFont.truetype(str(font_path), size=64)
         image = Image.new("RGB", (640, 96), cls._BG)

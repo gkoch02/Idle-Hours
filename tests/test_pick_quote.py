@@ -785,7 +785,7 @@ class TestLoadOverrides:
         }))
         result = pq.load_overrides(path)
         assert result["ban_source_ids"] == ["1"]
-        assert result["preferred_buckets"] == {"h3_exact": 42}
+        assert result["preferred_buckets"] == {"h3_exact": "42"}
 
     def test_unknown_preferred_bucket_warns_on_stderr(self, tmp_path, capsys):
         path = tmp_path / "ov.json"
@@ -796,7 +796,7 @@ class TestLoadOverrides:
         }))
         pq.load_overrides(path)
         err = capsys.readouterr().err
-        assert "unknown buckets" in err
+        assert "not a valid bucket" in err
         assert "h99_bogus" in err
         assert "not_a_bucket" in err
         assert "h3_exact" not in err  # valid bucket must not be listed
@@ -811,15 +811,16 @@ class TestLoadOverrides:
         pq.load_overrides(path)
         assert capsys.readouterr().err == ""
 
-    def test_non_dict_preferred_buckets_does_not_crash(self, tmp_path, capsys):
+    def test_non_dict_preferred_buckets_is_dropped_with_warning(self, tmp_path, capsys):
         path = tmp_path / "ov.json"
         path.write_text(json.dumps({
             "ban_source_ids": [],
             "boost_source_ids": [],
             "preferred_buckets": ["oops", "list"],
         }))
-        pq.load_overrides(path)
-        assert capsys.readouterr().err == ""
+        result = pq.load_overrides(path)
+        assert result["preferred_buckets"] == {}
+        assert "must be an object" in capsys.readouterr().err
 
 
 class TestInferQuoteMinute:
@@ -1342,6 +1343,171 @@ class TestLoadOverridesFailOpen:
         overrides = pq.load_overrides(path)
         assert overrides["ban_source_ids"] == ["7"]
         assert overrides["ban_quote_keys"] == []
+
+
+class TestLoadOverridesFieldShapes:
+    """Valid JSON with a wrong-typed field must degrade that field alone.
+
+    Before the loader sanitised fields, ``"ban_source_ids": null`` raised a
+    TypeError on every pick, and ``"ban_source_ids": "141"`` was iterated as
+    characters, banning sources "1" and "4" while leaving 141 on the panel.
+    """
+
+    def _load(self, tmp_path, doc):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return pq.load_overrides(path)
+
+    @pytest.mark.parametrize("field", ["ban_source_ids", "boost_source_ids", "ban_quote_keys"])
+    @pytest.mark.parametrize("bad", [None, "141", 141, {"141": True}])
+    def test_non_list_field_is_ignored_with_warning(self, tmp_path, capsys, field, bad):
+        overrides = self._load(tmp_path, {field: bad, "ban_source_ids" if field != "ban_source_ids" else "boost_source_ids": ["9"]})
+        assert overrides[field] == []
+        assert "must be a list" in capsys.readouterr().err
+
+    def test_other_fields_survive_a_bad_one(self, tmp_path):
+        overrides = self._load(tmp_path, {"ban_source_ids": None, "ban_quote_keys": ["9:12"]})
+        assert overrides["ban_source_ids"] == []
+        assert overrides["ban_quote_keys"] == ["9:12"]
+
+    def test_string_ban_list_does_not_ban_its_characters(self, tmp_path):
+        overrides = self._load(tmp_path, {"ban_source_ids": "141"})
+        for source_id in ("1", "4", "141"):
+            assert not pq.is_banned({"source_id": source_id, "line_number": 1}, overrides)
+
+    def test_bad_entries_dropped_good_entries_kept(self, tmp_path, capsys):
+        overrides = self._load(tmp_path, {
+            "ban_source_ids": [141, "7", None, True, ["x"]],
+            "ban_quote_keys": ["9:12", "nope", 5],
+        })
+        assert overrides["ban_source_ids"] == ["141", "7"]
+        assert overrides["ban_quote_keys"] == ["9:12"]
+        err = capsys.readouterr().err
+        assert "ban_source_ids entry None is not a string/int id" in err
+        assert "ban_quote_keys entry 'nope' must be of the form" in err
+
+    @pytest.mark.parametrize("bad", [[], None, "h3_exact", 5])
+    def test_non_object_preferred_buckets_is_ignored(self, tmp_path, capsys, bad):
+        overrides = self._load(tmp_path, {"preferred_buckets": bad})
+        assert overrides["preferred_buckets"] == {}
+        assert "must be an object" in capsys.readouterr().err
+
+    def test_preferred_bucket_values_must_be_ids(self, tmp_path, capsys):
+        overrides = self._load(tmp_path, {"preferred_buckets": {"h3_exact": 141, "h4_exact": None}})
+        assert overrides["preferred_buckets"] == {"h3_exact": "141"}
+        assert "preferred_buckets['h4_exact'] must be a string/int source id" in capsys.readouterr().err
+
+    def test_unknown_top_level_keys_are_kept(self, tmp_path):
+        overrides = self._load(tmp_path, {"_comment": "curated by hand", "ban_source_ids": []})
+        assert overrides["_comment"] == "curated by hand"
+
+    @pytest.mark.parametrize("doc", [
+        {"ban_source_ids": None},
+        {"ban_quote_keys": None},
+        {"preferred_buckets": []},
+        {"boost_source_ids": "3"},
+    ])
+    def test_select_quote_survives_malformed_fields(self, tmp_path, doc):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        result = pq.select_quote(time_str="14:30", overrides_path=path)
+        assert result.get("display_quote")
+
+
+class TestSanitizeOverridesModes:
+    """One validator, two modes: whatever the runtime loader warns about, the
+    curator UI's strict save must refuse, and on clean input they agree."""
+
+    BAD = [
+        {"ban_source_ids": None},
+        {"ban_source_ids": "141"},
+        {"boost_source_ids": [True]},
+        {"ban_quote_keys": "141:1"},
+        {"ban_quote_keys": ["141:1\n"]},
+        {"preferred_buckets": []},
+        {"preferred_buckets": {"h13_exact": "1"}},
+        {"preferred_buckets": {"h3_exact": None}},
+    ]
+
+    @pytest.mark.parametrize("doc", BAD)
+    def test_lenient_warning_means_strict_rejection(self, doc, capsys):
+        pq.sanitize_overrides(doc, Path("ov.json"))
+        assert "ignored" in capsys.readouterr().err
+        with pytest.raises(ValueError):
+            pq.sanitize_overrides(doc, strict=True)
+
+    def test_modes_agree_on_clean_input(self, capsys):
+        doc = {
+            "ban_source_ids": [141, "7"],
+            "boost_source_ids": ["9"],
+            "preferred_buckets": {"h3_exact": 12},
+            "ban_quote_keys": ["141:482"],
+        }
+        assert pq.sanitize_overrides(doc, Path("ov.json")) == pq.sanitize_overrides(doc, strict=True)
+        assert capsys.readouterr().err == ""
+
+
+class TestLoadOverridesCaching:
+    """The file is reloaded on every pick, so its warnings must fire once per
+    version of the file, not once per pick."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self, monkeypatch):
+        monkeypatch.delenv(pq.SUPPRESS_WARNINGS_ENV, raising=False)
+        pq.clear_corpus_cache()
+        yield
+        pq.clear_corpus_cache()
+
+    def _write(self, path, doc):
+        path.write_text(json.dumps(doc), encoding="utf-8")
+
+    def test_warns_once_per_file_version(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": "141"})
+        for _ in range(5):
+            pq.load_overrides(path)
+        assert capsys.readouterr().err.count("must be a list") == 1
+
+    def test_editing_the_file_reparses_and_warns_again(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": "141"})
+        pq.load_overrides(path)
+        capsys.readouterr()
+        self._write(path, {"ban_source_ids": ["141"], "ban_quote_keys": "x"})
+        assert pq.load_overrides(path)["ban_source_ids"] == ["141"]
+        assert "ban_quote_keys must be a list" in capsys.readouterr().err
+
+    def test_render_child_stays_quiet(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv(pq.SUPPRESS_WARNINGS_ENV, "1")
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": None})
+        assert pq.load_overrides(path)["ban_source_ids"] == []
+        assert capsys.readouterr().err == ""
+
+    def test_callers_get_independent_copies(self, tmp_path):
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": ["7"]})
+        pq.load_overrides(path)["ban_source_ids"].append("99")
+        assert pq.load_overrides(path)["ban_source_ids"] == ["7"]
+
+
+class TestQuoteKeyShape:
+    @pytest.mark.parametrize("key", ["141:482", "pg-12.a_b:0"])
+    def test_accepts_well_formed_keys(self, key):
+        assert pq.is_quote_key(key)
+
+    @pytest.mark.parametrize("key", [
+        "141:482\n",       # ``$`` with ``match`` accepted a trailing newline
+        "141:\u0664\u0668\u0662",  # ``\d`` accepted Arabic-Indic digits
+        "141:482abc", ":482", "141:", "141", 141, None,
+    ])
+    def test_rejects_keys_that_could_never_match_a_row(self, key):
+        assert not pq.is_quote_key(key)
+
+    def test_loader_drops_them(self, tmp_path):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text(json.dumps({"ban_quote_keys": ["141:482", "141:482\n"]}), encoding="utf-8")
+        assert pq.load_overrides(path)["ban_quote_keys"] == ["141:482"]
 
 
 class TestSelectQuotePin:
