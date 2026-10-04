@@ -156,24 +156,20 @@ JSON_CONTENT_TYPE = "application/json"
 # A client that went away mid-response. Not a server fault: never telemetry
 # (it would page the webhook), never a second response onto the dead socket.
 _CLIENT_GONE_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
-# GET routes that stay reachable without a token even when one is configured.
-# Not a judgement about sensitivity — the browser loads /current.png and
-# /api/preview through <img src>, and the static shell through the navigation
-# itself; none of those can attach a request header. /metrics is for the
-# scraper and is gated by --web-metrics-token instead.
-# The static shell only. ``/current.png`` and ``/api/preview`` used to be
-# here too on the grounds that an ``<img src>`` cannot attach a header — but
-# on a LAN bind with a token that left the picker's winning quote for every
-# minute of the day, in every theme, readable by anyone on the network, and
-# each distinct query a full Pillow render (issue #286). ``main.js`` now
-# fetches both with the token header and shows them through object URLs, so
-# gating them costs the UI nothing.
+# GET routes that stay reachable without a token even when one is configured:
+# the static shell only, because the navigation, ``<script src>`` and
+# ``<link href>`` that load it cannot attach a request header. ``/current.png``
+# and ``/api/preview`` are gated (issue #286): ungated, they exposed the
+# picker's quote for any minute and theme to the LAN, each query a full Pillow
+# render. ``main.js`` fetches both with the token header and shows them through
+# object URLs. /metrics is for the scraper and is gated by --web-metrics-token
+# instead.
 UNGATED_GET_PATHS = frozenset({"/", "/main.js", "/style.css"})
 
 # ``/api/preview`` renders in exactly the two modes the panel itself shows.
-# ``mode`` was previously taken verbatim, which both exposed the source card
-# (``mode=card``: title / author / Gutenberg ID) and let any distinct string
-# bypass the preview cache for another full render.
+# Any other ``mode`` would expose the source card (``mode=card``: title /
+# author / Gutenberg ID) or let a distinct string bypass the preview cache for
+# another full render.
 PREVIEW_MODES = frozenset({"production", "debug"})
 
 
@@ -450,10 +446,9 @@ class _IdleHoursHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     # Concurrent-connection cap (issue #285). ``ThreadingHTTPServer`` spawns a
-    # thread per accepted connection with no upper bound, so a client holding
-    # sockets open pinned a thread and a file descriptor each, for ever, in
-    # the process that also writes the appliance's state and PNG. This bounds
-    # how *many* can be alive at once. A single-operator UI plus a scraper
+    # thread per accepted connection with no upper bound, and each open socket
+    # costs a thread and a file descriptor in the process that also writes the
+    # appliance's state and PNG. This bounds how *many* can be alive at once. A single-operator UI plus a scraper
     # never needs more than a handful; a connection that arrives while every
     # slot is taken is closed unread rather than queued — the request line
     # has not been read yet, so there is nothing to answer.
@@ -723,11 +718,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
     sys_version = ""
 
     # Socket timeout applied by ``StreamRequestHandler.setup`` (issue #285).
-    # The default is ``None``: a client that opens a connection and sends a
-    # partial request line — or a POST whose body never arrives — held a
-    # handler thread and a file descriptor for ever, and because this server
-    # runs *inside* ``run_clock`` an exhausted FD table breaks the appliance's
-    # own state / telemetry / PNG writes, not just the UI. A timeout surfaces
+    # The default is ``None``: a client that sends a partial request line — or
+    # a POST whose body never arrives — would hold a handler thread and a file
+    # descriptor for ever, and because this server runs *inside* ``run_clock``
+    # an exhausted FD table breaks the appliance's own state / telemetry / PNG
+    # writes, not just the UI. A timeout surfaces
     # as an ordinary handler exit. The value is generous against a real
     # operator on a slow LAN and small against a stuck connection; nothing the
     # UI does legitimately pauses mid-request for 30 s.
@@ -1056,8 +1051,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         The exceptions in ``UNGATED_GET_PATHS`` are mechanical, not editorial:
         a ``<script src>`` / ``<link href>`` / navigation cannot set a request
         header, so gating the shell would simply break the page. The two
-        image routes are *not* exempt any more (issue #286): ``main.js``
-        fetches them with the header and assigns the bytes as object URLs.
+        image routes are not exempt (issue #286): ``main.js`` fetches them
+        with the header and assigns the bytes as object URLs.
         ``/metrics`` is a scraper's, and opts in via ``--web-metrics-token``.
         """
         if path == "/metrics":

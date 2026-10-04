@@ -15,11 +15,9 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 # Each pattern names a *modern / non-prose* register the panel should never
-# show. They were far looser than their labels (issue #296): ``\bwork\b`` hit
-# the verb in "the fearful work went on until nearly dawn", and a bare
-# ``am`` / ``pm`` hit "I am sure it was nearly ten o'clock" — every one of the
-# 56 am/pm flags in the shipped corpus was that false positive, and between
-# them the two rules kept ~80 good quotes under the bake floor.
+# show, and must match only that register (issue #296): not the verb in "the
+# fearful work went on until nearly dawn", nor the "am" in "I am sure it was
+# nearly ten o'clock".
 BAD_PATTERNS = [
     # Schedule text ("working hours", "work shift", "nine to five"), not the
     # verb or noun "work" that any novel uses.

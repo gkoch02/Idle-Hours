@@ -184,10 +184,9 @@ def apply_overrides(
 
     **Reversible.** This stage writes its output back over its input by
     default, and so does the curator UI's "Bake now" (issue #288), so an
-    override is baked into the raw corpus. Without a record of what it
-    replaced, deleting the sidecar entry and re-running changed nothing —
-    the patched text was permanent, and on an appliance whose relocated
-    corpus has no git history, unrecoverable. So the first time the sidecar
+    override is baked into the raw corpus; without a record of what it
+    replaced, deleting the sidecar entry could not undo it (and a relocated
+    appliance corpus has no git history). So the first time the sidecar
     writes a field, the row's previous value goes into ``override_originals``;
     a field the sidecar no longer writes is restored from it and dropped.
     A row left with no originals loses both ``override_originals`` and the
@@ -260,10 +259,10 @@ def apply_overrides(
             {"hour", "minute"} - writes.keys() if "normalized_time" in writes else set()
         )
         # ...and a replaced display_quote re-derives the fields the clean and
-        # quality stages computed from the *old* text. Without this the row
-        # kept its fragment-era flags and score: a curator-trimmed sentence
-        # stayed under the bake floor and lost ranking ties to its own
-        # fragment penalty. An explicit quality_score in the patch still wins.
+        # quality stages computed from the *old* text, so a curator-trimmed
+        # sentence is not held under the bake floor or ranked by the fragment
+        # flags and score of the text it replaced. An explicit quality_score
+        # in the patch still wins.
         derive_quality = (
             {"display_fragment", "cleanup_status", "quality_flags"}
             | ({"quality_score"} - writes.keys() - held)

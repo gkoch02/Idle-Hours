@@ -62,11 +62,10 @@ def dedupe_key(raw: dict, canonical_quote: str) -> tuple:
     A Gutenberg row is ``(source_id, line_number, matched_text, normalized_time)``:
     the same phrase at the same place in the same book is one hit however wide
     the sentence window around it was cut, and a *different* phrase or time on
-    the same line is a different hit. The earlier key mixed in ``fuzzy_bucket``
-    and ``daypart_bucket``, both derived from the time, so a harvest-to-harvest
-    change in the derivation made byte-identical hits look distinct — the
-    committed corpus carried 16 exact duplicates that differed only in a
-    ``daypart_bucket`` computed under an older rollover rule (issue #294).
+    the same line is a different hit. ``fuzzy_bucket`` and ``daypart_bucket``
+    stay out of the key: both are derived from the time, so a change in the
+    derivation between harvests would make byte-identical hits look distinct
+    (issue #294).
     Rows with no ``source_id`` (local text files) fall back to the quote text.
     """
     source_id = raw.get("source_id")

@@ -86,10 +86,9 @@ HEADING_PREFIX = re.compile(
 # ("—CONTINUATION OF THE ENIGMA The night wind had risen…", "TWENTY MINUTES
 # PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M. As ten o'clock struck…").
 # ``HEADING_PREFIX`` only knows headings that carry a keyword such as
-# CHAPTER, so these reached the panel verbatim (issue #308).
+# CHAPTER; this catches the rest (issue #308).
 #
-# All-caps prose opens sentences too, and the first cut of this pattern ate
-# it: initials ("J. R. R. Tolkien was born"), acronyms ("U. S. A. Troops"),
+# All-caps prose opens sentences too and must survive: initials ("J. R. R. Tolkien was born"), acronyms ("U. S. A. Troops"),
 # a play's speaker label ("SIR TOBY BELCH. Out o' tune") and a shout ("I AM
 # NOT. Go away"). What separates them from a title is punctuation — a title
 # sits on its own line, so it runs into the sentence with nothing but
@@ -272,12 +271,9 @@ def _trailing_quote_is_unpaired(text: str) -> bool:
 def clean_edges(text: str) -> str:
     """Strip edge junk, but keep a quotation mark whose partner is inside.
 
-    ``LEADING_JUNK`` / ``TRAILING_JUNK`` used to include every quotation mark,
-    so ``"It is five o'clock," he said.`` lost its opening ``"`` and reached
-    the panel as ``It is five o'clock," he said.`` — 13% of displayable rows
-    carried an unbalanced quote that way (issue #297). A quote is stripped
-    only when it has no partner in the text; a fully quoted sentence keeps
-    both marks.
+    A quote is stripped only when it has no partner in the text, so
+    ``"It is five o'clock," he said.`` keeps its opening ``"`` and a fully
+    quoted sentence keeps both marks (issue #297).
     """
     text = re.sub(r"\s+", " ", text.translate(GLYPH_SUBSTITUTIONS)).strip()
     while text:

@@ -129,12 +129,10 @@ def parse_args() -> argparse.Namespace:
 def _resolve(path_str: str) -> Path:
     """Resolve an operator-supplied path against the CWD, like every other stage.
 
-    An earlier revision anchored relative paths on ``BASE_DIR`` — the installed
-    package directory — so ``idle-hours bake idle_hours/assets/…`` run from the
-    repo root looked for ``idle_hours/idle_hours/assets/…`` and ``--output
-    output/x.jsonl`` silently wrote inside site-packages (issue #295). Only the
-    argparse *defaults* are package-anchored; anything typed by the operator is
-    relative to where they typed it.
+    Only the argparse *defaults* are package-anchored; anything typed by the
+    operator is relative to where they typed it, never to ``BASE_DIR`` (the
+    installed package directory), so ``--output output/x.jsonl`` cannot land
+    inside site-packages (issue #295).
     """
     return Path(path_str).expanduser().resolve()
 

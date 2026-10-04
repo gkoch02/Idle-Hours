@@ -311,11 +311,9 @@ def enter_quiet(
     is logged, traced, and recorded to the telemetry sidecar as ``mode="quiet"``
     but never propagated; instead the return value says whether the sleep
     frame is on the panel, and the edge is only claimed
-    (:func:`claim_quiet_edge`) on success, so the next tick retries.
-    Before that (issue #277) the loop set the flag unconditionally, and one
-    transient failure at 22:00 — a display I/O hiccup, a render timeout —
-    left the previous quote, with its stale time, on the panel all night.
-    Repeated failures go through ``run_clock._record_render_failure`` so a
+    (:func:`claim_quiet_edge`) on success, so the next tick retries rather
+    than leaving the previous quote, with its stale time, on the panel all
+    night after one transient failure (issue #277). Repeated failures go through ``run_clock._record_render_failure`` so a
     hard fault backs off exactly as a failed clock render does rather than
     retrying every tick; a success resets that counter like any render.
 

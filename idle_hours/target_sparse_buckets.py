@@ -152,8 +152,8 @@ _UNIT_TAIL_RE = re.compile(
 # are a special hazard: for hour 12 they expand to "ten to one" / "twenty to
 # one", which in English prose is overwhelmingly the gambling idiom, and for
 # other hours they collide with ranges and scores ("from ten to twelve inches",
-# "ten to two on duty"). A sweep once filled h12_ten_to and h12_twenty_to with
-# nothing but wagers (issue #293). So a bare ``<minute> to <hour>`` hit must
+# "ten to two on duty"); unguarded, they fill h12_ten_to and h12_twenty_to
+# with wagers (issue #293). So a bare ``<minute> to <hour>`` hit must
 # carry a positive time cue on one side — and even then an odds marker nearby
 # wins ("says he, at twenty to one. A rank outsider").
 _BARE_TO_PHRASE_RE = re.compile(r"^(?:five|ten|twenty|twenty[- ]five)\s+to\s+[a-z]+$", re.IGNORECASE)
@@ -257,10 +257,9 @@ def search_bucket(bucket: str, search_dir: Path) -> list[dict]:
 
 def main() -> int:
     args = parse_args()
-    # CWD-relative, like ``--search-dir`` and ``--output`` just below — an
-    # earlier revision anchored this one argument on the package directory,
-    # so the documented ``idle-hours target-sparse output/bucket-coverage.json``
-    # could never find the file it named (issue #295).
+    # CWD-relative, like ``--search-dir`` and ``--output`` just below, so the
+    # documented ``idle-hours target-sparse output/bucket-coverage.json``
+    # finds the file it names (issue #295).
     coverage_path = Path(args.coverage_json).expanduser().resolve()
     coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
     targets = expected_targets(coverage, args.max_buckets)

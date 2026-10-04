@@ -177,10 +177,9 @@ def infer_time_from_quote(display_quote: str, current_matched: str | None = None
 
     A quote can carry several ``<minutes> past/to <hour>`` phrases. When
     ``current_matched`` (the row's stored ``matched_text``) is given, the
-    phrase that *contains* it is preferred — repairing a row against the
-    first phrase in the quote rather than the one it was actually mined on
-    rewrote its time to an unrelated phrase (issue #301). Without it, or when
-    no phrase contains it, the first phrase wins as before.
+    phrase that *contains* it is preferred, so a row is repaired against the
+    phrase it was actually mined on rather than an unrelated one (issue #301).
+    Without it, or when no phrase contains it, the first phrase wins.
     """
     matches = list(TIME_PATTERN.finditer(' '.join(display_quote.split())))
     if not matches:
