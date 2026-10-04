@@ -544,14 +544,15 @@ SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
 )
 
 
-_is_id = pick_quote_module.is_source_id
 
 
 def validate_overrides_payload(payload: object) -> dict:
     """Return a cleaned overrides dict, or raise ``ValueError`` with a caller-safe message.
 
     Validates and normalises the four schema keys of
-    ``assets/selection_overrides.json`` and returns only those. The wholesale
+    ``assets/selection_overrides.json`` with ``pick_quote.sanitize_overrides``
+    in strict mode, the same function the runtime loader uses leniently, and
+    returns only those keys. The wholesale
     save (``_api_overrides_post``) layers them over the submitted document so
     an operator's own extra top-level keys (a ``_comment``, a field from a
     newer schema) survive the editor round-trip, as they already do through
@@ -571,35 +572,8 @@ def validate_overrides_payload(payload: object) -> dict:
             "payload must contain at least one of "
             f"{OVERRIDES_KEYS} — refusing to treat empty body as a wipe"
         )
-    ban = payload.get("ban_source_ids", [])
-    boost = payload.get("boost_source_ids", [])
-    preferred = payload.get("preferred_buckets", {})
-    ban_quote_keys = payload.get("ban_quote_keys", [])
-    if not isinstance(ban, list) or not all(_is_id(x) for x in ban):
-        raise ValueError("ban_source_ids must be a list of string/int ids")
-    if not isinstance(boost, list) or not all(_is_id(x) for x in boost):
-        raise ValueError("boost_source_ids must be a list of string/int ids")
-    if not isinstance(preferred, dict):
-        raise ValueError("preferred_buckets must be an object")
-    if not isinstance(ban_quote_keys, list):
-        raise ValueError("ban_quote_keys must be a list of '<source_id>:<line_number>' strings")
-    for entry in ban_quote_keys:
-        if not _is_quote_key(entry):
-            raise ValueError(
-                f"ban_quote_keys entry {entry!r} must be of the form '<source_id>:<line_number>'"
-            )
-    valid_buckets = pick_quote_module.valid_bucket_names()
-    for key, value in preferred.items():
-        if key not in valid_buckets:
-            raise ValueError(f"preferred_buckets key {key!r} is not a valid bucket")
-        if not _is_id(value):
-            raise ValueError(f"preferred_buckets[{key!r}] must be a string/int source id")
-    return {
-        "ban_source_ids": [str(x) for x in ban],
-        "boost_source_ids": [str(x) for x in boost],
-        "preferred_buckets": {k: str(v) for k, v in preferred.items()},
-        "ban_quote_keys": list(ban_quote_keys),
-    }
+    cleaned = pick_quote_module.sanitize_overrides(payload, strict=True)
+    return {key: cleaned[key] for key in OVERRIDES_KEYS}
 
 
 def serialize_overrides(payload: dict) -> bytes:

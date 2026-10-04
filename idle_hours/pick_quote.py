@@ -406,52 +406,65 @@ def _empty_overrides() -> dict:
     }
 
 
-def _overrides_warning(path: Path, message: str) -> None:
+def _overrides_warning(path: Path | None, message: str) -> None:
     if _degradation_warnings_suppressed():
         return
     print(f"warning: selection overrides {path}: {message}", file=sys.stderr, flush=True)
 
 
-def sanitize_overrides(raw: dict, path: Path) -> dict:
+def sanitize_overrides(raw: dict, path: Path | None = None, *, strict: bool = False) -> dict:
     """Return ``raw`` with every schema field coerced to the shape the picker reads.
 
-    Each field is checked on its own. A field of the wrong type is dropped with a
-    warning and the others still apply, so one typo does not lift every ban. A bad
-    entry inside a list or map is dropped the same way. Ids come back as strings.
-    Unknown top-level keys are kept, since the picker ignores them.
+    The one validator for ``selection_overrides.json``, used in two modes:
+
+    * lenient (the runtime loader): each problem is warned about and only the
+      offending field or entry is dropped, so one typo never lifts every ban;
+    * strict (the curator UI's save): the first problem raises ``ValueError``
+      with a message fit to return to the operator.
+
+    Ids come back as strings. Unknown top-level keys are kept; the picker
+    ignores them.
     """
+
+    def problem(message: str) -> None:
+        if strict:
+            raise ValueError(message)
+        _overrides_warning(path, f"{message}; ignored")
+
     cleaned = dict(raw)
     for field in ("ban_source_ids", "boost_source_ids"):
         value = raw.get(field, [])
         if not isinstance(value, list):
-            _overrides_warning(path, f"{field} must be a list, got {type(value).__name__}; ignored")
+            problem(f"{field} must be a list of string/int ids, got {type(value).__name__}")
             value = []
-        bad = [x for x in value if not is_source_id(x)]
-        if bad:
-            _overrides_warning(path, f"{field} entries ignored (not string/int ids): {bad!r}")
+        for entry in value:
+            if not is_source_id(entry):
+                problem(f"{field} entry {entry!r} is not a string/int id")
         cleaned[field] = [str(x) for x in value if is_source_id(x)]
 
     keys = raw.get("ban_quote_keys", [])
     if not isinstance(keys, list):
-        _overrides_warning(path, f"ban_quote_keys must be a list, got {type(keys).__name__}; ignored")
+        problem(f"ban_quote_keys must be a list of '<source_id>:<line_number>' strings, got {type(keys).__name__}")
         keys = []
-    bad = [k for k in keys if not is_quote_key(k)]
-    if bad:
-        _overrides_warning(path, f"ban_quote_keys entries ignored (not '<source_id>:<line_number>'): {bad!r}")
+    for entry in keys:
+        if not is_quote_key(entry):
+            problem(f"ban_quote_keys entry {entry!r} must be of the form '<source_id>:<line_number>'")
     cleaned["ban_quote_keys"] = [k for k in keys if is_quote_key(k)]
 
     preferred = raw.get("preferred_buckets", {})
     if not isinstance(preferred, dict):
-        _overrides_warning(path, f"preferred_buckets must be an object, got {type(preferred).__name__}; ignored")
+        problem(f"preferred_buckets must be an object, got {type(preferred).__name__}")
         preferred = {}
     valid = valid_bucket_names()
-    unknown = sorted(k for k in preferred if k not in valid)
-    if unknown:
-        _overrides_warning(path, f"preferred_buckets has unknown buckets: {', '.join(unknown)}")
-    bad = sorted(k for k, v in preferred.items() if k in valid and not is_source_id(v))
-    if bad:
-        _overrides_warning(path, f"preferred_buckets values ignored (not string/int ids): {', '.join(bad)}")
-    cleaned["preferred_buckets"] = {k: str(v) for k, v in preferred.items() if is_source_id(v)}
+    kept = {}
+    for bucket, source_id in preferred.items():
+        if bucket not in valid:
+            problem(f"preferred_buckets key {bucket!r} is not a valid bucket")
+        elif not is_source_id(source_id):
+            problem(f"preferred_buckets[{bucket!r}] must be a string/int source id")
+        else:
+            kept[bucket] = str(source_id)
+    cleaned["preferred_buckets"] = kept
     return cleaned
 
 

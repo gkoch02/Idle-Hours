@@ -796,7 +796,7 @@ class TestLoadOverrides:
         }))
         pq.load_overrides(path)
         err = capsys.readouterr().err
-        assert "unknown buckets" in err
+        assert "not a valid bucket" in err
         assert "h99_bogus" in err
         assert "not_a_bucket" in err
         assert "h3_exact" not in err  # valid bucket must not be listed
@@ -1383,8 +1383,8 @@ class TestLoadOverridesFieldShapes:
         assert overrides["ban_source_ids"] == ["141", "7"]
         assert overrides["ban_quote_keys"] == ["9:12"]
         err = capsys.readouterr().err
-        assert "ban_source_ids entries ignored" in err
-        assert "ban_quote_keys entries ignored" in err
+        assert "ban_source_ids entry None is not a string/int id" in err
+        assert "ban_quote_keys entry 'nope' must be of the form" in err
 
     @pytest.mark.parametrize("bad", [[], None, "h3_exact", 5])
     def test_non_object_preferred_buckets_is_ignored(self, tmp_path, capsys, bad):
@@ -1395,7 +1395,7 @@ class TestLoadOverridesFieldShapes:
     def test_preferred_bucket_values_must_be_ids(self, tmp_path, capsys):
         overrides = self._load(tmp_path, {"preferred_buckets": {"h3_exact": 141, "h4_exact": None}})
         assert overrides["preferred_buckets"] == {"h3_exact": "141"}
-        assert "values ignored" in capsys.readouterr().err
+        assert "preferred_buckets['h4_exact'] must be a string/int source id" in capsys.readouterr().err
 
     def test_unknown_top_level_keys_are_kept(self, tmp_path):
         overrides = self._load(tmp_path, {"_comment": "curated by hand", "ban_source_ids": []})
@@ -1412,6 +1412,39 @@ class TestLoadOverridesFieldShapes:
         path.write_text(json.dumps(doc), encoding="utf-8")
         result = pq.select_quote(time_str="14:30", overrides_path=path)
         assert result.get("display_quote")
+
+
+class TestSanitizeOverridesModes:
+    """One validator, two modes: whatever the runtime loader warns about, the
+    curator UI's strict save must refuse, and on clean input they agree."""
+
+    BAD = [
+        {"ban_source_ids": None},
+        {"ban_source_ids": "141"},
+        {"boost_source_ids": [True]},
+        {"ban_quote_keys": "141:1"},
+        {"ban_quote_keys": ["141:1\n"]},
+        {"preferred_buckets": []},
+        {"preferred_buckets": {"h13_exact": "1"}},
+        {"preferred_buckets": {"h3_exact": None}},
+    ]
+
+    @pytest.mark.parametrize("doc", BAD)
+    def test_lenient_warning_means_strict_rejection(self, doc, capsys):
+        pq.sanitize_overrides(doc, Path("ov.json"))
+        assert "ignored" in capsys.readouterr().err
+        with pytest.raises(ValueError):
+            pq.sanitize_overrides(doc, strict=True)
+
+    def test_modes_agree_on_clean_input(self, capsys):
+        doc = {
+            "ban_source_ids": [141, "7"],
+            "boost_source_ids": ["9"],
+            "preferred_buckets": {"h3_exact": 12},
+            "ban_quote_keys": ["141:482"],
+        }
+        assert pq.sanitize_overrides(doc, Path("ov.json")) == pq.sanitize_overrides(doc, strict=True)
+        assert capsys.readouterr().err == ""
 
 
 class TestLoadOverridesCaching:
