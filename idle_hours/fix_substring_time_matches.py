@@ -26,7 +26,7 @@ from pathlib import Path
 
 from idle_hours.atomic_io import atomic_write_lines
 from idle_hours.buckets import minute_bucket as bucket_for_minute
-from idle_hours.gutenberg_time_miner import normalize_number_phrase
+from idle_hours.gutenberg_time_miner import daypart_for_hour, normalize_number_phrase
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -69,13 +69,6 @@ QUARTER_HALF_PATTERN = re.compile(
 # ``override_originals`` ledger would record the repaired value as the one
 # to restore.
 _TIME_FIELDS = ("matched_text", "hour", "minute", "normalized_time")
-
-
-def daypart_for_hour(hour: int) -> str:
-    """The miner's hour → daypart rule (``gutenberg_time_miner.daypart_for_hour``)."""
-    from idle_hours.gutenberg_time_miner import daypart_for_hour as _miner_daypart
-
-    return _miner_daypart(hour)
 
 
 def infer_quarter_half_from_quote(display_quote: str, current_matched: str | None):

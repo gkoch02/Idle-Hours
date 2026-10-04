@@ -131,9 +131,9 @@ PREVIEW_MAX_WIDTH = 800
 PREVIEW_MAX_HEIGHT = 480
 BUCKET_PATH_RE = re.compile(r"^/api/bucket/(?P<bucket>h(?:[1-9]|1[0-2])_[a-z_]+)$")
 # Per-row key "<source_id>:<line_number>", shared by content overrides and
-# ban_quote_keys. The picker owns the pattern so its loader and this
-# validator cannot drift apart.
-CONTENT_OVERRIDE_KEY_RE = pick_quote_module.QUOTE_KEY_RE
+# ban_quote_keys. The picker owns the rule, so its loader and this module
+# accept exactly the same keys.
+_is_quote_key = pick_quote_module.is_quote_key
 LOCALHOST_HOSTS = {"", "127.0.0.1", "localhost", "::1"}
 # The Host-header check needs its own set. LOCALHOST_HOSTS carries ``""``
 # because ``_parse_bind`` normalises an empty *bind* host to 127.0.0.1 — an
@@ -584,7 +584,7 @@ def validate_overrides_payload(payload: object) -> dict:
     if not isinstance(ban_quote_keys, list):
         raise ValueError("ban_quote_keys must be a list of '<source_id>:<line_number>' strings")
     for entry in ban_quote_keys:
-        if not isinstance(entry, str) or not CONTENT_OVERRIDE_KEY_RE.match(entry):
+        if not _is_quote_key(entry):
             raise ValueError(
                 f"ban_quote_keys entry {entry!r} must be of the form '<source_id>:<line_number>'"
             )
@@ -698,7 +698,7 @@ def validate_content_overrides_payload(payload: object) -> dict:
         raise ValueError(f"expected JSON object, got {type(payload).__name__}")
     cleaned: dict[str, dict] = {}
     for key, value in payload.items():
-        if not isinstance(key, str) or not CONTENT_OVERRIDE_KEY_RE.match(key):
+        if not _is_quote_key(key):
             raise ValueError(f"override key {key!r} must be of the form '<source_id>:<line_number>'")
         if not isinstance(value, dict):
             raise ValueError(f"override for {key!r} must be a JSON object")
@@ -1963,7 +1963,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ctx = self._ctx()
         body = self._read_json_body()
         key = body.get("key") if isinstance(body, dict) else None
-        if not isinstance(key, str) or not CONTENT_OVERRIDE_KEY_RE.match(key.strip()):
+        if not isinstance(key, str) or not _is_quote_key(key.strip()):
             raise ValueError("key must be of the form '<source_id>:<line_number>'")
         key = key.strip()
         with _OVERRIDES_LOCK:

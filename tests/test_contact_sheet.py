@@ -203,6 +203,41 @@ class TestBucketIteration:
         assert mock_rows.call_count == 1
         assert mock_overrides.call_count == 1
 
+    def test_default_overrides_path_is_the_bundled_file(self):
+        """The default used to be a CWD-relative path that stopped existing after
+        the package move, so the sheet silently applied no bans."""
+        from idle_hours import pick_quote
+        with patch("idle_hours.contact_sheet.pick_quote_module.load_rows", return_value=[]), \
+             patch("idle_hours.contact_sheet.pick_quote_module.load_overrides", return_value={}) as mock_overrides, \
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=_fake_select_quote):
+            contact_sheet.build_sheet(
+                tile_w=50, tile_h=30, caption_h=0, margin=0,
+                theme="default", mode="production", log=lambda _msg: None,
+            )
+        loaded = mock_overrides.call_args.args[0]
+        assert str(loaded) == pick_quote.DEFAULT_OVERRIDES_PATH
+        assert loaded.is_file()
+
+    def test_bans_from_the_overrides_file_reach_the_picker(self, tmp_path):
+        overrides = tmp_path / "selection_overrides.json"
+        overrides.write_text('{"ban_source_ids": ["141"]}', encoding="utf-8")
+        captured = []
+
+        def capture(**kwargs):
+            captured.append(kwargs.get("overrides"))
+            return _fake_select_quote(**kwargs)
+
+        with patch("idle_hours.contact_sheet.pick_quote_module.load_rows", return_value=[]), \
+             patch("idle_hours.contact_sheet.render_quote_module.render", side_effect=_fake_render), \
+             patch("idle_hours.contact_sheet.pick_quote_module.select_quote", side_effect=capture):
+            contact_sheet.build_sheet(
+                tile_w=50, tile_h=30, caption_h=0, margin=0,
+                theme="default", mode="production", log=lambda _msg: None,
+                overrides_path=str(overrides),
+            )
+        assert captured and all(o["ban_source_ids"] == ["141"] for o in captured)
+
     def test_preloaded_rows_are_passed_to_select_quote(self):
         """build_sheet must thread pre-loaded rows/overrides into select_quote."""
         preloaded_rows = [{"sentinel": "rows"}]

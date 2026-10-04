@@ -1414,6 +1414,69 @@ class TestLoadOverridesFieldShapes:
         assert result.get("display_quote")
 
 
+class TestLoadOverridesCaching:
+    """The file is reloaded on every pick, so its warnings must fire once per
+    version of the file, not once per pick."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self, monkeypatch):
+        monkeypatch.delenv(pq.SUPPRESS_WARNINGS_ENV, raising=False)
+        pq.clear_corpus_cache()
+        yield
+        pq.clear_corpus_cache()
+
+    def _write(self, path, doc):
+        path.write_text(json.dumps(doc), encoding="utf-8")
+
+    def test_warns_once_per_file_version(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": "141"})
+        for _ in range(5):
+            pq.load_overrides(path)
+        assert capsys.readouterr().err.count("must be a list") == 1
+
+    def test_editing_the_file_reparses_and_warns_again(self, tmp_path, capsys):
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": "141"})
+        pq.load_overrides(path)
+        capsys.readouterr()
+        self._write(path, {"ban_source_ids": ["141"], "ban_quote_keys": "x"})
+        assert pq.load_overrides(path)["ban_source_ids"] == ["141"]
+        assert "ban_quote_keys must be a list" in capsys.readouterr().err
+
+    def test_render_child_stays_quiet(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv(pq.SUPPRESS_WARNINGS_ENV, "1")
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": None})
+        assert pq.load_overrides(path)["ban_source_ids"] == []
+        assert capsys.readouterr().err == ""
+
+    def test_callers_get_independent_copies(self, tmp_path):
+        path = tmp_path / "selection_overrides.json"
+        self._write(path, {"ban_source_ids": ["7"]})
+        pq.load_overrides(path)["ban_source_ids"].append("99")
+        assert pq.load_overrides(path)["ban_source_ids"] == ["7"]
+
+
+class TestQuoteKeyShape:
+    @pytest.mark.parametrize("key", ["141:482", "pg-12.a_b:0"])
+    def test_accepts_well_formed_keys(self, key):
+        assert pq.is_quote_key(key)
+
+    @pytest.mark.parametrize("key", [
+        "141:482\n",       # ``$`` with ``match`` accepted a trailing newline
+        "141:\u0664\u0668\u0662",  # ``\d`` accepted Arabic-Indic digits
+        "141:482abc", ":482", "141:", "141", 141, None,
+    ])
+    def test_rejects_keys_that_could_never_match_a_row(self, key):
+        assert not pq.is_quote_key(key)
+
+    def test_loader_drops_them(self, tmp_path):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text(json.dumps({"ban_quote_keys": ["141:482", "141:482\n"]}), encoding="utf-8")
+        assert pq.load_overrides(path)["ban_quote_keys"] == ["141:482"]
+
+
 class TestSelectQuotePin:
     """Regression (#190): theme-only repaints pin the render subprocess to the
     exact row already on the panel — bypassing scoring and the anti-repeat
