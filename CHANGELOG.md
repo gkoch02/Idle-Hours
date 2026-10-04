@@ -13,8 +13,9 @@ these entries under the new dated version heading.
   seen at an angle. The quote is laid out flat in Dancing Script, warped
   into perspective and thresholded back to solid ink, with the matched
   phrase in blue fountain-pen ink. Faint asemic lines fill the
-  foreshortened far band, a fountain pen lies across them, and brass
-  stands sit out of focus beyond the sheet.
+  foreshortened far band, a fountain pen lies across them, a second page
+  lies underneath, and an inkwell, a pen cup and a sander stand out of
+  focus on the mahogany beyond.
 - A hand-edited `selection_overrides.json` with a field of the wrong type no
   longer breaks the clock or bans the wrong book. A `null` list used to raise
   on every pick and freeze the panel in render backoff, and a ban written as

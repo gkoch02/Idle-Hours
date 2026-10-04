@@ -39366,9 +39366,10 @@ def render_photo_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # trapezoid whose far edge is about three fifths the width of its near edge,
 # rolled a few degrees so its right side sits higher. Past the sheet the desk
 # runs into shadow, where a lamp catches a row of out-of-focus brass (an
-# inkwell, a pen stand, a sander) and a second pen lies further back. A black
-# lacquer fountain pen with a gold band and nib lies across the top of the
-# page, its nib resting where the writing stopped.
+# inkwell, a pen cup with two pens standing in it, a sander) and two more pens
+# lie further back. A second page lies under the letter. A black lacquer
+# fountain pen with a gold band and nib lies across the top of the page, its
+# nib resting where the writing stopped.
 #
 # **Only the near half of the page is legible, on purpose.** A sheet at this
 # angle cannot carry readable text all the way up: at the far edge a glyph is
@@ -39393,11 +39394,13 @@ def render_photo_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # **Inks.** The prose is black, the matched phrase blue — fountain-pen ink,
 # and the one accent that reads as *ink* rather than decoration on cream. The
 # paper is white with a yellow stipple that thickens toward the near, shadowed
-# corner and thins under the lamp. The desk is black with a red stipple pooled
-# under the lamp and a faint grain. The brass is a shaded cylinder ramp
-# through black, red, yellow and white, blurred before it is stippled so it
-# reads as out of focus, with a dim reflection on the polished desk below
-# each piece. Gold on the pen is 5/8 red to 3/8 yellow, the tangerine-side
+# corner and thins under the lamp; the page underneath carries more. The desk
+# is mahogany: black with a red stipple pooled under the lamp, 30% of it
+# yellow, and a wandering grain. Red alone over black read as aubergine on the
+# panel. The brass pieces are lathe profiles shaded on a black, red, yellow
+# and white ramp with a narrow glint, blurred before they are stippled so they
+# read as out of focus, with a fading reflection on the polished desk below
+# each foot. Gold on the pen is 5/8 red to 3/8 yellow, the tangerine-side
 # mix the recipe catalogue recommends over a washed-out 50/50.
 #
 # **Cost.** The desk, the brass and the empty sheet are the same for every
@@ -39438,9 +39441,35 @@ _ESCRITOIRE_LINE_MULT = 1.36
 _ESCRITOIRE_FIELD_SCALE = 4            # the smooth fields' downsampling factor
 # The pen, nib tip to cap end, and its half-width at the nib end.
 _ESCRITOIRE_PEN = ((262.0, 212.0), (738.0, 102.0), 10.0)
-# The brass on the far side of the desk: (x0, x1, top, foot) per piece. The
-# tops run off the panel; the feet stand on the desk behind the sheet.
-_ESCRITOIRE_BRASS = ((520, 600, -20, 150), (640, 700, -30, 120), (722, 792, 20, 170))
+# A second sheet under the letter, turned a few degrees further, so a wedge of
+# it shows along the far edge and past the top-right corner: a page of the
+# same letter, and the cheapest cue that the sheet lies on a real desk.
+_ESCRITOIRE_UNDER_QUAD = ((182, 146), (726, 133), (842, 520), (-60, 482))
+# The brass beyond the sheet, each a turned piece given as a lathe profile:
+# its axis x and (y, half-width) knots down the silhouette, joined linearly.
+# A knot pair a few pixels apart is a step in the turning, which is where a
+# moulding line falls. Tops are on the panel this time: three cylinders cut
+# off by the top edge read as lit columns, not as things on a desk.
+_ESCRITOIRE_BRASS = (
+    # The inkwell: a ball finial on a domed lid, a squat body, a stepped foot.
+    (560, ((30, 0), (31, 5), (38, 7), (44, 4), (47, 10), (52, 22), (60, 31), (66, 36), (70, 34),
+           (74, 38), (132, 38), (136, 43), (146, 44), (150, 40))),
+    # The pen cup: a rolled rim, a band at the waist, a flared foot.
+    (672, ((40, 30), (46, 30), (48, 27), (94, 27), (96, 30), (102, 30), (104, 27), (136, 28),
+           (140, 33), (150, 35), (154, 32))),
+    # The sander: a pierced dome, a waisted neck, a bell foot on the desk
+    # beyond the sheet's right edge, where its reflection shows.
+    (756, ((54, 0), (56, 12), (62, 20), (70, 22), (74, 15), (92, 13), (110, 18), (140, 30),
+           (154, 36), (162, 37), (166, 33))),
+)
+# Lamp glints on the brass, which the blur turns into soft bokeh: (x, y, r).
+_ESCRITOIRE_GLINTS = ((546, 30, 4), (543, 58, 5), (545, 100, 5), (657, 44, 4), (659, 116, 4),
+                      (746, 66, 4), (742, 150, 5))
+# The two pens standing in the cup: where each leaves the rim, and where it
+# leaves the panel.
+_ESCRITOIRE_CUP_PENS = (((662, 42), (638, -4)), ((684, 42), (706, -4)))
+# The pens lying further back on the left: nib tip to cap end, half-width.
+_ESCRITOIRE_BACK_PENS = (((330, 120), (64, 150), 9), ((236, 64), (18, 92), 8))
 _ESCRITOIRE_SCENE: dict = {}
 
 
@@ -39474,12 +39503,11 @@ def _escritoire_coeffs(scale: int = 1) -> tuple:
     return tuple(_escritoire_solve(a, b))
 
 
-def _escritoire_field(size, fn) -> Image.Image:
+def _escritoire_field(size, fn, step: int = _ESCRITOIRE_FIELD_SCALE) -> Image.Image:
     """A smooth ``"L"`` field from ``fn(x, y) -> 0..1``, sampled every
     ``_ESCRITOIRE_FIELD_SCALE`` pixels and scaled up bilinearly. The lamp pool
     and the paper's warmth have no detail finer than tens of pixels, and
     evaluating them per pixel was most of a cold render."""
-    step = _ESCRITOIRE_FIELD_SCALE
     width, height = size
     cols, rows = width // step + 2, height // step + 2
     data = bytes(int(255 * min(1.0, max(0.0, fn(x * step, y * step))))
@@ -39499,94 +39527,157 @@ def _escritoire_stipple(density: Image.Image) -> Image.Image:
     return ImageChops.subtract(density, threshold).point(lambda v: 255 if v else 0)
 
 
-def _escritoire_sheet_mask(size) -> Image.Image:
+def _escritoire_sheet_mask(size, quad=_ESCRITOIRE_QUAD) -> Image.Image:
     mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).polygon(_ESCRITOIRE_QUAD, fill=255)
+    ImageDraw.Draw(mask).polygon(quad, fill=255)
     return mask
 
 
+def _escritoire_paper_mask(size) -> Image.Image:
+    """Both sheets: everything the brass sits behind."""
+    return ImageChops.lighter(_escritoire_sheet_mask(size), _escritoire_sheet_mask(size, _ESCRITOIRE_UNDER_QUAD))
+
+
 def _escritoire_paint_desk(image: Image.Image) -> None:
-    """Black mahogany with a red stipple pooled under the lamp and a faint
-    grain running across the desk."""
+    """Mahogany: black with a red stipple pooled under the lamp, a share of
+    yellow inside the red, and a grain that wanders.
+
+    Red over black alone read as aubergine on the panel. Real mahogany is a
+    yellow-brown, which is the catalogue's print-sepia direction (red, yellow
+    and black), so a fixed share of every lit run is yellow. The share rides
+    the same tile read as the red (``tile < d * share`` is a subset of
+    ``tile < d``), so the hue holds all the way down the pool's falloff.
+
+    The grain was a perfect per-row sine, which reads as ruled lines. It now
+    drifts with x, and is computed at half resolution like the pool."""
     width, height = image.size
     lx, ly = _ESCRITOIRE_LAMP
     pool = _escritoire_field(
         (width, height), lambda x, y: max(0.0, 1.0 - math.hypot(x - lx, (y - ly) * 1.6) / 520) ** 1.6)
-    # The grain is a per-row brightening of the pool, 0.26..0.31 of full.
-    grain = bytes(int(255 * (0.26 + 0.05 * (0.5 + 0.5 * math.sin(y * 0.55 + 1.8 * math.sin(y * 0.07)))) / 0.31)
-                  for y in range(height))
-    grain_img = Image.frombytes("L", (1, height), grain).resize((width, height), Image.Resampling.NEAREST)
-    density = ImageChops.multiply(pool, grain_img).point(lambda v: int(255 * 0.04 + v * 0.31))
+    grain = _escritoire_field(
+        (width, height),
+        lambda x, y: (0.24 + 0.09 * (0.5 + 0.5 * math.sin(
+            y * 0.55 + 1.8 * math.sin(y * 0.07) + 1.3 * math.sin(x * 0.011 + y * 0.031)))) / 0.33,
+        step=2)
+    density = ImageChops.multiply(pool, grain).point(lambda v: int(255 * 0.04 + v * 0.33))
     image.paste(SPECTRA6["black"], (0, 0, width, height))
     image.paste(SPECTRA6["red"], (0, 0), _escritoire_stipple(density))
+    image.paste(SPECTRA6["yellow"], (0, 0), _escritoire_stipple(density.point(lambda v: v * 30 // 100)))
 
 
 def _escritoire_paint_shadow(image: Image.Image) -> None:
-    """The sheet's shadow, cast down and to the right onto the desk: a soft
+    """The sheets' shadow, cast down and to the right onto the desk: a soft
     black stipple, painted before the brass so it falls on the desk only.
 
     The shift must not wrap. The sheet runs off the bottom and right of the
     panel, and ``ImageChops.offset`` carried those rows round to the top,
     where they blacked out a band of lamp light and brass."""
-    sheet = _escritoire_sheet_mask(image.size)
-    shadow = _furies_shift(sheet, 6, 9).filter(ImageFilter.GaussianBlur(7))
-    image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(ImageChops.subtract(shadow, sheet)))
+    paper = _escritoire_paper_mask(image.size)
+    shadow = _furies_shift(paper, 6, 9).filter(ImageFilter.GaussianBlur(7))
+    image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(ImageChops.subtract(shadow, paper)))
+
+
+def _escritoire_lathe(lp, ap, cx: float, knots, *, gain: float = 1.0, mirror_at: float | None = None,
+                      fade: float = 0.0) -> None:
+    """Shade one turned brass piece into the ``lum`` / ``alpha`` pixel access
+    objects: across each row a cylinder's falloff with a narrow glint left of
+    the axis, darkened on the rows where the profile steps (the mouldings).
+    With ``mirror_at`` it paints the piece's reflection instead, flipped about
+    that y and fading out over ``fade`` pixels."""
+    ys = [k[0] for k in knots]
+    steps = {round(ys[i]) for i in range(1, len(ys) - 1) if ys[i + 1] - ys[i] <= 6 or ys[i] - ys[i - 1] <= 6}
+
+    def half_width(y):
+        for (y0, w0), (y1, w1) in zip(knots, knots[1:]):
+            if y0 <= y <= y1:
+                return w0 + (w1 - w0) * (y - y0) / max(1e-6, y1 - y0)
+        return 0.0
+
+    top, foot = ys[0], ys[-1]
+    rows = range(int(top), int(foot) + 1)
+    for y in rows:
+        hw = half_width(y)
+        if hw < 0.5:
+            continue
+        ring = 0.72 if any(abs(y - k) <= 1 for k in steps) else 1.0
+        if mirror_at is None:
+            out_y, a = y, 255
+        else:
+            out_y = int(2 * mirror_at - y)
+            a = int(255 * 0.45 * max(0.0, 1 - (out_y - mirror_at) / fade))
+            if a <= 0:
+                continue
+        if not 0 <= out_y < 480:          # the scene is always composed at 800x480
+            continue
+        for x in range(max(0, int(cx - hw)), min(800, int(cx + hw) + 1)):
+            t = (x - cx) / hw
+            if abs(t) > 1:
+                continue
+            body = math.sqrt(1 - t * t)
+            glint = math.exp(-((t + 0.42) / 0.15) ** 2)
+            v = int(255 * gain * ring * min(1.0, 0.1 + 0.42 * body + 0.5 * glint))
+            if v > lp[x, out_y]:
+                lp[x, out_y] = v
+            if a > ap[x, out_y]:
+                ap[x, out_y] = a
 
 
 def _escritoire_paint_brass(image: Image.Image) -> None:
-    """The out-of-focus brass on the far side: shaded cylinders on a
-    black-red-yellow-white ramp, blurred before they are stippled, each with a
-    dim reflection on the desk below its foot, and one more pen lying further
-    back on the left."""
+    """The out-of-focus things on the far side of the desk: three turned brass
+    pieces with their tops on the panel, lamp glints that the blur turns into
+    bokeh, reflections on the polished desk, and two pens lying further back.
+    All of it is shaded as a luminance field and an alpha field, blurred
+    together, then stippled on a black-red-yellow-white ramp."""
     width, height = image.size
     lum = Image.new("L", (width, height), 0)
     alpha = Image.new("L", (width, height), 0)
     lp, ap = lum.load(), alpha.load()
+    for cx, knots in _ESCRITOIRE_BRASS:
+        _escritoire_lathe(lp, ap, cx, knots)
+        foot = knots[-1][0]
+        _escritoire_lathe(lp, ap, cx, knots, gain=0.8, mirror_at=foot, fade=40)
+    draw_l, draw_a = ImageDraw.Draw(lum), ImageDraw.Draw(alpha)
+    for gx, gy, r in _ESCRITOIRE_GLINTS:
+        draw_l.ellipse((gx - r, gy - r, gx + r, gy + r), fill=255)
+    # The back pens. Dark barrels vanish on a dark desk, so each is drawn by
+    # what the lamp catches: a gold nib and section, a gold cap band and
+    # finial, and a bright line along the top of the barrel.
+    for (nx, ny), (ex, ey), r in _ESCRITOIRE_BACK_PENS:
+        length = math.hypot(ex - nx, ey - ny)
+        ux, uy = (ex - nx) / length, (ey - ny) / length
+        px_, py_ = -uy, ux
 
-    def cylinder(x0, x1, y0, y1, gain=1.0, fade=None):
-        cx, half = (x0 + x1) / 2, (x1 - x0) / 2
-        for y in range(max(0, y0), min(height, y1)):
-            a = 255 if fade is None else int(255 * fade(y))
-            for x in range(max(0, int(x0)), min(width, int(x1) + 1)):
-                t = (x - cx) / half
-                if abs(t) > 1:
-                    continue
-                body = math.sqrt(1 - t * t)
-                glint = math.exp(-((t + 0.42) / 0.16) ** 2)
-                lp[x, y] = max(lp[x, y], int(255 * gain * min(1.0, 0.12 + 0.42 * body + 0.45 * glint)))
-                ap[x, y] = max(ap[x, y], a)
+        def quad(t0, t1, w0, w1):
+            return [(nx + ux * t0 + px_ * w0, ny + uy * t0 + py_ * w0),
+                    (nx + ux * t1 + px_ * w1, ny + uy * t1 + py_ * w1),
+                    (nx + ux * t1 - px_ * w1, ny + uy * t1 - py_ * w1),
+                    (nx + ux * t0 - px_ * w0, ny + uy * t0 - py_ * w0)]
 
-    for x0, x1, top, foot in _ESCRITOIRE_BRASS:
-        cylinder(x0, x1, top, foot)
-        # A moulding a third of the way down, and the wider foot.
-        ring = top + (foot - top) * 2 // 3
-        cylinder(x0 - 4, x1 + 4, ring, ring + 8, gain=0.8)
-        cylinder(x0 - 8, x1 + 8, foot - 14, foot, gain=0.9)
-        # The reflection: the foot's colours, mirrored and fading into the desk.
-        cylinder(x0 - 6, x1 + 6, foot, foot + 44, gain=0.75,
-                 fade=lambda y, f=foot: 0.4 * max(0.0, 1 - (y - f) / 44))
-    # The pen lying further back: a black barrel with brass at both ends.
-    draw_a = ImageDraw.Draw(alpha)
-    draw_l = ImageDraw.Draw(lum)
-    for (x0, y0, x1, y1), caps in (((60, 118, 250, 140), (60, 92, 220, 250)),
-                                   ((20, 70, 140, 94), (20, 44, 116, 140))):
-        draw_a.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=255)
-        draw_l.rounded_rectangle((x0, y0, x1, y1), radius=10, fill=30)
-        for c0, c1 in (caps[:2], caps[2:]):
-            draw_l.rectangle((c0, y0 + 2, c1, y1 - 2), fill=130)
-        draw_l.line((x0 + 30, y0 + 6, x1 - 30, y0 + 6), fill=150, width=2)
-    lum = lum.filter(ImageFilter.GaussianBlur(4))
-    alpha = alpha.filter(ImageFilter.GaussianBlur(5))
+        draw_a.polygon(quad(0, length, 1, r), fill=255)
+        draw_l.polygon(quad(30, length, r * 0.8, r), fill=8)
+        draw_l.polygon(quad(0, 34, 1, r * 0.75), fill=150)                  # nib + section
+        draw_l.polygon(quad(length * 0.62, length * 0.62 + 7, r, r), fill=150)  # cap band
+        draw_l.polygon(quad(length - 6, length, r, r), fill=150)            # finial
+        hl = quad(40, length * 0.92, r * 0.45, r * 0.5)
+        draw_l.line([hl[0], hl[1]], fill=235, width=2)
+    # Two pens standing in the cup, which is what makes it read as one: dark
+    # shafts leaning out of the rim, each drawn by its highlight.
+    for (bx, by), (tx, ty) in _ESCRITOIRE_CUP_PENS:
+        draw_a.line([(bx, by), (tx, ty)], fill=255, width=7)
+        draw_l.line([(bx, by), (tx, ty)], fill=8, width=7)
+        draw_l.line([(bx - 2, by), (tx - 2, ty)], fill=225, width=1)
+    lum = lum.filter(ImageFilter.GaussianBlur(3))
+    alpha = alpha.filter(ImageFilter.GaussianBlur(4))
     # Ramp black < red < yellow < white, two adjacent inks mixed by the tile.
     ramp = (SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"])
     px, lp, ap = image.load(), lum.load(), alpha.load()
-    sheet = _escritoire_sheet_mask((width, height)).load()
+    paper = _escritoire_paper_mask((width, height)).load()
     bx0, by0, bx1, by1 = alpha.getbbox() or (0, 0, 0, 0)
     for y in range(by0, by1):
         row = BAYER_8x8[y % 8]
         for x in range(bx0, bx1):
             a = ap[x, y]
-            if a < 8 or sheet[x, y]:
+            if a < 8 or paper[x, y]:
                 continue
             rank = row[x % 8]
             if rank >= a / 4:
@@ -39597,8 +39688,10 @@ def _escritoire_paint_brass(image: Image.Image) -> None:
 
 
 def _escritoire_paint_sheet(image: Image.Image) -> None:
-    """The cream paper: white with a yellow stipple warming toward the near,
-    shadowed corner and thinning under the lamp."""
+    """The paper: the page underneath, the letter's shadow falling on it, then
+    the letter. Both are white with a yellow stipple warming toward the near,
+    shadowed corner and thinning under the lamp; the page underneath carries
+    more yellow, so the two separate without an outline."""
     sw, sh = _ESCRITOIRE_SHEET
     a, b, c, d, e, f, g, h = _escritoire_coeffs()
 
@@ -39609,10 +39702,18 @@ def _escritoire_paint_sheet(image: Image.Image) -> None:
         u, v = (a * x + b * y + c) / den, (d * x + e * y + f) / den
         return 0.05 + 0.22 * min(1.0, max(0.0, 0.55 * v / sh + 0.45 * (1 - u / sw))) ** 1.3
 
+    warmth = _escritoire_field(image.size, warm)
+    under = _escritoire_sheet_mask(image.size, _ESCRITOIRE_UNDER_QUAD)
     sheet = _escritoire_sheet_mask(image.size)
-    yellow = ImageChops.multiply(_escritoire_stipple(_escritoire_field(image.size, warm)), sheet)
+    image.paste(SPECTRA6["white"], (0, 0), under)
+    image.paste(SPECTRA6["yellow"], (0, 0),
+                ImageChops.multiply(_escritoire_stipple(warmth.point(lambda v: min(255, v + 46))), under))
+    # The letter's own shadow, on the page under it.
+    shadow = _furies_shift(sheet, 4, 6).filter(ImageFilter.GaussianBlur(4))
+    shadow = ImageChops.multiply(ImageChops.subtract(shadow, sheet), under)
+    image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(shadow.point(lambda v: v * 3 // 4)))
     image.paste(SPECTRA6["white"], (0, 0), sheet)
-    image.paste(SPECTRA6["yellow"], (0, 0), yellow)
+    image.paste(SPECTRA6["yellow"], (0, 0), ImageChops.multiply(_escritoire_stipple(warmth), sheet))
 
 
 def _escritoire_scene() -> Image.Image:

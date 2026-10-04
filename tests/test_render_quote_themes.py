@@ -7634,8 +7634,8 @@ class TestEscritoireFrame:
         image = Image.new("RGB", (800, 480), rq.SPECTRA6["red"])
         rq._escritoire_paint_shadow(image)
         assert ink_counts(image.crop((0, 0, 800, 40))) == {rq.SPECTRA6["red"]: 800 * 40}
-        # It does land below and right of the sheet's near edges.
-        assert ink_counts(image.crop((0, 440, 800, 480))).get(rq.SPECTRA6["black"], 0) > 100
+        # It does land on the desk past the sheets' right edge.
+        assert ink_counts(image.crop((700, 140, 800, 440))).get(rq.SPECTRA6["black"], 0) > 100
 
     def test_scene_cache_rebuilds_when_a_painter_changes(self, monkeypatch):
         """The cache is keyed on the painters, so a neutered painter is seen
@@ -7648,3 +7648,54 @@ class TestEscritoireFrame:
                 m.setattr(rq, name, lambda image: None)
                 assert pixel_bytes(rq._escritoire_scene()) != pixel_bytes(warm), name
         assert pixel_bytes(rq._escritoire_scene()) == pixel_bytes(warm)
+
+    def test_desk_is_mahogany_not_aubergine(self):
+        """Red over black alone read as plum on the panel: a fixed share of
+        the desk's lit stipple is yellow, the print-sepia direction."""
+        image = Image.new("RGB", (800, 480))
+        rq._escritoire_paint_desk(image)
+        counts = ink_counts(image.crop((300, 0, 500, 60)))
+        red, yellow = counts.get(rq.SPECTRA6["red"], 0), counts.get(rq.SPECTRA6["yellow"], 0)
+        assert red > 0 and yellow > 0
+        assert 0.2 < yellow / (red + yellow) < 0.45
+        assert set(counts) <= {rq.SPECTRA6["black"], rq.SPECTRA6["red"], rq.SPECTRA6["yellow"]}
+
+    def test_brass_pieces_stand_whole_on_the_panel(self):
+        """Cut off by the top edge they read as lit columns; each piece's top
+        must be on the panel, with desk showing above it."""
+        image = self._render()
+        for cx, knots in rq._ESCRITOIRE_BRASS:
+            top = knots[0][0]
+            assert top >= 20, cx
+            above = ink_counts(image.crop((cx - 6, top - 14, cx + 6, top - 6)))
+            assert not above.get(rq.SPECTRA6["white"], 0), cx
+            body_y = (knots[0][0] + knots[-1][0]) // 2
+            body = ink_counts(image.crop((cx - 20, body_y - 6, cx + 20, body_y + 6)))
+            assert body.get(rq.SPECTRA6["yellow"], 0) > 40, cx
+
+    def test_pens_stand_in_the_cup_and_lie_behind(self):
+        image = self._render()
+        (bx, by), (tx, ty) = rq._ESCRITOIRE_CUP_PENS[0]
+        shaft = ink_counts(image.crop((min(bx, tx), 6, max(bx, tx), by - 6)))
+        assert shaft.get(rq.SPECTRA6["black"], 0) > 30
+        for (nx, ny), _, _ in rq._ESCRITOIRE_BACK_PENS:
+            nib = ink_counts(image.crop((nx - 30, ny - 12, nx, ny + 6)))
+            assert nib.get(rq.SPECTRA6["yellow"], 0) > 10, (nx, ny)
+
+    def test_a_page_lies_under_the_letter(self):
+        image = self._render()
+        under = rq._escritoire_sheet_mask(image.size, rq._ESCRITOIRE_UNDER_QUAD)
+        sheet = rq._escritoire_sheet_mask(image.size)
+        wedge = ImageChops.subtract(under, sheet)
+        assert ink_counts(wedge.convert("RGB")).get((255, 255, 255), 0) > 1500
+        shown = Image.new("RGB", image.size, rq.SPECTRA6["green"])
+        shown.paste(image, (0, 0), wedge)
+        counts = ink_counts(shown)
+        paper = counts.get(rq.SPECTRA6["white"], 0) + counts.get(rq.SPECTRA6["yellow"], 0)
+        assert paper > 800
+        # It carries more yellow than the letter does, so the two separate.
+        letter = Image.new("RGB", image.size, rq.SPECTRA6["green"])
+        letter.paste(image, (0, 0), sheet)
+        lc = ink_counts(letter.crop((400, 140, 700, 200)))
+        letter_paper = lc.get(rq.SPECTRA6["white"], 0) + lc.get(rq.SPECTRA6["yellow"], 0)
+        assert counts.get(rq.SPECTRA6["yellow"], 0) / paper > lc.get(rq.SPECTRA6["yellow"], 0) / max(1, letter_paper)
