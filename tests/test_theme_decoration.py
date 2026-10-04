@@ -1,18 +1,9 @@
 """Structural fences for the per-theme decorative renderer.
 
-``render_quote.py``'s per-theme decoration — the 33 ``draw_*_border``
-painters plus the ten ``render_*_frame`` custom compositions — is roughly
-59% of the module and 37% of all Python in the repo, yet for most themes it
-was previously only *executed*, never *asserted*.
-
-The reason is subtle: ``TestPreviewSizeRendering`` renders every registered
-theme at 80x60 and 240x144 and asserts only ``img.size`` plus
-palette-subset. That walks every painter (so line coverage reads ~95%) while
-saying nothing about what the painter drew. A mutation probe confirmed the
-gap: replacing all 33 border painters with ``lambda *a, **k: None`` left 17
-of them with a fully green suite, and the same treatment applied to the
-custom-frame sub-painters left six frame themes (astrarium, chrono,
-grimdark, lcars, letter, questline) entirely undefended.
+Rendering every theme and checking only image size and palette walks each
+painter, so line coverage looks high, while proving nothing about what was
+drawn. When these fences were added, replacing every border painter with a
+no-op left about half of them with a green suite.
 
 These tests close that class of regression structurally rather than by
 hand-writing a bespoke assertion class per theme:

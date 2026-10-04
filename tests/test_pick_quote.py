@@ -785,7 +785,7 @@ class TestLoadOverrides:
         }))
         result = pq.load_overrides(path)
         assert result["ban_source_ids"] == ["1"]
-        assert result["preferred_buckets"] == {"h3_exact": 42}
+        assert result["preferred_buckets"] == {"h3_exact": "42"}
 
     def test_unknown_preferred_bucket_warns_on_stderr(self, tmp_path, capsys):
         path = tmp_path / "ov.json"
@@ -811,15 +811,16 @@ class TestLoadOverrides:
         pq.load_overrides(path)
         assert capsys.readouterr().err == ""
 
-    def test_non_dict_preferred_buckets_does_not_crash(self, tmp_path, capsys):
+    def test_non_dict_preferred_buckets_is_dropped_with_warning(self, tmp_path, capsys):
         path = tmp_path / "ov.json"
         path.write_text(json.dumps({
             "ban_source_ids": [],
             "boost_source_ids": [],
             "preferred_buckets": ["oops", "list"],
         }))
-        pq.load_overrides(path)
-        assert capsys.readouterr().err == ""
+        result = pq.load_overrides(path)
+        assert result["preferred_buckets"] == {}
+        assert "must be an object" in capsys.readouterr().err
 
 
 class TestInferQuoteMinute:
@@ -1342,6 +1343,75 @@ class TestLoadOverridesFailOpen:
         overrides = pq.load_overrides(path)
         assert overrides["ban_source_ids"] == ["7"]
         assert overrides["ban_quote_keys"] == []
+
+
+class TestLoadOverridesFieldShapes:
+    """Valid JSON with a wrong-typed field must degrade that field alone.
+
+    Before the loader sanitised fields, ``"ban_source_ids": null`` raised a
+    TypeError on every pick, and ``"ban_source_ids": "141"`` was iterated as
+    characters, banning sources "1" and "4" while leaving 141 on the panel.
+    """
+
+    def _load(self, tmp_path, doc):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return pq.load_overrides(path)
+
+    @pytest.mark.parametrize("field", ["ban_source_ids", "boost_source_ids", "ban_quote_keys"])
+    @pytest.mark.parametrize("bad", [None, "141", 141, {"141": True}])
+    def test_non_list_field_is_ignored_with_warning(self, tmp_path, capsys, field, bad):
+        overrides = self._load(tmp_path, {field: bad, "ban_source_ids" if field != "ban_source_ids" else "boost_source_ids": ["9"]})
+        assert overrides[field] == []
+        assert "must be a list" in capsys.readouterr().err
+
+    def test_other_fields_survive_a_bad_one(self, tmp_path):
+        overrides = self._load(tmp_path, {"ban_source_ids": None, "ban_quote_keys": ["9:12"]})
+        assert overrides["ban_source_ids"] == []
+        assert overrides["ban_quote_keys"] == ["9:12"]
+
+    def test_string_ban_list_does_not_ban_its_characters(self, tmp_path):
+        overrides = self._load(tmp_path, {"ban_source_ids": "141"})
+        for source_id in ("1", "4", "141"):
+            assert not pq.is_banned({"source_id": source_id, "line_number": 1}, overrides)
+
+    def test_bad_entries_dropped_good_entries_kept(self, tmp_path, capsys):
+        overrides = self._load(tmp_path, {
+            "ban_source_ids": [141, "7", None, True, ["x"]],
+            "ban_quote_keys": ["9:12", "nope", 5],
+        })
+        assert overrides["ban_source_ids"] == ["141", "7"]
+        assert overrides["ban_quote_keys"] == ["9:12"]
+        err = capsys.readouterr().err
+        assert "ban_source_ids entries ignored" in err
+        assert "ban_quote_keys entries ignored" in err
+
+    @pytest.mark.parametrize("bad", [[], None, "h3_exact", 5])
+    def test_non_object_preferred_buckets_is_ignored(self, tmp_path, capsys, bad):
+        overrides = self._load(tmp_path, {"preferred_buckets": bad})
+        assert overrides["preferred_buckets"] == {}
+        assert "must be an object" in capsys.readouterr().err
+
+    def test_preferred_bucket_values_must_be_ids(self, tmp_path, capsys):
+        overrides = self._load(tmp_path, {"preferred_buckets": {"h3_exact": 141, "h4_exact": None}})
+        assert overrides["preferred_buckets"] == {"h3_exact": "141"}
+        assert "values ignored" in capsys.readouterr().err
+
+    def test_unknown_top_level_keys_are_kept(self, tmp_path):
+        overrides = self._load(tmp_path, {"_comment": "curated by hand", "ban_source_ids": []})
+        assert overrides["_comment"] == "curated by hand"
+
+    @pytest.mark.parametrize("doc", [
+        {"ban_source_ids": None},
+        {"ban_quote_keys": None},
+        {"preferred_buckets": []},
+        {"boost_source_ids": "3"},
+    ])
+    def test_select_quote_survives_malformed_fields(self, tmp_path, doc):
+        path = tmp_path / "selection_overrides.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        result = pq.select_quote(time_str="14:30", overrides_path=path)
+        assert result.get("display_quote")
 
 
 class TestSelectQuotePin:

@@ -9,6 +9,13 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- A hand-edited `selection_overrides.json` with a field of the wrong type no
+  longer breaks the clock or bans the wrong book. A `null` list used to raise
+  on every pick and freeze the panel in render backoff, and a ban written as
+  the string `"141"` banned sources 1 and 4 instead of 141. Each field is now
+  checked on its own: a bad field or entry is dropped with a warning and the
+  rest of the file still applies.
+- The wheel no longer ships four unused Spectral SC font weights (about 1 MiB).
 - Literary-layout themes (the thirty-eight that share `render`'s text path)
   set type better: justification is decided per block and never opens
   rivers (no line with under three gaps or more than 0.45 em per gap is

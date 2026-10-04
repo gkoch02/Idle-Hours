@@ -2531,7 +2531,6 @@ CAESARDRESSING_REGULAR = str(BASE_DIR / "fonts/caesar-dressing/CaesarDressing-Re
 # Spectral SC (hades foot) — the small-caps cut of Production Type's Spectral,
 # the serif *Hades II* sets its codex and boon descriptions in.
 SPECTRALSC_MEDIUM = str(BASE_DIR / "fonts/spectral-sc/SpectralSC-Medium.ttf")
-SPECTRALSC_SEMIBOLD = str(BASE_DIR / "fonts/spectral-sc/SpectralSC-SemiBold.ttf")
 # Hammersmith One (hades chrome) — Sorkin Type's open Johnston, the nearest
 # open face to P22 Underground, the game's main interface face.
 HAMMERSMITHONE_REGULAR = str(BASE_DIR / "fonts/hammersmith-one/HammersmithOne-Regular.ttf")
@@ -6063,29 +6062,6 @@ def wrap_quote_into_masks(draw, size, quote_row: dict, rect, *, theme: str,
     return prose, hot, y
 
 
-def draw_text_neon(
-    image: Image.Image,
-    xy,
-    text: str,
-    font,
-    core,
-    glow,
-    *,
-    anchor: str | None = None,
-    **kwargs,
-) -> None:
-    """Convenience wrapper: render one string into a mask and bloom it.
-
-    Callers painting several chunks that should share a single bloom (a wrapped
-    quote, a column of sign characters) should build one mask themselves and
-    call ``paint_neon_mask`` once — per-chunk blooms would double-expose where
-    two halos overlap, and each call allocates a full-canvas mask.
-    """
-    mask = Image.new("L", image.size, 0)
-    ImageDraw.Draw(mask).text(xy, text, font=font, fill=255, anchor=anchor)
-    paint_neon_mask(image, mask, core, glow, **kwargs)
-
-
 def paint_hatched_tone(
     image: Image.Image,
     rect: tuple[int, int, int, int],
@@ -8722,29 +8698,6 @@ def _lcars_paint_lavender_block(pixels, left: int, top: int, right: int, bot: in
                     pixels[px, py] = ink_white
 
 
-def _lcars_paint_peach_block(pixels, left: int, top: int, right: int, bot: int,
-                             sentinel) -> None:
-    """3-way Bayer post-pass for peach (R+Y+W @ 30/50/20). The
-    yellow-leaning sibling of salmon — warmer, less coral. Documented
-    in spectra6_color_recipes.md under "Pastels" — this is the first
-    theme to actually paint it. Partition: cells 0-4 → red (~31%),
-    5-12 → yellow (~50%), 13-15 → white (~19%)."""
-    ink_red = SPECTRA6["red"]
-    ink_yellow = SPECTRA6["yellow"]
-    ink_white = SPECTRA6["white"]
-    for py in range(top, bot + 1):
-        row = BAYER_4x4[py % 4]
-        for px in range(left, right + 1):
-            if pixels[px, py] == sentinel:
-                cell = row[px % 4]
-                if cell < 5:
-                    pixels[px, py] = ink_red
-                elif cell < 13:
-                    pixels[px, py] = ink_yellow
-                else:
-                    pixels[px, py] = ink_white
-
-
 def _lcars_paint_lilac_block(pixels, left: int, top: int, right: int, bot: int,
                              sentinel) -> None:
     """3-way Bayer post-pass for lilac (R+B+W @ 25/25/50 — paler than
@@ -10904,97 +10857,6 @@ def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, co
             fill=color,
             width=line_width,
         )
-
-
-def _draw_sol(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
-    """Sun symbol ☉: outlined circle with filled centre dot. The canonical
-    alchemical glyph for Sol / gold / the solar principle.
-    """
-    draw.ellipse(
-        (cx - radius, cy - radius, cx + radius, cy + radius),
-        outline=color,
-        width=line_width,
-    )
-    dot = max(2, radius // 4)
-    draw.ellipse((cx - dot, cy - dot, cx + dot, cy + dot), fill=color)
-
-
-def _draw_luna(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, page_bg, line_width: int = 2) -> None:
-    """Moon symbol ☽: crescent opening to the right.
-
-    Drawn as a filled disc in ``color``, then occluded by a second
-    filled disc in ``page_bg`` offset rightward. The result is a
-    crescent that opens to the right — the canonical lunar / Luna /
-    silver / philosophical-mercury glyph. ``line_width`` is unused
-    but accepted so every glyph helper shares the same signature.
-    """
-    _ = line_width  # signature parity with the other glyph helpers
-    draw.ellipse(
-        (cx - radius, cy - radius, cx + radius, cy + radius),
-        fill=color,
-    )
-    occlude_offset = radius // 2 + 2
-    draw.ellipse(
-        (
-            cx - radius + occlude_offset,
-            cy - radius,
-            cx + radius + occlude_offset,
-            cy + radius,
-        ),
-        fill=page_bg,
-    )
-
-
-def _draw_mars(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
-    """Mars symbol ♂: outlined circle with arrow at 45° upper-right.
-
-    The body circle sits centred at ``(cx, cy)``; the arrow shaft
-    extends outward from the circle at -45° (upper-right) for a
-    distance roughly equal to ``radius``, terminating in two short
-    barbs at ±135° from the shaft direction — the canonical
-    alchemical glyph for Mars / iron / the martial principle.
-    """
-    draw.ellipse(
-        (cx - radius, cy - radius, cx + radius, cy + radius),
-        outline=color,
-        width=line_width,
-    )
-    angle = math.radians(-45)
-    sx = cx + radius * math.cos(angle)
-    sy = cy + radius * math.sin(angle)
-    shaft_len = int(radius * 1.05)
-    ex = sx + shaft_len * math.cos(angle)
-    ey = sy + shaft_len * math.sin(angle)
-    draw.line((sx, sy, ex, ey), fill=color, width=line_width)
-    head_len = max(4, radius // 2)
-    for head_angle in (
-        math.radians(-45 + 135),
-        math.radians(-45 - 135),
-    ):
-        hx = ex + head_len * math.cos(head_angle)
-        hy = ey + head_len * math.sin(head_angle)
-        draw.line((ex, ey, hx, hy), fill=color, width=line_width)
-
-
-def _draw_venus(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 2) -> None:
-    """Venus symbol ♀: outlined circle with descending cross.
-
-    The body circle sits centred at ``(cx, cy)``; below the circle, a
-    vertical stroke descends for ~``radius`` pixels with a horizontal
-    bar crossing it at its midpoint — the canonical alchemical glyph
-    for Venus / copper / the feminine principle.
-    """
-    draw.ellipse(
-        (cx - radius, cy - radius, cx + radius, cy + radius),
-        outline=color,
-        width=line_width,
-    )
-    stroke_top = cy + radius
-    stroke_bot = stroke_top + radius + 2
-    draw.line((cx, stroke_top, cx, stroke_bot), fill=color, width=line_width)
-    bar_y = (stroke_top + stroke_bot) // 2
-    bar_half = max(4, radius * 2 // 3)
-    draw.line((cx - bar_half, bar_y, cx + bar_half, bar_y), fill=color, width=line_width)
 
 
 def _draw_alchemical_triangle(
@@ -32801,11 +32663,6 @@ def _hades_chrome_font(size: int):
 def _hades_label_font(size: int):
     """Lato Bold — the game's secondary face — for the rarity label."""
     return load_font([LATO_BOLD, *META_FONT_BOLD_CANDIDATES], size=size)
-
-
-def _hades_sc_font(size: int):
-    """Spectral SC Medium — the game's small-caps serif — for the book's title."""
-    return load_font([SPECTRALSC_MEDIUM, SPECTRAL_MEDIUM, *META_FONT_CANDIDATES], size=size)
 
 
 def _hades_paint_sky(scene: Image.Image) -> None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from idle_hours import atomic_io
+from idle_hours import atomic_io, runtime_telemetry
 from idle_hours.runtime_log import _log
 
 DEFAULT_STATE_PATH = "~/.idle-hours/state.json"
@@ -33,6 +33,18 @@ _STATE_SCHEMA: dict[str, tuple[type, ...] | tuple] = {
     # back to ``False`` to re-trigger the wizard.
     "setup_complete": (bool,),
 }
+
+
+def _record_state_issue(telemetry_path: str | None, path: Path, **fields) -> None:
+    """Record a state-file problem to telemetry. Never raises: boot must not fail on it."""
+    if not telemetry_path:
+        return
+    try:
+        runtime_telemetry.append_telemetry(
+            telemetry_path, {"mode": "state_validation", "path": str(path), **fields}
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log(f"runtime state: telemetry write failed: {exc!r}", err=True)
 
 
 def _resolve_state_path(state_path: str | None) -> Path | None:
@@ -74,18 +86,7 @@ def _validate_state_payload(path: Path, parsed: dict, telemetry_path: str | None
             f"malformed fields dropped",
             err=True,
         )
-        if telemetry_path:
-            # Lazy import to avoid a cycle: runtime_telemetry imports
-            # runtime_log which... doesn't import us back, but the
-            # indirection keeps the module-load graph minimal.
-            try:
-                from idle_hours import runtime_telemetry
-                runtime_telemetry.append_telemetry(
-                    telemetry_path,
-                    {"mode": "state_validation", "path": str(path), "issues": issues},
-                )
-            except Exception:
-                pass
+        _record_state_issue(telemetry_path, path, issues=issues)
     return cleaned
 
 
@@ -109,31 +110,11 @@ def load_runtime_state(state_path: str | None, telemetry_path: str | None = None
         parsed = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
         _log(f"runtime state at {path} unreadable, ignoring: {exc!r}", err=True)
-        if telemetry_path:
-            try:
-                from idle_hours import runtime_telemetry
-                runtime_telemetry.append_telemetry(
-                    telemetry_path,
-                    {"mode": "state_validation", "path": str(path), "error": repr(exc)},
-                )
-            except Exception:
-                pass
+        _record_state_issue(telemetry_path, path, error=repr(exc))
         return {}
     if not isinstance(parsed, dict):
         _log(f"runtime state at {path} is not a JSON object ({type(parsed).__name__}), ignoring", err=True)
-        if telemetry_path:
-            try:
-                from idle_hours import runtime_telemetry
-                runtime_telemetry.append_telemetry(
-                    telemetry_path,
-                    {
-                        "mode": "state_validation",
-                        "path": str(path),
-                        "error": f"not-a-dict:{type(parsed).__name__}",
-                    },
-                )
-            except Exception:
-                pass
+        _record_state_issue(telemetry_path, path, error=f"not-a-dict:{type(parsed).__name__}")
         return {}
     return _validate_state_payload(path, parsed, telemetry_path=telemetry_path)
 

@@ -114,28 +114,6 @@ class TestThemeSaturation:
     def test_unknown_theme_falls_back_to_default(self):
         assert display_inky.resolve_saturation("nope", None) == display_inky.THEME_SATURATION["default"]
 
-    @pytest.mark.parametrize(
-        "theme",
-        [
-            "scholar",
-            "newsprint",
-            "nightvision",
-            "blueprint",
-            "illuminated",
-            "bauhaus",
-            "risograph",
-            "comic",
-        ],
-    )
-    def test_new_themes_have_saturation_entries(self, theme):
-        """Every theme registered in ``render_quote.THEMES`` must have a
-        ``THEME_SATURATION`` entry. Without this the resolve call silently
-        falls back to the default saturation, which can make a dark-background
-        theme (``nightvision``) look muddier than intended."""
-        from idle_hours import render_quote as rq
-        assert theme in rq.THEMES
-        assert theme in display_inky.THEME_SATURATION
-
     def test_every_render_theme_has_saturation(self):
         """Belt-and-braces: the dynamic list of registered render themes must
         exactly equal the saturation table's keys. Prevents a new theme from
@@ -143,6 +121,23 @@ class TestThemeSaturation:
         a THEMES entry without touching display_inky."""
         from idle_hours import render_quote as rq
         assert set(rq.THEMES.keys()) == set(display_inky.THEME_SATURATION.keys())
+
+    def test_tier_follows_page_ground_except_listed_themes(self):
+        """Keeps the table's header comment true: a light page ground takes
+        0.5 and anything else 0.7, except the themes that carry a comment
+        saying why. A new exception needs a comment there and a name here."""
+        from idle_hours import render_quote as rq
+        exceptions = {"marker", "risograph", "semiotic", "vitrail"}
+
+        def light(rgb):
+            r, g, b = rgb[:3]
+            return 0.299 * r + 0.587 * g + 0.114 * b > 180 and max(rgb[:3]) - min(rgb[:3]) < 60
+
+        breaks_rule = {
+            name for name, cfg in rq.THEMES.items()
+            if display_inky.THEME_SATURATION[name] != (0.5 if light(cfg["page_bg"]) else 0.7)
+        }
+        assert breaks_rule == exceptions
 
     def test_main_passes_theme_saturation_to_panel(self, fake_image):
         captured: list[float] = []
