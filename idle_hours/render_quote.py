@@ -9989,7 +9989,7 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
 
     # ---- Layer 4: Four corner astronomy ornaments ----
 
-    # TL Sun: a filled yellow disc with 17 rays every 22° alternating long
+    # TL Sun: a filled yellow disc with 16 rays every 22.5° alternating long
     # and short, and an implied face (two eyes and a smile) carved in the
     # navy ground's own (x+y)&1 pattern, so it reads as relief. Solid
     # yellow, no post-pass.
@@ -9999,9 +9999,10 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
         (sun_cx - sun_r, sun_cy - sun_r, sun_cx + sun_r, sun_cy + sun_r),
         fill=yellow_ink,
     )
-    # Rays alternate long / short.
-    for i, angle_deg in enumerate(range(0, 360, 22)):
-        angle = math.radians(angle_deg)
+    # Rays alternate long / short. An even count keeps the alternation
+    # unbroken all the way round (issue #342).
+    for i in range(16):
+        angle = math.radians(i * 22.5)
         is_long = i % 2 == 0
         ray_inner = sun_r + (1 if is_long else 3)
         ray_outer = sun_r + (12 if is_long else 6)
@@ -10157,11 +10158,13 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     # The upper half (180°–360°) of a wide ellipse in bbox
     # (40, 20)-(width-40, 140): peak at y=20, ends at y=80. Painted in an
     # off-palette sentinel so the post-pass can't touch Layer 0's blue.
-    # Note the post-pass bbox stops at y=72.
+    # The post-pass bbox comes from the arc's own geometry (down to the
+    # ellipse's centre row, where the ends sit), so no sentinel pixel at
+    # the ends survives to be snapped to black (issue #341).
     arc_bbox = (40, 20, width - 40, 140)
     draw.arc(arc_bbox, start=180, end=360, fill=arc_sentinel, width=1)
-    ax0, ay0 = 40, 14
-    ax1, ay1 = width - 40, 72
+    ax0, ay0 = arc_bbox[0], arc_bbox[1]
+    ax1, ay1 = arc_bbox[2], (arc_bbox[1] + arc_bbox[3]) // 2
     for y in range(max(0, ay0), min(height, ay1 + 1)):
         for x in range(max(0, ax0), min(width, ax1 + 1)):
             if pixels[x, y] == arc_sentinel:
@@ -18283,7 +18286,6 @@ _LIEDER_PITCH_MAX = 10           # one ledger line above the staff
 _LIEDER_FONT_MAX = 26
 _LIEDER_FONT_MIN = 13
 _LIEDER_SYSTEM_GAP = 6           # px between one system's lyric and the next staff's headroom
-_LIEDER_MIN_BAR_SPACING = 30     # px; not currently referenced by _lieder_paint_system
 # Melodic steps in staff positions (1 = the next line-or-space up), weighted
 # toward stepwise motion — a uniform choice reads as noise, not melody.
 _LIEDER_MELODY_STEPS = (-4, -3, -2, -2, -1, -1, -1, 0, 1, 1, 1, 2, 2, 3, 4)

@@ -4253,6 +4253,41 @@ def test_firmament_milky_way_is_deterministic():
     assert a == b, "firmament frame not byte-deterministic across renders"
 
 
+def test_firmament_border_leaves_no_off_palette_sentinel():
+    """Every ornament sentinel is resolved by its post-pass; the ecliptic
+    arc's ends (down at y=80) used to sit below the post-pass bbox and
+    snap to black dots (issue #341)."""
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_firmament_border(img, rq.THEMES["firmament"])
+    counts = ink_counts(img)
+    for sentinel in ((2, 2, 2), (3, 3, 3), (4, 4, 4)):
+        assert counts.get(sentinel, 0) == 0, f"sentinel {sentinel} survived"
+
+
+def test_firmament_sun_long_rays_alternate_evenly():
+    """16 rays at 22.5°: long rays every 45°, none at the odd bearings.
+    The old 22° step drew 17 rays, so two long rays met at 0° (issue #342)."""
+    import math
+
+    img = Image.new("RGB", (800, 480), (255, 255, 255))
+    rq.draw_firmament_border(img, rq.THEMES["firmament"])
+    px = img.load()
+    yellow = rq.SPECTRA6["yellow"]
+    cx = cy = 36
+    long_tip = []  # bearings of yellow pixels only a long ray reaches
+    for y in range(cy - 24, cy + 25):
+        for x in range(cx - 24, cx + 25):
+            if px[x, y] == yellow and 19.5 <= math.hypot(x - cx, y - cy) <= 23:
+                long_tip.append(math.degrees(math.atan2(y - cy, x - cx)) % 360)
+
+    def near(bearing: float) -> bool:
+        return any(min(abs(a - bearing), 360 - abs(a - bearing)) <= 5 for a in long_tip)
+
+    for k in range(8):
+        assert near(k * 45), f"no long ray at {k * 45}°"
+        assert not near(22.5 + k * 45), f"long ray at {22.5 + k * 45}°"
+
+
 class TestParsePinQuote:
     def test_valid(self):
         import idle_hours.render_quote as rq
