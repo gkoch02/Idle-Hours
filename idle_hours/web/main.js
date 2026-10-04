@@ -56,10 +56,10 @@ async function authFetch(url, opts = {}, retryAfterAuth = true) {
   const headers = { ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers["X-Idle-Hours-Token"] = token;
-  // Remember which token this request used, so a 401 handler can tell "nobody
-  // has a working token yet" from "a sibling request already fixed it".
   const resp = await fetch(url, { ...opts, headers });
-  // 401 recovery: prompt for the token, store it, and retry once. Loopback
+  // 401 recovery: prompt for the token, store it, and retry once. The token
+  // this request used goes to the prompt, so it can tell "nobody has a working
+  // token yet" from "a sibling request already fixed it". Loopback
   // binds never 401 (server ignores tokens), so this only fires on LAN
   // deployments where the operator must supply the configured value.
   if (resp.status === 401 && retryAfterAuth) {
@@ -71,9 +71,20 @@ async function authFetch(url, opts = {}, retryAfterAuth = true) {
   return resp;
 }
 
+// A request that never gets an answer (appliance rebooting, Wi-Fi drop) makes
+// fetch reject. Only the pollers used to catch that; every click handler let
+// the rejection escape, so the operator saw "Loading…" or a disabled "Bake now"
+// forever and nothing in the action log. Fold it into the same result shape as
+// an HTTP error, with status 0, so every caller's `!ok` branch reports it.
 async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
-  const resp = await authFetch(url, opts, retryAfterAuth);
-  const text = await resp.text();
+  let resp;
+  let text;
+  try {
+    resp = await authFetch(url, opts, retryAfterAuth);
+    text = await resp.text();
+  } catch (err) {
+    return { status: 0, ok: false, data: { error: `network error: ${err?.message || err}` }, headers: null };
+  }
   let data = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = { error: text }; }
@@ -91,12 +102,7 @@ async function jsonFetchInner(url, opts = {}, retryAfterAuth = true) {
 const pollFailures = new Set();
 
 async function pollFetch(name, url) {
-  let res;
-  try {
-    res = await jsonFetch(url);
-  } catch (err) {
-    res = { ok: false, status: 0, data: { error: String(err) } };
-  }
+  const res = await jsonFetch(url);
   if (!res.ok || !res.data) {
     if (!pollFailures.has(name)) {
       pollFailures.add(name);
@@ -129,20 +135,20 @@ async function loadImage(img, url) {
   imageLoadSeq.set(img, seq);
   if (inFlightRequests === 0) tokenPromptAttempt = null;
   inFlightRequests += 1;
-  let resp;
+  let blob;
   try {
-    resp = await authFetch(url);
+    const resp = await authFetch(url);
+    if (!resp.ok) {
+      log(`image ${url}: HTTP ${resp.status}`, "err");
+      return false;
+    }
+    blob = await resp.blob();
   } catch (err) {
-    log(`image ${url}: ${err}`);
+    log(`image ${url}: ${err}`, "err");
     return false;
   } finally {
     inFlightRequests -= 1;
   }
-  if (!resp.ok) {
-    log(`image ${url}: HTTP ${resp.status}`);
-    return false;
-  }
-  const blob = await resp.blob();
   if (imageLoadSeq.get(img) !== seq) return false; // superseded or released
   const objectUrl = URL.createObjectURL(blob);
   const previous = objectUrls.get(img);
@@ -419,15 +425,18 @@ async function refreshCoverage() {
       cell.className = `coverage-cell ${bucketClass(n)}`;
       cell.textContent = n;
       cell.title = `${bucket}: ${n} candidate${n === 1 ? "" : "s"}`;
-      cell.onclick = () => {
-        $("inspector-bucket").value = bucket;
-        activateTab("curate");
-        $("inspector-form").dispatchEvent(new Event("submit"));
-      };
+      cell.onclick = () => openInInspector(bucket);
       grid.appendChild(cell);
     }
   }
   return true;
+}
+
+// Coverage cells and gap rows both jump to the Curate tab's inspector.
+function openInInspector(bucket) {
+  $("inspector-bucket").value = bucket;
+  activateTab("curate");
+  $("inspector-form").dispatchEvent(new Event("submit"));
 }
 
 function bucketClass(n) {
@@ -461,16 +470,14 @@ async function refreshGaps() {
     const phrases = (gap.phrases || []).map(escapeHtml).map(p => `<code>${p}</code>`).join(" · ");
     card.innerHTML = `
       <div class="gap-head">
-        <strong>${escapeHtml(gap.bucket)}</strong>
-        <span class="gap-count">${gap.count} row${gap.count === 1 ? "" : "s"}</span>
+        <strong class="gap-bucket">${escapeHtml(gap.bucket)}</strong>
+        <span class="gap-count">${escapeHtml(gap.count)} row${gap.count === 1 ? "" : "s"}</span>
       </div>
       <div class="gap-phrases">${phrases || "<em>no template</em>"}</div>
     `;
-    card.querySelector("strong").style.cursor = "pointer";
-    card.querySelector("strong").onclick = () => {
-      $("inspector-bucket").value = gap.bucket;
-      activateTab("curate");
-      $("inspector-form").dispatchEvent(new Event("submit"));
+    // Clicking the bucket name opens it in the inspector (cursor in style.css).
+    card.onclick = (event) => {
+      if (event?.target?.classList?.contains("gap-bucket")) openInInspector(gap.bucket);
     };
     results.appendChild(card);
   }
@@ -500,7 +507,7 @@ async function inspectBucket(event) {
   results.textContent = "Loading…";
   const query = time ? `?time=${encodeURIComponent(time)}&top=15` : "?top=15";
   const { ok, data } = await jsonFetch(`/api/bucket/${encodeURIComponent(bucket)}${query}`);
-  if (!ok) {
+  if (!ok || !data) {
     results.textContent = `Error: ${data?.error || "request failed"}`;
     return;
   }
@@ -515,35 +522,45 @@ async function inspectBucket(event) {
   });
 }
 
-function renderCandidate(entry, idx) {
-  const row = entry.row || {};
-  const score = entry.score || {};
+// One corpus row as a card: the bucket inspector and the search results drew
+// the same markup from two copies. `heading` is plain text (escaped here);
+// `withScore` adds the empty score strip the inspector fills in.
+function candidateCard(row, heading, { winner = false, withScore = false } = {}) {
   const el = document.createElement("div");
-  el.className = `candidate${entry.is_winner ? " winner" : ""}`;
+  el.className = `candidate${winner ? " winner" : ""}`;
   const title = row.title ? `${row.title}${row.author ? " · " + row.author : ""}` : (row.author || "—");
   const key = row.source_id != null && row.line_number != null
     ? `${row.source_id}:${row.line_number}` : "";
   el.innerHTML = `
     <div class="candidate-head">
-      <strong>#${idx + 1} ${entry.is_winner ? "★ winner" : ""}</strong>
+      <strong>${escapeHtml(heading)}</strong>
       <span>${rowIdLine(row)}</span>
     </div>
     <div class="candidate-quote">${escapeHtml(row.display_quote || "—")}</div>
     <div class="candidate-meta">${escapeHtml(title)}</div>
-    <div class="candidate-score"></div>
+    ${withScore ? `<div class="candidate-score"></div>` : ""}
     <div class="candidate-actions">
       ${key ? `<button class="btn btn-small btn-danger" data-ban-key="${escapeHtml(key)}">Ban this quote</button>` : ""}
     </div>
   `;
+  const banBtn = el.querySelector("[data-ban-key]");
+  if (banBtn) banBtn.addEventListener("click", () => banQuoteKey(banBtn.dataset.banKey));
+  return el;
+}
+
+function renderCandidate(entry, idx) {
+  const el = candidateCard(
+    entry.row || {},
+    `#${idx + 1} ${entry.is_winner ? "★ winner" : ""}`,
+    { winner: Boolean(entry.is_winner), withScore: true },
+  );
   const scoreEl = el.querySelector(".candidate-score");
-  for (const [k, v] of Object.entries(score)) {
+  for (const [k, v] of Object.entries(entry.score || {})) {
     const span = document.createElement("span");
     span.textContent = `${k}: ${v}`;
     if (v && v !== 0) span.classList.add("nonzero");
     scoreEl.appendChild(span);
   }
-  const banBtn = el.querySelector("[data-ban-key]");
-  if (banBtn) banBtn.addEventListener("click", () => banQuoteKey(banBtn.dataset.banKey));
   return el;
 }
 
@@ -560,15 +577,17 @@ async function runSearch(event) {
   if (author) params.set("author", author);
   if (title) params.set("title", title);
   if (bucket) params.set("bucket", bucket);
-  params.set("limit", "50");
   const results = $("search-results");
+  // Checked before `limit` is added: with it in, the query string was never
+  // empty, so this hint never showed and a blank form ran a search.
   if (!params.toString()) {
     results.textContent = "Enter at least one filter.";
     return;
   }
+  params.set("limit", "50");
   results.textContent = "Searching…";
   const { ok, data } = await jsonFetch(`/api/search?${params.toString()}`);
-  if (!ok) {
+  if (!ok || !data) {
     results.textContent = `Error: ${data?.error || "?"}`;
     return;
   }
@@ -579,25 +598,7 @@ async function runSearch(event) {
   }
   results.innerHTML = `<div class="search-summary">${rows.length} of ${data.scanned} scanned · showing first ${rows.length}</div>`;
   for (const row of rows) {
-    const el = document.createElement("div");
-    el.className = "candidate";
-    const title = row.title ? `${row.title}${row.author ? " · " + row.author : ""}` : (row.author || "—");
-    const key = row.source_id != null && row.line_number != null
-      ? `${row.source_id}:${row.line_number}` : "";
-    el.innerHTML = `
-      <div class="candidate-head">
-        <strong>${escapeHtml(row.fuzzy_bucket || row.normalized_time || "—")}</strong>
-        <span>${rowIdLine(row)}</span>
-      </div>
-      <div class="candidate-quote">${escapeHtml(row.display_quote || "—")}</div>
-      <div class="candidate-meta">${escapeHtml(title)}</div>
-      <div class="candidate-actions">
-        ${key ? `<button class="btn btn-small btn-danger" data-ban-key="${escapeHtml(key)}">Ban this quote</button>` : ""}
-      </div>
-    `;
-    const banBtn = el.querySelector("[data-ban-key]");
-    if (banBtn) banBtn.addEventListener("click", () => banQuoteKey(banBtn.dataset.banKey));
-    results.appendChild(el);
+    results.appendChild(candidateCard(row, row.fuzzy_bucket || row.normalized_time || "—"));
   }
 }
 
@@ -997,8 +998,6 @@ async function refreshHistory() {
   }
 }
 
-// ------- Wiring -------------------------------------------------------------
-
 // ------- First-run wizard ---------------------------------------------------
 
 async function maybeShowWizard() {
@@ -1120,6 +1119,8 @@ async function completeWizard(theme) {
   closeWizard();
   await Promise.all([refreshCurrent(), refreshThemes()]);
 }
+
+// ------- Wiring -------------------------------------------------------------
 
 function init() {
   wireTabs();

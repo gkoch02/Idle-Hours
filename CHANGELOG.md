@@ -9,6 +9,11 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Curator web UI audit (#338): a request the appliance never answers now
+  shows up as an error on every button and form, instead of leaving
+  "Baking…" or "Loading…" on screen. The search form's "Enter at least one
+  filter" hint shows again, and the setup wizard names why a theme could not
+  be applied. 11 new JS tests.
 - New `escritoire` theme: a handwritten letter on a mahogany writing desk,
   seen at an angle. The quote is laid out flat in Dancing Script, warped
   into perspective and thresholded back to solid ink, with the matched

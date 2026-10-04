@@ -2795,6 +2795,8 @@ class TestApiSetup:
         data = _json_body(body)
         assert data["setup_complete"] is False
         assert data["applied_theme"]["error"] == "busy"
+        # Top-level ``error`` like every other error body — the wizard reads it.
+        assert data["error"] == "busy"
         # In-memory flag must not have flipped.
         with state.lock:
             assert state.setup_complete is False

@@ -345,6 +345,7 @@ main {
   background: var(--bg);
 }
 .gap-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.gap-bucket { cursor: pointer; }
 .gap-count { font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; color: var(--muted); }
 .gap-phrases { font-family: "DejaVu Sans", system-ui, sans-serif; font-size: 0.82rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; }
 .gap-phrases code { background: var(--panel); padding: 2px 6px; border-radius: 3px; font-family: "DejaVu Sans Mono", monospace; font-size: 0.78rem; }
