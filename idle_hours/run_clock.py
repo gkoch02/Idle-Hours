@@ -297,14 +297,10 @@ def parse_args() -> argparse.Namespace:
         "--theme",
         choices=[*_theme_choices, "auto", "random"],
         default="default",
-        # Deliberately NOT a per-theme catalogue. This help string used to
-        # carry ~90 lines of prose describing a subset of the themes, which
-        # nothing pinned and which had already drifted from the designs it
-        # described (issue #200). argparse prints the full choices list from
-        # ``choices=`` above, and that list IS guarded -- by
-        # TestActionThemeCycle::test_cli_theme_choices_match_theme_order. The
-        # designs themselves are documented where they can be seen next to a
-        # rendered preview.
+        # Deliberately NOT a per-theme catalogue: unpinned prose here drifts from
+        # the designs (issue #200). argparse prints the ``choices=`` list above,
+        # which TestActionThemeCycle::test_cli_theme_choices_match_theme_order
+        # guards; the designs are documented next to their rendered previews.
         help=(
             "Render theme passed through to render_quote.py; see the choices list above "
             "for every registered theme. The README theme table shows a preview of each, "
@@ -800,16 +796,13 @@ def _append_history_after_render(state: RuntimeState, history_path: str | None, 
 def displayed_quote(state: RuntimeState) -> tuple[str | None, tuple | None]:
     """Return ``(bucket, quote_id)`` for the frame currently on the panel, or ``(None, None)``.
 
-    The "repaint what is on the panel" seam (issue #275). ``action_theme``
-    learned after #190 to repaint ``state.last_quote_id`` rather than re-peek;
-    the button-C source card, its restore timer and ``action_rerender`` kept
-    peeking, and a peek is history-filtered: the quote on the panel was
-    appended to the anti-repeat ledger the moment it rendered, so the peek
-    excludes it and returns the *next-best* row. The card therefore described
-    a quote that was not on the panel, and the restore / re-render then
-    committed that other row — on the shipped corpus 26 of 32 sampled times
-    changed quote. Callers fall back to a fresh peek only when nothing has
-    been committed yet (first tick after a cold boot).
+    The "repaint what is on the panel" seam (issue #275), used by every
+    repaint (theme change, button-C source card and its restore,
+    ``action_rerender``) instead of re-peeking. A peek is history-filtered:
+    the quote on the panel was appended to the anti-repeat ledger when it
+    rendered, so a peek excludes it and returns the *next-best* row. Callers
+    fall back to a fresh peek only when nothing has been committed yet (first
+    tick after a cold boot).
     """
     with state.lock:
         return state.last_bucket, state.last_quote_id
@@ -1137,9 +1130,9 @@ def _build_button_handlers(
                 return
             # While asleep the committed identity is the quote from *before*
             # sleep, not what the panel shows, and the restore below would
-            # paint that clock frame over the sleep frame — where it stayed
-            # until the window ended, because the loop had already taken the
-            # rising edge. Refused like skip / un-skip (issue #278's rule).
+            # paint that clock frame over the sleep frame for the rest of the
+            # window (the loop has already taken the rising edge). Refused like
+            # skip / un-skip (issue #278's rule).
             if _refuse_while_asleep(args, state, "card", "button C", telemetry_path):
                 return
             _log("button C: source card")
@@ -1550,14 +1543,13 @@ def _invalidate_displayed_identity(state: RuntimeState) -> None:
     has restored the ``(last_bucket, last_quote_id, last_effective_theme)``
     triple that lets a mid-bucket restart skip the redraw. Left alone, that
     triple still describes the quote the panel showed before the restart —
-    which is no longer what is on it — so the loop's first ticks saw nothing
-    changed and the sleep frame sat there until the next bucket edge or theme
-    flip (issue #276): with ``--startup-image`` set, a ``systemctl restart``
-    *caused* the ghost-frame problem the flag exists to avoid. Clearing the
-    bucket and quote id (the theme is left, so the theme-change branch stays
-    inert) forces the bucket-change branch on the first tick. Only called
-    after a *successful* push: a failed one left the persisted frame on the
-    panel, and the restored triple is then still accurate.
+    which is no longer what is on it — so the loop would see nothing changed
+    and leave the startup frame up until the next bucket edge or theme flip
+    (issue #276). Clearing the bucket and quote id (the theme is left, so the
+    theme-change branch stays inert) forces the bucket-change branch on the
+    first tick. Only called after a *successful* push: a failed one left the
+    persisted frame on the panel, and the restored triple is then still
+    accurate.
     """
     with state.lock:
         state.last_bucket = None
@@ -1615,11 +1607,10 @@ def _loop_sleep(state: RuntimeState, seconds: float) -> bool:
     patch it to drive the loop deterministically without racing the event.
 
     The wait is split into slices of at most ``WATCHDOG_SLICE_SECONDS``, each
-    followed by a systemd watchdog ping (issue #280). A single uninterrupted
-    wait meant an ``--interval-seconds`` longer than the unit's
-    ``WatchdogSec`` let systemd kill a perfectly healthy appliance mid-sleep.
-    A ping is a no-op off systemd, and ``stop_requested`` still interrupts any
-    slice immediately.
+    followed by a systemd watchdog ping (issue #280), so an
+    ``--interval-seconds`` longer than the unit's ``WatchdogSec`` cannot get a
+    healthy appliance killed mid-sleep. A ping is a no-op off systemd, and
+    ``stop_requested`` still interrupts any slice immediately.
     """
     remaining = max(0.0, float(seconds))
     while True:

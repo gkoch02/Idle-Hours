@@ -21,8 +21,8 @@ def iter_jsonl(path: Path) -> Iterator[dict]:
     abort a long-running pipeline stage.
     """
     # ``utf-8-sig`` strips a leading byte-order mark (a Windows editor adds
-    # one); plain ``utf-8`` left it glued to the first row, which then failed
-    # to decode and was silently dropped (issue #307). Identical to ``utf-8``
+    # one); plain ``utf-8`` would leave it glued to the first row, which then
+    # fails to decode and is dropped (issue #307). Identical to ``utf-8``
     # for every file without a BOM.
     with path.open(encoding="utf-8-sig") as handle:
         for line_num, line in enumerate(handle, start=1):

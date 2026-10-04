@@ -23,6 +23,8 @@ these entries under the new dated version heading.
   checked on its own: a bad field or entry is dropped with a warning and the
   rest of the file still applies.
 - The wheel no longer ships four unused Spectral SC font weights (about 1 MiB).
+- The wheel no longer ships three more unused font files (about 1 MiB): IBM
+  Plex Mono Regular, Jura Regular and the Montserrat italic.
 - `idle-hours contact-sheet` applies your bans and boosts again. It was
   loading overrides from a path that stopped existing in the package move, so
   the QA sheet could show quotes the panel never would. A new `--overrides`

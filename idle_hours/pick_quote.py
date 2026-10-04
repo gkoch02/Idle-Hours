@@ -893,11 +893,10 @@ def _twin_texts(rows: list[dict], ban_keys: set[str], recent: set[tuple]) -> tup
 
     ``(source_id, line_number)`` does not identify a quote: the committed corpus
     carries the same display text under several keys (``98:3534`` … ``98:3541``
-    are one passage; ``43`` and ``42`` are two editions of Jekyll & Hyde). A ban
-    or a recent-history entry that only matched its own key was therefore
-    silently defeated by the twin — the operator banned ``83:5162`` and
-    ``83:5165`` kept appearing. One pass over ``rows``, only when there is
-    something to look up.
+    are one passage; ``43`` and ``42`` are two editions of Jekyll & Hyde), so a
+    ban or a recent-history entry that matched only its own key would be
+    defeated by the twin. One pass over ``rows``, only when there is something
+    to look up.
     """
     if not ban_keys and not recent:
         return frozenset(), frozenset()
@@ -1284,14 +1283,13 @@ def select_quote(
         # line can carry several time phrases, so the committed corpus has 128
         # duplicate (source_id, line_number) keys — many spanning different
         # buckets ("ten o'clock" in h10_exact vs "close on ten o'clock" in
-        # h9_five_to). Matching on the key alone returned whichever copy came
-        # first in file order, so ~8% of clock times rendered a row the peek
-        # never chose — the panel bolted the wrong phrase and reported the
-        # wrong bucket. The optional third element carries the peeked
-        # ``matched_text``, which is exactly the discriminator peek_quote_id
-        # already tracks for this reason; when it is supplied a row must match
-        # it too, and a miss falls through to a normal pick rather than
-        # rendering an arbitrary sibling.
+        # h9_five_to), and the key alone would return whichever copy came
+        # first in file order — a row the peek never chose, with the wrong
+        # phrase bolded and the wrong bucket reported. The optional third
+        # element carries the peeked ``matched_text``, which is exactly the
+        # discriminator peek_quote_id already tracks for this reason; when it
+        # is supplied a row must match it too, and a miss falls through to a
+        # normal pick rather than rendering an arbitrary sibling.
         want = (str(pin_key[0]), pin_key[1])
         want_matched = pin_key[2] if len(pin_key) > 2 else None
         candidates = [

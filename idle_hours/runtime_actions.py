@@ -134,8 +134,8 @@ def _refuse_while_asleep(
     """``{"ok": False, "error": "asleep"}`` when the panel shows the sleep frame, else ``None``.
 
     Skip and un-skip re-pick and paint a *quote*; while the panel is asleep
-    that painted a clock frame onto it that then froze until the window
-    ended, because the main loop's quiet branch never ticks the clock
+    that would paint a clock frame that stays frozen until the window ends,
+    because the main loop's quiet branch never ticks the clock
     (issue #278). Neither action means anything against a sleep frame — the
     quote it would ban is not on the panel — so both are refused the way a
     busy render is, and the operator wakes the panel first (button D / web
@@ -377,12 +377,9 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     """Toggle the panel between asleep and awake, display the matching frame, persist on success.
 
     Mirrors button D short-press. The toggle is relative to what the panel is
-    *showing*, not to the ``manual_quiet`` flag alone (issue #278). Before
-    this, a D press during the scheduled window set ``manual_quiet`` (no
-    visible change — the panel was already asleep) and a second press
-    cleared it and painted a quote, after which the main loop still saw the
-    scheduled window and neither re-entered quiet nor ticked the clock: a
-    frozen clock frame until 06:00. Now:
+    *showing*, not to the ``manual_quiet`` flag alone (issue #278); toggling
+    the flag alone would leave a woken panel frozen inside the scheduled
+    window, where the main loop neither re-enters quiet nor ticks the clock:
 
     * asleep → **wake**: ``manual_quiet`` is cleared and, if the window is
       the reason the panel was asleep, ``state.manual_awake`` is set so
@@ -390,7 +387,7 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     * awake → **sleep**: inside the window that just clears
       ``manual_awake`` (the schedule itself keeps the panel asleep, and it
       wakes on its own at the window's end); outside it sets
-      ``manual_quiet`` exactly as before.
+      ``manual_quiet``.
 
     See :func:`action_theme` for the ordering rationale: the flip happens in
     RAM first, then we push the display (quiet image going in, fresh render
@@ -478,16 +475,14 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
     """Repaint the frame that is on the panel. Useful after panel ghosting.
 
     A repaint, not a re-pick (issue #275): the quote on the panel is already
-    on the anti-repeat ledger, so a fresh peek excluded it and this action
-    silently swapped the quote — and then appended the replacement to the
-    ledger, burning a week of history to clear a ghost. It now pins
-    ``state.last_quote_id`` under ``state.last_bucket``, exactly as
-    ``action_theme`` does, and appends nothing. Only a cold-start panel with
+    on the anti-repeat ledger, so a fresh peek would exclude it and swap the
+    quote. It pins ``state.last_quote_id`` under ``state.last_bucket``,
+    exactly as ``action_theme`` does, and appends nothing. Only a cold-start panel with
     nothing committed yet falls back to a pick (and records that pick).
 
     While the panel is asleep the frame on it is the *sleep frame*, so that
     is what gets repainted (issue #278) — the same routing ``action_theme``
-    uses. Painting a quote here froze the clock until the window ended.
+    uses; a quote painted here would stay frozen until the window ended.
     """
     from idle_hours import run_clock
     from idle_hours.buckets import bucket_for_time

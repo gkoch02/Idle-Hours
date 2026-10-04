@@ -4156,7 +4156,7 @@ class TestObservationFrame:
         assert display_inky.THEME_SATURATION["observation"] == 0.7
         assert rq.theme_font_candidates("observation", "quote_regular")[0] == rq.PLEXMONO_MEDIUM
         assert rq.theme_font_candidates("observation", "quote_bold")[0] == rq.PLEXMONO_BOLD
-        for path in (rq.PLEXMONO_REGULAR, rq.PLEXMONO_MEDIUM, rq.PLEXMONO_SEMIBOLD, rq.PLEXMONO_BOLD):
+        for path in (rq.PLEXMONO_MEDIUM, rq.PLEXMONO_SEMIBOLD, rq.PLEXMONO_BOLD):
             assert pathlib.Path(path).exists(), path
         assert (pathlib.Path(rq.PLEXMONO_BOLD).parent / "OFL.txt").exists()
 
@@ -4981,7 +4981,7 @@ class TestCultureFrame:
         assert display_inky.THEME_SATURATION["culture"] == 0.7
         assert rq.theme_font_candidates("culture", "quote_regular")[0] == rq.JURA_MEDIUM
         assert rq.theme_font_candidates("culture", "quote_bold")[0] == rq.JURA_BOLD
-        for path in (rq.JURA_REGULAR, rq.JURA_MEDIUM, rq.JURA_SEMIBOLD, rq.JURA_BOLD,
+        for path in (rq.JURA_MEDIUM, rq.JURA_SEMIBOLD, rq.JURA_BOLD,
                      rq.SHARETECHMONO_REGULAR):
             assert pathlib.Path(path).exists(), path
             assert (pathlib.Path(path).parent / "OFL.txt").exists(), path
@@ -6957,7 +6957,7 @@ class TestLumonFrame:
         assert rq.theme_font_candidates("lumon", "quote_regular")[0] == (rq.MONTSERRAT_VARIABLE, "Regular")
         assert rq.theme_font_candidates("lumon", "quote_bold")[0] == (rq.MONTSERRAT_VARIABLE, "Bold")
         assert rq.theme_font_candidates("lumon", "ornament")[0] == (rq.INTER_VARIABLE, "Medium")
-        for path in (rq.MONTSERRAT_VARIABLE, rq.MONTSERRAT_ITALIC_VARIABLE, rq.INTER_VARIABLE, rq.MICHROMA_REGULAR):
+        for path in (rq.MONTSERRAT_VARIABLE, rq.INTER_VARIABLE, rq.MICHROMA_REGULAR):
             assert pathlib.Path(path).exists(), path
             assert (pathlib.Path(path).parent / "OFL.txt").exists()
 

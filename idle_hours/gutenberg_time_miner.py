@@ -359,11 +359,11 @@ def build_bucket(hour: int | None, minute: int | None, explicit_daypart: str | N
 
 # What may strike an hour. A bare ``struck <hourword>`` with none of these
 # within reach is the verb: "she struck one of the fish", "the book struck
-# one of the other boys", "struck one as an uncommonly strong dose" — five
-# such rows sat in the baked DB at 01:00 (issue #298).
+# one of the other boys", "struck one as an uncommonly strong dose"
+# (issue #298).
 # The lookbehinds matter: ``\b`` sits between the apostrophe and the "c" of
-# "o'clock", so without them any "o'clock" within reach counted as a striker —
-# "she struck one of the fish; it was four o'clock" filed the verb at 01:00.
+# "o'clock", so without them any "o'clock" within reach would count as a
+# striker ("she struck one of the fish; it was four o'clock").
 _STRIKER_RE = re.compile(
     r"(?<!o')(?<!o’)\b(?:clocks?|watch|bells?|chimes?|chronometer|timepiece|church|tower|steeple|hours?|"
     r"belfry|campanile|carillon|gong|dial|clock-tower|church-bell)\b",
@@ -531,12 +531,11 @@ def iter_candidates(
 def _non_overlapping_matches(text: str, excluded: set[str]) -> list[tuple[str, re.Match[str]]]:
     """Every pattern's matches in text order, with overlapping spans resolved.
 
-    The patterns used to run independently, so ``oclock_word`` also fired
-    *inside* a ``just_after_before`` or ``minutes_past_to`` span and the same
-    sentence was filed at two times (issue #298): "just after nine o'clock"
-    yielded 09:03 *and* a wrong 09:00, "nearly one o'clock" 12:57 *and*
-    01:00 — 111 such pairs in the shipped corpus, and ``merge_candidates``
-    cannot collapse them because ``normalized_time`` is in its key. Matches
+    Run independently, ``oclock_word`` would also fire *inside* a
+    ``just_after_before`` or ``minutes_past_to`` span and file one sentence
+    at two times (issue #298): "just after nine o'clock" as 09:03 *and* a
+    wrong 09:00. ``merge_candidates`` cannot collapse such pairs because
+    ``normalized_time`` is in its key. Matches
     are sorted by ``(start, -length, pattern order)`` and a match whose span
     overlaps an already-accepted one is dropped, so the longer, more
     specific phrase wins. Yield order is therefore *text* order rather than

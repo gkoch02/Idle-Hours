@@ -110,7 +110,7 @@ def append_telemetry(telemetry_path: str | None, entry: dict) -> None:
     would be spam.
     """
     # Stamp ``ts`` once so the file line and the webhook payload carry the
-    # same timestamp (issue #281: the webhook used to get the unstamped entry).
+    # same timestamp (issue #281).
     # An explicit ``ts`` on the caller's entry wins, as it does in the file.
     entry = {"ts": _now_ts(), **entry}
     _append_entry(telemetry_path, entry, fsync=True)
