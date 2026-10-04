@@ -345,6 +345,11 @@ THEME_SATURATION: dict[str, float] = {
     # The 1981 Guide — black screen, white and yellow lettering, flat-colour
     # planets. Dark-ground tier.
     "hitchhiker": 0.7,
+    # A handwritten letter on a desk — the cream sheet fills most of the
+    # frame, and its W+Y stipple goes lemon at the harder tier (the ``yorha``
+    # argument). The brass bloom is small enough to hold at 0.5, which is
+    # what the first panel test was judged at.
+    "escritoire": 0.5,
     # Swiss International / modernist — white ground, black Inter body,
     # red accent. Same chromatic-on-light profile as ``default`` /
     # ``deco`` / ``dispatch`` / ``saloon`` / ``roman`` so the gentler
