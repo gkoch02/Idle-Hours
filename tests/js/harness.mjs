@@ -54,6 +54,9 @@ const EXPORTED = [
   "maybeShowWizard",
   "completeWizard",
   "wireControls",
+  "runSearch",
+  "inspectBucket",
+  "refreshGaps",
 ];
 
 class StubClassList {

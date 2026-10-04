@@ -1476,8 +1476,12 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 # theme thumbnail expecting the panel to update, and
                 # closing the wizard now hides the failure.
                 status = HTTPStatus.CONFLICT if applied_theme.get("error") == "busy" else HTTPStatus.INTERNAL_SERVER_ERROR
+                # ``error`` is lifted to the top level like every other error
+                # body: the wizard reads ``data.error``, and without it a busy
+                # render and a crash both showed "Setup save failed (…): ?".
                 return self._json(status, {
                     "ok": False,
+                    "error": applied_theme.get("error") or "theme apply failed",
                     "setup_complete": False,
                     "applied_theme": applied_theme,
                 })

@@ -640,8 +640,10 @@ describe("small formatters", () => {
   it("classifies bucket counts into the coverage heat scale", async () => {
     const { api } = await loadMainJs({});
     // Zero must be distinguishable from merely sparse — the empty buckets are
-    // what the gap finder sends operators off to harvest.
-    assert.notEqual(api.bucketClass(0), api.bucketClass(1));
+    // what the gap finder sends operators off to harvest. The 3 and 10
+    // boundaries are what the legend in index.html promises.
+    const classes = [0, 1, 2, 3, 9, 10, 50].map((n) => api.bucketClass(n));
+    assert.deepEqual(classes, ["zero", "low", "low", "mid", "mid", "high", "high"]);
   });
 });
 
@@ -745,6 +747,10 @@ describe("token-gated images — /current.png and /api/preview load through fetc
     await api.refreshCurrent();
     await flush();
     assert.equal(elements.get("current-png").src, "before");
+    const lines = elements.get("action-log").children;
+    const failure = lines.find((l) => /image \/current\.png.*HTTP 404/.test(l.textContent));
+    assert.ok(failure, lines.map((l) => l.textContent).join("\n"));
+    assert.equal(failure.className, "err");
   });
 });
 
@@ -1178,5 +1184,165 @@ describe("setup wizard keyboard handling (#292)", () => {
     const ev = h.key("Tab");
     assert.equal(ev.defaultPrevented, false);
     assert.equal(h.document.activeElement, h.elements.get("opener"));
+  });
+});
+
+// A form submit stub: the handlers only call preventDefault on it.
+const submitEvent = () => ({ preventDefault() {} });
+
+describe("a request that never gets an answer is reported, not swallowed", () => {
+  // fetch rejects when the appliance is unreachable. Only the pollers used to
+  // catch that; every click handler let the rejection escape, leaving
+  // "Baking…" on screen and the button disabled until a page reload.
+  const offline = async () => { throw new Error("offline"); };
+
+  it("jsonFetch resolves with status 0 and the reason", async () => {
+    const { api } = await loadMainJs({ fetch: offline });
+    const res = await api.jsonFetch("/api/current");
+    assert.equal(res.ok, false);
+    assert.equal(res.status, 0);
+    assert.match(res.data.error, /network error: offline/);
+  });
+
+  it("bakeNow re-enables its button and says why it failed", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: ["action-log", "bake-now", "bake-status"],
+      fetch: offline,
+    });
+    await api.bakeNow();
+    assert.equal(elements.get("bake-now").disabled, false);
+    assert.match(elements.get("bake-status").textContent, /bake failed \(0\): network error: offline/);
+    assert.match(elements.get("bake-status").className, /\berr\b/);
+  });
+
+  it("an action button logs the failure as an error", async () => {
+    const { api, elements } = await loadMainJs({ elementIds: ["action-log"], fetch: offline });
+    assert.equal(await api.fireAction("skip"), false);
+    const last = elements.get("action-log").children[0];
+    assert.match(last.textContent, /skip: error 0 network error: offline/);
+    assert.equal(last.className, "err");
+  });
+
+  it("the bucket inspector replaces its Loading… line with the error", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: ["inspector-bucket", "inspector-time", "inspector-results"],
+      fetch: offline,
+    });
+    elements.get("inspector-bucket").value = "h3_half_past";
+    await api.inspectBucket(submitEvent());
+    assert.match(elements.get("inspector-results").textContent, /^Error: network error: offline/);
+  });
+});
+
+describe("search", () => {
+  const IDS = ["search-q", "search-author", "search-title", "search-bucket", "search-results"];
+
+  it("asks for a filter instead of searching on an empty form", async () => {
+    // `limit` used to be added before this check, so the query string was
+    // never empty: the hint never showed and a blank form searched anyway.
+    const { api, calls, elements } = await loadMainJs({ elementIds: IDS });
+    await api.runSearch(submitEvent());
+    assert.equal(elements.get("search-results").textContent, "Enter at least one filter.");
+    assert.equal(calls.fetches.length, 0);
+  });
+
+  it("sends the filters with the result limit and draws one card per row", async () => {
+    const { api, calls, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({
+        "GET /api/search": { body: { scanned: 9, results: [
+          { source_id: "141", line_number: 1, fuzzy_bucket: "h3_<b>", display_quote: "a <i>quote</i>" },
+          { source_id: "142", line_number: 2, normalized_time: "03:30", display_quote: "another" },
+        ] } },
+      }),
+    });
+    elements.get("search-q").value = " clock ";
+    await api.runSearch(submitEvent());
+    assert.equal(calls.fetches[0].url, "/api/search?q=clock&limit=50");
+    const cards = elements.get("search-results").children;
+    assert.equal(cards.length, 2);
+    assert.equal(cards[0].className, "candidate");
+    // Corpus text is escaped on its way into innerHTML.
+    assert.match(cards[0].innerHTML, /h3_&lt;b&gt;/);
+    assert.match(cards[0].innerHTML, /a &lt;i&gt;quote&lt;\/i&gt;/);
+    assert.match(cards[0].innerHTML, /data-ban-key="141:1"/);
+    assert.match(cards[1].innerHTML, /<strong>03:30<\/strong>/);
+  });
+});
+
+describe("bucket inspector", () => {
+  const IDS = ["inspector-bucket", "inspector-time", "inspector-results"];
+
+  it("marks the winner and draws a card per candidate", async () => {
+    const { api, calls, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({
+        "GET /api/bucket/h3_half_past": { body: { candidates: [
+          { is_winner: true, row: { source_id: "141", line_number: 1, display_quote: "q1" }, score: {} },
+          { is_winner: false, row: { display_quote: "q2" }, score: {} },
+        ] } },
+      }),
+    });
+    elements.get("inspector-bucket").value = "h3_half_past";
+    elements.get("inspector-time").value = "03:31";
+    await api.inspectBucket(submitEvent());
+    assert.equal(calls.fetches[0].url, "/api/bucket/h3_half_past?time=03%3A31&top=15");
+    const cards = elements.get("inspector-results").children;
+    assert.deepEqual(cards.map((c) => c.className), ["candidate winner", "candidate"]);
+    assert.match(cards[0].innerHTML, /#1 ★ winner/);
+    assert.match(cards[0].innerHTML, /class="candidate-score"/);
+    // No source/line, nothing to ban.
+    assert.doesNotMatch(cards[1].innerHTML, /data-ban-key/);
+  });
+
+  it("reports a server error", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: IDS,
+      fetch: routeTable({ "GET /api/bucket/h3_nope": { status: 400, body: { error: "bad bucket" } } }),
+    });
+    elements.get("inspector-bucket").value = "h3_nope";
+    await api.inspectBucket(submitEvent());
+    assert.equal(elements.get("inspector-results").textContent, "Error: bad bucket");
+  });
+});
+
+describe("gap finder", () => {
+  it("shows a failed load in the results, not just a latch flag", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: ["gap-threshold", "gap-results"],
+      fetch: routeTable({ "GET /api/gaps": { status: 500, body: { error: "coverage unavailable" } } }),
+    });
+    assert.equal(await api.refreshGaps(), false);
+    assert.equal(elements.get("gap-results").textContent, "Error: coverage unavailable");
+  });
+
+  it("escapes bucket names and phrases", async () => {
+    const { api, elements } = await loadMainJs({
+      elementIds: ["gap-threshold", "gap-results"],
+      fetch: routeTable({ "GET /api/gaps": { body: { buckets: [
+        { bucket: "h1_<x>", count: 1, phrases: ["one <o'clock>"] },
+      ] } } }),
+    });
+    assert.equal(await api.refreshGaps(), true);
+    const [card] = elements.get("gap-results").children;
+    assert.match(card.innerHTML, /h1_&lt;x&gt;/);
+    assert.match(card.innerHTML, /<code>one &lt;o&#39;clock&gt;<\/code>/);
+    assert.match(card.innerHTML, /1 row</);
+  });
+});
+
+describe("setup wizard failure", () => {
+  it("names the refusal and keeps the wizard open", async () => {
+    // The server used to nest the reason under applied_theme only, so this
+    // read "Setup save failed (409): ?" for a busy render and a crash alike.
+    const { api, elements } = await loadMainJs({
+      elementIds: ["wizard-status", "setup-wizard"],
+      fetch: routeTable({ "POST /api/setup": { status: 409, body: {
+        ok: false, error: "busy", setup_complete: false, applied_theme: { ok: false, error: "busy" },
+      } } }),
+    });
+    await api.completeWizard("scholar");
+    assert.equal(elements.get("wizard-status").textContent, "Setup save failed (409): busy");
+    assert.equal(elements.get("setup-wizard").hidden, false);
   });
 });
