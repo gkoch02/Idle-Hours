@@ -29,8 +29,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from idle_hours import pick_quote as pq
 from idle_hours import render_quote as rq
 from idle_hours.jsonl_io import iter_jsonl
-from idle_hours.render_quote import _monolith
 from idle_hours.render_quote import text as rq_text
+from idle_hours.render_quote import themes as rq_themes
 
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
@@ -1734,13 +1734,13 @@ class TestVhsChromaBleed:
                  offset=2, ground=None):
             ImageDraw.Draw(image).text(xy, text, font=font, fill=core)
 
-        original = _monolith.draw_text_chroma_shift
+        original = rq_themes.vhs.draw_text_chroma_shift
         try:
-            _monolith.draw_text_chroma_shift = flat
+            rq_themes.vhs.draw_text_chroma_shift = flat
             base = ink_counts(rq.render("14:30", row, 800, 480,
                                         mode="production", theme="vhs"))
         finally:
-            _monolith.draw_text_chroma_shift = original
+            rq_themes.vhs.draw_text_chroma_shift = original
 
         for ink, side in ((rq.SPECTRA6["red"], "left"), (rq.SPECTRA6["blue"], "right")):
             gained = real.get(ink, 0) - base.get(ink, 0)
@@ -1810,7 +1810,7 @@ class TestVhsChromaBleed:
         def paint(offset, ghosts):
             image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
             draw = ImageDraw.Draw(image)
-            real = _monolith.draw_text_chroma_shift
+            real = rq_themes.vhs.draw_text_chroma_shift
 
             def maybe_ghostless(img, xy, text, font, *, core=None, left=None,
                                 right=None, offset=2, ground=None):
@@ -1822,10 +1822,10 @@ class TestVhsChromaBleed:
             original_offset = rq._VHS_CHROMA_OFFSET
             try:
                 rq._VHS_CHROMA_OFFSET = offset
-                _monolith.draw_text_chroma_shift = maybe_ghostless
+                rq_themes.vhs.draw_text_chroma_shift = maybe_ghostless
                 rq._vhs_paint_quote(image, draw, row)
             finally:
-                _monolith.draw_text_chroma_shift = real
+                rq_themes.vhs.draw_text_chroma_shift = real
                 rq._VHS_CHROMA_OFFSET = original_offset
             return image.load()
 
@@ -3314,7 +3314,7 @@ class TestAutochromePlate:
         """The house graceful-fallback convention. The synthesised garden is
         coarser than the plate by design, but it must still be a colour picture
         — degrading to a blank ground would leave nothing of the theme."""
-        monkeypatch.setattr(_monolith, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        monkeypatch.setattr(rq_themes.autochrome, "AUTOCHROME_PLATE", tmp_path / "absent.png")
         rq._DITHER_CACHE.clear()
         image = self._render()
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
@@ -3811,7 +3811,7 @@ class TestPhotoTheme:
     def test_a_stripped_install_still_renders(self, tmp_path, monkeypatch):
         """Fallback of the fallback: nothing configured *and* the bundled plate
         gone. The synthesised garden keeps the theme a colour picture."""
-        monkeypatch.setattr(_monolith, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        monkeypatch.setattr(rq_themes.photo, "AUTOCHROME_PLATE", tmp_path / "absent.png")
         rq.clear_photo_cache()
         rq._DITHER_CACHE.clear()
         image = self._render()
@@ -3938,7 +3938,7 @@ class TestControlFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
+        monkeypatch.setattr(rq_themes.control, "paint_neon_mask", core_only)
         core = ink_counts(self._render()).get(red, 0)
         assert core > 0
         assert full - core >= 0.2 * core, (
@@ -3956,7 +3956,7 @@ class TestControlFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
+        monkeypatch.setattr(rq_themes.control, "paint_neon_mask", core_only)
         without = self._render()
         # Every black pixel of the halo-less render must still be black with
         # the halo: mask the halo-less black, and require the halo render to
@@ -4237,7 +4237,7 @@ class TestObservationFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
+        monkeypatch.setattr(rq_themes.observation, "paint_neon_mask", core_only)
         without = self._render().crop(qbox)
         assert ink_counts(without).get(red, 0) == 0
         assert ink_counts(with_halo).get(red, 0) > 0
@@ -4671,7 +4671,7 @@ class TestBiomechFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
+        monkeypatch.setattr(rq_themes.biomech, "paint_neon_mask", core_only)
         without = self._render().crop(qbox)
         assert ink_counts(with_halo).get(red, 0) > ink_counts(without).get(red, 0)
         assert ink_counts(with_halo).get(yellow, 0) > 0
@@ -5065,7 +5065,7 @@ class TestCultureFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
+        monkeypatch.setattr(rq_themes.culture, "paint_neon_mask", core_only)
         without = self._render().crop(qbox)
         assert ink_counts(without).get(green, 0) == 0
         assert ink_counts(with_aura).get(green, 0) > 0
@@ -5451,7 +5451,7 @@ class TestBoschFrame:
         are byte-identical with and without the crack pass."""
         row = getattr(self, row_name)
         crazed = self._render(row)
-        monkeypatch.setattr(_monolith, "paint_craquelure", lambda *a, **k: None)
+        monkeypatch.setattr(rq_themes.bosch, "paint_craquelure", lambda *a, **k: None)
         clean = self._render(row)
         mask, rect = self._lettering(row)
         guard = mask.filter(ImageFilter.MaxFilter(5))

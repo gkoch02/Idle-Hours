@@ -1,9 +1,10 @@
 """Code more than one theme uses, so no theme module imports another (issue #335).
 
-Each piece keeps the name it had in the theme that grew it: tarot's numerals, astrarium's
-cream wash, vitrail's glass fill, codex's asemic script, metro's ellipsis, lumon's phrase
-boxes, the CRT raster, and the autochrome plate photo falls back to. Renaming would churn
-the design notes and tests that cite them for no change in behaviour.
+Each piece keeps the name it had in the theme that grew it: tarot's numerals,
+astrarium's cream wash, vitrail's glass fill, codex's asemic script, metro's
+ellipsis, lumon's phrase boxes, the CRT raster, the autochrome plate photo falls
+back to, and the gunmetal ink pair grimdark and control share. Renaming would
+churn the design notes and tests that cite them for no change in behaviour.
 """
 
 from __future__ import annotations
@@ -23,6 +24,10 @@ from ..primitives import _flow_stroke_hash
 # constant makes it read as a decision rather than an omission.
 AUTOCHROME_PLATE = BASE_DIR / "assets" / "autochrome_garden.png"
 _AUTOCHROME_PALETTE = SPECTRA6_PALETTE
+
+# Grimdark's gunmetal plate is greyscale, so it dithers to white+black only.
+# Control's concrete plinth reuses the same pair (``_CONCRETE_PALETTE``).
+_GUNMETAL_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
 
 # ---------------------------------------------------------------------------

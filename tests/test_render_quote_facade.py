@@ -18,6 +18,7 @@ import pytest
 
 from idle_hours import render_quote as rq
 from idle_hours.render_quote import _facade, _monolith, fonts
+from idle_hours.render_quote.themes import diags
 
 
 class TestReads:
@@ -48,19 +49,19 @@ class TestReads:
 
 class TestWrites:
     def test_monkeypatch_reaches_the_code_and_is_undone(self, monkeypatch):
-        original = _monolith._diags_system_info
+        original = diags._diags_system_info
         monkeypatch.setattr(rq, "_diags_system_info", lambda: "patched")
-        assert _monolith._diags_system_info() == "patched"
+        assert diags._diags_system_info() == "patched"
         monkeypatch.undo()
-        assert _monolith._diags_system_info is original
+        assert diags._diags_system_info is original
         assert "_diags_system_info" not in vars(rq), "the patch must not leave a shadow on the package"
 
     def test_mock_patch_object_round_trips(self):
         """``patch.object`` restores a non-local attribute by delete then set."""
-        original = _monolith._diags_system_info
+        original = diags._diags_system_info
         with mock.patch.object(rq, "_diags_system_info", return_value={}):
-            assert _monolith._diags_system_info() == {}
-        assert _monolith._diags_system_info is original
+            assert diags._diags_system_info() == {}
+        assert diags._diags_system_info is original
 
     def test_mock_patch_by_dotted_path(self):
         original = _monolith.render
@@ -69,13 +70,13 @@ class TestWrites:
         assert _monolith.render is original
 
     def test_plain_assignment_is_forwarded(self):
-        original = _monolith._diags_system_info
+        original = diags._diags_system_info
         try:
             rq._diags_system_info = lambda: "assigned"
-            assert _monolith._diags_system_info() == "assigned"
+            assert diags._diags_system_info() == "assigned"
         finally:
             rq._diags_system_info = original
-        assert _monolith._diags_system_info is original
+        assert diags._diags_system_info is original
 
     def test_writing_a_name_no_submodule_binds_raises(self):
         with pytest.raises(AttributeError, match="no submodule binds"):
