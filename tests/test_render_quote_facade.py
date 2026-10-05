@@ -97,28 +97,53 @@ def _package_aliases(tree: ast.Module) -> set[str]:
     return aliases
 
 
-def _resolves_to_package(dotted: str) -> bool:
-    """Whether the object ``dotted`` patches an attribute of is the package.
-
-    Imports the longest importable prefix and walks the rest, so an alias held
-    by another module (``idle_hours.contact_sheet.render_quote_module.render``)
-    is caught however it is spelled.
-    """
+def _resolve(dotted: str):
+    """The object ``dotted`` names, importing its longest importable prefix; None if it has none."""
     parts = dotted.split(".")
-    if len(parts) < 2 or parts[0] != "idle_hours":
-        return False
-    for cut in range(len(parts) - 1, 0, -1):
+    if parts[0] != "idle_hours":
+        return None
+    for cut in range(len(parts), 0, -1):
         try:
             obj = importlib.import_module(".".join(parts[:cut]))
         except ImportError:
             continue
         try:
-            for part in parts[cut:-1]:
+            for part in parts[cut:]:
                 obj = getattr(obj, part)
         except AttributeError:
-            return False
-        return obj is rq
-    return False
+            return None
+        return obj
+    return None
+
+
+def _resolves_to_package(dotted: str) -> bool:
+    """Whether the object ``dotted`` patches an attribute of is the package.
+
+    Resolves the parent by import, so an alias held by another module
+    (``idle_hours.contact_sheet.render_quote_module.render``) is caught however
+    it is spelled.
+    """
+    parent = dotted.rpartition(".")[0]
+    return bool(parent) and _resolve(parent) is rq
+
+
+def _dotted(expr) -> str | None:
+    """``a.b.c`` for a Name / Attribute chain, else None."""
+    parts = []
+    while isinstance(expr, ast.Attribute):
+        parts.append(expr.attr)
+        expr = expr.value
+    if not isinstance(expr, ast.Name):
+        return None
+    return ".".join([expr.id, *reversed(parts)])
+
+
+def _is_package(expr, aliases: set[str]) -> bool:
+    """Whether ``expr`` is the package: a bound alias, or a dotted path from ``idle_hours`` that resolves to it."""
+    dotted = _dotted(expr)
+    if dotted is None:
+        return False
+    return dotted in aliases or (dotted.startswith("idle_hours.") and _resolve(dotted) is rq)
 
 
 def _patch_call_target(call: ast.Call):
@@ -143,14 +168,14 @@ def _package_writes(path: Path) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             target = _patch_call_target(node)
-            if isinstance(target, ast.Name) and target.id in aliases:
-                found.append(f"{where}:{node.lineno}: patch on {target.id}")
+            if target is not None and _is_package(target, aliases):
+                found.append(f"{where}:{node.lineno}: patch on {_dotted(target)}")
             elif isinstance(target, ast.Constant) and isinstance(target.value, str) and _resolves_to_package(target.value):
                 found.append(f"{where}:{node.lineno}: patch on {target.value}")
         targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target] if isinstance(node, ast.AugAssign) else []
         for target in targets:
-            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id in aliases:
-                found.append(f"{where}:{node.lineno}: {target.value.id}.{target.attr}")
+            if isinstance(target, ast.Attribute) and _is_package(target.value, aliases):
+                found.append(f"{where}:{node.lineno}: {_dotted(target.value)}.{target.attr}")
     return found
 
 
@@ -188,10 +213,15 @@ class TestNoWritesThroughThePackage:
             "patch('idle_hours.render_quote.render')\n"
             "monkeypatch.setattr('idle_hours.render_quote.render', print)\n"
             "patch('idle_hours.contact_sheet.render_quote_module.render')\n"
+            "import idle_hours.render_quote\n"
+            "idle_hours.render_quote.render = print\n"
+            "setattr(idle_hours.render_quote, 'render', print)\n"
+            "idle_hours.contact_sheet.render_quote_module.render = print\n"
             "patch('idle_hours.render_quote.core.render')\n"
+            "idle_hours.render_quote.core.render = print\n"
             "monkeypatch.setattr(rq_themes.vhs, 'x', 1)\n"
         )
-        assert len(_package_writes(sample)) == 8
+        assert len(_package_writes(sample)) == 11
 
 
 class TestAmbiguousNames:
