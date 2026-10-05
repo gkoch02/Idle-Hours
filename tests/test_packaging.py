@@ -40,12 +40,22 @@ FORBIDDEN_HARDWARE_NAMESPACES = ("gpiozero", "inky", "RPi")
 
 
 def _package_modules_on_disk() -> set[str]:
-    """Every importable ``idle_hours.<name>`` excluding the package marker."""
-    return {
-        path.stem
-        for path in PACKAGE_ROOT.glob("*.py")
-        if path.stem != "__init__"
-    }
+    """Every importable ``idle_hours.<dotted.name>``, subpackages included.
+
+    A subpackage counts under its own name (its ``__init__``) and each of its
+    modules under a dotted one, so ``render_quote`` becoming a package (issue
+    #335) keeps every one of its modules under the probe. ``__main__`` files are
+    left out: importing one runs the program.
+    """
+    names = set()
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        parts = path.relative_to(PACKAGE_ROOT).with_suffix("").parts
+        if parts[-1] == "__main__" or parts == ("__init__",):
+            continue
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        names.add(".".join(parts))
+    return names
 
 
 class TestPackageDeclaration:

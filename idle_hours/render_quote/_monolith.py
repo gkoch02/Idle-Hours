@@ -23,7 +23,9 @@ from idle_hours.buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time
 from idle_hours.gutenberg_time_miner import daypart_for_hour
 from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 
-BASE_DIR = Path(__file__).resolve().parent
+# The idle_hours/ package directory (fonts/, assets/), one level above this
+# file now that render_quote is a package (issue #335).
+BASE_DIR = Path(__file__).resolve().parent.parent
 _FONT_FALLBACK_WARNED = False
 
 

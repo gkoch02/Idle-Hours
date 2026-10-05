@@ -50,7 +50,6 @@ from __future__ import annotations
 import ast
 import contextlib
 import datetime
-import inspect
 import os
 from pathlib import Path
 
@@ -862,12 +861,19 @@ class TestGoldenStructure:
         ``test_clock_dependent_theme_list_is_accurate`` would report the theme
         as clock-dependent with no way to freeze it.
         """
-        tree = ast.parse(inspect.getsource(rq))
-        seam = next(node for node in tree.body
-                    if isinstance(node, ast.FunctionDef) and node.name == "_now")
-        inside_seam = {id(node) for node in ast.walk(seam)}
+        # Every module in the package, not just the one that defines the
+        # seam: the split (issue #335) moves painters into submodules.
+        package_dir = Path(rq.__file__).parent
+        trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(package_dir.rglob("*.py"))}
+        seams = [
+            node for tree in trees.values() for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_now"
+        ]
+        assert len(seams) == 1, f"expected exactly one _now() seam in render_quote, found {len(seams)}"
+        inside_seam = {id(node) for node in ast.walk(seams[0])}
         offenders = [
-            node.lineno
+            f"{path.relative_to(package_dir)}:{node.lineno}"
+            for path, tree in trees.items()
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
@@ -875,8 +881,8 @@ class TestGoldenStructure:
             and id(node) not in inside_seam
         ]
         assert offenders == [], (
-            f"render_quote reads the wall clock directly at lines {offenders}; "
-            "call rq._now() instead so the golden freeze covers it"
+            f"render_quote reads the wall clock directly at {offenders}; "
+            "call _now() instead so the golden freeze covers it"
         )
 
     def test_themes_produce_distinct_goldens(self):

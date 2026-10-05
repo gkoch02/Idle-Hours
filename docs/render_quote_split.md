@@ -89,7 +89,7 @@ What remains permanently is `__all__`: `render`, `main`, `THEMES`, `THEME_ORDER`
 
 This lands before the split, so the split never touches the runtime and deployed configs keep working through the alias.
 
-**PR 1: mechanical package conversion.**
+**PR 1: mechanical package conversion. Done.** The guard lives in `_facade.py`, not `__init__.py`. Reads fall through to the submodules live instead of being copied, so a global the renderer rebinds can't go stale. The owner map is a snapshot, because `mock.patch.object` restores by delete-then-set.
 - `git mv idle_hours/render_quote.py idle_hours/render_quote/_monolith.py`, which preserves blame.
 - `_monolith` imports `BASE_DIR` from `_paths` (`PACKAGE_DIR = Path(__file__).resolve().parent.parent`).
 - Add the `__init__.py` facade, which re-exports everything from `_monolith` and installs the guard, plus `__main__.py`.
