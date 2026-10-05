@@ -98,7 +98,14 @@ This lands before the split, so the split never touches the runtime and deployed
 - Make `tests/test_packaging.py`'s `_package_modules_on_disk` recurse into subpackages.
 - No other test changes. Fingerprints identical.
 
-**PR 2: core extraction.**
+**PR 2: core extraction. Done**, with these departures from the list below:
+- `primitives` is one module, not a subpackage. At about 780 lines it doesn't need splitting yet.
+- A `theme_tables` layer holds `THEMES`, `THEME_ORDER`, `THEME_FONTS` and the per-theme flags until the registry stage derives them. `THEME_FONTS` is built from the font fallback chains, and `fonts` reads `THEME_FONTS`. So the chains live in `_paths`, below `theme_tables`, and the loader lives in `fonts`, above it.
+- `frames` stays in `_monolith`: the sleep frame and source card call `render()`, so they move with it.
+- The clock seam became `clock.now()`.
+- Every test patch the guard refused was repointed at the module that reads the name: `_monolith` for a theme's call site, `text` for `_draw_text_body`'s. Three helpers (`normalize_dashes`, `_bold_stroke_for_theme`, `fallback_title`) landed one layer lower than first planned, because the layer check found them used from below.
+
+The original plan for this PR:
 - Move `_paths`, `palette`, `fonts`, `layout`, `text`, `primitives/*`, `furniture` and `frames` out of `_monolith`.
 - Promote the shared helpers that sit in theme regions: `_row_digest`, `position_noise`, `paint_craquelure`, `_fill_swatch_stipple`, `tracked_width`, `draw_tracked`, `fit_text_to_width` and the byline helpers.
 - Migrate the patches the guard now rejects (`paint_neon_mask`, `draw_text_dithered`, `_FONT_FALLBACK_WARNED`, …) to their binding modules.

@@ -211,7 +211,9 @@ canonical list, the README theme table for previews, and
 [`docs/themes.md`](themes.md) for the design notes behind each one. Some are palette + font
 swaps on the shared literary layout, some add a border painter, and the
 custom-render frames (`tarot`, `vitrail`, `questline`, `pride`, `bosch`, …)
-own their whole composition. Adding another means wiring it into all of:
+own their whole composition. Adding another means wiring it into all of
+(the three `render_quote.*` tables below are defined in
+`idle_hours/render_quote/theme_tables.py`):
 
 - `render_quote.THEMES` — palette dict (every colour must come from `SPECTRA6`)
 - `render_quote.THEME_ORDER` — append; this is what button B cycles through

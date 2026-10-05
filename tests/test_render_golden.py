@@ -679,13 +679,13 @@ CLOCK_DEPENDENT_THEMES = frozenset({"astrarium", "vinyl"})
 
 @contextlib.contextmanager
 def _frozen_clock():
-    """Pin ``render_quote._now`` (the renderer's single clock read) to ``GOLDEN_NOW``."""
-    original = rq._now
-    rq._now = lambda: GOLDEN_NOW
+    """Pin ``render_quote.clock.now`` (the renderer's single clock read) to ``GOLDEN_NOW``."""
+    original = rq.clock.now
+    rq.clock.now = lambda: GOLDEN_NOW
     try:
         yield
     finally:
-        rq._now = original
+        rq.clock.now = original
 
 
 def _render_scenario(scenario: dict) -> Image.Image:
@@ -832,12 +832,12 @@ class TestGoldenStructure:
         far_future = datetime.datetime(2031, 11, 3, 9, 5, 0)
         row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
         drifted = set()
-        original = rq._now
+        original = rq.clock.now
         try:
             for theme in sorted(rq.THEMES):
                 frames = []
                 for instant in (GOLDEN_NOW, far_future):
-                    rq._now = lambda _i=instant: _i
+                    rq.clock.now = lambda _i=instant: _i
                     frames.append(
                         rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
                                   mode="production", theme=theme).convert("RGB")
@@ -845,7 +845,7 @@ class TestGoldenStructure:
                 if ImageChops.difference(*frames).getbbox() is not None:
                     drifted.add(theme)
         finally:
-            rq._now = original
+            rq.clock.now = original
         assert drifted == CLOCK_DEPENDENT_THEMES, (
             "CLOCK_DEPENDENT_THEMES is stale: themes that read the wall clock "
             f"but aren't frozen={sorted(drifted - CLOCK_DEPENDENT_THEMES)}, "
@@ -853,7 +853,7 @@ class TestGoldenStructure:
         )
 
     def test_renderer_reads_the_clock_only_through_now(self):
-        """Every wall-clock read in ``render_quote`` must go through ``_now``.
+        """Every wall-clock read in ``render_quote`` must go through ``clock.now``.
 
         The freeze above patches that one function. A painter that called
         ``datetime.datetime.now()``, ``datetime.date.today()``, ``time.time()``
@@ -863,7 +863,7 @@ class TestGoldenStructure:
         as clock-dependent with no way to freeze it.
 
         The seam must also stay one name in one module. A module that imported
-        it by name (``from .clock import _now``) would hold its own binding,
+        it by name (``from .clock import now``) would hold its own binding,
         which a patch on the defining module never reaches. Callers reach it
         through the module object (issue #335 splits the renderer into
         several).
@@ -874,9 +874,9 @@ class TestGoldenStructure:
         trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(package_dir.rglob("*.py"))}
         seams = [
             node for tree in trees.values() for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_now"
+            if isinstance(node, ast.FunctionDef) and node.name == "now"
         ]
-        assert len(seams) == 1, f"expected exactly one _now() seam in render_quote, found {len(seams)}"
+        assert len(seams) == 1, f"expected exactly one now() seam in render_quote, found {len(seams)}"
         inside_seam = {id(node) for node in ast.walk(seams[0])}
         clock_reads = {"now", "today", "utcnow", "time", "localtime", "gmtime", "fromtimestamp"}
         offenders = [
@@ -887,10 +887,12 @@ class TestGoldenStructure:
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in clock_reads
             and id(node) not in inside_seam
+            # the seam itself, reached through its module as the rule requires
+            and not (isinstance(node.func.value, ast.Name) and node.func.value.id == "clock" and node.func.attr == "now")
         ]
         assert offenders == [], (
             f"render_quote reads the wall clock directly at {offenders}; "
-            "call _now() instead so the golden freeze covers it"
+            "call clock.now() instead so the golden freeze covers it"
         )
         rebound = [
             f"{path.relative_to(package_dir)}:{node.lineno}"

@@ -89,15 +89,15 @@ def _row(display_quote: str, matched_text: str, **overrides) -> dict:
 
 @contextlib.contextmanager
 def _pinned_inputs():
-    original_now = rq._now
+    original_now = rq.clock.now
     original_diags = rq._diags_system_info
     original_photo = os.environ.pop(path_resolution.PHOTO_PATH_ENV, None)
-    rq._now = lambda: FROZEN_NOW
+    rq.clock.now = lambda: FROZEN_NOW
     rq._diags_system_info = lambda: dict(DIAGS_STUB_SYSTEM_INFO)
     try:
         yield
     finally:
-        rq._now = original_now
+        rq.clock.now = original_now
         rq._diags_system_info = original_diags
         if original_photo is not None:
             os.environ[path_resolution.PHOTO_PATH_ENV] = original_photo

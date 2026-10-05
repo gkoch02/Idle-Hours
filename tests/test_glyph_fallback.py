@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from idle_hours import render_quote as rq
+from idle_hours.render_quote import _monolith
 from tests.pixel_helpers import ink_counts, pixel_bytes
 
 
@@ -102,7 +103,7 @@ class TestApplyFallbacks:
 
 
 def _disable(monkeypatch):
-    monkeypatch.setattr(rq, "apply_theme_glyph_fallbacks", lambda row, theme: row)
+    monkeypatch.setattr(_monolith, "apply_theme_glyph_fallbacks", lambda row, theme: row)
 
 
 class TestRender:

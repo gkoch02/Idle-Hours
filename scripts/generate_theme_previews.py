@@ -141,12 +141,12 @@ FROZEN_NOW = datetime.datetime(2026, 5, 19, 10, 0, 0)
 
 @contextlib.contextmanager
 def frozen_clock():
-    original = rq._now
-    rq._now = lambda: FROZEN_NOW
+    original = rq.clock.now
+    rq.clock.now = lambda: FROZEN_NOW
     try:
         yield
     finally:
-        rq._now = original
+        rq.clock.now = original
 
 
 @contextlib.contextmanager
