@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `idle-hours render --time` now rejects a malformed or out-of-range time
+  (`25:99`, `garbage`) with a usage error, as `idle-hours pick` already did,
+  instead of a `KeyError` traceback. A render with a malformed or missing time
+  no longer crashes the `codex`, `vinyl`, `metro` or `diags` frames or the
+  debug footer; they fall back to midnight, the 12 o'clock other themes
+  already used.
 - Curator web UI audit (#338): a request the appliance never answers now
   shows up as an error on every button and form, instead of leaving
   "Baking…" or "Loading…" on screen. The search form's "Enter at least one
