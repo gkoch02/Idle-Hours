@@ -15,7 +15,8 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed")
 
 from idle_hours import render_quote as rq  # noqa: E402
-from idle_hours.render_quote import _monolith  # noqa: E402
+from idle_hours.render_quote import core as rq_core  # noqa: E402
+from idle_hours.render_quote import fonts as rq_fonts  # noqa: E402
 from idle_hours.render_quote import text as rq_text  # noqa: E402
 
 from .pixel_helpers import distinct_inks, ink_counts  # noqa: E402
@@ -326,7 +327,7 @@ class TestLoadFontFallback:
 
     def test_missing_candidates_returns_default_and_warns_once(self, monkeypatch, capsys):
         # Force the fallback path by flipping the module-level guard.
-        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
+        monkeypatch.setattr(rq_fonts, "_FONT_FALLBACK_WARNED", False)
         # All candidate paths report as missing. (Cache isolation is provided
         # by the autouse ``_isolate_font_cache`` fixture at module scope.)
         monkeypatch.setattr(rq.Path, "exists", lambda self: False)
@@ -362,7 +363,7 @@ class TestLoadFontFallback:
     def test_variation_tuple_missing_file_falls_through(self, monkeypatch, capsys):
         """A missing file referenced in a variation tuple falls through to the
         next candidate, exactly like a bare-path candidate would."""
-        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", False)
+        monkeypatch.setattr(rq_fonts, "_FONT_FALLBACK_WARNED", False)
         # First candidate is a tuple pointing at a missing file; second is a
         # plain path to a real system font that exists on the CI image.
         font = rq.load_font(
@@ -385,7 +386,7 @@ class TestLoadFontFallback:
         144 buckets in one process).
         """
         # Suppress the one-shot warning so capsys doesn't matter here.
-        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", True)
+        monkeypatch.setattr(rq_fonts, "_FONT_FALLBACK_WARNED", True)
         real_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
         if not Path(real_path).exists():
             pytest.skip("DejaVu Serif not installed")
@@ -395,7 +396,7 @@ class TestLoadFontFallback:
         a = rq.load_font([real_path], size=24)
         # Second call: file is reachable again → should load the real font.
         monkeypatch.undo()
-        monkeypatch.setattr(rq, "_FONT_FALLBACK_WARNED", True)
+        monkeypatch.setattr(rq_fonts, "_FONT_FALLBACK_WARNED", True)
         b = rq.load_font([real_path], size=24)
         # `b` must be the real load: its underlying path matches what we asked
         # for, and the cache now holds it. `a` did NOT come from real_path
@@ -1994,7 +1995,7 @@ class TestGrimoireBorder:
         }
         rigid = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
 
-        monkeypatch.setattr(_monolith, "_THEMES_RIGID_MATCH_SPACING", frozenset())
+        monkeypatch.setattr(rq_core, "_THEMES_RIGID_MATCH_SPACING", frozenset())
         loose = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
 
         red = rq.SPECTRA6["red"]
@@ -2927,7 +2928,7 @@ class TestRenderStaticMessage:
                 "--message", "Sleep well.", "--output", str(out)]
         monkeypatch.setattr("sys.argv", argv)
         # If main accidentally called pick_quote, this would explode loudly.
-        with patch.object(rq, "pick_quote", side_effect=AssertionError("pick_quote must not run for mode=goodnight")):
+        with patch.object(rq_core, "pick_quote", side_effect=AssertionError("pick_quote must not run for mode=goodnight")):
             assert rq.main() == 0
         assert out.exists()
         from PIL import Image
@@ -2987,7 +2988,7 @@ class TestMainAtomicSave:
 
     def test_successful_save_writes_valid_png(self, tmp_path, monkeypatch):
         """End-to-end: main() produces a file Pillow can re-open."""
-        monkeypatch.setattr(rq, "pick_quote", lambda *args, **kwargs: self._row())
+        monkeypatch.setattr(rq_core, "pick_quote", lambda *args, **kwargs: self._row())
         output = tmp_path / "current.png"
         monkeypatch.setattr(
             "sys.argv",
@@ -3006,7 +3007,7 @@ class TestMainAtomicSave:
         output = tmp_path / "current.png"
         output.write_bytes(original_bytes)
 
-        monkeypatch.setattr(rq, "pick_quote", lambda *args, **kwargs: self._row())
+        monkeypatch.setattr(rq_core, "pick_quote", lambda *args, **kwargs: self._row())
 
         # Make image.save raise mid-save by patching PIL.Image.Image.save.
         original_save = Image.Image.save
@@ -3057,7 +3058,7 @@ class TestDefaultOutputPath:
         overwrites a single ``current.png``, but the CLI default used to
         diverge and write a per-minute filename.
         """
-        monkeypatch.setattr(rq, "pick_quote", lambda *a, **kw: self._row())
+        monkeypatch.setattr(rq_core, "pick_quote", lambda *a, **kw: self._row())
         monkeypatch.setattr("sys.argv", ["render_quote.py", "--time", "14:30"])
         written: list[Path] = []
 

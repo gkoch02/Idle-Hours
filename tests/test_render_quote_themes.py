@@ -398,7 +398,7 @@ class TestTarotPlateFallback:
 
     @staticmethod
     def _panel(hour, monkeypatch):
-        monkeypatch.setattr(rq, "TAROT_PLATES", pathlib.Path("/nonexistent/tarot_plates.png"))
+        monkeypatch.setattr(rq_themes.tarot, "TAROT_PLATES", pathlib.Path("/nonexistent/tarot_plates.png"))
         img = rq.render(f"{hour:02d}:30", make_row(), 800, 480, theme="tarot")
         x0, y0, x1, y1 = rq._TAROT_CARD_RECT
         return img.crop((x0 + 20, y0 + 68, x1 - 20, y1 - 74))
@@ -512,7 +512,7 @@ class TestTarotFrame:
         # The sheet is memoised on a module-level dict, but the existence
         # check runs first, so pointing TAROT_PLATES at nothing takes the
         # fallback branch without touching that cache.
-        monkeypatch.setattr(rq, "TAROT_PLATES", pathlib.Path("/nonexistent/tarot_plates.png"))
+        monkeypatch.setattr(rq_themes.tarot, "TAROT_PLATES", pathlib.Path("/nonexistent/tarot_plates.png"))
         canvas = Image.new("RGB", (800, 480), rq.SPECTRA6["white"])
         draw = ImageDraw.Draw(canvas)
         assert (rq._tarot_paint_emblem(canvas, draw, hour, 160, 240)
@@ -527,7 +527,7 @@ class TestTarotFrame:
         the return value exists to prevent."""
         seen = []
         monkeypatch.setattr(
-            rq, "_tarot_paint_card_name",
+            rq_themes.tarot, "_tarot_paint_card_name",
             lambda image, draw, name, rect, y_top: seen.append(name),
         )
         rq.render(f"{hour:02d}:20", make_row(), 800, 480, theme="tarot")
@@ -998,7 +998,8 @@ class TestFooterTruncationTerminates:
         # Squeeze the box until the width budget cannot fit even the ellipsis
         # stub, which is the exact condition that used to spin.
         box = getattr(rq, box_name)
-        monkeypatch.setattr(rq, box_name, (box[0], box[1], box[0] + 1, box[3]))
+        theme_module = getattr(rq_themes, painter_name.split("_")[1])
+        monkeypatch.setattr(theme_module, box_name, (box[0], box[1], box[0] + 1, box[3]))
         painter = getattr(rq, painter_name)
         image = Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
         draw = ImageDraw.Draw(image)
@@ -1763,10 +1764,10 @@ class TestVhsChromaBleed:
         torn = rq.render("14:30", row, 800, 480, mode="production", theme="vhs")
         original = rq._vhs_apply_tears
         try:
-            rq._vhs_apply_tears = lambda image: None
+            rq_themes.vhs._vhs_apply_tears = lambda image: None
             clean = rq.render("14:30", row, 800, 480, mode="production", theme="vhs")
         finally:
-            rq._vhs_apply_tears = original
+            rq_themes.vhs._vhs_apply_tears = original
 
         top, bottom = 96, 372
         torn_px, clean_px = torn.load(), clean.load()
@@ -1821,12 +1822,12 @@ class TestVhsChromaBleed:
 
             original_offset = rq._VHS_CHROMA_OFFSET
             try:
-                rq._VHS_CHROMA_OFFSET = offset
+                rq_themes.vhs._VHS_CHROMA_OFFSET = offset
                 rq_themes.vhs.draw_text_chroma_shift = maybe_ghostless
                 rq._vhs_paint_quote(image, draw, row)
             finally:
                 rq_themes.vhs.draw_text_chroma_shift = real
-                rq._VHS_CHROMA_OFFSET = original_offset
+                rq_themes.vhs._VHS_CHROMA_OFFSET = original_offset
             return image.load()
 
         for offset in (2, 3, 5, 8, 12):
@@ -2363,7 +2364,7 @@ class TestNocturneBrushwork:
 
     def test_quote_bloom_cannot_eat_the_rocket(self, monkeypatch):
         lit = self._render()
-        monkeypatch.setattr(rq, "_nocturne_paint_quote", lambda *a, **k: None)
+        monkeypatch.setattr(rq_themes.nocturne, "_nocturne_paint_quote", lambda *a, **k: None)
         bare = self._render()
         box = (580, 4, 792, 258)
         assert pixel_bytes(lit.crop(box)) == pixel_bytes(bare.crop(box)), (
@@ -2694,7 +2695,7 @@ class TestDaguerreotypePlate:
         )
 
     def test_missing_plate_falls_back_gracefully(self, monkeypatch):
-        monkeypatch.setattr(rq, "DAGUERREOTYPE_PLATE", rq.BASE_DIR / "assets" / "no_such_plate.png")
+        monkeypatch.setattr(rq_themes.daguerreotype, "DAGUERREOTYPE_PLATE", rq.BASE_DIR / "assets" / "no_such_plate.png")
         img = self._render()
         counts = ink_counts(img.crop((200, 100, 340, 380)))
         assert counts.get(rq.SPECTRA6["white"], 0) > 0 and counts.get(rq.SPECTRA6["black"], 0) > 0, (
@@ -2761,8 +2762,8 @@ class TestBetweenUs:
         painted invisibly (a page_bg glyph would ghost the paper wash)."""
         def boom(*args, **kwargs):
             raise AssertionError("an ornament mark was painted")
-        monkeypatch.setattr(rq, "draw_faux_gray_text", boom)
-        monkeypatch.setattr(rq, "draw_faux_3way_text", boom)
+        monkeypatch.setattr(rq_text, "draw_faux_gray_text", boom)
+        monkeypatch.setattr(rq_text, "draw_faux_3way_text", boom)
         rq.render("08:55", self._row(), 800, 480, mode="production", theme=theme)
 
     @pytest.mark.parametrize("theme", THEMES)
@@ -3645,7 +3646,7 @@ class TestPhotoTheme:
         """
         photo = tmp_path / "huge.png"
         Image.new("RGB", (16, 16), (10, 20, 30)).save(photo)
-        monkeypatch.setattr(rq, "_PHOTO_MAX_PIXELS", 100)  # 16x16 = 256 px, over it
+        monkeypatch.setattr(rq_themes.photo, "_PHOTO_MAX_PIXELS", 100)  # 16x16 = 256 px, over it
 
         def refuse(self, *a, **kw):
             raise AssertionError("the decoder ran on an image over the cap")
@@ -3665,7 +3666,7 @@ class TestPhotoTheme:
         photo = tmp_path / "big.jpg"
         Image.new("RGB", (4800, 3200), (150, 140, 120)).save(photo, quality=60)
         declared = 4800 * 3200
-        monkeypatch.setattr(rq, "_PHOTO_MAX_PIXELS", declared // 4)
+        monkeypatch.setattr(rq_themes.photo, "_PHOTO_MAX_PIXELS", declared // 4)
         rq.clear_photo_cache()
         assert rq._photo_open(photo, 800, 480) is not None, (
             "a JPEG that drafts well under the cap was refused — the cap is "
@@ -3692,7 +3693,7 @@ class TestPhotoTheme:
         unconfigured = pixel_bytes(self._render())
         photo = tmp_path / "huge.png"
         Image.new("RGB", (64, 64), (10, 20, 30)).save(photo)
-        monkeypatch.setattr(rq, "_PHOTO_MAX_PIXELS", 100)
+        monkeypatch.setattr(rq_themes.photo, "_PHOTO_MAX_PIXELS", 100)
         monkeypatch.setenv(rq.PHOTO_PATH_ENV, str(photo))
         rq.clear_photo_cache()
         assert pixel_bytes(self._render()) == unconfigured
@@ -3717,7 +3718,7 @@ class TestPhotoTheme:
         """A stamp is a cache key, so it must not raise on a file that has
         gone away between listing and stat."""
         photo = self._photo(tmp_path / "p.png", chroma_boost=0.3)
-        monkeypatch.setattr(rq, "_photo_for_row", lambda row: photo)
+        monkeypatch.setattr(rq_themes.photo, "_photo_for_row", lambda row: photo)
         real_stat = pathlib.Path.stat
 
         def vanish(self, *a, **kw):
@@ -3790,7 +3791,7 @@ class TestPhotoTheme:
         test did exactly that and left the branch uncovered while passing.
         """
         photo = self._photo(tmp_path / "p.png", chroma_boost=0.4)
-        monkeypatch.setattr(rq, "_photo_for_row", lambda row: photo)
+        monkeypatch.setattr(rq_themes.photo, "_photo_for_row", lambda row: photo)
         real_stat = pathlib.Path.stat
 
         def vanish(self, *args, **kwargs):
@@ -4027,7 +4028,7 @@ class TestControlFrame:
         no prose and no bloom pixel is moved or overwritten."""
         red = rq.SPECTRA6["red"]
         with_bands = self._render()
-        monkeypatch.setattr(rq, "_CONTROL_RESONANCE", ())
+        monkeypatch.setattr(rq_themes.control, "_CONTROL_RESONANCE", ())
         without = self._render()
         changed = ImageChops.difference(with_bands, without).convert("L").point(lambda v: 255 if v else 0)
         assert changed.getbbox() is not None, "the resonance bands painted nothing"
@@ -4060,7 +4061,7 @@ class TestControlFrame:
             return image
 
         plated = band_share(plinth_only())
-        monkeypatch.setattr(rq, "CONTROL_PLATE", tmp_path / "missing.png")
+        monkeypatch.setattr(rq_themes.control, "CONTROL_PLATE", tmp_path / "missing.png")
         fallback = band_share(plinth_only())
         assert 0.25 < plated < 0.6
         assert 0.25 < fallback < 0.6
@@ -4220,7 +4221,7 @@ class TestObservationFrame:
         """Tracking tears shear the feed only — the panel is painted after
         them, so neutering the tears leaves the panel byte-identical."""
         torn = self._render()
-        monkeypatch.setattr(rq, "_observation_paint_tears", lambda image: None)
+        monkeypatch.setattr(rq_themes.observation, "_observation_paint_tears", lambda image: None)
         clean = self._render()
         assert pixel_bytes(torn.crop(rq._OBSERVATION_PANEL)) == pixel_bytes(clean.crop(rq._OBSERVATION_PANEL))
         assert pixel_bytes(torn) != pixel_bytes(clean)
@@ -4488,9 +4489,9 @@ class TestTrisolarisFrame:
             events.append("rebirth")
             return rebirth(pos, vel)
 
-        monkeypatch.setattr(rq, "_trisolaris_planet_accel", watched_accel)
-        monkeypatch.setattr(rq, "_trisolaris_rebirth", watched_rebirth)
-        monkeypatch.setattr(rq, "_TRISOLARIS_EPHEMERIS", None)
+        monkeypatch.setattr(rq_themes.trisolaris, "_trisolaris_planet_accel", watched_accel)
+        monkeypatch.setattr(rq_themes.trisolaris, "_trisolaris_rebirth", watched_rebirth)
+        monkeypatch.setattr(rq_themes.trisolaris, "_TRISOLARIS_EPHEMERIS", None)
         rq._trisolaris_ephemeris()
         burns = [k for k, e in enumerate(events) if e is True]
         assert burns, "no planet ever came inside a sun — the fence proves nothing"
@@ -4683,7 +4684,7 @@ class TestBiomechFrame:
         """The painted background is cached, but a neutered painter must still
         change the frame — otherwise the decoration fences measure the cache."""
         painted = pixel_bytes(self._render())
-        monkeypatch.setattr(rq, "_biomech_paint_wall", lambda image, opening: None)
+        monkeypatch.setattr(rq_themes.biomech, "_biomech_paint_wall", lambda image, opening: None)
         assert pixel_bytes(self._render()) != painted
         monkeypatch.undo()
         assert pixel_bytes(self._render()) == painted
@@ -5320,7 +5321,7 @@ class TestFuriesFrame:
         """Neutering the smear may only remove red pixels from the black wall
         outside the phrase's berth: the prose and the phrase core are untouched."""
         smeared = self._render()
-        monkeypatch.setattr(rq, "_FURIES_SMEAR_STRENGTH", 0.0)
+        monkeypatch.setattr(rq_themes.furies, "_FURIES_SMEAR_STRENGTH", 0.0)
         clean = self._render()
         diff = ImageChops.difference(smeared, clean)
         assert diff.getbbox() is not None, "the phrase should carry a smear"
@@ -5333,7 +5334,7 @@ class TestFuriesFrame:
                     assert a[x, y] == red and b[x, y] == black, (x, y, a[x, y], b[x, y])
 
     def test_phrase_core_is_yellow_major_orange(self, monkeypatch):
-        monkeypatch.setattr(rq, "_FURIES_SMEAR_STRENGTH", 0.0)
+        monkeypatch.setattr(rq_themes.furies, "_FURIES_SMEAR_STRENGTH", 0.0)
         counts = ink_counts(self._render().crop(rq._FURIES_QUOTE_RECT))
         red, yellow = counts.get(rq.SPECTRA6["red"], 0), counts.get(rq.SPECTRA6["yellow"], 0)
         assert red and yellow
@@ -5341,7 +5342,7 @@ class TestFuriesFrame:
 
     def test_glass_reflects_on_the_paint_only(self, monkeypatch):
         glazed = self._render()
-        monkeypatch.setattr(rq, "_furies_paint_glass", lambda image: None)
+        monkeypatch.setattr(rq_themes.furies, "_furies_paint_glass", lambda image: None)
         bare = self._render()
         diff = ImageChops.difference(glazed, bare).getbbox()
         assert diff is not None, "no reflection on the glass"
@@ -5647,8 +5648,8 @@ class TestSemioticFrame:
         assert counts.get(rq.SPECTRA6["black"], 0) > 2000   # the prose
 
     def test_missing_sheet_degrades_to_blank_signs(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(rq, "SEMIOTIC_SIGNS", tmp_path / "absent.png")
-        monkeypatch.setattr(rq, "_SEMIOTIC_SHEET_CACHE", {})
+        monkeypatch.setattr(rq_themes.semiotic, "SEMIOTIC_SIGNS", tmp_path / "absent.png")
+        monkeypatch.setattr(rq_themes.semiotic, "_SEMIOTIC_SHEET_CACHE", {})
         img = self._render()
         assert distinct_inks(img) <= set(rq.SPECTRA6.values())
         assert rq.SPECTRA6["red"] in distinct_inks(self._feature(img))
@@ -7592,7 +7593,7 @@ class TestEscritoireFrame:
         for name in ("_escritoire_paint_desk", "_escritoire_paint_shadow",
                      "_escritoire_paint_brass", "_escritoire_paint_sheet"):
             with monkeypatch.context() as m:
-                m.setattr(rq, name, lambda image: None)
+                m.setattr(rq_themes.escritoire, name, lambda image: None)
                 assert pixel_bytes(rq._escritoire_scene()) != pixel_bytes(warm), name
         assert pixel_bytes(rq._escritoire_scene()) == pixel_bytes(warm)
 

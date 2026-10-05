@@ -61,6 +61,7 @@ from idle_hours import path_resolution  # noqa: E402
 from idle_hours import pick_quote as pq  # noqa: E402
 from idle_hours import render_quote as rq  # noqa: E402
 from idle_hours.jsonl_io import iter_jsonl  # noqa: E402
+from idle_hours.render_quote.themes import diags as diags_theme  # noqa: E402
 from idle_hours.theme_names import known_theme_names  # noqa: E402
 
 PREVIEW_DIR = REPO_ROOT / "idle_hours" / "assets" / "previews"
@@ -183,12 +184,12 @@ DIAGS_STUB_SYSTEM_INFO = {"host": "idle-hours", "ip": "192.0.2.42", "uptime": "6
 
 @contextlib.contextmanager
 def _stub_diags_system_info():
-    original = rq._diags_system_info
-    rq._diags_system_info = lambda: dict(DIAGS_STUB_SYSTEM_INFO)
+    original = diags_theme._diags_system_info
+    diags_theme._diags_system_info = lambda: dict(DIAGS_STUB_SYSTEM_INFO)
     try:
         yield
     finally:
-        rq._diags_system_info = original
+        diags_theme._diags_system_info = original
 
 
 def pinned_row(corpus_path: Path) -> dict:

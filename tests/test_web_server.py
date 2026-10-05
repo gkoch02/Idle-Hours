@@ -2432,7 +2432,7 @@ class TestApiPreview:
             "source_id": "1", "line_number": 1,
         }
         with patch("idle_hours.pick_quote.select_quote", return_value=fake_row), \
-             patch("idle_hours.render_quote.render", side_effect=RuntimeError("pillow exploded")):
+             patch("idle_hours.render_quote.core.render", side_effect=RuntimeError("pillow exploded")):
             status, body = _get(server, "/api/preview?theme=default&time=03:00")
         assert status == 500
 
@@ -2447,7 +2447,7 @@ class TestApiPreview:
         image = Image.new("RGB", (1, 1), "white")
         with (
             patch("idle_hours.pick_quote.select_quote", return_value=fake_row),
-            patch("idle_hours.render_quote.render", return_value=image) as render,
+            patch("idle_hours.render_quote.core.render", return_value=image) as render,
         ):
             status, body = _get(server, "/api/preview?theme=default&time=03:00&width=100000&height=100000")
         # Should not OOM — verify the untrusted request was capped before render.
@@ -3044,7 +3044,7 @@ class TestPreviewCache:
             return real_render(*a, **kw)
 
         with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
-             patch("idle_hours.render_quote.render", side_effect=counting_render):
+             patch("idle_hours.render_quote.core.render", side_effect=counting_render):
             s1, b1 = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
             s2, b2 = _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
         assert s1 == s2 == 200
@@ -3063,7 +3063,7 @@ class TestPreviewCache:
             return real_render(*a, **kw)
 
         with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
-             patch("idle_hours.render_quote.render", side_effect=counting_render):
+             patch("idle_hours.render_quote.core.render", side_effect=counting_render):
             _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
             _get(server, "/api/preview?theme=dark&time=03:00&width=400&height=240")
         assert calls["n"] == 2
@@ -3080,7 +3080,7 @@ class TestPreviewCache:
             return real_render(*a, **kw)
 
         with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)), \
-             patch("idle_hours.render_quote.render", side_effect=counting_render):
+             patch("idle_hours.render_quote.core.render", side_effect=counting_render):
             _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
             # An operator ban rewrites the overrides sidecar — new stat stamp.
             Path(args.overrides).write_text(
@@ -3137,7 +3137,7 @@ class TestPreviewCache:
             calls["n"] += 1
             return real(row)
 
-        monkeypatch.setattr(render_quote, "photo_source_stamp", counting)
+        monkeypatch.setattr("idle_hours.render_quote.themes.photo.photo_source_stamp", counting)
         with patch("idle_hours.pick_quote.select_quote", return_value=dict(self._ROW)):
             _get(server, "/api/preview?theme=default&time=03:00&width=400&height=240")
         assert calls["n"] == 0
@@ -3781,7 +3781,7 @@ class TestPreviewModeValidation:
     @pytest.mark.parametrize("mode", ["xyz", "card", "goodnight", "PRODUCTION"])
     def test_unknown_mode_is_a_400_before_any_render(self, v2_server, mode):
         server, _state, _args = v2_server
-        with patch("idle_hours.render_quote.render") as mock_render, \
+        with patch("idle_hours.render_quote.core.render") as mock_render, \
              patch("idle_hours.pick_quote.select_quote", return_value=TestImageRoutesGated.FAKE_ROW):
             status, body = _get(server, f"/api/preview?theme=default&time=03:00&mode={mode}")
         assert status == 400, body
