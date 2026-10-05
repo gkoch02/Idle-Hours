@@ -3819,6 +3819,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--time",
         default=None,
+        type=pick_quote_module._cli_time,
         help="Time in HH:MM 24-hour format. Required unless --mode goodnight.",
     )
     parser.add_argument(
@@ -13622,6 +13623,23 @@ def _clock_hour12(time_str) -> int:
     return hour % 12 or 12
 
 
+def _clock_hh_mm(time_str) -> tuple[int, int]:
+    """``(hour 0..23, minute 0..59)`` parsed defensively from ``HH:MM``.
+
+    For a painter that needs the minute too (a page number, a tonearm, a line
+    diagram). The CLI validates ``--time``, but ``render`` is also called
+    in-process, so a malformed or out-of-range time falls back to midnight
+    rather than raising: the same 12 o'clock that :func:`_clock_hour12` gives.
+    """
+    try:
+        hour, minute = (int(part) for part in str(time_str).split(":")[:2])
+    except ValueError:
+        return 0, 0
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return 0, 0
+    return hour, minute
+
+
 def _white_noise(width: int, height: int, seed: int) -> Image.Image:
     """A deterministic ``L`` field of uniform noise, one byte per pixel.
 
@@ -13820,11 +13838,14 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
 
     # ----- Top section: big clock + status grid -----
     clock_font = load_font(theme_font_candidates("diags", "quote_bold"), size=88)
-    clock_bbox = draw.textbbox((0, 0), time_str, font=clock_font)
+    # Shown verbatim, malformed or not: this is the diagnostic panel. Only a
+    # missing time needs a stand-in, since there is nothing to show.
+    clock_text = time_str or "--:--"
+    clock_bbox = draw.textbbox((0, 0), clock_text, font=clock_font)
     clock_w = clock_bbox[2] - clock_bbox[0]
     clock_x = PAD_X
     clock_y = rule_y + 10
-    draw.text((clock_x - clock_bbox[0], clock_y - clock_bbox[1]), time_str, font=clock_font, fill=colors["text"])
+    draw.text((clock_x - clock_bbox[0], clock_y - clock_bbox[1]), clock_text, font=clock_font, fill=colors["text"])
 
     # Status table — right of the clock
     field_key_font = load_font(META_FONT_BOLD_CANDIDATES, size=12)
@@ -16638,12 +16659,9 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     # Render order: disk body (grooves only) → tonearm → label, so the
     # label paints over the arm and the arm never cuts through its text.
     _vinyl_paint_disk(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, _VINYL_LABEL_R)
-    bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(time_str)
+    hour, minute = _clock_hh_mm(time_str)
+    bucket = quote_row.get("fuzzy_bucket") or bucket_for_time(f"{hour:02d}:{minute:02d}")
     matched = quote_row.get("matched_text") or ""
-    try:
-        minute = int(time_str.split(":", 1)[1])
-    except (ValueError, IndexError):
-        minute = 0
     _vinyl_paint_tonearm(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_DISK_R, minute)
     _vinyl_paint_label(image, draw, _VINYL_DISK_CX, _VINYL_DISK_CY, _VINYL_LABEL_R, matched, bucket)
 
@@ -20340,10 +20358,7 @@ def _metro_paint_chrome(image: Image.Image, time_str: str) -> None:
     draw.text((26, 13), "IDLE HOURS METROPOLITAN", font=label_font, fill=SPECTRA6["white"])
     draw.text((625, 16), "LITERARY LINE", font=small_font, fill=SPECTRA6["yellow"])
 
-    try:
-        hour, minute = (int(part) for part in time_str.split(":")[:2])
-    except (TypeError, ValueError):
-        hour, minute = 0, 0
+    hour, minute = _clock_hh_mm(time_str)
     hour = hour % 12 or 12
     # The clock becomes station furniture: hour is the line number and minute
     # is the stop. It is explicit, but read first as transit nomenclature.
@@ -24031,7 +24046,7 @@ def _codex_numeral(draw: ImageDraw.ImageDraw, x: float, base: float, digit: int,
 
 def codex_page_digits(time_str: str) -> list[int]:
     """The minute of the day as base-21 digits, most significant first."""
-    hh, mm = (int(p) for p in time_str.split(":"))
+    hh, mm = _clock_hh_mm(time_str)
     value = hh * 60 + mm
     digits = []
     while True:
@@ -34478,7 +34493,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         else:
             bucket_piece = resolved or bucket_value
 
-        debug_parts = [time_str]
+        debug_parts = [time_str or "--:--"]
         if bucket_piece:
             debug_parts.append(bucket_piece)
         debug_parts.append(f"layout {layout_name}")

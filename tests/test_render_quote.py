@@ -4711,3 +4711,37 @@ class TestSharedPainterHelpers:
         text, bbox = rq._fit_dotted_byline(draw, row, font, 160)
         assert text.startswith("Jane Austen · ") and text.endswith("…")
         assert bbox[2] - bbox[0] <= 160
+
+
+class TestMalformedTime:
+    """A malformed time must never crash a render. ``render`` is called
+    in-process (contact sheet, previews, the sleep frame), and ``codex``,
+    ``vinyl``, ``metro``, ``diags`` and the debug footer each used to raise on
+    one input or another. The CLI rejects a bad ``--time`` up front instead.
+    """
+
+    ROW = {"source_id": "141", "line_number": 482, "display_quote": "It was half past two in the afternoon.",
+           "matched_text": "half past two", "author": "Jane Austen", "title": "Emma"}
+
+    @pytest.mark.parametrize("theme", sorted(rq.THEMES))
+    def test_every_theme_renders_a_malformed_time(self, theme):
+        # One input per failure class: unparseable, missing, and parseable but
+        # out of range (which used to KeyError in the bucket table).
+        for time_str in ("garbage", None, "25:99"):
+            image = rq.render(time_str, dict(self.ROW), 800, 480, mode="debug", theme=theme)
+            assert image.size == (800, 480)
+
+    @pytest.mark.parametrize("time_str, expected", [
+        ("14:30", (14, 30)), ("9:05", (9, 5)), ("00:00", (0, 0)), ("23:59", (23, 59)),
+        ("24:00", (0, 0)), ("12:60", (0, 0)), ("garbage", (0, 0)), ("14", (0, 0)), ("", (0, 0)), (None, (0, 0)),
+    ])
+    def test_clock_hh_mm_falls_back_to_midnight(self, time_str, expected):
+        assert rq._clock_hh_mm(time_str) == expected
+
+    @pytest.mark.parametrize("value", ["25:99", "garbage", "14"])
+    def test_cli_rejects_a_bad_time_with_a_usage_error(self, value, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["render_quote.py", "--time", value])
+        with pytest.raises(SystemExit) as exc:
+            rq.parse_args()
+        assert exc.value.code == 2
+        assert "not a valid HH:MM time" in capsys.readouterr().err
