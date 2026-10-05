@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _clock_hh_mm, _row_digest, draw_centred_styled_lines, draw_truncated_centred_byline
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..primitives import _white_noise
 from ..spec import FrameSpec
 from ._shared import _codex_script, _vitrail_fill_polygon, _vitrail_pane_ink
@@ -175,7 +175,7 @@ def _codex_fill_mask(image: Image.Image, mask: Image.Image, spec: tuple) -> None
     bbox = mask.getbbox()
     if bbox is None:
         return
-    mpx, ipx = mask.load(), image.load()
+    mpx, ipx = pixel_access(mask), pixel_access(image)
     for y in range(bbox[1], bbox[3]):
         for x in range(bbox[0], bbox[2]):
             if mpx[x, y]:
@@ -194,8 +194,9 @@ def _codex_paint_roots(image: Image.Image, draw: ImageDraw.ImageDraw, rng: rando
     draw.line((bx - 78, by + 3, bx + 80, by + 3), fill=SPECTRA6["black"], width=1)
     mask = Image.new("1", image.size, 0)
     mdraw = ImageDraw.Draw(mask)
+    y: float
     for k, dx in enumerate((-46, -20, 6, 30, 52)):
-        pts = [(bx + dx * 0.2, by + 4)]
+        pts: list[tuple[float, float]] = [(bx + dx * 0.2, by + 4)]
         x, y = bx + dx * 0.2, by + 4
         for _ in range(8):
             x += dx * 0.12 + rng.uniform(-2, 2)

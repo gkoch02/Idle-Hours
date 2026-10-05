@@ -9,7 +9,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -41,7 +41,7 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
     # Layer 0: sparse 1-in-4 white-on-green dither (one white pixel per
     # 2×2 tile). Only exact ``page_bg`` pixels are touched.
     dither_light = SPECTRA6["white"]
-    pixels = image.load()
+    pixels = pixel_access(image)
     for y in range(height):
         for x in range(width):
             if (x & 1) == 0 and (y & 1) == 0 and pixels[x, y] == page_bg:

@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import IMFELLENGLISH_ITALIC, IMFELLENGLISH_REGULAR, META_FONT_CANDIDATES
 from ..fonts import load_font
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 # Seeds for ``draw_cartograph_border``'s deterministic placement. A fixed
@@ -586,7 +586,7 @@ def draw_cartograph_border(
     black_ink = SPECTRA6["black"]
     white_ink = SPECTRA6["white"]
 
-    pixels = image.load()
+    pixels = pixel_access(image)
 
     # ------------------------------------------------------------------
     # Layer 0 — cream Y+W Bayer wash on page_bg pixels. Threshold < 1
@@ -735,10 +735,10 @@ def draw_cartograph_border(
         # Post-pass to R+G sepia; the 1 px pad catches hinting jitter
         # outside the text bbox.
         lbbox = draw.textbbox((draw_x, draw_y), label_text, font=label_font)
-        lx0 = max(0, lbbox[0] - 1)
-        ly0 = max(0, lbbox[1] - 1)
-        lx1 = min(width - 1, lbbox[2] + 1)
-        ly1 = min(height - 1, lbbox[3] + 1)
+        lx0 = max(0, int(lbbox[0]) - 1)
+        ly0 = max(0, int(lbbox[1]) - 1)
+        lx1 = min(width - 1, int(lbbox[2]) + 1)
+        ly1 = min(height - 1, int(lbbox[3]) + 1)
         for py in range(ly0, ly1 + 1):
             for px in range(lx0, lx1 + 1):
                 if pixels[px, py] == red_ink and (px + py) & 1:

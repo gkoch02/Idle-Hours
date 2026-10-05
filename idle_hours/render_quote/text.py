@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 from .fonts import load_font
 from .layout import _bold_stroke_for_theme
-from .palette import SPECTRA6, BAYER_4x4
+from .palette import SPECTRA6, BAYER_4x4, gray_pixel_access, pixel_access
 from .theme_tables import _THEMES_WITHOUT_ORNAMENT_MARKS
 
 
@@ -24,8 +24,8 @@ def draw_faux_gray_text(image: Image.Image, xy, text, font, dark=(0, 0, 0), ligh
     if bbox is None:
         return
     x0, y0, x1, y1 = bbox
-    px = image.load()
-    mx = mask.load()
+    px = pixel_access(image)
+    mx = gray_pixel_access(mask)
     ox, oy = pattern_offset
     for y in range(y0, y1):
         for x in range(x0, x1):
@@ -62,8 +62,8 @@ def draw_faux_3way_text(
     if bbox is None:
         return
     bx0, by0, bx1, by1 = bbox
-    px = image.load()
-    mx = mask.load()
+    px = pixel_access(image)
+    mx = gray_pixel_access(mask)
     ox, oy = pattern_offset
     threshold_a = round(density_a * 16)
     threshold_b = round((density_a + density_b) * 16)
@@ -145,7 +145,7 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     """
     draw = ImageDraw.Draw(image)
     bbox = draw.textbbox(xy, text, font=font, stroke_width=stroke_width)
-    x0, y0, x1, y1 = bbox
+    x0, y0, x1, y1 = map(int, bbox)  # whole pixels; already so for an int xy
     # Pad by a pixel for glyph stems that sit on the bbox edge, then clamp.
     pad = 1 + stroke_width
     x0 = max(0, x0 - pad)
@@ -159,8 +159,8 @@ def draw_text_dithered(image: Image.Image, xy, text, font, dark, light, pattern_
     mask = Image.new("L", (region_w, region_h), 0)
     mask_draw = ImageDraw.Draw(mask)
     mask_draw.text((xy[0] - x0, xy[1] - y0), text, font=font, fill=255, stroke_width=stroke_width, stroke_fill=255)
-    px = image.load()
-    mx = mask.load()
+    px = pixel_access(image)
+    mx = gray_pixel_access(mask)
     ox, oy = pattern_offset
     if light_density <= 0.25:
         # Sparse 1-in-4: light only where both axes are even in the
@@ -231,8 +231,8 @@ def draw_text_chroma_shift(
         return
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).text((pad - box[0], pad - box[1]), text, font=font, fill=255)
-    mp = mask.load()
-    px = image.load()
+    mp = gray_pixel_access(mask)
+    px = pixel_access(image)
     width, height = image.size
     base_x, base_y = x + box[0] - pad, y + box[1] - pad
 

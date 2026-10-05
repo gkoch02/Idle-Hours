@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from ..fonts import load_font, theme_font_candidates
 from ..furniture import fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import _flow_stroke_hash, paint_flow_strokes, paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 
@@ -124,7 +124,7 @@ def _nocturne_paint_night(image: Image.Image) -> None:
     """Layer 0: the black night, with a whisper of blue haze at the horizon,
     kept faint so the light sources stay the subject."""
     ImageDraw.Draw(image).rectangle((0, 0, 799, 479), fill=SPECTRA6["black"])
-    px = image.load()
+    px = pixel_access(image)
     blue = SPECTRA6["blue"]
     # BAYER_8x8, not 4x4: a ramp on the 17-level tile steps visibly into a
     # hard halftone stripe. The rank is jittered by the position hash (~half a

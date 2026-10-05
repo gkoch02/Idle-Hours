@@ -51,7 +51,6 @@ def build_registry(modules: Iterable[ModuleType], theme_names: Iterable[str], pl
         if not isinstance(spec, (BorderSpec, FrameSpec)):
             problems.append(f"{module.__name__} has no BorderSpec or FrameSpec SPEC")
             continue
-        table = borders if isinstance(spec, BorderSpec) else frames
         for theme in spec.themes:
             if theme in owner:
                 problems.append(f"{theme} is claimed by both {owner[theme]} and {module.__name__}")
@@ -61,7 +60,10 @@ def build_registry(modules: Iterable[ModuleType], theme_names: Iterable[str], pl
             if theme in plain:
                 problems.append(f"{module.__name__} declares {theme}, which is a plain theme")
             owner[theme] = module.__name__
-            table[theme] = spec
+            if isinstance(spec, BorderSpec):
+                borders[theme] = spec
+            else:
+                frames[theme] = spec
     unclaimed = sorted(known - set(owner) - plain)
     if unclaimed:
         problems.append(f"themes with no SPEC and not plain: {', '.join(unclaimed)}")

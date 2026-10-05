@@ -13,7 +13,7 @@ from .._paths import BASE_DIR
 from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import draw_centred_styled_lines, draw_truncated_centred_byline, paint_mount_card
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, _load_dithered_plate, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, _load_dithered_plate, pixel_access, snap_image_to_palette
 from ..primitives import _flow_stroke_hash, paint_relief_mask
 from ..spec import FrameSpec
 
@@ -65,7 +65,7 @@ def _daguerreotype_oval_radial(x: float, y: float) -> float:
 def _daguerreotype_paint_mat(image: Image.Image) -> None:
     """The case: brass mat field (Y+R gold) inside a pewter rim (the K+W
     50/50 checkerboard, which reads as brushed metal next to the brass)."""
-    px = image.load()
+    px = pixel_access(image)
     yellow, red, white, black = (SPECTRA6[c] for c in ("yellow", "red", "white", "black"))
     gold_cut = 64 * _DAG_GOLD_RED
     for y in range(480):
@@ -87,11 +87,11 @@ def _daguerreotype_paint_plate(image: Image.Image) -> None:
     ow, oh = x1 - x0, y1 - y0
     plate = _load_dithered_plate(DAGUERREOTYPE_PLATE, ow, oh,
                                  method="atkinson", palette=_SILVER_PALETTE)
-    px = image.load()
+    px = pixel_access(image)
     if plate is None:
         _daguerreotype_paint_plate_fallback(image)
         return
-    pp = plate.load()
+    pp = pixel_access(plate)
     for y in range(y0, y1):
         for x in range(x0, x1):
             if _daguerreotype_oval_radial(x, y) <= 1.0:
@@ -101,7 +101,7 @@ def _daguerreotype_paint_plate(image: Image.Image) -> None:
 def _daguerreotype_paint_plate_fallback(image: Image.Image) -> None:
     """A stripped install still gets a photograph-shaped silver image: sky
     blowing to white, a Bayer-graded mid band, a crushed dark foreground."""
-    px = image.load()
+    px = pixel_access(image)
     white, black = SPECTRA6["white"], SPECTRA6["black"]
     x0, y0, x1, y1 = _DAG_OVAL
     for y in range(y0, y1):
@@ -117,7 +117,7 @@ def _daguerreotype_paint_tarnish(image: Image.Image) -> None:
     """The sepia bloom creeping in from the oval's rim: R+G on pixel parity
     (the documented sepia), hash-gated at a density that rises toward the
     edge so it is also the plate's vignette."""
-    px = image.load()
+    px = pixel_access(image)
     red, green = SPECTRA6["red"], SPECTRA6["green"]
     x0, y0, x1, y1 = _DAG_OVAL
     for y in range(y0, y1):

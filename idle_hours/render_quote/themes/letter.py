@@ -11,7 +11,7 @@ import random
 from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
-from ..palette import SPECTRA6, BAYER_4x4, _load_dithered_plate
+from ..palette import SPECTRA6, BAYER_4x4, _load_dithered_plate, pixel_access
 from ..spec import BorderSpec
 
 # Fixed seed for the letter theme's aged-paper texture, so re-renders stay
@@ -38,7 +38,7 @@ def _letter_paint_aged_paper(image: Image.Image, width: int, height: int, page_b
     """
     if page_bg is None:
         return
-    pixels = image.load()
+    pixels = pixel_access(image)
     col = [math.sin(x * 0.013) + 0.6 * math.sin(x * 0.031 + 1.7) for x in range(width)]
     row_mottle = [math.sin(y * 0.015 + 0.5) + 0.6 * math.sin(y * 0.029 + 2.3) for y in range(height)]
     half_w = max(1.0, width * 0.5)
@@ -122,7 +122,7 @@ def draw_letter_border(image: Image.Image, colors: dict,
         image.paste(plate, (0, 0))
     else:
         _letter_paint_aged_paper(image, width, height, page_bg, cream_light, sepia_a, sepia_b, rng)
-    pixels = image.load()
+    pixels = pixel_access(image)
 
     # ---- Body-text writing area: clean cream knockout -----------------
     # The plate's foxing speckle around the thin Dancing Script strokes reads
@@ -130,7 +130,7 @@ def draw_letter_border(image: Image.Image, colors: dict,
     # + light yellow stipple), feathered so it blends into the foxed margins.
     if clear_rect is not None and page_bg is not None:
         cx0, cy0, cx1, cy1 = clear_rect
-        feather = 16
+        feather: float = 16
         for py in range(max(0, cy0), min(height - 1, cy1) + 1):
             for px in range(max(0, cx0), min(width - 1, cx1) + 1):
                 edge_d = min(px - cx0, cx1 - px, py - cy0, cy1 - py)

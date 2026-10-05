@@ -103,6 +103,9 @@ def infer_quarter_half_from_quote(display_quote: str, current_matched: str | Non
         if chosen is None:
             chosen = covering
         start = lowered.find(needle, start + 1)
+    # The needle occurs at least once (checked above), and the first
+    # occurrence either returned or set ``chosen``.
+    assert chosen is not None
     core = chosen.group('core')
     if ' '.join(core.split()).lower() == needle:
         return None

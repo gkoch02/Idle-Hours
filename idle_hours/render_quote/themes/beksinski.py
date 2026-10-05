@@ -12,7 +12,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .._paths import META_FONT_CANDIDATES, OLDSTANDARD_REGULAR
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, fallback_title
-from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
+from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, pixel_access, snap_image_to_palette
 from ..primitives import _lerp_stops, _smooth_noise, paint_craquelure
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
@@ -162,7 +162,7 @@ def _beksinski_paint_sky(scene: Image.Image) -> None:
     width, height = scene.size
     hz = _BEKSINSKI_HORIZON
     column = Image.new("RGB", (1, height))
-    cp = column.load()
+    cp = pixel_access(column)
     for y in range(height):
         cp[0, y] = _lerp_stops(_BEKSINSKI_SKY_STOPS if y < hz else _BEKSINSKI_GROUND_STOPS, y)
     scene.paste(column.resize((width, height), Image.Resampling.NEAREST), (0, 0))
@@ -221,7 +221,7 @@ def _beksinski_paint_tower(scene: Image.Image, mask: Image.Image) -> None:
     for _ in range(10):
         x = rng.uniform(x0 - 10, x1 + 20)
         length = rng.uniform(24, 84)
-        pts = [(x, _BEKSINSKI_HORIZON)]
+        pts: list[tuple[float, float]] = [(x, _BEKSINSKI_HORIZON)]
         for i in range(1, 6):
             x += rng.uniform(-9, 9)
             pts.append((x, _BEKSINSKI_HORIZON + length * i / 5))

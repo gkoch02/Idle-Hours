@@ -20,7 +20,17 @@ from .._paths import (
 )
 from ..fonts import load_font
 from ..furniture import _clock_hour12, _row_digest, fallback_title
-from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, _dither_calibrated, snap_image_to_palette
+from ..palette import (
+    _PANEL_INKS,
+    SPECTRA6,
+    SPECTRA6_PALETTE,
+    BAYER_4x4,
+    BAYER_8x8,
+    _dither_calibrated,
+    gray_pixel_access,
+    pixel_access,
+    snap_image_to_palette,
+)
 from ..primitives import _halo_paste, _lerp_stops, _smooth_noise, paint_flow_strokes, paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
@@ -135,7 +145,7 @@ def _expedition_paint_sky(scene: Image.Image) -> None:
     # The light: an elliptical pool behind the Monolith, brightest at the
     # horizon, which is what the slab and the Paintress are silhouetted on.
     glow = Image.new("L", (width, height), 0)
-    gp = glow.load()
+    gp = pixel_access(glow)
     gx, gy = _EXPEDITION_NUMERAL_CENTRE[0], hz
     for y in range(hz + 1):
         dy = (y - gy) / 150.0
@@ -148,7 +158,7 @@ def _expedition_paint_sky(scene: Image.Image) -> None:
     # The vignette: the corner the journal page sits in stays black, so the
     # halo under the type has nothing to fight.
     shade = Image.new("L", (width, height), 0)
-    sp = shade.load()
+    sp = gray_pixel_access(shade)
     for y in range(hz + 1):
         dy = (y - 128) / 160.0
         for x in range(width):
@@ -182,8 +192,8 @@ def _expedition_paint_sea(scene: Image.Image) -> None:
     water = ImageEnhance.Brightness(water).enhance(1.12)
 
     reflect = Image.new("L", (width, height), 0)
-    rp = reflect.load()
-    sp = streaks.load()
+    rp = gray_pixel_access(reflect)
+    sp = gray_pixel_access(streaks)
     gx = _EXPEDITION_NUMERAL_CENTRE[0]
     for y in range(hz, height):
         fall = math.exp(-(y - hz) / 62.0)
@@ -408,8 +418,8 @@ def _expedition_stipple_field(image: Image.Image, field: Image.Image, major, min
     bbox = field.getbbox()
     if bbox is None:
         return
-    fp = field.load()
-    px = image.load()
+    fp = gray_pixel_access(field)
+    px = pixel_access(image)
     levels = 64
     for y in range(bbox[1], bbox[3]):
         row = BAYER_8x8[y % 8]
@@ -455,7 +465,7 @@ def _expedition_numeral_mask(hour: int) -> Image.Image:
     bite = _smooth_noise(size, (60, 36), _EXPEDITION_SEED + 20 + hour).point(lambda v: 255 if v > 150 else 0)
     glyph = Image.composite(glyph.filter(ImageFilter.MaxFilter(3)), glyph.filter(ImageFilter.MinFilter(3)), bite)
     # Drips, from the lowest painted pixel in three columns of the glyph.
-    gp = glyph.load()
+    gp = pixel_access(glyph)
     gd = ImageDraw.Draw(glyph)
     columns = [x for x in range(x0, x1) if any(gp[x, y] for y in range(y0, y1 + 8))]
     if columns:
@@ -489,8 +499,8 @@ def _expedition_paint_numeral(image: Image.Image, hour: int) -> None:
     field.paste(slab, (x0 - 20, hz + 4))
     field = field.filter(ImageFilter.GaussianBlur(2.5))
     fade = Image.new("L", image.size, 0)
-    fp = fade.load()
-    streaks = _smooth_noise(image.size, (14, 110), _EXPEDITION_SEED + 2).load()
+    fp = gray_pixel_access(fade)
+    streaks = gray_pixel_access(_smooth_noise(image.size, (14, 110), _EXPEDITION_SEED + 2))
     for y in range(hz, min(image.size[1], hz + 4 + round(reach * 1.25) + 8)):
         depth = math.exp(-(y - hz) / 90.0)
         for x in range(x0 - 20, x1 + 20):
@@ -561,7 +571,7 @@ def _expedition_paint_petals(image: Image.Image, quote_row: dict) -> None:
     """The gust: each petal a red + white stipple with a white rim toward the
     light and a red one away from it."""
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     red, white = SPECTRA6["red"], SPECTRA6["white"]
     lx, ly = _EXPEDITION_NUMERAL_CENTRE
     for x, y, size, angle, density in _expedition_gust(quote_row):
@@ -579,7 +589,7 @@ def _expedition_paint_petals(image: Image.Image, quote_row: dict) -> None:
         mask = Image.new("L", (bx1 - bx0 + 1, by1 - by0 + 1), 0)
         ImageDraw.Draw(mask).polygon([(p[0] - bx0, p[1] - by0) for p in pts], fill=255)
         edge = ImageChops.subtract(mask, mask.filter(ImageFilter.MinFilter(3)))
-        mp, ep = mask.load(), edge.load()
+        mp, ep = pixel_access(mask), pixel_access(edge)
         toward = math.atan2(ly - y, lx - x)
         tx, ty = math.cos(toward), math.sin(toward)
         for yy in range(mask.size[1]):

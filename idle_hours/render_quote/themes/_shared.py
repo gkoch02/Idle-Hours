@@ -15,7 +15,7 @@ import random
 from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, pixel_access
 from ..primitives import _flow_stroke_hash
 
 # The autochrome garden is dithered against the FULL six-ink palette — the
@@ -47,7 +47,7 @@ def _astrarium_paint_cream_wash(image: Image.Image) -> None:
     ``mucha``: ``BAYER_4x4 < 2`` flips ~12.5% of white to yellow so the page
     reads as faintly cream paper.
     """
-    px = image.load()
+    px = pixel_access(image)
     w, h = image.size
     for y in range(h):
         row = BAYER_4x4[y % 4]
@@ -104,8 +104,8 @@ def _vitrail_fill_polygon(image: Image.Image, polygon: list, spec: tuple) -> Non
         return
     mask = Image.new("1", (x1 - x0, y1 - y0), 0)
     ImageDraw.Draw(mask).polygon([(int(px) - x0, int(py) - y0) for px, py in polygon], fill=1)
-    mpx = mask.load()
-    ipx = image.load()
+    mpx = pixel_access(mask)
+    ipx = pixel_access(image)
     for yy in range(y1 - y0):
         ay = y0 + yy
         for xx in range(x1 - x0):
@@ -224,7 +224,7 @@ def _crt_paint_scanlines(image: Image.Image, rect, ground, *, period: int = 4, p
     x0, y0, x1, y1 = max(0, x0), max(0, y0), min(width, x1), min(height, y1)
     if x1 <= x0 or y1 <= y0:
         return
-    px = image.load()
+    px = pixel_access(image)
     black = SPECTRA6["black"]
     ground = set(ground)
     for y in range(y0, y1):
@@ -268,7 +268,7 @@ def _autochrome_paint_garden_fallback(image: Image.Image) -> None:
     bed) as ``BAYER_8x8`` density ramps, so the theme still reads as a colour
     picture rather than a blank ground.
     """
-    px = image.load()
+    px = pixel_access(image)
     white, black, blue, green, yellow, red = (
         SPECTRA6[c] for c in ("white", "black", "blue", "green", "yellow", "red"))
     horizon, beds = 192, 250

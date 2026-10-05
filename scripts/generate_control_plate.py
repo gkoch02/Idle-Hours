@@ -113,7 +113,7 @@ def main() -> int:
     _board_grain(img, rng)
     _aggregate(img, rng)
     img = img.filter(ImageFilter.GaussianBlur(0.6 * SS))
-    out = img.convert("RGB").resize((W, H), Image.LANCZOS)
+    out = img.convert("RGB").resize((W, H), Image.Resampling.LANCZOS)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     out.save(OUT, optimize=True)
     print(f"wrote {OUT} ({W}x{H})")

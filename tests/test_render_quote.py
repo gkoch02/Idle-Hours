@@ -17,6 +17,7 @@ pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed"
 from idle_hours import render_quote as rq  # noqa: E402
 from idle_hours.render_quote import core as rq_core  # noqa: E402
 from idle_hours.render_quote import fonts as rq_fonts  # noqa: E402
+from idle_hours.render_quote import palette as rq_palette  # noqa: E402
 from idle_hours.render_quote import text as rq_text  # noqa: E402
 
 from .pixel_helpers import distinct_inks, ink_counts  # noqa: E402
@@ -292,6 +293,27 @@ class TestSnapImageToPalette:
             img = Image.new("RGB", (2, 2), color=color)
             result = rq.snap_image_to_palette(img, palette)
             assert self._inks(result) == {color}, f"Color {color} did not round-trip"
+
+
+class TestTypedPixelAccess:
+    """The mode check is what makes ``gray_pixel_access`` / ``rgb_pixel_access``'s types true (issue #350)."""
+
+    @pytest.mark.parametrize("mode", ["1", "L"])
+    def test_gray_reads_ints(self, mode):
+        image = Image.new(mode, (2, 2), 255)
+        assert rq_palette.gray_pixel_access(image)[1, 1] == 255
+
+    def test_gray_rejects_rgb(self):
+        with pytest.raises(ValueError, match="one-band"):
+            rq_palette.gray_pixel_access(Image.new("RGB", (2, 2)))
+
+    def test_rgb_reads_tuples(self):
+        image = Image.new("RGB", (2, 2), (1, 2, 3))
+        assert rq_palette.rgb_pixel_access(image)[0, 0] == (1, 2, 3)
+
+    def test_rgb_rejects_mask(self):
+        with pytest.raises(ValueError, match="RGB"):
+            rq_palette.rgb_pixel_access(Image.new("L", (2, 2)))
 
 
 # ---------------------------------------------------------------------------

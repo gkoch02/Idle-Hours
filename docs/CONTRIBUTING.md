@@ -32,6 +32,7 @@ Verify:
 ```bash
 pytest
 ruff check .
+mypy
 idle-hours run --once --buttons-off           # one-shot render to output/current.png
 # equivalent module form:
 python3 -m idle_hours.run_clock --once --buttons-off
@@ -54,6 +55,8 @@ workflow files — they'll drift.
   the suite is ~4k cases, about 50s in parallel and ~3 minutes single-threaded.
 - **Run the linter.** `ruff check .` — rules `E`, `W`, `F`, `I`; line length
   130; `E501` ignored. `ruff check --fix .` handles import ordering.
+- **Run the type checker.** `mypy` — settings and the pinned version live in
+  `pyproject.toml`. Fix what it reports rather than adding `# type: ignore`.
 - **Don't commit generated artifacts you didn't mean to.** `output/` is
   gitignored except for `.gitkeep`. `data/gutenberg/` is gitignored entirely.
 - **Keep commits focused.** One logical change per commit makes bisect useful
@@ -332,7 +335,7 @@ panel.
   `.github/pull_request_template.md`; fill in what applies and delete the
   rest. If the change is corpus-only, the PR body is fine at one line.
 - CI runs on every push to `main` and every PR. Required checks are `lint`,
-  `test (3.11)`, `test (3.12)`, `golden-render`, `web-ui-js` and
+  `typecheck`, `test (3.11)`, `test (3.12)`, `golden-render`, `web-ui-js` and
   `package-build`; `coverage` also runs but is advisory. Green required
   checks are a prerequisite for merge.
 

@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from .._paths import ORNAMENT_FONT_CANDIDATES, YUJI_BOKU_REGULAR
 from ..fonts import load_font, theme_font_candidates
 from ..furniture import _clock_hour12, fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..primitives import paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 
@@ -79,7 +79,7 @@ def _izakaya_paint_night(image: Image.Image) -> None:
     outshines the neon. The threshold stays a float: rounding it to an int
     bands the ramp into visible steps.
     """
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     span = max(1, _IZAKAYA_HAZE_BOTTOM)
     for y in range(min(height, _IZAKAYA_HAZE_BOTTOM)):
@@ -215,7 +215,7 @@ def _izakaya_paint_street(image: Image.Image, boxes) -> None:
     sines are phased **per column**: a shared phase breaks every column on the
     same rows, painting horizontal bands. Lanterns reflect at a lower weight.
     """
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     street = _IZAKAYA_STREET_Y
     if street >= height:

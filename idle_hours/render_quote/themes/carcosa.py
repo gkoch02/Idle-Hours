@@ -9,7 +9,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..primitives import position_noise
 from ..spec import BorderSpec
 
@@ -76,7 +76,7 @@ def _carcosa_haze(image: Image.Image, x0: int, x1: int, y_near: int, y_far: int,
     ordered tile lays a visible lattice (see :func:`position_noise`).
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     black = SPECTRA6["black"]
     yellow = SPECTRA6["yellow"]
     span = y_far - y_near
@@ -166,7 +166,7 @@ def _carcosa_paint_drape(image: Image.Image, draw: ImageDraw.ImageDraw, side: in
     for (ax, ay), (bx, by) in creases:
         draw.line([(fx(ax), ay), (fx(bx), by)], fill=black, width=1)
     # Tangerine shadow: flip 3/8 of the crease red to yellow on the 4x4 tile.
-    px = image.load()
+    px = pixel_access(image)
     x_lo = 0 if side < 0 else max(0, int(width - 1 - top_w - 4))
     x_hi = min(width, int(top_w + 4)) if side < 0 else width
     for y in range(0, min(height, hem_y + 1)):
@@ -291,16 +291,16 @@ def _carcosa_paint_lake(image: Image.Image, draw: ImageDraw.ImageDraw, scale: fl
     for fx, r in _CARCOSA_SUNS:
         cx = width * fx
         for i, dy in enumerate(range(3, int(26 * scale), 3)):
-            half = r * scale * (1.0 - i * 0.11)
-            if half < 1:
+            reach = r * scale * (1.0 - i * 0.11)
+            if reach < 1:
                 break
             shift = 2.5 * math.sin(i * 1.9 + fx * 10) * scale
             y = horizon + dy
             if y >= height:
                 break
-            gap = max(1.0, half * 0.25)
-            draw.line([(cx - half + shift, y), (cx - gap + shift, y)], fill=yellow, width=1)
-            draw.line([(cx + gap + shift, y), (cx + half + shift, y)], fill=yellow, width=1)
+            gap = max(1.0, reach * 0.25)
+            draw.line([(cx - reach + shift, y), (cx - gap + shift, y)], fill=yellow, width=1)
+            draw.line([(cx + gap + shift, y), (cx + reach + shift, y)], fill=yellow, width=1)
 
 
 def draw_carcosa_border(image: Image.Image, colors: dict) -> None:

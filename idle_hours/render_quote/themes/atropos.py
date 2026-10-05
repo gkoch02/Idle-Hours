@@ -276,9 +276,11 @@ def _atropos_tendril_paths() -> list:
         ((-8, 300), (120, 400), 6, 26),
     )
     paths = []
+    x: float
+    y: float
     for (x, y), (tx, ty), base, steps in roots:
         heading = math.atan2(ty - y, tx - x)
-        points = [(x, y)]
+        points: list[tuple[float, float]] = [(x, y)]
         nodules = []
         for i in range(steps):
             want = math.atan2(ty - y, tx - x)

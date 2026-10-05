@@ -62,7 +62,8 @@ _OBLIVION_BLACK = _PANEL_INKS["black"]
 
 def _oblivion_tone(t: float) -> tuple[int, int, int]:
     """A grey ``t`` of the way from the white ink to the black ink."""
-    return tuple(round(w + (k - w) * t) for w, k in zip(_OBLIVION_WHITE, _OBLIVION_BLACK))
+    r, g, b = (round(w + (k - w) * t) for w, k in zip(_OBLIVION_WHITE, _OBLIVION_BLACK))
+    return r, g, b
 
 
 def _oblivion_font(size: int, instance: str = "Light"):
@@ -94,7 +95,7 @@ def _oblivion_rig_points() -> list:
     rng = random.Random(_OBLIVION_SEED + 3)
     x0, y0, x1, y1 = _OBLIVION_MAP_RECT
     cx, cy = _OBLIVION_DIAL_CENTRE
-    points = []
+    points: list[tuple[int, int]] = []
     while len(points) < 12:
         x, y = rng.randint(x0 + 22, x1 - 22), rng.randint(y0 + 22, y1 - 22)
         if math.hypot(x - cx, y - cy) < _OBLIVION_DIAL_RADII[2] + 14:

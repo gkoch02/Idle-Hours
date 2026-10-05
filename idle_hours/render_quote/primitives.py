@@ -11,7 +11,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .fonts import _font_ascent, normalize_dashes
 from .layout import fit_quote, strip_underscore_emphasis
-from .palette import SPECTRA6, BAYER_4x4, BAYER_8x8
+from .palette import SPECTRA6, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access
 
 
 def paint_neon_mask(
@@ -80,9 +80,9 @@ def paint_neon_mask(
     if x1 <= x0 or y1 <= y0:
         return
     halo = mask.filter(ImageFilter.GaussianBlur(radius))
-    px = image.load()
-    mp = mask.load()
-    hp = halo.load()
+    px = pixel_access(image)
+    mp = gray_pixel_access(mask)
+    hp = gray_pixel_access(halo)
     size = len(tile)
     levels = size * size
     core_cut = levels * core_minor_share
@@ -197,7 +197,7 @@ def paint_hatched_tone(
     x0, y0, x1, y1 = rect
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(image.size[0], x1), min(image.size[1], y1)
-    px = image.load()
+    px = pixel_access(image)
     half = 0.5 * spacing
     for y in range(y0, y1):
         for x in range(x0, x1):
@@ -282,9 +282,9 @@ def paint_relief_mask(
     if x1 <= x0 or y1 <= y0:
         return
     halo = mask.filter(ImageFilter.GaussianBlur(radius))
-    px = image.load()
-    mp = mask.load()
-    hp = halo.load()
+    px = pixel_access(image)
+    mp = gray_pixel_access(mask)
+    hp = gray_pixel_access(halo)
     size = len(tile)
     levels = size * size
     face_cut = levels * face_minor_share
@@ -444,8 +444,8 @@ def paint_flow_strokes(
     x0, y0, x1, y1 = rect
     scratch = Image.new("L", image.size, 0)
     scratch_draw = ImageDraw.Draw(scratch)
-    sp = scratch.load()
-    px = image.load()
+    sp = pixel_access(scratch)
+    px = pixel_access(image)
     w, h = image.size
     seg = max(1.0, length / steps)
     for cy in range(y0, y1, cell):
@@ -516,7 +516,7 @@ def _fill_swatch_stipple(
     y1 = min(h, y1)
     if x1 <= x0 or y1 <= y0:
         return
-    px = image.load()
+    px = pixel_access(image)
     if light_density <= 0.25:
         for y in range(y0, y1):
             for x in range(x0, x1):
@@ -559,7 +559,7 @@ def _fill_swatch_stipple_3way(
         return
     threshold_a = round(density_a * 16)
     threshold_b = round((density_a + density_b) * 16)
-    px = image.load()
+    px = pixel_access(image)
     for y in range(y0, y1):
         for x in range(x0, x1):
             cell = BAYER_4x4[y % 4][x % 4]
@@ -752,9 +752,9 @@ def paint_craquelure(
 
     guard = None
     if keep_out is not None:
-        guard = keep_out.filter(ImageFilter.MaxFilter(2 * keep_out_pad + 1)).load()
+        guard = pixel_access(keep_out.filter(ImageFilter.MaxFilter(2 * keep_out_pad + 1)))
     painted = Image.new("L", image.size, 0)
-    px, rp, np_, pp = image.load(), region.load(), net.load(), painted.load()
+    px, rp, np_, pp = pixel_access(image), pixel_access(region), pixel_access(net), pixel_access(painted)
     bbox = net.getbbox()
     if bbox is None:
         return painted

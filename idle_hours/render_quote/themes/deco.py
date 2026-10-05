@@ -9,7 +9,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -139,7 +139,7 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
     if accent_color == SPECTRA6["red"]:
         light = SPECTRA6["yellow"]
         threshold = 6  # round(0.375 * 16) — keep in sync with _draw_text_body
-        pixels = image.load()
+        pixels = pixel_access(image)
         for y in range(image.height):
             row = BAYER_4x4[y % 4]
             for x in range(image.width):

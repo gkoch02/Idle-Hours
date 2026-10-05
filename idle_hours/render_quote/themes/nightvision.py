@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import META_FONT_CANDIDATES
 from ..fonts import load_font
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 from ..text import draw_text
 
@@ -47,7 +47,7 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
     # recipe, so they read as ambient glow rather than crisp CRT lines.
     # Limited to the scanline x range, so the corner brackets stay solid.
     if subtle == SPECTRA6["green"]:
-        pixels = image.load()
+        pixels = pixel_access(image)
         sage_light = SPECTRA6["white"]
         for scan_y in range(margin + 18, bottom_y - 6, 14):
             row = BAYER_4x4[scan_y & 3]

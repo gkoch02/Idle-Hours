@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
@@ -199,7 +199,7 @@ def _pride_paint_flag(image: Image.Image) -> None:
     The stripe index is clamped, so the frame is a crop of a larger flag.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     white = SPECTRA6["white"]
     black = SPECTRA6["black"]
     # A solid band is the degenerate partition: its "light" ink is its own ink
@@ -284,7 +284,7 @@ def _pride_layout(draw: ImageDraw.ImageDraw, quote_row: dict, width: int, height
         font_max=font_max, font_min=font_min, line_height_mult=1.24, theme="pride",
     )
     lines = []
-    block_w = 0
+    block_w: float = 0
     for line in wrapped:
         start = 0
         while start < len(line) and line[start][0].strip() == "":

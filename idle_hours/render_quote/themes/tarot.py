@@ -13,7 +13,7 @@ from .._paths import BASE_DIR
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _clock_hour12, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..primitives import _white_noise
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
@@ -943,8 +943,8 @@ def _tarot_stamp_tile(
     negative space. The plate tile is exactly panel-sized, so ``clip`` is a
     no-op for it; the oversized polygon tile relies on it.
     """
-    px = image.load()
-    src = tile.load()
+    px = pixel_access(image)
+    src = pixel_access(tile)
     w, h = image.size
     ox = cx - tile.width // 2
     oy = cy - tile.height // 2
@@ -1000,7 +1000,7 @@ def _tarot_paint_emblem(
     tile = Image.new("RGB", (size, size), SPECTRA6["white"])
     painter(ImageDraw.Draw(tile), half, half)
     scaled = size * _TAROT_EMBLEM_SCALE
-    tile = tile.resize((round(scaled), round(scaled)), Image.LANCZOS)
+    tile = tile.resize((round(scaled), round(scaled)), Image.Resampling.LANCZOS)
     tile = snap_image_to_palette(tile, _TAROT_EMBLEM_INKS)
     _tarot_stamp_tile(image, tile, cx, cy, clip)
     return _TAROT_PAINTER_TRUMP_NAMES.get(hour_int, "")
@@ -1025,7 +1025,7 @@ def _tarot_paint_body_panel(
     # Step 1: solid white wipe — clears any foxing dots within the panel.
     draw.rectangle((x0, y0, x1, y1), fill=WHITE)
     # Step 2: a fresh cream wash so the panel still matches the vellum.
-    px = image.load()
+    px = pixel_access(image)
     # Clip the PixelAccess writes: the fixed 800x480 coordinates overrun
     # smaller canvases.
     w, h = image.size
@@ -1089,12 +1089,12 @@ def _tarot_paint_body(
             end -= 1
         drawable = line[start:end]
         # Centre the line horizontally.
-        line_width = 0
+        line_width: float = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             bbox = draw.textbbox((0, 0), chunk, font=font)
             line_width += bbox[2] - bbox[0]
-        x = x0 + max(0, (width - line_width) // 2)
+        x: float = x0 + max(0, (width - line_width) // 2)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))

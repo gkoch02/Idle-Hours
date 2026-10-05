@@ -13,7 +13,7 @@ from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES, META_FONT_CAND
 from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_chroma_shift
 
@@ -75,7 +75,7 @@ def _vhs_tape_date(quote_row: dict) -> str:
 def _vhs_paint_tape(image: Image.Image) -> None:
     """Near-black ground, scanlines, and noise rising toward the head sweep."""
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     black, blue, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["white"]
     # Faint scanline modulation, softer than nightvision's.
     for y in range(0, height, _VHS_SCANLINE_STEP):
@@ -93,7 +93,7 @@ def _vhs_paint_tape(image: Image.Image) -> None:
 def _vhs_paint_dropouts(image: Image.Image) -> None:
     """Short white dashes where the oxide has shed off the tape."""
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     white = SPECTRA6["white"]
     rng = random.Random(_VHS_NOISE_SEED ^ 0xD0)
     for _ in range(_VHS_DROPOUT_COUNT):
@@ -111,7 +111,7 @@ def _vhs_apply_tears(image: Image.Image) -> None:
     through the quote and the OSD as well as the ground.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     black = SPECTRA6["black"]
 
     def shift_row(y: int, shift: int) -> None:

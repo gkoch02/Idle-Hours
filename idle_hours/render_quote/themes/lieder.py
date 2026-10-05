@@ -185,19 +185,19 @@ def _lieder_syllables(word: str) -> list[str]:
 
     cuts = []
     for (_, end_a), (start_b, _) in zip(groups, groups[1:]):
-        run = low[end_a:start_b]
-        n = len(run)
+        between = low[end_a:start_b]
+        n = len(between)
         if le_ending and start_b == len(low) - 1 and n >= 2:
             cut = start_b - 2                       # ta-ble, lit-tle, pos-si-ble
         elif n <= 1:
             cut = end_a                             # o-ver
         elif n == 2:
-            cut = end_a if run in _LIEDER_DIGRAPHS else end_a + 1   # an-oth-er / af-ter
-        elif run[0] == run[1]:
+            cut = end_a if between in _LIEDER_DIGRAPHS else end_a + 1   # an-oth-er / af-ter
+        elif between[0] == between[1]:
             cut = end_a + 2                         # still-ness
-        elif run[1:3] in _LIEDER_DIGRAPHS:
+        elif between[1:3] in _LIEDER_DIGRAPHS:
             cut = end_a + 1
-        elif run[:2] in _LIEDER_DIGRAPHS:
+        elif between[:2] in _LIEDER_DIGRAPHS:
             cut = end_a + 2
         else:
             cut = end_a + 1

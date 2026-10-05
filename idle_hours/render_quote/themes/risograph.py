@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -81,7 +81,7 @@ def draw_risograph_border(image: Image.Image, colors: dict, clear_rect: tuple[in
     # 3-way Bayer post-pass on the sentinel crosses: cells 0-4 → red,
     # cells 5-9 → blue, cells 10-15 → white (~1/3 each, the documented
     # lavender R+B+W recipe). Bbox-scoped per cross.
-    pixels = image.load()
+    pixels = pixel_access(image)
     ink_red = SPECTRA6["red"]
     ink_blue = SPECTRA6["blue"]
     ink_white = SPECTRA6["white"]

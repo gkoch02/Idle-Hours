@@ -285,9 +285,9 @@ def _saros_silhouette(size) -> Image.Image:
         t0, t1 = k / 40, (k + 1) / 40
         pts = []
         for t in (t0, t1):
-            x = 300 + (452 - 300) * t
-            y = _saros_ground_y(x) + 2 - 128 * math.sin(math.pi * t) ** 0.9
-            pts.append((x, y))
+            arc_x = 300 + (452 - 300) * t
+            y = _saros_ground_y(arc_x) + 2 - 128 * math.sin(math.pi * t) ** 0.9
+            pts.append((arc_x, y))
         w = max(5, int(14 * (1 - math.sin(math.pi * (t0 + t1) / 2)) + 5))
         draw.line(pts, fill=255, width=w)
     # Colony towers to the right: broken blocks with a mast.

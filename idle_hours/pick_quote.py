@@ -68,7 +68,7 @@ BAKED_SCORE_COMPONENTS: tuple[str, ...] = (
 # with a drifted ``baked_score`` layout.
 BAKED_SCORE_SCHEMA_VERSION: int = 1
 
-EXACT_MINUTE_PATTERNS = {
+EXACT_MINUTE_PATTERNS: dict[int | str, list[str]] = {
     # Both apostrophes: the corpus carries straight "o'clock" as often as the
     # typographic one, and a straight one otherwise inferred no minute at all.
     "zero": ["o’clock", "o'clock", "oclock", "struck"],
@@ -595,7 +595,7 @@ def infer_quote_minute(row: dict) -> int | None:
     lowered = (row.get("matched_text") or "").lower().replace("\n", " ")
     for pattern, minute in _MINUTE_PATTERNS_LONGEST_FIRST:
         if pattern in lowered:
-            return 0 if minute == "zero" else minute
+            return minute if isinstance(minute, int) else 0  # "zero" is :00
     return None
 
 
@@ -1084,9 +1084,12 @@ def select_candidates(
     below the quality floor) so an operator can see *why* a quote never
     appeared. Switching this to the baked path would silently hide those rows.
     """
-    if not time_str and not bucket:
+    if bucket:
+        target_bucket = bucket
+    elif time_str:
+        target_bucket = bucket_for_time(time_str)
+    else:
         raise ValueError("select_candidates requires time_str or bucket")
-    target_bucket = bucket or bucket_for_time(time_str)
     rows = load_rows(resolve_path(input_path))
     overrides = load_overrides(resolve_path(overrides_path))
     recent = load_recent_history(history_path, history_days)
@@ -1264,9 +1267,12 @@ def select_quote(
     back to ``input_path`` so a stale/absent bake degrades gracefully instead
     of crashing the loop.
     """
-    if not time_str and not bucket:
+    if bucket:
+        target_bucket = bucket
+    elif time_str:
+        target_bucket = bucket_for_time(time_str)
+    else:
         raise ValueError("select_quote requires time_str or bucket")
-    target_bucket = bucket or bucket_for_time(time_str)
     if rows is None:
         rows = _resolve_corpus(database_path, input_path)
     if overrides is None:
@@ -1311,6 +1317,7 @@ def select_quote(
             # picker's own bucket-preference order: the target bucket first,
             # then its siblings in alternating outward-distance order. That
             # reproduces exactly which copy pick_best would have landed on.
+            order: dict[str | None, int]
             try:
                 order = {b: i for i, b in enumerate(neighbor_buckets(target_bucket))}
             except (ValueError, KeyError):

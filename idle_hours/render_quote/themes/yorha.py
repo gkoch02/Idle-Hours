@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from .._paths import EBGARAMOND_BOLD, EBGARAMOND_REGULAR, META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
 from ..fonts import load_font
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, _row_digest, fallback_title
-from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, _dither_calibrated, snap_image_to_palette
+from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, _dither_calibrated, pixel_access, snap_image_to_palette
 from ..primitives import _shade_silhouette, _shift_no_wrap
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
@@ -58,7 +58,8 @@ _YORHA_SCENE: dict = {}
 def _yorha_cream(y: float, k: float = 0.0) -> tuple[int, int, int]:
     """A calibrated mix: white with ``y`` of yellow and ``k`` of black."""
     w, yel, blk = (_PANEL_INKS[n] for n in ("white", "yellow", "black"))
-    return tuple(round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk))
+    r, g, bl = (round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk))
+    return r, g, bl
 
 
 def _yorha_font(size: int, weight: str = "Regular"):
@@ -100,7 +101,7 @@ def _yorha_paint_ground(scene: Image.Image) -> None:
     size = scene.size
     width, height = size
     vignette = Image.new("L", (width // 4, height // 4), 0)
-    vp = vignette.load()
+    vp = pixel_access(vignette)
     cx, cy = vignette.size[0] / 2.0, vignette.size[1] / 2.0
     rmax = math.hypot(cx, cy)
     for y in range(vignette.size[1]):
@@ -155,7 +156,7 @@ def _yorha_paint_panels(scene: Image.Image) -> None:
 def _yorha_fill_panel(image: Image.Image, rect) -> None:
     """A panel's face: white with a yellow eighth on the 4x4 Bayer tile."""
     x0, y0, x1, y1 = rect
-    px = image.load()
+    px = pixel_access(image)
     white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
     for y in range(y0, y1 + 1):
         row = BAYER_4x4[y % 4]
@@ -198,7 +199,7 @@ def _yorha_paint_rules(image: Image.Image) -> None:
     draw = ImageDraw.Draw(image)
     black, white = SPECTRA6["black"], SPECTRA6["white"]
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     p = _YORHA_DOT_PITCH
     for y in range(p // 2, height, p):
         for x in range(p // 2, width, p):
@@ -213,15 +214,15 @@ def _yorha_paint_rules(image: Image.Image) -> None:
     # The tab bar, with INTEL open.
     draw.rectangle(_YORHA_HEADER_RECT, fill=black)
     font = _yorha_font(15, "Regular")
-    x = 30
+    tab_x: float = 30
     for tab in _YORHA_TABS:
         tw = draw.textlength(tab, font=font)
         if tab == "INTEL":
-            draw.rectangle((x - 8, _YORHA_HEADER_RECT[1] + 6, x + tw + 8, _YORHA_HEADER_RECT[3] - 6), fill=white)
-            draw.text((x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=black)
+            draw.rectangle((tab_x - 8, _YORHA_HEADER_RECT[1] + 6, tab_x + tw + 8, _YORHA_HEADER_RECT[3] - 6), fill=white)
+            draw.text((tab_x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=black)
         else:
-            draw.text((x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=white)
-        x += tw + 26
+            draw.text((tab_x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=white)
+        tab_x += tw + 26
     # The crest: a ring with its wing bars, and the unit beside it.
     cx, cy = 752, (_YORHA_HEADER_RECT[1] + _YORHA_HEADER_RECT[3]) // 2
     draw.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), outline=white, width=2)

@@ -9,7 +9,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -164,7 +164,7 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
 
     # Per-planet bbox post-pass. ``sigil_radius`` generously covers the
     # Mars / Venus off-anchor geometry.
-    pixels = image.load()
+    pixels = pixel_access(image)
     sigil_radius = 16
     planet_passes = (
         # (centre, sentinel_ink, light_ink, density)

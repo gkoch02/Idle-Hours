@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES, SPACEMONO_BOLD, TITILLIUM_ITALIC, YUJI_BOKU_REGULAR
 from ..fonts import load_font
 from ..furniture import draw_truncated_centred_byline
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import _flow_stroke_hash, paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import draw_tracked
@@ -277,7 +277,7 @@ def _trisolaris_paint_sky(image: Image.Image) -> None:
     """
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, 799, 479), fill=SPECTRA6["black"])
-    px = image.load()
+    px = pixel_access(image)
     rng = random.Random(_TRISOLARIS_STAR_SEED)
     column_x0 = _TRISOLARIS_COLUMN[0] - 10
     for _ in range(230):
@@ -334,7 +334,7 @@ def _trisolaris_paint_orbits(image: Image.Image, index: int) -> None:
     thinning toward the oldest end. The planet's trail is sparse white and drawn
     only back to its most recent rebirth, so the jump to a new orbit never draws.
     """
-    px = image.load()
+    px = pixel_access(image)
     ephemeris = _trisolaris_ephemeris()
     span = _TRISOLARIS_TRAIL_MINUTES * _TRISOLARIS_SAMPLES_PER_MINUTE
     start = max(1, index - span)
@@ -423,7 +423,7 @@ def _trisolaris_paint_red_coast(image: Image.Image) -> None:
     draw = ImageDraw.Draw(image)
     skyline = [(x, _trisolaris_ridge_y(x)) for x in range(0, 801, 4)]
     draw.polygon(skyline + [(800, 480), (0, 480)], fill=SPECTRA6["black"])
-    px = image.load()
+    px = pixel_access(image)
     _trisolaris_stipple_line(px, skyline, salt=61, width=2)
     for step, keep in ((11, 0.55), (24, 0.3)):
         contour = [(x, _trisolaris_ridge_y(x) + step + int(3 * math.sin(x * 0.05 + step)))

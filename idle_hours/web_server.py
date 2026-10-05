@@ -74,11 +74,15 @@ from collections import OrderedDict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from idle_hours import apply_content_overrides, atomic_io
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import bucket_for_time, rederive_buckets
 from idle_hours.runtime_log import _log
+
+if TYPE_CHECKING:
+    from idle_hours.runtime_state import RuntimeState
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_ROOT = BASE_DIR / "web"
@@ -115,7 +119,7 @@ def clear_preview_cache() -> None:
 
 def _preview_corpus_stamp(ctx) -> tuple:
     """(mtime_ns, size) stamps for the files a preview render depends on."""
-    stamp = []
+    stamp: list[tuple[int, int] | None] = []
     for p in (ctx.baked_db_path, ctx.raw_corpus_path, ctx.overrides_path):
         try:
             st = os.stat(p)
@@ -247,7 +251,7 @@ class WebContext:
     def __init__(
         self,
         args: argparse.Namespace,
-        state: object,
+        state: RuntimeState,
         token: str = "",
         token_file: str | Path | None = None,
     ):
@@ -1157,7 +1161,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             hours = int(query.get("hours", ["24"])[0])
         except (TypeError, ValueError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "hours must be int")
+            self._reject(HTTPStatus.BAD_REQUEST, "hours must be int")
+            return
         hours = max(1, min(hours, 24 * 30))  # clamp 1h..30d
         ctx = self._ctx()
         if not ctx.telemetry_path:
@@ -1345,7 +1350,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             payload = self._coverage_summary()
         except (OSError, ValueError) as exc:
             _log(f"web: coverage unavailable: {exc!r}", err=True)
-            return self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "coverage unavailable")
+            self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "coverage unavailable")
+            return
         self._json(HTTPStatus.OK, payload)
 
     def _api_gaps(self, query: dict) -> None:
@@ -1362,13 +1368,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             threshold = int(query.get("threshold", ["3"])[0])
         except (TypeError, ValueError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "threshold must be int")
+            self._reject(HTTPStatus.BAD_REQUEST, "threshold must be int")
+            return
         threshold = max(0, min(threshold, 50))
         try:
             coverage = self._coverage_summary()
         except (OSError, ValueError) as exc:
             _log(f"web: coverage unavailable: {exc!r}", err=True)
-            return self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "coverage unavailable")
+            self._reject(HTTPStatus.INTERNAL_SERVER_ERROR, "coverage unavailable")
+            return
         bucket_counts = coverage.get("bucket_counts") or {}
         if not bucket_counts:
             return self._json(HTTPStatus.OK, {"threshold": threshold, "buckets": []})
@@ -1622,15 +1630,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             limit = int(query.get("limit", ["50"])[0])
         except (TypeError, ValueError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "limit must be int")
+            self._reject(HTTPStatus.BAD_REQUEST, "limit must be int")
+            return
         limit = max(1, min(limit, 500))
         if not (q or author or title or bucket):
-            return self._reject(
+            self._reject(
                 HTTPStatus.BAD_REQUEST,
                 "at least one of q / author / title / bucket is required",
             )
+            return
         if bucket and bucket not in pick_quote_module.valid_bucket_names():
-            return self._reject(HTTPStatus.BAD_REQUEST, f"unknown bucket {bucket!r}")
+            self._reject(HTTPStatus.BAD_REQUEST, f"unknown bucket {bucket!r}")
+            return
         results: list[dict] = []
         if not ctx.raw_corpus_path.exists():
             return self._json(HTTPStatus.OK, {"results": [], "total": 0, "note": "raw corpus missing"})
@@ -1681,7 +1692,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ctx = self._ctx()
         theme = (query.get("theme", [""])[0] or "default").strip()
         if theme not in render_quote.THEMES:
-            return self._reject(HTTPStatus.BAD_REQUEST, f"unknown theme {theme!r}")
+            self._reject(HTTPStatus.BAD_REQUEST, f"unknown theme {theme!r}")
+            return
         time_str = (query.get("time", [""])[0] or "").strip() or dt.datetime.now().strftime("%H:%M")
         # Validate HH:MM shape AND ranges. ``bucket_for_time`` calls
         # ``minute_bucket`` which uses ``((minute + 2) // 5) * 5`` to round —
@@ -1697,7 +1709,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             if not (0 <= h <= 23 and 0 <= m <= 59):
                 raise ValueError(f"time {time_str!r} out of range (need 00:00–23:59)")
         except (ValueError, AttributeError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "time must be HH:MM (00:00–23:59)")
+            self._reject(HTTPStatus.BAD_REQUEST, "time must be HH:MM (00:00–23:59)")
+            return
         try:
             row = pick_quote_module.select_quote(
                 time_str=time_str,
@@ -1709,15 +1722,18 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 history_path=None,  # Preview should be deterministic — don't tie it to ledger state.
             )
         except SystemExit as exc:
-            return self._reject(HTTPStatus.NOT_FOUND, str(exc))
+            self._reject(HTTPStatus.NOT_FOUND, str(exc))
+            return
         mode = (query.get("mode", [""])[0] or "production").strip()
         if mode not in PREVIEW_MODES:
-            return self._reject(HTTPStatus.BAD_REQUEST, f"mode must be one of {sorted(PREVIEW_MODES)}")
+            self._reject(HTTPStatus.BAD_REQUEST, f"mode must be one of {sorted(PREVIEW_MODES)}")
+            return
         try:
             width = int(query.get("width", [str(ctx.args.width)])[0])
             height = int(query.get("height", [str(ctx.args.height)])[0])
         except (TypeError, ValueError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "width/height must be int")
+            self._reject(HTTPStatus.BAD_REQUEST, "width/height must be int")
+            return
         # Cap dimensions: preview is used for thumbnails, and full panel size is
         # already enough detail while avoiding slow/high-memory renders from a
         # hostile or buggy client.
@@ -1761,7 +1777,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             limit = int(query.get("limit", ["50"])[0])
         except (TypeError, ValueError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "limit must be int")
+            self._reject(HTTPStatus.BAD_REQUEST, "limit must be int")
+            return
         limit = max(1, min(limit, 500))
         entries: list[dict] = []
         if ctx.history_path:
@@ -1831,15 +1848,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         enriched = []
         for entry in entries:
             key = _history_join_key(entry)
-            row = index.get(key) if key is not None else None
-            if row is None:
+            hit = index.get(key) if key is not None else None
+            if hit is None:
                 enriched.append(entry)
                 continue
             enriched.append({
                 **entry,
-                "display_quote": row.get("display_quote"),
-                "author": row.get("author"),
-                "title": row.get("title"),
+                "display_quote": hit.get("display_quote"),
+                "author": hit.get("author"),
+                "title": hit.get("title"),
             })
         return enriched
 
@@ -1848,7 +1865,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
         try:
             top_n = int(query.get("top", ["10"])[0])
         except (TypeError, ValueError):
-            return self._reject(HTTPStatus.BAD_REQUEST, "top must be int")
+            self._reject(HTTPStatus.BAD_REQUEST, "top must be int")
+            return
         top_n = max(1, min(top_n, 50))  # cap at 50; dense buckets can exceed 200 candidates
         time_str = query.get("time", [None])[0]
         if time_str is not None:
@@ -1858,7 +1876,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
             try:
                 validate_hhmm(time_str.strip())
             except (ValueError, AttributeError):
-                return self._reject(HTTPStatus.BAD_REQUEST, "time must be HH:MM (00:00–23:59)")
+                self._reject(HTTPStatus.BAD_REQUEST, "time must be HH:MM (00:00–23:59)")
+                return
             time_str = time_str.strip()
         try:
             candidates = pick_quote_module.select_candidates(
@@ -1872,7 +1891,8 @@ class CuratorHandler(BaseHTTPRequestHandler):
                 history_path=None,  # UI wants the full corpus view, not the anti-repeat-filtered one
             )
         except SystemExit as exc:
-            return self._reject(HTTPStatus.NOT_FOUND, str(exc))
+            self._reject(HTTPStatus.NOT_FOUND, str(exc))
+            return
         self._json(HTTPStatus.OK, {"bucket": bucket, "time": time_str, "candidates": candidates})
 
     # -- POST endpoints -------------------------------------------------------
@@ -1896,10 +1916,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
             if if_match is not None:
                 current = overrides_etag(_read_overrides_bytes(ctx.overrides_path))
                 if not _etag_matches(if_match, current):
-                    return self._reject(
+                    self._reject(
                         HTTPStatus.PRECONDITION_FAILED,
                         "selection_overrides.json changed on disk since it was loaded; reload and re-apply",
                     )
+                    return
             # Known keys in normalised form; anything else the operator wrote
             # (a _comment, a newer schema field) is kept, not silently dropped.
             document = {**payload, **cleaned}
@@ -1952,10 +1973,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
                         raise ValueError("ban_quote_keys is not a list")
                 except ValueError as exc:
                     _log(f"web: refusing ban — {ctx.overrides_path} is invalid: {exc!r}", err=True)
-                    return self._reject(
+                    self._reject(
                         HTTPStatus.CONFLICT,
                         "selection_overrides.json is corrupt or invalid; fix it in the editor before banning",
                     )
+                    return
             already = key in current["ban_quote_keys"]
             if already:
                 etag = overrides_etag(raw)
@@ -2162,7 +2184,7 @@ def _status_from_result(result: dict) -> int:
 
 def start_web_server(
     args: argparse.Namespace,
-    state: object,
+    state: RuntimeState,
     *,
     token: str = "",
     token_file: str | Path | None = None,

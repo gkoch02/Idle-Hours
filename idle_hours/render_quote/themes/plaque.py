@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from ..fonts import load_font, theme_font_candidates
 from ..furniture import _clock_hour12, fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import _flow_stroke_hash, paint_relief_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ._shared import _TAROT_ROMAN_NUMERALS
@@ -91,7 +91,7 @@ def _plaque_paint_patina(image: Image.Image) -> None:
     vanishes. ``TestPlaqueRelief`` fences the local luminance band, since a
     whole-canvas average hides the fault.
     """
-    px = image.load()
+    px = pixel_access(image)
     green, blue, black = (SPECTRA6[c] for c in ("green", "blue", "black"))
     for y in range(480):
         row = BAYER_8x8[y % 8]

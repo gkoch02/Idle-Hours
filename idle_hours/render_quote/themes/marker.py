@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 # Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded
@@ -127,7 +127,7 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
         (inset + 2, height // 2, SPECTRA6["green"], SPECTRA6["white"], "mint highlighter"),
         (width - 1 - inset - 2, height // 2, SPECTRA6["red"], SPECTRA6["blue"], "violet overlap"),
     )
-    pixels = image.load()
+    pixels = pixel_access(image)
     for cx, cy, dark_ink, light_ink, _ in mid_dots:
         draw.ellipse(
             (cx - dot_radius, cy - dot_radius, cx + dot_radius, cy + dot_radius),

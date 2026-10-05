@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 _KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int, int, int], ...] = (
@@ -87,7 +87,7 @@ def _draw_seigaiha_band(
     # to black on (x+y)&1 (B+K 1:1). Bounds are clamped to the canvas,
     # because PIL's PixelAccess raises on negative indices instead of
     # clipping like the drawing primitives.
-    pixels = image.load()
+    pixels = pixel_access(image)
     py_start = max(0, deepest_band_top)
     py_end = min(image.size[1] - 1, band_bottom_y)
     for py in range(py_start, py_end + 1):
@@ -130,7 +130,7 @@ def draw_kanagawa_border(
     red_ink = SPECTRA6["red"]
     blue_ink = SPECTRA6["blue"]
 
-    pixels = image.load()
+    pixels = pixel_access(image)
 
     # ------------------------------------------------------------------
     # Layer 0: vertically graduated sky-blue Bayer wash.

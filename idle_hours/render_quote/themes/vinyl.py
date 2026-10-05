@@ -24,7 +24,7 @@ from .._paths import (
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _clock_hh_mm, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import position_noise
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
@@ -51,7 +51,7 @@ def _vinyl_paint_wear_speckle(image: Image.Image, seed: int) -> None:
     WHITE = SPECTRA6["white"]
     YELLOW = SPECTRA6["yellow"]
     rng = random.Random(seed)
-    px = image.load()
+    px = pixel_access(image)
     w, h = image.size
     # Only on the right half (sleeve region — x >= 400).
     for y in range(0, h, 2):
@@ -95,7 +95,7 @@ def _vinyl_paint_disk(
     draw.ellipse((cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer), fill=BLACK)
 
     # Programme band — a smooth radial *sheen*, painted per pixel.
-    px = image.load()
+    px = pixel_access(image)
     w, h = image.size
     lo, hi = r_label + 12, r_outer - 10
     span = max(1, hi - lo)
@@ -493,7 +493,7 @@ def _vinyl_paint_quote_body(
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
         drawable = line[start:end]
-        x = x0
+        x: float = x0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))

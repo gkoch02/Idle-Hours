@@ -20,7 +20,7 @@ from .._paths import (
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _clock_hour12, _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..primitives import paint_hatched_tone
 from ..spec import FrameSpec
 
@@ -134,7 +134,7 @@ def _intaglio_paint_tint(image: Image.Image) -> None:
     Half-density along each wave (every other pixel) so the field reads as a
     tint rather than as ruling; everything later paints over it.
     """
-    px = image.load()
+    px = pixel_access(image)
     green = SPECTRA6["green"]
     x0, y0, x1, y1 = _INTAGLIO_INNER
     row = y0 + _INTAGLIO_TINT_PERIOD // 2
@@ -166,7 +166,7 @@ def _intaglio_paint_lathework_band(image: Image.Image, draw: ImageDraw.ImageDraw
     freq = 0.22
     for sign in (1.0, -1.0):
         for mid, horizontal in ((mid_top, True), (mid_bottom, True)):
-            pts = [(x, mid + sign * amp * math.sin(x * freq)) for x in range(bx0 + 2, bx1 - 1)]
+            pts: list[tuple[float, float]] = [(x, mid + sign * amp * math.sin(x * freq)) for x in range(bx0 + 2, bx1 - 1)]
             draw.line(pts, fill=green, width=1)
         for mid in (mid_left, mid_right):
             pts = [(mid + sign * amp * math.sin(y * freq), y) for y in range(by0 + 2, by1 - 1)]
@@ -218,7 +218,7 @@ def _intaglio_paint_cartouche(image: Image.Image, draw: ImageDraw.ImageDraw) -> 
     """
     x0, y0, x1, y1 = _INTAGLIO_CARTOUCHE
     white, black = SPECTRA6["white"], SPECTRA6["black"]
-    px = image.load()
+    px = pixel_access(image)
     for y in range(y0, y1 + 1):
         for x in range(x0, x1 + 1):
             nx = abs((x - (x0 + x1) / 2) / ((x1 - x0) / 2))

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _clock_hour12, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
 from ._shared import _TAROT_ROMAN_NUMERALS, _vitrail_fill_polygon
@@ -184,11 +184,12 @@ def _vitrail_paint_shimmer(
     ry0 = max(0, ry0)
     rx1 = min(image.size[0], rx1)
     ry1 = min(image.size[1], ry1)
-    cx = cy = cr2 = None
+    cx = cy = 0  # read only when ``cr2`` is set, i.e. with a clip
+    cr2 = None
     if clip is not None:
         cx, cy, cr = clip
         cr2 = cr * cr
-    px = image.load()
+    px = pixel_access(image)
     for y in range(ry0, ry1):
         brow = BAYER_4x4[y % 4]
         for x in range(rx0, rx1):
@@ -413,12 +414,12 @@ def _vitrail_paint_quote_body(
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
         drawable = line[start:end]
-        line_width = 0
+        line_width: float = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             bbox = draw.textbbox((0, 0), chunk, font=font)
             line_width += bbox[2] - bbox[0]
-        x = x0 + max(0, (width - line_width) // 2)
+        x: float = x0 + max(0, (width - line_width) // 2)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))

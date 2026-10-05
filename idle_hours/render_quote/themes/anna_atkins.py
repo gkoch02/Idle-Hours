@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR, DANCINGSCRIPT_VARIABLE, ORNAMENT_FONT_CANDIDATES, PINYONSCRIPT_REGULAR
 from ..fonts import load_font
-from ..palette import SPECTRA6, BAYER_4x4, _load_dithered_plate
+from ..palette import SPECTRA6, BAYER_4x4, _load_dithered_plate, gray_pixel_access, pixel_access
 from ..spec import BorderSpec
 
 
@@ -72,16 +72,16 @@ def _anna_atkins_handwrite(image: Image.Image, text: str, cx: int, cy: int,
     stamp, so antialiased edges can't leave a blue halo after palette snap."""
     tmp = Image.new("L", (1, 1), 0)
     bbox = ImageDraw.Draw(tmp).textbbox((0, 0), text, font=font)
-    tw, th = max(1, bbox[2] - bbox[0]), max(1, bbox[3] - bbox[1])
+    tw, th = max(1, int(bbox[2] - bbox[0])), max(1, int(bbox[3] - bbox[1]))
     pad = 6
     mask = Image.new("L", (tw + 2 * pad, th + 2 * pad), 0)
     ImageDraw.Draw(mask).text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=255)
     if angle:
-        mask = mask.rotate(angle, expand=True, resample=Image.BICUBIC)
+        mask = mask.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
     mw, mh = mask.size
     px0, py0 = cx - mw // 2, cy - mh // 2
-    base = image.load()
-    mpx = mask.load()
+    base = pixel_access(image)
+    mpx = gray_pixel_access(mask)
     white = SPECTRA6["white"]
     for my in range(mh):
         ay = py0 + my
@@ -130,7 +130,7 @@ def draw_anna_atkins_border(image: Image.Image, colors: dict) -> None:
     draw = ImageDraw.Draw(image)
     width, height = image.size
     page_bg = colors.get("page_bg")
-    pixels = image.load()
+    pixels = pixel_access(image)
     WHITE = SPECTRA6["white"]
     BLACK = SPECTRA6["black"]
 

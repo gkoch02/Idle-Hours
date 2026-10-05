@@ -25,7 +25,7 @@ from .._paths import (
 from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import _clock_hour12, _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, paint_neon_mask
 from ..spec import FrameSpec
 from ..text import draw_text_dithered, draw_tracked, fit_text_to_width, tracked_width
@@ -211,7 +211,7 @@ def _expanse_paint_systext(draw: ImageDraw.ImageDraw, x: int, y: int, lines, ink
 def _expanse_paint_ground(image: Image.Image) -> None:
     """Black glass with a sparse blue dot grid, so the panels sit on a
     surface rather than in a void."""
-    px = image.load()
+    px = pixel_access(image)
     blue = SPECTRA6["blue"]
     w, h = image.size
     for y in range(6, h, _EXPANSE_GRID_PITCH):
@@ -240,7 +240,7 @@ def _expanse_paint_orbit(image: Image.Image) -> None:
     vertical rules, two trajectories curving through them, a banded gas
     giant, a ringed one and a moon."""
     draw = ImageDraw.Draw(image)
-    px = image.load()
+    px = pixel_access(image)
     white, blue, yellow, red = SPECTRA6["white"], SPECTRA6["blue"], SPECTRA6["yellow"], SPECTRA6["red"]
     x0, y0, x1, y1 = _EXPANSE_ORBIT_RECT
     draw.line([(x0, y1), (x1, y1)], fill=blue, width=1)
@@ -310,7 +310,7 @@ def _expanse_paint_plot(image: Image.Image) -> None:
     centre, two unknowns as hollow blue triangles, a tick ruler down the
     panel's left edge, and the rings of the four arc gauges beneath."""
     draw = ImageDraw.Draw(image)
-    px = image.load()
+    px = pixel_access(image)
     blue, white = SPECTRA6["blue"], SPECTRA6["white"]
     cx, cy = _EXPANSE_PLOT_CENTRE
     for r in _EXPANSE_PLOT_RINGS:
@@ -352,7 +352,7 @@ def _expanse_paint_list(image: Image.Image) -> None:
     """The contacts list: boxed rows with a silhouette and a name, and a
     drive scatter box beneath with its system text."""
     draw = ImageDraw.Draw(image)
-    px = image.load()
+    px = pixel_access(image)
     white, blue, yellow = SPECTRA6["white"], SPECTRA6["blue"], SPECTRA6["yellow"]
     x0, y0, x1, y1 = _EXPANSE_LIST_RECT
     font = _expanse_label_font(10)
@@ -398,7 +398,7 @@ def _expanse_paint_foot(image: Image.Image) -> None:
     frame and dotted baseline, and the system text block."""
     _expanse_paint_panel(image, _EXPANSE_FOOT_RECT, "", corners=("tl", "br"), header=False)
     draw = ImageDraw.Draw(image)
-    px = image.load()
+    px = pixel_access(image)
     blue, white = SPECTRA6["blue"], SPECTRA6["white"]
     x0, y0, x1, y1 = _EXPANSE_FOOT_RECT
     label = _expanse_label_font(9)
@@ -438,7 +438,7 @@ def _expanse_scene() -> Image.Image:
     _expanse_paint_panel(image, _EXPANSE_LIST_RECT, "CONTACTS")
     _expanse_paint_list(image)
     draw = ImageDraw.Draw(image)
-    px = image.load()
+    px = pixel_access(image)
     x0, y0, x1, _ = _EXPANSE_FEED_RECT
     draw_tracked(draw, (x0 + 84, y0 + 7), "FEED 01 · INCOMING", _expanse_label_font(11), SPECTRA6["white"], tracking=2)
     draw_tracked(draw, (x0 + 14, _EXPANSE_SENDER_Y + 7), "FROM", _expanse_label_font(10), SPECTRA6["white"], tracking=2)
@@ -642,8 +642,8 @@ def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote
         draw.rectangle((bx, by, bx + w, by + 15), outline=SPECTRA6["blue"], width=1)
         draw.text((bx + 5, by + 2), text, font=mono, fill=SPECTRA6["white"])
         bx += w + 8
-    w = draw_tracked(draw, (x1 - 14, by + 3), "ARMED", _expanse_label_font(9), SPECTRA6["white"], tracking=1, anchor_right=True)
-    draw.rectangle((x1 - 14 - w - 14, by + 2, x1 - 14 - w - 7, by + 13), fill=SPECTRA6["red"])
+    armed_w = draw_tracked(draw, (x1 - 14, by + 3), "ARMED", _expanse_label_font(9), SPECTRA6["white"], tracking=1, anchor_right=True)
+    draw.rectangle((x1 - 14 - armed_w - 14, by + 2, x1 - 14 - armed_w - 7, by + 13), fill=SPECTRA6["red"])
 
 
 def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:

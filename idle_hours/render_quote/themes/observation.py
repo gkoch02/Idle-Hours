@@ -21,7 +21,7 @@ from .._paths import (
 )
 from ..fonts import load_font
 from ..furniture import _clock_hour12, _row_digest, fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import paint_neon_mask, position_noise, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
@@ -127,7 +127,7 @@ def _observation_mix(rank: int, black: float, major, minor, share: float):
 
 def _observation_paint_stars(image: Image.Image) -> None:
     rng = random.Random(_OBSERVATION_STAR_SEED)
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     white, yellow, blue = SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["blue"]
     for _ in range(_OBSERVATION_STAR_COUNT):
@@ -154,7 +154,7 @@ def _observation_paint_saturn(image: Image.Image) -> None:
     """The planet: latitude bands, a lit limb and a terminator, one read per pixel."""
     cx, cy, r = _OBSERVATION_SATURN
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     k = _OBSERVATION_RING_K
     cos_phi = math.sqrt(1 - k * k)
     lx, ly, lz = _OBSERVATION_LIGHT
@@ -207,7 +207,7 @@ def _observation_paint_rings(image: Image.Image) -> None:
     """The ring system: behind the planet on the far side, over it on the near."""
     cx, cy, r = _OBSERVATION_SATURN
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     k = _OBSERVATION_RING_K
     outer = _OBSERVATION_RINGS[-1][1] * r
     reach_x = int(outer) + 2
@@ -244,7 +244,7 @@ def _observation_paint_rings(image: Image.Image) -> None:
 def _observation_paint_titan(draw: ImageDraw.ImageDraw, image: Image.Image) -> None:
     """Titan: a small tangerine disc with a lit crescent of white haze."""
     tx, ty, tr = _OBSERVATION_TITAN
-    px = image.load()
+    px = pixel_access(image)
     red, yellow, white = SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"]
     for y in range(ty - tr, ty + tr + 1):
         row = BAYER_8x8[y % 8]
@@ -260,7 +260,7 @@ def _observation_paint_titan(draw: ImageDraw.ImageDraw, image: Image.Image) -> N
 def _observation_paint_noise(image: Image.Image) -> None:
     """Faint blue sensor noise on the black of the feed — every third row."""
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     black, blue = SPECTRA6["black"], SPECTRA6["blue"]
     for y in range(0, height, 3):
         for x in range(width):

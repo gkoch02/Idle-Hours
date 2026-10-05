@@ -9,7 +9,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -150,7 +150,7 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
     )
     halftone_white = SPECTRA6["white"]
     halftone_threshold = 2    # 14 of 16 Bayer cells become white → 87.5% density
-    pixels = image.load()
+    pixels = pixel_access(image)
     for y in range(height):
         row = _BAYER_4[y & 3]
         for x in range(width):
@@ -333,10 +333,10 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
                         pixels[px, py] = light_ink if (px + py) & 1 == 0 else dark_ink
         else:
             for py in range(by0, by1 + 1):
-                row = BAYER_4x4[py & 3]
+                bayer_row = BAYER_4x4[py & 3]
                 for px in range(bx0, bx1 + 1):
                     if pixels[px, py] == sentinel:
-                        pixels[px, py] = light_ink if row[px & 3] < threshold else dark_ink
+                        pixels[px, py] = light_ink if bayer_row[px & 3] < threshold else dark_ink
     # The element triangles use their own inks; ``hermetic_color`` is done.
     del hermetic_color
 

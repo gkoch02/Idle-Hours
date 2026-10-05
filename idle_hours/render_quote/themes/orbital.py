@@ -14,7 +14,7 @@ from PIL import Image, ImageChops, ImageDraw
 from .._paths import JURA_SEMIBOLD, META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES, SHARETECHMONO_REGULAR, SPACEMONO_REGULAR
 from ..fonts import load_font
 from ..furniture import fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import _white_noise, paint_neon_mask, position_noise, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
@@ -116,7 +116,7 @@ def _orbital_paint_sky(image: Image.Image, clock: float) -> None:
     else:
         sky.paste(black, (0, 0, width, horizon))
         rng = random.Random(_ORBITAL_STAR_SEED)
-        spx = sky.load()
+        spx = pixel_access(sky)
         for _ in range(_ORBITAL_STAR_COUNT if period == "night" else _ORBITAL_STAR_COUNT // 4):
             x, y = rng.randrange(width), rng.randrange(horizon)
             roll = rng.random()
@@ -193,7 +193,7 @@ def _orbital_paint_arch(image: Image.Image, clock: float) -> None:
     """
     cx, a, b = _ORBITAL_ARCH
     horizon = _ORBITAL_HORIZON
-    px = image.load()
+    px = pixel_access(image)
     width = image.size[0]
     period = _orbital_period(clock)
     black, white, blue, green, yellow = (SPECTRA6[n] for n in ("black", "white", "blue", "green", "yellow"))
@@ -259,7 +259,7 @@ def _orbital_paint_land(image: Image.Image, clock: float) -> None:
     horizon = _ORBITAL_HORIZON
     period = _orbital_period(clock)
     black, white, blue, green, yellow = (SPECTRA6[n] for n in ("black", "white", "blue", "green", "yellow"))
-    px = image.load()
+    px = pixel_access(image)
     for x in range(width):
         far = horizon - 14 - 16 * math.sin(x * 0.011 + 0.8) - 7 * math.sin(x * 0.037 + 2.1)
         near = horizon + 34 + 18 * math.sin(x * 0.0072 + 2.6) + 8 * math.sin(x * 0.029)

@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import META_FONT_CANDIDATES, SPACEMONO_REGULAR
 from ..fonts import load_font
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 # Copper-trace routes for ``draw_circuit_border``: polylines of (x_frac,
@@ -80,7 +80,7 @@ def draw_circuit_border(
     silk = colors.get("text", SPECTRA6["white"])
     green_ink = SPECTRA6["green"]
     black_ink = SPECTRA6["black"]
-    pixels = image.load()
+    pixels = pixel_access(image)
     draw = ImageDraw.Draw(image)
 
     # ------------------------------------------------------------------

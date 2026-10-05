@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -51,7 +51,7 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
 
     # Sepia post-pass: walk the outer frame's perimeter only (a bbox walk
     # would touch interior pixels) and flip red→green on (x+y)&1.
-    pixels = image.load()
+    pixels = pixel_access(image)
     outer_x0, outer_y0 = outer_inset, outer_inset
     outer_x1, outer_y1 = width - 1 - outer_inset, height - 1 - outer_inset
     for x in range(outer_x0, outer_x1 + 1):
@@ -83,7 +83,7 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
 
     # Weathered-paint post-pass: flip ~50% of each tack's red pixels to
     # white on a 1×1 checkerboard (R+W coral). Bbox-scoped per tack.
-    pixels = image.load()
+    pixels = pixel_access(image)
     for cx, cy in tack_centres:
         x0 = max(0, cx - tack_radius)
         y0 = max(0, cy - tack_radius)

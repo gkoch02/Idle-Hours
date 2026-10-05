@@ -54,7 +54,7 @@ def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
     Handles overnight ranges (e.g. 22:00–07:00) where start > end.
     Returns False when either bound is None (quiet hours disabled).
     """
-    if start is None:
+    if start is None or end is None:
         return False
 
     def to_mins(t: str) -> int:

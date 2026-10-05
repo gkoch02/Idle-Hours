@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -71,7 +71,7 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
             lobe_bboxes.append((lx - lobe_radius, ly - lobe_radius, lx + lobe_radius, ly + lobe_radius))
         draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=body)
 
-    pixels = image.load()
+    pixels = pixel_access(image)
     # Maroon post-pass on each lobe bbox — flip half of the red pixels
     # to black per (x+y)&1 parity inside the per-lobe bbox.
     for x0, y0, x1, y1 in lobe_bboxes:

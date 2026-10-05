@@ -19,7 +19,7 @@ from .._paths import (
 )
 from ..fonts import load_font
 from ..furniture import _place_quote, fallback_title
-from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
+from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, pixel_access, snap_image_to_palette
 from ..primitives import _catmull_rom, _lerp_stops, _shade_silhouette, _smooth_noise, _soft_ellipse_mask, paint_craquelure
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
@@ -115,7 +115,7 @@ def _goya_paint_void(scene: Image.Image) -> None:
     stain, the dragged strokes and the grain, then the slope."""
     width, height = scene.size
     column = Image.new("RGB", (1, height))
-    cp = column.load()
+    cp = pixel_access(column)
     for y in range(height):
         cp[0, y] = _lerp_stops(_GOYA_VOID_STOPS, y)
     scene.paste(column.resize((width, height), Image.Resampling.NEAREST), (0, 0))

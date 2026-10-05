@@ -11,7 +11,7 @@ import random
 from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
-from ..palette import SPECTRA6, _load_dithered_plate
+from ..palette import SPECTRA6, _load_dithered_plate, pixel_access
 from ..spec import BorderSpec
 from ._shared import _GUNMETAL_PALETTE
 
@@ -93,7 +93,7 @@ def _grimdark_paint_mottle(image: Image.Image, width: int, height: int) -> None:
     gunmetal plate is missing. Only void pixels are flipped and every write is
     bounds-clipped, so it is safe at thumbnail preview sizes.
     """
-    pixels = image.load()
+    pixels = pixel_access(image)
     void = SPECTRA6["black"]
     grey_ink = SPECTRA6["white"]
 

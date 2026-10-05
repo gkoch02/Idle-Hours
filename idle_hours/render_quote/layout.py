@@ -5,13 +5,31 @@ from __future__ import annotations
 
 import math
 import re
+from typing import TypedDict
 
 from .fonts import load_font, theme_font_candidates
 from .theme_tables import _BOLD_STROKE_BY_THEME, _THEMES_RAGGED_RIGHT
 
 SIDE_MARGIN = 20
 
-LAYOUTS = {
+
+class Layout(TypedDict):
+    """One entry of ``LAYOUTS``: the measure, size range and spacing for a quote length."""
+
+    max_width: int
+    quote_height: int
+    font_max: int
+    font_min: int
+    line_height_mult: float
+    mark_scale: float
+    mark_min: int
+    mark_max: int
+    title_size: int
+    author_gap: int
+    title_gap: int
+
+
+LAYOUTS: dict[str, Layout] = {
     "hero": {
         "max_width": 640,
         "quote_height": 248,
@@ -212,7 +230,7 @@ def wrap_styled_text(draw, segments, regular_font, bold_font, max_width, bold_st
 
     # Pass 2: place whole words, breaking only at the space tokens.
     lines = []
-    current = []
+    current: list = []
     current_width = 0
     for item in items:
         if isinstance(item, tuple):

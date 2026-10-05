@@ -16,7 +16,7 @@ from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis, wrap_text
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
 from ._shared import _astrarium_paint_cream_wash
@@ -42,7 +42,7 @@ def _astrarium_paint_ring_quadrant(
     ``draw_text_dithered`` so the ring reads as the same hue a body-text
     recipe would.
     """
-    px = image.load()
+    px = pixel_access(image)
     w, h = image.size
     r_outer_sq = r_outer * r_outer
     r_inner_sq = r_inner * r_inner
@@ -89,7 +89,7 @@ def _astrarium_paint_constellation_field(
     dial's black top-left quadrant). Seeded, so the speckle is stable
     across renders."""
     rng = random.Random(seed)
-    px = image.load()
+    px = pixel_access(image)
     w, h = image.size
     a0 = math.radians(angle_start_deg)
     a1 = math.radians(angle_end_deg)
@@ -253,7 +253,7 @@ def _astrarium_paint_dial(
         y1 = sun_cy - int((sun_r + 6) * math.cos(ang))
         draw.line((x0, y0, x1, y1), fill=RED, width=1)
     # Post-pass the sun's bbox to tangerine.
-    px = image.load()
+    px = pixel_access(image)
     bb_x0 = sun_cx - sun_r - 8
     bb_y0 = sun_cy - sun_r - 8
     bb_x1 = sun_cx + sun_r + 8
@@ -282,7 +282,7 @@ def _astrarium_paint_header(
     chrome_bold = load_font(META_FONT_BOLD_CANDIDATES, size=10)
 
     # Brand line: "IDLE HOURS // ASTRARIUM"
-    x = 24
+    x: float = 24
     y = 22
     draw.text((x, y), "IDLE HOURS", font=brand_bold, fill=BLACK)
     bbox = draw.textbbox((0, 0), "IDLE HOURS", font=brand_bold)
@@ -343,7 +343,7 @@ def _astrarium_paint_quote_panel(
             draw.point((star_cx + s, star_cy + s), fill=SPECTRA6["green"])
             draw.point((star_cx + s, star_cy - s), fill=SPECTRA6["green"])
     draw.ellipse((star_cx - 2, star_cy - 2, star_cx + 2, star_cy + 2), fill=SPECTRA6["green"])
-    px = image.load()
+    px = pixel_access(image)
     for y in range(max(0, star_cy - star_r - 2), min(image.height, star_cy + star_r + 2)):
         for x in range(max(0, star_cx - star_r - 2), min(image.width, star_cx + star_r + 2)):
             if px[x, y] == SPECTRA6["green"] and (x + y) & 1:
@@ -400,7 +400,7 @@ def _astrarium_paint_quote_panel(
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
         drawable = line[start:end]
-        x = panel_left + 8
+        pen_x: float = panel_left + 8
         body_ascent = _font_ascent(quote_font)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
@@ -409,7 +409,7 @@ def _astrarium_paint_quote_panel(
                 # Tangerine matched phrase (R+Y 5/8:3/8, as ``deco``).
                 draw_text_dithered(
                     image,
-                    (x, chunk_y),
+                    (pen_x, chunk_y),
                     chunk,
                     font=font,
                     dark=RED,
@@ -417,9 +417,9 @@ def _astrarium_paint_quote_panel(
                     light_density=0.375,
                 )
             else:
-                draw.text((x, chunk_y), chunk, font=font, fill=BLACK)
+                draw.text((pen_x, chunk_y), chunk, font=font, fill=BLACK)
             bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
+            pen_x += bbox[2] - bbox[0]
         y += line_height
 
     # Closing quotation mark, mirrored to the bottom-right of the panel.

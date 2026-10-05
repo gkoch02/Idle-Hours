@@ -213,7 +213,7 @@ def fit_tile(img: Image.Image) -> Image.Image:
     scale = min(TILE_W / img.width, TILE_H / img.height)
     w, h = max(1, round(img.width * scale)), max(1, round(img.height * scale))
     tile = Image.new("RGB", (TILE_W, TILE_H), (255, 255, 255))
-    tile.paste(img.resize((w, h), Image.LANCZOS), ((TILE_W - w) // 2, (TILE_H - h) // 2))
+    tile.paste(img.resize((w, h), Image.Resampling.LANCZOS), ((TILE_W - w) // 2, (TILE_H - h) // 2))
     return tile
 
 

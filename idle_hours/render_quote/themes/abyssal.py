@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
 from ..fonts import load_font, theme_font_candidates
 from ..furniture import _clock_hour12, fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..primitives import paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 
@@ -63,7 +63,7 @@ def _abyssal_paint_water(image: Image.Image) -> None:
     deep band flips blue to black on a rising ramp capped short of solid, since
     a fully black floor reads as a border rather than water.
     """
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     blue, white, green, black = (SPECTRA6["blue"], SPECTRA6["white"],
                                  SPECTRA6["green"], SPECTRA6["black"])
@@ -99,7 +99,7 @@ def _abyssal_paint_caustics(image: Image.Image) -> None:
     lattice; the third, incommensurate term warps it into irregular cells.
     Density falls with depth so the band has no visible lower edge.
     """
-    px = image.load()
+    px = pixel_access(image)
     width = image.size[0]
     white, blue = SPECTRA6["white"], SPECTRA6["blue"]
     for y in range(min(image.size[1], _ABYSSAL_CAUSTIC_BOTTOM)):
@@ -123,7 +123,7 @@ def _abyssal_paint_snow(image: Image.Image) -> None:
     band, where it would be lost in the caustics anyway.
     """
     rng = random.Random(_ABYSSAL_SNOW_SEED)
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     white = SPECTRA6["white"]
     ground = _abyssal_water_ground()

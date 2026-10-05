@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -35,7 +35,7 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
 
     # Layer 0: sparse 1-in-8 yellow-on-white cream wash. Only exact
     # ``page_bg`` pixels are flipped, so palette-mismatch test paths stay valid.
-    pixels = image.load()
+    pixels = pixel_access(image)
     if page_bg is not None:
         for y in range(height):
             row = BAYER_4x4[y & 3]

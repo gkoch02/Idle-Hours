@@ -15,7 +15,9 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypedDict
 
 from idle_hours import apply_content_overrides, atomic_io, pidfile, runtime_config, runtime_webhook, sd_notify
 from idle_hours import pick_quote as pick_quote_module
@@ -660,7 +662,15 @@ def current_bucket() -> str:
     return bucket_for_time(current_time_str())
 
 
-def _corpus_kwargs(args) -> dict[str, str]:
+class CorpusKwargs(TypedDict):
+    """The corpus / sidecar paths ``_corpus_kwargs`` hands to the peek and the render."""
+
+    database_path: str
+    input_path: str
+    overrides_path: str
+
+
+def _corpus_kwargs(args) -> CorpusKwargs:
     """Pluck the corpus / sidecar paths off an argparse Namespace.
 
     Single seam so the many ``peek_quote_id`` / ``render_now`` call sites don't
@@ -887,8 +897,10 @@ def _package_imported_from_cwd() -> bool:
     child's path, unless that is where this process's own package came from.
     """
     try:
-        return Path(sys.modules["idle_hours"].__file__).resolve().parent.parent == Path.cwd().resolve()
-    except (KeyError, TypeError, OSError):
+        package_file = sys.modules["idle_hours"].__file__
+        # A namespace package has no __file__, so no checkout to compare.
+        return package_file is not None and Path(package_file).resolve().parent.parent == Path.cwd().resolve()
+    except (KeyError, OSError):
         return False
 
 
@@ -1156,7 +1168,7 @@ def _do_render(args: argparse.Namespace, state: RuntimeState, time_str: str, his
 
 def _build_button_handlers(
     args: argparse.Namespace, state: RuntimeState,
-) -> tuple[dict[str, "callable"], dict[str, "callable"]]:
+) -> tuple[dict[str, Callable[[], None]], dict[str, Callable[[], None]]]:
     """Return ``(short_handlers, hold_handlers)`` for ``inky_buttons.start_listener``.
 
     Thin wrappers around the module-level ``action_*`` functions so the same

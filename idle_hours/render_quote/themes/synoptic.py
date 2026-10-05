@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import META_FONT_BOLD_CANDIDATES, SPACEMONO_BOLD
 from ..fonts import load_font
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ _SYNOPTIC_STATIONS = (
 _SYNOPTIC_GRATICULE_STEP = 64
 
 
-def _synoptic_isobar(cx: float, cy: float, radius: float, squash: float, seed: int) -> list[tuple[float, float]]:
+def _synoptic_isobar(cx: float, cy: float, radius: float, squash: float, seed: float) -> list[tuple[float, float]]:
     """One closed isobar as a polyline, gently deformed so it is not an ellipse.
 
     Two low-order harmonics on the radius make it smooth but irregular with
@@ -92,9 +92,9 @@ def _synoptic_paint_isobars(draw: ImageDraw.ImageDraw, width: int, height: int) 
     black = SPECTRA6["black"]
     label_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=11)
     centre_font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], size=30)
-    for index, (cx, cy, label, inner) in enumerate(_SYNOPTIC_CENTRES):
-        cx = cx * width / 800.0
-        cy = cy * height / 480.0
+    for index, (x800, y480, label, inner) in enumerate(_SYNOPTIC_CENTRES):
+        cx = x800 * width / 800.0
+        cy = y480 * height / 480.0
         step = _SYNOPTIC_BASE_PRESSURE[label]
         for ring in range(_SYNOPTIC_RINGS):
             radius = inner + ring * _SYNOPTIC_RING_STEP
@@ -176,7 +176,7 @@ def _synoptic_resolve_occluded(image, scaled, size) -> None:
     the graticule, and keyed on the sentinel colour so it is idempotent.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     red, blue = SPECTRA6["red"], SPECTRA6["blue"]
     xs = [x for x, _ in scaled]
     ys = [y for _, y in scaled]

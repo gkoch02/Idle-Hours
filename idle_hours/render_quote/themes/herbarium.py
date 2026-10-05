@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import IMFELLENGLISH_ITALIC, IMFELLENGLISH_REGULAR, META_FONT_CANDIDATES
 from ..fonts import load_font
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -40,7 +40,7 @@ def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
     olive_sentinel = cream_light
     olive_other = SPECTRA6["green"]
 
-    pixels = image.load()
+    pixels = pixel_access(image)
     if page_bg is not None:
         for y in range(height):
             row = BAYER_4x4[y & 3]

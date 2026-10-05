@@ -522,7 +522,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             # the rendered line width here matches the wrap decision.
             stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
-            current_width += bbox[2] - bbox[0]
+            current_width += int(bbox[2] - bbox[0])
 
         space_slots = sum(1 for chunk, _ in drawable if chunk == " ")
         slack = wrap_width - current_width
@@ -542,7 +542,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             font = quote_font_bold if is_bold else quote_font
             stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
-            line_x += bbox[2] - bbox[0]
+            line_x += int(bbox[2] - bbox[0])
             if chunk.strip():
                 line_right = line_x
             if distribute and chunk == " ":
@@ -563,7 +563,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     ]:
         bbox = draw.textbbox((0, 0), line, font=font)
         quote_left_edge = min(quote_left_edge, attribution_left)
-        quote_right_edge = max(quote_right_edge, attribution_left + bbox[2] - bbox[0])
+        quote_right_edge = max(quote_right_edge, attribution_left + int(bbox[2] - bbox[0]))
 
     clear_rect = None
     border = BORDER_SPECS.get(theme)
@@ -631,7 +631,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             # See the layout pass above: spaces stay at natural advance.
             stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
-            current_width += bbox[2] - bbox[0]
+            current_width += int(bbox[2] - bbox[0])
 
         # Themes in ``_THEMES_RIGID_MATCH_SPACING`` exclude the
         # bold-internal inter-word gaps from slack distribution so the
@@ -642,7 +642,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         rigid_match = theme in _THEMES_RIGID_MATCH_SPACING
         slack = wrap_width - current_width
 
-        distribute: list[int] = []
+        distribute = []
         # Full justification only where it will not open rivers -- see
         # ``justify_flags`` for the block-level decision.
         if justify[line_index] and space_is_bold:
@@ -664,7 +664,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
             stroke = bold_stroke if (is_bold and chunk.strip()) else 0
             _draw_text_body(image, draw, (x, chunk_y), chunk, font=font, fill=fill, theme=theme)
             bbox = draw.textbbox((0, 0), chunk, font=font, stroke_width=stroke)
-            x += bbox[2] - bbox[0]
+            x += int(bbox[2] - bbox[0])
             if distribute and chunk == " ":
                 x += distribute[space_idx]
                 space_idx += 1
@@ -731,7 +731,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         debug_strip = " · ".join(debug_parts)
 
         strip_bbox = draw.textbbox((0, 0), debug_strip, font=debug_font)
-        strip_w = strip_bbox[2] - strip_bbox[0]
+        strip_w = int(strip_bbox[2] - strip_bbox[0])
         strip_h = strip_bbox[3] - strip_bbox[1]
         strip_y = height - 14 - strip_h
         strip_x = (width - strip_w) // 2

@@ -91,7 +91,7 @@ def render_tile(
     except SystemExit as exc:
         return _placeholder_tile(time_str, tile_w, tile_h, theme, str(exc))
     full = render_quote_module.render(time_str, quote_row, 800, 480, mode=mode, theme=theme)
-    return full.resize((tile_w, tile_h), Image.LANCZOS)
+    return full.resize((tile_w, tile_h), Image.Resampling.LANCZOS)
 
 
 def build_cell(
