@@ -19,7 +19,14 @@ from .._paths import BASE_DIR
 from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _row_digest, draw_centred_styled_lines, draw_truncated_centred_byline, paint_mount_card
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, _load_dithered_plate, dither_image_to_palette, snap_image_to_palette
+from ..palette import (
+    SPECTRA6,
+    SPECTRA6_PALETTE,
+    _load_dithered_plate,
+    dither_image_to_palette,
+    gray_pixel_access,
+    snap_image_to_palette,
+)
 from ..spec import FrameSpec
 from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_garden_fallback
 
@@ -351,7 +358,7 @@ def _photo_cost_map(image: Image.Image, cols: int = 20, rows: int = 12) -> list[
     grey = image.convert("L")
     detail = grey.filter(ImageFilter.FIND_EDGES).resize((cols, rows), Image.Resampling.BOX)
     coarse = grey.resize((cols, rows), Image.Resampling.BOX)
-    dpx, cpx = detail.load(), coarse.load()
+    dpx, cpx = gray_pixel_access(detail), gray_pixel_access(coarse)
     cells = [[cpx[c, r] for c in range(cols)] for r in range(rows)]
     mean = sum(sum(row) for row in cells) / (cols * rows)
     return [

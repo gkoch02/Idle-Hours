@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import META_FONT_BOLD_CANDIDATES
 from ..fonts import load_font, theme_font_candidates
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 # R+B+W 3-way Bayer cuts on ``BAYER_4x4`` (cells below the first → red, below
@@ -247,7 +247,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     ]
     assert abs(sum(p for _, _, p in block_specs) - 1.0) < 1e-6
     available_v = rail_height - block_gap * (len(block_specs) - 1)
-    pixels = image.load()
+    pixels = pixel_access(image)
     blocks: list[tuple[int, int, int, int, str]] = []
     cursor_y = rail_top
     for kind, label, prop in block_specs:

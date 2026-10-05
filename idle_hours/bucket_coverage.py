@@ -132,7 +132,7 @@ def build_summary(rows: list[dict], *, min_quality: int = DEFAULT_MIN_QUALITY, o
     """
     raw_rows: dict[str, list[dict]] = defaultdict(list)
     bucket_rows: dict[str, list[dict]] = defaultdict(list)
-    daypart_counter = Counter()
+    daypart_counter: Counter[str] = Counter()
     banned = 0
     banned_texts = banned_twin_texts(rows, overrides)
     for row in rows:

@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from .fonts import _font_ascent, normalize_dashes
 from .layout import fit_quote, strip_underscore_emphasis
-from .palette import SPECTRA6, BAYER_4x4
+from .palette import SPECTRA6, BAYER_4x4, pixel_access
 
 
 def _place_quote(draw: ImageDraw.ImageDraw, quote_row: dict, rect, *, theme: str,
@@ -143,7 +143,7 @@ def paint_mount_card(image: Image.Image, draw: ImageDraw.ImageDraw,
     black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
     draw.rectangle((x0 + ledge, y0 + ledge, x1 + ledge, y1 + ledge), fill=black)
     draw.rectangle((x0, y0, x1, y1), fill=white)
-    px = image.load()
+    px = pixel_access(image)
     for y in range(y0, y1 + 1):
         row = BAYER_4x4[y % 4]
         for x in range(x0, x1 + 1):

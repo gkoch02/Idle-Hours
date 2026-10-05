@@ -112,7 +112,7 @@ def main() -> int:
     w, h = W * SS, H * SS
     img = _paper_ground(w, h, rng)
     _foxing(img, rng)
-    out = img.resize((W, H), Image.LANCZOS)
+    out = img.resize((W, H), Image.Resampling.LANCZOS)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     out.save(OUT, optimize=True)
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes)")

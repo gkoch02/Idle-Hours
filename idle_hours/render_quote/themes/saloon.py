@@ -9,7 +9,7 @@ import random
 
 from PIL import Image, ImageDraw
 
-from ..palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6
+from ..palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -181,7 +181,7 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
         outline=SPECTRA6["red"],
         width=outer_rule_width,
     )
-    pixels = image.load()
+    pixels = pixel_access(image)
     outer_x0, outer_y0 = outer_inset, outer_inset
     outer_x1, outer_y1 = width - 1 - outer_inset, height - 1 - outer_inset
     sepia_light = SPECTRA6["green"]

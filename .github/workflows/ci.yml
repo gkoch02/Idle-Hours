@@ -37,6 +37,29 @@ jobs:
       - name: Run ruff
         run: ruff check --output-format=github .
 
+  typecheck:
+    # mypy over the whole package (issue #350). Settings live in
+    # pyproject.toml's [tool.mypy]; the version is pinned in the dev extra.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run mypy
+        run: mypy
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import random
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from .._paths import BARLOWCOND_BOLD, BARLOWCOND_MEDIUM, BARLOWCOND_SEMIBOLD, BASE_DIR, META_FONT_BOLD_CANDIDATES, OSWALD_VARIABLE
 from ..fonts import load_font
@@ -135,7 +135,8 @@ def _semiotic_companions(quote_row: dict, featured: str) -> tuple[str, str, str]
     """Three distinct companion signs for this quote, never the featured one."""
     pool = [code for code in _SEMIOTIC_COMPANION_POOL if code != featured]
     rng = random.Random(_row_digest(quote_row))
-    return tuple(rng.sample(pool, 3))
+    first, second, third = rng.sample(pool, 3)
+    return first, second, third
 
 
 def _semiotic_sheet() -> Image.Image | None:
@@ -194,10 +195,12 @@ def _semiotic_classify(tile: Image.Image, origin: tuple[int, int], values) -> Im
     """Snap an RGB tile onto the inks: nearest of ``values``, then grey → the
     K+W checkerboard phased on absolute canvas coordinates."""
     indexed = tile.quantize(palette=_semiotic_palette_image(values), dither=Image.Dither.NONE)
-    table = indexed.getpalette()[: 3 * 256]
-    lookup = {v: ink for v, ink in _SEMIOTIC_SOURCE_INKS}
+    palette = indexed.getpalette()
+    assert palette is not None  # quantize always yields a P image
+    table = palette[: 3 * 256]
+    lookup: dict[tuple[int, ...], tuple[int, int, int] | None] = {v: ink for v, ink in _SEMIOTIC_SOURCE_INKS}
     grey_index = []
-    inks = []
+    inks: list[int] = []
     for i in range(256):
         value = tuple(table[3 * i:3 * i + 3]) if 3 * i + 2 < len(table) else (255, 255, 255)
         ink = lookup.get(value, SPECTRA6["white"])
@@ -274,7 +277,7 @@ def _semiotic_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, hour: 
         x -= 18
 
 
-def _semiotic_wrap_name(draw, name: str, max_w: int) -> tuple[list[str], object]:
+def _semiotic_wrap_name(draw, name: str, max_w: int) -> tuple[list[str], ImageFont.FreeTypeFont]:
     """The featured sign's name in at most two lines, shrinking to fit."""
     for size in (19, 17, 15, 13):
         font = _semiotic_font("Bold", size)
@@ -300,7 +303,7 @@ def _semiotic_paint_signs(image: Image.Image, draw: ImageDraw.ImageDraw, hour: i
     label_y = y + h + 8
     draw_tracked(draw, (x, label_y), f"NO. {featured}", _semiotic_font("SemiBold", 14), SPECTRA6["yellow"], tracking=2)
     lines, font = _semiotic_wrap_name(draw, _SEMIOTIC_NAMES[featured], w)
-    ly = label_y + 19
+    ly: float = label_y + 19
     for line in lines:
         draw_tracked(draw, (x, ly), line, font, SPECTRA6["white"], tracking=1)
         ly += font.size + 2

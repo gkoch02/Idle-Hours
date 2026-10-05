@@ -10,7 +10,7 @@ import random
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -64,7 +64,7 @@ def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
     # ``page_bg`` pixels flip; skipped when ``page_bg`` is absent so
     # direct-call test paths providing only ``text`` stay valid.
     if page_bg is not None:
-        pixels = image.load()
+        pixels = pixel_access(image)
         for y in range(height):
             row = BAYER_4x4[y & 3]
             for x in range(width):

@@ -13,7 +13,7 @@ from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES, META_FONT_CAND
 from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
@@ -65,7 +65,7 @@ def _outrun_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
     RED = SPECTRA6["red"]
     WHITE = SPECTRA6["white"]
     horizon = _OUTRUN_HORIZON
-    px = image.load()
+    px = pixel_access(image)
     for y in range(min(horizon, height)):
         frac = y / horizon
         if frac < 0.42:
@@ -110,7 +110,7 @@ def _outrun_paint_grid(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
     horizon = _OUTRUN_HORIZON
     if horizon >= height:
         return
-    px = image.load()
+    px = pixel_access(image)
     # Dark near-black ground with a faint blue tint so the neon grid pops.
     for y in range(horizon, height):
         row = BAYER_4x4[y % 4]
@@ -178,7 +178,7 @@ def _outrun_paint_sun(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
         return False
 
     visible_h = horizon - top_vis
-    px = image.load()
+    px = pixel_access(image)
     y_lo = max(0, top_vis)
     y_hi = min(horizon, height)
     for y in range(y_lo, y_hi):
@@ -231,12 +231,12 @@ def _outrun_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
         drawable = line[start:end]
-        line_w = 0
+        line_w: float = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             bbox = draw.textbbox((0, 0), chunk, font=font)
             line_w += bbox[2] - bbox[0]
-        x = (width - line_w) // 2
+        x: float = (width - line_w) // 2
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (ascent - _font_ascent(font))
@@ -261,7 +261,7 @@ def _outrun_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_r
     RED = SPECTRA6["red"]
     author = (quote_row.get("author") or "").strip()
     title = (quote_row.get("title") or "").strip() or (fallback_title(quote_row) or "")
-    y = _OUTRUN_QUOTE_RECT[3] + 8
+    y: float = _OUTRUN_QUOTE_RECT[3] + 8
     max_w = width - 120
     if author:
         font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=15)

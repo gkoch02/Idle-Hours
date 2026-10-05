@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import META_FONT_CANDIDATES
 from ..fonts import load_font
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -40,7 +40,7 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
     # pixels are touched, in case a caller painted accents first.
     if page_bg is not None:
         dither_light = SPECTRA6["white"]
-        pixels = image.load()
+        pixels = pixel_access(image)
         for y in range(height):
             for x in range(width):
                 if (x + y) & 1 and pixels[x, y] == page_bg:
@@ -57,7 +57,8 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
     if clear_rect is not None:
         clear_left, clear_top, clear_right, clear_bottom = clear_rect
     else:
-        clear_left = clear_top = clear_right = clear_bottom = None
+        # Never read: every test below checks ``clear_rect is None`` first.
+        clear_left = clear_top = clear_right = clear_bottom = 0
 
     x = frame_inset + grid_spacing
     while x <= grid_right:

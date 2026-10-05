@@ -230,12 +230,12 @@ def _marquee_paint_body(
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
         drawable = line[start:end]
-        line_w = 0
+        line_w: float = 0
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             bbox = draw.textbbox((0, 0), chunk, font=font)
             line_w += bbox[2] - bbox[0]
-        x = x0 + max(0, (width - line_w) // 2)
+        x: float = x0 + max(0, (width - line_w) // 2)
         for chunk, is_bold in drawable:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))

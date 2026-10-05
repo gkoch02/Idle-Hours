@@ -20,7 +20,7 @@ from .._paths import (
 )
 from ..fonts import load_font
 from ..furniture import fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, pixel_access, snap_image_to_palette
 from ..primitives import paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
@@ -94,7 +94,7 @@ def _culture_ground() -> frozenset:
 def _culture_paint_stars(image: Image.Image) -> None:
     """A sparse seeded star field, kept off the text column."""
     rng = random.Random(_CULTURE_STAR_SEED)
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     white, yellow, blue = SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["blue"]
     x0, _, x1, _ = _CULTURE_QUOTE_RECT
@@ -137,7 +137,7 @@ def _culture_paint_orbital(image: Image.Image) -> None:
     """
     cx, cy, radius = _CULTURE_ORBITAL
     k, band = _CULTURE_ORBITAL_K, _CULTURE_ORBITAL_W
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     black, white, blue = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["blue"]
     pad = band + 6

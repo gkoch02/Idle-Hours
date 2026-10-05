@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES, SPACEMONO_BOLD, SPACEMONO_REGULAR, SPECIALELITE_REGULAR
 from ..fonts import load_font
 from ..furniture import _place_quote, _row_digest, fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
@@ -63,7 +63,7 @@ def _cardcatalog_paint_manila(image: Image.Image) -> None:
     idempotent and cannot re-tint furniture drawn over it.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     white, yellow, red, green = (
         SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], SPECTRA6["green"],
     )
@@ -149,9 +149,9 @@ def _cardcatalog_stamp(image: Image.Image, origin: tuple[int, int],
     binary-thresholded so no antialiased fringe is left for the final snap.
     """
     if angle:
-        mask = mask.rotate(angle, resample=Image.BICUBIC, expand=True)
-    mp = mask.load()
-    px = image.load()
+        mask = mask.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
+    mp = gray_pixel_access(mask)
+    px = pixel_access(image)
     width, height = image.size
     red, blue = SPECTRA6["red"], SPECTRA6["blue"]
     ox, oy = origin

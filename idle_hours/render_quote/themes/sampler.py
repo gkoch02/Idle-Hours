@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
 from ..layout import strip_underscore_emphasis, tokenize_quote, wrap_styled_text
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 
 # ── sampler: counted cross-stitch embroidery ──────────────────────────────────
@@ -101,7 +101,7 @@ def _sampler_paint_aida(image: Image.Image) -> None:
     read as tint, and keeps the black floss high-contrast.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
     for y in range(height):
         for x in range(width):
@@ -118,7 +118,7 @@ def _sampler_paint_border(image: Image.Image) -> None:
     Built entirely from the stitch primitive; deterministic.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     size = 6
     inset = 30
     x0, y0 = inset, inset
@@ -160,7 +160,7 @@ def _sampler_paint_motifs(image: Image.Image) -> None:
     and above the bottom border, clear of the body rect. Deterministic.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     size = 6
     band_y = height - 30 - size - 6 * size  # top of the 6-row motif band
     cx = width // 2
@@ -186,7 +186,7 @@ def _sampler_stitch_chunk(image, draw, px, chunk, font, x_px, origin_y, size, co
     ch = bbox[3] + 1
     mask = Image.new("L", (cw, ch), 0)
     ImageDraw.Draw(mask).text((0, 0), chunk, font=font, fill=255)
-    mpx = mask.load()
+    mpx = gray_pixel_access(mask)
     for my in range(ch):
         ty = my - _SAMPLER_TOP_SKIP
         if ty < 0:
@@ -227,7 +227,7 @@ def _sampler_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
 
     mask_font = load_font(theme_font_candidates("sampler", "quote_regular"), 8)
     mask_bold = load_font(theme_font_candidates("sampler", "quote_bold"), 8)
-    px = image.load()
+    px = pixel_access(image)
     line_h = _SAMPLER_LINE_ROWS * chosen_size
     block_h = len(chosen_lines) * line_h
     y = by0 + max(0, (body_h - block_h) // 2)
@@ -257,7 +257,7 @@ def _sampler_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
     green. Small fixed stitch size; single truncated lines.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     size = 3
     font = load_font(theme_font_candidates("sampler", "quote_regular"), 8)
     blue, green = SPECTRA6["blue"], SPECTRA6["green"]

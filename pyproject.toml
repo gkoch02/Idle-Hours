@@ -41,7 +41,10 @@ dependencies = [
 # .github/workflows/ci.yml to fence it against the required-status-check list
 # in .github/rulesets/main-branch.json. Imported hard rather than through
 # ``importorskip`` so a missing parser fails that fence instead of skipping it.
-dev = ["build", "pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
+# ``mypy`` is pinned exactly because the ``typecheck`` CI job is required: a new
+# release that finds new errors should arrive as a PR bumping this pin, not as
+# a red main. Bump it on purpose and fix what the new version reports.
+dev = ["build", "mypy==2.4.0", "pytest", "pytest-cov", "pytest-xdist", "pyyaml", "ruff"]
 # gpiozero deliberately does not choose a pin backend on its own. Raspberry Pi
 # OS deployments should install the distro's python3-lgpio + python3-rpi-lgpio
 # packages and create the venv with --system-site-packages; see the Pi guide and
@@ -111,3 +114,17 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "W", "F", "I"]
 ignore = ["E501"]  # Line too long (handled separately if needed)
+
+[tool.mypy]
+# The ``typecheck`` CI job runs plain ``mypy`` from the repo root (issue #350).
+# Pillow ships its own type stubs, so the renderer is checked against the
+# installed Pillow's types.
+files = ["idle_hours"]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# Pi-only packages (the ``pi`` extra), imported lazily on the hardware paths.
+[[tool.mypy.overrides]]
+module = ["gpiozero", "gpiozero.*", "inky", "inky.*"]
+ignore_missing_imports = true

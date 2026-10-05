@@ -163,7 +163,7 @@ def _sweep_stale_tmp(path: Path, keep: Path) -> None:
                 os.unlink(entry.path)
 
 
-def _atomic_write(path: Path, mode: str, writer: Callable[[IO], None], **open_kwargs) -> None:
+def _atomic_write(path: Path, mode: str, writer: Callable[[IO], object], **open_kwargs) -> None:
     """Shared tmp → fsync → replace → dir-fsync body for the three public helpers."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = _open_tmp(path)

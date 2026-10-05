@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from .._paths import ALFA_SLAB_ONE, META_FONT_BOLD_CANDIDATES, QUOTE_FONT_BOLD_CANDIDATES, SPACEMONO_BOLD
 from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ._shared import _TAROT_ROMAN_NUMERALS
 
@@ -81,7 +81,7 @@ def _pulp_paint_stock(image) -> None:
     change the ground colour rather than dirty it.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     yellow, black = SPECTRA6["yellow"], SPECTRA6["black"]
     for y in range(height):
         if y % 4 != 1:
@@ -222,7 +222,7 @@ def _pulp_paint_corner_banner(image, draw, width, height):
     # BICUBIC, not NEAREST: NEAREST shreds 13 px glyph stems. The alpha is then
     # hard-thresholded so the band's edges stay crisp instead of leaving an
     # off-palette fringe against the yellow.
-    rotated = tile.rotate(45, expand=True, resample=Image.BICUBIC, fillcolor=(0, 0, 0, 0))
+    rotated = tile.rotate(45, expand=True, resample=Image.Resampling.BICUBIC, fillcolor=(0, 0, 0, 0))
     mask = rotated.split()[3].point(lambda v: 255 if v > 127 else 0)
     cx, cy = _PULP_BANNER_CENTRE
     cx = min(cx, max(0, width - 40))

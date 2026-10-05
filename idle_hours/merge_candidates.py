@@ -83,9 +83,9 @@ def dedupe_key(raw: dict, canonical_quote: str) -> tuple:
 def dedupe(records: Iterable[Record]) -> tuple[list[dict], dict]:
     seen: dict[tuple, dict] = {}
     duplicates = 0
-    source_counter = Counter()
-    match_counter = Counter()
-    bucket_counter = Counter()
+    source_counter: Counter[str | None] = Counter()
+    match_counter: Counter[str | None] = Counter()
+    bucket_counter: Counter[str] = Counter()
 
     for record in records:
         raw = record.raw

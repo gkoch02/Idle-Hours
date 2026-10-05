@@ -4,8 +4,63 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 
 from PIL import Image
+
+if TYPE_CHECKING:
+    from PIL._imaging import PixelAccess
+
+
+def pixel_access(image: Image.Image) -> PixelAccess:
+    """``image.load()``, with the ``None`` its type allows ruled out.
+
+    Pillow types ``load()`` as ``PixelAccess | None``. It returns ``None`` only
+    for an image whose decoder has nothing to hand back, never for one built in
+    memory, which is every image the renderer indexes pixel by pixel. Going
+    through here keeps the type checker honest without an ``assert`` at each of
+    the ~200 sites (issue #350).
+    """
+    pixels = image.load()
+    if pixels is None:  # pragma: no cover - not reachable for in-memory images
+        raise ValueError(f"{image!r} has no pixel access")
+    return pixels
+
+
+class GrayPixels(Protocol):
+    """Pixel access to a one-band image: every pixel is an ``int``."""
+
+    def __getitem__(self, xy: tuple[int, int], /) -> int: ...
+
+    def __setitem__(self, xy: tuple[int, int], value: int, /) -> None: ...
+
+
+class RGBPixels(Protocol):
+    """Pixel access to an RGB(A) image: every pixel is a tuple of ints."""
+
+    def __getitem__(self, xy: tuple[int, int], /) -> tuple[int, ...]: ...
+
+    def __setitem__(self, xy: tuple[int, int], value: tuple[int, ...], /) -> None: ...
+
+
+def gray_pixel_access(image: Image.Image) -> GrayPixels:
+    """``pixel_access`` for an ``"1"`` or ``"L"`` mask, typed as ints.
+
+    Pillow cannot say from the type which mode an image has, so it types a
+    pixel as ``float | tuple[int, ...]``. The mode check here is what makes
+    the narrower type true.
+    """
+    if image.mode not in ("1", "L"):
+        raise ValueError(f"expected a one-band image, got mode {image.mode!r}")
+    return cast("GrayPixels", pixel_access(image))
+
+
+def rgb_pixel_access(image: Image.Image) -> RGBPixels:
+    """``pixel_access`` for an ``"RGB"`` or ``"RGBA"`` image, typed as int tuples."""
+    if image.mode not in ("RGB", "RGBA"):
+        raise ValueError(f"expected an RGB image, got mode {image.mode!r}")
+    return cast("RGBPixels", pixel_access(image))
+
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
@@ -43,8 +98,8 @@ BAYER_8x8: tuple[tuple[int, ...], ...] = tuple(
 
 def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
     snapped = Image.new("RGB", image.size)
-    src = image.load()
-    dst = snapped.load()
+    src = rgb_pixel_access(image)
+    dst = pixel_access(snapped)
     # Frames carry only a handful of distinct colours, so memoise the
     # nearest-colour lookup per source pixel. Byte-identical output.
     cache: dict = {}
@@ -114,8 +169,8 @@ def dither_image_to_palette(
         return quantised.convert("RGB")
     if method == "ordered":
         out = Image.new("RGB", src.size)
-        sp = src.load()
-        op = out.load()
+        sp = rgb_pixel_access(src)
+        op = pixel_access(out)
         # Bayer cell values 0..15 → a signed bias in roughly [-0.5, +0.5] of an
         # ink step, scaled to 8-bit. ``amp`` controls the dither strength.
         amp = 64
@@ -132,15 +187,15 @@ def dither_image_to_palette(
                     pr, pg, pb = key
                     nearest = min(
                         palette,
-                        key=lambda c, pr=pr, pg=pg, pb=pb: (pr - c[0]) ** 2 + (pg - c[1]) ** 2 + (pb - c[2]) ** 2,
+                        key=lambda c: (pr - c[0]) ** 2 + (pg - c[1]) ** 2 + (pb - c[2]) ** 2,
                     )
                     cache[key] = nearest
                 op[x, y] = nearest
         return out
     if method == "atkinson":
         out = Image.new("RGB", src.size)
-        sp = src.load()
-        op = out.load()
+        sp = rgb_pixel_access(src)
+        op = pixel_access(out)
         w, h = src.size
         # Three rolling error rows (y, y+1, y+2) — Atkinson's kernel reaches
         # two rows down, one further than Floyd-Steinberg's.
@@ -189,7 +244,7 @@ def _load_dithered_plate(path: Path, width: int, height: int, method: str = "flo
         return cached
     try:
         with Image.open(path) as raw:
-            resized = raw.convert("RGB").resize((width, height), Image.LANCZOS)
+            resized = raw.convert("RGB").resize((width, height), Image.Resampling.LANCZOS)
     except (OSError, ValueError):
         return None
     dithered = dither_image_to_palette(resized, pal, method=method)

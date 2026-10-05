@@ -11,7 +11,8 @@ import random
 from PIL import Image, ImageDraw, ImageFont
 
 from .._paths import CARDO_BOLD, CARDO_ITALIC
-from ..palette import SPECTRA6, BAYER_4x4
+from ..fonts import FontType
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 # Seed for the deterministic firmament star scatter (see
@@ -136,7 +137,7 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     draw = ImageDraw.Draw(image)
     width, height = image.size
     page_bg = colors.get("page_bg")
-    pixels = image.load()
+    pixels = pixel_access(image)
 
     blue_ink = SPECTRA6["blue"]
     white_ink = SPECTRA6["white"]
@@ -244,7 +245,7 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     # Cardo Italic for the constellation names, as on 17th-century atlas
     # labels; the bitmap default is the fallback if the font is missing.
     try:
-        label_font = ImageFont.truetype(CARDO_ITALIC, 11)
+        label_font: FontType = ImageFont.truetype(CARDO_ITALIC, 11)
     except OSError:
         label_font = ImageFont.load_default()
 
@@ -319,11 +320,11 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
         is_long = i % 2 == 0
         ray_inner = sun_r + (1 if is_long else 3)
         ray_outer = sun_r + (12 if is_long else 6)
-        x1 = sun_cx + ray_inner * math.cos(angle)
-        y1 = sun_cy + ray_inner * math.sin(angle)
-        x2 = sun_cx + ray_outer * math.cos(angle)
-        y2 = sun_cy + ray_outer * math.sin(angle)
-        draw.line((x1, y1, x2, y2), fill=yellow_ink, width=1)
+        rx1 = sun_cx + ray_inner * math.cos(angle)
+        ry1 = sun_cy + ray_inner * math.sin(angle)
+        rx2 = sun_cx + ray_outer * math.cos(angle)
+        ry2 = sun_cy + ray_outer * math.sin(angle)
+        draw.line((rx1, ry1, rx2, ry2), fill=yellow_ink, width=1)
     # Face: two eye dots at cy-2 and a 5 px smile at cy+3, in the navy
     # ground stipple.
     for ex in (sun_cx - 3, sun_cx + 3):
@@ -396,7 +397,7 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     )
     # "N" label above the north point.
     try:
-        n_font = ImageFont.truetype(CARDO_BOLD, 11)
+        n_font: FontType = ImageFont.truetype(CARDO_BOLD, 11)
     except OSError:
         n_font = ImageFont.load_default()
     draw.text((rose_cx - 4, rose_cy - long_r - 13), "N", font=n_font, fill=yellow_ink)
@@ -455,7 +456,7 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     # astrolabe rim. Small Cardo italic at the canvas edges, clear of the
     # ornaments and the body.
     try:
-        roman_font = ImageFont.truetype(CARDO_ITALIC, 12)
+        roman_font: FontType = ImageFont.truetype(CARDO_ITALIC, 12)
     except OSError:
         roman_font = ImageFont.load_default()
     # XII: top, left of the top Milky Way blob (centred at width/2 + 30).

@@ -266,8 +266,8 @@ def main() -> int:
     search_dir = Path(args.search_dir).expanduser()
 
     all_results = []
-    per_bucket = defaultdict(int)
-    resolved_counts = defaultdict(int)
+    per_bucket: defaultdict[str, int] = defaultdict(int)
+    resolved_counts: defaultdict[str, int] = defaultdict(int)
     for bucket in targets:
         bucket_results = search_bucket(bucket, search_dir)
         all_results.extend(bucket_results)

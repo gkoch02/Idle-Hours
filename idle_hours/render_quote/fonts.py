@@ -42,7 +42,10 @@ def theme_font_candidates(theme: str, role: str) -> list:
     return THEME_FONTS["default"][role]
 
 
-_FONT_CACHE: dict[tuple, ImageFont.ImageFont] = {}
+# What ``load_font`` hands back: a TrueType face, or Pillow's bitmap fallback.
+FontType = ImageFont.FreeTypeFont | ImageFont.ImageFont
+
+_FONT_CACHE: dict[tuple, FontType] = {}
 
 
 def _normalize_candidates(candidates) -> tuple:

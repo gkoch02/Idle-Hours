@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -43,7 +43,7 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
         _BAYER_4 = BAYER_4x4
         sepia_red = SPECTRA6["red"]
         sepia_green = SPECTRA6["green"]
-        pixels = image.load()
+        pixels = pixel_access(image)
         for y in range(height):
             row = _BAYER_4[y & 3]
             for x in range(width):

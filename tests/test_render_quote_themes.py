@@ -3467,7 +3467,7 @@ class TestPhotoTheme:
         busy_left = self._photo(tmp_path / "bl.png", bands="left_busy")
         assert self._card_side(busy_left, monkeypatch) == "right"
         with Image.open(busy_left) as im:
-            im.transpose(Image.FLIP_LEFT_RIGHT).save(tmp_path / "br.png")
+            im.transpose(Image.Transpose.FLIP_LEFT_RIGHT).save(tmp_path / "br.png")
         assert self._card_side(tmp_path / "br.png", monkeypatch) == "left", (
             "mirroring the photograph did not move the card — placement is not "
             "actually reading the image"

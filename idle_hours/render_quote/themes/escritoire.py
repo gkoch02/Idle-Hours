@@ -14,7 +14,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _row_digest, fallback_title
 from ..layout import _trim_line, choose_layout, fit_quote_balanced, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..primitives import _bayer_threshold_field, _shift_no_wrap
 from ..spec import FrameSpec
 from ._shared import _codex_script, _metro_ellipsize
@@ -263,7 +263,7 @@ def _escritoire_paint_brass(image: Image.Image) -> None:
     width, height = image.size
     lum = Image.new("L", (width, height), 0)
     alpha = Image.new("L", (width, height), 0)
-    lp, ap = lum.load(), alpha.load()
+    lp, ap = gray_pixel_access(lum), gray_pixel_access(alpha)
     for cx, knots in _ESCRITOIRE_BRASS:
         _escritoire_lathe(lp, ap, cx, knots)
         foot = knots[-1][0]
@@ -302,8 +302,8 @@ def _escritoire_paint_brass(image: Image.Image) -> None:
     alpha = alpha.filter(ImageFilter.GaussianBlur(4))
     # Ramp black < red < yellow < white, two adjacent inks mixed by the tile.
     ramp = (SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"])
-    px, lp, ap = image.load(), lum.load(), alpha.load()
-    paper = _escritoire_paper_mask((width, height)).load()
+    px, lp, ap = pixel_access(image), gray_pixel_access(lum), gray_pixel_access(alpha)
+    paper = gray_pixel_access(_escritoire_paper_mask((width, height)))
     bx0, by0, bx1, by1 = alpha.getbbox() or (0, 0, 0, 0)
     for y in range(by0, by1):
         row = BAYER_8x8[y % 8]
@@ -525,7 +525,7 @@ def _escritoire_paint_pen(image: Image.Image) -> None:
     draw.line([(ax + ux * 4, ay + uy * 4), (ax + ux * 34, ay + uy * 34)], fill=black, width=1)
     cx, cy = ax + ux * 34, ay + uy * 34
     draw.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=black)
-    px = image.load()
+    px = pixel_access(image)
     width, height = image.size
     for t in range(50, int(length) - 70, 3):
         off = -(r * taper(t) - 4)

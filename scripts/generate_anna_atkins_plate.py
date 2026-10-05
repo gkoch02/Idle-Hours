@@ -141,7 +141,7 @@ def main() -> int:
                 int(b + (255 - b) * a),
             )
 
-    out = out.resize((W, H), Image.LANCZOS)
+    out = out.resize((W, H), Image.Resampling.LANCZOS)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     out.save(OUT, optimize=True)
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes)")

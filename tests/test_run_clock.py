@@ -514,6 +514,11 @@ class TestQuietHours:
     def test_no_quiet_hours_returns_false(self):
         assert run_clock.in_quiet_hours("03:00", None, None) is False
 
+    def test_missing_end_returns_false(self):
+        # The docstring promised False when *either* bound is None; only a
+        # missing start was checked, so a missing end raised (issue #350).
+        assert run_clock.in_quiet_hours("03:00", "22:00", None) is False
+
     def test_boundary_start_is_quiet(self):
         assert run_clock.in_quiet_hours("22:00", "22:00", "07:00") is True
 

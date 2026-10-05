@@ -14,7 +14,7 @@ from .._paths import GRENZE_GOTISCH_VARIABLE, META_FONT_BOLD_CANDIDATES
 from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import draw_centred_styled_lines, draw_truncated_centred_byline
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..primitives import paint_craquelure, paint_neon_mask, position_noise
 from ..spec import FrameSpec
 
@@ -127,7 +127,7 @@ def _bosch_paint(tile: Image.Image, mask: Image.Image, shade) -> None:
     bbox = mask.getbbox()
     if bbox is None:
         return
-    px, mp = tile.load(), mask.load()
+    px, mp = pixel_access(tile), gray_pixel_access(mask)
     ox, oy = getattr(tile, "_bosch_origin", (0, 0))
     field = _bosch_rank_field()
     for y in range(bbox[1], bbox[3]):
@@ -186,7 +186,7 @@ def _bosch_paint_frame(image: Image.Image) -> None:
     width, height = image.size
     draw = ImageDraw.Draw(image)
     red, yellow, black = (_bosch_ink(n) for n in ("red", "yellow", "black"))
-    px = image.load()
+    px = pixel_access(image)
     # The panels cover most of the frame; only the rails, the gaps and the
     # spandrels above the arches show, so the per-pixel passes skip the rest.
     covered = [any(x0 + 4 <= x < x1 - 4 for _, (x0, _, x1, _) in _BOSCH_PANELS) for x in range(width)]
@@ -242,7 +242,7 @@ def _bosch_meadow(tile, top: int) -> None:
     """
     w, h = tile.size
     white, yellow, green, black = (_bosch_ink(n) for n in ("white", "yellow", "green", "black"))
-    px = tile.load()
+    px = pixel_access(tile)
     ox, oy = getattr(tile, "_bosch_origin", (0, 0))
     field = _bosch_rank_field()
     sx = [math.sin(x * 0.05) for x in range(w)]
@@ -273,7 +273,7 @@ def _bosch_hills(tile, horizon: int, peaks, seed: int) -> None:
     """Distant blue hills along the horizon, fading into the sky."""
     w = tile.size[0]
     rng = random.Random(seed)
-    pts = [(0, horizon)]
+    pts: list[tuple[float, float]] = [(0, horizon)]
     for x in range(0, w + 8, 8):
         y = horizon - 6 - 5 * math.sin(x * 0.045 + seed) - rng.randrange(4)
         for px_, height_, half in peaks:
@@ -411,7 +411,7 @@ def _bosch_strawberry(tile, cx: int, cy: int, r: int) -> None:
         return _bosch_pick(rank, ((white, max(0.0, 0.2 - 0.4 * lit)), (black, max(0.0, 0.4 * lit)), (red, 1)))
     _bosch_paint(tile, mask, shade)
     draw = ImageDraw.Draw(tile)
-    mp = mask.load()
+    mp = gray_pixel_access(mask)
     for row, yy in enumerate(range(cy - round(r * 0.6), cy + r, 6)):   # seeds, staggered
         for xx in range(cx - r + (row % 2) * 3, cx + r, 6):
             if 0 <= xx < tile.size[0] and 0 <= yy + 2 < tile.size[1] and mp[xx, yy] and mp[xx, yy + 2]:
@@ -780,7 +780,7 @@ def _bosch_paint_panels(image: Image.Image) -> None:
         size = (x1 - x0, y1 - y0)
         ground = SPECTRA6["black"] if kind == "hell" else SPECTRA6["white"]
         tile = Image.new("RGB", size, ground)
-        tile._bosch_origin = (x0, y0)
+        setattr(tile, "_bosch_origin", (x0, y0))  # read back with getattr in _bosch_paint
         _BOSCH_PAINTERS[kind](tile)
         image.paste(tile, (x0, y0), _bosch_panel_mask(kind, size))
         tile.close()

@@ -143,10 +143,10 @@ def _questline_paint_nameplate(image: Image.Image, draw: ImageDraw.ImageDraw, qu
         name = name[:21] + "…"
     font = load_font(theme_font_candidates("questline", "quote_bold"), size=11)
     bbox = draw.textbbox((0, 0), name, font=font)
-    text_w = bbox[2] - bbox[0]
+    text_w = int(bbox[2] - bbox[0])
     pad_x, pad_y = 12, 7
     box_x0, box_y0 = _QUESTLINE_BOX[0] + 18, _QUESTLINE_BOX[1] - 26
-    plate = (box_x0, box_y0, box_x0 + text_w + pad_x * 2, box_y0 + (bbox[3] - bbox[1]) + pad_y * 2)
+    plate = (box_x0, box_y0, box_x0 + text_w + pad_x * 2, box_y0 + int(bbox[3] - bbox[1]) + pad_y * 2)
     _fill_swatch_stipple(image, (plate[0], plate[1], plate[2] + 1, plate[3] + 1), dark=BLUE, light=BLACK, light_density=0.5)
     for i in range(3):
         draw.rectangle((plate[0] + i, plate[1] + i, plate[2] - i, plate[3] - i), outline=WHITE)
@@ -181,7 +181,7 @@ def _questline_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quo
         end = len(line)
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
-        x = x0
+        x: float = x0
         for chunk, is_bold in line[start:end]:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))

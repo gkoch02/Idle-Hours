@@ -23,7 +23,16 @@ from .._paths import (
 )
 from ..fonts import load_font
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, _row_digest, fallback_title
-from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, _dither_calibrated, snap_image_to_palette
+from ..palette import (
+    _PANEL_INKS,
+    SPECTRA6,
+    SPECTRA6_PALETTE,
+    BAYER_8x8,
+    _dither_calibrated,
+    gray_pixel_access,
+    pixel_access,
+    snap_image_to_palette,
+)
 from ..primitives import _lerp_stops, _smooth_noise, _white_noise, paint_neon_mask
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
@@ -140,7 +149,7 @@ def _hades_paint_sky(scene: Image.Image) -> None:
     width, height = scene.size
     hz = _HADES_HORIZON
     column = Image.new("RGB", (1, hz))
-    cp = column.load()
+    cp = pixel_access(column)
     for y in range(hz):
         cp[0, y] = _lerp_stops(_HADES_SKY_STOPS, y)
     scene.paste(column.resize((width, hz), Image.Resampling.NEAREST), (0, 0))
@@ -171,7 +180,7 @@ def _hades_paint_stars(image: Image.Image) -> None:
     single white pixel, some a 2x2, a few a four-point cross."""
     rng = random.Random(_HADES_SEED + 2)
     draw = ImageDraw.Draw(image)
-    px = image.load()
+    px = pixel_access(image)
     white = SPECTRA6["white"]
     mx, my = _HADES_MOON_CENTRE
     keep = _HADES_MOON_RADIUS + 28
@@ -350,7 +359,7 @@ def _hades_paint_medallion(image: Image.Image) -> None:
     sand = ImageChops.multiply(sand, ImageChops.lighter(upper_mask, lower_mask))
     image.paste(yellow, (0, 0), sand)
     lattice = Image.new("L", image.size, 0)
-    lp = lattice.load()
+    lp = pixel_access(lattice)
     bbox = sand.getbbox()
     if bbox:
         for y in range(bbox[1], bbox[3], 2):
@@ -373,6 +382,7 @@ def _hades_paint_label(image: Image.Image) -> None:
     draw = ImageDraw.Draw(image)
     yellow, white = SPECTRA6["yellow"], SPECTRA6["white"]
     mark = _hades_title_font(24)
+    x: float
     x, y = _HADES_WORDMARK_XY
     for ch in "HADES II":
         draw.text((x, y), ch, font=mark, fill=yellow, stroke_width=1, stroke_fill=SPECTRA6["red"])
@@ -420,8 +430,8 @@ def _hades_paint_moon(image: Image.Image, hour: int) -> None:
     r = _HADES_MOON_RADIUS
     white, black, blue = SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]
     maria = _smooth_noise((2 * r + 1, 2 * r + 1), (26, 26), _HADES_SEED + 7)
-    mp = maria.load()
-    px = image.load()
+    mp = gray_pixel_access(maria)
+    px = pixel_access(image)
     k = math.cos(2 * math.pi * phase)
     waxing = phase < 0.5
     for y in range(cy - r, cy + r + 1):
@@ -449,7 +459,7 @@ def _hades_paint_title(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row:
     name = (author or title or "The Crossroads").upper()
     font, text = fit_text_to_width(draw, name, [CAESARDRESSING_REGULAR, CINZELDECORATIVE_BOLD, *META_FONT_BOLD_CANDIDATES],
                                    36, _HADES_TITLE_RIGHT - _HADES_TITLE_X, floor=22, tracking=2)
-    x = _HADES_TITLE_X
+    x: float = _HADES_TITLE_X
     for ch in text:
         draw.text((x, _HADES_TITLE_Y), ch, font=font, fill=yellow, stroke_width=1, stroke_fill=red)
         x += draw.textlength(ch, font=font) + 2

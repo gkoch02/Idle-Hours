@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from ..fonts import load_font, theme_font_candidates
 from ..furniture import _clock_hour12, fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..primitives import paint_neon_mask, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
@@ -114,7 +114,7 @@ def _bakelite_paint_moulding(image: Image.Image) -> None:
     because of the jitter — two periodic patterns otherwise beat into a plaid.
     Both terms are deterministic, so a re-render is byte-identical.
     """
-    pixels = image.load()
+    pixels = pixel_access(image)
     yellow, white, red = SPECTRA6["yellow"], SPECTRA6["white"], SPECTRA6["red"]
     for y in range(480):
         row = BAYER_4x4[y % 4]
@@ -151,7 +151,7 @@ def _bakelite_paint_bevels(image: Image.Image) -> None:
     nothing across the band, so each face reads as a curved surface rather
     than a drawn outline.
     """
-    pixels = image.load()
+    pixels = pixel_access(image)
     shadow = (SPECTRA6["red"], SPECTRA6["black"])
     white = SPECTRA6["white"]
 
@@ -166,7 +166,7 @@ def _bakelite_paint_bevels(image: Image.Image) -> None:
          _BAKELITE_SCREEN[2] + _BAKELITE_BEVEL, _BAKELITE_SCREEN[3] + _BAKELITE_BEVEL),
         radius=_BAKELITE_SCREEN_RADIUS + _BAKELITE_BEVEL, fill=255,
     )
-    rc_px, sc_px = recess.load(), screen.load()
+    rc_px, sc_px = gray_pixel_access(recess), gray_pixel_access(screen)
 
     for y in range(480):
         row = BAYER_8x8[y % 8]
@@ -194,8 +194,8 @@ def _bakelite_paint_bevels(image: Image.Image) -> None:
 
 def _bakelite_paint_tube(image: Image.Image, screen: Image.Image) -> None:
     """The CRT face: black glass carrying warm scanlines (see section comment)."""
-    pixels = image.load()
-    sc_px = screen.load()
+    pixels = pixel_access(image)
+    sc_px = gray_pixel_access(screen)
     black, red, green = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["green"]
     x0, y0, x1, y1 = _BAKELITE_SCREEN
     cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
@@ -278,7 +278,7 @@ def _bakelite_paint_rule(image: Image.Image, y: int, x0: int, x1: int) -> None:
     """A dim tangerine divider: red with 3/8 flipped to yellow on the Bayer
     tile (R+Y 5/8:3/8, red-biased so it does not read as lit). A rule's runs
     are wide enough to carry a stipple, unlike the small labels."""
-    pixels = image.load()
+    pixels = pixel_access(image)
     red, yellow = SPECTRA6["red"], SPECTRA6["yellow"]
     for x in range(max(0, x0), min(image.size[0], x1)):
         pixels[x, y] = yellow if BAYER_4x4[y % 4][x % 4] < 6 else red

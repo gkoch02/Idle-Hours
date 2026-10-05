@@ -10,7 +10,15 @@ from PIL import Image, ImageDraw
 from .._paths import ARCHIVO_BOLD, BASE_DIR, META_FONT_BOLD_CANDIDATES, OSWALD_VARIABLE
 from ..fonts import load_font
 from ..furniture import fallback_title
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, _load_dithered_plate, snap_image_to_palette
+from ..palette import (
+    SPECTRA6,
+    SPECTRA6_PALETTE,
+    BAYER_8x8,
+    _load_dithered_plate,
+    gray_pixel_access,
+    pixel_access,
+    snap_image_to_palette,
+)
 from ..primitives import paint_neon_mask, position_noise, wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
@@ -114,8 +122,8 @@ def _control_fill_polygon(image: Image.Image, polygon, density: float) -> None:
         return
     mask = Image.new("1", (x1 - x0, y1 - y0), 0)
     ImageDraw.Draw(mask).polygon([(int(px) - x0, int(py) - y0) for px, py in polygon], fill=1)
-    mp = mask.load()
-    px = image.load()
+    mp = pixel_access(mask)
+    px = pixel_access(image)
     black, white = SPECTRA6["black"], SPECTRA6["white"]
     cut = density * 64
     for yy in range(y1 - y0):
@@ -184,7 +192,7 @@ def _control_paint_concrete_stipple(image: Image.Image, top: int) -> None:
     glance; the committed plate carries the board grain this cannot.
     """
     width, height = image.size
-    px = image.load()
+    px = pixel_access(image)
     black = SPECTRA6["black"]
     span = max(1, height - top)
     d0, d1 = _CONTROL_CONCRETE
@@ -288,7 +296,7 @@ def _control_paint_resonance(image: Image.Image, hot: Image.Image) -> None:
     x0, y0, x1, y1 = bbox
     span = y1 - y0
     width, height = image.size
-    hp, px = hot.load(), image.load()
+    hp, px = gray_pixel_access(hot), pixel_access(image)
     red, white = SPECTRA6["red"], SPECTRA6["white"]
     cut = _CONTROL_RESONANCE_DENSITY * 64
     for frac, band_h, shift in _CONTROL_RESONANCE:

@@ -9,7 +9,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -101,7 +101,7 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
 
     # Coral post-pass (the ``draw_placard_border`` tack recipe),
     # bbox-scoped per smudge.
-    pixels = image.load()
+    pixels = pixel_access(image)
     for cx, cy in smudge_centres:
         x0 = max(0, cx - smudge_radius)
         y0 = max(0, cy - smudge_radius)

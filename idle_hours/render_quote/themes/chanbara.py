@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6
+from ..palette import SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -49,7 +49,7 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
     # distances avoid a sqrt() per pixel.
     sentinel_red = SPECTRA6["red"]
     maroon_dark = SPECTRA6["black"]
-    pixels = image.load()
+    pixels = pixel_access(image)
     inner_r_sq = (sun_radius - 40) * (sun_radius - 40)
     outer_r_sq = sun_radius * sun_radius
     quad_x0 = width // 2

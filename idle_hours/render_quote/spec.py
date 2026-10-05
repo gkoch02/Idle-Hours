@@ -15,6 +15,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,7 @@ class FrameSpec:
     """A theme that composes its whole frame: ``render(time_str, row, width, height)``."""
 
     themes: tuple[str, ...]
-    render: Callable[..., object]
+    render: Callable[..., Image.Image]
 
     def __post_init__(self) -> None:
         if not self.themes:

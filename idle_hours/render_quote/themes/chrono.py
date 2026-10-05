@@ -6,13 +6,14 @@ Design notes: ``docs/themes.md``.
 from __future__ import annotations
 
 import random
+from typing import Any
 
 from PIL import Image, ImageDraw
 
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _fit_from_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple
 from ..spec import FrameSpec
 
@@ -54,7 +55,8 @@ _CHRONO_PORTRAIT = (32, 222, 180, 394)
 
 def _chrono_tone_color(idx: int, x: int, y: int):
     """Resolve an art tone index to its Spectra-6 (possibly dithered) colour."""
-    rule = _CHRONO_ART_TONES[idx]
+    # A tagged tuple whose shape depends on its kind, unpacked per branch below.
+    rule: tuple[Any, ...] = _CHRONO_ART_TONES[idx]
     kind = rule[0]
     if kind == "solid":
         return rule[1]
@@ -125,11 +127,11 @@ def _chrono_paint_hourglass(image: Image.Image, ox: int, oy: int) -> None:
     """
     big = _chrono_build_hourglass().resize(
         (_CHRONO_ART_SIZE[0] * _CHRONO_ART_SCALE, _CHRONO_ART_SIZE[1] * _CHRONO_ART_SCALE),
-        Image.NEAREST,
+        Image.Resampling.NEAREST,
     )
     bw, bh = big.size
-    src = big.load()
-    dst = image.load()
+    src = gray_pixel_access(big)
+    dst = pixel_access(image)
     width, height = image.size
     for y in range(bh):
         gy = oy + y
@@ -154,8 +156,8 @@ def _chrono_fill_poly(image: Image.Image, points, dark, light, density: float) -
     if bbox is None:
         return
     x0, y0, x1, y1 = bbox
-    px = image.load()
-    mx = mask.load()
+    px = pixel_access(image)
+    mx = pixel_access(mask)
     threshold = round(density * 16)
     for y in range(y0, y1):
         for x in range(x0, x1):
@@ -174,7 +176,7 @@ def _chrono_paint_sky(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
     BLUE = SPECTRA6["blue"]
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
-    px = image.load()
+    px = pixel_access(image)
     bottom = _CHRONO_SKY_BOTTOM
     # Clip the PixelAccess writes to the image height: `bottom` anchors the
     # ramp, but /api/preview renders canvases as short as ~60 px.
@@ -235,7 +237,7 @@ def _chrono_window_fill(image: Image.Image, rect: tuple[int, int, int, int], rad
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
     tile = Image.new("RGB", (w, h), BLUE)
-    tpx = tile.load()
+    tpx = pixel_access(tile)
     for j in range(h):
         frac = j / max(1, h - 1)
         if frac < 0.5:
@@ -313,7 +315,7 @@ def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
         end = len(line)
         while end > start and line[end - 1][0].strip() == "":
             end -= 1
-        x = x0
+        x: float = x0
         for chunk, is_bold in line[start:end]:
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (body_ascent - _font_ascent(font))

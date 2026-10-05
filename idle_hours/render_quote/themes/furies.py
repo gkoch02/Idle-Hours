@@ -13,7 +13,15 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from .._paths import LIBREFRANKLIN_ITALIC_VARIABLE, META_FONT_CANDIDATES
 from ..fonts import load_font
 from ..furniture import draw_truncated_centred_byline
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, dither_image_to_palette, snap_image_to_palette
+from ..palette import (
+    SPECTRA6,
+    SPECTRA6_PALETTE,
+    BAYER_8x8,
+    dither_image_to_palette,
+    gray_pixel_access,
+    pixel_access,
+    snap_image_to_palette,
+)
 from ..primitives import (
     _bayer_threshold_field,
     _catmull_rom,
@@ -141,7 +149,7 @@ def _furies_noise(size, seed: int, scale: int, amp: float) -> Image.Image:
     gw, gh = size[0] // scale + 2, size[1] // scale + 2
     small = Image.new("L", (gw, gh))
     small.putdata([int(128 + rng.uniform(-amp, amp)) for _ in range(gw * gh)])
-    return small.resize(size, Image.BICUBIC)
+    return small.resize(size, Image.Resampling.BICUBIC)
 
 
 def _furies_striations(size, angle: float, seed: int) -> Image.Image:
@@ -156,7 +164,7 @@ def _furies_striations(size, angle: float, seed: int) -> Image.Image:
         values.append(int(v))
     column = Image.new("L", (1, n))
     column.putdata(values)
-    square = column.resize((n, n), Image.NEAREST).rotate(-math.degrees(angle), resample=Image.NEAREST)
+    square = column.resize((n, n), Image.Resampling.NEAREST).rotate(-math.degrees(angle), resample=Image.Resampling.NEAREST)
     left, top = (n - size[0]) // 2, (n - size[1]) // 2
     return square.crop((left, top, left + size[0], top + size[1]))
 
@@ -366,10 +374,10 @@ def _furies_right_panel() -> list:
 def _furies_compose_panel(layers: list) -> Image.Image:
     """Separate each paint layer against its own inks, then stack them through
     their dithered alphas. The first layer is the ground and has no alpha."""
-    out = None
-    for rgb, alpha, inks in layers:
-        separated = dither_image_to_palette(rgb, inks)
-        out = separated if alpha is None else Image.composite(separated, out, _furies_dithered_alpha(alpha))
+    (ground, _, ground_inks), *paints = layers
+    out = dither_image_to_palette(ground, ground_inks)
+    for rgb, alpha, inks in paints:
+        out = Image.composite(dither_image_to_palette(rgb, inks), out, _furies_dithered_alpha(alpha))
     return out
 
 
@@ -392,7 +400,7 @@ def _furies_paint_frames(image: Image.Image) -> None:
     """Bevelled gilt mouldings: gold (Y-major Y+R) on the flat, a Y+W lit face
     on the top and left, an R+K shaded face on the bottom and right, and a
     black rebate where the moulding meets the board."""
-    px = image.load()
+    px = pixel_access(image)
     red, yellow, white, black = (SPECTRA6[k] for k in ("red", "yellow", "white", "black"))
     f = _FURIES_FRAME
     for x0 in _FURIES_PANEL_XS:
@@ -419,7 +427,7 @@ def _furies_paint_frames(image: Image.Image) -> None:
 def _furies_paint_glass(image: Image.Image) -> None:
     """The window reflection on the glazing: sparse white along diagonal bands,
     one reflection continuous across all three panes, on the paint only."""
-    px = image.load()
+    px = pixel_access(image)
     white = SPECTRA6["white"]
     y0, y1 = _FURIES_PANEL_Y, _FURIES_PANEL_Y + _FURIES_PANEL_H
     for x0 in _FURIES_PANEL_XS:
@@ -453,7 +461,7 @@ def _furies_paint_quote(image: Image.Image, quote_row: dict) -> None:
     # The smear keeps a two-pixel berth round every glyph of the phrase, so it
     # never fills a counter or bridges two letters.
     berth = hot.filter(ImageFilter.MaxFilter(5))
-    smear_px, hot_px, berth_px, px = smear.load(), hot.load(), berth.load(), image.load()
+    smear_px, hot_px, berth_px, px = gray_pixel_access(smear), gray_pixel_access(hot), gray_pixel_access(berth), pixel_access(image)
     for y in range(trail_box[1], trail_box[3]):
         row = BAYER_8x8[y & 7]
         for x in range(trail_box[0], trail_box[2]):

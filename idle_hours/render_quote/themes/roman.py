@@ -10,7 +10,7 @@ import random
 from PIL import Image, ImageDraw
 
 from ..fonts import load_font, theme_font_candidates
-from ..palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6
+from ..palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6, pixel_access
 from ..spec import BorderSpec
 
 
@@ -168,7 +168,7 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
     letter_gap = 18  # gap between adjacent letter centres' interpunct slots
     # Measure the letters first so the cartouche can be centred.
     letter_widths = []
-    letter_height = 0
+    letter_height: float = 0
     for ch in cart_letters:
         bbox = draw.textbbox((0, 0), ch, font=cart_font)
         letter_widths.append(bbox[2] - bbox[0])
@@ -246,7 +246,7 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
             )
             leaf_centres.append((leaf_cx, leaf_cy))
     # Olive post-pass on each leaf bbox; only yellow (leaf) pixels flip.
-    pixels = image.load()
+    pixels = pixel_access(image)
     olive_light = SPECTRA6["green"]
     sentinel_yellow = SPECTRA6["yellow"]
     for leaf_cx, leaf_cy in leaf_centres:

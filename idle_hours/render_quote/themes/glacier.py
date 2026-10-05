@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from ..palette import SPECTRA6, BAYER_4x4
+from ..palette import SPECTRA6, BAYER_4x4, pixel_access
 from ..spec import BorderSpec
 
 
@@ -46,7 +46,7 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
     # the ≤44 px margins (text never starts before y=72) and flip only
     # *white* ground pixels, so the blue body text stays legible. Skipped
     # on non-white grounds (the unit-test sentinel render).
-    pixels = image.load()
+    pixels = pixel_access(image)
     band_depth = 44
     inner_l = outer_inset + 1
     inner_r = width - 1 - outer_inset
@@ -141,7 +141,7 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
     # to white on a 1×1 checkerboard (the G+W 1:1 mint recipe), lifting the
     # long shard into a highlight while the blue shards stay solid.
     # Bbox-scoped: the shards reach at most long_arm+2 px from each anchor.
-    pixels = image.load()
+    pixels = pixel_access(image)
     for ax, ay, dx, dy in corner_anchors:
         x0 = min(ax + dx * (long_arm + 2), ax - base_half - 1)
         x1 = max(ax + dx * (long_arm + 2), ax + base_half + 1)

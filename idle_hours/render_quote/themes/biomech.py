@@ -114,7 +114,7 @@ def _biomech_arch_outline(offset: float = 0.0) -> list[tuple[float, float]]:
     left, right, spring, apex, sill = _BIOMECH_ARCH
     cx = (left + right) / 2
     ys = [sill - i for i in range(0, int(sill - apex) + 1, 4)] + [apex]
-    side = [(cx - _biomech_arch_halfwidth(y) - offset, y) for y in ys]
+    side: list[tuple[float, float]] = [(cx - _biomech_arch_halfwidth(y) - offset, y) for y in ys]
     side[-1] = (cx, apex - offset)
     return side + [(2 * cx - x, y) for x, y in reversed(side[:-1])]
 
@@ -179,7 +179,7 @@ def _biomech_paint_landscape(image: Image.Image) -> None:
     rng = random.Random(_BIOMECH_SEED)
 
     # Far ridge: a low ragged line, most dissolved into the air.
-    ridge = [(0, hz + 2)]
+    ridge: list[tuple[float, float]] = [(0, hz + 2)]
     for x in range(0, width + 12, 12):
         ridge.append((x, hz - 2 - rng.random() * 9 - (7 if 520 < x < 640 else 0)))
     ridge.append((width, hz + 2))
@@ -333,7 +333,7 @@ def _biomech_height_field(size, opening: Image.Image) -> Image.Image:
         forms.append(_biomech_skull(size, cx, 8))
         forms.append(_biomech_vertebrae(size, cx, 118, sill - 6, 27))
         for dx, phase in ((-47, 0.0), (47, 1.7)):
-            pts = [(cx + dx + 4 * math.sin(y / 23 + phase), y) for y in range(96, sill + 4, 6)]
+            pts: list[tuple[float, float]] = [(cx + dx + 4 * math.sin(y / 23 + phase), y) for y in range(96, sill + 4, 6)]
             forms.append(_biomech_hose(size, pts, 14, 224, 6))
     rim = _biomech_arch_outline(9)
     forms.append(_biomech_hose(size, rim, 15, 244, 13))

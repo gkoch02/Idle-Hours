@@ -50,6 +50,9 @@ ruff check .
 
 # Fix auto-fixable lint issues (mainly import ordering)
 ruff check --fix .
+
+# Type-check the package (settings in pyproject.toml's [tool.mypy])
+mypy
 ```
 
 ### Runtime (render + optional display)
@@ -683,7 +686,8 @@ server-side check of the same tag/package invariant.
 - **Patch where a name is read.** `render_quote` is a package (issue #335). Reads through it (`rq.X`) resolve live in the submodule that binds `X`, but every write through it raises (`monkeypatch.setattr(rq, X, …)`, `patch("idle_hours.render_quote.X")`, `rq.X = …`), and `tests/test_render_quote_facade.py` fences the source for any such write. Patch the submodule whose code reads the name, e.g. `themes.<name>` for a theme's call site (`paint_neon_mask` as the `culture` frame reads it is `themes.culture.paint_neon_mask`), `text` for `_draw_text_body`'s (`tests/test_render_quote_facade.py`). To stub a whole border painter, replace its spec in `BORDER_SPECS`, which covers both of `render`'s passes.
 - **Pixel assertions** use `tests/pixel_helpers.py` (`distinct_inks`, `ink_counts`, `pixel_bytes`), never `Image.getdata()`. Pillow removal notices are errors via `filterwarnings`.
 - **Curator JS:** `node --test tests/js/*.test.mjs` loads the real `web/main.js` in a `node:vm` sandbox. The pytest bridge skips without node, so CI runs it directly.
-- **CI** (`.github/workflows/ci.yml`): `lint`, `test (3.11)`, `test (3.12)`, `golden-render`, `web-ui-js`, `package-build` are required (`.github/rulesets/main-branch.json`). `coverage` (95% branch floor) and the tag-only `release-version` are advisory.
+- **Type checking:** `mypy` (no arguments) checks the whole `idle_hours` package, `render_quote` included. Pillow types a pixel as `float | tuple[int, ...]` because it cannot know the image mode, so per-pixel access goes through `palette.pixel_access` (an RGB frame), `gray_pixel_access` (a `1` / `L` mask, typed `int`) or `rgb_pixel_access` (typed `tuple[int, ...]`), never a bare `image.load()`. The typed two check the mode at runtime, which is what makes the narrower type true. `textbbox` is typed `float`; where a width must be an `int` (a `range`, an `Image.new` size), take `int()` of a box measured at `(0, 0)`, which is whole pixels already.
+- **CI** (`.github/workflows/ci.yml`): `lint`, `typecheck`, `test (3.11)`, `test (3.12)`, `golden-render`, `web-ui-js`, `package-build` are required (`.github/rulesets/main-branch.json`). `coverage` (95% branch floor) and the tag-only `release-version` are advisory.
 
 ### Repo Layout
 

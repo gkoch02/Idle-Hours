@@ -23,7 +23,7 @@ from .._paths import (
 )
 from ..fonts import _font_ascent, load_font
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, _row_digest, fallback_title
-from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
+from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, pixel_access, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, paint_neon_mask
 from ..spec import FrameSpec
 from ..text import fit_text_to_width
@@ -107,7 +107,7 @@ def _lumon_paint_screen(image: Image.Image) -> None:
     phosphor's light leaking onto the edge."""
     width, height = image.size
     small = Image.new("RGB", (width // 4, height // 4))
-    sp = small.load()
+    sp = pixel_access(small)
     cx, cy = small.size[0] / 2.0, small.size[1] / 2.0
     rmax = math.hypot(cx, cy)
     for y in range(small.size[1]):

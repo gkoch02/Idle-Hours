@@ -134,7 +134,7 @@ def main() -> int:
     img = _gunmetal_ground(w, h, rng)
     _blotches(img, rng)
     _scratches(img, rng)
-    out = img.convert("RGB").resize((W, H), Image.LANCZOS)
+    out = img.convert("RGB").resize((W, H), Image.Resampling.LANCZOS)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     out.save(OUT, optimize=True)
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes)")

@@ -21,7 +21,7 @@ from .._paths import (
     QUOTE_FONT_SEMIBOLD_CANDIDATES,
 )
 from ..fonts import load_font
-from ..palette import SPECTRA6, BAYER_8x8
+from ..palette import SPECTRA6, BAYER_8x8, gray_pixel_access, pixel_access
 from ..primitives import position_noise
 from ..spec import BorderSpec
 
@@ -136,7 +136,7 @@ def _betweenus_paper(width: int, height: int, dark: bool) -> Image.Image:
     red = SPECTRA6["red"]
     yellow = SPECTRA6["yellow"]
     paper = Image.new("RGB", (width, height), black if dark else white)
-    px = paper.load()
+    px = pixel_access(paper)
     span = max(1, height - 1)
     noise = position_noise
     for y in range(height):
@@ -186,7 +186,7 @@ def _betweenus_post_pass(image: Image.Image, bbox, sentinel, recipe) -> None:
     ink_a = SPECTRA6[recipe[0]]
     ink_b = SPECTRA6[recipe[1]] if recipe[1] else None
     cut = round(recipe[2] * 64)
-    px = image.load()
+    px = pixel_access(image)
     for y in range(y0, y1 + 1):
         row = BAYER_8x8[y & 7]
         for x in range(x0, x1 + 1):
@@ -225,8 +225,8 @@ def _betweenus_paint_shadow(image: Image.Image, rect, dark: bool) -> None:
         fill=255,
     )
     mask = mask.filter(ImageFilter.GaussianBlur(_BETWEENUS_SHADOW_BLUR))
-    mp = mask.load()
-    px = image.load()
+    mp = gray_pixel_access(mask)
+    px = pixel_access(image)
     black = SPECTRA6["black"]
     r = _BETWEENUS_CARD_RADIUS
     for y in range(by0, by1 + 1):
@@ -327,7 +327,7 @@ def _betweenus_paint_progress(image: Image.Image, draw, dark: bool, fraction: fl
         return
     fx1 = max(x0 + 5, x0 + round((x1 - x0) * fraction))
     draw.rounded_rectangle((x0, y0, fx1, y1), radius=2, fill=_BETWEENUS_SENTINEL_FILL)
-    px = image.load()
+    px = pixel_access(image)
     red = SPECTRA6["red"]
     yellow = SPECTRA6["yellow"]
     # Yellow share falls along the fill: Y-major gold at the left end, R-major
