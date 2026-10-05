@@ -76,7 +76,7 @@ That build pipeline is how the runtime quote set came to exist. The clock itself
 
 - `idle_hours_cli.py` - **unified `idle-hours <subcommand>` entry point** (v2). Wraps every script below in one discoverable command; `pip install -e .` registers `idle-hours` as a console script. Every subcommand is also reachable as `python3 -m idle_hours.<module>`.
 - `run_clock.py` - long-running clock loop, bucket-change refresh logic, optional display handoff
-- `runtime_*.py` - the seven siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` (architecture in [`CLAUDE.md`](CLAUDE.md))
+- `runtime_*.py` - the siblings `run_clock.py` delegates to: `runtime_state` / `runtime_store` / `runtime_telemetry` / `runtime_quiet` / `runtime_theme` / `runtime_actions` / `runtime_log` / `runtime_config` / `runtime_webhook` (architecture in [`CLAUDE.md`](CLAUDE.md))
 - `runtime_webhook.py` - v2 alert-firehose: posts alert-worthy telemetry events to an operator-configured HTTP endpoint on a daemon thread (errors, backoff, timeouts, button-died); never blocks the render path
 - `render_quote.py` - quote renderer, typography, highlighting, theme handling, Spectra 6 palette snapping
 - `pick_quote.py` - runtime quote selection from the attributed dataset

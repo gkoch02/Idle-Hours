@@ -34020,112 +34020,72 @@ def render_escritoire_frame(time_str: str, quote_row: dict, width: int, height: 
     return image
 
 
+# Themes that compose their whole frame instead of painting a border round
+# the shared quote layout. ``render`` dispatches through this table; it sits
+# here because every frame function above must exist before it is built.
+_FRAME_RENDERERS = {
+    "diags": render_diags_frame,
+    "astrarium": render_astrarium_frame,
+    "marquee": render_marquee_frame,
+    "tarot": render_tarot_frame,
+    "vinyl": render_vinyl_frame,
+    "vitrail": render_vitrail_frame,
+    "questline": render_questline_frame,
+    "chrono": render_chrono_frame,
+    "outrun": render_outrun_frame,
+    "sampler": render_sampler_frame,
+    "lieder": render_lieder_frame,
+    "izakaya": render_izakaya_frame,
+    "abyssal": render_abyssal_frame,
+    "pride": render_pride_frame,
+    "pulp": render_pulp_frame,
+    "vhs": render_vhs_frame,
+    "cardcatalog": render_cardcatalog_frame,
+    "metro": render_metro_frame,
+    "bakelite": render_bakelite_frame,
+    "intaglio": render_intaglio_frame,
+    "nocturne": render_nocturne_frame,
+    "plaque": render_plaque_frame,
+    "daguerreotype": render_daguerreotype_frame,
+    "autochrome": render_autochrome_frame,
+    "photo": render_photo_frame,
+    "control": render_control_frame,
+    "observation": render_observation_frame,
+    "trisolaris": render_trisolaris_frame,
+    "biomech": render_biomech_frame,
+    "codex": render_codex_frame,
+    "culture": render_culture_frame,
+    "orbital": render_orbital_frame,
+    "furies": render_furies_frame,
+    "bosch": render_bosch_frame,
+    "semiotic": render_semiotic_frame,
+    "atropos": render_atropos_frame,
+    "saros": render_saros_frame,
+    "expedition": render_expedition_frame,
+    "witcher": render_witcher_frame,
+    "hades": render_hades_frame,
+    "expanse": render_expanse_frame,
+    "beksinski": render_beksinski_frame,
+    "goya": render_goya_frame,
+    "hal": render_hal_frame,
+    "lumon": render_lumon_frame,
+    "dsky": render_dsky_frame,
+    "oblivion": render_oblivion_frame,
+    "yorha": render_yorha_frame,
+    "hitchhiker": render_hitchhiker_frame,
+    "escritoire": render_escritoire_frame,
+}
+
+
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
     # Swap characters the theme's text faces cannot draw for ASCII stand-ins
     # before any layout or frame dispatch, so custom frames get it too.
     quote_row = apply_theme_glyph_fallbacks(quote_row, theme)
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
-    if theme == "diags":
-        return render_diags_frame(time_str, quote_row, width, height)
-    if theme == "astrarium":
-        return render_astrarium_frame(time_str, quote_row, width, height)
-    if theme == "marquee":
-        return render_marquee_frame(time_str, quote_row, width, height)
-    if theme == "tarot":
-        return render_tarot_frame(time_str, quote_row, width, height)
-    if theme == "vinyl":
-        return render_vinyl_frame(time_str, quote_row, width, height)
-    if theme == "vitrail":
-        return render_vitrail_frame(time_str, quote_row, width, height)
-    if theme == "questline":
-        return render_questline_frame(time_str, quote_row, width, height)
-    if theme == "chrono":
-        return render_chrono_frame(time_str, quote_row, width, height)
-    if theme == "outrun":
-        return render_outrun_frame(time_str, quote_row, width, height)
-    if theme == "sampler":
-        return render_sampler_frame(time_str, quote_row, width, height)
-    if theme == "lieder":
-        return render_lieder_frame(time_str, quote_row, width, height)
-    if theme == "izakaya":
-        return render_izakaya_frame(time_str, quote_row, width, height)
-    if theme == "abyssal":
-        return render_abyssal_frame(time_str, quote_row, width, height)
-    if theme == "pride":
-        return render_pride_frame(time_str, quote_row, width, height)
-    if theme == "pulp":
-        return render_pulp_frame(time_str, quote_row, width, height)
-    if theme == "vhs":
-        return render_vhs_frame(time_str, quote_row, width, height)
-    if theme == "cardcatalog":
-        return render_cardcatalog_frame(time_str, quote_row, width, height)
-    if theme == "metro":
-        return render_metro_frame(time_str, quote_row, width, height)
-    if theme == "bakelite":
-        return render_bakelite_frame(time_str, quote_row, width, height)
-    if theme == "intaglio":
-        return render_intaglio_frame(time_str, quote_row, width, height)
-    if theme == "nocturne":
-        return render_nocturne_frame(time_str, quote_row, width, height)
-    if theme == "plaque":
-        return render_plaque_frame(time_str, quote_row, width, height)
-    if theme == "daguerreotype":
-        return render_daguerreotype_frame(time_str, quote_row, width, height)
-    if theme == "autochrome":
-        return render_autochrome_frame(time_str, quote_row, width, height)
-    if theme == "photo":
-        return render_photo_frame(time_str, quote_row, width, height)
-    if theme == "control":
-        return render_control_frame(time_str, quote_row, width, height)
-    if theme == "observation":
-        return render_observation_frame(time_str, quote_row, width, height)
-    if theme == "trisolaris":
-        return render_trisolaris_frame(time_str, quote_row, width, height)
-    if theme == "biomech":
-        return render_biomech_frame(time_str, quote_row, width, height)
-    if theme == "codex":
-        return render_codex_frame(time_str, quote_row, width, height)
-    if theme == "culture":
-        return render_culture_frame(time_str, quote_row, width, height)
-    if theme == "orbital":
-        return render_orbital_frame(time_str, quote_row, width, height)
-    if theme == "furies":
-        return render_furies_frame(time_str, quote_row, width, height)
-    if theme == "bosch":
-        return render_bosch_frame(time_str, quote_row, width, height)
-    if theme == "semiotic":
-        return render_semiotic_frame(time_str, quote_row, width, height)
-    if theme == "atropos":
-        return render_atropos_frame(time_str, quote_row, width, height)
-    if theme == "saros":
-        return render_saros_frame(time_str, quote_row, width, height)
-    if theme == "expedition":
-        return render_expedition_frame(time_str, quote_row, width, height)
-    if theme == "witcher":
-        return render_witcher_frame(time_str, quote_row, width, height)
-    if theme == "hades":
-        return render_hades_frame(time_str, quote_row, width, height)
-    if theme == "expanse":
-        return render_expanse_frame(time_str, quote_row, width, height)
-    if theme == "beksinski":
-        return render_beksinski_frame(time_str, quote_row, width, height)
-    if theme == "goya":
-        return render_goya_frame(time_str, quote_row, width, height)
-    if theme == "hal":
-        return render_hal_frame(time_str, quote_row, width, height)
-    if theme == "lumon":
-        return render_lumon_frame(time_str, quote_row, width, height)
-    if theme == "dsky":
-        return render_dsky_frame(time_str, quote_row, width, height)
-    if theme == "oblivion":
-        return render_oblivion_frame(time_str, quote_row, width, height)
-    if theme == "yorha":
-        return render_yorha_frame(time_str, quote_row, width, height)
-    if theme == "hitchhiker":
-        return render_hitchhiker_frame(time_str, quote_row, width, height)
-    if theme == "escritoire":
-        return render_escritoire_frame(time_str, quote_row, width, height)
+    frame_renderer = _FRAME_RENDERERS.get(theme)
+    if frame_renderer is not None:
+        return frame_renderer(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)

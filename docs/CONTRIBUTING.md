@@ -237,7 +237,7 @@ own their whole composition. Adding another means wiring it into all of:
 A **custom-render frame** (one that bypasses the shared literary layout and
 owns its whole composition) additionally needs:
 
-- a dispatch line in `render_quote.render`
+- an entry in `render_quote._FRAME_RENDERERS`
 - `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`
 - `CUSTOM_THEMES` in `tests/test_render_quote_themes.py`
 - `_<theme>_paint_*` naming for its sub-painters — `TestCustomFrameCompositionPaints`
