@@ -6,6 +6,7 @@ import pytest
 from PIL import Image
 
 from idle_hours import render_quote as rq
+from idle_hours.render_quote import themes as rq_themes
 
 from .pixel_helpers import distinct_inks, pixel_bytes
 
@@ -147,7 +148,7 @@ class TestPlateThemeRender:
         # Point the plate constant at a missing path: _load_dithered_plate
         # returns None and the theme must still render on-palette via its
         # synthesised Layer-0 fallback rather than crashing.
-        monkeypatch.setattr(rq, const, tmp_path / "missing.png")
+        monkeypatch.setattr(getattr(rq_themes, theme), const, tmp_path / "missing.png")
         img = rq.render("02:30", _plate_row(), 800, 480, mode="production", theme=theme)
         assert img.size == (800, 480)
         assert distinct_inks(img) <= set(rq.SPECTRA6_PALETTE)

@@ -1,13 +1,13 @@
 """The ``render_quote`` package's import layering (issue #335).
 
-The split moves code out of ``_monolith`` into modules that may only import
+Every module in the package may only import
 downward. A module that imports from a higher layer reintroduces the cycles the
 split exists to remove, and usually means a helper was filed in the wrong
 layer. Every module must be listed in ``LAYERS``, so a new one is placed
 deliberately rather than slipping in unchecked.
 
 Theme modules live in the ``themes`` subpackage, above the shared layers and
-below ``_monolith``. A theme never imports another theme: code two themes use
+below ``registry`` and ``core``. A theme never imports another theme: code two themes use
 belongs in ``themes._shared``.
 """
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -38,7 +39,7 @@ LAYERS = (
     "themes._shared",
     "themes._culture_common",
     "registry",
-    "_monolith",
+    "core",
 )
 
 # Package plumbing, not part of the render layers.
@@ -197,20 +198,20 @@ def test_facade_resolves_lowest_layer_first():
     assert installed == [*LAYERS[:slot], *_theme_modules_on_disk(), *LAYERS[slot:]]
 
 
-def test_type_checkers_see_every_layer():
+def test_type_checkers_see_the_public_api():
     """The facade resolves names at runtime, so ``__init__``'s ``TYPE_CHECKING``
-    block is what editors and type checkers see. A layer missing from it hides
-    every public name that moved there and isn't re-imported elsewhere, as
-    ``THEME_ORDER`` was when it moved to ``theme_tables``."""
+    block is what editors and type checkers see. It must import exactly the
+    names in ``__all__`` that are not submodules the package imports anyway."""
     tree = ast.parse((PACKAGE_DIR / "__init__.py").read_text(encoding="utf-8"))
     blocks = [
         node for node in tree.body
         if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"
     ]
     assert len(blocks) == 1, "expected one `if TYPE_CHECKING:` block in render_quote/__init__.py"
-    shown = {node.module for node in blocks[0].body if isinstance(node, ast.ImportFrom) and node.level == 1}
-    expected = set(LAYERS) | set(_theme_modules_on_disk())
-    assert shown == expected, f"modules missing from the TYPE_CHECKING re-export: {sorted(expected - shown)}"
+    shown = {alias.asname or alias.name for node in blocks[0].body if isinstance(node, ast.ImportFrom) for alias in node.names}
+    submodules = {name for name in rq.__all__ if isinstance(getattr(rq, name), types.ModuleType)}
+    assert shown == set(rq.__all__) - submodules
+
 
 
 @pytest.mark.parametrize("source", ["from .. import registry\n", "from .. import themes\n", "from ..registry import BORDER_SPECS\n"])

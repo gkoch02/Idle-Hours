@@ -149,13 +149,19 @@ The original plan for this PR:
 - A one-time snapshot test asserts the derived tables equal the old literals. Fingerprints identical.
 - Adding a theme becomes one file, one import line, the golden, the docs and `display_inky.THEME_SATURATION`.
 
-**PR final: close the shim.**
+**PR final: close the shim. Done**, which completes the split. Departures from the plan below:
+- `_monolith.py` was renamed `core.py` (with `git mv`, so `git log --follow` reaches the original module) rather than emptied. What remained, `render()`, the source card, the sleep frame and the command line, is the package's top layer, not leftovers.
+- **Reads still fall through; writes are refused.** The facade's forwarding branch is gone: a write through the package raises and names the module to patch. Making the package plain (explicit re-exports only) would have rewritten about 1,050 reads of private names in tests, which cannot misfire; a write is what lands in the wrong place, and there were 51 of them, plus 17 the first fence missed (multi-line calls and `contact_sheet`'s own alias of the package). All now patch the reading module.
+- `__all__` lists the public API (the names production code and scripts read through the package), and the `TYPE_CHECKING` block imports exactly those, replacing the star imports of every layer.
+- The fence is AST-based rather than a grep: `setattr` / `patch.object` on the package by any alias, a dotted `patch` / `setattr` string whose parent resolves to the package (so another module's alias is caught), and assignment or `del`.
+- The registry's migration snapshot test was retired. There was no `_split_tool.py` to delete: the extraction helper lived outside the repo throughout.
+
+The original plan for this PR:
 - Delete the now-empty `_monolith.py` and the guard's forwarding branch.
 - Have the facade export only `__all__`.
 - Add a test that no test or script writes a private name on `idle_hours.render_quote` (grep fence).
 - Delete `_split_tool.py`.
-- Update CLAUDE.md (Rendering section, the "Adding a theme" checklist, the repo layout), `docs/themes.md`, `docs/testing.md`, `docs/CONTRIBUTING.md`, `docs/runtime.md` (render_script) and the README path mentions.
-- Make `test_docs_theme_counts.py` / `test_docs_theme_registry.py` regexes that match "`render_quote.THEME_ORDER`" keep matching. The name stays public, so they should.
+- Update CLAUDE.md, `docs/themes.md`, `docs/testing.md`, `docs/CONTRIBUTING.md`, `docs/runtime.md` and the README path mentions.
 
 ## Critical files
 

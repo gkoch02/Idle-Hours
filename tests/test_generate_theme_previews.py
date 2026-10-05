@@ -159,12 +159,12 @@ class TestDeterminism:
         hostname and LAN IP into a public README.
         """
         real = {"host": "someones-laptop", "ip": "10.1.2.3", "uptime": "999d 1h 1m"}
-        monkeypatch.setattr(rq, "_diags_system_info", lambda: dict(real))
+        monkeypatch.setattr("idle_hours.render_quote.themes.diags._diags_system_info", lambda: dict(real))
         row = gen.pinned_row(Path(DEFAULT_DATABASE_PATH))
 
         stubbed = gen.render_preview("diags", row).tobytes()
         # The stub wins over whatever the machine reports...
-        monkeypatch.setattr(rq, "_diags_system_info", lambda: {"host": "other", "ip": "10.9.9.9", "uptime": "3m"})
+        monkeypatch.setattr("idle_hours.render_quote.themes.diags._diags_system_info", lambda: {"host": "other", "ip": "10.9.9.9", "uptime": "3m"})
         assert gen.render_preview("diags", row).tobytes() == stubbed
         # ...and the guard is load-bearing: unguarded, those values reach the frame.
         leaked = rq.render(gen.PREVIEW_TIME, dict(row), gen.WIDTH, gen.HEIGHT,

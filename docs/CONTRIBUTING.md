@@ -94,7 +94,7 @@ The helper deliberately does not upload to PyPI or create a GitHub Release.
 
 ## What kind of change are you making?
 
-### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote.py`, `pick_quote.py`, `web_server.py`, `idle_hours_cli.py`, …)
+### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote/`, `pick_quote.py`, `web_server.py`, `idle_hours_cli.py`, …)
 
 The runtime is a thin orchestrator (`run_clock.py`) that delegates to eight
 `runtime_*` siblings (`runtime_state` / `runtime_store` / `runtime_telemetry`

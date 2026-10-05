@@ -826,7 +826,7 @@ class TestGoldenStructure:
         dependency this test measures, so pinning it here narrows nothing.
         """
         monkeypatch.setattr(
-            rq, "_diags_system_info",
+            "idle_hours.render_quote.themes.diags._diags_system_info",
             lambda: {"host": "golden", "ip": "0.0.0.0", "uptime": "1h 0m"},
         )
         far_future = datetime.datetime(2031, 11, 3, 9, 5, 0)

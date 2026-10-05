@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Render a picked literary clock quote with a centered QOTD-inspired layout."""
+"""``render`` and what calls it: the source card, the static message, the sleep
+frame and the command line.
+
+What stayed of the original 34,000-line module once issue #335 moved the
+shared layers and every theme out. ``render`` dispatches a frame theme to its
+renderer and lays every other theme out on the shared literary layout, painting
+a border theme through its spec.
+"""
 from __future__ import annotations
 
 import argparse
