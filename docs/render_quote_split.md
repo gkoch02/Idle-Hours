@@ -77,9 +77,9 @@ What remains permanently is `__all__`: `render`, `main`, `THEMES`, `THEME_ORDER`
 
 **Proof tool, added in PR 0a.** `scripts/render_fingerprint.py` renders every theme across the golden scenarios with the clock pinned and writes a sha256 of each PNG's bytes to JSON. Every split PR must produce exactly the same fingerprints as `main`. The golden suite's 0.1% tolerance is too loose to prove a pure move. The tool stays afterwards for any future refactor.
 
-**PR 0a: clock seam (still in the monolith).** Add `_now()` and route `render_sleep_frame`, astrarium and vinyl through it. Switch `test_render_golden.py` (:708, :870), `test_render_quote_themes.py:1713`, `test_generate_theme_previews.py` and `scripts/generate_theme_previews.py:173` from swapping `rq.datetime` to patching that one seam. Keep `CLOCK_DEPENDENT_THEMES` in the test. Add the fingerprint script.
+**PR 0a: clock seam (still in the monolith). Done.** Add `_now()` and route `render_sleep_frame`, astrarium and vinyl through it. Switch `test_render_golden.py` (:708, :870), `test_render_quote_themes.py:1713`, `test_generate_theme_previews.py` and `scripts/generate_theme_previews.py:173` from swapping `rq.datetime` to patching that one seam. Keep `CLOCK_DEPENDENT_THEMES` in the test. Add the fingerprint script.
 
-**PR 0b: run the renderer as a module.** In `run_clock.render_now`:
+**PR 0b: run the renderer as a module. Done.** The sentinel landed as `"auto"`, not `""`; it matches `--quiet-image auto`, and an empty value stays a preflight error. In `run_clock.render_now`:
 - When `render_script` is empty or the legacy literal `render_quote.py`, run `[sys.executable, "-m", "idle_hours.render_quote", …]`. Any other value keeps today's path behaviour, so operators' custom renderers still work.
 - Log a one-time deprecation note for the legacy literal.
 - Make preflight (`_preflight_paths`) skip the file check in module mode.

@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `run_clock` now launches the bundled renderer as `python -m idle_hours.render_quote`
+  instead of by file path, ahead of `render_quote.py` becoming a package (#335).
+  `--render-script` / `render_script` defaults to `"auto"`. A config that still says
+  `render_script = "render_quote.py"`, as every appliance built from
+  `config.toml.example` does, keeps working and logs a one-line note at startup
+  asking for `"auto"`. A custom renderer path is unaffected.
 - `idle-hours render --time` now rejects a malformed or out-of-range time
   (`25:99`, `garbage`) with a usage error, as `idle-hours pick` already did,
   instead of a `KeyError` traceback. A render with a malformed or missing time

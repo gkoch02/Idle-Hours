@@ -15,7 +15,7 @@
 # CLI.
 
 # ---- Render / display pipeline ---------------------------------------------
-render_script  = "render_quote.py"
+render_script  = "auto"               # the bundled renderer; a path selects a custom one
 display_script = "display_inky.py"
 output         = "/var/lib/idle-hours/current.png"
 mode           = "production"         # production | debug

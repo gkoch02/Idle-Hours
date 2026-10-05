@@ -5304,6 +5304,94 @@ class TestQuietImageTimeoutTelemetry:
         assert display_timeouts[0].get("reason") == "quiet hours"
 
 
+class TestRenderCommand:
+    """Which renderer ``--render-script`` launches (issue #335).
+
+    The bundled renderer runs as a module, so its file can become a package
+    without breaking an appliance whose config still names the file.
+    """
+
+    MODULE_COMMAND = [sys.executable, "-m", "idle_hours.render_quote"]
+
+    def _argv(self, render_script, tmp_path):
+        with patch("idle_hours.run_clock.subprocess.run") as run_mock:
+            run_clock.render_now(
+                render_script, str(tmp_path / "out.png"), 800, 480,
+                display_script=None, time_str="03:00",
+            )
+        return run_mock.call_args.args[0]
+
+    def test_default_is_the_bundled_module(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "argv", ["run_clock.py"])
+        assert run_clock.parse_args().render_script == run_clock.BUNDLED_RENDER_SCRIPT == "auto"
+        assert self._argv("auto", tmp_path)[:3] == self.MODULE_COMMAND
+
+    def test_legacy_literal_still_means_the_bundled_module(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        argv = self._argv("render_quote.py", tmp_path)
+        assert argv[:3] == self.MODULE_COMMAND
+        assert argv[3] == "--time"
+
+    def test_operator_file_named_render_quote_in_cwd_still_wins(self, tmp_path, monkeypatch):
+        """``resolve_input_path`` always preferred the working directory; an
+        operator's own ``./render_quote.py`` keeps being the one that runs."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "render_quote.py").write_text("")
+        argv = self._argv("render_quote.py", tmp_path)
+        assert argv[:2] == [sys.executable, str((tmp_path / "render_quote.py").resolve())]
+
+    def test_custom_renderer_path_is_untouched(self, tmp_path):
+        custom = tmp_path / "my_renderer.py"
+        custom.write_text("")
+        argv = self._argv(str(custom), tmp_path)
+        assert argv[:2] == [sys.executable, str(custom)]
+        assert argv[2] == "--time"
+
+    def test_bundled_module_really_renders(self, tmp_path, monkeypatch):
+        """End to end, through a real subprocess: ``-m`` must launch."""
+        monkeypatch.chdir(tmp_path)
+        out = tmp_path / "out.png"
+        run_clock.render_now("auto", str(out), 800, 480, time_str="14:30", history_path="")
+        assert out.exists() and out.stat().st_size > 0
+
+
+class TestLegacyRenderScriptNote:
+    """A config naming ``render_quote.py`` works, and says once that it should say ``auto``."""
+
+    def _note(self, value, capsys):
+        run_clock._warn_legacy_render_script(argparse.Namespace(render_script=value))
+        return capsys.readouterr().err
+
+    def test_legacy_literal_logs_a_note(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        err = self._note("render_quote.py", capsys)
+        assert 'render_script = "auto"' in err and "#335" in err
+
+    @pytest.mark.parametrize("value", ["auto", "/opt/my_renderer.py"])
+    def test_other_values_are_silent(self, value, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        assert self._note(value, capsys) == ""
+
+    def test_operator_file_of_that_name_is_silent(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "render_quote.py").write_text("")
+        assert self._note("render_quote.py", capsys) == ""
+
+    def test_note_survives_skip_preflight(self, tmp_path, monkeypatch, capsys):
+        """--skip-preflight skips path checks, not this note."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "argv", [
+            "run_clock.py", "--once", "--skip-preflight", "--buttons-off",
+            "--render-script", "render_quote.py",
+            "--output", str(tmp_path / "out.png"),
+            "--history-path", "", "--telemetry-path", "", "--pidfile", "",
+        ])
+        with patch("idle_hours.run_clock.render_now"):
+            run_clock.main()
+        assert 'render_script = "auto"' in capsys.readouterr().err
+
+
 class TestPreflightPaths:
     """Issue #53: startup must abort loudly when configured paths don't exist,
     so a typoed --display-script / --quiet-image in the systemd unit fails
@@ -5312,7 +5400,7 @@ class TestPreflightPaths:
     def _args(self, **kw):
         """Build a Namespace with only the preflight-relevant fields."""
         defaults = dict(
-            render_script="render_quote.py",
+            render_script=run_clock.BUNDLED_RENDER_SCRIPT,
             display_script=None,
             quiet_image=None,
             startup_image=None,
@@ -5344,12 +5432,17 @@ class TestPreflightPaths:
         )
         assert any("render-script" in e for e in errors)
 
-    def test_repo_default_render_script_exists(self):
-        """The default ``render_quote.py`` resolves to the bundled
-        ``idle_hours/render_quote.py`` via the CWD-then-BASE_DIR fallback
-        in ``resolve_input_path``."""
-        errors = run_clock._preflight_paths(self._args(render_script="render_quote.py"))
-        assert errors == []
+    @pytest.mark.parametrize("value", ["auto", "render_quote.py"])
+    def test_bundled_renderer_passes(self, value, tmp_path, monkeypatch):
+        """``"auto"`` and the pre-#335 literal both name the bundled renderer,
+        which preflight checks by importability rather than by file."""
+        monkeypatch.chdir(tmp_path)
+        assert run_clock._preflight_paths(self._args(render_script=value)) == []
+
+    def test_unimportable_bundled_renderer_is_fatal(self, monkeypatch):
+        monkeypatch.setattr(run_clock.importlib.util, "find_spec", lambda name: None)
+        errors = run_clock._preflight_paths(self._args())
+        assert any("not importable" in e and "render-script" in e for e in errors)
 
     def test_skip_preflight_flag_bypasses(self, capsys):
         """With --skip-preflight, _run_preflight must be a no-op even when

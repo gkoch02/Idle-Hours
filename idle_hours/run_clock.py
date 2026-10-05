@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import datetime as dt
 import errno
+import importlib.util
 import os
 import shlex
 import signal
@@ -158,8 +159,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--render-script",
-        default="render_quote.py",
-        help="Path to render script.",
+        default=BUNDLED_RENDER_SCRIPT,
+        help=(
+            f'"{BUNDLED_RENDER_SCRIPT}" (default) runs the bundled renderer '
+            f"(python -m {BUNDLED_RENDERER_MODULE}); otherwise a path to a script "
+            "accepting the same flags."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -829,6 +834,45 @@ def _pin_key_for(quote_id) -> tuple | None:
     return (quote_id[0], quote_id[1])
 
 
+# What ``--render-script`` names. The bundled renderer is launched as a module,
+# not by file path, because the file is becoming a package (issue #335): the
+# command ``python -m idle_hours.render_quote`` works on both sides of that move,
+# while a path to ``render_quote.py`` stops existing. ``"auto"`` matches the
+# sentinel ``--quiet-image`` / ``--startup-image`` already use for "render with
+# the bundled renderer".
+BUNDLED_RENDER_SCRIPT = "auto"
+BUNDLED_RENDERER_MODULE = "idle_hours.render_quote"
+# Every config written before #335 says this, including every appliance built
+# from ``config.toml.example``. It keeps meaning "the bundled renderer".
+_LEGACY_BUNDLED_RENDER_SCRIPT = "render_quote.py"
+
+
+def _uses_bundled_renderer(render_script: str) -> bool:
+    """True when ``render_script`` selects the bundled renderer, not a file.
+
+    The legacy literal counts only when no ``./render_quote.py`` exists in the
+    working directory. That is exactly when ``resolve_input_path`` used to fall
+    back to the bundled file. An operator's own file of that name, in the
+    working directory, still wins, as it always did.
+    """
+    if render_script == BUNDLED_RENDER_SCRIPT:
+        return True
+    return render_script == _LEGACY_BUNDLED_RENDER_SCRIPT and not Path(render_script).exists()
+
+
+def _render_command(render_script: str) -> list[str]:
+    """The argv prefix that launches the renderer; the flags follow it.
+
+    A custom renderer is an INPUT path: prefer CWD (the operator's checkout or
+    script) and fall back to ``BASE_DIR``. ``output_path`` in ``render_now`` is
+    an OUTPUT and always CWD-relative, because writing into ``BASE_DIR`` would
+    put the file inside the installed package.
+    """
+    if _uses_bundled_renderer(render_script):
+        return [sys.executable, "-m", BUNDLED_RENDERER_MODULE]
+    return [sys.executable, str(resolve_input_path(render_script, BASE_DIR))]
+
+
 def render_now(
     render_script: str,
     output_path: str,
@@ -850,20 +894,13 @@ def render_now(
 ) -> None:
     if time_str is None:
         time_str = current_time_str()
-    python_executable = sys.executable
-    # render-script is an INPUT path: prefer CWD (operator's checkout or
-    # custom script) and fall back to the bundled ``idle_hours/render_quote.py``
-    # when the CWD candidate doesn't exist. ``output_path`` is an OUTPUT and
-    # always CWD-relative — writing into ``BASE_DIR`` would put the file
-    # inside the installed package.
-    render_script_path = str(resolve_input_path(render_script, BASE_DIR))
+    render_command = _render_command(render_script)
     output_path_resolved = str(Path(output_path).expanduser().resolve())
     render_start = time.monotonic()
     try:
         subprocess.run(
             [
-                python_executable,
-                render_script_path,
+                *render_command,
                 "--time",
                 time_str,
                 "--output",
@@ -944,7 +981,7 @@ def render_now(
         display_start = time.monotonic()
         try:
             subprocess.run(
-                [python_executable, display_script_path, output_path_resolved, "--theme", theme],
+                [sys.executable, display_script_path, output_path_resolved, "--theme", theme],
                 check=True,
                 timeout=DISPLAY_TIMEOUT_SECONDS,
             )
@@ -1773,6 +1810,15 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
         # so pre-flight existence checks would reject a perfectly valid config.
         if attr in ("quiet_image", "startup_image") and value == "auto":
             continue
+        # The bundled renderer is a module, not a file: check that it can be
+        # found. find_spec locates it without executing it, so Pillow stays out
+        # of this process's import graph.
+        if attr == "render_script" and _uses_bundled_renderer(value):
+            if importlib.util.find_spec(BUNDLED_RENDERER_MODULE) is None:
+                errors.append(
+                    f"--render-script {value!r}: bundled renderer {BUNDLED_RENDERER_MODULE} is not importable"
+                )
+            continue
         # Matches the resolver used by ``render_now`` / ``_display_quiet_image``:
         # input paths try CWD first and fall back to the bundled location
         # under ``BASE_DIR``. Lets ``--render-script render_quote.py`` (a
@@ -1866,6 +1912,23 @@ def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
     return errors
 
 
+def _warn_legacy_render_script(args: argparse.Namespace) -> None:
+    """Note once at startup that the config names the bundled renderer by file.
+
+    It still works (see ``_uses_bundled_renderer``), so this is a note, not an
+    error. It runs even under ``--skip-preflight``, because that flag skips path
+    checks, not advice.
+    """
+    value = getattr(args, "render_script", None)
+    if value == _LEGACY_BUNDLED_RENDER_SCRIPT and _uses_bundled_renderer(value):
+        _log(
+            f'render_script = "{_LEGACY_BUNDLED_RENDER_SCRIPT}" names the bundled renderer by file, '
+            "which is being replaced by a package (#335); it still works, but set "
+            f'render_script = "{BUNDLED_RENDER_SCRIPT}".',
+            err=True,
+        )
+
+
 def _run_preflight(args: argparse.Namespace) -> None:
     """Abort loudly when any configured script / image path is missing.
 
@@ -1931,6 +1994,7 @@ def main() -> int:
         all_events=getattr(args, "webhook_all_events", False),
     )
 
+    _warn_legacy_render_script(args)
     _run_preflight(args)
 
     if args.once:

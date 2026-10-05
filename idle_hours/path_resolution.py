@@ -11,8 +11,8 @@ buries operator artifacts inside site-packages. We need two contracts:
   ``--startup-image``): try CWD first, fall back to the bundled location
   under ``BASE_DIR`` if the CWD candidate doesn't exist. This satisfies
   three otherwise-conflicting requirements simultaneously:
-    1. The shipped ``config.toml.defaults`` can stay portable (it lists
-       ``render_script = "render_quote.py"`` as a relative string; that
+    1. The shipped configs can stay portable (``config.toml.example`` lists
+       ``display_script = "display_inky.py"`` as a relative string; that
        still resolves to the bundled script regardless of where the
        operator installed the package or what their CWD is).
     2. An operator who drops a ``./my_renderer.py`` in their working tree

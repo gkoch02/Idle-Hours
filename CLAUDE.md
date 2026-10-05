@@ -276,11 +276,19 @@ After the v2.x package restructure, three resolution rules apply:
   sets `output` to an absolute path under `/var/lib/idle-hours/`; the
   systemd unit's `WorkingDirectory=` is the same directory, but it is
   there for `lgpio` (see "Appliance / Pi Setup"), not to anchor outputs.
+- **The bundled renderer is a module, not a path.** `--render-script` defaults
+  to `"auto"`, which runs `python -m idle_hours.render_quote` (issue #335).
+  `run_clock._render_command` is the one place that decides. The legacy value
+  `"render_quote.py"`, which every pre-#335 appliance config carries, still
+  means the bundled renderer unless a `./render_quote.py` exists in the working
+  directory, and `main()` logs a one-line deprecation note for it. Any other
+  value is a custom renderer and resolves as an input path (below). Preflight
+  checks `"auto"` with `importlib.util.find_spec`, not a file test.
 - **Operator-supplied input paths** (`--render-script`, `--display-script`,
   `--quiet-image`, `--startup-image`) go through `path_resolution.resolve_input_path`,
   which tries CWD-relative first and falls back to `BASE_DIR`-relative when
-  the CWD candidate doesn't exist. This lets `config.toml.defaults` keep
-  relative strings like `render_script = "render_quote.py"` (resolves to
+  the CWD candidate doesn't exist. This lets `config.toml.example` keep
+  relative strings like `display_script = "display_inky.py"` (resolves to
   the bundled script regardless of CWD), while an operator who drops
   `./my_renderer.py` in their working tree and points the config at it
   still gets *their* file. Absolute paths pass through unchanged. The
@@ -604,7 +612,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 
 **Full reference: [`docs/runtime.md`](docs/runtime.md)**: config precedence, quiet hours and the sleep frame, auto/random themes, buttons, persisted state, telemetry and health gates, backoff, the watchdog, shutdown, and the per-module ownership / lock / thread tables. Read it before changing any `runtime_*` module.
 
-**Tick.** Every `--interval-seconds` (60) the loop computes the fuzzy bucket. On a bucket or theme change it calls `peek_quote_id` in-process, skips the redraw if the `(source_id, line_number, display_quote, matched_text)` identity is unchanged, and otherwise spawns `render_quote.py` pinned to that exact row (`--pin-quote … --pin-matched-text …`) plus the optional `--display-script`. It appends to the anti-repeat ledger only after a successful render. `--once` renders one frame strictly; the loop logs and survives failures.
+**Tick.** Every `--interval-seconds` (60) the loop computes the fuzzy bucket. On a bucket or theme change it calls `peek_quote_id` in-process, skips the redraw if the `(source_id, line_number, display_quote, matched_text)` identity is unchanged, and otherwise spawns the renderer (`python -m idle_hours.render_quote`, or a custom `--render-script`) pinned to that exact row (`--pin-quote … --pin-matched-text …`) plus the optional `--display-script`. It appends to the anti-repeat ledger only after a successful render. `--once` renders one frame strictly; the loop logs and survives failures.
 
 **Config.** `--config PATH` loads TOML whose keys mirror the argparse `dest` names; precedence is **CLI > config > argparse default** via `parser.set_defaults`. Malformed content fails open with a warning. A missing `--config` file, or a missing input path at pre-flight, exits **42** (`EXIT_CONFIG_ERROR`, paired with `RestartPreventExitStatus=42`). A new flag must be wired into `CONFIG_SCHEMA` (or `TRANSIENT_KEYS`), `config.toml.defaults`, and `config.toml.example`; four sync tests enforce it.
 
