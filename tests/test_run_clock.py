@@ -5311,7 +5311,8 @@ class TestRenderCommand:
     without breaking an appliance whose config still names the file.
     """
 
-    MODULE_COMMAND = [sys.executable, "-m", "idle_hours.render_quote"]
+    # -P: the tests run from tmp_path, and idle_hours was not imported from there.
+    MODULE_COMMAND = [sys.executable, "-P", "-m", "idle_hours.render_quote"]
 
     def _argv(self, render_script, tmp_path):
         with patch("idle_hours.run_clock.subprocess.run") as run_mock:
@@ -5325,13 +5326,20 @@ class TestRenderCommand:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(sys, "argv", ["run_clock.py"])
         assert run_clock.parse_args().render_script == run_clock.BUNDLED_RENDER_SCRIPT == "auto"
-        assert self._argv("auto", tmp_path)[:3] == self.MODULE_COMMAND
+        assert self._argv("auto", tmp_path)[:4] == self.MODULE_COMMAND
 
     def test_legacy_literal_still_means_the_bundled_module(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         argv = self._argv("render_quote.py", tmp_path)
-        assert argv[:3] == self.MODULE_COMMAND
-        assert argv[3] == "--time"
+        assert argv[:4] == self.MODULE_COMMAND
+        assert argv[4] == "--time"
+
+    def test_cwd_stays_on_the_path_when_the_package_came_from_it(self, monkeypatch, tmp_path):
+        """Running from the checkout the package was imported from: the child
+        must find the same tree, so the working directory stays on its path."""
+        package_root = Path(sys.modules["idle_hours"].__file__).resolve().parent.parent
+        monkeypatch.chdir(package_root)
+        assert self._argv("auto", tmp_path)[:3] == [sys.executable, "-m", "idle_hours.render_quote"]
 
     def test_operator_file_named_render_quote_in_cwd_still_wins(self, tmp_path, monkeypatch):
         """``resolve_input_path`` always preferred the working directory; an
@@ -5349,7 +5357,12 @@ class TestRenderCommand:
         assert argv[2] == "--time"
 
     def test_bundled_module_really_renders(self, tmp_path, monkeypatch):
-        """End to end, through a real subprocess: ``-m`` must launch."""
+        """End to end, through a real subprocess: ``-m`` must launch, and must
+        run this process's package, not an ``idle_hours/`` in the working
+        directory. A launch without ``-P`` imports the decoy and fails."""
+        decoy = tmp_path / "idle_hours"
+        decoy.mkdir()
+        (decoy / "__init__.py").write_text('raise ImportError("decoy idle_hours from the working directory")\n')
         monkeypatch.chdir(tmp_path)
         out = tmp_path / "out.png"
         run_clock.render_now("auto", str(out), 800, 480, time_str="14:30", history_path="")
@@ -5387,7 +5400,11 @@ class TestLegacyRenderScriptNote:
             "--output", str(tmp_path / "out.png"),
             "--history-path", "", "--telemetry-path", "", "--pidfile", "",
         ])
-        with patch("idle_hours.run_clock.render_now"):
+        # Patched like every other main(--once) test: real signal handlers would
+        # outlive the test in this worker, and the peek has nothing to do here.
+        with patch("idle_hours.run_clock.render_now"), \
+             patch("idle_hours.run_clock._install_signal_handlers"), \
+             patch("idle_hours.run_clock.peek_quote_id", return_value=None):
             run_clock.main()
         assert 'render_script = "auto"' in capsys.readouterr().err
 
@@ -5438,6 +5455,19 @@ class TestPreflightPaths:
         which preflight checks by importability rather than by file."""
         monkeypatch.chdir(tmp_path)
         assert run_clock._preflight_paths(self._args(render_script=value)) == []
+
+    @pytest.mark.parametrize("value", ["/home/pi/IdleHours/idle_hours/render_quote.py", "idle_hours/render_quote.py"])
+    def test_missing_path_to_the_old_renderer_file_names_auto(self, value, tmp_path, monkeypatch):
+        """The single-file renderer became a package (#335); a hand-written path
+        to it now fails preflight with the value that replaces it."""
+        monkeypatch.chdir(tmp_path)
+        errors = run_clock._preflight_paths(self._args(render_script=value))
+        assert any('render_script = "auto"' in e and "#335" in e for e in errors)
+
+    def test_missing_custom_renderer_gets_no_hint(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        errors = run_clock._preflight_paths(self._args(render_script="/opt/my_renderer.py"))
+        assert errors and not any("#335" in e for e in errors)
 
     def test_unimportable_bundled_renderer_is_fatal(self, monkeypatch):
         monkeypatch.setattr(run_clock.importlib.util, "find_spec", lambda name: None)

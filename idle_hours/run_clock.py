@@ -869,8 +869,27 @@ def _render_command(render_script: str) -> list[str]:
     put the file inside the installed package.
     """
     if _uses_bundled_renderer(render_script):
-        return [sys.executable, "-m", BUNDLED_RENDERER_MODULE]
+        if _package_imported_from_cwd():
+            return [sys.executable, "-m", BUNDLED_RENDERER_MODULE]
+        return [sys.executable, "-P", "-m", BUNDLED_RENDERER_MODULE]
     return [sys.executable, str(resolve_input_path(render_script, BASE_DIR))]
+
+
+def _package_imported_from_cwd() -> bool:
+    """Whether this process found ``idle_hours`` in the working directory.
+
+    ``python -m`` puts the working directory first on the child's ``sys.path``.
+    A file-path launch put the script's own directory there instead, which
+    holds no ``idle_hours/``. So when the working directory holds some other
+    ``idle_hours/`` tree (``idle-hours run`` from a checkout while a wheel is
+    installed), the child would render with different code than this process
+    peeked with. ``-P`` (Python 3.11+) leaves the working directory off the
+    child's path, unless that is where this process's own package came from.
+    """
+    try:
+        return Path(sys.modules["idle_hours"].__file__).resolve().parent.parent == Path.cwd().resolve()
+    except (KeyError, TypeError, OSError):
+        return False
 
 
 def render_now(
@@ -1826,7 +1845,12 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
         # operator's ``./my_script.py`` still wins when present.
         path = resolve_input_path(value, BASE_DIR)
         if not path.exists():
-            errors.append(f"--{attr.replace('_', '-')} {value!r} does not exist (resolved to {path})")
+            error = f"--{attr.replace('_', '-')} {value!r} does not exist (resolved to {path})"
+            # A hand-written path to the old single-file renderer. It became a
+            # package in #335, so name the value that replaces it.
+            if attr == "render_script" and path.name == _LEGACY_BUNDLED_RENDER_SCRIPT:
+                error += f'; the bundled renderer is now render_script = "{BUNDLED_RENDER_SCRIPT}" (#335)'
+            errors.append(error)
     # Static-asset guard: the corpus is the one runtime input we cannot
     # operate without. Web assets / fonts degrade gracefully (the curator
     # UI 404s, the renderer falls back to bitmap fonts), but the picker

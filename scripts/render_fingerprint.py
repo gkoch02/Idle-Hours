@@ -10,8 +10,11 @@ sha256 of each frame's raw pixels. Two runs, one on ``main`` and one on the
 branch, must produce identical files.
 
 Each theme renders three quote lengths (hero / standard / dense) at two times,
-in production and debug mode, plus a half-size thumbnail (the NEAREST
-downsample path of the fixed-geometry frames) and the sleep frame. The wall
+in production and debug mode. It also renders a half-size thumbnail (the
+NEAREST downsample path of the fixed-geometry frames), the sleep frame, the
+button-C source card (``mode="card"``, a separate code path) and a debug frame
+of a row with no author or title that was served from a fallback bucket. That
+row exercises the attribution-skipped layout and the footer's arrow form. The wall
 clock, the ``diags`` system strip and ``IDLE_HOURS_PHOTO_PATH`` are pinned the
 same way ``generate_theme_previews.py`` pins them, so the output depends only
 on the code.
@@ -67,8 +70,8 @@ TIMES = ("08:55", "00:05")
 MODES = ("production", "debug")
 
 
-def _row(display_quote: str, matched_text: str) -> dict:
-    return {
+def _row(display_quote: str, matched_text: str, **overrides) -> dict:
+    row = {
         "display_quote": display_quote,
         "matched_text": matched_text,
         "author": "Jane Austen",
@@ -80,6 +83,8 @@ def _row(display_quote: str, matched_text: str) -> dict:
         "source_id": "141",
         "line_number": 482,
     }
+    row.update(overrides)
+    return row
 
 
 @contextlib.contextmanager
@@ -117,6 +122,12 @@ def fingerprint_theme(theme: str) -> dict[str, str]:
         image = rq.render("08:55", _row(quote, match), 400, 240, mode="production", theme=theme)
         out[f"{theme}/thumbnail"] = _digest(image)
         out[f"{theme}/sleep"] = _digest(rq.render_sleep_frame("22:00", 800, 480, theme=theme))
+        image = rq.render("08:55", _row(quote, match), 800, 480, mode="card", theme=theme)
+        out[f"{theme}/card"] = _digest(image)
+        bare = _row(quote, match, author="", title="", bucket="h9_five_to",
+                    resolved_bucket="h9_ten_to", used_fallback=True)
+        image = rq.render("08:55", bare, 800, 480, mode="debug", theme=theme)
+        out[f"{theme}/fallback-no-metadata"] = _digest(image)
     return out
 
 

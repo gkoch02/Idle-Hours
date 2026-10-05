@@ -853,16 +853,23 @@ class TestGoldenStructure:
         )
 
     def test_renderer_reads_the_clock_only_through_now(self):
-        """Every wall-clock read in ``render_quote`` must go through ``rq._now``.
+        """Every wall-clock read in ``render_quote`` must go through ``_now``.
 
         The freeze above patches that one function. A painter that called
-        ``datetime.datetime.now()`` or ``datetime.date.today()`` directly would
-        slip past it: its golden would expire overnight, and
+        ``datetime.datetime.now()``, ``datetime.date.today()``, ``time.time()``
+        or ``datetime.fromtimestamp(...)`` directly would slip past it: its
+        golden would expire overnight, and
         ``test_clock_dependent_theme_list_is_accurate`` would report the theme
         as clock-dependent with no way to freeze it.
+
+        The seam must also stay one name in one module. A module that imported
+        it by name (``from .clock import _now``) would hold its own binding,
+        which a patch on the defining module never reaches. Callers reach it
+        through the module object (issue #335 splits the renderer into
+        several).
         """
         # Every module in the package, not just the one that defines the
-        # seam: the split (issue #335) moves painters into submodules.
+        # seam: the split moves painters into submodules.
         package_dir = Path(rq.__file__).parent
         trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(package_dir.rglob("*.py"))}
         seams = [
@@ -871,18 +878,29 @@ class TestGoldenStructure:
         ]
         assert len(seams) == 1, f"expected exactly one _now() seam in render_quote, found {len(seams)}"
         inside_seam = {id(node) for node in ast.walk(seams[0])}
+        clock_reads = {"now", "today", "utcnow", "time", "localtime", "gmtime", "fromtimestamp"}
         offenders = [
             f"{path.relative_to(package_dir)}:{node.lineno}"
             for path, tree in trees.items()
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"now", "today", "utcnow"}
+            and node.func.attr in clock_reads
             and id(node) not in inside_seam
         ]
         assert offenders == [], (
             f"render_quote reads the wall clock directly at {offenders}; "
             "call _now() instead so the golden freeze covers it"
+        )
+        rebound = [
+            f"{path.relative_to(package_dir)}:{node.lineno}"
+            for path, tree in trees.items()
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and any(alias.name in {"_now", "now"} for alias in node.names)
+        ]
+        assert rebound == [], (
+            f"render_quote imports the clock seam by name at {rebound}; reach it through its "
+            "module instead, or a patch on the seam no longer reaches that caller"
         )
 
     def test_themes_produce_distinct_goldens(self):

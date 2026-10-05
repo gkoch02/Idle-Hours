@@ -62,6 +62,8 @@ A theme module never imports another theme module. If two themes need the same t
 
 **Import convention inside the package.** Use `from ..primitives.bloom import paint_neon_mask`, so function bodies move without edits. The consequence is that a test patches the binding in the module that reads it, e.g. `themes.bakelite.paint_neon_mask`. That is more precise than today, not less.
 
+**One exception: the clock seam.** It is reached through its module object (`clock.now()` after `from .. import clock`), never imported by name. A name import gives each caller its own binding. The golden suite, the preview script and the fingerprint would then have to patch every clock-reading module rather than one function, and a module they missed would expire its golden overnight. The AST fence in `tests/test_render_golden.py` rejects `from … import _now` / `now` anywhere in the package.
+
 ## The patch guard (how the facade avoids becoming a permanent silent shim)
 
 `render_quote/__init__.py` sets `sys.modules[__name__].__class__` to a small `ModuleType` subclass whose `__setattr__` checks every write to a non-public name:
