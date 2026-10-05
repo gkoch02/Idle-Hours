@@ -112,6 +112,12 @@ The original plan for this PR:
 - Teach `test_theme_decoration.py` a `theme_module(theme)` lookup: the theme module if it exists, else `_monolith`. Its `dir()` scan and patches then target the right namespace mid-migration.
 - Add `tests/test_render_quote_layering.py`, an AST check of the import DAG and of "no theme imports a theme".
 
+**PR 5a: `themes/` skeleton and shared theme code. Done.** `render_quote/themes/` exists, with `_shared.py` as a layer between `furniture` and `_monolith`. These departures from the plan below:
+- Borrowed code moved under its **original names**. That covers tarot's numerals, astrarium's cream wash, vitrail's glass fill, codex's script (with its reach constants), metro's ellipsis, lumon's phrase boxes, the CRT raster and the autochrome plate. Neutral names would have churned codex's constants, the tests that cite these names and the `docs/themes.md` design notes, and bought no behaviour.
+- Culture and orbital were left for their own PR, as a family.
+- Instead of a `theme_module(theme)` lookup, the decoration fence's `_neuter` patches **every module binding the same object**. A shared helper is bound in `_shared` and again in each importer, so patching only the definer would let the importers call the original. This also needs no change as each theme moves.
+- The layering test recurses into subpackages, resolves relative imports by level, and fails any theme module that imports another theme module.
+
 **PRs 3…N: themes, in batches.** Two PRs for the 38 border themes (about 7.4k lines), then about 5 for the 50 frame themes (about 20k lines), roughly 10 themes each, grouped by family.
 - Promote shared code to `themes/_shared.py` before its dependents move (crt scanlines, tarot numerals, cream wash, vitrail fill).
 - Culture and orbital move together with `_culture_common.py`.
