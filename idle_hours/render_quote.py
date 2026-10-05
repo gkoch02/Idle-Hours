@@ -4894,6 +4894,41 @@ def paint_neon_mask(
                 px[x, y] = glow_minor if glow_minor is not None and rank < lit * glow_minor_share else glow
 
 
+def _place_quote(draw: ImageDraw.ImageDraw, quote_row: dict, rect, *, theme: str,
+                 font_max: int, font_min: int, line_height_mult: float) -> list:
+    """Fit the quote into ``rect`` and position every styled chunk, ragged right.
+
+    Returns ``(x, y, chunk, font, is_bold, width, line_height)`` per chunk, with
+    ``y`` already baseline-aligned across the regular and bold faces, so a theme
+    can draw the text, box the matched phrase, or mark each line from the same
+    list. The fitting is ``fit_quote``'s; only the sizing is the theme's.
+    """
+    x0, y0, x1, y1 = rect
+    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
+    regular, bold, wrapped, line_height, _ = fit_quote(
+        draw, display_quote, quote_row.get("matched_text") or "",
+        x1 - x0, y1 - y0, font_max=font_max, font_min=font_min, line_height_mult=line_height_mult, theme=theme,
+    )
+    placed = []
+    y = y0
+    ascent = _font_ascent(regular)
+    for line in wrapped:
+        x = x0
+        for chunk, is_bold in line:
+            font = bold if is_bold else regular
+            w = int(round(draw.textlength(chunk, font=font)))
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
+            x += w
+        y += line_height
+    return placed
+
+
+def _paint_placed(draw: ImageDraw.ImageDraw, placed, ink, accent) -> None:
+    """Draw ``_place_quote`` chunks in solid ``ink``, the matched phrase in ``accent``."""
+    for x, y, chunk, font, is_bold, *_ in placed:
+        draw.text((x, y), chunk, font=font, fill=accent if is_bold else ink)
+
+
 def wrap_quote_into_masks(draw, size, quote_row: dict, rect, *, theme: str,
                          font_max: int = 34, font_min: int = 15,
                          line_height_mult: float = 1.4,
@@ -6983,43 +7018,31 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
                 pixels[px, py] = maroon_dark
 
 
-def _lcars_paint_lavender_block(pixels, left: int, top: int, right: int, bot: int,
-                                sentinel) -> None:
-    """3-way Bayer post-pass to lavender: cells 0-4 → red, 5-9 → blue,
-    10-15 → white. ``sentinel`` must be off-palette (``(1, 1, 1)``).
-    Bbox-scoped so neighbouring blocks in other sentinels stay untouched."""
+# R+B+W 3-way Bayer cuts on ``BAYER_4x4`` (cells below the first → red, below
+# the second → blue, the rest → white). Lavender is 5/5/6; lilac 4/4/8 is
+# paler, with a heavier white lift.
+_LCARS_LAVENDER_CUTS = (5, 10)
+_LCARS_LILAC_CUTS = (4, 8)
+
+
+def _lcars_paint_rbw_block(pixels, left: int, top: int, right: int, bot: int,
+                           sentinel, cuts: tuple[int, int]) -> None:
+    """3-way Bayer post-pass of ``sentinel`` pixels to red / blue / white at
+    ``cuts`` (``_LCARS_LAVENDER_CUTS`` or ``_LCARS_LILAC_CUTS``). ``sentinel``
+    must be off-palette (``(1, 1, 1)``). Bbox-scoped so neighbouring blocks in
+    other sentinels stay untouched."""
     ink_red = SPECTRA6["red"]
     ink_blue = SPECTRA6["blue"]
     ink_white = SPECTRA6["white"]
+    red_cut, blue_cut = cuts
     for py in range(top, bot + 1):
         row = BAYER_4x4[py % 4]
         for px in range(left, right + 1):
             if pixels[px, py] == sentinel:
                 cell = row[px % 4]
-                if cell < 5:
+                if cell < red_cut:
                     pixels[px, py] = ink_red
-                elif cell < 10:
-                    pixels[px, py] = ink_blue
-                else:
-                    pixels[px, py] = ink_white
-
-
-def _lcars_paint_lilac_block(pixels, left: int, top: int, right: int, bot: int,
-                             sentinel) -> None:
-    """3-way Bayer post-pass for lilac (R+B+W @ 25/25/50 — paler than
-    lavender, heavier white lift). Partition: cells 0-3 → red,
-    4-7 → blue, 8-15 → white."""
-    ink_red = SPECTRA6["red"]
-    ink_blue = SPECTRA6["blue"]
-    ink_white = SPECTRA6["white"]
-    for py in range(top, bot + 1):
-        row = BAYER_4x4[py % 4]
-        for px in range(left, right + 1):
-            if pixels[px, py] == sentinel:
-                cell = row[px % 4]
-                if cell < 4:
-                    pixels[px, py] = ink_red
-                elif cell < 8:
+                elif cell < blue_cut:
                     pixels[px, py] = ink_blue
                 else:
                     pixels[px, py] = ink_white
@@ -7246,10 +7269,10 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
             _lcars_post_pass_coral(pixels, left, top, right, bot, sentinel_red)
         elif kind == "lavender":
             draw.rectangle((left, top, right, bot), fill=lavender_sentinel)
-            _lcars_paint_lavender_block(pixels, left, top, right, bot, lavender_sentinel)
+            _lcars_paint_rbw_block(pixels, left, top, right, bot, lavender_sentinel, _LCARS_LAVENDER_CUTS)
         elif kind == "lilac":
             draw.rectangle((left, top, right, bot), fill=lavender_sentinel)
-            _lcars_paint_lilac_block(pixels, left, top, right, bot, lavender_sentinel)
+            _lcars_paint_rbw_block(pixels, left, top, right, bot, lavender_sentinel, _LCARS_LILAC_CUTS)
         elif kind == "yellow":
             draw.rectangle((left, top, right, bot), fill=SPECTRA6["yellow"])
         elif kind == "red":
@@ -7273,7 +7296,8 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # Bottom region: covers the bottom bar + the entire bottom elbow.
     _lcars_post_pass_tangerine(pixels, 0, height - R_out, width - 1, bottom_bar_y2, sentinel_red)
     # Lavender segment of the top bar.
-    _lcars_paint_lavender_block(pixels, seg2_left, top_bar_y1, seg2_right, top_bar_y2, lavender_sentinel)
+    _lcars_paint_rbw_block(pixels, seg2_left, top_bar_y1, seg2_right, top_bar_y2, lavender_sentinel,
+                           _LCARS_LAVENDER_CUTS)
 
     # ===========================================================
     # Layer 4: black labels centred inside each block
@@ -7779,8 +7803,7 @@ def _build_saloon_foxing_points(
     Each speckle is ``(x, y, radius)``: radius 0 is a single pixel, radius
     1 a 3×3 darker spot (~15%). Exactly ``density`` points are returned.
     """
-    import random as _random
-    rng = _random.Random(seed)
+    rng = random.Random(seed)
     points: list[tuple[int, int, int]] = []
     for _ in range(density):
         x = rng.randint(2, width - 3)
@@ -8380,8 +8403,7 @@ def _build_roman_stone_grain(
     Each speckle is ``(x, y, radius)`` with radius 0 (single pixel) or 1
     (3×3), as in ``_build_saloon_foxing_points``.
     """
-    import random as _random
-    rng = _random.Random(seed)
+    rng = random.Random(seed)
     points: list[tuple[int, int, int]] = []
     attempts = 0
     while len(points) < density and attempts < density * 8:
@@ -9613,8 +9635,7 @@ def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tupl
 
     Deterministic per ``seed``. Nominal radius is ~80×``scale`` px.
     """
-    import random as _random
-    rng = _random.Random(seed)
+    rng = random.Random(seed)
     n = 18
     base_r = 80 * scale
     points: list[tuple[int, int]] = []
@@ -9711,9 +9732,7 @@ def _build_firmament_stars(width: int, height: int) -> list[tuple[int, int, int]
     2 = 4-point cross, 3 = 2x2 cluster, 4 = single pixel. Reseeded per call,
     so any canvas size gives a stable scatter.
     """
-    import random as _random  # match the in-function import pattern used by _build_fillmore_blob
-
-    rng = _random.Random(_FIRMAMENT_STAR_SEED)
+    rng = random.Random(_FIRMAMENT_STAR_SEED)
     stars: list[tuple[int, int, int]] = []
     side_margin = 20
 
@@ -9854,9 +9873,8 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
     #   * yellow pin-star (bucket < 3, survives to the rim)
     #   * red / blue specks: warm / cool nebular dust
     #   * everything else reverts to the Layer 0 navy ground
-    import random as _random_blob
 
-    blob_rng = _random_blob.Random(_FIRMAMENT_STAR_SEED ^ 0x42)
+    blob_rng = random.Random(_FIRMAMENT_STAR_SEED ^ 0x42)
 
     def _build_blob(cx: float, cy: float, base_r: float, aspect: float = 1.0,
                     angle: float = 0.0) -> tuple[list[tuple[float, float]], float, float, float, float]:
@@ -12560,7 +12578,7 @@ def position_noise(x: int, y: int) -> int:
     A sparse wash thresholds this rather than a Bayer rank: at 3-9% density an
     ordered tile lays a visible dot lattice, where a hash scatter reads as
     paper fibre. (``bakelite``'s "hash reads as sandpaper" warning is about
-    mid-density fields.) For a whole-canvas field use :func:`_tarot_noise`,
+    mid-density fields.) For a whole-canvas field use :func:`_white_noise`,
     the C-speed equivalent.
     """
     h = (x * 374761393 + y * 668265263) & 0xFFFFFFFF
@@ -13580,6 +13598,175 @@ def _fill_swatch_stipple_3way(
                 px[x, y] = ink_c
 
 
+# ---------------------------------------------------------------------------
+# Shared painter helpers
+#
+# Small primitives that several themes reached for independently and that
+# had been copy-pasted under theme-prefixed names (issue #336). One body
+# each, so a fix lands everywhere and a new theme finds them by name.
+# ---------------------------------------------------------------------------
+
+
+def _clock_hour12(time_str) -> int:
+    """The 12-hour clock hour, 1..12, parsed defensively from ``HH:MM``.
+
+    Hour-only time surfaces (a numeral, a camera, a moon phase, a bearing)
+    all want the same thing: 00:10 and 12:10 are 12, 13:00 is 1. Preview and
+    source-card renders can reach a painter with an odd string or ``None``,
+    so a bad parse falls back to 12 rather than raising.
+    """
+    try:
+        hour = int(str(time_str).split(":", 1)[0])
+    except ValueError:
+        return 12
+    return hour % 12 or 12
+
+
+def _white_noise(width: int, height: int, seed: int) -> Image.Image:
+    """A deterministic ``L`` field of uniform noise, one byte per pixel.
+
+    For an *aperiodic* scatter: a small Bayer gate paints diagonal
+    pinstripes that read as corduroy on the panel inks (invisible in an RGB
+    preview). :func:`position_noise` has the right character but is a
+    Python call per pixel, far too slow for a whole canvas. ``Random.randbytes``
+    is the same white noise from a seeded C generator, so the frame stays
+    byte-identical across processes (``hash()`` would not: it is
+    PYTHONHASHSEED-salted), and compositing uses C-speed ``point`` LUTs and
+    ``paste`` masks.
+    """
+    return Image.frombytes("L", (width, height), random.Random(seed).randbytes(width * height))
+
+
+def _smooth_noise(size, cells, seed: int) -> Image.Image:
+    """Seeded value noise: a coarse grid of white noise, bicubic-upsampled.
+    ``cells`` is the grid's (columns, rows), so an unequal pair stretches the
+    noise into streaks."""
+    return _white_noise(cells[0], cells[1], seed).resize(size, Image.Resampling.BICUBIC)
+
+
+def _bayer_threshold_field(size) -> Image.Image:
+    """``BAYER_8x8`` tiled across ``size`` as an ``"L"`` image of rank
+    thresholds (``rank * 4 + 2``), so a density map can be stippled with one
+    C-speed compare: ``ImageChops.subtract(density, field)`` is non-zero
+    exactly where the density beats the cell's rank."""
+    width, height = size
+    rows = [bytes(BAYER_8x8[r][x % 8] * 4 + 2 for x in range(width)) for r in range(8)]
+    return Image.frombytes("L", size, b"".join(rows[y % 8] for y in range(height)))
+
+
+def _lerp_stops(stops, y: float):
+    """The colour at ``y`` on a ``[(y, rgb), ...]`` gradient sorted on ``y``,
+    linearly interpolated; before the first stop it holds the first colour,
+    past the last it holds the last."""
+    for (y0, c0), (y1, c1) in zip(stops, stops[1:]):
+        if y <= y1:
+            t = 0.0 if y1 == y0 else max(0.0, (y - y0) / (y1 - y0))
+            return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
+    return stops[-1][1]
+
+
+def _halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int = 5) -> None:
+    """Paste ``fill`` through ``mask`` over a black halo grown from it, so
+    text floats on a busy scene without a panel hiding it. ``fill=None``
+    lays the halo alone (for a mask whose ink is painted separately)."""
+    hard = mask.point(lambda v: 255 if v > 110 else 0)
+    image.paste(SPECTRA6["black"], (0, 0), hard.filter(ImageFilter.MaxFilter(halo)))
+    if fill is not None:
+        image.paste(fill, (0, 0), hard)
+
+
+def _soft_ellipse_mask(size, box, blur: int) -> Image.Image:
+    """An ``L`` mask of the ellipse ``box``, Gaussian-feathered by ``blur``:
+    a pool of light or shadow to composite through."""
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).ellipse(box, fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(blur))
+
+# The panel's measured inks — CLAUDE.md's calibration table. A scene painted
+# in this space and quantised by ``_dither_calibrated`` is re-labelled with the
+# nominal ``SPECTRA6`` values afterwards, so the dither decides in the space the
+# eye actually sees. Shared by expedition, hades, beksinski, goya, lumon, dsky,
+# oblivion and yorha.
+_PANEL_INKS = {
+    "white": (185, 199, 201),
+    "black": (31, 34, 38),
+    "red": (98, 32, 30),
+    "yellow": (193, 187, 30),
+    "blue": (35, 63, 142),
+    "green": (53, 86, 58),
+}
+
+
+def _dither_calibrated(scene: Image.Image, inks) -> Image.Image:
+    """Floyd–Steinberg ``scene`` against the *calibrated* colours of ``inks``,
+    then re-label the chosen indices with the nominal inks.
+
+    ``quantize(palette=…)`` maps every pixel to an index into the palette
+    image it is handed; replacing that image's palette with the nominal
+    values afterwards is a pure re-labelling, so the dither's decisions are
+    made in the measured space and its output is on-palette RGB.
+    """
+    measured: list[int] = []
+    nominal: list[int] = []
+    for name in inks:
+        measured.extend(_PANEL_INKS[name])
+        nominal.extend(SPECTRA6[name])
+    while len(measured) < 768:
+        measured.extend(_PANEL_INKS[inks[0]])
+        nominal.extend(SPECTRA6[inks[0]])
+    palette = Image.new("P", (1, 1))
+    palette.putpalette(measured[:768])
+    quantised = scene.convert("RGB").quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG)
+    quantised.putpalette(nominal[:768])
+    return quantised.convert("RGB")
+
+
+def _shift_no_wrap(img: Image.Image, dx: int, dy: int) -> Image.Image:
+    """Translate without wrap-around (``ImageChops.offset`` wraps)."""
+    out = Image.new(img.mode, img.size, 0)
+    out.paste(img, (dx, dy))
+    return out
+
+
+def _shade_silhouette(mask: Image.Image, base, light, dark, *, offset: int = 10, blur: int = 7) -> Image.Image:
+    """Model a silhouette under an upper-left light.
+
+    Where the shape meets its own down-right shift it has an exposed upper-left
+    edge — the lit rim; where it meets its up-left shift, the lower-right core
+    shadow. Both are blurred so the modelling rolls round the form."""
+    m = mask.filter(ImageFilter.GaussianBlur(1))
+    lit = ImageChops.subtract(m, _shift_no_wrap(m, offset, offset)).filter(ImageFilter.GaussianBlur(blur))
+    shadow = ImageChops.subtract(m, _shift_no_wrap(m, -offset, -offset)).filter(ImageFilter.GaussianBlur(blur))
+    img = Image.new("RGB", mask.size, base)
+    img = Image.composite(Image.new("RGB", mask.size, light), img, lit)
+    return Image.composite(Image.new("RGB", mask.size, dark), img, shadow)
+
+
+def _catmull_rom(points, closed: bool = True, samples: int = 10) -> list:
+    """Catmull-Rom through ``points`` — organic silhouettes rather than the
+    hard polygon corners a figure made of ``ImageDraw`` primitives gets."""
+    pts = list(points)
+    n = len(pts)
+    out = []
+    for i in (range(n) if closed else range(n - 1)):
+        p0 = pts[(i - 1) % n] if closed else pts[max(i - 1, 0)]
+        p1, p2 = pts[i], pts[(i + 1) % n]
+        p3 = pts[(i + 2) % n] if closed else pts[min(i + 2, n - 1)]
+        for k in range(samples):
+            t = k / samples
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(
+                0.5 * (2 * p1[j] + (p2[j] - p0[j]) * t
+                       + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
+                       + (3 * p1[j] - p0[j] - 3 * p2[j] + p3[j]) * t3)
+                for j in (0, 1)
+            ))
+    if not closed:
+        out.append(tuple(pts[-1]))
+    return out
+
+
+
 # Three-ink stipple recipes from ``spectra6_color_recipes.md`` ("Three-ink
 # recipes"), as (display name, ink_a, ink_b, ink_c, density_a, density_b,
 # short label); the third density is implicit. Shown in two rows of 6 below
@@ -13836,7 +14023,6 @@ def _astrarium_paint_ring_quadrant(
     ``draw_text_dithered`` so the ring reads as the same hue a body-text
     recipe would.
     """
-    import math
     px = image.load()
     w, h = image.size
     r_outer_sq = r_outer * r_outer
@@ -13883,8 +14069,6 @@ def _astrarium_paint_constellation_field(
     """Paint a sparse white star speckle inside an annular sector (the
     dial's black top-left quadrant). Seeded, so the speckle is stable
     across renders."""
-    import math
-    import random
     rng = random.Random(seed)
     px = image.load()
     w, h = image.size
@@ -13928,7 +14112,6 @@ def _astrarium_paint_dial(
        repaints on a bucket change, so an HH:MM readout would be stale most
        of the time; the date isn't.
     """
-    import math
     BLACK = SPECTRA6["black"]
     WHITE = SPECTRA6["white"]
     RED = SPECTRA6["red"]
@@ -14269,7 +14452,6 @@ def _astrarium_paint_datum_strip(
     phase) under the left-half dial, derived from the clock rather than
     pretending to be sensor readings. The right half, under the quote, is
     deliberately left open."""
-    import math
     BLACK = SPECTRA6["black"]
 
     strip_top = height - 44
@@ -14722,21 +14904,6 @@ _TAROT_CREAM_SEED = 0x7A6017
 _TAROT_FOXING_SEED = 0x7A6018
 
 
-def _tarot_noise(width: int, height: int, seed: int) -> Image.Image:
-    """A deterministic ``L`` field of uniform noise, one byte per pixel.
-
-    The vellum needs an *aperiodic* scatter: a 4x4 Bayer gate paints
-    diagonal pinstripes that read as corduroy on the panel inks (invisible
-    in an RGB preview). :func:`position_noise` has the right character but
-    is a Python call per pixel, far too slow for a whole canvas twice over.
-    ``Random.randbytes`` is the same white noise from a seeded C generator,
-    so the frame stays byte-identical across processes (``hash()`` would
-    not: it is PYTHONHASHSEED-salted), and compositing uses C-speed
-    ``point`` LUTs and ``paste`` masks.
-    """
-    return Image.frombytes("L", (width, height), random.Random(seed).randbytes(width * height))
-
-
 def _tarot_paint_vellum(image: Image.Image) -> None:
     """Sparse R+G sepia foxing over a warm Y+W cream ground.
 
@@ -14751,10 +14918,10 @@ def _tarot_paint_vellum(image: Image.Image) -> None:
     width, height = image.size
     cream_cut = round(_TAROT_CREAM_DENSITY * 255)
     fox_cut = round(_TAROT_FOXING_DENSITY * 255)
-    foxing = _tarot_noise(width, height, _TAROT_FOXING_SEED)
+    foxing = _white_noise(width, height, _TAROT_FOXING_SEED)
     image.paste(SPECTRA6["red"], (0, 0), foxing.point(lambda v: 255 if v < fox_cut and v & 1 else 0))
     image.paste(SPECTRA6["green"], (0, 0), foxing.point(lambda v: 255 if v < fox_cut and not v & 1 else 0))
-    cream = _tarot_noise(width, height, _TAROT_CREAM_SEED)
+    cream = _white_noise(width, height, _TAROT_CREAM_SEED)
     image.paste(SPECTRA6["yellow"], (0, 0), cream.point(lambda v: 255 if v < cream_cut else 0))
 
 
@@ -15828,24 +15995,11 @@ def _tarot_paint_attribution(
     """
     BLACK = SPECTRA6["black"]
     font = load_font(theme_font_candidates("tarot", "ornament"), size=12)
-    author = quote_row.get("author") or ""
-    title = quote_row.get("title") or fallback_title(quote_row)
-    parts = [p for p in (author, title) if p]
-    if not parts:
+    fitted = _fit_dotted_byline(draw, quote_row, font, max_w)
+    if fitted is None:
         return
-    text = " · ".join(parts)
-    bbox = draw.textbbox((0, 0), text, font=font)
+    text, bbox = fitted
     w = bbox[2] - bbox[0]
-    if w > max_w:
-        # Shorten title side first.
-        while parts and w > max_w:
-            if len(parts[-1]) > 6:
-                parts[-1] = parts[-1][:-3] + "…"
-            else:
-                parts.pop()
-            text = " · ".join(parts)
-            bbox = draw.textbbox((0, 0), text, font=font)
-            w = bbox[2] - bbox[0]
     draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
 
 
@@ -15871,7 +16025,7 @@ def _tarot_paint_card_stock(
     if not card_w or not card_h:
         return
     cut = round(_TAROT_CREAM_DENSITY * 0.75 * 255)
-    stock = _tarot_noise(card_w, card_h, _TAROT_CREAM_SEED)
+    stock = _white_noise(card_w, card_h, _TAROT_CREAM_SEED)
     image.paste(YELLOW, (max(0, x0), max(0, y0)), stock.point(lambda v: 255 if v < cut else 0))
 
 
@@ -15905,11 +16059,7 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _tarot_paint_vellum(image)
     draw = ImageDraw.Draw(image)
 
-    try:
-        hour24 = int(time_str.split(":", 1)[0])
-    except (ValueError, AttributeError):
-        hour24 = 0
-    hour_int = hour24 % 12 or 12
+    hour_int = _clock_hour12(time_str)
 
     # ── the card ──────────────────────────────────────────────────────
     card_rect = _TAROT_CARD_RECT
@@ -16434,25 +16584,13 @@ def _vinyl_paint_attribution(
     """Right-aligned author + ' · ' + title at the bottom of the sleeve."""
     BLACK = SPECTRA6["black"]
     font = load_font([EBGARAMOND_BOLD, *META_FONT_BOLD_CANDIDATES], size=12)
-    author = quote_row.get("author") or ""
-    title = quote_row.get("title") or fallback_title(quote_row)
-    parts = [p for p in (author, title) if p]
-    if not parts:
-        return
-    text = " · ".join(parts)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    w = bbox[2] - bbox[0]
     # Truncate if too wide for the sleeve column (~360 px).
     max_w = 360
-    if w > max_w:
-        while parts and w > max_w:
-            if len(parts[-1]) > 6:
-                parts[-1] = parts[-1][:-3] + "…"
-            else:
-                parts.pop()
-            text = " · ".join(parts)
-            bbox = draw.textbbox((0, 0), text, font=font)
-            w = bbox[2] - bbox[0]
+    fitted = _fit_dotted_byline(draw, quote_row, font, max_w)
+    if fitted is None:
+        return
+    text, bbox = fitted
+    w = bbox[2] - bbox[0]
     draw.text((x_right - w - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
 
 
@@ -17010,24 +17148,12 @@ def _vitrail_paint_attribution(
     byline sizes after palette snapping."""
     BLACK = SPECTRA6["black"]
     font = load_font(theme_font_candidates("vitrail", "quote_regular"), size=15)
-    author = quote_row.get("author") or ""
-    title = quote_row.get("title") or fallback_title(quote_row)
-    parts = [p for p in (author, title) if p]
-    if not parts:
-        return
-    text = " · ".join(parts)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    w = bbox[2] - bbox[0]
     max_w = 460
-    if w > max_w:
-        while parts and w > max_w:
-            if len(parts[-1]) > 6:
-                parts[-1] = parts[-1][:-3] + "…"
-            else:
-                parts.pop()
-            text = " · ".join(parts)
-            bbox = draw.textbbox((0, 0), text, font=font)
-            w = bbox[2] - bbox[0]
+    fitted = _fit_dotted_byline(draw, quote_row, font, max_w)
+    if fitted is None:
+        return
+    text, bbox = fitted
+    w = bbox[2] - bbox[0]
     draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), text, font=font, fill=BLACK)
 
 
@@ -17064,11 +17190,7 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
     _vitrail_paint_shimmer(image, field)
     _vitrail_paint_lead_came(draw, panes, field)
     _vitrail_paint_arch_spandrels(image, draw, field, spring_y)
-    try:
-        hour24 = int(time_str.split(":", 1)[0])
-    except (ValueError, AttributeError):
-        hour24 = 0
-    hour_int = hour24 % 12 or 12
+    hour_int = _clock_hour12(time_str)
     _vitrail_paint_rose_window(image, draw, hour_int, rose_cx, rose_cy, rose_r, came)
     # Re-apply the same sheen to the rose glass (painted after the field-wide
     # pass) so it stays continuous with the panes; clipped to the disc.
@@ -17269,21 +17391,11 @@ def _questline_paint_arrow(draw: ImageDraw.ImageDraw) -> None:
 def _questline_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """'— from {Title} —' along the box's bottom inner margin, centred."""
     WHITE = SPECTRA6["white"]
-    title = (quote_row.get("title") or "").strip()
-    if not title:
-        return
-    text = f"— from {title} —"
     font = load_font(theme_font_candidates("questline", "quote_regular"), size=8)
     # Keep the footer clear of the continue arrow on the right.
-    max_w = (_QUESTLINE_BOX[2] - _QUESTLINE_BOX[0]) - 120
-    # Guard on `title`, the string that shrinks — not on `text`, which is
-    # rebuilt from a template and never empties. Guarding on `text` spins
-    # forever when even "— from … —" overflows, hanging the render path.
-    while title and draw.textlength(text, font=font) > max_w:
-        title = title[:-1]
-        text = f"— from {title.rstrip()}… —"
-    if not title:
-        return  # no room for even a stub of the title — drop the footer
+    text = _fit_from_title(draw, quote_row, font, (_QUESTLINE_BOX[2] - _QUESTLINE_BOX[0]) - 120)
+    if text is None:
+        return
     bbox = draw.textbbox((0, 0), text, font=font)
     cx = (_QUESTLINE_BOX[0] + _QUESTLINE_BOX[2]) // 2
     fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
@@ -17630,18 +17742,10 @@ def _chrono_paint_arrow(draw: ImageDraw.ImageDraw) -> None:
 
 def _chrono_paint_footer(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """'— from {Title} —' in white along the window's bottom inner margin."""
-    title = (quote_row.get("title") or "").strip()
-    if not title:
-        return
-    text = f"— from {title} —"
     font = load_font(theme_font_candidates("chrono", "quote_regular"), size=12)
-    max_w = (_CHRONO_WINDOW[2] - _CHRONO_WINDOW[0]) - 140
-    # Guard on `title`, not `text` — see `_questline_paint_footer`.
-    while title and draw.textlength(text, font=font) > max_w:
-        title = title[:-1]
-        text = f"— from {title.rstrip()}… —"
-    if not title:
-        return  # no room for even a stub of the title — drop the footer
+    text = _fit_from_title(draw, quote_row, font, (_CHRONO_WINDOW[2] - _CHRONO_WINDOW[0]) - 140)
+    if text is None:
+        return
     bbox = draw.textbbox((0, 0), text, font=font)
     cx = (_CHRONO_WINDOW[0] + _CHRONO_WINDOW[2]) // 2 + 50  # nudge clear of the portrait
     fx = cx - (bbox[2] - bbox[0]) // 2 - bbox[0]
@@ -18316,12 +18420,6 @@ def _row_digest(quote_row: dict) -> int:
     for byte in basis.encode("utf-8", "replace"):
         digest = ((digest ^ byte) * 0x01000193) & 0xFFFFFFFF
     return digest
-
-
-def _lieder_seed(quote_row: dict) -> int:
-    """Stable 32-bit seed for the melodic contour and expression mark (see
-    ``_row_digest``)."""
-    return _row_digest(quote_row)
 
 
 def _lieder_clock(time_str: str) -> tuple[int, int]:
@@ -19055,7 +19153,7 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
     draw = ImageDraw.Draw(image)
 
     hour, _ = _lieder_clock(time_str)
-    seed = _lieder_seed(quote_row)
+    seed = _row_digest(quote_row)
     notes = _lieder_notes(quote_row)
     if not notes:
         notes = [{"text": "—", "matched": False, "hyphen": False, "breath": False, "stress": 2, "word": 0}]
@@ -19136,14 +19234,6 @@ _IZAKAYA_HOUR_KANJI = {
 }
 _IZAKAYA_LANTERNS = ((168, 74, 26, 34), (632, 80, 24, 31))  # (cx, cy, rx, ry) side pair
 _IZAKAYA_MAIN_LANTERN = (400, 84, 33, 45)
-
-
-def _izakaya_hour(time_str: str) -> int:
-    """Hour 1..12 parsed defensively from ``HH:MM`` (12 on a bad parse)."""
-    try:
-        return int(time_str.split(":")[0]) % 12 or 12
-    except (AttributeError, ValueError):
-        return 12
 
 
 def _izakaya_ground() -> frozenset:
@@ -19357,7 +19447,7 @@ def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int
     for cx, cy, rx, ry in _IZAKAYA_LANTERNS:
         _izakaya_paint_lantern(image, draw, cx, cy, rx, ry)
     mcx, mcy, mrx, mry = _IZAKAYA_MAIN_LANTERN
-    _izakaya_paint_lantern(image, draw, mcx, mcy, mrx, mry, text=_IZAKAYA_HOUR_KANJI[_izakaya_hour(time_str)])
+    _izakaya_paint_lantern(image, draw, mcx, mcy, mrx, mry, text=_IZAKAYA_HOUR_KANJI[_clock_hour12(time_str)])
 
     block_bottom = _izakaya_paint_quote(image, draw, quote_row)
     _izakaya_paint_credits(image, draw, quote_row, block_bottom)
@@ -19781,14 +19871,6 @@ _ABYSSAL_SNOW_SEED = 0xA1B255
 _ABYSSAL_SNOW_COUNT = 260
 
 
-def _abyssal_hour(time_str: str) -> int:
-    """Hour 1..12 parsed defensively from ``HH:MM`` (12 on a bad parse)."""
-    try:
-        return int(time_str.split(":")[0]) % 12 or 12
-    except (AttributeError, ValueError):
-        return 12
-
-
 def _abyssal_water_ground() -> frozenset:
     """Inks a bloom may overwrite: the water itself, not what is lit in it.
 
@@ -19997,7 +20079,7 @@ def render_abyssal_frame(time_str: str, quote_row: dict, width: int, height: int
     for cx, cy, radius in _ABYSSAL_JELLYFISH:
         _abyssal_paint_jellyfish(image, cx, cy, radius)
     draw = ImageDraw.Draw(image)
-    _abyssal_paint_gauge(image, draw, _abyssal_hour(time_str))
+    _abyssal_paint_gauge(image, draw, _clock_hour12(time_str))
     block_bottom = _abyssal_paint_quote(image, draw, quote_row)
     _abyssal_paint_credits(image, draw, quote_row, block_bottom)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
@@ -20441,16 +20523,11 @@ _VHS_SCANLINE_STEP = 4
 _VHS_TAPE_YEARS = (1984, 1987, 1989, 1991, 1993, 1996, 1998)
 
 
-def _vhs_seed(quote_row: dict) -> int:
-    """Stable 32-bit seed for the tape date. See ``_row_digest``."""
-    return _row_digest(quote_row)
-
-
 def _vhs_tape_date(quote_row: dict) -> str:
     """``JUN 14 1991`` — the date this tape was recorded, stable per quote."""
     months = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
               "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
-    seed = _vhs_seed(quote_row)
+    seed = _row_digest(quote_row)
     year = _VHS_TAPE_YEARS[seed % len(_VHS_TAPE_YEARS)]
     month = months[(seed >> 4) % 12]
     day = 1 + (seed >> 8) % 28
@@ -21063,15 +21140,6 @@ _OBSERVATION_MAP_RECT = (604, 422, 776, 466)
 _OBSERVATION_MODULES = ("HAB", "SCIENCE", "COMMS", "ENGINEERING", "AIRLOCK", "OBSERVATION")
 
 
-def _observation_camera(time_str: str) -> int:
-    """The camera S.A.M. is looking through: the 12-hour clock hour, 1..12."""
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
-
-
 def _observation_module_index(camera: int) -> int:
     return (camera - 1) // 2 % len(_OBSERVATION_MODULES)
 
@@ -21415,7 +21483,7 @@ def _observation_paint_panel(image: Image.Image, draw: ImageDraw.ImageDraw, quot
 
 def render_observation_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """S.A.M.'s camera feed of Saturn (see the module section comment above)."""
-    camera = _observation_camera(time_str)
+    camera = _clock_hour12(time_str)
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     draw = ImageDraw.Draw(image)
     _observation_paint_stars(image)
@@ -21467,7 +21535,7 @@ def render_observation_frame(time_str: str, quote_row: dict, width: int, height:
 # 3. **Composited through a dithered alpha** (``BAYER_8x8`` threshold, not a
 #    50% cut), so smeared edges interpenetrate instead of reading as stickers.
 #
-# Flesh is modelled under an upper-left light (``_furies_shade``) and given
+# Flesh is modelled under an upper-left light (``_shade_silhouette``) and given
 # brush marks before the drag so they smear with it. Mouths and the bandage are
 # painted *after* the drag — the focal points stay sharp.
 #
@@ -21524,40 +21592,9 @@ _FURIES_SMEAR_STRENGTH = 0.7
 _FURIES_TRIPTYCH_CACHE: dict = {}
 
 
-def _furies_shift(img: Image.Image, dx: int, dy: int) -> Image.Image:
-    """Translate without wrap-around (``ImageChops.offset`` wraps)."""
-    out = Image.new(img.mode, img.size, 0)
-    out.paste(img, (dx, dy))
-    return out
-
-
-def _furies_spline(points, closed: bool = True, samples: int = 10) -> list:
-    """Catmull-Rom through ``points`` — organic silhouettes rather than the
-    hard polygon corners a figure made of ``ImageDraw`` primitives gets."""
-    pts = list(points)
-    n = len(pts)
-    out = []
-    for i in (range(n) if closed else range(n - 1)):
-        p0 = pts[(i - 1) % n] if closed else pts[max(i - 1, 0)]
-        p1, p2 = pts[i], pts[(i + 1) % n]
-        p3 = pts[(i + 2) % n] if closed else pts[min(i + 2, n - 1)]
-        for k in range(samples):
-            t = k / samples
-            t2, t3 = t * t, t * t * t
-            out.append(tuple(
-                0.5 * (2 * p1[j] + (p2[j] - p0[j]) * t
-                       + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
-                       + (3 * p1[j] - p0[j] - 3 * p2[j] + p3[j]) * t3)
-                for j in (0, 1)
-            ))
-    if not closed:
-        out.append(tuple(pts[-1]))
-    return out
-
-
 def _furies_tube(draw: ImageDraw.ImageDraw, points, w0: float, w1: float, fill=255) -> None:
     """A neck or a limb: a spline swept at a width tapering ``w0`` → ``w1``."""
-    path = _furies_spline(points, closed=False, samples=8)
+    path = _catmull_rom(points, closed=False, samples=8)
     left, right = [], []
     last = len(path) - 1
     for i, (x, y) in enumerate(path):
@@ -21571,21 +21608,10 @@ def _furies_tube(draw: ImageDraw.ImageDraw, points, w0: float, w1: float, fill=2
     draw.polygon(left + right[::-1], fill=fill)
 
 
-def _furies_bayer_tile(size) -> Image.Image:
-    """``BAYER_8x8`` as a 0..255 threshold image covering ``size``."""
-    tile = Image.new("L", (8, 8))
-    tile.putdata([int((BAYER_8x8[y][x] + 0.5) * 4) for y in range(8) for x in range(8)])
-    out = Image.new("L", size)
-    for y in range(0, size[1], 8):
-        for x in range(0, size[0], 8):
-            out.paste(tile, (x, y))
-    return out
-
-
 def _furies_dithered_alpha(alpha: Image.Image) -> Image.Image:
     """A soft alpha thresholded against the ordered tile: a smeared edge
     becomes a stippled interpenetration of the two layers, not a hard cut."""
-    return ImageChops.subtract(alpha, _furies_bayer_tile(alpha.size)).point(lambda v: 255 if v else 0)
+    return ImageChops.subtract(alpha, _bayer_threshold_field(alpha.size)).point(lambda v: 255 if v else 0)
 
 
 def _furies_noise(size, seed: int, scale: int, amp: float) -> Image.Image:
@@ -21631,26 +21657,12 @@ def _furies_drag(rgb: Image.Image, alpha: Image.Image, dx: int, dy: int, *, step
         weight = decay ** i
         sx, sy = round(dx * i / steps), round(dy * i / steps)
         step_alpha = ImageChops.multiply(
-            _furies_shift(alpha, sx, sy).point(lambda v, w=weight: int(v * w)), striations)
-        out_rgb.paste(_furies_shift(rgb, sx, sy), (0, 0), step_alpha)
+            _shift_no_wrap(alpha, sx, sy).point(lambda v, w=weight: int(v * w)), striations)
+        out_rgb.paste(_shift_no_wrap(rgb, sx, sy), (0, 0), step_alpha)
         out_alpha = ImageChops.lighter(out_alpha, step_alpha)
     core = alpha.point(lambda v: int(v * keep))
     out_rgb.paste(rgb, (0, 0), core)
     return out_rgb, ImageChops.lighter(out_alpha, core)
-
-
-def _furies_shade(mask: Image.Image, base, light, dark, *, offset: int = 10, blur: int = 7) -> Image.Image:
-    """Model a silhouette under an upper-left light.
-
-    Where the shape meets its own down-right shift it has an exposed upper-left
-    edge — the lit rim; where it meets its up-left shift, the lower-right core
-    shadow. Both are blurred so the modelling rolls round the form."""
-    m = mask.filter(ImageFilter.GaussianBlur(1))
-    lit = ImageChops.subtract(m, _furies_shift(m, offset, offset)).filter(ImageFilter.GaussianBlur(blur))
-    shadow = ImageChops.subtract(m, _furies_shift(m, -offset, -offset)).filter(ImageFilter.GaussianBlur(blur))
-    img = Image.new("RGB", mask.size, base)
-    img = Image.composite(Image.new("RGB", mask.size, light), img, lit)
-    return Image.composite(Image.new("RGB", mask.size, dark), img, shadow)
 
 
 def _furies_brushwork(rgb: Image.Image, mask: Image.Image, seed: int, *, count: int = 26,
@@ -21675,7 +21687,7 @@ def _furies_brushwork(rgb: Image.Image, mask: Image.Image, seed: int, *, count: 
         ux, uy = math.cos(angle) * length / 2, math.sin(angle) * length / 2
         stroke = [(cx - ux, cy - uy), (cx - math.sin(angle) * bend, cy + math.cos(angle) * bend),
                   (cx + ux, cy + uy)]
-        draw.line(_furies_spline(stroke, closed=False), fill=tones[i % len(tones)], width=width)
+        draw.line(_catmull_rom(stroke, closed=False), fill=tones[i % len(tones)], width=width)
 
 
 def _furies_ground(seed: int) -> Image.Image:
@@ -21695,7 +21707,7 @@ def _furies_ground(seed: int) -> Image.Image:
     img = Image.composite(Image.new("RGB", size, (180, 56, 12)), img, vignette)
     # Board grain: FS over a flat colour settles into vertical worms; a seeded
     # per-pixel jitter (``randbytes``; ``effect_noise`` is unseeded) breaks them.
-    grain = Image.frombytes("L", size, random.Random(seed * 7919).randbytes(size[0] * size[1]))
+    grain = _white_noise(size[0], size[1], seed * 7919)
     img = Image.composite(Image.new("RGB", size, (255, 160, 40)), img, grain.point(lambda v: max(0, v - 200)))
     return Image.composite(Image.new("RGB", size, (236, 84, 12)), img, grain.point(lambda v: max(0, 55 - v)))
 
@@ -21731,19 +21743,19 @@ def _furies_left_panel() -> list:
         d.line((x, top, x, bottom), fill=255, width=2)
     mask = _furies_layer()
     md = ImageDraw.Draw(mask)
-    md.polygon(_furies_spline([(50, 176), (52, 140), (66, 108), (92, 86), (114, 90), (126, 78),
+    md.polygon(_catmull_rom([(50, 176), (52, 140), (66, 108), (92, 86), (114, 90), (126, 78),
                                (150, 86), (166, 108), (170, 140), (176, 176)]), fill=255)
-    md.polygon(_furies_spline([(140, 112), (166, 104), (184, 124), (182, 150), (164, 160),
+    md.polygon(_catmull_rom([(140, 112), (166, 104), (184, 124), (182, 150), (164, 160),
                                (144, 146)]), fill=255)
     _furies_tube(md, [(128, 128), (138, 152), (136, 176)], 14, 9)
-    flesh = _furies_shade(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
+    flesh = _shade_silhouette(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
     _furies_brushwork(flesh, mask, 41, direction=-0.5)
     fd = ImageDraw.Draw(flesh)
-    fd.polygon(_furies_spline([(142, 110), (166, 102), (186, 122), (184, 160), (176, 176),
+    fd.polygon(_catmull_rom([(142, 110), (166, 102), (186, 122), (184, 160), (176, 176),
                                (168, 150), (160, 164), (156, 136), (146, 130)]), fill=_FURIES_HAIR)
-    fd.line(_furies_spline([(66, 150), (92, 118), (124, 104), (150, 108)], closed=False),
+    fd.line(_catmull_rom([(66, 150), (92, 118), (124, 104), (150, 108)], closed=False),
             fill=(118, 100, 104), width=2)
-    fd.line(_furies_spline([(110, 176), (116, 150), (134, 132)], closed=False), fill=(120, 104, 108), width=2)
+    fd.line(_catmull_rom([(110, 176), (116, 150), (134, 132)], closed=False), fill=(120, 104, 108), width=2)
     flesh, alpha = _furies_drag(flesh, mask, 10, 6, steps=8, decay=0.8, seed=21)
     return [(ground, None, _FURIES_GROUND_INKS), (_furies_ink(_FURIES_LINE), lines, _FURIES_LINE_INKS),
             (flesh, alpha, _FURIES_FLESH_INKS)]
@@ -21762,19 +21774,19 @@ def _furies_centre_panel() -> list:
     pd.rectangle((84, 190, 132, 248), fill=255)
     pd.ellipse((84, 184, 132, 196), fill=255)
     pd.ellipse((84, 242, 132, 254), fill=255)
-    stone = _furies_shade(pedestal, (70, 58, 56), (140, 120, 110), (20, 14, 14))
+    stone = _shade_silhouette(pedestal, (70, 58, 56), (140, 120, 110), (20, 14, 14))
     mask = _furies_layer()
     md = ImageDraw.Draw(mask)
-    md.polygon(_furies_spline([(70, 190), (64, 160), (74, 128), (100, 118), (128, 128), (140, 158),
+    md.polygon(_catmull_rom([(70, 190), (64, 160), (74, 128), (100, 118), (128, 128), (140, 158),
                                (134, 190)]), fill=255)
     _furies_tube(md, [(106, 132), (100, 104), (112, 80), (136, 74)], 30, 22)
-    md.polygon(_furies_spline([(122, 72), (148, 58), (176, 70), (180, 98), (168, 118), (140, 122),
+    md.polygon(_catmull_rom([(122, 72), (148, 58), (176, 70), (180, 98), (168, 118), (140, 122),
                                (124, 104)]), fill=255)
-    flesh = _furies_shade(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
+    flesh = _shade_silhouette(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
     _furies_brushwork(flesh, mask, 42, direction=1.2)
     fd = ImageDraw.Draw(flesh)
-    fd.line(_furies_spline([(78, 150), (96, 176), (126, 170)], closed=False), fill=(120, 104, 108), width=2)
-    fd.line(_furies_spline([(92, 126), (110, 140), (128, 136)], closed=False), fill=(130, 114, 118), width=1)
+    fd.line(_catmull_rom([(78, 150), (96, 176), (126, 170)], closed=False), fill=(120, 104, 108), width=2)
+    fd.line(_catmull_rom([(92, 126), (110, 140), (128, 136)], closed=False), fill=(130, 114, 118), width=1)
     flesh, alpha = _furies_drag(flesh, mask, -8, 10, steps=7, decay=0.8, seed=22)
     # The bandage and the mouth go down after the drag: the focal points.
     fd, ad = ImageDraw.Draw(flesh), ImageDraw.Draw(alpha)
@@ -21810,14 +21822,14 @@ def _furies_right_panel() -> list:
         bd.line((x, 232, x + lean, 232 - h), fill=(90, 190, 40), width=1)
     mask = _furies_layer()
     md = ImageDraw.Draw(mask)
-    md.polygon(_furies_spline([(122, 128), (146, 104), (182, 106), (198, 136), (190, 170), (160, 180),
+    md.polygon(_catmull_rom([(122, 128), (146, 104), (182, 106), (198, 136), (190, 170), (160, 180),
                                (130, 164)]), fill=255)
     _furies_tube(md, [(136, 140), (104, 128), (78, 122), (58, 118)], 30, 22)
-    md.polygon(_furies_spline([(18, 104), (40, 86), (68, 92), (76, 118), (66, 146), (34, 150),
+    md.polygon(_catmull_rom([(18, 104), (40, 86), (68, 92), (76, 118), (66, 146), (34, 150),
                                (14, 132)]), fill=255)
     _furies_tube(md, [(146, 170), (142, 196), (146, 228)], 9, 4)
     _furies_tube(md, [(176, 172), (180, 200), (176, 228)], 9, 4)
-    flesh = _furies_shade(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
+    flesh = _shade_silhouette(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
     _furies_brushwork(flesh, mask, 43, direction=0.2)
     flesh, alpha = _furies_drag(flesh, mask, 12, -4, steps=8, decay=0.8, seed=23)
     fd, ad = ImageDraw.Draw(flesh), ImageDraw.Draw(alpha)
@@ -22587,7 +22599,7 @@ def _orbital_threshold(width: int, height: int, jitter: bool) -> Image.Image:
         for tx in range(0, width, 8):
             thresh.paste(tile, (tx, ty))
     if jitter:
-        noise = _tarot_noise(width, height, _ORBITAL_STAR_SEED).point(lambda v: v // 8)
+        noise = _white_noise(width, height, _ORBITAL_STAR_SEED).point(lambda v: v // 8)
         thresh = ImageChops.add(thresh, noise, offset=-16)
     return thresh
 
@@ -23447,14 +23459,6 @@ _BIOMECH_CROSSES = ((172, 30, -3), (206, 24, 2), (236, 19, -2), (262, 15, 3), (2
 _BIOMECH_BACKGROUND: dict = {}
 
 
-def _biomech_hour(time_str: str) -> int:
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
-
-
 def _biomech_arch_halfwidth(y: float) -> float:
     """Half the opening's width at row ``y``: straight piers below the
     springline, then a curve that closes to a point at the apex."""
@@ -23485,25 +23489,10 @@ def _biomech_opening_mask(size) -> Image.Image:
     return mask
 
 
-def _biomech_lerp_stops(stops, y: float):
-    for (y0, c0), (y1, c1) in zip(stops, stops[1:]):
-        if y <= y1:
-            t = 0.0 if y1 == y0 else max(0.0, (y - y0) / (y1 - y0))
-            return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
-    return stops[-1][1]
-
-
 def _biomech_haze(colour, amount: float):
     """Black pushed ``amount`` of the way toward ``colour`` — how far a
     silhouette has dissolved into the air in front of it."""
     return tuple(round(c * amount) for c in colour)
-
-
-def _biomech_smooth_noise(size, cells, seed: int) -> Image.Image:
-    """Seeded value noise: a coarse grid of white noise, bicubic-upsampled.
-    ``cells`` is the grid's (columns, rows), so an unequal pair stretches the
-    noise into streaks."""
-    return _tarot_noise(cells[0], cells[1], seed).resize(size, Image.Resampling.BICUBIC)
 
 
 def _biomech_paint_sky(image: Image.Image) -> None:
@@ -23512,7 +23501,7 @@ def _biomech_paint_sky(image: Image.Image) -> None:
     column = Image.new("RGB", (1, height))
     for y in range(height):
         stops = _BIOMECH_SKY_STOPS if y <= _BIOMECH_HORIZON else _BIOMECH_GROUND_STOPS
-        column.putpixel((0, y), _biomech_lerp_stops(stops, y))
+        column.putpixel((0, y), _lerp_stops(stops, y))
     base = column.resize((width, height), Image.Resampling.NEAREST)
 
     # Cloud: long horizontal streaks, brightening and darkening the middle sky
@@ -23524,7 +23513,7 @@ def _biomech_paint_sky(image: Image.Image) -> None:
             e = math.sin(math.pi * (y - 170) / (_BIOMECH_HORIZON - 170)) ** 1.4
         envelope.putpixel((0, y), round(255 * e))
     envelope = envelope.resize((width, height), Image.Resampling.NEAREST)
-    streaks = _biomech_smooth_noise((width, height), (9, 38), _BIOMECH_SEED)
+    streaks = _smooth_noise((width, height), (9, 38), _BIOMECH_SEED)
     light = ImageChops.multiply(streaks.point(lambda v: max(0, v - 132) * 3), envelope)
     dark = ImageChops.multiply(streaks.point(lambda v: max(0, 112 - v) * 3), envelope)
     bright = ImageEnhance.Brightness(base).enhance(1.9)
@@ -23550,7 +23539,7 @@ def _biomech_paint_landscape(image: Image.Image) -> None:
     width, height = image.size
     draw = ImageDraw.Draw(image)
     hz = _BIOMECH_HORIZON
-    horizon_sky = _biomech_lerp_stops(_BIOMECH_SKY_STOPS, 330)
+    horizon_sky = _lerp_stops(_BIOMECH_SKY_STOPS, 330)
     rng = random.Random(_BIOMECH_SEED)
 
     # Far ridge: a low ragged line, most dissolved into the air.
@@ -23603,7 +23592,7 @@ def _biomech_paint_landscape(image: Image.Image) -> None:
     for y in range(height):
         fog.putpixel((0, y), round(150 * math.exp(-((y - hz + 2) / 9.0) ** 2)))
     fog = ImageChops.multiply(fog.resize((width, height), Image.Resampling.NEAREST),
-                              _biomech_smooth_noise((width, height), (14, 60), _BIOMECH_SEED + 1))
+                              _smooth_noise((width, height), (14, 60), _BIOMECH_SEED + 1))
     fog = fog.point(lambda v: min(255, v * 2))
     image.paste(Image.composite(Image.new("RGB", (width, height), (168, 40, 14)), image, fog))
 
@@ -23698,8 +23687,8 @@ def _biomech_height_field(size, opening: Image.Image) -> Image.Image:
     width, height = size
     left, right, _, _, sill = _BIOMECH_ARCH
     wall = ImageOps.invert(opening)
-    grain = _biomech_smooth_noise(size, (width // 3, height // 3), _BIOMECH_SEED + 2)
-    flesh = _biomech_smooth_noise(size, (width // 26, height // 26), _BIOMECH_SEED + 3)
+    grain = _smooth_noise(size, (width // 3, height // 3), _BIOMECH_SEED + 2)
+    flesh = _smooth_noise(size, (width // 26, height // 26), _BIOMECH_SEED + 3)
     ground = ImageChops.add(grain.point(lambda v: v * 34 // 255), flesh.point(lambda v: 40 + v * 60 // 255))
     field = ImageChops.multiply(ground, wall.filter(ImageFilter.GaussianBlur(2)))
 
@@ -23733,14 +23722,6 @@ def _biomech_rim_overhang(size) -> Image.Image:
     return band
 
 
-def _biomech_bayer_field(size) -> Image.Image:
-    """``BAYER_8x8`` tiled across the canvas as an ``"L"`` image of rank
-    thresholds, so a density map can be stippled with one C-speed compare."""
-    width, height = size
-    rows = [bytes(BAYER_8x8[r][x % 8] * 4 + 2 for x in range(width)) for r in range(8)]
-    return Image.frombytes("L", size, b"".join(rows[y % 8] for y in range(height)))
-
-
 def _biomech_paint_wall(image: Image.Image, opening: Image.Image) -> None:
     """Shade the height field, dither it to K+W, stipple in the red rim light
     from the portal, and lay it over the scene outside the opening."""
@@ -23767,7 +23748,7 @@ def _biomech_paint_wall(image: Image.Image, opening: Image.Image) -> None:
     near_portal = opening.filter(ImageFilter.GaussianBlur(28)).point(lambda v: min(255, v * 3))
     rim = ImageChops.multiply(rim.point(lambda v: max(0, v - 132) * 2), depth)
     rim = ImageChops.multiply(rim, near_portal)
-    red = ImageChops.subtract(rim, _biomech_bayer_field(size)).point(lambda v: 255 if v else 0)
+    red = ImageChops.subtract(rim, _bayer_threshold_field(size)).point(lambda v: 255 if v else 0)
     wall.paste(SPECTRA6["red"], (0, 0), red)
 
     solid = ImageChops.lighter(ImageOps.invert(opening), field.point(lambda v: 255 if v > 150 else 0))
@@ -23795,21 +23776,13 @@ def _biomech_background() -> Image.Image:
     return image
 
 
-def _biomech_halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int = 5) -> None:
-    """Paste ``fill`` through ``mask`` over a black halo grown from it."""
-    hard = mask.point(lambda v: 255 if v > 110 else 0)
-    image.paste(SPECTRA6["black"], (0, 0), hard.filter(ImageFilter.MaxFilter(halo)))
-    if fill is not None:
-        image.paste(fill, (0, 0), hard)
-
-
 def _biomech_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """Bone-white prose over a black halo; the matched phrase an ember."""
     prose, hot, _ = wrap_quote_into_masks(
         draw, image.size, quote_row, _BIOMECH_QUOTE_RECT, theme="biomech",
         font_max=42, font_min=14, line_height_mult=1.3,
     )
-    _biomech_halo_paste(image, ImageChops.lighter(prose, hot), None)
+    _halo_paste(image, ImageChops.lighter(prose, hot), None)
     image.paste(SPECTRA6["white"], (0, 0), prose.point(lambda v: 255 if v > 110 else 0))
     paint_neon_mask(image, hot, SPECTRA6["yellow"], SPECTRA6["red"],
                     radius=3, gamma=1.5, cap=0.62,
@@ -23826,7 +23799,7 @@ def _biomech_paint_byline(image: Image.Image, quote_row: dict) -> None:
     draw_truncated_centred_byline(ImageDraw.Draw(mask), quote_row, centre=(left + right) // 2,
                                   baseline=_BIOMECH_BYLINE_BASELINE, max_width=right - left - 60,
                                   font=font, fill=255)
-    _biomech_halo_paste(image, mask, SPECTRA6["white"])
+    _halo_paste(image, mask, SPECTRA6["white"])
     mask.close()
 
 
@@ -23848,7 +23821,7 @@ def _biomech_paint_plate(draw: ImageDraw.ImageDraw, hour: int) -> None:
 
 def render_biomech_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Giger's wall round a Beksiński dusk (see the module section comment above)."""
-    hour = _biomech_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _biomech_background().copy()
     draw = ImageDraw.Draw(image)
     _biomech_paint_quote(image, draw, quote_row)
@@ -23933,9 +23906,9 @@ def _codex_paint_page(image: Image.Image) -> None:
     """Cream paper: a sparse aperiodic yellow scatter over white.
 
     A hash field rather than a Bayer rank (a sparse ordered tile lattices),
-    using the C-speed ``_tarot_noise`` since it covers the whole canvas.
+    using the C-speed ``_white_noise`` since it covers the whole canvas.
     """
-    noise = _tarot_noise(image.width, image.height, 0xC0DE)
+    noise = _white_noise(image.width, image.height, 0xC0DE)
     mask = noise.point(lambda v: 255 if v < _CODEX_CREAM_DENSITY else 0)
     image.paste(SPECTRA6["yellow"], (0, 0), mask)
     noise.close()
@@ -25399,15 +25372,6 @@ def _semiotic_font(weight: str, size: int):
     return load_font([path, (OSWALD_VARIABLE, weight), *META_FONT_BOLD_CANDIDATES], size=size)
 
 
-def _semiotic_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12."""
-    try:
-        hour = int(time_str.split(":")[0])
-    except (ValueError, IndexError):
-        hour = 12
-    return hour % 12 or 12
-
-
 def _semiotic_companions(quote_row: dict, featured: str) -> tuple[str, str, str]:
     """Three distinct companion signs for this quote, never the featured one."""
     pool = [code for code in _SEMIOTIC_COMPANION_POOL if code != featured]
@@ -25626,7 +25590,7 @@ def _semiotic_paint_placard(image: Image.Image, draw: ImageDraw.ImageDraw, quote
 
 def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Cobb's Semiotic Standard on a Nostromo bulkhead (see the section comment)."""
-    hour = _semiotic_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     draw = ImageDraw.Draw(image)
     _semiotic_paint_hazard(image)
@@ -25706,14 +25670,6 @@ _SAROS_SPIRES = (
     (191, 3, 70, 3), (228, 7, 142, -2), (258, 4, 88, 2), (296, 3, 58, -1), (322, 5, 104, 2),
 )
 _SAROS_SKY_CACHE: dict = {}
-
-
-def _saros_hour(time_str: str) -> int:
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
 
 
 def _saros_hour_vector(hour: int) -> tuple[float, float]:
@@ -25923,14 +25879,6 @@ def _saros_silhouette(size) -> Image.Image:
     return mask
 
 
-def _saros_bayer_field(size) -> Image.Image:
-    """``BAYER_8x8`` tiled across the canvas as rank thresholds (the
-    ``biomech`` rim-light compare)."""
-    width, height = size
-    rows = [bytes(BAYER_8x8[r][x % 8] * 4 + 2 for x in range(width)) for r in range(8)]
-    return Image.frombytes("L", size, b"".join(rows[y % 8] for y in range(height)))
-
-
 def _saros_paint_ground(image: Image.Image, falloff: Image.Image) -> None:
     """Lay the silhouettes over the sky, then light their sun-facing edges."""
     size = image.size
@@ -25945,7 +25893,7 @@ def _saros_paint_ground(image: Image.Image, falloff: Image.Image) -> None:
     ImageDraw.Draw(half).rectangle((0, 0, _SAROS_SUN[0], size[1]), fill=255)
     rim = Image.composite(from_right, from_left, half)
     rim = ImageChops.multiply(rim, falloff.point(lambda v: min(255, int(v * 1.7))))
-    bayer = _saros_bayer_field(size)
+    bayer = _bayer_threshold_field(size)
     strong = ImageChops.subtract(rim, bayer.point(lambda v: min(255, v + 120))).point(lambda v: 255 if v else 0)
     weak = ImageChops.subtract(rim.point(lambda v: min(255, int(v * 1.5))), bayer).point(lambda v: 255 if v else 0)
     image.paste(SPECTRA6["red"], (0, 0), weak)
@@ -25973,14 +25921,6 @@ def _saros_paint_motes(image: Image.Image, quote_row: dict) -> None:
     motes.close()
 
 
-def _saros_halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int = 7) -> None:
-    """Paste ``fill`` through ``mask`` over a black halo grown from it."""
-    hard = mask.point(lambda v: 255 if v > 110 else 0)
-    image.paste(SPECTRA6["black"], (0, 0), hard.filter(ImageFilter.MaxFilter(halo)))
-    if fill is not None:
-        image.paste(fill, (0, 0), hard)
-
-
 def _saros_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
     """White Saira prose over a black halo; the matched phrase an ember.
     Returns the block's bottom y."""
@@ -25988,7 +25928,7 @@ def _saros_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row:
         draw, image.size, quote_row, _SAROS_QUOTE_RECT, theme="saros",
         font_max=34, font_min=14, line_height_mult=1.34, align="left",
     )
-    _saros_halo_paste(image, ImageChops.lighter(prose, hot), None)
+    _halo_paste(image, ImageChops.lighter(prose, hot), None, halo=7)
     image.paste(SPECTRA6["white"], (0, 0), prose.point(lambda v: 255 if v > 110 else 0))
     paint_neon_mask(image, hot, SPECTRA6["yellow"], SPECTRA6["red"],
                     radius=4, gamma=1.5, cap=0.6, ground=frozenset({SPECTRA6["black"]}),
@@ -26012,7 +25952,7 @@ def _saros_paint_byline(image: Image.Image, quote_row: dict, top: int) -> None:
     while draw.textlength(text, font=font) > x1 - x0 and len(text) > 8:
         text = text[:-2].rstrip(" ,.;:") + "…"
     draw.text((x0, min(_SAROS_HORIZON - 16, top + 24)), text, font=font, fill=255, anchor="ls")
-    _saros_halo_paste(image, mask, SPECTRA6["white"], halo=5)
+    _halo_paste(image, mask, SPECTRA6["white"], halo=5)
     mask.close()
 
 
@@ -26053,7 +25993,7 @@ def _saros_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int
 
 def render_saros_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The eclipse over Carcosa (see the section comment above)."""
-    hour = _saros_hour(time_str)
+    hour = _clock_hour12(time_str)
     sky, falloff = _saros_sky(hour)
     image = sky.copy()
     _saros_paint_bead(image, hour)
@@ -26133,37 +26073,15 @@ _ATROPOS_PATHS: dict = {}
 _ATROPOS_GLYPHS: dict = {}
 
 
-def _atropos_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12."""
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
-
-
 def _atropos_font(size: int):
     """Michroma, falling back through the techno sans before the system faces."""
     return load_font([MICHROMA_REGULAR, (OXANIUM_VARIABLE, "Medium"), *META_FONT_BOLD_CANDIDATES], size=size)
-
-
-def _atropos_lerp_stops(stops, y: float):
-    for (y0, c0), (y1, c1) in zip(stops, stops[1:]):
-        if y <= y1:
-            t = 0.0 if y1 == y0 else max(0.0, (y - y0) / (y1 - y0))
-            return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
-    return stops[-1][1]
 
 
 def _atropos_haze(colour, amount: float):
     """``_ATROPOS_DARK`` pushed ``amount`` of the way toward ``colour`` — how far
     a silhouette has dissolved into the fog in front of it."""
     return tuple(round(d + (c - d) * amount) for d, c in zip(_ATROPOS_DARK, colour))
-
-
-def _atropos_noise(size, cells, seed: int) -> Image.Image:
-    """Seeded value noise, bicubic-upsampled; unequal ``cells`` streak it."""
-    return _tarot_noise(cells[0], cells[1], seed).resize(size, Image.Resampling.BICUBIC)
 
 
 def _atropos_paint_sky(image: Image.Image) -> None:
@@ -26174,7 +26092,7 @@ def _atropos_paint_sky(image: Image.Image) -> None:
     column = Image.new("RGB", (1, height))
     for y in range(height):
         stops = _ATROPOS_SKY_STOPS if y <= hz else _ATROPOS_GROUND_STOPS
-        column.putpixel((0, y), _atropos_lerp_stops(stops, y))
+        column.putpixel((0, y), _lerp_stops(stops, y))
     image.paste(column.resize((width, height), Image.Resampling.NEAREST))
 
     # Fog banks: long horizontal streaks, densest just above the horizon.
@@ -26183,7 +26101,7 @@ def _atropos_paint_sky(image: Image.Image) -> None:
         e = math.exp(-((y - hz + 14) / 58.0) ** 2) if y <= hz + 20 else 0.0
         envelope.putpixel((0, y), round(255 * e))
     envelope = envelope.resize((width, height), Image.Resampling.NEAREST)
-    streaks = _atropos_noise((width, height), (8, 44), _ATROPOS_SEED)
+    streaks = _smooth_noise((width, height), (8, 44), _ATROPOS_SEED)
     light = ImageChops.multiply(streaks.point(lambda v: max(0, v - 120) * 3), envelope)
     bright = ImageEnhance.Brightness(image).enhance(1.75)
     image.paste(Image.composite(bright, image, light))
@@ -26198,7 +26116,7 @@ def _atropos_paint_sky(image: Image.Image) -> None:
     image.paste(Image.blend(image, lit, 0.85))
 
     # Spores: a sparse scatter of pale teal motes hanging in the air.
-    motes = _tarot_noise(width, height, _ATROPOS_SEED + 1).point(lambda v: 255 if v > 252 else 0)
+    motes = _white_noise(width, height, _ATROPOS_SEED + 1).point(lambda v: 255 if v > 252 else 0)
     air = Image.new("L", (width, height), 0)
     ImageDraw.Draw(air).rectangle((0, 40, width, hz + 60), fill=255)
     motes = ImageChops.multiply(motes, air.filter(ImageFilter.GaussianBlur(30)))
@@ -26252,7 +26170,7 @@ def _atropos_paint_ruins(image: Image.Image) -> None:
     width, height = image.size
     draw = ImageDraw.Draw(image)
     hz = _ATROPOS_HORIZON
-    horizon_sky = _atropos_lerp_stops(_ATROPOS_SKY_STOPS, hz - 6)
+    horizon_sky = _lerp_stops(_ATROPOS_SKY_STOPS, hz - 6)
     rng = random.Random(_ATROPOS_SEED + 3)
 
     # Far skyline: a broken row of monoliths, most dissolved into the fog.
@@ -26322,11 +26240,11 @@ def _atropos_paint_ruins(image: Image.Image) -> None:
     for y in range(height):
         fog.putpixel((0, y), round(130 * math.exp(-((y - hz + 4) / 11.0) ** 2)))
     fog = ImageChops.multiply(fog.resize((width, height), Image.Resampling.NEAREST),
-                              _atropos_noise((width, height), (14, 60), _ATROPOS_SEED + 4)).point(lambda v: min(255, v * 2))
+                              _smooth_noise((width, height), (14, 60), _ATROPOS_SEED + 4)).point(lambda v: min(255, v * 2))
     image.paste(Image.composite(Image.new("RGB", (width, height), (36, 104, 108)), image, fog))
     band = image.crop((0, hz - 70, width, hz)).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     band = ImageEnhance.Brightness(band.resize((width, 110), Image.Resampling.BILINEAR)).enhance(0.55)
-    wet = _atropos_noise((width, 110), (160, 3), _ATROPOS_SEED + 5).point(lambda v: max(0, v - 70) * 2)
+    wet = _smooth_noise((width, 110), (160, 3), _ATROPOS_SEED + 5).point(lambda v: max(0, v - 70) * 2)
     fade = Image.new("L", (1, 110))
     for y in range(110):
         fade.putpixel((0, y), round(255 * (1 - y / 110) ** 1.6))
@@ -26547,15 +26465,6 @@ def _atropos_paint_cipher(image: Image.Image, quote_row: dict) -> None:
     mask.close()
 
 
-def _atropos_halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int = 5) -> None:
-    """Paste ``fill`` through ``mask`` over a black halo grown from it — the
-    HUD text floats on the night without a panel hiding the scene."""
-    hard = mask.point(lambda v: 255 if v > 110 else 0)
-    image.paste(SPECTRA6["black"], (0, 0), hard.filter(ImageFilter.MaxFilter(halo)))
-    if fill is not None:
-        image.paste(fill, (0, 0), hard)
-
-
 def _atropos_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """The translation: white Saira over a black halo, the matched phrase
     a yellow core in the HUD's tangerine."""
@@ -26563,7 +26472,7 @@ def _atropos_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_ro
         draw, image.size, quote_row, _ATROPOS_QUOTE_RECT, theme="atropos",
         font_max=30, font_min=12, line_height_mult=1.42,
     )
-    _atropos_halo_paste(image, ImageChops.lighter(prose, hot), None)
+    _halo_paste(image, ImageChops.lighter(prose, hot), None)
     image.paste(SPECTRA6["white"], (0, 0), prose.point(lambda v: 255 if v > 110 else 0))
     _atropos_glow_hot(image, hot, SPECTRA6["yellow"], radius=3, gamma=1.8, cap=0.5,
                       ground=frozenset({SPECTRA6["black"]}))
@@ -26585,7 +26494,7 @@ def _atropos_paint_byline(image: Image.Image, quote_row: dict) -> None:
     font, text = fit_text_to_width(md, byline, candidates, 13, x1 - x0, floor=10, tracking=1)
     w = tracked_width(md, text, font, tracking=1)
     draw_tracked(md, ((x0 + x1 - w) / 2, _ATROPOS_BYLINE_BASELINE - 12), text, font, 255, tracking=1)
-    _atropos_halo_paste(image, mask, SPECTRA6["white"], halo=3)
+    _halo_paste(image, mask, SPECTRA6["white"], halo=3)
     mask.close()
 
 
@@ -26650,7 +26559,7 @@ def _atropos_paint_hud(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int,
 
 def render_atropos_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """Night in the Overgrown Ruins of Atropos (see the section comment above)."""
-    hour = _atropos_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _atropos_background().copy()
     draw = ImageDraw.Draw(image)
     _atropos_paint_embers(image)
@@ -26684,7 +26593,7 @@ def render_atropos_frame(time_str: str, quote_row: dict, width: int, height: int
 # specified in the panel's measured colour space and the quantiser is given
 # the same measured inks, so diffusion weighs red as the near-black it is on
 # the panel; indices are then re-labelled with the nominal inks
-# (``_expedition_dither``). Nominal-RGB design goes to mud on the panel. The
+# (``_dither_calibrated``). Nominal-RGB design goes to mud on the panel. The
 # sky is quantised without green (diffusion uses any ink it is given); the sea
 # gets green back for the B+G teal of lit water.
 #
@@ -26733,17 +26642,6 @@ _EXPEDITION_BRUSH = ((506, 236), (618, 146))           # handle end, tip — int
 _EXPEDITION_LAMP_X = 66
 _EXPEDITION_LAMP_GLASS = (56, 206, 76, 244)
 _EXPEDITION_LAMP_BOX = (44, 184, 90, 262)
-# The panel's measured inks — CLAUDE.md's calibration table. The scene is
-# quantised against these and re-labelled with the nominal ``SPECTRA6``
-# values afterwards; see the section comment.
-_EXPEDITION_PANEL_INKS = {
-    "white": (185, 199, 201),
-    "black": (31, 34, 38),
-    "red": (98, 32, 30),
-    "yellow": (193, 187, 30),
-    "blue": (35, 63, 142),
-    "green": (53, 86, 58),
-}
 _EXPEDITION_SKY_INKS = ("black", "blue", "red", "yellow", "white")
 _EXPEDITION_SEA_INKS = ("black", "blue", "green", "red", "yellow", "white")
 # Dusk, top to horizon, in the calibrated space: blue-black zenith, deep
@@ -26762,15 +26660,6 @@ _EXPEDITION_BACKGROUND: dict = {}
 _EXPEDITION_NUMERALS: dict = {}
 
 
-def _expedition_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12 — the number on the Monolith."""
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
-
-
 def _expedition_label_font(size: int):
     """Bebas Neue — the game's numeral and label face — falling back through
     Antonio, the bundle's other condensed caps, before the system faces."""
@@ -26782,43 +26671,6 @@ def _expedition_wordmark_font(size: int):
     return load_font([CINZELDECORATIVE_BOLD, CINZELDECORATIVE_REGULAR, *META_FONT_BOLD_CANDIDATES], size=size)
 
 
-def _expedition_lerp_stops(stops, y: float):
-    for (y0, c0), (y1, c1) in zip(stops, stops[1:]):
-        if y <= y1:
-            t = 0.0 if y1 == y0 else max(0.0, (y - y0) / (y1 - y0))
-            return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
-    return stops[-1][1]
-
-
-def _expedition_noise(size, cells, seed: int) -> Image.Image:
-    """Seeded value noise, bicubic-upsampled; unequal ``cells`` streak it."""
-    return _tarot_noise(cells[0], cells[1], seed).resize(size, Image.Resampling.BICUBIC)
-
-
-def _expedition_dither(scene: Image.Image, inks) -> Image.Image:
-    """Floyd–Steinberg ``scene`` against the *calibrated* colours of ``inks``,
-    then re-label the chosen indices with the nominal inks.
-
-    ``quantize(palette=…)`` maps every pixel to an index into the palette
-    image it is handed; replacing that image's palette with the nominal
-    values afterwards is a pure re-labelling, so the dither's decisions are
-    made in the measured space and its output is on-palette RGB.
-    """
-    measured: list[int] = []
-    nominal: list[int] = []
-    for name in inks:
-        measured.extend(_EXPEDITION_PANEL_INKS[name])
-        nominal.extend(SPECTRA6[name])
-    while len(measured) < 768:
-        measured.extend(_EXPEDITION_PANEL_INKS[inks[0]])
-        nominal.extend(SPECTRA6[inks[0]])
-    palette = Image.new("P", (1, 1))
-    palette.putpalette(measured[:768])
-    quantised = scene.convert("RGB").quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG)
-    quantised.putpalette(nominal[:768])
-    return quantised.convert("RGB")
-
-
 def _expedition_paint_sky(scene: Image.Image) -> None:
     """The dusk: the gradient, the glow pooled behind the Monolith, the
     vignette over the journal's corner, and the brush facture."""
@@ -26826,7 +26678,7 @@ def _expedition_paint_sky(scene: Image.Image) -> None:
     hz = _EXPEDITION_HORIZON
     column = Image.new("RGB", (1, height))
     for y in range(height):
-        column.putpixel((0, y), _expedition_lerp_stops(_EXPEDITION_SKY_STOPS, min(y, hz)))
+        column.putpixel((0, y), _lerp_stops(_EXPEDITION_SKY_STOPS, min(y, hz)))
     scene.paste(column.resize((width, height), Image.Resampling.NEAREST))
 
     # The light: an elliptical pool behind the Monolith, brightest at the
@@ -26855,8 +26707,8 @@ def _expedition_paint_sky(scene: Image.Image) -> None:
     scene.paste(Image.composite(dark, scene, shade))
 
     # Facture: long horizontal strokes and a finer streak, multiplied in.
-    broad = _expedition_noise((width, height), (10, 72), _EXPEDITION_SEED).point(lambda v: 196 + v * 0.46)
-    fine = _expedition_noise((width, height), (26, 160), _EXPEDITION_SEED + 1).point(lambda v: 222 + v * 0.26)
+    broad = _smooth_noise((width, height), (10, 72), _EXPEDITION_SEED).point(lambda v: 196 + v * 0.46)
+    fine = _smooth_noise((width, height), (26, 160), _EXPEDITION_SEED + 1).point(lambda v: 222 + v * 0.26)
     brushed = ImageChops.multiply(scene, ImageChops.multiply(broad, fine).convert("RGB"))
     brushed = ImageEnhance.Brightness(brushed).enhance(1.18)
     sky = Image.new("L", (width, height), 0)
@@ -26871,10 +26723,10 @@ def _expedition_paint_sea(scene: Image.Image) -> None:
     hz = _EXPEDITION_HORIZON
     column = Image.new("RGB", (1, height))
     for y in range(height):
-        column.putpixel((0, y), _expedition_lerp_stops(_EXPEDITION_SEA_STOPS, max(y, hz)))
+        column.putpixel((0, y), _lerp_stops(_EXPEDITION_SEA_STOPS, max(y, hz)))
     water = column.resize((width, height), Image.Resampling.NEAREST)
 
-    streaks = _expedition_noise((width, height), (14, 110), _EXPEDITION_SEED + 2)
+    streaks = _smooth_noise((width, height), (14, 110), _EXPEDITION_SEED + 2)
     water = ImageChops.multiply(water, streaks.point(lambda v: 186 + v * 0.38).convert("RGB"))
     water = ImageEnhance.Brightness(water).enhance(1.12)
 
@@ -26912,7 +26764,7 @@ def _expedition_paint_monolith(scene: Image.Image) -> None:
     face = Image.new("L", scene.size, 0)
     ImageDraw.Draw(face).polygon(list(_EXPEDITION_MONOLITH), fill=255)
     stone = Image.new("RGB", scene.size, (27, 26, 33))
-    grain = _expedition_noise(scene.size, (20, 6), _EXPEDITION_SEED + 3).point(lambda v: 214 + v * 0.16)
+    grain = _smooth_noise(scene.size, (20, 6), _EXPEDITION_SEED + 3).point(lambda v: 214 + v * 0.16)
     stone = ImageChops.multiply(stone, grain.convert("RGB"))
     scene.paste(Image.composite(stone, scene, face))
     # Rim light: the glow grazes both edges, strongest at the base.
@@ -27073,7 +26925,7 @@ def _expedition_background() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _expedition_paint_sky(scene)
     _expedition_paint_sea(scene)
     _expedition_paint_continent(scene)
@@ -27081,8 +26933,8 @@ def _expedition_background() -> Image.Image:
     _expedition_paint_paintress(scene)
     _expedition_paint_promenade(scene)
     # Two quantisers: the sky without green, the water with it.
-    image = _expedition_dither(scene, _EXPEDITION_SKY_INKS)
-    sea = _expedition_dither(scene, _EXPEDITION_SEA_INKS)
+    image = _dither_calibrated(scene, _EXPEDITION_SKY_INKS)
+    sea = _dither_calibrated(scene, _EXPEDITION_SEA_INKS)
     band = Image.new("L", size, 0)
     ImageDraw.Draw(band).rectangle((0, _EXPEDITION_HORIZON + 1, size[0], _EXPEDITION_RAIL_TOP - 1), fill=255)
     image = Image.composite(sea, image, band)
@@ -27146,10 +26998,10 @@ def _expedition_numeral_mask(hour: int) -> Image.Image:
 
     rng = random.Random(_EXPEDITION_SEED * 31 + hour)
     # Bristle gaps: vertical streaks carved out where a tall-celled noise dips.
-    bristle = _expedition_noise(size, (120, 6), _EXPEDITION_SEED + 10 + hour).point(lambda v: 255 if v > 26 else 0)
+    bristle = _smooth_noise(size, (120, 6), _EXPEDITION_SEED + 10 + hour).point(lambda v: 255 if v > 26 else 0)
     glyph = ImageChops.multiply(glyph, bristle)
     # Edges that swell and bite: grow where one noise is high, shrink where low.
-    bite = _expedition_noise(size, (60, 36), _EXPEDITION_SEED + 20 + hour).point(lambda v: 255 if v > 150 else 0)
+    bite = _smooth_noise(size, (60, 36), _EXPEDITION_SEED + 20 + hour).point(lambda v: 255 if v > 150 else 0)
     glyph = Image.composite(glyph.filter(ImageFilter.MaxFilter(3)), glyph.filter(ImageFilter.MinFilter(3)), bite)
     # Drips, from the lowest painted pixel in three columns of the glyph.
     gp = glyph.load()
@@ -27187,7 +27039,7 @@ def _expedition_paint_numeral(image: Image.Image, hour: int) -> None:
     field = field.filter(ImageFilter.GaussianBlur(2.5))
     fade = Image.new("L", image.size, 0)
     fp = fade.load()
-    streaks = _expedition_noise(image.size, (14, 110), _EXPEDITION_SEED + 2).load()
+    streaks = _smooth_noise(image.size, (14, 110), _EXPEDITION_SEED + 2).load()
     for y in range(hz, min(image.size[1], hz + 4 + round(reach * 1.25) + 8)):
         depth = math.exp(-(y - hz) / 90.0)
         for x in range(x0 - 20, x1 + 20):
@@ -27291,15 +27143,6 @@ def _expedition_paint_petals(image: Image.Image, quote_row: dict) -> None:
                     px[ax, ay] = white if row[ax % 4] < density * 16 else red
 
 
-def _expedition_halo_paste(image: Image.Image, mask: Image.Image, fill, halo: int = 5) -> None:
-    """Paste ``fill`` through ``mask`` over a black halo grown from it — the
-    type floats on the dusk without a panel hiding the scene."""
-    hard = mask.point(lambda v: 255 if v > 110 else 0)
-    image.paste(SPECTRA6["black"], (0, 0), hard.filter(ImageFilter.MaxFilter(halo)))
-    if fill is not None:
-        image.paste(fill, (0, 0), hard)
-
-
 def _expedition_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """The journal page: white Fell roman over a black halo, the matched
     phrase in Fell italic and the number's own paint."""
@@ -27307,7 +27150,7 @@ def _expedition_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote
         draw, image.size, quote_row, _EXPEDITION_QUOTE_RECT, theme="expedition",
         font_max=31, font_min=13, line_height_mult=1.36,
     )
-    _expedition_halo_paste(image, ImageChops.lighter(prose, hot), None)
+    _halo_paste(image, ImageChops.lighter(prose, hot), None)
     image.paste(SPECTRA6["white"], (0, 0), prose.point(lambda v: 255 if v > 110 else 0))
     paint_neon_mask(image, hot, SPECTRA6["yellow"], SPECTRA6["red"], radius=3, gamma=1.8, cap=0.5,
                     ground=frozenset({SPECTRA6["black"]}), tile=BAYER_8x8,
@@ -27330,7 +27173,7 @@ def _expedition_paint_byline(image: Image.Image, quote_row: dict) -> None:
     font, text = fit_text_to_width(md, byline, candidates, 17, x1 - x0, floor=13, tracking=3)
     w = tracked_width(md, text, font, tracking=3)
     draw_tracked(md, ((x0 + x1 - w) / 2, _EXPEDITION_BYLINE_TOP), text, font, 255, tracking=3)
-    _expedition_halo_paste(image, mask, SPECTRA6["yellow"], halo=5)
+    _halo_paste(image, mask, SPECTRA6["yellow"], halo=5)
     mask.close()
 
 
@@ -27342,7 +27185,7 @@ def _expedition_paint_chrome(image: Image.Image) -> None:
     md = ImageDraw.Draw(mask)
     draw_tracked(md, (x0 + 2, y0 + 2), "CLAIR OBSCUR", _expedition_label_font(15), 255, tracking=6)
     draw_tracked(md, (x0, y0 + 20), "EXPEDITION 33", _expedition_wordmark_font(25), 255, tracking=3)
-    _expedition_halo_paste(image, mask, white, halo=5)
+    _halo_paste(image, mask, white, halo=5)
     mask.close()
     # The rule: a gold hairline with a diamond at its centre — the ornament
     # every panel of the game's interface is drawn with.
@@ -27360,13 +27203,13 @@ def _expedition_paint_chrome(image: Image.Image) -> None:
     md = ImageDraw.Draw(mask)
     font = _expedition_label_font(16)
     draw_tracked(md, (cx1, cy0 + 2), "FOR THOSE WHO COME AFTER", font, 255, tracking=4, anchor_right=True)
-    _expedition_halo_paste(image, mask, yellow, halo=5)
+    _halo_paste(image, mask, yellow, halo=5)
     mask.close()
 
 
 def render_expedition_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Monolith from the Lumière promenade (see the section comment above)."""
-    hour = _expedition_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _expedition_background().copy()
     draw = ImageDraw.Draw(image)
     _expedition_paint_numeral(image, hour)
@@ -27459,7 +27302,7 @@ def _witcher_page_mask(size) -> Image.Image:
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).rectangle(_WITCHER_PAGE_RECT, fill=255)
     band = ImageChops.subtract(mask, mask.filter(ImageFilter.MinFilter(9)))
-    tear = _tarot_noise(size[0] // 3, size[1] // 3, _WITCHER_SEED).resize(size, Image.Resampling.BICUBIC)
+    tear = _smooth_noise(size, (size[0] // 3, size[1] // 3), _WITCHER_SEED)
     torn = ImageChops.multiply(band, tear.point(lambda v: 255 if v < 118 else 0))
     return ImageChops.subtract(mask, torn)
 
@@ -27468,7 +27311,7 @@ def _witcher_paint_binding(image: Image.Image) -> None:
     """The leather the page sits in: black with a sparse red fleck, which is
     how six inks spell dark brown, and a few yellow glints of the grain."""
     width, height = image.size
-    grain = _tarot_noise(width, height, _WITCHER_SEED + 1)
+    grain = _white_noise(width, height, _WITCHER_SEED + 1)
     image.paste(SPECTRA6["red"], (0, 0), grain.point(lambda v: 255 if v < 18 else 0))
     image.paste(SPECTRA6["yellow"], (0, 0), grain.point(lambda v: 255 if 252 < v else 0))
 
@@ -27477,11 +27320,11 @@ def _witcher_paint_parchment(image: Image.Image) -> None:
     """The page: cream Y+W under a sparse R+G foxing, inside the deckled mask."""
     width, height = image.size
     page = Image.new("RGB", image.size, SPECTRA6["white"])
-    foxing = _tarot_noise(width, height, _WITCHER_SEED + 2)
+    foxing = _white_noise(width, height, _WITCHER_SEED + 2)
     fox_cut = round(_WITCHER_FOXING_DENSITY * 255)
     page.paste(SPECTRA6["red"], (0, 0), foxing.point(lambda v: 255 if v < fox_cut and v & 1 else 0))
     page.paste(SPECTRA6["green"], (0, 0), foxing.point(lambda v: 255 if v < fox_cut and not v & 1 else 0))
-    cream = _tarot_noise(width, height, _WITCHER_SEED + 3)
+    cream = _white_noise(width, height, _WITCHER_SEED + 3)
     page.paste(SPECTRA6["yellow"], (0, 0), cream.point(lambda v: 255 if v < round(_WITCHER_CREAM_DENSITY * 255) else 0))
     image.paste(page, (0, 0), _witcher_page_mask(image.size))
 
@@ -27844,15 +27687,6 @@ _HADES_RARITY_FLOORS = (0, 50, 78, 92, 98)
 _HADES_SCENE: dict = {}
 
 
-def _hades_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12 — the moon's phase."""
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
-
-
 def _hades_phase(hour: int) -> float:
     """Lunar phase for the hour, 0 new .. 0.5 full .. 1 new: full at twelve,
     new at six, first quarter at nine, last quarter at three."""
@@ -27882,12 +27716,12 @@ def _hades_paint_sky(scene: Image.Image) -> None:
     column = Image.new("RGB", (1, hz))
     cp = column.load()
     for y in range(hz):
-        cp[0, y] = _expedition_lerp_stops(_HADES_SKY_STOPS, y)
+        cp[0, y] = _lerp_stops(_HADES_SKY_STOPS, y)
     scene.paste(column.resize((width, hz), Image.Resampling.NEAREST), (0, 0))
     scene.paste(Image.new("RGB", (width, height - hz), _HADES_SKY_STOPS[-1][1]), (0, hz))
     # Brush facture: a stretched noise, ±7 levels, so the dither lays grain
     # across the sky rather than a flat field.
-    grain = _expedition_noise((width, height), (64, 24), _HADES_SEED + 1).point(lambda v: v // 18)
+    grain = _smooth_noise((width, height), (64, 24), _HADES_SEED + 1).point(lambda v: v // 18)
     tint = Image.merge("RGB", (grain, grain, grain))
     scene.paste(ImageChops.subtract(ImageChops.add(scene, tint), Image.new("RGB", scene.size, (7, 7, 7))))
     # The moon's halo.
@@ -27948,7 +27782,7 @@ def _hades_paint_ridge(image: Image.Image) -> None:
     draw.polygon(ridge, fill=black)
     earth = Image.new("L", image.size, 0)
     ImageDraw.Draw(earth).polygon(ridge, fill=255)
-    fleck = _tarot_noise(width, height, _HADES_SEED + 8).point(lambda v: 255 if v < 6 else 0)
+    fleck = _white_noise(width, height, _HADES_SEED + 8).point(lambda v: 255 if v < 6 else 0)
     image.paste(blue, (0, 0), ImageChops.multiply(earth, fleck))
     earth.close()
     base = _HADES_RIDGE_Y + 8
@@ -28016,7 +27850,7 @@ def _hades_paint_panel(image: Image.Image) -> None:
     draw = ImageDraw.Draw(image)
     black, yellow, blue = SPECTRA6["black"], SPECTRA6["yellow"], SPECTRA6["blue"]
     draw.rectangle((x0, y0, x1, y1), fill=black)
-    fleck = _tarot_noise(x1 - x0 + 1, y1 - y0 + 1, _HADES_SEED + 5).point(lambda v: 255 if v < 9 else 0)
+    fleck = _white_noise(x1 - x0 + 1, y1 - y0 + 1, _HADES_SEED + 5).point(lambda v: 255 if v < 9 else 0)
     image.paste(blue, (x0, y0), fleck)
     draw.rectangle((x0, y0, x1, y1), outline=yellow, width=2)
     i = _HADES_PANEL_INSET
@@ -28067,7 +27901,7 @@ def _hades_paint_medallion(image: Image.Image) -> None:
     draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=black)
     disc = Image.new("L", image.size, 0)
     ImageDraw.Draw(disc).ellipse((cx - r + 8, cy - r + 8, cx + r - 8, cy + r - 8), fill=255)
-    speck = _tarot_noise(image.size[0], image.size[1], _HADES_SEED + 6).point(lambda v: 255 if v < 30 else 0)
+    speck = _white_noise(image.size[0], image.size[1], _HADES_SEED + 6).point(lambda v: 255 if v < 30 else 0)
     image.paste(blue, (0, 0), ImageChops.multiply(disc, speck))
     disc.close()
     draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=yellow, width=3)
@@ -28132,10 +27966,10 @@ def _hades_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _hades_paint_sky(scene)
-    image = _expedition_dither(scene, _HADES_SKY_INKS)
-    horizon = _expedition_dither(scene, _HADES_HORIZON_INKS)
+    image = _dither_calibrated(scene, _HADES_SKY_INKS)
+    horizon = _dither_calibrated(scene, _HADES_HORIZON_INKS)
     # Feathered over 40 rows, so the seam between the quantisers is a drift
     # of green into the blue rather than a rule across the sky.
     band = Image.new("L", size, 0)
@@ -28159,7 +27993,7 @@ def _hades_paint_moon(image: Image.Image, hour: int) -> None:
     cx, cy = _HADES_MOON_CENTRE
     r = _HADES_MOON_RADIUS
     white, black, blue = SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]
-    maria = _tarot_noise(26, 26, _HADES_SEED + 7).resize((2 * r + 1, 2 * r + 1), Image.Resampling.BICUBIC)
+    maria = _smooth_noise((2 * r + 1, 2 * r + 1), (26, 26), _HADES_SEED + 7)
     mp = maria.load()
     px = image.load()
     k = math.cos(2 * math.pi * phase)
@@ -28202,22 +28036,9 @@ def _hades_paint_title(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row:
 def _hades_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """The boon's text: white Spectral, ragged right, the matched phrase
     SemiBold in gold — the card's highlighted key words."""
-    x0, y0, x1, y1 = _HADES_QUOTE_RECT
-    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=30, font_min=14, line_height_mult=1.3, theme="hades",
-    )
-    y = y0
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = quote_font_bold if is_bold else quote_font
-            draw.text((x, y + (ascent - _font_ascent(font))), chunk, font=font, fill=yellow if is_bold else white)
-            x += int(round(draw.textlength(chunk, font=font)))
-        y += line_height
+    placed = _place_quote(draw, quote_row, _HADES_QUOTE_RECT, theme="hades",
+                          font_max=30, font_min=14, line_height_mult=1.3)
+    _paint_placed(draw, placed, SPECTRA6["white"], SPECTRA6["yellow"])
 
 
 def _hades_rarity(quote_row: dict) -> int:
@@ -28249,7 +28070,7 @@ def _hades_paint_foot(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: 
 
 def render_hades_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """A boon at the Crossroads under the moon (see the section comment above)."""
-    hour = _hades_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _hades_scene().copy()
     draw = ImageDraw.Draw(image)
     _hades_paint_moon(image, hour)
@@ -28334,15 +28155,6 @@ _BEKSINSKI_SPIRES = (
 _BEKSINSKI_SCENE: dict = {}
 
 
-def _beksinski_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12 — the number of figures in the file."""
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
-
-
 def _beksinski_spindle(rng: random.Random, cx: float, base: float, h: float, w: float,
                        lean: float = 0.0) -> list[tuple[float, float]]:
     """A tapering spire with ragged edges and a bulge along its length — a
@@ -28417,12 +28229,12 @@ def _beksinski_paint_sky(scene: Image.Image) -> None:
     column = Image.new("RGB", (1, height))
     cp = column.load()
     for y in range(height):
-        cp[0, y] = _expedition_lerp_stops(_BEKSINSKI_SKY_STOPS if y < hz else _BEKSINSKI_GROUND_STOPS, y)
+        cp[0, y] = _lerp_stops(_BEKSINSKI_SKY_STOPS if y < hz else _BEKSINSKI_GROUND_STOPS, y)
     scene.paste(column.resize((width, height), Image.Resampling.NEAREST), (0, 0))
     # Scraped-oil facture: a horizontal streak and a broad smudge, both
     # centred on zero so the gradient's stops stay where they were set.
-    streak = _expedition_noise((width, height), (48, 18), _BEKSINSKI_SEED + 1).point(lambda v: v // 10)
-    smudge = _expedition_noise((width, height), (7, 5), _BEKSINSKI_SEED + 2).point(lambda v: v // 12)
+    streak = _smooth_noise((width, height), (48, 18), _BEKSINSKI_SEED + 1).point(lambda v: v // 10)
+    smudge = _smooth_noise((width, height), (7, 5), _BEKSINSKI_SEED + 2).point(lambda v: v // 12)
     grain = ImageChops.add(streak, smudge)
     tint = Image.merge("RGB", (grain, grain, grain))
     scene.paste(ImageChops.subtract(ImageChops.add(scene, tint), Image.new("RGB", scene.size, (23, 23, 23))))
@@ -28463,7 +28275,7 @@ def _beksinski_paint_tower(scene: Image.Image, mask: Image.Image) -> None:
     """The cathedral in continuous tone: a dark grained body on ``mask``, a
     rust rim light on the faces toward the sun, roots into the plain."""
     body = Image.new("RGB", scene.size, _BEKSINSKI_BODY)
-    grain = _expedition_noise(scene.size, (20, 40), _BEKSINSKI_SEED + 4).point(lambda v: v // 9)
+    grain = _smooth_noise(scene.size, (20, 40), _BEKSINSKI_SEED + 4).point(lambda v: v // 9)
     scene.paste(ImageChops.add(body, Image.merge("RGB", (grain, grain, grain))), (0, 0), mask)
     rim = ImageChops.subtract(mask, ImageChops.offset(mask, 3, 2)).filter(ImageFilter.GaussianBlur(1.2))
     rim = ImageChops.multiply(rim, mask).point(lambda v: min(255, v * 2))
@@ -28491,12 +28303,12 @@ def _beksinski_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _beksinski_paint_sky(scene)
     tower = _beksinski_tower_mask(size)
     _beksinski_paint_tower(scene, tower)
-    sky = _expedition_dither(scene, _BEKSINSKI_SKY_INKS)
-    ground = _expedition_dither(scene, _BEKSINSKI_GROUND_INKS)
+    sky = _dither_calibrated(scene, _BEKSINSKI_SKY_INKS)
+    ground = _dither_calibrated(scene, _BEKSINSKI_GROUND_INKS)
     # The plain and the bone are one surface for the craquelure; the sky is
     # not crazed, and the byline's footprint is kept out of the net.
     surface = Image.new("L", size, 0)
@@ -28554,22 +28366,9 @@ def _beksinski_paint_figures(image: Image.Image, hour: int) -> None:
 def _beksinski_paint_quote(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
     """The quote in the haze: black Old Standard, ragged right, the matched
     phrase Bold in solid red."""
-    x0, y0, x1, y1 = _BEKSINSKI_QUOTE_RECT
-    black, red = SPECTRA6["black"], SPECTRA6["red"]
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=32, font_min=15, line_height_mult=1.3, theme="beksinski",
-    )
-    y = y0
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = quote_font_bold if is_bold else quote_font
-            draw.text((x, y + (ascent - _font_ascent(font))), chunk, font=font, fill=red if is_bold else black)
-            x += int(round(draw.textlength(chunk, font=font)))
-        y += line_height
+    placed = _place_quote(draw, quote_row, _BEKSINSKI_QUOTE_RECT, theme="beksinski",
+                          font_max=32, font_min=15, line_height_mult=1.3)
+    _paint_placed(draw, placed, SPECTRA6["black"], SPECTRA6["red"])
 
 
 def _beksinski_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -28586,7 +28385,7 @@ def _beksinski_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 def render_beksinski_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """A procession toward a cathedral of bone (see the section comment above)."""
-    hour = _beksinski_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _beksinski_scene().copy()
     draw = ImageDraw.Draw(image)
     _beksinski_paint_figures(image, hour)
@@ -28664,15 +28463,6 @@ _EXPANSE_CHART_RECT = (236, 414, 556, 462)
 _EXPANSE_SYSTEXT_X = 574
 _EXPANSE_CHAMFER = 12
 _EXPANSE_SCENE: dict = {}
-
-
-def _expanse_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12 — the contact's bearing."""
-    try:
-        hour = int(str(time_str).split(":", 1)[0])
-    except ValueError:
-        hour = 12
-    return hour % 12 or 12
 
 
 def _expanse_bearing(hour: int) -> int:
@@ -28842,7 +28632,7 @@ def _expanse_paint_orbit(image: Image.Image) -> None:
     gx, gy, gr = int(x0 + 4.5 * pitch), y0 + 28, 11
     disc = Image.new("L", image.size, 0)
     ImageDraw.Draw(disc).ellipse((gx - gr, gy - gr, gx + gr, gy + gr), fill=255)
-    _expanse_paint_amber_rect_masked(image, disc)
+    _expanse_paint_stipple_masked(image, disc, SPECTRA6["red"], SPECTRA6["yellow"])
     disc.close()
     for band in (-6, -2, 3, 7):
         draw.line([(gx - gr + 2, gy + band), (gx + gr - 2, gy + band)], fill=red, width=1)
@@ -28944,7 +28734,7 @@ def _expanse_paint_list(image: Image.Image) -> None:
         elif k == 1:     # the contact: a diamond, orange
             glyph = Image.new("L", image.size, 0)
             ImageDraw.Draw(glyph).polygon([(sx, sy - 7), (sx + 9, sy), (sx, sy + 7), (sx - 9, sy)], fill=255)
-            _expanse_paint_amber_rect_masked(image, glyph)
+            _expanse_paint_stipple_masked(image, glyph, SPECTRA6["red"], SPECTRA6["yellow"])
             glyph.close()
         else:            # unknowns: hollow triangles
             draw.polygon([(sx, sy - 7), (sx + 7, sy + 5), (sx - 7, sy + 5)], outline=blue, width=1)
@@ -29166,33 +28956,23 @@ def _expanse_paint_arc_gauges(image: Image.Image, draw: ImageDraw.ImageDraw, quo
         mask = Image.new("L", image.size, 0)
         md = ImageDraw.Draw(mask)
         md.arc((gx - r + 2, gy - r + 2, gx + r - 2, gy + r - 2), 135, end, fill=255, width=4)
-        _expanse_paint_cyan_rect_masked(image, mask)
+        _expanse_paint_stipple_masked(image, mask, SPECTRA6["blue"], SPECTRA6["white"])
         md.rectangle((0, 0, image.size[0], image.size[1]), fill=0)
         md.arc((gx - r + 9, gy - r + 9, gx + r - 9, gy + r - 9), 135, 135 + 270 * ((sweep * 7) % 13) / 12, fill=255, width=3)
         image.paste(SPECTRA6["black"], (0, 0), mask)
-        _expanse_paint_amber_rect_masked(image, mask)
+        _expanse_paint_stipple_masked(image, mask, SPECTRA6["red"], SPECTRA6["yellow"])
         mask.close()
         draw.ellipse((gx - 1, gy - 1, gx + 1, gy + 1), fill=SPECTRA6["white"])
 
 
-def _expanse_paint_cyan_rect_masked(image: Image.Image, mask: Image.Image) -> None:
-    """The cyan checker through an ``L`` mask."""
+def _expanse_paint_stipple_masked(image: Image.Image, mask: Image.Image, ink_a, ink_b) -> None:
+    """A 50/50 ``ink_a``/``ink_b`` checker through an ``L`` mask: blue + white
+    for the cyan, red + yellow for the MCRN orange."""
     bbox = mask.getbbox()
     if not bbox:
         return
     swatch = Image.new("RGB", image.size, SPECTRA6["black"])
-    _fill_swatch_stipple(swatch, bbox, SPECTRA6["blue"], SPECTRA6["white"], 0.5)
-    image.paste(swatch, (0, 0), mask)
-    swatch.close()
-
-
-def _expanse_paint_amber_rect_masked(image: Image.Image, mask: Image.Image) -> None:
-    """The MCRN orange through an ``L`` mask."""
-    bbox = mask.getbbox()
-    if not bbox:
-        return
-    swatch = Image.new("RGB", image.size, SPECTRA6["black"])
-    _fill_swatch_stipple(swatch, bbox, SPECTRA6["red"], SPECTRA6["yellow"], 0.5)
+    _fill_swatch_stipple(swatch, bbox, ink_a, ink_b, 0.5)
     image.paste(swatch, (0, 0), mask)
     swatch.close()
 
@@ -29218,7 +28998,7 @@ def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote
         pts.append((x, base - int(v * height)))
     area = Image.new("L", image.size, 0)
     ImageDraw.Draw(area).polygon([(cx0 + 24, base)] + pts + [(cx1 - 1, base)], fill=255)
-    _expanse_paint_cyan_rect_masked(image, area)
+    _expanse_paint_stipple_masked(image, area, SPECTRA6["blue"], SPECTRA6["white"])
     area.close()
     draw.line(pts, fill=SPECTRA6["white"], width=1)
     # Boxed IDs under the system text, as the modules carry.
@@ -29237,7 +29017,7 @@ def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote
 def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Rocinante's console with the quote as an incoming tightbeam (see
     the section comment above)."""
-    hour = _expanse_hour(time_str)
+    hour = _clock_hour12(time_str)
     del time_str
     image = _expanse_scene().copy()
     draw = ImageDraw.Draw(image)
@@ -29261,7 +29041,7 @@ def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int
 #
 # Palette: black, yellow, red and white only (the paintings' earth plus their
 # one red), never blue or green. The void is painted in continuous tone and
-# Floyd–Steinberg dithered against the calibrated inks (``_expedition_dither``);
+# Floyd–Steinberg dithered against the calibrated inks (``_dither_calibrated``);
 # the slope is a warm black in the same scene, so its edge is brushed rather
 # than ruled. ``paint_craquelure`` crazes the cached scene (cells coarser than
 # ``bosch``'s, as a mural's craze is) before the quote goes on, so the quote is
@@ -29328,7 +29108,7 @@ def _goya_slope_edge() -> list:
         y = _GOYA_SLOPE_LEFT + (_GOYA_SLOPE_RIGHT - _GOYA_SLOPE_LEFT) * t
         y -= 14 * math.exp(-((x - _GOYA_DOG_PIVOT[0]) / 90.0) ** 2)
         points.append((x, y + rng.uniform(-5, 5)))
-    return _furies_spline(points, closed=False, samples=6)
+    return _catmull_rom(points, closed=False, samples=6)
 
 
 def _goya_slope_mask(size) -> Image.Image:
@@ -29339,12 +29119,6 @@ def _goya_slope_mask(size) -> Image.Image:
     return mask
 
 
-def _goya_pool(size, box, blur: int) -> Image.Image:
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).ellipse(box, fill=255)
-    return mask.filter(ImageFilter.GaussianBlur(blur))
-
-
 def _goya_paint_void(scene: Image.Image) -> None:
     """The void in continuous tone: the gradient, the pale passage, the
     stain, the dragged strokes and the grain, then the slope."""
@@ -29352,16 +29126,16 @@ def _goya_paint_void(scene: Image.Image) -> None:
     column = Image.new("RGB", (1, height))
     cp = column.load()
     for y in range(height):
-        cp[0, y] = _expedition_lerp_stops(_GOYA_VOID_STOPS, y)
+        cp[0, y] = _lerp_stops(_GOYA_VOID_STOPS, y)
     scene.paste(column.resize((width, height), Image.Resampling.NEAREST), (0, 0))
-    light = _goya_pool(scene.size, (40, 70, 560, 290), 44).point(lambda v: int(v * 0.58))
+    light = _soft_ellipse_mask(scene.size, (40, 70, 560, 290), 44).point(lambda v: int(v * 0.58))
     scene.paste(Image.new("RGB", scene.size, _GOYA_LIGHT), (0, 0), light)
-    stain = _goya_pool(scene.size, (520, -30, 800, 150), 34).point(lambda v: int(v * 0.66))
+    stain = _soft_ellipse_mask(scene.size, (520, -30, 800, 150), 34).point(lambda v: int(v * 0.66))
     scene.paste(Image.new("RGB", scene.size, _GOYA_STAIN), (0, 0), stain)
     # Facture: broad dragged strokes (a noise streaked eight to one) over a
     # finer grain, each centred so it moves the tone both ways.
     for cells, amp, salt in (((10, 44), 13, 2), ((48, 36), 7, 3), ((5, 3), 9, 4)):
-        grain = _expedition_noise(scene.size, cells, _GOYA_SEED + salt).point(lambda v, a=amp: v * (2 * a) // 255)
+        grain = _smooth_noise(scene.size, cells, _GOYA_SEED + salt).point(lambda v, a=amp: v * (2 * a) // 255)
         tint = Image.merge("RGB", (grain, grain, grain))
         scene.paste(ImageChops.subtract(ImageChops.add(scene, tint), Image.new("RGB", scene.size, (amp,) * 3)))
     # The slope: a warm black, its upper edge brushed lighter.
@@ -29378,9 +29152,9 @@ def _goya_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _goya_paint_void(scene)
-    image = _expedition_dither(scene, _GOYA_INKS)
+    image = _dither_calibrated(scene, _GOYA_INKS)
     paint_craquelure(image, Image.new("L", size, 255), seed=_GOYA_SEED + 5, cell=_GOYA_CRACK_CELL,
                      jitter=0.4, drop=0.24, diagonal=0.16, continuity=4,
                      dark=SPECTRA6["black"], light=SPECTRA6["yellow"], light_share=0.08)
@@ -29390,24 +29164,8 @@ def _goya_scene() -> Image.Image:
 
 def _goya_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
     """The quote's lines in the void, and the positioned bold chunks."""
-    x0, y0, x1, y1 = _GOYA_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=34, font_min=16, line_height_mult=1.32, theme="goya",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _GOYA_QUOTE_RECT, theme="goya",
+                        font_max=34, font_min=16, line_height_mult=1.32)
 
 
 def _goya_gaze(placed) -> float:
@@ -29437,9 +29195,9 @@ def _goya_paint_dog(image: Image.Image, gaze: float) -> None:
     size = image.size
     head = Image.new("L", size, 0)
     hd = ImageDraw.Draw(head)
-    hd.polygon([(round(x), round(y)) for x, y in _furies_spline(_goya_turn(_GOYA_HEAD, gaze), samples=6)], fill=255)
+    hd.polygon([(round(x), round(y)) for x, y in _catmull_rom(_goya_turn(_GOYA_HEAD, gaze), samples=6)], fill=255)
     ear = Image.new("L", size, 0)
-    ImageDraw.Draw(ear).polygon([(round(x), round(y)) for x, y in _furies_spline(_goya_turn(_GOYA_EAR, gaze), samples=6)],
+    ImageDraw.Draw(ear).polygon([(round(x), round(y)) for x, y in _catmull_rom(_goya_turn(_GOYA_EAR, gaze), samples=6)],
                                 fill=255)
     head = ImageChops.lighter(head, ear)
     # Only what stands above the slope is the dog; the rest is the slope.
@@ -29449,12 +29207,12 @@ def _goya_paint_dog(image: Image.Image, gaze: float) -> None:
         return
     pad = 6
     box = (max(0, bbox[0] - pad), max(0, bbox[1] - pad), min(size[0], bbox[2] + pad), min(size[1], bbox[3] + pad))
-    shaded = _furies_shade(head, _GOYA_DOG_BASE, _GOYA_DOG_LIGHT, _GOYA_DOG_DARK, offset=6, blur=4)
+    shaded = _shade_silhouette(head, _GOYA_DOG_BASE, _GOYA_DOG_LIGHT, _GOYA_DOG_DARK, offset=6, blur=4)
     shaded.paste(Image.new("RGB", size, _GOYA_DOG_EAR), (0, 0), ear.filter(ImageFilter.GaussianBlur(1)))
-    grain = _expedition_noise(size, (40, 24), _GOYA_SEED + 6).point(lambda v: v * 12 // 255)
+    grain = _smooth_noise(size, (40, 24), _GOYA_SEED + 6).point(lambda v: v * 12 // 255)
     shaded = ImageChops.subtract(ImageChops.add(shaded, Image.merge("RGB", (grain, grain, grain))),
                                  Image.new("RGB", size, (6, 6, 6)))
-    dithered = _expedition_dither(shaded.crop(box), _GOYA_INKS)
+    dithered = _dither_calibrated(shaded.crop(box), _GOYA_INKS)
     image.paste(dithered, box[:2], head.crop(box))
     crop = image.crop(box)
     paint_craquelure(crop, head.crop(box), seed=_GOYA_SEED + 7, cell=_GOYA_CRACK_CELL, jitter=0.4, drop=0.24,
@@ -29598,11 +29356,6 @@ def _crt_paint_scanlines(image: Image.Image, rect, ground, *, period: int = 4, p
                 px[x, y] = black
 
 
-def _hal_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12 — which subsystem is on the main monitor."""
-    return _expanse_hour(time_str)
-
-
 def _hal_mnemonic(hour: int) -> str:
     return _HAL_MNEMONICS[(hour - 1) % 12]
 
@@ -29655,31 +29408,13 @@ def _hal_paint_monitor(image: Image.Image, hour: int, quote_row: dict) -> None:
 
 def _hal_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
     """The quote's lines on the monitor, with the bold chunks positioned."""
-    x0, y0, x1, y1 = _HAL_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=36, font_min=16, line_height_mult=1.28, theme="hal",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _HAL_QUOTE_RECT, theme="hal",
+                        font_max=36, font_min=16, line_height_mult=1.28)
 
 
 def _hal_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
     """White Jost on the blue field; the matched phrase Bold in yellow."""
-    white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
-    for x, y, chunk, font, is_bold in placed:
-        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+    _paint_placed(draw, placed, SPECTRA6["white"], SPECTRA6["yellow"])
 
 
 def _hal_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -29805,7 +29540,7 @@ def _hal_paint_traces(image: Image.Image, quote_row: dict) -> None:
 def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Discovery's main monitor with the hour's subsystem up, HAL's eye
     beside it (see the section comment above)."""
-    hour = _hal_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = Image.new("RGB", (800, 480), SPECTRA6["black"])
     _hal_paint_monitor(image, hour, quote_row)
     draw = ImageDraw.Draw(image)
@@ -29834,7 +29569,7 @@ def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) ->
 #
 # The screen is a vignetted blue field computed at quarter resolution,
 # bicubic-upsampled and Floyd–Steinberg dithered to blue and black
-# (``_expedition_dither``) so the vignette is error-diffused, not latticed. It
+# (``_dither_calibrated``) so the vignette is error-diffused, not latticed. It
 # sits in a recessed black edge inside a beige (W+Y stipple) housing, cached
 # per process (``_LUMON_SCENE``).
 #
@@ -29869,13 +29604,8 @@ _LUMON_BYLINE_Y = 392
 _LUMON_BINS_RECT = (44, 414, 756, 460)
 _LUMON_BIN_GAP = 12
 _LUMON_SCENE: dict = {}
-_LUMON_BLUE = _EXPEDITION_PANEL_INKS["blue"]
-_LUMON_BLACK = _EXPEDITION_PANEL_INKS["black"]
-
-
-def _lumon_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12."""
-    return _expanse_hour(time_str)
+_LUMON_BLUE = _PANEL_INKS["blue"]
+_LUMON_BLACK = _PANEL_INKS["black"]
 
 
 def _lumon_completion(hour: int) -> int:
@@ -29915,7 +29645,7 @@ def _lumon_paint_screen(image: Image.Image) -> None:
         for x in range(small.size[0]):
             t = min(1.0, (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.8 * 0.85)
             sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK))
-    field = _expedition_dither(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
+    field = _dither_calibrated(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
     # The housing: the beige of the show's terminals, white with a yellow
     # quarter, with the glass opening cut out of it.
     _fill_swatch_stipple(image, (0, 0, width, height), SPECTRA6["white"], SPECTRA6["yellow"], 0.25)
@@ -29995,24 +29725,8 @@ def _lumon_paint_grid(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> 
 
 def _lumon_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
     """The quote's lines on the terminal, with the bold chunks positioned."""
-    x0, y0, x1, y1 = _LUMON_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=30, font_min=14, line_height_mult=1.32, theme="lumon",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _LUMON_QUOTE_RECT, theme="lumon",
+                        font_max=30, font_min=14, line_height_mult=1.32)
 
 
 def _lumon_hover_boxes(draw: ImageDraw.ImageDraw, placed) -> list:
@@ -30048,8 +29762,7 @@ def _lumon_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
     white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
     for box in _lumon_hover_boxes(draw, placed):
         draw.rectangle(box, outline=white, width=1)
-    for x, y, chunk, font, is_bold, w, lh in placed:
-        draw.text((x, y), chunk, font=font, fill=yellow if is_bold else white)
+    _paint_placed(draw, placed, white, yellow)
 
 
 def _lumon_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -30093,7 +29806,7 @@ def _lumon_paint_bins(image: Image.Image, quote_row: dict) -> None:
 def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Macrodata Refinement terminal with the hour's file completion and
     the scary cluster in the hour's column (see the section comment above)."""
-    hour = _lumon_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _lumon_scene().copy()
     draw = ImageDraw.Draw(image)
     _lumon_paint_header(draw, hour, quote_row)
@@ -30119,7 +29832,7 @@ def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # The console and the unit are modelled in continuous tone (grey panel with a
 # brushed grain, a shaded rim, domed keycaps, shaded screws, recessed dark
 # windows, a reflection across the display, soft shadows) and Floyd–Steinberg
-# dithered to white and black (``_expedition_dither``); the card, legends,
+# dithered to white and black (``_dither_calibrated``); the card, legends,
 # segments, lit lamp and type go on after the dither.
 #
 # The flight plan is typed in Special Elite in black, with the matched phrase
@@ -30164,14 +29877,9 @@ _DSKY_SEGMENTS = {
 }
 
 
-def _dsky_hour(time_str: str) -> int:
-    """The 12-hour clock hour, 1..12 — the program in the PROG register."""
-    return _expanse_hour(time_str)
-
-
 def _dsky_tone(t: float) -> tuple[int, int, int]:
     """A grey ``t`` of the way from the white ink to the black ink."""
-    return tuple(round(w + (k - w) * t) for w, k in zip(_EXPEDITION_PANEL_INKS["white"], _EXPEDITION_PANEL_INKS["black"]))
+    return tuple(round(w + (k - w) * t) for w, k in zip(_PANEL_INKS["white"], _PANEL_INKS["black"]))
 
 
 def _dsky_segments(ch: str) -> str:
@@ -30240,7 +29948,7 @@ def _dsky_paint_console(scene: Image.Image) -> None:
     card's shadow."""
     size = scene.size
     scene.paste(Image.new("RGB", size, _dsky_tone(_DSKY_PANEL)), (0, 0))
-    grain = _expedition_noise(size, (200, 9), _DSKY_SEED + 1).point(lambda v: v * 14 // 255)
+    grain = _smooth_noise(size, (200, 9), _DSKY_SEED + 1).point(lambda v: v * 14 // 255)
     scene.paste(ImageChops.subtract(ImageChops.add(scene, Image.merge("RGB", (grain, grain, grain))),
                                     Image.new("RGB", size, (7, 7, 7))))
     for rect, blur, depth in ((_DSKY_UNIT_RECT, 6, 0.86), (_DSKY_CARD_RECT, 4, 0.80)):
@@ -30261,7 +29969,7 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
     plate = Image.new("L", size, 0)
     ImageDraw.Draw(plate).rounded_rectangle((x0, y0, x1, y1), radius=10, fill=255)
     rim = ImageChops.subtract(plate, plate.filter(ImageFilter.MinFilter(2 * _DSKY_RIM + 1)))
-    shaded = _furies_shade(rim, _dsky_tone(0.80), _dsky_tone(0.40), _dsky_tone(0.97), offset=5, blur=3)
+    shaded = _shade_silhouette(rim, _dsky_tone(0.80), _dsky_tone(0.40), _dsky_tone(0.97), offset=5, blur=3)
     scene.paste(Image.new("RGB", size, _dsky_tone(0.90)), (0, 0), plate)
     scene.paste(shaded, (0, 0), rim)
     # The windows: recessed dark glass, a touch lighter at their top edge.
@@ -30292,13 +30000,13 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
     kd = ImageDraw.Draw(keys)
     for kx0, ky0, kx1, ky1, label in rects:
         kd.rounded_rectangle((kx0, ky0, kx1, ky1), radius=6, fill=255)
-    caps = _furies_shade(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
+    caps = _shade_silhouette(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
     scene.paste(caps, (0, 0), keys)
     # Screws at the plate's corners.
     for sx, sy in ((x0 + 14, y0 + 14), (x1 - 14, y0 + 14), (x0 + 14, y1 - 14), (x1 - 14, y1 - 14)):
         screw = Image.new("L", size, 0)
         ImageDraw.Draw(screw).ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=255)
-        head = _furies_shade(screw, _dsky_tone(0.55), _dsky_tone(0.20), _dsky_tone(0.92), offset=3, blur=2)
+        head = _shade_silhouette(screw, _dsky_tone(0.55), _dsky_tone(0.20), _dsky_tone(0.92), offset=3, blur=2)
         scene.paste(head, (0, 0), screw)
         screw.close()
     for m in (plate, rim, shaded, reflection, keys, caps):
@@ -30313,10 +30021,10 @@ def _dsky_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["white"])
+    scene = Image.new("RGB", size, _PANEL_INKS["white"])
     _dsky_paint_console(scene)
     _dsky_paint_unit(scene)
-    image = _expedition_dither(scene, _DSKY_INKS)
+    image = _dither_calibrated(scene, _DSKY_INKS)
     _dsky_paint_card(image)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)       # the card's typed header is antialiased
     _DSKY_SCENE["frame"] = (key, image)
@@ -30404,31 +30112,13 @@ def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
 
 
 def _dsky_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
-    x0, y0, x1, y1 = _DSKY_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=28, font_min=15, line_height_mult=1.42, theme="dsky",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _DSKY_QUOTE_RECT, theme="dsky",
+                        font_max=28, font_min=15, line_height_mult=1.42)
 
 
 def _dsky_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
     """Typed on the card: black, with the matched phrase in red ink."""
-    black, red = SPECTRA6["black"], SPECTRA6["red"]
-    for x, y, chunk, font, is_bold in placed:
-        draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
+    _paint_placed(draw, placed, SPECTRA6["black"], SPECTRA6["red"])
 
 
 def _dsky_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -30447,7 +30137,7 @@ def _dsky_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Apollo DSKY on its console, the hour in its PROG register, the
     quote typed on the flight plan beside it (see the section comment above)."""
-    hour = _dsky_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _dsky_scene().copy()
     draw = ImageDraw.Draw(image)
     _dsky_paint_legends(draw)
@@ -30471,9 +30161,9 @@ def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -
 #
 # The glass (grey edges, a white pool under the quote, darker soft-edged
 # panes, the drone's blurred shadow, a fine grain) and the drone (a sphere
-# shaded by ``shade_height_field``, pods by ``_furies_shade``) are painted in
+# shaded by ``shade_height_field``, pods by ``_shade_silhouette``) are painted in
 # continuous tone and Floyd–Steinberg dithered to white and black
-# (``_expedition_dither``). The map's contours (a seeded height field sliced at
+# (``_dither_calibrated``). The map's contours (a seeded height field sliced at
 # ``_OBLIVION_CONTOUR_LEVELS`` levels, each slice's one-pixel rim), the
 # hairlines, the type and the red go on after the dither.
 #
@@ -30499,12 +30189,8 @@ _OBLIVION_RIG_GAP = 4
 _OBLIVION_CONTOUR_LEVELS = 5
 _OBLIVION_SCENE: dict = {}
 # Calibrated end points of ``_oblivion_tone``: the white ink is the pool.
-_OBLIVION_WHITE = _EXPEDITION_PANEL_INKS["white"]
-_OBLIVION_BLACK = _EXPEDITION_PANEL_INKS["black"]
-
-
-def _oblivion_hour(time_str: str) -> int:
-    return _expanse_hour(time_str)
+_OBLIVION_WHITE = _PANEL_INKS["white"]
+_OBLIVION_BLACK = _PANEL_INKS["black"]
 
 
 def _oblivion_tone(t: float) -> tuple[int, int, int]:
@@ -30557,12 +30243,6 @@ def _oblivion_rig_points() -> list:
     return points
 
 
-def _oblivion_pool(size, box, blur: int) -> Image.Image:
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).ellipse(box, fill=255)
-    return mask.filter(ImageFilter.GaussianBlur(blur))
-
-
 def _oblivion_paint_glass(scene: Image.Image) -> Image.Image:
     """The light table in continuous tone: grey glass, the white pool under
     the quote, the frosted panes, the drone's shadow, the grain. Returns the
@@ -30570,7 +30250,7 @@ def _oblivion_paint_glass(scene: Image.Image) -> Image.Image:
     size = scene.size
     scene.paste(Image.new("RGB", size, _oblivion_tone(0.07)), (0, 0))
     # Saturated inside so the pool's heart is clean white; the blur only softens its edge.
-    pool = _oblivion_pool(size, (-60, 30, 540, 430), 50).point(lambda v: min(255, v * 2))
+    pool = _soft_ellipse_mask(size, (-60, 30, 540, 430), 50).point(lambda v: min(255, v * 2))
     scene.paste(Image.new("RGB", size, _OBLIVION_WHITE), (0, 0), pool)
     # The panes: the map and the two strips, a shade darker with soft edges.
     for rect in (_OBLIVION_MAP_RECT, _OBLIVION_WAVE_RECT, _OBLIVION_RIG_BAND):
@@ -30581,10 +30261,10 @@ def _oblivion_paint_glass(scene: Image.Image) -> Image.Image:
     # The drone's shadow on the glass beneath it.
     dx, dy = _OBLIVION_DRONE_CENTRE
     r = _OBLIVION_DRONE_RADIUS
-    shadow = _oblivion_pool(size, (dx - r + 2, dy + r + 6, dx + r + 12, dy + r + 22), 6).point(lambda v: int(v * 0.4))
+    shadow = _soft_ellipse_mask(size, (dx - r + 2, dy + r + 6, dx + r + 12, dy + r + 22), 6).point(lambda v: int(v * 0.4))
     scene.paste(Image.new("RGB", size, _oblivion_tone(0.34)), (0, 0), shadow)
     # The glass's grain, kept out of the pool so the quote sits on clean white.
-    grain = _expedition_noise(size, (120, 72), _OBLIVION_SEED + 1).point(lambda v: v * 6 // 255)
+    grain = _smooth_noise(size, (120, 72), _OBLIVION_SEED + 1).point(lambda v: v * 6 // 255)
     grain = ImageChops.multiply(grain, pool.point(lambda v: 255 - v))
     scene.paste(ImageChops.subtract(ImageChops.add(scene, Image.merge("RGB", (grain, grain, grain))),
                                     Image.new("RGB", size, (3, 3, 3))))
@@ -30601,7 +30281,7 @@ def _oblivion_paint_drone_tone(scene: Image.Image) -> None:
     pd = ImageDraw.Draw(pods)
     pd.rounded_rectangle((cx - r - 16, cy - 9, cx - r + 8, cy + 11), radius=5, fill=255)
     pd.rounded_rectangle((cx + r - 8, cy - 9, cx + r + 16, cy + 11), radius=5, fill=255)
-    shaded = _furies_shade(pods, _oblivion_tone(0.34), _oblivion_tone(0.08), _oblivion_tone(0.66), offset=4, blur=3)
+    shaded = _shade_silhouette(pods, _oblivion_tone(0.34), _oblivion_tone(0.08), _oblivion_tone(0.66), offset=4, blur=3)
     disc = Image.new("L", size, 0)
     ImageDraw.Draw(disc).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
     field = disc.filter(ImageFilter.GaussianBlur(r * 0.55))
@@ -30626,7 +30306,7 @@ def _oblivion_contours(size) -> Image.Image:
     sliced at ``_OBLIVION_CONTOUR_LEVELS`` levels, each slice's one-pixel rim."""
     x0, y0, x1, y1 = _OBLIVION_MAP_RECT
     w, h = x1 - x0, y1 - y0
-    field = _expedition_noise((w, h), (5, 4), _OBLIVION_SEED + 2)
+    field = _smooth_noise((w, h), (5, 4), _OBLIVION_SEED + 2)
     lines = Image.new("L", (w, h), 0)
     for level in range(1, _OBLIVION_CONTOUR_LEVELS + 1):
         cut = round(255 * level / (_OBLIVION_CONTOUR_LEVELS + 1))
@@ -30661,7 +30341,7 @@ def _oblivion_scene() -> Image.Image:
     scene = Image.new("RGB", size, _OBLIVION_WHITE)
     pool = _oblivion_paint_glass(scene)
     _oblivion_paint_drone_tone(scene)
-    image = _expedition_dither(scene, _OBLIVION_INKS)
+    image = _dither_calibrated(scene, _OBLIVION_INKS)
     # Error diffusion carries the grey glass's residue a little way into the
     # pool; wipe its saturated heart back to white.
     if pool is not None:        # the decoration fence neuters the glass painter
@@ -30802,30 +30482,12 @@ def _oblivion_paint_data(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 
 def _oblivion_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
-    x0, y0, x1, y1 = _OBLIVION_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=34, font_min=18, line_height_mult=1.34, theme="oblivion",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _OBLIVION_QUOTE_RECT, theme="oblivion",
+                        font_max=34, font_min=18, line_height_mult=1.34)
 
 
 def _oblivion_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
-    black, red = SPECTRA6["black"], SPECTRA6["red"]
-    for x, y, chunk, font, is_bold in placed:
-        draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
+    _paint_placed(draw, placed, SPECTRA6["black"], SPECTRA6["red"])
 
 
 def _oblivion_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -30843,7 +30505,7 @@ def _oblivion_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The Sky Tower's light table with the hour's rig and bearing (see the
     section comment above)."""
-    hour = _oblivion_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _oblivion_scene().copy()
     draw = ImageDraw.Draw(image)
     _oblivion_paint_chrome(draw)
@@ -30869,9 +30531,9 @@ def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: in
 # (``yorha``).
 #
 # The sheet (vignette, blurred city silhouettes, diagonal hatch, the panels'
-# soft shadows) and the Pod (``_furies_shade`` under the upper-left light) are
+# soft shadows) and the Pod (``_shade_silhouette`` under the upper-left light) are
 # painted in continuous tone and Floyd–Steinberg dithered to white, yellow and
-# black (``_expedition_dither``). Panel faces, hairlines, corner ticks, dot
+# black (``_dither_calibrated``). Panel faces, hairlines, corner ticks, dot
 # grid, tab bar, crest and type go on after the dither.
 #
 # The hour is the open entry: ARCHIVE 01..12, the hour's row inverted with a
@@ -30896,13 +30558,9 @@ _YORHA_BYLINE_Y = 416
 _YORHA_SCENE: dict = {}
 
 
-def _yorha_hour(time_str: str) -> int:
-    return _expanse_hour(time_str)
-
-
 def _yorha_cream(y: float, k: float = 0.0) -> tuple[int, int, int]:
     """A calibrated mix: white with ``y`` of yellow and ``k`` of black."""
-    w, yel, blk = (_EXPEDITION_PANEL_INKS[n] for n in ("white", "yellow", "black"))
+    w, yel, blk = (_PANEL_INKS[n] for n in ("white", "yellow", "black"))
     return tuple(round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk))
 
 
@@ -30932,7 +30590,7 @@ def _yorha_scene() -> Image.Image:
     _yorha_paint_ground(scene)
     _yorha_paint_panels(scene)
     _yorha_paint_pod_tone(scene)
-    image = _expedition_dither(scene, _YORHA_INKS)
+    image = _dither_calibrated(scene, _YORHA_INKS)
     _yorha_paint_rules(image)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)       # the tab bar's type is antialiased
     _YORHA_SCENE["frame"] = (key, image)
@@ -30990,7 +30648,7 @@ def _yorha_paint_panels(scene: Image.Image) -> None:
     pd = ImageDraw.Draw(panels)
     for rect in _yorha_panel_rects():
         pd.rectangle(rect, fill=255)
-    shadow = _furies_shift(panels, 4, 5).filter(ImageFilter.GaussianBlur(4)).point(lambda v: int(v * 0.7))
+    shadow = _shift_no_wrap(panels, 4, 5).filter(ImageFilter.GaussianBlur(4)).point(lambda v: int(v * 0.7))
     scene.paste(Image.new("RGB", size, _yorha_cream(0.20, 0.5)), (0, 0), shadow)
     scene.paste(Image.new("RGB", size, _yorha_cream(0.12)), (0, 0), panels)
     panels.close()
@@ -31022,12 +30680,12 @@ def _yorha_paint_pod_tone(scene: Image.Image) -> None:
     hd.rounded_rectangle((cx - 58, cy - 20, cx + 38, cy + 20), radius=20, fill=255)
     hd.polygon([(cx - 40, cy - 20), (cx - 18, cy - 40), (cx, cy - 20)], fill=255)          # the dorsal fin
     hd.polygon([(cx - 48, cy + 18), (cx - 64, cy + 34), (cx - 26, cy + 20)], fill=255)     # the ventral fin
-    body = _furies_shade(hull, _yorha_cream(0.12, 0.16), _yorha_cream(0.06, 0.0), _yorha_cream(0.16, 0.58),
+    body = _shade_silhouette(hull, _yorha_cream(0.12, 0.16), _yorha_cream(0.06, 0.0), _yorha_cream(0.16, 0.58),
                          offset=6, blur=4)
     scene.paste(body, (0, 0), hull)
     face = Image.new("L", size, 0)
     ImageDraw.Draw(face).rounded_rectangle((cx + 16, cy - 15, cx + 46, cy + 15), radius=7, fill=255)
-    plate = _furies_shade(face, _yorha_cream(0.10, 0.70), _yorha_cream(0.08, 0.34), _yorha_cream(0.12, 0.92),
+    plate = _shade_silhouette(face, _yorha_cream(0.10, 0.70), _yorha_cream(0.08, 0.34), _yorha_cream(0.12, 0.92),
                           offset=3, blur=2)
     scene.paste(plate, (0, 0), face)
     for m in (shadow, hull, body, face, plate):
@@ -31118,24 +30776,8 @@ def _yorha_paint_pane(draw: ImageDraw.ImageDraw, hour: int, quote_row: dict) -> 
 
 
 def _yorha_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
-    x0, y0, x1, y1 = _YORHA_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=34, font_min=18, line_height_mult=1.34, theme="yorha",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _YORHA_QUOTE_RECT, theme="yorha",
+                        font_max=34, font_min=18, line_height_mult=1.34)
 
 
 def _yorha_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
@@ -31144,8 +30786,7 @@ def _yorha_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
     black, white = SPECTRA6["black"], SPECTRA6["white"]
     for box in _lumon_hover_boxes(draw, placed):
         draw.rectangle(box, fill=black)
-    for x, y, chunk, font, is_bold, w, lh in placed:
-        draw.text((x, y), chunk, font=font, fill=white if is_bold else black)
+    _paint_placed(draw, placed, black, white)
 
 
 def _yorha_paint_byline(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
@@ -31173,7 +30814,7 @@ def _yorha_paint_glitch(image: Image.Image, quote_row: dict) -> None:
 def render_yorha_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """The YoRHa archives with the hour's entry open (see the section
     comment above)."""
-    hour = _yorha_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = _yorha_scene().copy()
     draw = ImageDraw.Draw(image)
     _yorha_paint_menu(draw, hour)
@@ -31219,10 +30860,6 @@ _HITCHHIKER_CALLOUTS = (
     ("1", "BRAINWAVE SENSOR"), ("2", "TELEPATHIC MATRIX"), ("3", "GILL SLITS"),
     ("4", "NERVE SIGNAL"), ("5", "THOUGHT OUTFLOW"),
 )
-
-
-def _hitchhiker_hour(time_str: str) -> int:
-    return _expanse_hour(time_str)
 
 
 def _hitchhiker_font(size: int):
@@ -31271,24 +30908,8 @@ def _hitchhiker_paint_entry(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
 
 
 def _hitchhiker_layout(draw: ImageDraw.ImageDraw, quote_row: dict):
-    x0, y0, x1, y1 = _HITCHHIKER_QUOTE_RECT
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    regular, bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=22, font_min=12, line_height_mult=1.55, theme="hitchhiker",
-    )
-    placed = []
-    y = y0
-    ascent = _font_ascent(regular)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = bold if is_bold else regular
-            w = int(round(draw.textlength(chunk, font=font)))
-            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, line_height))
-            x += w
-        y += line_height
-    return placed
+    return _place_quote(draw, quote_row, _HITCHHIKER_QUOTE_RECT, theme="hitchhiker",
+                        font_max=22, font_min=12, line_height_mult=1.55)
 
 
 def _hitchhiker_paint_quote(draw: ImageDraw.ImageDraw, placed, quote_row: dict) -> None:
@@ -31298,11 +30919,11 @@ def _hitchhiker_paint_quote(draw: ImageDraw.ImageDraw, placed, quote_row: dict) 
     rng = random.Random(_HITCHHIKER_SEED + 2 + _row_digest(quote_row))
     lines = sorted({y for _, y, *_ in placed})
     for i, y in enumerate(lines):
-        lh = next(p[5] for p in placed if p[1] == y)
+        lh = next(p[6] for p in placed if p[1] == y)
         ink = SPECTRA6[_HITCHHIKER_MARKER_INKS[i % len(_HITCHHIKER_MARKER_INKS)]]
         draw.rectangle((_HITCHHIKER_QUOTE_RECT[0] - 18, y + lh // 2 - 7, _HITCHHIKER_QUOTE_RECT[0] - 12, y + lh // 2 - 1),
                        fill=ink)
-    for x, y, chunk, font, is_bold, lh in placed:
+    for x, y, chunk, font, is_bold, *_ in placed:
         _hitchhiker_draw(draw, (x, y), chunk, font, yellow if is_bold else white, rng)
 
 
@@ -31329,7 +30950,7 @@ def _hitchhiker_fish_outline() -> list:
             (cx + 108, cy - 6), (cx + 132, cy - 28), (cx + 144, cy - 24), (cx + 130, cy), (cx + 144, cy + 24),
             (cx + 132, cy + 28), (cx + 108, cy + 6), (cx + 70, cy + 18), (cx + 10, cy + 32), (cx - 50, cy + 36),
             (cx - 96, cy + 22)]
-    return _furies_spline(body, closed=True, samples=6)
+    return _catmull_rom(body, closed=True, samples=6)
 
 
 def _hitchhiker_paint_fish(image: Image.Image) -> None:
@@ -31427,7 +31048,7 @@ def _hitchhiker_paint_galaxy(draw: ImageDraw.ImageDraw, hour: int) -> None:
 def render_hitchhiker_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """A Guide entry on the quoted author with its two figures, the hour's
     sector marked (see the section comment above)."""
-    hour = _hitchhiker_hour(time_str)
+    hour = _clock_hour12(time_str)
     image = Image.new("RGB", (800, 480), SPECTRA6["black"])
     draw = ImageDraw.Draw(image)
     _hitchhiker_paint_masthead(draw)
@@ -31711,27 +31332,15 @@ def _cardcatalog_paint_annotation(image: Image.Image, draw: ImageDraw.ImageDraw,
     if x1 - x0 < 40 or y1 - y0 < 40:
         return
     black, red, blue = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["blue"]
-    display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
-    quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
-        draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=26, font_min=12, line_height_mult=1.34,
-        theme="cardcatalog",
-    )
     # Top-aligned, not centred: a card's annotation begins directly under the
     # main-entry rule; the tracing block fills the foot.
-    y = y0
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        x = x0
-        for chunk, is_bold in line:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (ascent - _font_ascent(font))
-            if is_bold:
-                draw_text_dithered(image, (x, chunk_y), chunk, font, red, blue)
-            else:
-                draw.text((x, chunk_y), chunk, font=font, fill=black)
-            x += int(round(draw.textlength(chunk, font=font)))
-        y += line_height
+    placed = _place_quote(draw, quote_row, _CARDCATALOG_BODY, theme="cardcatalog",
+                          font_max=26, font_min=12, line_height_mult=1.34)
+    for x, y, chunk, font, is_bold, *_ in placed:
+        if is_bold:
+            draw_text_dithered(image, (x, y), chunk, font, red, blue)
+        else:
+            draw.text((x, y), chunk, font=font, fill=black)
 
 
 def _cardcatalog_paint_tracing(draw: ImageDraw.ImageDraw, quote_row: dict, height: int) -> None:
@@ -31839,15 +31448,6 @@ def _bakelite_screen_inks() -> frozenset:
     out through the screen's rounded edge onto the moulding.
     """
     return frozenset({SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["green"]})
-
-
-def _bakelite_hour(time_str: str) -> int:
-    """The 12-hour setting index this frame is showing."""
-    try:
-        hour = int(time_str.split(":")[0]) % 12
-    except (ValueError, IndexError, AttributeError):
-        return 12
-    return hour or 12
 
 
 def _bakelite_screen_mask() -> Image.Image:
@@ -32076,7 +31676,7 @@ def _bakelite_paint_chrome(image: Image.Image, draw: ImageDraw.ImageDraw,
     _bakelite_draw_tracked(draw, left, 66, "HOUR", label_font, label_ink)
     hour_font = load_font(theme_font_candidates("bakelite", "quote_regular"), size=62)
     scale_font = load_font(theme_font_candidates("bakelite", "quote_regular"), size=24)
-    hour_text = str(_bakelite_hour(time_str))
+    hour_text = str(_clock_hour12(time_str))
     glow_draw.text((left, 84), hour_text, font=hour_font, fill=255)
     hour_w = draw.textlength(hour_text, font=hour_font)
     glow_draw.text((left + hour_w + 10, 122), f"/{len(_BAKELITE_HOUR_WORDS)}",
@@ -32183,15 +31783,6 @@ _INTAGLIO_HOUR_WORDS = {
     1: "ONE", 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX",
     7: "SEVEN", 8: "EIGHT", 9: "NINE", 10: "TEN", 11: "ELEVEN", 12: "TWELVE",
 }
-
-
-def _intaglio_hour(time_str: str) -> int:
-    """The face value this note is denominated in."""
-    try:
-        hour = int(time_str.split(":")[0]) % 12
-    except (ValueError, IndexError, AttributeError):
-        return 12
-    return hour or 12
 
 
 def _intaglio_serial(quote_row: dict) -> str:
@@ -32481,7 +32072,7 @@ def render_intaglio_frame(time_str: str, quote_row: dict, width: int, height: in
     _intaglio_paint_tint(image)
     _intaglio_paint_lathework_band(image, draw)
     _intaglio_paint_rosette(image, draw)
-    _intaglio_paint_medallions(image, draw, _intaglio_hour(time_str))
+    _intaglio_paint_medallions(image, draw, _clock_hour12(time_str))
     _intaglio_paint_cartouche(image, draw)
     _intaglio_paint_masthead(image, draw)
     _intaglio_paint_quote(image, draw, quote_row)
@@ -32822,14 +32413,6 @@ _PLAQUE_POLISH_WHITE = 0.60                    # rubbed to bright bare metal
 _PLAQUE_CONTACT_CUT = 55
 
 
-def _plaque_hour(time_str: str) -> int:
-    try:
-        hour = int(time_str.split(":")[0]) % 12
-    except (ValueError, IndexError, AttributeError):
-        return 12
-    return hour or 12
-
-
 def _plaque_ground() -> frozenset:
     """Inks exterior relief shading may overwrite: the patina's own colours."""
     return frozenset({SPECTRA6["green"], SPECTRA6["blue"], SPECTRA6["yellow"], SPECTRA6["black"]})
@@ -32981,7 +32564,7 @@ def render_plaque_frame(time_str: str, quote_row: dict, width: int, height: int)
     draw = ImageDraw.Draw(image)
     _plaque_paint_quote(image, draw, quote_row)
     _plaque_paint_attribution(image, draw, quote_row)
-    _plaque_paint_dedication(image, draw, _plaque_hour(time_str))
+    _plaque_paint_dedication(image, draw, _clock_hour12(time_str))
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
@@ -33104,6 +32687,49 @@ def fit_text_to_width(draw, text: str, candidates, size: int, max_width: float, 
     while len(text) > 1 and measure(text, font) > max_width:
         text = text[:-2].rstrip(" ,.;:") + "…"
     return font, text
+
+
+def _fit_from_title(draw: ImageDraw.ImageDraw, quote_row: dict, font, max_w: int) -> str | None:
+    """``— from {Title} —`` shortened to ``max_w`` with a trailing ellipsis.
+
+    ``None`` when the row has no title, or no room for even a stub of one —
+    the caller drops the footer. The loop guards on ``title``, the string that
+    shrinks, not on the text: that is rebuilt from a template and never
+    empties, so guarding on it spins forever when even ``— from … —``
+    overflows, hanging the render path.
+    """
+    title = (quote_row.get("title") or "").strip()
+    if not title:
+        return None
+    text = f"— from {title} —"
+    while title and draw.textlength(text, font=font) > max_w:
+        title = title[:-1]
+        text = f"— from {title.rstrip()}… —"
+    return text if title else None
+
+
+def _fit_dotted_byline(draw: ImageDraw.ImageDraw, quote_row: dict, font, max_w: int):
+    """``author · title`` shortened to ``max_w``, title side first.
+
+    Returns ``(text, bbox)`` for the caller to align, or ``None`` when the row
+    has neither author nor title. The tail part loses three characters to an
+    ellipsis per step until it is six characters or fewer, then is dropped.
+    """
+    author = quote_row.get("author") or ""
+    title = quote_row.get("title") or fallback_title(quote_row)
+    parts = [p for p in (author, title) if p]
+    if not parts:
+        return None
+    text = " · ".join(parts)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    while parts and bbox[2] - bbox[0] > max_w:
+        if len(parts[-1]) > 6:
+            parts[-1] = parts[-1][:-3] + "…"
+        else:
+            parts.pop()
+        text = " · ".join(parts)
+        bbox = draw.textbbox((0, 0), text, font=font)
+    return text, bbox
 
 
 def draw_truncated_centred_byline(draw: ImageDraw.ImageDraw, quote_row: dict, *,
@@ -33993,9 +33619,7 @@ def _escritoire_stipple(density: Image.Image) -> Image.Image:
     """``"L"`` density (0-255) to a 0/255 ordered-dither mask on ``BAYER_8x8``."""
     threshold = _ESCRITOIRE_SCENE.get(("tile", density.size))
     if threshold is None:
-        width, height = density.size
-        tile = bytes(BAYER_8x8[y % 8][x % 8] * 4 + 2 for y in range(height) for x in range(width))
-        threshold = Image.frombytes("L", density.size, tile)
+        threshold = _bayer_threshold_field(density.size)
         _ESCRITOIRE_SCENE[("tile", density.size)] = threshold
     return ImageChops.subtract(density, threshold).point(lambda v: 255 if v else 0)
 
@@ -34039,10 +33663,10 @@ def _escritoire_paint_shadow(image: Image.Image) -> None:
     """The sheets' shadow, cast down and to the right onto the desk: a soft
     black stipple, painted before the brass so it falls on the desk only.
 
-    The shift must not wrap (hence ``_furies_shift``, not ``ImageChops.offset``):
+    The shift must not wrap (hence ``_shift_no_wrap``, not ``ImageChops.offset``):
     the sheet runs off the bottom and right of the panel."""
     paper = _escritoire_paper_mask(image.size)
-    shadow = _furies_shift(paper, 6, 9).filter(ImageFilter.GaussianBlur(7))
+    shadow = _shift_no_wrap(paper, 6, 9).filter(ImageFilter.GaussianBlur(7))
     image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(ImageChops.subtract(shadow, paper)))
 
 
@@ -34178,7 +33802,7 @@ def _escritoire_paint_sheet(image: Image.Image) -> None:
     image.paste(SPECTRA6["yellow"], (0, 0),
                 ImageChops.multiply(_escritoire_stipple(warmth.point(lambda v: min(255, v + 46))), under))
     # The letter's own shadow, on the page under it.
-    shadow = _furies_shift(sheet, 4, 6).filter(ImageFilter.GaussianBlur(4))
+    shadow = _shift_no_wrap(sheet, 4, 6).filter(ImageFilter.GaussianBlur(4))
     shadow = ImageChops.multiply(ImageChops.subtract(shadow, sheet), under)
     image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(shadow.point(lambda v: v * 3 // 4)))
     image.paste(SPECTRA6["white"], (0, 0), sheet)
@@ -34339,7 +33963,7 @@ def _escritoire_paint_pen(image: Image.Image) -> None:
 
     shadow = Image.new("L", image.size, 0)
     section(ImageDraw.Draw(shadow), 0, length, r + 1, 255)
-    shadow = _furies_shift(shadow, 5, 10).filter(ImageFilter.GaussianBlur(5))
+    shadow = _shift_no_wrap(shadow, 5, 10).filter(ImageFilter.GaussianBlur(5))
     shadow = Image.eval(shadow, lambda v: v * 44 // 64)
     image.paste(black, (0, 0), _escritoire_stipple(shadow))
 
