@@ -934,7 +934,7 @@ class TestLiederRhythm:
                 if len(notes) < 2:
                     continue
                 rq._lieder_rhythm(notes, meter)
-                rq._lieder_contour(rq._lieder_seed(row), notes)
+                rq._lieder_contour(rq._row_digest(row), notes)
                 sung = [n for n in notes if not n.get("rest")]
                 # Tonic degrees of C major on this staff: positions -2 and 5.
                 assert (sung[-1]["pitch"] + 2) % 7 == 0, (
@@ -1943,16 +1943,6 @@ class TestBakeliteHourIndex:
     def test_every_hour_renders_differently(self):
         frames = {self._frame(f"{hour:02d}:30") for hour in range(1, 13)}
         assert len(frames) == 12, "two hours render the same console"
-
-    @pytest.mark.parametrize("time_str, expected", [
-        ("00:30", 12), ("12:05", 12), ("13:00", 1), ("09:45", 9), ("23:59", 11),
-    ])
-    def test_hour_index_is_twelve_hour(self, time_str, expected):
-        assert rq._bakelite_hour(time_str) == expected
-
-    @pytest.mark.parametrize("value", ["", "nonsense", "::", None])
-    def test_a_malformed_time_falls_back_rather_than_raising(self, value):
-        assert rq._bakelite_hour(value) == 12
 
 
 class TestBakelitePhosphorHalo:
@@ -4160,12 +4150,6 @@ class TestObservationFrame:
             assert pathlib.Path(path).exists(), path
         assert (pathlib.Path(rq.PLEXMONO_BOLD).parent / "OFL.txt").exists()
 
-    @pytest.mark.parametrize("time_str,camera", [
-        ("00:30", 12), ("12:00", 12), ("13:05", 1), ("01:59", 1), ("09:15", 9), ("bogus", 12),
-    ])
-    def test_camera_is_the_twelve_hour_clock_hour(self, time_str, camera):
-        assert rq._observation_camera(time_str) == camera
-
     def test_two_cameras_per_module(self):
         lit = [rq._observation_module_index(c) for c in range(1, 13)]
         assert lit == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
@@ -4624,12 +4608,6 @@ class TestBiomechFrame:
                      rq.GRENZE_GOTISCH_VARIABLE):
             assert pathlib.Path(path).exists(), path
             assert (pathlib.Path(path).parent / "OFL.txt").exists()
-
-    @pytest.mark.parametrize("time_str,hour", [
-        ("00:30", 12), ("12:00", 12), ("13:05", 1), ("01:59", 1), ("21:15", 9), ("bogus", 12),
-    ])
-    def test_hour_is_the_twelve_hour_clock_hour(self, time_str, hour):
-        assert rq._biomech_hour(time_str) == hour
 
     def test_minute_never_reaches_the_frame(self):
         """Hour only: the plate's numeral carries the hour and the matched
@@ -5646,9 +5624,6 @@ class TestSemioticFrame:
         codes = [rq._SEMIOTIC_HOUR_SIGNS[h] for h in range(1, 13)]
         assert len(set(codes)) == 12
         assert all(code in rq._SEMIOTIC_INDEX for code in codes)
-        # 13:00 and 01:00 are the same hour on a 12-hour dial.
-        assert rq._semiotic_hour("13:00") == rq._semiotic_hour("01:00") == 1
-        assert rq._semiotic_hour("00:10") == rq._semiotic_hour("12:10") == 12
 
     def test_featured_sign_follows_the_hour(self):
         crops = {pixel_bytes(self._feature(self._render(time_str=f"{h:02d}:00"))) for h in range(1, 13)}
@@ -5883,8 +5858,6 @@ class TestAtroposFrame:
     def test_cycle_counter_follows_the_hour(self):
         crops = {pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(self.COUNTER_BOX)) for h in range(1, 13)}
         assert len(crops) == 12
-        assert rq._atropos_hour("13:00") == rq._atropos_hour("01:00") == 1
-        assert rq._atropos_hour("00:10") == rq._atropos_hour("12:10") == 12
 
     def test_scene_is_dithered_to_the_cold_inks_only(self):
         """Red and yellow stay out of the quantiser so diffusion cannot warm the night."""
@@ -5985,8 +5958,6 @@ class TestExpeditionFrame:
         box = rq._EXPEDITION_NUMERAL_BOX
         crops = {pixel_bytes(self._render(time_str=f"{h:02d}:00").crop(box)) for h in range(1, 13)}
         assert len(crops) == 12
-        assert rq._expedition_hour("13:00") == rq._expedition_hour("01:00") == 1
-        assert rq._expedition_hour("00:10") == rq._expedition_hour("12:10") == 12
 
     def test_number_is_painted_in_the_box(self):
         """The painted hour is a lit yellow core inside the Monolith's face;
@@ -6226,8 +6197,6 @@ class TestHadesFrame:
         assert len(set(crops.values())) == 12
         for h in range(12):
             assert pixel_bytes(self._render(time_str=f"{h + 12:02d}:00").crop(self._moon_box())) == crops[h]
-        assert rq._hades_hour("13:00") == 1 and rq._hades_hour("00:10") == 12
-        assert rq._hades_hour("garbage") == 12
 
     @staticmethod
     def _disc_counts(image) -> dict:
@@ -6367,8 +6336,6 @@ class TestExpanseFrame:
         assert len(set(crops.values())) == 12
         for h in range(12):
             assert pixel_bytes(self._render(time_str=f"{h + 12:02d}:00").crop(self._plot_box())) == crops[h]
-        assert rq._expanse_hour("13:00") == 1 and rq._expanse_hour("00:10") == 12
-        assert rq._expanse_hour("garbage") == 12
         assert rq._expanse_bearing(12) == 0 and rq._expanse_bearing(3) == 90 and rq._expanse_bearing(9) == 270
 
     def test_contact_sits_at_the_hours_bearing(self):
@@ -6538,8 +6505,6 @@ class TestBeksinskiFrame:
         assert added[0] > 60                                   # one walker at one
         assert all(b > a for a, b in zip(added, added[1:]))   # each hour adds a figure
         assert pixel_bytes(self._render(time_str="00:00")) == pixel_bytes(road)
-        assert rq._beksinski_hour("13:00") == 1 and rq._beksinski_hour("00:10") == 12
-        assert rq._beksinski_hour("garbage") == 12
 
     def test_the_leader_stands_at_the_cathedrals_foot_from_one_oclock(self):
         """The file grows backward along the road: the leader's pixels at one
@@ -6824,12 +6789,7 @@ class TestHalFrame:
             assert pathlib.Path(path).exists(), path
             assert (pathlib.Path(path).parent / "OFL.txt").exists()
 
-    def test_hour_parsing(self):
-        assert rq._hal_hour("00:10") == 12
-        assert rq._hal_hour("12:00") == 12
-        assert rq._hal_hour("13:45") == 1
-        assert rq._hal_hour("08:55") == 8
-        assert rq._hal_hour("bogus") == 12
+    def test_one_mnemonic_per_hour(self):
         assert len(rq._HAL_MNEMONICS) == 12 and len(set(rq._HAL_MNEMONICS)) == 12
         assert rq._hal_mnemonic(1) == "COM" and rq._hal_mnemonic(12) == "NUC"
 
@@ -6965,7 +6925,6 @@ class TestLumonFrame:
         assert rq._lumon_completion(1) == 8
         assert rq._lumon_completion(6) == 50
         assert rq._lumon_completion(12) == 100
-        assert rq._lumon_hour("00:30") == 12 and rq._lumon_hour("13:05") == 1
 
     def test_cluster_walks_the_hours_column_pair(self):
         assert rq._lumon_cluster(1) == (1, 0)

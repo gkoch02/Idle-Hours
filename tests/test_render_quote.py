@@ -4640,3 +4640,74 @@ class TestAlchemyFaintFigure:
         for px in (x, x + 1):
             col = [img.getpixel((px, y)) == blue for y in range(220, 260)]
             assert not any(a and b for a, b in zip(col, col[1:])), "solid blue run on the ring"
+
+
+class TestSharedPainterHelpers:
+    """The primitives several themes had each copy-pasted under their own
+    names (issue #336). One body now serves every caller, so pin it here."""
+
+    @pytest.mark.parametrize("time_str, expected", [
+        ("00:30", 12), ("12:05", 12), ("13:00", 1), ("01:59", 1), ("09:45", 9), ("21:15", 9), ("23:59", 11),
+    ])
+    def test_clock_hour12_is_the_twelve_hour_clock_hour(self, time_str, expected):
+        assert rq._clock_hour12(time_str) == expected
+
+    @pytest.mark.parametrize("value", ["", "nonsense", "::", "bogus:30", None])
+    def test_clock_hour12_falls_back_to_twelve_rather_than_raising(self, value):
+        assert rq._clock_hour12(value) == 12
+
+    def test_lerp_stops_interpolates_and_clamps(self):
+        stops = [(0, (0, 0, 0)), (10, (100, 200, 50)), (20, (100, 200, 50))]
+        assert rq._lerp_stops(stops, -5) == (0, 0, 0)
+        assert rq._lerp_stops(stops, 5) == (50, 100, 25)
+        assert rq._lerp_stops(stops, 99) == (100, 200, 50)
+
+    def test_bayer_threshold_field_tiles_the_ranks(self):
+        field = rq._bayer_threshold_field((19, 11))
+        assert field.mode == "L" and field.size == (19, 11)
+        for x, y in ((0, 0), (7, 3), (8, 8), (18, 10)):
+            assert field.getpixel((x, y)) == rq.BAYER_8x8[y % 8][x % 8] * 4 + 2
+
+    def test_noise_fields_are_seeded(self):
+        assert rq._white_noise(16, 8, 7).tobytes() == rq._white_noise(16, 8, 7).tobytes()
+        assert rq._white_noise(16, 8, 7).tobytes() != rq._white_noise(16, 8, 8).tobytes()
+        smooth = rq._smooth_noise((40, 20), (4, 2), 7)
+        assert smooth.size == (40, 20) and smooth.tobytes() == rq._smooth_noise((40, 20), (4, 2), 7).tobytes()
+
+    def test_halo_paste_lays_a_black_halo_under_the_fill(self):
+        image = Image.new("RGB", (40, 40), rq.SPECTRA6["white"])
+        mask = Image.new("L", (40, 40), 0)
+        ImageDraw.Draw(mask).rectangle((18, 18, 21, 21), fill=255)
+        rq._halo_paste(image, mask, rq.SPECTRA6["yellow"])
+        assert image.getpixel((19, 19)) == rq.SPECTRA6["yellow"]
+        assert image.getpixel((16, 19)) == rq.SPECTRA6["black"]
+        assert image.getpixel((5, 5)) == rq.SPECTRA6["white"]
+
+    def test_place_quote_positions_every_chunk_inside_the_rect(self):
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        row = {"display_quote": "It was half past two and the light lay long across the square.",
+               "matched_text": "half past two"}
+        placed = rq._place_quote(draw, row, (100, 50, 500, 300), theme="default",
+                                 font_max=30, font_min=12, line_height_mult=1.3)
+        assert "".join(p[2] for p in placed).split() == row["display_quote"].split()
+        assert any(p[4] for p in placed) and not all(p[4] for p in placed)
+        for x, y, _chunk, _font, _bold, w, lh in placed:
+            assert 100 <= x and x + w <= 500 + 1 and 50 <= y < 300 and lh > 0
+
+    def test_fit_from_title_ellipsises_then_gives_up(self):
+        draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+        font = rq.load_font(rq.theme_font_candidates("default", "quote_regular"), size=12)
+        assert rq._fit_from_title(draw, {"title": ""}, font, 500) is None
+        assert rq._fit_from_title(draw, {"title": "Emma"}, font, 500) == "— from Emma —"
+        short = rq._fit_from_title(draw, {"title": "A Very Long Title Indeed For Testing"}, font, 120)
+        assert short.endswith("… —") and draw.textlength(short, font=font) <= 120
+        assert rq._fit_from_title(draw, {"title": "Emma"}, font, 1) is None
+
+    def test_fit_dotted_byline_shortens_the_title_first(self):
+        draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+        font = rq.load_font(rq.theme_font_candidates("default", "quote_regular"), size=12)
+        row = {"author": "Jane Austen", "title": "Mansfield Park and a Great Deal More Besides"}
+        assert rq._fit_dotted_byline(draw, {"author": "", "title": "", "source_id": None}, font, 500) is None
+        text, bbox = rq._fit_dotted_byline(draw, row, font, 160)
+        assert text.startswith("Jane Austen · ") and text.endswith("…")
+        assert bbox[2] - bbox[0] <= 160
