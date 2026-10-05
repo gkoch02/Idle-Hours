@@ -169,11 +169,18 @@ def test_a_theme_importing_another_theme_is_caught(monkeypatch):
     assert "themes.vitrail imports themes.tarot" in str(caught.value)
 
 
+def _theme_modules_on_disk() -> list[str]:
+    return sorted(name for name in _modules() if _is_theme(name))
+
+
 def test_facade_resolves_lowest_layer_first():
     """``__init__`` installs the facade in layer order, so a name bound in
-    several modules reads from where it is defined, not from an importer."""
+    several modules reads from where it is defined, not from an importer.
+    Every theme module sits between ``themes._shared`` and ``_monolith``; one
+    missing from ``themes.THEME_MODULES`` would be invisible to
+    ``render_quote.X`` reads and patches."""
     installed = [module.__name__.removeprefix(rq.__name__ + ".") for module in vars(rq)["__facade_submodules__"]]
-    assert installed == list(LAYERS)
+    assert installed == [*LAYERS[:-1], *_theme_modules_on_disk(), LAYERS[-1]]
 
 
 def test_type_checkers_see_every_layer():
@@ -188,4 +195,5 @@ def test_type_checkers_see_every_layer():
     ]
     assert len(blocks) == 1, "expected one `if TYPE_CHECKING:` block in render_quote/__init__.py"
     shown = {node.module for node in blocks[0].body if isinstance(node, ast.ImportFrom) and node.level == 1}
-    assert shown == set(LAYERS), f"layers missing from the TYPE_CHECKING re-export: {sorted(set(LAYERS) - shown)}"
+    expected = set(LAYERS) | set(_theme_modules_on_disk())
+    assert shown == expected, f"modules missing from the TYPE_CHECKING re-export: {sorted(expected - shown)}"
