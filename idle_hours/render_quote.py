@@ -13655,8 +13655,9 @@ def _bayer_threshold_field(size) -> Image.Image:
 
 
 def _lerp_stops(stops, y: float):
-    """Linear interpolation through ``[(y, rgb), ...]`` colour stops sorted on
-    ``y``; clamps to the first stop above and the last stop below."""
+    """The colour at ``y`` on a ``[(y, rgb), ...]`` gradient sorted on ``y``,
+    linearly interpolated; before the first stop it holds the first colour,
+    past the last it holds the last."""
     for (y0, c0), (y1, c1) in zip(stops, stops[1:]):
         if y <= y1:
             t = 0.0 if y1 == y0 else max(0.0, (y - y0) / (y1 - y0))
@@ -13680,6 +13681,90 @@ def _soft_ellipse_mask(size, box, blur: int) -> Image.Image:
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).ellipse(box, fill=255)
     return mask.filter(ImageFilter.GaussianBlur(blur))
+
+# The panel's measured inks — CLAUDE.md's calibration table. A scene painted
+# in this space and quantised by ``_dither_calibrated`` is re-labelled with the
+# nominal ``SPECTRA6`` values afterwards, so the dither decides in the space the
+# eye actually sees. Shared by expedition, hades, beksinski, goya, lumon, dsky,
+# oblivion and yorha.
+_PANEL_INKS = {
+    "white": (185, 199, 201),
+    "black": (31, 34, 38),
+    "red": (98, 32, 30),
+    "yellow": (193, 187, 30),
+    "blue": (35, 63, 142),
+    "green": (53, 86, 58),
+}
+
+
+def _dither_calibrated(scene: Image.Image, inks) -> Image.Image:
+    """Floyd–Steinberg ``scene`` against the *calibrated* colours of ``inks``,
+    then re-label the chosen indices with the nominal inks.
+
+    ``quantize(palette=…)`` maps every pixel to an index into the palette
+    image it is handed; replacing that image's palette with the nominal
+    values afterwards is a pure re-labelling, so the dither's decisions are
+    made in the measured space and its output is on-palette RGB.
+    """
+    measured: list[int] = []
+    nominal: list[int] = []
+    for name in inks:
+        measured.extend(_PANEL_INKS[name])
+        nominal.extend(SPECTRA6[name])
+    while len(measured) < 768:
+        measured.extend(_PANEL_INKS[inks[0]])
+        nominal.extend(SPECTRA6[inks[0]])
+    palette = Image.new("P", (1, 1))
+    palette.putpalette(measured[:768])
+    quantised = scene.convert("RGB").quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG)
+    quantised.putpalette(nominal[:768])
+    return quantised.convert("RGB")
+
+
+def _shift_no_wrap(img: Image.Image, dx: int, dy: int) -> Image.Image:
+    """Translate without wrap-around (``ImageChops.offset`` wraps)."""
+    out = Image.new(img.mode, img.size, 0)
+    out.paste(img, (dx, dy))
+    return out
+
+
+def _shade_silhouette(mask: Image.Image, base, light, dark, *, offset: int = 10, blur: int = 7) -> Image.Image:
+    """Model a silhouette under an upper-left light.
+
+    Where the shape meets its own down-right shift it has an exposed upper-left
+    edge — the lit rim; where it meets its up-left shift, the lower-right core
+    shadow. Both are blurred so the modelling rolls round the form."""
+    m = mask.filter(ImageFilter.GaussianBlur(1))
+    lit = ImageChops.subtract(m, _shift_no_wrap(m, offset, offset)).filter(ImageFilter.GaussianBlur(blur))
+    shadow = ImageChops.subtract(m, _shift_no_wrap(m, -offset, -offset)).filter(ImageFilter.GaussianBlur(blur))
+    img = Image.new("RGB", mask.size, base)
+    img = Image.composite(Image.new("RGB", mask.size, light), img, lit)
+    return Image.composite(Image.new("RGB", mask.size, dark), img, shadow)
+
+
+def _catmull_rom(points, closed: bool = True, samples: int = 10) -> list:
+    """Catmull-Rom through ``points`` — organic silhouettes rather than the
+    hard polygon corners a figure made of ``ImageDraw`` primitives gets."""
+    pts = list(points)
+    n = len(pts)
+    out = []
+    for i in (range(n) if closed else range(n - 1)):
+        p0 = pts[(i - 1) % n] if closed else pts[max(i - 1, 0)]
+        p1, p2 = pts[i], pts[(i + 1) % n]
+        p3 = pts[(i + 2) % n] if closed else pts[min(i + 2, n - 1)]
+        for k in range(samples):
+            t = k / samples
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(
+                0.5 * (2 * p1[j] + (p2[j] - p0[j]) * t
+                       + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
+                       + (3 * p1[j] - p0[j] - 3 * p2[j] + p3[j]) * t3)
+                for j in (0, 1)
+            ))
+    if not closed:
+        out.append(tuple(pts[-1]))
+    return out
+
 
 
 # Three-ink stipple recipes from ``spectra6_color_recipes.md`` ("Three-ink
@@ -21450,7 +21535,7 @@ def render_observation_frame(time_str: str, quote_row: dict, width: int, height:
 # 3. **Composited through a dithered alpha** (``BAYER_8x8`` threshold, not a
 #    50% cut), so smeared edges interpenetrate instead of reading as stickers.
 #
-# Flesh is modelled under an upper-left light (``_furies_shade``) and given
+# Flesh is modelled under an upper-left light (``_shade_silhouette``) and given
 # brush marks before the drag so they smear with it. Mouths and the bandage are
 # painted *after* the drag — the focal points stay sharp.
 #
@@ -21507,40 +21592,9 @@ _FURIES_SMEAR_STRENGTH = 0.7
 _FURIES_TRIPTYCH_CACHE: dict = {}
 
 
-def _furies_shift(img: Image.Image, dx: int, dy: int) -> Image.Image:
-    """Translate without wrap-around (``ImageChops.offset`` wraps)."""
-    out = Image.new(img.mode, img.size, 0)
-    out.paste(img, (dx, dy))
-    return out
-
-
-def _furies_spline(points, closed: bool = True, samples: int = 10) -> list:
-    """Catmull-Rom through ``points`` — organic silhouettes rather than the
-    hard polygon corners a figure made of ``ImageDraw`` primitives gets."""
-    pts = list(points)
-    n = len(pts)
-    out = []
-    for i in (range(n) if closed else range(n - 1)):
-        p0 = pts[(i - 1) % n] if closed else pts[max(i - 1, 0)]
-        p1, p2 = pts[i], pts[(i + 1) % n]
-        p3 = pts[(i + 2) % n] if closed else pts[min(i + 2, n - 1)]
-        for k in range(samples):
-            t = k / samples
-            t2, t3 = t * t, t * t * t
-            out.append(tuple(
-                0.5 * (2 * p1[j] + (p2[j] - p0[j]) * t
-                       + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
-                       + (3 * p1[j] - p0[j] - 3 * p2[j] + p3[j]) * t3)
-                for j in (0, 1)
-            ))
-    if not closed:
-        out.append(tuple(pts[-1]))
-    return out
-
-
 def _furies_tube(draw: ImageDraw.ImageDraw, points, w0: float, w1: float, fill=255) -> None:
     """A neck or a limb: a spline swept at a width tapering ``w0`` → ``w1``."""
-    path = _furies_spline(points, closed=False, samples=8)
+    path = _catmull_rom(points, closed=False, samples=8)
     left, right = [], []
     last = len(path) - 1
     for i, (x, y) in enumerate(path):
@@ -21603,26 +21657,12 @@ def _furies_drag(rgb: Image.Image, alpha: Image.Image, dx: int, dy: int, *, step
         weight = decay ** i
         sx, sy = round(dx * i / steps), round(dy * i / steps)
         step_alpha = ImageChops.multiply(
-            _furies_shift(alpha, sx, sy).point(lambda v, w=weight: int(v * w)), striations)
-        out_rgb.paste(_furies_shift(rgb, sx, sy), (0, 0), step_alpha)
+            _shift_no_wrap(alpha, sx, sy).point(lambda v, w=weight: int(v * w)), striations)
+        out_rgb.paste(_shift_no_wrap(rgb, sx, sy), (0, 0), step_alpha)
         out_alpha = ImageChops.lighter(out_alpha, step_alpha)
     core = alpha.point(lambda v: int(v * keep))
     out_rgb.paste(rgb, (0, 0), core)
     return out_rgb, ImageChops.lighter(out_alpha, core)
-
-
-def _furies_shade(mask: Image.Image, base, light, dark, *, offset: int = 10, blur: int = 7) -> Image.Image:
-    """Model a silhouette under an upper-left light.
-
-    Where the shape meets its own down-right shift it has an exposed upper-left
-    edge — the lit rim; where it meets its up-left shift, the lower-right core
-    shadow. Both are blurred so the modelling rolls round the form."""
-    m = mask.filter(ImageFilter.GaussianBlur(1))
-    lit = ImageChops.subtract(m, _furies_shift(m, offset, offset)).filter(ImageFilter.GaussianBlur(blur))
-    shadow = ImageChops.subtract(m, _furies_shift(m, -offset, -offset)).filter(ImageFilter.GaussianBlur(blur))
-    img = Image.new("RGB", mask.size, base)
-    img = Image.composite(Image.new("RGB", mask.size, light), img, lit)
-    return Image.composite(Image.new("RGB", mask.size, dark), img, shadow)
 
 
 def _furies_brushwork(rgb: Image.Image, mask: Image.Image, seed: int, *, count: int = 26,
@@ -21647,7 +21687,7 @@ def _furies_brushwork(rgb: Image.Image, mask: Image.Image, seed: int, *, count: 
         ux, uy = math.cos(angle) * length / 2, math.sin(angle) * length / 2
         stroke = [(cx - ux, cy - uy), (cx - math.sin(angle) * bend, cy + math.cos(angle) * bend),
                   (cx + ux, cy + uy)]
-        draw.line(_furies_spline(stroke, closed=False), fill=tones[i % len(tones)], width=width)
+        draw.line(_catmull_rom(stroke, closed=False), fill=tones[i % len(tones)], width=width)
 
 
 def _furies_ground(seed: int) -> Image.Image:
@@ -21667,7 +21707,7 @@ def _furies_ground(seed: int) -> Image.Image:
     img = Image.composite(Image.new("RGB", size, (180, 56, 12)), img, vignette)
     # Board grain: FS over a flat colour settles into vertical worms; a seeded
     # per-pixel jitter (``randbytes``; ``effect_noise`` is unseeded) breaks them.
-    grain = Image.frombytes("L", size, random.Random(seed * 7919).randbytes(size[0] * size[1]))
+    grain = _white_noise(size[0], size[1], seed * 7919)
     img = Image.composite(Image.new("RGB", size, (255, 160, 40)), img, grain.point(lambda v: max(0, v - 200)))
     return Image.composite(Image.new("RGB", size, (236, 84, 12)), img, grain.point(lambda v: max(0, 55 - v)))
 
@@ -21703,19 +21743,19 @@ def _furies_left_panel() -> list:
         d.line((x, top, x, bottom), fill=255, width=2)
     mask = _furies_layer()
     md = ImageDraw.Draw(mask)
-    md.polygon(_furies_spline([(50, 176), (52, 140), (66, 108), (92, 86), (114, 90), (126, 78),
+    md.polygon(_catmull_rom([(50, 176), (52, 140), (66, 108), (92, 86), (114, 90), (126, 78),
                                (150, 86), (166, 108), (170, 140), (176, 176)]), fill=255)
-    md.polygon(_furies_spline([(140, 112), (166, 104), (184, 124), (182, 150), (164, 160),
+    md.polygon(_catmull_rom([(140, 112), (166, 104), (184, 124), (182, 150), (164, 160),
                                (144, 146)]), fill=255)
     _furies_tube(md, [(128, 128), (138, 152), (136, 176)], 14, 9)
-    flesh = _furies_shade(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
+    flesh = _shade_silhouette(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
     _furies_brushwork(flesh, mask, 41, direction=-0.5)
     fd = ImageDraw.Draw(flesh)
-    fd.polygon(_furies_spline([(142, 110), (166, 102), (186, 122), (184, 160), (176, 176),
+    fd.polygon(_catmull_rom([(142, 110), (166, 102), (186, 122), (184, 160), (176, 176),
                                (168, 150), (160, 164), (156, 136), (146, 130)]), fill=_FURIES_HAIR)
-    fd.line(_furies_spline([(66, 150), (92, 118), (124, 104), (150, 108)], closed=False),
+    fd.line(_catmull_rom([(66, 150), (92, 118), (124, 104), (150, 108)], closed=False),
             fill=(118, 100, 104), width=2)
-    fd.line(_furies_spline([(110, 176), (116, 150), (134, 132)], closed=False), fill=(120, 104, 108), width=2)
+    fd.line(_catmull_rom([(110, 176), (116, 150), (134, 132)], closed=False), fill=(120, 104, 108), width=2)
     flesh, alpha = _furies_drag(flesh, mask, 10, 6, steps=8, decay=0.8, seed=21)
     return [(ground, None, _FURIES_GROUND_INKS), (_furies_ink(_FURIES_LINE), lines, _FURIES_LINE_INKS),
             (flesh, alpha, _FURIES_FLESH_INKS)]
@@ -21734,19 +21774,19 @@ def _furies_centre_panel() -> list:
     pd.rectangle((84, 190, 132, 248), fill=255)
     pd.ellipse((84, 184, 132, 196), fill=255)
     pd.ellipse((84, 242, 132, 254), fill=255)
-    stone = _furies_shade(pedestal, (70, 58, 56), (140, 120, 110), (20, 14, 14))
+    stone = _shade_silhouette(pedestal, (70, 58, 56), (140, 120, 110), (20, 14, 14))
     mask = _furies_layer()
     md = ImageDraw.Draw(mask)
-    md.polygon(_furies_spline([(70, 190), (64, 160), (74, 128), (100, 118), (128, 128), (140, 158),
+    md.polygon(_catmull_rom([(70, 190), (64, 160), (74, 128), (100, 118), (128, 128), (140, 158),
                                (134, 190)]), fill=255)
     _furies_tube(md, [(106, 132), (100, 104), (112, 80), (136, 74)], 30, 22)
-    md.polygon(_furies_spline([(122, 72), (148, 58), (176, 70), (180, 98), (168, 118), (140, 122),
+    md.polygon(_catmull_rom([(122, 72), (148, 58), (176, 70), (180, 98), (168, 118), (140, 122),
                                (124, 104)]), fill=255)
-    flesh = _furies_shade(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
+    flesh = _shade_silhouette(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
     _furies_brushwork(flesh, mask, 42, direction=1.2)
     fd = ImageDraw.Draw(flesh)
-    fd.line(_furies_spline([(78, 150), (96, 176), (126, 170)], closed=False), fill=(120, 104, 108), width=2)
-    fd.line(_furies_spline([(92, 126), (110, 140), (128, 136)], closed=False), fill=(130, 114, 118), width=1)
+    fd.line(_catmull_rom([(78, 150), (96, 176), (126, 170)], closed=False), fill=(120, 104, 108), width=2)
+    fd.line(_catmull_rom([(92, 126), (110, 140), (128, 136)], closed=False), fill=(130, 114, 118), width=1)
     flesh, alpha = _furies_drag(flesh, mask, -8, 10, steps=7, decay=0.8, seed=22)
     # The bandage and the mouth go down after the drag: the focal points.
     fd, ad = ImageDraw.Draw(flesh), ImageDraw.Draw(alpha)
@@ -21782,14 +21822,14 @@ def _furies_right_panel() -> list:
         bd.line((x, 232, x + lean, 232 - h), fill=(90, 190, 40), width=1)
     mask = _furies_layer()
     md = ImageDraw.Draw(mask)
-    md.polygon(_furies_spline([(122, 128), (146, 104), (182, 106), (198, 136), (190, 170), (160, 180),
+    md.polygon(_catmull_rom([(122, 128), (146, 104), (182, 106), (198, 136), (190, 170), (160, 180),
                                (130, 164)]), fill=255)
     _furies_tube(md, [(136, 140), (104, 128), (78, 122), (58, 118)], 30, 22)
-    md.polygon(_furies_spline([(18, 104), (40, 86), (68, 92), (76, 118), (66, 146), (34, 150),
+    md.polygon(_catmull_rom([(18, 104), (40, 86), (68, 92), (76, 118), (66, 146), (34, 150),
                                (14, 132)]), fill=255)
     _furies_tube(md, [(146, 170), (142, 196), (146, 228)], 9, 4)
     _furies_tube(md, [(176, 172), (180, 200), (176, 228)], 9, 4)
-    flesh = _furies_shade(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
+    flesh = _shade_silhouette(mask, _FURIES_FLESH, _FURIES_FLESH_LIGHT, _FURIES_FLESH_SHADOW)
     _furies_brushwork(flesh, mask, 43, direction=0.2)
     flesh, alpha = _furies_drag(flesh, mask, 12, -4, steps=8, decay=0.8, seed=23)
     fd, ad = ImageDraw.Draw(flesh), ImageDraw.Draw(alpha)
@@ -26553,7 +26593,7 @@ def render_atropos_frame(time_str: str, quote_row: dict, width: int, height: int
 # specified in the panel's measured colour space and the quantiser is given
 # the same measured inks, so diffusion weighs red as the near-black it is on
 # the panel; indices are then re-labelled with the nominal inks
-# (``_expedition_dither``). Nominal-RGB design goes to mud on the panel. The
+# (``_dither_calibrated``). Nominal-RGB design goes to mud on the panel. The
 # sky is quantised without green (diffusion uses any ink it is given); the sea
 # gets green back for the B+G teal of lit water.
 #
@@ -26602,17 +26642,6 @@ _EXPEDITION_BRUSH = ((506, 236), (618, 146))           # handle end, tip — int
 _EXPEDITION_LAMP_X = 66
 _EXPEDITION_LAMP_GLASS = (56, 206, 76, 244)
 _EXPEDITION_LAMP_BOX = (44, 184, 90, 262)
-# The panel's measured inks — CLAUDE.md's calibration table. The scene is
-# quantised against these and re-labelled with the nominal ``SPECTRA6``
-# values afterwards; see the section comment.
-_EXPEDITION_PANEL_INKS = {
-    "white": (185, 199, 201),
-    "black": (31, 34, 38),
-    "red": (98, 32, 30),
-    "yellow": (193, 187, 30),
-    "blue": (35, 63, 142),
-    "green": (53, 86, 58),
-}
 _EXPEDITION_SKY_INKS = ("black", "blue", "red", "yellow", "white")
 _EXPEDITION_SEA_INKS = ("black", "blue", "green", "red", "yellow", "white")
 # Dusk, top to horizon, in the calibrated space: blue-black zenith, deep
@@ -26640,30 +26669,6 @@ def _expedition_label_font(size: int):
 def _expedition_wordmark_font(size: int):
     """Cinzel Decorative Bold — the poster's lettering — for ``EXPEDITION 33``."""
     return load_font([CINZELDECORATIVE_BOLD, CINZELDECORATIVE_REGULAR, *META_FONT_BOLD_CANDIDATES], size=size)
-
-
-def _expedition_dither(scene: Image.Image, inks) -> Image.Image:
-    """Floyd–Steinberg ``scene`` against the *calibrated* colours of ``inks``,
-    then re-label the chosen indices with the nominal inks.
-
-    ``quantize(palette=…)`` maps every pixel to an index into the palette
-    image it is handed; replacing that image's palette with the nominal
-    values afterwards is a pure re-labelling, so the dither's decisions are
-    made in the measured space and its output is on-palette RGB.
-    """
-    measured: list[int] = []
-    nominal: list[int] = []
-    for name in inks:
-        measured.extend(_EXPEDITION_PANEL_INKS[name])
-        nominal.extend(SPECTRA6[name])
-    while len(measured) < 768:
-        measured.extend(_EXPEDITION_PANEL_INKS[inks[0]])
-        nominal.extend(SPECTRA6[inks[0]])
-    palette = Image.new("P", (1, 1))
-    palette.putpalette(measured[:768])
-    quantised = scene.convert("RGB").quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG)
-    quantised.putpalette(nominal[:768])
-    return quantised.convert("RGB")
 
 
 def _expedition_paint_sky(scene: Image.Image) -> None:
@@ -26920,7 +26925,7 @@ def _expedition_background() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _expedition_paint_sky(scene)
     _expedition_paint_sea(scene)
     _expedition_paint_continent(scene)
@@ -26928,8 +26933,8 @@ def _expedition_background() -> Image.Image:
     _expedition_paint_paintress(scene)
     _expedition_paint_promenade(scene)
     # Two quantisers: the sky without green, the water with it.
-    image = _expedition_dither(scene, _EXPEDITION_SKY_INKS)
-    sea = _expedition_dither(scene, _EXPEDITION_SEA_INKS)
+    image = _dither_calibrated(scene, _EXPEDITION_SKY_INKS)
+    sea = _dither_calibrated(scene, _EXPEDITION_SEA_INKS)
     band = Image.new("L", size, 0)
     ImageDraw.Draw(band).rectangle((0, _EXPEDITION_HORIZON + 1, size[0], _EXPEDITION_RAIL_TOP - 1), fill=255)
     image = Image.composite(sea, image, band)
@@ -27297,7 +27302,7 @@ def _witcher_page_mask(size) -> Image.Image:
     mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).rectangle(_WITCHER_PAGE_RECT, fill=255)
     band = ImageChops.subtract(mask, mask.filter(ImageFilter.MinFilter(9)))
-    tear = _white_noise(size[0] // 3, size[1] // 3, _WITCHER_SEED).resize(size, Image.Resampling.BICUBIC)
+    tear = _smooth_noise(size, (size[0] // 3, size[1] // 3), _WITCHER_SEED)
     torn = ImageChops.multiply(band, tear.point(lambda v: 255 if v < 118 else 0))
     return ImageChops.subtract(mask, torn)
 
@@ -27961,10 +27966,10 @@ def _hades_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _hades_paint_sky(scene)
-    image = _expedition_dither(scene, _HADES_SKY_INKS)
-    horizon = _expedition_dither(scene, _HADES_HORIZON_INKS)
+    image = _dither_calibrated(scene, _HADES_SKY_INKS)
+    horizon = _dither_calibrated(scene, _HADES_HORIZON_INKS)
     # Feathered over 40 rows, so the seam between the quantisers is a drift
     # of green into the blue rather than a rule across the sky.
     band = Image.new("L", size, 0)
@@ -27988,7 +27993,7 @@ def _hades_paint_moon(image: Image.Image, hour: int) -> None:
     cx, cy = _HADES_MOON_CENTRE
     r = _HADES_MOON_RADIUS
     white, black, blue = SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]
-    maria = _white_noise(26, 26, _HADES_SEED + 7).resize((2 * r + 1, 2 * r + 1), Image.Resampling.BICUBIC)
+    maria = _smooth_noise((2 * r + 1, 2 * r + 1), (26, 26), _HADES_SEED + 7)
     mp = maria.load()
     px = image.load()
     k = math.cos(2 * math.pi * phase)
@@ -28298,12 +28303,12 @@ def _beksinski_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _beksinski_paint_sky(scene)
     tower = _beksinski_tower_mask(size)
     _beksinski_paint_tower(scene, tower)
-    sky = _expedition_dither(scene, _BEKSINSKI_SKY_INKS)
-    ground = _expedition_dither(scene, _BEKSINSKI_GROUND_INKS)
+    sky = _dither_calibrated(scene, _BEKSINSKI_SKY_INKS)
+    ground = _dither_calibrated(scene, _BEKSINSKI_GROUND_INKS)
     # The plain and the bone are one surface for the craquelure; the sky is
     # not crazed, and the byline's footprint is kept out of the net.
     surface = Image.new("L", size, 0)
@@ -29036,7 +29041,7 @@ def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int
 #
 # Palette: black, yellow, red and white only (the paintings' earth plus their
 # one red), never blue or green. The void is painted in continuous tone and
-# Floyd–Steinberg dithered against the calibrated inks (``_expedition_dither``);
+# Floyd–Steinberg dithered against the calibrated inks (``_dither_calibrated``);
 # the slope is a warm black in the same scene, so its edge is brushed rather
 # than ruled. ``paint_craquelure`` crazes the cached scene (cells coarser than
 # ``bosch``'s, as a mural's craze is) before the quote goes on, so the quote is
@@ -29103,7 +29108,7 @@ def _goya_slope_edge() -> list:
         y = _GOYA_SLOPE_LEFT + (_GOYA_SLOPE_RIGHT - _GOYA_SLOPE_LEFT) * t
         y -= 14 * math.exp(-((x - _GOYA_DOG_PIVOT[0]) / 90.0) ** 2)
         points.append((x, y + rng.uniform(-5, 5)))
-    return _furies_spline(points, closed=False, samples=6)
+    return _catmull_rom(points, closed=False, samples=6)
 
 
 def _goya_slope_mask(size) -> Image.Image:
@@ -29147,9 +29152,9 @@ def _goya_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["black"])
+    scene = Image.new("RGB", size, _PANEL_INKS["black"])
     _goya_paint_void(scene)
-    image = _expedition_dither(scene, _GOYA_INKS)
+    image = _dither_calibrated(scene, _GOYA_INKS)
     paint_craquelure(image, Image.new("L", size, 255), seed=_GOYA_SEED + 5, cell=_GOYA_CRACK_CELL,
                      jitter=0.4, drop=0.24, diagonal=0.16, continuity=4,
                      dark=SPECTRA6["black"], light=SPECTRA6["yellow"], light_share=0.08)
@@ -29190,9 +29195,9 @@ def _goya_paint_dog(image: Image.Image, gaze: float) -> None:
     size = image.size
     head = Image.new("L", size, 0)
     hd = ImageDraw.Draw(head)
-    hd.polygon([(round(x), round(y)) for x, y in _furies_spline(_goya_turn(_GOYA_HEAD, gaze), samples=6)], fill=255)
+    hd.polygon([(round(x), round(y)) for x, y in _catmull_rom(_goya_turn(_GOYA_HEAD, gaze), samples=6)], fill=255)
     ear = Image.new("L", size, 0)
-    ImageDraw.Draw(ear).polygon([(round(x), round(y)) for x, y in _furies_spline(_goya_turn(_GOYA_EAR, gaze), samples=6)],
+    ImageDraw.Draw(ear).polygon([(round(x), round(y)) for x, y in _catmull_rom(_goya_turn(_GOYA_EAR, gaze), samples=6)],
                                 fill=255)
     head = ImageChops.lighter(head, ear)
     # Only what stands above the slope is the dog; the rest is the slope.
@@ -29202,12 +29207,12 @@ def _goya_paint_dog(image: Image.Image, gaze: float) -> None:
         return
     pad = 6
     box = (max(0, bbox[0] - pad), max(0, bbox[1] - pad), min(size[0], bbox[2] + pad), min(size[1], bbox[3] + pad))
-    shaded = _furies_shade(head, _GOYA_DOG_BASE, _GOYA_DOG_LIGHT, _GOYA_DOG_DARK, offset=6, blur=4)
+    shaded = _shade_silhouette(head, _GOYA_DOG_BASE, _GOYA_DOG_LIGHT, _GOYA_DOG_DARK, offset=6, blur=4)
     shaded.paste(Image.new("RGB", size, _GOYA_DOG_EAR), (0, 0), ear.filter(ImageFilter.GaussianBlur(1)))
     grain = _smooth_noise(size, (40, 24), _GOYA_SEED + 6).point(lambda v: v * 12 // 255)
     shaded = ImageChops.subtract(ImageChops.add(shaded, Image.merge("RGB", (grain, grain, grain))),
                                  Image.new("RGB", size, (6, 6, 6)))
-    dithered = _expedition_dither(shaded.crop(box), _GOYA_INKS)
+    dithered = _dither_calibrated(shaded.crop(box), _GOYA_INKS)
     image.paste(dithered, box[:2], head.crop(box))
     crop = image.crop(box)
     paint_craquelure(crop, head.crop(box), seed=_GOYA_SEED + 7, cell=_GOYA_CRACK_CELL, jitter=0.4, drop=0.24,
@@ -29564,7 +29569,7 @@ def render_hal_frame(time_str: str, quote_row: dict, width: int, height: int) ->
 #
 # The screen is a vignetted blue field computed at quarter resolution,
 # bicubic-upsampled and Floyd–Steinberg dithered to blue and black
-# (``_expedition_dither``) so the vignette is error-diffused, not latticed. It
+# (``_dither_calibrated``) so the vignette is error-diffused, not latticed. It
 # sits in a recessed black edge inside a beige (W+Y stipple) housing, cached
 # per process (``_LUMON_SCENE``).
 #
@@ -29599,8 +29604,8 @@ _LUMON_BYLINE_Y = 392
 _LUMON_BINS_RECT = (44, 414, 756, 460)
 _LUMON_BIN_GAP = 12
 _LUMON_SCENE: dict = {}
-_LUMON_BLUE = _EXPEDITION_PANEL_INKS["blue"]
-_LUMON_BLACK = _EXPEDITION_PANEL_INKS["black"]
+_LUMON_BLUE = _PANEL_INKS["blue"]
+_LUMON_BLACK = _PANEL_INKS["black"]
 
 
 def _lumon_completion(hour: int) -> int:
@@ -29640,7 +29645,7 @@ def _lumon_paint_screen(image: Image.Image) -> None:
         for x in range(small.size[0]):
             t = min(1.0, (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.8 * 0.85)
             sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK))
-    field = _expedition_dither(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
+    field = _dither_calibrated(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
     # The housing: the beige of the show's terminals, white with a yellow
     # quarter, with the glass opening cut out of it.
     _fill_swatch_stipple(image, (0, 0, width, height), SPECTRA6["white"], SPECTRA6["yellow"], 0.25)
@@ -29827,7 +29832,7 @@ def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) 
 # The console and the unit are modelled in continuous tone (grey panel with a
 # brushed grain, a shaded rim, domed keycaps, shaded screws, recessed dark
 # windows, a reflection across the display, soft shadows) and Floyd–Steinberg
-# dithered to white and black (``_expedition_dither``); the card, legends,
+# dithered to white and black (``_dither_calibrated``); the card, legends,
 # segments, lit lamp and type go on after the dither.
 #
 # The flight plan is typed in Special Elite in black, with the matched phrase
@@ -29874,7 +29879,7 @@ _DSKY_SEGMENTS = {
 
 def _dsky_tone(t: float) -> tuple[int, int, int]:
     """A grey ``t`` of the way from the white ink to the black ink."""
-    return tuple(round(w + (k - w) * t) for w, k in zip(_EXPEDITION_PANEL_INKS["white"], _EXPEDITION_PANEL_INKS["black"]))
+    return tuple(round(w + (k - w) * t) for w, k in zip(_PANEL_INKS["white"], _PANEL_INKS["black"]))
 
 
 def _dsky_segments(ch: str) -> str:
@@ -29964,7 +29969,7 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
     plate = Image.new("L", size, 0)
     ImageDraw.Draw(plate).rounded_rectangle((x0, y0, x1, y1), radius=10, fill=255)
     rim = ImageChops.subtract(plate, plate.filter(ImageFilter.MinFilter(2 * _DSKY_RIM + 1)))
-    shaded = _furies_shade(rim, _dsky_tone(0.80), _dsky_tone(0.40), _dsky_tone(0.97), offset=5, blur=3)
+    shaded = _shade_silhouette(rim, _dsky_tone(0.80), _dsky_tone(0.40), _dsky_tone(0.97), offset=5, blur=3)
     scene.paste(Image.new("RGB", size, _dsky_tone(0.90)), (0, 0), plate)
     scene.paste(shaded, (0, 0), rim)
     # The windows: recessed dark glass, a touch lighter at their top edge.
@@ -29995,13 +30000,13 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
     kd = ImageDraw.Draw(keys)
     for kx0, ky0, kx1, ky1, label in rects:
         kd.rounded_rectangle((kx0, ky0, kx1, ky1), radius=6, fill=255)
-    caps = _furies_shade(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
+    caps = _shade_silhouette(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
     scene.paste(caps, (0, 0), keys)
     # Screws at the plate's corners.
     for sx, sy in ((x0 + 14, y0 + 14), (x1 - 14, y0 + 14), (x0 + 14, y1 - 14), (x1 - 14, y1 - 14)):
         screw = Image.new("L", size, 0)
         ImageDraw.Draw(screw).ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=255)
-        head = _furies_shade(screw, _dsky_tone(0.55), _dsky_tone(0.20), _dsky_tone(0.92), offset=3, blur=2)
+        head = _shade_silhouette(screw, _dsky_tone(0.55), _dsky_tone(0.20), _dsky_tone(0.92), offset=3, blur=2)
         scene.paste(head, (0, 0), screw)
         screw.close()
     for m in (plate, rim, shaded, reflection, keys, caps):
@@ -30016,10 +30021,10 @@ def _dsky_scene() -> Image.Image:
     if cached is not None and cached[0] == key:
         return cached[1]
     size = (800, 480)
-    scene = Image.new("RGB", size, _EXPEDITION_PANEL_INKS["white"])
+    scene = Image.new("RGB", size, _PANEL_INKS["white"])
     _dsky_paint_console(scene)
     _dsky_paint_unit(scene)
-    image = _expedition_dither(scene, _DSKY_INKS)
+    image = _dither_calibrated(scene, _DSKY_INKS)
     _dsky_paint_card(image)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)       # the card's typed header is antialiased
     _DSKY_SCENE["frame"] = (key, image)
@@ -30156,9 +30161,9 @@ def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -
 #
 # The glass (grey edges, a white pool under the quote, darker soft-edged
 # panes, the drone's blurred shadow, a fine grain) and the drone (a sphere
-# shaded by ``shade_height_field``, pods by ``_furies_shade``) are painted in
+# shaded by ``shade_height_field``, pods by ``_shade_silhouette``) are painted in
 # continuous tone and Floyd–Steinberg dithered to white and black
-# (``_expedition_dither``). The map's contours (a seeded height field sliced at
+# (``_dither_calibrated``). The map's contours (a seeded height field sliced at
 # ``_OBLIVION_CONTOUR_LEVELS`` levels, each slice's one-pixel rim), the
 # hairlines, the type and the red go on after the dither.
 #
@@ -30184,8 +30189,8 @@ _OBLIVION_RIG_GAP = 4
 _OBLIVION_CONTOUR_LEVELS = 5
 _OBLIVION_SCENE: dict = {}
 # Calibrated end points of ``_oblivion_tone``: the white ink is the pool.
-_OBLIVION_WHITE = _EXPEDITION_PANEL_INKS["white"]
-_OBLIVION_BLACK = _EXPEDITION_PANEL_INKS["black"]
+_OBLIVION_WHITE = _PANEL_INKS["white"]
+_OBLIVION_BLACK = _PANEL_INKS["black"]
 
 
 def _oblivion_tone(t: float) -> tuple[int, int, int]:
@@ -30276,7 +30281,7 @@ def _oblivion_paint_drone_tone(scene: Image.Image) -> None:
     pd = ImageDraw.Draw(pods)
     pd.rounded_rectangle((cx - r - 16, cy - 9, cx - r + 8, cy + 11), radius=5, fill=255)
     pd.rounded_rectangle((cx + r - 8, cy - 9, cx + r + 16, cy + 11), radius=5, fill=255)
-    shaded = _furies_shade(pods, _oblivion_tone(0.34), _oblivion_tone(0.08), _oblivion_tone(0.66), offset=4, blur=3)
+    shaded = _shade_silhouette(pods, _oblivion_tone(0.34), _oblivion_tone(0.08), _oblivion_tone(0.66), offset=4, blur=3)
     disc = Image.new("L", size, 0)
     ImageDraw.Draw(disc).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
     field = disc.filter(ImageFilter.GaussianBlur(r * 0.55))
@@ -30336,7 +30341,7 @@ def _oblivion_scene() -> Image.Image:
     scene = Image.new("RGB", size, _OBLIVION_WHITE)
     pool = _oblivion_paint_glass(scene)
     _oblivion_paint_drone_tone(scene)
-    image = _expedition_dither(scene, _OBLIVION_INKS)
+    image = _dither_calibrated(scene, _OBLIVION_INKS)
     # Error diffusion carries the grey glass's residue a little way into the
     # pool; wipe its saturated heart back to white.
     if pool is not None:        # the decoration fence neuters the glass painter
@@ -30526,9 +30531,9 @@ def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: in
 # (``yorha``).
 #
 # The sheet (vignette, blurred city silhouettes, diagonal hatch, the panels'
-# soft shadows) and the Pod (``_furies_shade`` under the upper-left light) are
+# soft shadows) and the Pod (``_shade_silhouette`` under the upper-left light) are
 # painted in continuous tone and Floyd–Steinberg dithered to white, yellow and
-# black (``_expedition_dither``). Panel faces, hairlines, corner ticks, dot
+# black (``_dither_calibrated``). Panel faces, hairlines, corner ticks, dot
 # grid, tab bar, crest and type go on after the dither.
 #
 # The hour is the open entry: ARCHIVE 01..12, the hour's row inverted with a
@@ -30555,7 +30560,7 @@ _YORHA_SCENE: dict = {}
 
 def _yorha_cream(y: float, k: float = 0.0) -> tuple[int, int, int]:
     """A calibrated mix: white with ``y`` of yellow and ``k`` of black."""
-    w, yel, blk = (_EXPEDITION_PANEL_INKS[n] for n in ("white", "yellow", "black"))
+    w, yel, blk = (_PANEL_INKS[n] for n in ("white", "yellow", "black"))
     return tuple(round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk))
 
 
@@ -30585,7 +30590,7 @@ def _yorha_scene() -> Image.Image:
     _yorha_paint_ground(scene)
     _yorha_paint_panels(scene)
     _yorha_paint_pod_tone(scene)
-    image = _expedition_dither(scene, _YORHA_INKS)
+    image = _dither_calibrated(scene, _YORHA_INKS)
     _yorha_paint_rules(image)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)       # the tab bar's type is antialiased
     _YORHA_SCENE["frame"] = (key, image)
@@ -30643,7 +30648,7 @@ def _yorha_paint_panels(scene: Image.Image) -> None:
     pd = ImageDraw.Draw(panels)
     for rect in _yorha_panel_rects():
         pd.rectangle(rect, fill=255)
-    shadow = _furies_shift(panels, 4, 5).filter(ImageFilter.GaussianBlur(4)).point(lambda v: int(v * 0.7))
+    shadow = _shift_no_wrap(panels, 4, 5).filter(ImageFilter.GaussianBlur(4)).point(lambda v: int(v * 0.7))
     scene.paste(Image.new("RGB", size, _yorha_cream(0.20, 0.5)), (0, 0), shadow)
     scene.paste(Image.new("RGB", size, _yorha_cream(0.12)), (0, 0), panels)
     panels.close()
@@ -30675,12 +30680,12 @@ def _yorha_paint_pod_tone(scene: Image.Image) -> None:
     hd.rounded_rectangle((cx - 58, cy - 20, cx + 38, cy + 20), radius=20, fill=255)
     hd.polygon([(cx - 40, cy - 20), (cx - 18, cy - 40), (cx, cy - 20)], fill=255)          # the dorsal fin
     hd.polygon([(cx - 48, cy + 18), (cx - 64, cy + 34), (cx - 26, cy + 20)], fill=255)     # the ventral fin
-    body = _furies_shade(hull, _yorha_cream(0.12, 0.16), _yorha_cream(0.06, 0.0), _yorha_cream(0.16, 0.58),
+    body = _shade_silhouette(hull, _yorha_cream(0.12, 0.16), _yorha_cream(0.06, 0.0), _yorha_cream(0.16, 0.58),
                          offset=6, blur=4)
     scene.paste(body, (0, 0), hull)
     face = Image.new("L", size, 0)
     ImageDraw.Draw(face).rounded_rectangle((cx + 16, cy - 15, cx + 46, cy + 15), radius=7, fill=255)
-    plate = _furies_shade(face, _yorha_cream(0.10, 0.70), _yorha_cream(0.08, 0.34), _yorha_cream(0.12, 0.92),
+    plate = _shade_silhouette(face, _yorha_cream(0.10, 0.70), _yorha_cream(0.08, 0.34), _yorha_cream(0.12, 0.92),
                           offset=3, blur=2)
     scene.paste(plate, (0, 0), face)
     for m in (shadow, hull, body, face, plate):
@@ -30945,7 +30950,7 @@ def _hitchhiker_fish_outline() -> list:
             (cx + 108, cy - 6), (cx + 132, cy - 28), (cx + 144, cy - 24), (cx + 130, cy), (cx + 144, cy + 24),
             (cx + 132, cy + 28), (cx + 108, cy + 6), (cx + 70, cy + 18), (cx + 10, cy + 32), (cx - 50, cy + 36),
             (cx - 96, cy + 22)]
-    return _furies_spline(body, closed=True, samples=6)
+    return _catmull_rom(body, closed=True, samples=6)
 
 
 def _hitchhiker_paint_fish(image: Image.Image) -> None:
@@ -33658,10 +33663,10 @@ def _escritoire_paint_shadow(image: Image.Image) -> None:
     """The sheets' shadow, cast down and to the right onto the desk: a soft
     black stipple, painted before the brass so it falls on the desk only.
 
-    The shift must not wrap (hence ``_furies_shift``, not ``ImageChops.offset``):
+    The shift must not wrap (hence ``_shift_no_wrap``, not ``ImageChops.offset``):
     the sheet runs off the bottom and right of the panel."""
     paper = _escritoire_paper_mask(image.size)
-    shadow = _furies_shift(paper, 6, 9).filter(ImageFilter.GaussianBlur(7))
+    shadow = _shift_no_wrap(paper, 6, 9).filter(ImageFilter.GaussianBlur(7))
     image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(ImageChops.subtract(shadow, paper)))
 
 
@@ -33797,7 +33802,7 @@ def _escritoire_paint_sheet(image: Image.Image) -> None:
     image.paste(SPECTRA6["yellow"], (0, 0),
                 ImageChops.multiply(_escritoire_stipple(warmth.point(lambda v: min(255, v + 46))), under))
     # The letter's own shadow, on the page under it.
-    shadow = _furies_shift(sheet, 4, 6).filter(ImageFilter.GaussianBlur(4))
+    shadow = _shift_no_wrap(sheet, 4, 6).filter(ImageFilter.GaussianBlur(4))
     shadow = ImageChops.multiply(ImageChops.subtract(shadow, sheet), under)
     image.paste(SPECTRA6["black"], (0, 0), _escritoire_stipple(shadow.point(lambda v: v * 3 // 4)))
     image.paste(SPECTRA6["white"], (0, 0), sheet)
@@ -33958,7 +33963,7 @@ def _escritoire_paint_pen(image: Image.Image) -> None:
 
     shadow = Image.new("L", image.size, 0)
     section(ImageDraw.Draw(shadow), 0, length, r + 1, 255)
-    shadow = _furies_shift(shadow, 5, 10).filter(ImageFilter.GaussianBlur(5))
+    shadow = _shift_no_wrap(shadow, 5, 10).filter(ImageFilter.GaussianBlur(5))
     shadow = Image.eval(shadow, lambda v: v * 44 // 64)
     image.paste(black, (0, 0), _escritoire_stipple(shadow))
 

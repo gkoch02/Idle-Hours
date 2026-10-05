@@ -5977,14 +5977,14 @@ class TestExpeditionFrame:
         and the measured pink (red + white averaged) as a half-and-half
         stipple of those two inks — proof the quantiser saw the measured
         colours and the output was re-labelled with the nominal ones."""
-        measured_red = rq._EXPEDITION_PANEL_INKS["red"]
+        measured_red = rq._PANEL_INKS["red"]
         flat = Image.new("RGB", (64, 64), measured_red)
-        assert distinct_inks(rq._expedition_dither(flat, rq._EXPEDITION_SKY_INKS)) == {rq.SPECTRA6["red"]}
-        pink = tuple((a + b) // 2 for a, b in zip(measured_red, rq._EXPEDITION_PANEL_INKS["white"]))
-        counts = ink_counts(rq._expedition_dither(Image.new("RGB", (64, 64), pink), rq._EXPEDITION_SKY_INKS))
+        assert distinct_inks(rq._dither_calibrated(flat, rq._EXPEDITION_SKY_INKS)) == {rq.SPECTRA6["red"]}
+        pink = tuple((a + b) // 2 for a, b in zip(measured_red, rq._PANEL_INKS["white"]))
+        counts = ink_counts(rq._dither_calibrated(Image.new("RGB", (64, 64), pink), rq._EXPEDITION_SKY_INKS))
         assert counts.get(rq.SPECTRA6["red"], 0) > 64 * 64 * 0.3
         assert counts.get(rq.SPECTRA6["white"], 0) > 64 * 64 * 0.3
-        assert distinct_inks(rq._expedition_dither(flat, rq._EXPEDITION_SKY_INKS)) <= set(rq.SPECTRA6.values())
+        assert distinct_inks(rq._dither_calibrated(flat, rq._EXPEDITION_SKY_INKS)) <= set(rq.SPECTRA6.values())
 
     def test_sky_has_no_green_and_the_sea_has_some(self):
         """Green stays out of the sky's quantiser; the water gets it back for the teal."""
