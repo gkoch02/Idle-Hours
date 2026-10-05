@@ -13632,7 +13632,7 @@ def _clock_hh_mm(time_str) -> tuple[int, int]:
     rather than raising: the same 12 o'clock that :func:`_clock_hour12` gives.
     """
     try:
-        hour, minute = (int(part) for part in str(time_str).split(":")[:2])
+        hour, minute = (int(part) for part in str(time_str).split(":"))
     except ValueError:
         return 0, 0
     if not (0 <= hour <= 23 and 0 <= minute <= 59):

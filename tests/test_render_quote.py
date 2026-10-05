@@ -4733,7 +4733,7 @@ class TestMalformedTime:
 
     @pytest.mark.parametrize("time_str, expected", [
         ("14:30", (14, 30)), ("9:05", (9, 5)), ("00:00", (0, 0)), ("23:59", (23, 59)),
-        ("24:00", (0, 0)), ("12:60", (0, 0)), ("garbage", (0, 0)), ("14", (0, 0)), ("", (0, 0)), (None, (0, 0)),
+        ("24:00", (0, 0)), ("12:60", (0, 0)), ("12:30:00", (0, 0)), ("12:30:garbage", (0, 0)), ("garbage", (0, 0)), ("14", (0, 0)), ("", (0, 0)), (None, (0, 0)),
     ])
     def test_clock_hh_mm_falls_back_to_midnight(self, time_str, expected):
         assert rq._clock_hh_mm(time_str) == expected
