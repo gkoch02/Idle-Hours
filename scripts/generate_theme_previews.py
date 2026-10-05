@@ -49,7 +49,6 @@ import contextlib
 import datetime
 import os
 import sys
-import types
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -140,41 +139,14 @@ def tolerance_px(theme: str) -> int:
 FROZEN_NOW = datetime.datetime(2026, 5, 19, 10, 0, 0)
 
 
-def _frozen_datetime_module() -> types.SimpleNamespace:
-    """A stand-in for the stdlib ``datetime`` pinned to ``FROZEN_NOW``.
-
-    The classes subclass the real ones so ``isinstance`` and ordinary
-    construction keep working; only ``now()`` / ``today()`` change.
-    ``render_quote`` does ``import datetime`` and touches ``datetime.datetime``
-    and ``datetime.date``, so swapping the module reference is enough.
-    """
-
-    class _FrozenDatetime(datetime.datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return FROZEN_NOW if tz is None else FROZEN_NOW.replace(tzinfo=tz)
-
-    class _FrozenDate(datetime.date):
-        @classmethod
-        def today(cls):
-            return FROZEN_NOW.date()
-
-    return types.SimpleNamespace(
-        datetime=_FrozenDatetime,
-        date=_FrozenDate,
-        timedelta=datetime.timedelta,
-        timezone=datetime.timezone,
-    )
-
-
 @contextlib.contextmanager
 def frozen_clock():
-    original = rq.datetime
-    rq.datetime = _frozen_datetime_module()
+    original = rq._now
+    rq._now = lambda: FROZEN_NOW
     try:
         yield
     finally:
-        rq.datetime = original
+        rq._now = original
 
 
 @contextlib.contextmanager

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import types
 from pathlib import Path
 
 import pytest
@@ -180,20 +179,7 @@ class TestDeterminism:
         expected = gen.render_preview("astrarium", row).tobytes()
 
         # Pretend the machine clock is a year off. render_preview must not care.
-        class _Other(datetime.datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return datetime.datetime(2027, 11, 3, 4, 5, 6)
-
-        class _OtherDate(datetime.date):
-            @classmethod
-            def today(cls):
-                return datetime.date(2027, 11, 3)
-
-        monkeypatch.setattr(rq, "datetime", types.SimpleNamespace(
-            datetime=_Other, date=_OtherDate,
-            timedelta=datetime.timedelta, timezone=datetime.timezone,
-        ))
+        monkeypatch.setattr(rq, "_now", lambda: datetime.datetime(2027, 11, 3, 4, 5, 6))
         assert gen.render_preview("astrarium", row).tobytes() == expected
         # Same guard: unfrozen, that ambient clock really does change the frame.
         drifted = rq.render(gen.PREVIEW_TIME, dict(row), gen.WIDTH, gen.HEIGHT,
