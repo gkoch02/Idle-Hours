@@ -124,6 +124,10 @@ The original plan for this PR:
 - No test needed repointing. A patch on a border helper reaches its one binding in the theme module, and the decoration fence's `_neuter` covers the painters `_monolith` also imports.
 - `_BORDER_PAINTERS` and the by-name calls in `render` stay in `_monolith` until the registry PR.
 
+**PR 5c: the frame themes. Done**, all 50 in one PR rather than about five. The map that was meant to guide the batching found almost nothing to batch around: 48 frames borrow nothing from another theme, and the borrowing that was there had already moved to `_shared` in 5a. 1,528 statements became 50 modules, and `_monolith` is down to about 1,000 lines. Departures:
+- `themes/_culture_common.py` holds the 16 statements culture and orbital share: the Marain script, `_culture_clock`, `_culture_face_ink`, `_culture_signal` and the data they read. It sits in `LAYERS` after `_shared`.
+- The patches in eleven tests had to move, from `_monolith` to the theme module that reads the name. The facade made each of them fail loudly rather than pass without testing anything: `paint_neon_mask` (control, observation, biomech, culture), `paint_craquelure` (bosch), `draw_text_chroma_shift` (vhs) and `AUTOCHROME_PLATE` (autochrome, photo). The facade's own tests now patch `themes.diags._diags_system_info`.
+
 **PRs 3…N: themes, in batches.** Two PRs for the 38 border themes (about 7.4k lines), then about 5 for the 50 frame themes (about 20k lines), roughly 10 themes each, grouped by family.
 - Promote shared code to `themes/_shared.py` before its dependents move (crt scanlines, tarot numerals, cream wash, vitrail fill).
 - Culture and orbital move together with `_culture_common.py`.
