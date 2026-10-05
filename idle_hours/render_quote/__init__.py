@@ -3,7 +3,8 @@
 A package while issue #335 splits what was one 34,000-line module, a stage at a
 time (see ``docs/render_quote_split.md``). The shared layers have moved out,
 lowest first: ``_paths``, ``clock``, ``palette``, ``theme_tables``, ``fonts``,
-``layout``, ``text``, ``primitives``, ``furniture``. The themes, frames and the
+``layout``, ``text``, ``primitives``, ``furniture``, then ``themes._shared``
+(code more than one theme uses). The themes, frames and the
 render entry point still live in ``_monolith``. ``_facade`` keeps
 ``render_quote.X`` working for every name in between: reads resolve in the
 submodule that binds the name, and writes reach that submodule or raise, never
@@ -25,6 +26,7 @@ from . import (
     text,
     theme_tables,
 )
+from .themes import _shared as _themes_shared
 
 if TYPE_CHECKING:
     # The facade resolves names at runtime, which editors and type checkers
@@ -43,11 +45,12 @@ if TYPE_CHECKING:
     from .primitives import *  # noqa: F403
     from .text import *  # noqa: F403
     from .theme_tables import *  # noqa: F403
+    from .themes._shared import *  # noqa: F403
 del TYPE_CHECKING
 
 # Lowest layer first, so a name bound in several modules reads from where it is
 # defined; _monolith last, since it imports from all of them.
 _facade.install(
     __name__,
-    (_paths, clock, palette, theme_tables, fonts, layout, text, primitives, furniture, _monolith),
+    (_paths, clock, palette, theme_tables, fonts, layout, text, primitives, furniture, _themes_shared, _monolith),
 )

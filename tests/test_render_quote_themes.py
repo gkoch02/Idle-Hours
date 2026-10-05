@@ -3314,7 +3314,7 @@ class TestAutochromePlate:
         """The house graceful-fallback convention. The synthesised garden is
         coarser than the plate by design, but it must still be a colour picture
         — degrading to a blank ground would leave nothing of the theme."""
-        monkeypatch.setattr(rq, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        monkeypatch.setattr(_monolith, "AUTOCHROME_PLATE", tmp_path / "absent.png")
         rq._DITHER_CACHE.clear()
         image = self._render()
         assert distinct_inks(image) <= set(rq.SPECTRA6.values())
@@ -3811,7 +3811,7 @@ class TestPhotoTheme:
     def test_a_stripped_install_still_renders(self, tmp_path, monkeypatch):
         """Fallback of the fallback: nothing configured *and* the bundled plate
         gone. The synthesised garden keeps the theme a colour picture."""
-        monkeypatch.setattr(rq, "AUTOCHROME_PLATE", tmp_path / "absent.png")
+        monkeypatch.setattr(_monolith, "AUTOCHROME_PLATE", tmp_path / "absent.png")
         rq.clear_photo_cache()
         rq._DITHER_CACHE.clear()
         image = self._render()

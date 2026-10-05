@@ -144,6 +144,22 @@ def _noop(*args, **kwargs):
     return None
 
 
+def _neuter(monkeypatch, name):
+    """Replace ``name`` with ``_noop`` in every render_quote module that binds it.
+
+    A helper shared between themes is defined in ``themes._shared`` and bound
+    again in each module that imports it (issue #335). The facade refuses a
+    patch on ``rq`` for such a name, and patching only the defining module would
+    leave the importers calling the original, so patch every binding of the
+    same object.
+    """
+    target = getattr(rq, name)
+    bound = [module for module in vars(rq)["__facade_submodules__"] if vars(module).get(name) is target]
+    assert bound, f"no render_quote module binds {name}"
+    for module in bound:
+        monkeypatch.setattr(module, name, _noop)
+
+
 def _changed_pixel_counts(before, after):
     """Return ``(total_changed, margin_changed)`` between two renders.
 
@@ -186,7 +202,7 @@ class TestBorderPainterActuallyPaints:
         # knockout rect can be threaded through. Patching only the registry
         # made kanagawa and letter register a 0-pixel delta while their
         # painters were in fact still running.
-        monkeypatch.setattr(rq, painter.__name__, _noop)
+        _neuter(monkeypatch, painter.__name__)
         monkeypatch.setitem(rq._BORDER_PAINTERS, theme, _noop)
         without_border = _render(theme)
 
@@ -257,7 +273,7 @@ class TestCustomFrameCompositionPaints:
     def test_frame_composition_changes_the_canvas(self, theme, monkeypatch):
         with_frame = _render(theme)
         for name in self._helpers(theme):
-            monkeypatch.setattr(rq, name, _noop)
+            _neuter(monkeypatch, name)
         bare = _render(theme)
 
         total, _ = _changed_pixel_counts(with_frame, bare)

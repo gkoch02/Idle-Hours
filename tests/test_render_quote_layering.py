@@ -5,12 +5,19 @@ downward. A module that imports from a higher layer reintroduces the cycles the
 split exists to remove, and usually means a helper was filed in the wrong
 layer. Every module must be listed in ``LAYERS``, so a new one is placed
 deliberately rather than slipping in unchecked.
+
+Theme modules live in the ``themes`` subpackage, above the shared layers and
+below ``_monolith``. A theme never imports another theme: code two themes use
+belongs in ``themes._shared``.
 """
 
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
+
+import pytest
 
 from idle_hours import render_quote as rq
 
@@ -27,57 +34,145 @@ LAYERS = (
     "text",
     "primitives",
     "furniture",
+    "themes._shared",
     "_monolith",
 )
 
 # Package plumbing, not part of the render layers.
-PLUMBING = {"__init__", "__main__", "_facade"}
+PLUMBING = {"__init__", "__main__", "_facade", "themes.__init__"}
+
+THEME_PACKAGE = "themes"
 
 
 def _modules() -> dict[str, ast.Module]:
-    return {
-        path.stem: ast.parse(path.read_text(encoding="utf-8"))
-        for path in sorted(PACKAGE_DIR.glob("*.py"))
-        if path.stem not in PLUMBING
-    }
+    """Every module in the package by dotted name relative to it (``themes._shared``)."""
+    modules = {}
+    for path in sorted(PACKAGE_DIR.rglob("*.py")):
+        name = ".".join(path.relative_to(PACKAGE_DIR).with_suffix("").parts)
+        if name not in PLUMBING:
+            modules[name] = ast.parse(path.read_text(encoding="utf-8"))
+    return modules
 
 
-def _package_imports(tree: ast.Module) -> set[str]:
-    """Sibling modules a module imports: ``from .x import …`` and ``from . import x``."""
+PACKAGE = "idle_hours.render_quote"
+
+
+def _absolute(dotted: str) -> str | None:
+    """``idle_hours.render_quote.x.y`` as ``x.y`` (``""`` for the package), else None."""
+    if dotted == PACKAGE:
+        return ""
+    if dotted.startswith(PACKAGE + "."):
+        return dotted.removeprefix(PACKAGE + ".")
+    return None
+
+
+def _resolve(importer: str, node: ast.Import | ast.ImportFrom) -> set[str]:
+    """Package modules one import statement in ``importer`` reaches."""
+    if isinstance(node, ast.Import):
+        return {rest for alias in node.names if (rest := _absolute(alias.name)) is not None}
+    if node.level == 0:
+        if node.module == "idle_hours":
+            # ``from idle_hours import render_quote`` imports the package itself.
+            return {"" for alias in node.names if alias.name == "render_quote"}
+        module = _absolute(node.module or "")
+        if module is None:
+            return set()
+        base: list[str] = []
+    else:
+        base = importer.split(".")[:-node.level]
+        if len(base) != len(importer.split(".")) - node.level:
+            raise AssertionError(f"{importer}: relative import climbs out of render_quote")
+        module = node.module or ""
+    if module:
+        return {".".join(base + module.split("."))}
+    # ``from . import x`` imports submodules (or names) of the package itself.
+    return {".".join(base + [alias.name]) for alias in node.names}
+
+
+def _package_imports(name: str, tree: ast.Module) -> set[str]:
+    """Package modules ``name`` imports, by dotted name; a package import counts as its ``__init__``.
+
+    Both statement forms count: ``from .x import y`` and a plain ``import
+    idle_hours.render_quote.x``, which would otherwise slip past every rule."""
     found = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.level == 1:
-            if node.module:
-                found.add(node.module.split(".")[0])
-            else:
-                found.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("idle_hours.render_quote"):
-            rest = node.module.removeprefix("idle_hours.render_quote").lstrip(".")
-            found.add(rest.split(".")[0] if rest else "__init__")
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for target in _resolve(name, node):
+                if target == "":
+                    target = "__init__"
+                elif target == THEME_PACKAGE:
+                    target = "themes.__init__"
+                found.add(target)
     return found
 
 
+def _is_theme(name: str) -> bool:
+    return name.startswith(THEME_PACKAGE + ".") and name not in LAYERS and name not in PLUMBING
+
+
+def _rank() -> dict[str, int]:
+    """Layer rank of every module. Theme modules all share the rank just below ``_monolith``."""
+    rank = {name: i for i, name in enumerate(LAYERS)}
+    for name in _modules():
+        if _is_theme(name):
+            rank[name] = rank["_monolith"] - 0.5
+    return rank
+
+
 def test_every_module_has_a_layer():
-    unplaced = sorted(set(_modules()) - set(LAYERS))
+    unplaced = sorted(name for name in _modules() if name not in LAYERS and not _is_theme(name))
     assert unplaced == [], f"render_quote modules missing from LAYERS: {unplaced}; place them in the layer order"
 
 
 def test_imports_only_point_downward():
-    rank = {name: i for i, name in enumerate(LAYERS)}
+    rank = _rank()
     violations = []
     for name, tree in _modules().items():
-        for target in sorted(_package_imports(tree)):
+        for target in sorted(_package_imports(name, tree)):
             if target in PLUMBING or target not in rank:
                 violations.append(f"{name} imports {target}, which is not a render layer")
+            elif _is_theme(name) and _is_theme(target):
+                violations.append(f"{name} imports {target}: themes never import each other; share via themes._shared")
             elif rank[target] >= rank[name]:
                 violations.append(f"{name} (layer {rank[name]}) imports {target} (layer {rank[target]})")
     assert violations == [], "render_quote layering broken:\n  " + "\n  ".join(violations)
 
 
+def test_relative_imports_resolve_from_subpackages():
+    """``from ..palette import x`` in ``themes/_shared`` is the ``palette`` layer, not ``themes.palette``."""
+    tree = ast.parse("from ..palette import SPECTRA6\nfrom ._shared import x\nfrom .. import clock\n")
+    assert _package_imports("themes.tarot", tree) == {"palette", "themes._shared", "clock"}
+
+
+def test_absolute_imports_count_in_every_form():
+    """A plain ``import`` and an absolute ``from`` reach the same modules a relative import does."""
+    tree = ast.parse(
+        "import idle_hours.render_quote.themes.tarot\n"
+        "import idle_hours.render_quote as rq\n"
+        "from idle_hours.render_quote.palette import SPECTRA6\n"
+        "from idle_hours import render_quote\n"
+        "import os.path\n"
+    )
+    assert _package_imports("themes.vitrail", tree) == {"themes.tarot", "__init__", "palette"}
+
+
+def test_a_theme_importing_another_theme_is_caught(monkeypatch):
+    fake = {
+        "themes.tarot": ast.parse("from ._shared import x\n"),
+        "themes.vitrail": ast.parse("from .tarot import _tarot_paint_card\n"),
+        "themes.codex": ast.parse("import idle_hours.render_quote.themes.tarot\n"),
+    }
+    monkeypatch.setattr(sys.modules[__name__], "_modules", lambda: fake)
+    with pytest.raises(AssertionError, match="themes never import each other") as caught:
+        test_imports_only_point_downward()
+    assert "themes.codex imports themes.tarot" in str(caught.value)
+    assert "themes.vitrail imports themes.tarot" in str(caught.value)
+
+
 def test_facade_resolves_lowest_layer_first():
     """``__init__`` installs the facade in layer order, so a name bound in
     several modules reads from where it is defined, not from an importer."""
-    installed = [module.__name__.rsplit(".", 1)[1] for module in vars(rq)["__facade_submodules__"]]
+    installed = [module.__name__.removeprefix(rq.__name__ + ".") for module in vars(rq)["__facade_submodules__"]]
     assert installed == list(LAYERS)
 
 
