@@ -25,7 +25,6 @@ instead of re-tuning a pixel count here.
 """
 from __future__ import annotations
 
-import inspect
 import re
 
 import pytest
@@ -297,19 +296,26 @@ class TestThemeDecorationRegistry:
             )
 
     def test_custom_frame_list_matches_render_dispatch(self):
-        """``CUSTOM_FRAME_THEMES`` must mirror ``render``'s dispatch ladder.
+        """``CUSTOM_FRAME_THEMES`` must mirror ``render``'s frame table.
 
         The list is hand-maintained so adding a frame is a conscious act; this
-        reads the dispatch branches straight out of the source so the two
-        cannot drift apart silently.
+        compares it with ``_FRAME_RENDERERS`` so the two cannot drift apart
+        silently.
         """
-        source = inspect.getsource(rq.render)
-        dispatched = set(re.findall(r'if theme == "([a-z_0-9]+)":\s*\n\s*return render_', source))
+        dispatched = set(rq._FRAME_RENDERERS)
         assert dispatched == set(CUSTOM_FRAME_THEMES), (
-            "render's custom-frame dispatch and CUSTOM_FRAME_THEMES disagree: "
+            "render's frame table and CUSTOM_FRAME_THEMES disagree: "
             f"only in render={dispatched - set(CUSTOM_FRAME_THEMES)}, "
             f"only in list={set(CUSTOM_FRAME_THEMES) - dispatched}"
         )
+
+    def test_frame_renderers_are_registered_under_their_theme_name(self):
+        """Each ``_FRAME_RENDERERS`` key is a real theme bound to its own frame."""
+        for theme, renderer in rq._FRAME_RENDERERS.items():
+            assert theme in rq.THEMES, f"{theme} has a frame renderer but no THEMES entry"
+            assert renderer.__name__ == f"render_{theme}_frame", (
+                f"{theme} dispatches to {renderer.__name__}"
+            )
 
     def test_border_painters_are_registered_under_their_theme_name(self):
         """``_BORDER_PAINTERS`` keys must be real themes.

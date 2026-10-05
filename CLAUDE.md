@@ -288,9 +288,8 @@ After the v2.x package restructure, three resolution rules apply:
   into site-packages is never what an operator wants), inputs prefer CWD
   but accept the bundled fallback for portability.
 
-The batch list in `scripts/gutenberg_batch_ids.txt` mirrors the
-`--gutenberg-id` args baked into `scripts/run_batch2.sh`; the script
-resolves to the repo root and writes to `output/` regardless of the
+`scripts/run_batch2.sh` reads its Gutenberg IDs from
+`scripts/gutenberg_batch_ids.txt`; the script resolves to the repo root and writes to `output/` regardless of the
 caller's CWD.
 
 ## Pipeline Flow
@@ -580,11 +579,11 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 
 **Core layout path (literary themes).** Three layouts in `LAYOUTS` (`hero` ≤90 chars, `standard` ≤170, `dense` otherwise). `fit_quote` shrinks the font in 2 pt steps until the wrapped lines fit; `fit_quote_balanced` wraps it and re-wraps on a narrower measure (then at up to 20% smaller sizes) when the last line would be a widow — one word, or under 30% of the measure — without adding a line or opening a half-empty middle line. Justification is decided per block by `justify_flags`: non-last lines ≥75% full are justified only if every one of them has ≥3 gaps and stretches each gap ≤0.45 em, otherwise the whole block is ragged; `_THEMES_RAGGED_RIGHT` (monospace, typewriter and handwriting faces) is always ragged. The hanging opening mark sits at a fixed x and may run under the first word on the standard and dense measures: a deliberate style choice, not a bug (a gutter-fitting mark was tried and reverted). The byline floors are 18 / 16 px. `resolve_display_match` + `tokenize_quote` + `wrap_styled_text` render the matched time phrase in bold + accent; wrapping breaks **only at whitespace** (no dangling `)` / `seven` split). `apply_theme_glyph_fallbacks` swaps characters a theme's face lacks for ASCII stand-ins. `--mode debug` (default) draws the `DEBUG MODE` banner + footer strip; `production` hides them. Output is written atomically to `output/current.png`. `_FONT_CACHE` memoises fonts (the bitmap fallback is deliberately not cached).
 
-**Theme architecture.** `THEMES` (colours), `THEME_ORDER` (cycle order), `THEME_FONTS` (per-role candidate chains; variable fonts use `(path, "Instance")` tuples and **must** pin an instance — several defaults are Thin or Black). A theme is exactly one of: border-painted (`_BORDER_PAINTERS`; the `_CLEAR_RECT_PADS` themes are dispatched by name from `render` so the body knockout rect can be threaded through), a custom-render frame (`render_<theme>_frame`, listed in `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`), or deliberately plain (`default`, `dark`). `diags` is a swatch panel, excluded from `--theme random`; `vinyl` is excluded from the button-B cycle.
+**Theme architecture.** `THEMES` (colours), `THEME_ORDER` (cycle order), `THEME_FONTS` (per-role candidate chains; variable fonts use `(path, "Instance")` tuples and **must** pin an instance — several defaults are Thin or Black). A theme is exactly one of: border-painted (`_BORDER_PAINTERS`; the `_CLEAR_RECT_PADS` themes are dispatched by name from `render` so the body knockout rect can be threaded through), a custom-render frame (`render_<theme>_frame`, registered in `_FRAME_RENDERERS` and listed in `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`), or deliberately plain (`default`, `dark`). `diags` is a swatch panel, excluded from `--theme random`; `vinyl` is excluded from the button-B cycle.
 
 **Adding a theme — checklist.**
 1. `THEMES`, `THEME_ORDER`, `THEME_FONTS`, `display_inky.THEME_SATURATION` (`0.5` light ground, `0.7` dark / coloured / bloom-heavy), and `run_clock`'s `--theme` choices (a test pins the sync).
-2. A border painter or a `render_<theme>_frame` + `CUSTOM_FRAME_THEMES` entry. Frame helpers are named `_<theme>_paint_*` (the decoration fence neuters them by name). Anything painted in the y=14-29 top-right band needs a `_DEBUG_LABEL_RIGHT_INSET` entry.
+2. A border painter, or a `render_<theme>_frame` registered in `_FRAME_RENDERERS` plus a `CUSTOM_FRAME_THEMES` entry. Frame helpers are named `_<theme>_paint_*` (the decoration fence neuters them by name). Anything painted in the y=14-29 top-right band needs a `_DEBUG_LABEL_RIGHT_INSET` entry.
 3. Golden fixture: `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py`. If the theme reads the wall clock, add it to `CLOCK_DEPENDENT_THEMES`.
 4. README row + preview (`python scripts/generate_theme_previews.py --theme NAME`), the README contact-sheet loop, and the spelled-out theme counts / rosters fenced by `tests/test_docs_theme_counts.py` and `tests/test_docs_theme_registry.py` (in README, `docs/CONTRIBUTING.md`, `docs/themes.md`, `docs/runtime.md`, `docs/web_ui.md`, `docs/testing.md`, `config.toml.defaults`).
 5. A paragraph in `docs/themes.md` (theme + font), and a row in its colour table for any recipe you use.
