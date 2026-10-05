@@ -54,13 +54,30 @@ def _modules() -> dict[str, ast.Module]:
     return modules
 
 
-def _resolve(importer: str, node: ast.ImportFrom) -> set[str]:
-    """Package modules one ``from … import`` statement in ``importer`` reaches."""
+PACKAGE = "idle_hours.render_quote"
+
+
+def _absolute(dotted: str) -> str | None:
+    """``idle_hours.render_quote.x.y`` as ``x.y`` (``""`` for the package), else None."""
+    if dotted == PACKAGE:
+        return ""
+    if dotted.startswith(PACKAGE + "."):
+        return dotted.removeprefix(PACKAGE + ".")
+    return None
+
+
+def _resolve(importer: str, node: ast.Import | ast.ImportFrom) -> set[str]:
+    """Package modules one import statement in ``importer`` reaches."""
+    if isinstance(node, ast.Import):
+        return {rest for alias in node.names if (rest := _absolute(alias.name)) is not None}
     if node.level == 0:
-        if not (node.module and node.module.startswith("idle_hours.render_quote")):
+        if node.module == "idle_hours":
+            # ``from idle_hours import render_quote`` imports the package itself.
+            return {"" for alias in node.names if alias.name == "render_quote"}
+        module = _absolute(node.module or "")
+        if module is None:
             return set()
         base: list[str] = []
-        module = node.module.removeprefix("idle_hours.render_quote").lstrip(".")
     else:
         base = importer.split(".")[:-node.level]
         if len(base) != len(importer.split(".")) - node.level:
@@ -73,12 +90,19 @@ def _resolve(importer: str, node: ast.ImportFrom) -> set[str]:
 
 
 def _package_imports(name: str, tree: ast.Module) -> set[str]:
-    """Package modules ``name`` imports, by dotted name; a package import counts as its ``__init__``."""
+    """Package modules ``name`` imports, by dotted name; a package import counts as its ``__init__``.
+
+    Both statement forms count: ``from .x import y`` and a plain ``import
+    idle_hours.render_quote.x``, which would otherwise slip past every rule."""
     found = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
             for target in _resolve(name, node):
-                found.add(target if target != THEME_PACKAGE else "themes.__init__")
+                if target == "":
+                    target = "__init__"
+                elif target == THEME_PACKAGE:
+                    target = "themes.__init__"
+                found.add(target)
     return found
 
 
@@ -120,14 +144,29 @@ def test_relative_imports_resolve_from_subpackages():
     assert _package_imports("themes.tarot", tree) == {"palette", "themes._shared", "clock"}
 
 
+def test_absolute_imports_count_in_every_form():
+    """A plain ``import`` and an absolute ``from`` reach the same modules a relative import does."""
+    tree = ast.parse(
+        "import idle_hours.render_quote.themes.tarot\n"
+        "import idle_hours.render_quote as rq\n"
+        "from idle_hours.render_quote.palette import SPECTRA6\n"
+        "from idle_hours import render_quote\n"
+        "import os.path\n"
+    )
+    assert _package_imports("themes.vitrail", tree) == {"themes.tarot", "__init__", "palette"}
+
+
 def test_a_theme_importing_another_theme_is_caught(monkeypatch):
     fake = {
         "themes.tarot": ast.parse("from ._shared import x\n"),
         "themes.vitrail": ast.parse("from .tarot import _tarot_paint_card\n"),
+        "themes.codex": ast.parse("import idle_hours.render_quote.themes.tarot\n"),
     }
     monkeypatch.setattr(sys.modules[__name__], "_modules", lambda: fake)
-    with pytest.raises(AssertionError, match="themes never import each other"):
+    with pytest.raises(AssertionError, match="themes never import each other") as caught:
         test_imports_only_point_downward()
+    assert "themes.codex imports themes.tarot" in str(caught.value)
+    assert "themes.vitrail imports themes.tarot" in str(caught.value)
 
 
 def test_facade_resolves_lowest_layer_first():
