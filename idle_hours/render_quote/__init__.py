@@ -28,9 +28,21 @@ from . import (
 
 if TYPE_CHECKING:
     # The facade resolves names at runtime, which editors and type checkers
-    # cannot see. Until the split ends with an explicit __all__, show them the
-    # monolith's public names.
+    # cannot see. Until the split ends with an explicit __all__, show them every
+    # layer's public names (a name several layers bind is the same object in
+    # each, so the order is immaterial). Listing only
+    # _monolith would hide anything that moved out and isn't re-imported there
+    # (THEME_ORDER, CYCLE_EXCLUDED_THEMES, most font constants).
     from ._monolith import *  # noqa: F403
+    from ._paths import *  # noqa: F403
+    from .clock import *  # noqa: F403
+    from .fonts import *  # noqa: F403
+    from .furniture import *  # noqa: F403
+    from .layout import *  # noqa: F403
+    from .palette import *  # noqa: F403
+    from .primitives import *  # noqa: F403
+    from .text import *  # noqa: F403
+    from .theme_tables import *  # noqa: F403
 del TYPE_CHECKING
 
 # Lowest layer first, so a name bound in several modules reads from where it is

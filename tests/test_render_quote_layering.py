@@ -79,3 +79,18 @@ def test_facade_resolves_lowest_layer_first():
     several modules reads from where it is defined, not from an importer."""
     installed = [module.__name__.rsplit(".", 1)[1] for module in vars(rq)["__facade_submodules__"]]
     assert installed == list(LAYERS)
+
+
+def test_type_checkers_see_every_layer():
+    """The facade resolves names at runtime, so ``__init__``'s ``TYPE_CHECKING``
+    block is what editors and type checkers see. A layer missing from it hides
+    every public name that moved there and isn't re-imported elsewhere, as
+    ``THEME_ORDER`` was when it moved to ``theme_tables``."""
+    tree = ast.parse((PACKAGE_DIR / "__init__.py").read_text(encoding="utf-8"))
+    blocks = [
+        node for node in tree.body
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"
+    ]
+    assert len(blocks) == 1, "expected one `if TYPE_CHECKING:` block in render_quote/__init__.py"
+    shown = {node.module for node in blocks[0].body if isinstance(node, ast.ImportFrom) and node.level == 1}
+    assert shown == set(LAYERS), f"layers missing from the TYPE_CHECKING re-export: {sorted(set(LAYERS) - shown)}"

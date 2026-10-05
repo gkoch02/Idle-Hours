@@ -62,7 +62,11 @@ def fallback_title(quote_row: dict) -> str | None:
 #
 # Small primitives that several themes reached for independently and that
 # had been copy-pasted under theme-prefixed names (issue #336). One body
-# each, so a fix lands everywhere and a new theme finds them by name.
+# each, so a fix lands everywhere and a new theme finds them by name. The
+# time carriers and quote seeds live here; the painting half of that set
+# (noise fields, Bayer thresholds, colour stops, halos, soft masks,
+# silhouettes, splines) lives in ``primitives``, and ``_PANEL_INKS`` /
+# ``_dither_calibrated`` in ``palette``.
 # ---------------------------------------------------------------------------
 
 

@@ -61,6 +61,14 @@ def snap_image_to_palette(image: Image.Image, palette: list[tuple[int, int, int]
             dst[x, y] = nearest
     return snapped
 
+# ---------------------------------------------------------------------------
+# Render-time image dithering to the Spectra-6 palette.
+#
+# A committed continuous-tone PNG (a theme's plate) dithered down to the inks
+# at render time, for photographic tonal fidelity. The plates themselves, and
+# each one's sub-palette, belong to their themes.
+# ---------------------------------------------------------------------------
+
 # Dithered results are deterministic per (source, size, method) and re-used
 # across the 144-frame contact sheet and the golden suite, so memoise them.
 _DITHER_CACHE: dict = {}

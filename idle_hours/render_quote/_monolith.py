@@ -7803,11 +7803,10 @@ _BORDER_PAINTERS = {
 
 
 # ---------------------------------------------------------------------------
-# Render-time image dithering to the Spectra-6 palette.
-#
-# A committed continuous-tone PNG dithered down to the inks at render time,
-# for photographic tonal fidelity. Any theme can drop a plate into
-# ``assets/`` and route it through ``dither_image_to_palette``.
+# Theme plates: committed continuous-tone PNGs, dithered down to the inks at
+# render time through ``palette.dither_image_to_palette`` for photographic
+# tonal fidelity. Any theme can drop a plate into ``assets/`` and route it
+# through there.
 ANNA_ATKINS_PLATE = BASE_DIR / "assets" / "anna_atkins_cyanotype.png"
 # The cyanotype dithers against only white, black and blue: error diffusion
 # over all six inks scatters stray red/green specks into the deep blues. A
