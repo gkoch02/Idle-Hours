@@ -15,6 +15,8 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not PIL_AVAILABLE, reason="Pillow not installed")
 
 from idle_hours import render_quote as rq  # noqa: E402
+from idle_hours.render_quote import _monolith  # noqa: E402
+from idle_hours.render_quote import text as rq_text  # noqa: E402
 
 from .pixel_helpers import distinct_inks, ink_counts  # noqa: E402
 
@@ -1992,7 +1994,7 @@ class TestGrimoireBorder:
         }
         rigid = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
 
-        monkeypatch.setattr(rq, "_THEMES_RIGID_MATCH_SPACING", frozenset())
+        monkeypatch.setattr(_monolith, "_THEMES_RIGID_MATCH_SPACING", frozenset())
         loose = rq.render("02:15", row, 800, 480, mode="production", theme="gothic")
 
         red = rq.SPECTRA6["red"]
@@ -3563,7 +3565,7 @@ class TestDrawTextDithered:
             captured["density"] = kwargs.get("light_density")
             captured["light"] = kwargs.get("light")
 
-        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+        with patch.object(rq_text, "draw_text_dithered", side_effect=fake_dither):
             image = Image.new("RGB", (200, 60), (255, 255, 255))
             draw = ImageDraw.Draw(image)
             from PIL import ImageFont
@@ -3620,7 +3622,7 @@ class TestDrawTextDithered:
         shredded MedievalSharp's thin strokes into a dotted smear at body
         size; a scribe's rubric is solid, and so is this.
         """
-        with patch.object(rq, "draw_text_dithered") as dither:
+        with patch.object(rq_text, "draw_text_dithered") as dither:
             image = Image.new("RGB", (200, 60), (255, 255, 255))
             draw = ImageDraw.Draw(image)
             from PIL import ImageFont
@@ -3648,7 +3650,7 @@ class TestDrawTextDithered:
             captured["density"] = kwargs.get("light_density")
             captured["light"] = kwargs.get("light")
 
-        with patch.object(rq, "draw_text_dithered", side_effect=fake_dither):
+        with patch.object(rq_text, "draw_text_dithered", side_effect=fake_dither):
             image = Image.new("RGB", (200, 60), (255, 255, 255))
             draw = ImageDraw.Draw(image)
             from PIL import ImageFont

@@ -29,6 +29,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from idle_hours import pick_quote as pq
 from idle_hours import render_quote as rq
 from idle_hours.jsonl_io import iter_jsonl
+from idle_hours.render_quote import _monolith
+from idle_hours.render_quote import text as rq_text
 
 from .conftest import make_row
 from .pixel_helpers import distinct_inks, ink_counts, pixel_bytes
@@ -1698,7 +1700,7 @@ class TestVhsTapeDate:
         row = self._row()
         before = pixel_bytes(rq.render("14:30", row, 800, 480,
                                        mode="production", theme="vhs"))
-        monkeypatch.setattr(rq, "_now", lambda: _dt.datetime(2031, 12, 25, 3, 4, 5))
+        monkeypatch.setattr(rq.clock, "now", lambda: _dt.datetime(2031, 12, 25, 3, 4, 5))
         after = pixel_bytes(rq.render("14:30", row, 800, 480,
                                       mode="production", theme="vhs"))
         assert before == after, (
@@ -1732,13 +1734,13 @@ class TestVhsChromaBleed:
                  offset=2, ground=None):
             ImageDraw.Draw(image).text(xy, text, font=font, fill=core)
 
-        original = rq.draw_text_chroma_shift
+        original = _monolith.draw_text_chroma_shift
         try:
-            rq.draw_text_chroma_shift = flat
+            _monolith.draw_text_chroma_shift = flat
             base = ink_counts(rq.render("14:30", row, 800, 480,
                                         mode="production", theme="vhs"))
         finally:
-            rq.draw_text_chroma_shift = original
+            _monolith.draw_text_chroma_shift = original
 
         for ink, side in ((rq.SPECTRA6["red"], "left"), (rq.SPECTRA6["blue"], "right")):
             gained = real.get(ink, 0) - base.get(ink, 0)
@@ -1808,7 +1810,7 @@ class TestVhsChromaBleed:
         def paint(offset, ghosts):
             image = rq.Image.new("RGB", (800, 480), rq.SPECTRA6["black"])
             draw = ImageDraw.Draw(image)
-            real = rq.draw_text_chroma_shift
+            real = _monolith.draw_text_chroma_shift
 
             def maybe_ghostless(img, xy, text, font, *, core=None, left=None,
                                 right=None, offset=2, ground=None):
@@ -1820,10 +1822,10 @@ class TestVhsChromaBleed:
             original_offset = rq._VHS_CHROMA_OFFSET
             try:
                 rq._VHS_CHROMA_OFFSET = offset
-                rq.draw_text_chroma_shift = maybe_ghostless
+                _monolith.draw_text_chroma_shift = maybe_ghostless
                 rq._vhs_paint_quote(image, draw, row)
             finally:
-                rq.draw_text_chroma_shift = real
+                _monolith.draw_text_chroma_shift = real
                 rq._VHS_CHROMA_OFFSET = original_offset
             return image.load()
 
@@ -3035,7 +3037,7 @@ class TestBetweenUs:
         """Light paints the italic phrase solid — no stipple seam fires."""
         def boom(*args, **kwargs):
             raise AssertionError("light betweenus must not stipple its matched phrase")
-        monkeypatch.setattr(rq, "draw_text_dithered", boom)
+        monkeypatch.setattr(rq_text, "draw_text_dithered", boom)
         image = Image.new("RGB", (400, 100), rq.SPECTRA6["white"])
         draw = ImageDraw.Draw(image)
         font = rq.load_font(rq.theme_font_candidates("betweenus", "quote_bold"), size=40)
@@ -3936,7 +3938,7 @@ class TestControlFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(rq, "paint_neon_mask", core_only)
+        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
         core = ink_counts(self._render()).get(red, 0)
         assert core > 0
         assert full - core >= 0.2 * core, (
@@ -3954,7 +3956,7 @@ class TestControlFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(rq, "paint_neon_mask", core_only)
+        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
         without = self._render()
         # Every black pixel of the halo-less render must still be black with
         # the halo: mask the halo-less black, and require the halo render to
@@ -4235,7 +4237,7 @@ class TestObservationFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(rq, "paint_neon_mask", core_only)
+        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
         without = self._render().crop(qbox)
         assert ink_counts(without).get(red, 0) == 0
         assert ink_counts(with_halo).get(red, 0) > 0
@@ -4669,7 +4671,7 @@ class TestBiomechFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(rq, "paint_neon_mask", core_only)
+        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
         without = self._render().crop(qbox)
         assert ink_counts(with_halo).get(red, 0) > ink_counts(without).get(red, 0)
         assert ink_counts(with_halo).get(yellow, 0) > 0
@@ -5063,7 +5065,7 @@ class TestCultureFrame:
             kwargs["cap"] = 0.0
             return original(image, mask, core, glow, **kwargs)
 
-        monkeypatch.setattr(rq, "paint_neon_mask", core_only)
+        monkeypatch.setattr(_monolith, "paint_neon_mask", core_only)
         without = self._render().crop(qbox)
         assert ink_counts(without).get(green, 0) == 0
         assert ink_counts(with_aura).get(green, 0) > 0
@@ -5449,7 +5451,7 @@ class TestBoschFrame:
         are byte-identical with and without the crack pass."""
         row = getattr(self, row_name)
         crazed = self._render(row)
-        monkeypatch.setattr(rq, "paint_craquelure", lambda *a, **k: None)
+        monkeypatch.setattr(_monolith, "paint_craquelure", lambda *a, **k: None)
         clean = self._render(row)
         mask, rect = self._lettering(row)
         guard = mask.filter(ImageFilter.MaxFilter(5))

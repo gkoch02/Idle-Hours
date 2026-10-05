@@ -179,7 +179,7 @@ class TestDeterminism:
         expected = gen.render_preview("astrarium", row).tobytes()
 
         # Pretend the machine clock is a year off. render_preview must not care.
-        monkeypatch.setattr(rq, "_now", lambda: datetime.datetime(2027, 11, 3, 4, 5, 6))
+        monkeypatch.setattr(rq.clock, "now", lambda: datetime.datetime(2027, 11, 3, 4, 5, 6))
         assert gen.render_preview("astrarium", row).tobytes() == expected
         # Same guard: unfrozen, that ambient clock really does change the frame.
         drifted = rq.render(gen.PREVIEW_TIME, dict(row), gen.WIDTH, gen.HEIGHT,

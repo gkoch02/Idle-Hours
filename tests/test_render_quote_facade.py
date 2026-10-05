@@ -17,7 +17,7 @@ from unittest import mock
 import pytest
 
 from idle_hours import render_quote as rq
-from idle_hours.render_quote import _facade, _monolith
+from idle_hours.render_quote import _facade, _monolith, fonts
 
 
 class TestReads:
@@ -28,7 +28,7 @@ class TestReads:
     def test_reads_are_live_after_the_code_rebinds_a_global(self, monkeypatch):
         """The renderer rebinds some globals itself (latches, caches); a copy
         taken at import would go stale."""
-        monkeypatch.setattr(_monolith, "_FONT_FALLBACK_WARNED", "rebound-in-submodule")
+        monkeypatch.setattr(fonts, "_FONT_FALLBACK_WARNED", "rebound-in-submodule")
         assert rq._FONT_FALLBACK_WARNED == "rebound-in-submodule"
 
     def test_dir_lists_submodule_names(self):
@@ -48,12 +48,12 @@ class TestReads:
 
 class TestWrites:
     def test_monkeypatch_reaches_the_code_and_is_undone(self, monkeypatch):
-        original = _monolith._now
-        monkeypatch.setattr(rq, "_now", lambda: "patched")
-        assert _monolith._now() == "patched"
+        original = _monolith._diags_system_info
+        monkeypatch.setattr(rq, "_diags_system_info", lambda: "patched")
+        assert _monolith._diags_system_info() == "patched"
         monkeypatch.undo()
-        assert _monolith._now is original
-        assert "_now" not in vars(rq), "the patch must not leave a shadow on the package"
+        assert _monolith._diags_system_info is original
+        assert "_diags_system_info" not in vars(rq), "the patch must not leave a shadow on the package"
 
     def test_mock_patch_object_round_trips(self):
         """``patch.object`` restores a non-local attribute by delete then set."""
@@ -69,13 +69,13 @@ class TestWrites:
         assert _monolith.render is original
 
     def test_plain_assignment_is_forwarded(self):
-        original = _monolith._now
+        original = _monolith._diags_system_info
         try:
-            rq._now = lambda: "assigned"
-            assert _monolith._now() == "assigned"
+            rq._diags_system_info = lambda: "assigned"
+            assert _monolith._diags_system_info() == "assigned"
         finally:
-            rq._now = original
-        assert _monolith._now is original
+            rq._diags_system_info = original
+        assert _monolith._diags_system_info is original
 
     def test_writing_a_name_no_submodule_binds_raises(self):
         with pytest.raises(AttributeError, match="no submodule binds"):
