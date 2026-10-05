@@ -8,13 +8,14 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_risograph_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
     """Paint a lively risograph-inspired print frame.
 
     ``clear_rect`` is the body-text rectangle ``render`` threads through
-    (see ``_CLEAR_RECT_PADS``). When given, the bars and overprint circles
+    (see ``SPEC.clear_rect_pad``). When given, the bars and overprint circles
     are painted first, then the rect is knocked back to the paper and
     framed with a misregistered red-over-blue double rule, so the quote
     sits on a pasted-up label with the print-test shapes behind it.
@@ -150,3 +151,16 @@ def draw_risograph_border(image: Image.Image, colors: dict, clear_rect: tuple[in
         # the first and last text lines.
         draw.rectangle((x0, y0, x1, y1), outline=base, width=2)
         draw.rectangle((x0 + dx, y0 + dy, x1 + dx, y1 + dy), outline=accent, width=2)
+
+
+SPEC = BorderSpec(
+    themes=("risograph",),
+    paint=draw_risograph_border,
+    # The print-test shapes paint across the sheet, then the body rect is
+    # knocked back to paper and framed with a misregistered double rule
+    # (2 px red + 2 px blue offset by 5/3); the pad keeps both rules
+    # outside the text's own bounds.
+    clear_rect_pad=(20, 14, 14),
+    # past the shifted TR registration mark at x=width-15
+    debug_label_inset=44,
+)

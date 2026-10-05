@@ -3428,50 +3428,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
 # a flat ground but visibly on a washed one).
 _THEMES_WITHOUT_ORNAMENT_MARKS: frozenset[str] = frozenset({"betweenus", "betweenus_dark"})
 
-# Themes whose border paints a graphic in the top-right corner push the
-# "DEBUG MODE" banner inward past it, measured from the right canvas edge
-# past the graphic's outer extent plus a small gap. Keep in sync with the
-# matching ``draw_*_border``; ``test_debug_label_does_not_clip_border`` catches
-# a missing entry.
-#
-# Bordered themes *without* an entry clear the label's y=14-29 band by
-# construction:
-#   - newsprint, grimdark: the right frame rule ends ~7 px outside the
-#     default label edge (x=width-SIDE_MARGIN).
-#   - nightvision: the TR bracket's vertical arm likewise; its horizontal
-#     arm sits at y=12-13, above the label.
-#   - dispatch: the stamp sits at y=40-70.
-#   - atomic, grimdark: the top ornament is centred horizontally.
-#   - kanagawa: the TR sun's top edge is at y=59.
-#   - deco: the stepped corner stays at x ≤ width-14; the fan is centred.
-#   - swiss (header square at y=42), mucha (TR left bare), fillmore (rings
-#     centred at y=110), firmament (moon at y=54, Milky Way at x ≤ width-100).
-_DEBUG_LABEL_RIGHT_INSET = {
-    # carcosa: the right-hand curtain hangs from the rail at x=width-35..width-1
-    # straight through the y=14-29 banner band; 46 clears its torn inner edge.
-    "carcosa": 46,
-    # betweenus: the daypart pill at y=14..38; the widest label makes a
-    # ~100 px pill, so 144 clears it for both variants.
-    "betweenus": 144,
-    "betweenus_dark": 144,
-    "bauhaus": 38,      # past the 6+22px TR filled square
-    "blueprint": 34,    # past the TR crosshair arm (frame at 16 + 8px arm)
-    "illuminated": 28,  # past the TR jewel (frame at 14, radius 5 → x=width-9)
-    "gothic": 30,       # past the TR quatrefoil's right lobe (x=width-6)
-    "risograph": 44,    # past the shifted TR registration mark at x=width-15
-    "marker": 44,       # past the TR asterisk (rightmost arm x=width-14) plus a gap
-    "saloon": 44,       # past the TR fleuron's wing tip (x=width-38) plus a gap
-    "roman": 38,        # past the tabula's right rule (x=width-33..width-31) plus a gap
-    "alchemy": 76,      # past the TR pentagram's circle (leftmost x=width-63)
-                        # plus a 13 px gap
-    "grimoire": 50,     # past the TR pentagram ring (leftmost x=width-46) plus
-                        # a 4 px gap; the ring's top is inside the label band
-    "glacier": 37,      # past the TR frost crystal (~x=width-32) plus a ~4 px gap
-    "herbarium": 24,    # past the TR pinhole dot (x=width-19) plus a 4 px gap
-    "circuit": 46,      # past the TR mounting hole's keep-out ring (leftmost
-                        # x=width-42) plus a 4 px gap
-}
-
 # Themes whose matched-phrase face has a silhouette that breaks if its
 # inter-word gaps are inflated by justification: these keep the
 # matched-phrase spaces *rigid* (the bold face's natural width) and only the

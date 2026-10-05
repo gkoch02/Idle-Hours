@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import META_FONT_BOLD_CANDIDATES
 from ..fonts import load_font
+from ..spec import BorderSpec
 from ..text import draw_text
 
 
@@ -109,3 +110,9 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
         [(acx, fy - 4), (acx + 4, fy), (acx, fy + 4), (acx - 4, fy)],
         fill=accent,
     )
+
+
+SPEC = BorderSpec(
+    themes=("scholar",),
+    paint=draw_scholar_border,
+)

@@ -10,6 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 
 def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
@@ -139,3 +140,9 @@ def draw_chalkboard_border(image: Image.Image, colors: dict) -> None:
 
     # The accent is not used past the star.
     del accent_color
+
+
+SPEC = BorderSpec(
+    themes=("chalkboard",),
+    paint=draw_chalkboard_border,
+)

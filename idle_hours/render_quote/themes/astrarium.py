@@ -17,6 +17,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candid
 from ..furniture import fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis, wrap_text
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..spec import FrameSpec
 from ..text import draw_text_dithered
 from ._shared import _astrarium_paint_cream_wash
 
@@ -600,3 +601,6 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     _astrarium_paint_datum_strip(image, draw, width, height, time_str, now)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("astrarium",), render=render_astrarium_frame)

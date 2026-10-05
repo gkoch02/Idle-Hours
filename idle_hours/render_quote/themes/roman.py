@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from ..fonts import load_font, theme_font_candidates
 from ..palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6
+from ..spec import BorderSpec
 
 
 # Deterministic stone-grain speckle layout for ``draw_roman_border``,
@@ -287,3 +288,11 @@ def draw_roman_border(image: Image.Image, colors: dict) -> None:
             ],
             fill=accent,
         )
+
+
+SPEC = BorderSpec(
+    themes=("roman",),
+    paint=draw_roman_border,
+    # past the tabula's right rule (x=width-33..width-31) plus a gap
+    debug_label_inset=38,
+)

@@ -10,6 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def _draw_pentagram(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, color, line_width: int = 1) -> None:
@@ -338,3 +339,12 @@ def draw_alchemy_border(image: Image.Image, colors: dict) -> None:
                         pixels[px, py] = light_ink if row[px & 3] < threshold else dark_ink
     # The element triangles use their own inks; ``hermetic_color`` is done.
     del hermetic_color
+
+
+SPEC = BorderSpec(
+    themes=("alchemy",),
+    paint=draw_alchemy_border,
+    # past the TR pentagram's circle (leftmost x=width-63)
+    # plus a 13 px gap
+    debug_label_inset=76,
+)

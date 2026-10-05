@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
@@ -126,3 +127,11 @@ def draw_illuminated_border(image: Image.Image, colors: dict) -> None:
             [(fx, fy - 3), (fx + 3, fy), (fx, fy + 3), (fx - 3, fy)],
             fill=accent,
         )
+
+
+SPEC = BorderSpec(
+    themes=("illuminated",),
+    paint=draw_illuminated_border,
+    # past the TR jewel (frame at 14, radius 5 → x=width-9)
+    debug_label_inset=28,
+)

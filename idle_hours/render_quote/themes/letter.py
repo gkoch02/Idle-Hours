@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
 from ..palette import SPECTRA6, BAYER_4x4, _load_dithered_plate
+from ..spec import BorderSpec
 
 # Fixed seed for the letter theme's aged-paper texture, so re-renders stay
 # byte-identical.
@@ -363,3 +364,15 @@ def draw_letter_border(image: Image.Image, colors: dict,
 # and seal supply their own), and blue so foxing can't drift cool.
 LETTER_PLATE = BASE_DIR / "assets" / "letter_aged_paper.png"
 _AGED_PAPER_PALETTE = [SPECTRA6["white"], SPECTRA6["yellow"], SPECTRA6["red"], SPECTRA6["green"]]
+
+
+SPEC = BorderSpec(
+    themes=("letter",),
+    paint=draw_letter_border,
+    # The painter pastes the dithered aged-paper plate, knocks the writing
+    # area back to clean cream (no foxing) so the thin Dancing Script body
+    # doesn't blur against the plate's speckle, then paints creases and the
+    # wax seal on top. The generous pad leaves clean margin round the text
+    # even after the 16 px feathered edge, with no drawn frame.
+    clear_rect_pad=(26, 18, 18),
+)

@@ -10,6 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def _draw_mucha_vine(
@@ -215,3 +216,9 @@ def draw_mucha_border(image: Image.Image, colors: dict) -> None:
                     # Petal ring: only the petal pixels flip; the ground
                     # between petals stays, so five petals read, not a disc.
                     pixels[px, py] = berry_other if row[px & 3] < 6 else berry_sentinel
+
+
+SPEC = BorderSpec(
+    themes=("mucha",),
+    paint=draw_mucha_border,
+)

@@ -15,6 +15,7 @@ from ..fonts import load_font, theme_font_candidates
 from ..furniture import _clock_hour12, fallback_title
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
 from ..primitives import paint_neon_mask, wrap_quote_into_masks
+from ..spec import FrameSpec
 
 # ─── abyssal (deep sea) ──────────────────────────────────────────────────────
 #
@@ -257,3 +258,6 @@ def render_abyssal_frame(time_str: str, quote_row: dict, width: int, height: int
     block_bottom = _abyssal_paint_quote(image, draw, quote_row)
     _abyssal_paint_credits(image, draw, quote_row, block_bottom)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("abyssal",), render=render_abyssal_frame)

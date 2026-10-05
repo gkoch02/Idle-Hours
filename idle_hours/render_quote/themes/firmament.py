@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .._paths import CARDO_BOLD, CARDO_ITALIC
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 # Seed for the deterministic firmament star scatter (see
 # ``_build_firmament_stars``). Stars stay in the top margin (y 4-64) and
@@ -481,3 +482,9 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
         for x in range(max(0, ax0), min(width, ax1 + 1)):
             if pixels[x, y] == arc_sentinel:
                 pixels[x, y] = white_ink if (x + y) & 1 else blue_ink
+
+
+SPEC = BorderSpec(
+    themes=("firmament",),
+    paint=draw_firmament_border,
+)

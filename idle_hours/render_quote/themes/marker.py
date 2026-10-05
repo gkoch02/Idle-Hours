@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 # Cycle of marker-ink colours used by ``draw_marker_border``. Hardcoded
 # (like ``_COMIC_STRIPE_PALETTE``) because the marker theme's THEMES entry
@@ -156,3 +157,11 @@ def draw_marker_border(image: Image.Image, colors: dict) -> None:
         draw.line((tx + 12, ty - 2, tx + 17, ty - 2), fill=ink, width=1)
     _twinkle(width // 2 - 70, 26, SPECTRA6["red"])
     _twinkle(width // 2 + 60, height - 1 - 24, SPECTRA6["blue"])
+
+
+SPEC = BorderSpec(
+    themes=("marker",),
+    paint=draw_marker_border,
+    # past the TR asterisk (rightmost arm x=width-14) plus a gap
+    debug_label_inset=44,
+)

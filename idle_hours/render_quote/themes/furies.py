@@ -23,6 +23,7 @@ from ..primitives import (
     position_noise,
     wrap_quote_into_masks,
 )
+from ..spec import FrameSpec
 
 # ---------------------------------------------------------------------------
 # furies — Francis Bacon, *Three Studies for Figures at the Base of a
@@ -488,3 +489,6 @@ def render_furies_frame(time_str: str, quote_row: dict, width: int, height: int)
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("furies",), render=render_furies_frame)

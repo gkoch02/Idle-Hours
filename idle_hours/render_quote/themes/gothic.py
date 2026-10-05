@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 
 def draw_gothic_border(image: Image.Image, colors: dict) -> None:
@@ -135,3 +136,11 @@ def draw_gothic_border(image: Image.Image, colors: dict) -> None:
             draw.ellipse((lx - 1, ly - 1, lx + 1, ly + 1), fill=body)
         # Short stem joining the lobes at the trefoil centre.
         draw.ellipse((base_cx - 2, base_cy - 2, base_cx + 2, base_cy + 2), fill=accent)
+
+
+SPEC = BorderSpec(
+    themes=("gothic",),
+    paint=draw_gothic_border,
+    # past the TR quatrefoil's right lobe (x=width-6)
+    debug_label_inset=30,
+)

@@ -10,6 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_deco_border(image: Image.Image, colors: dict) -> None:
@@ -160,3 +161,9 @@ def draw_deco_border(image: Image.Image, colors: dict) -> None:
             for x in range(cream_x_lo, cream_x_hi + 1):
                 if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = cream_light
+
+
+SPEC = BorderSpec(
+    themes=("deco",),
+    paint=draw_deco_border,
+)

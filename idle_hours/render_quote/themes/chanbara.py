@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 
 def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
@@ -111,3 +112,9 @@ def draw_chanbara_border(image: Image.Image, colors: dict) -> None:
         for px in range(col_x0, col_x1 + 1):
             if (px + py) & 1 == 0 and pixels[px, py] == sentinel_red:
                 pixels[px, py] = maroon_dark
+
+
+SPEC = BorderSpec(
+    themes=("chanbara",),
+    paint=draw_chanbara_border,
+)

@@ -137,7 +137,12 @@ The original plan for this PR:
 
 Generate each theme module's import header with a throwaway AST helper, `scripts/_split_tool.py`. It computes a section's free names and maps each to its owning module, and gets deleted in the final PR. Ruff F401/F821 back it up.
 
-**PR N+1: registry built from theme modules.**
+**PR N+1: registry built from theme modules. Done**, narrower than planned. Each theme module ends with a `SPEC`: a `BorderSpec` (painter, `clear_rect_pad`, `wants_time`, an optional `knockout` painter, `debug_label_inset`) or a `FrameSpec` (the frame renderer). `registry.py` (above the theme modules, below `_monolith`) builds `BORDER_SPECS` / `FRAME_SPECS` from them and refuses to import if a theme is unclaimed, claimed twice or unknown. `render`'s eight-branch by-name ladder and its local `_CLEAR_RECT_PADS` became one `spec.paint_knockout` call; blueprint's three-step knockout moved into `themes/blueprint.py`. The border fence patches one place. `_BORDER_PAINTERS`, `_FRAME_RENDERERS` and `_DEBUG_LABEL_RIGHT_INSET` survive as read-only views, so a stale patch raises. Fingerprints identical; `tests/test_render_quote_registry.py` pins the derived tables to the old literals. Departures:
+- **Colours, fonts and text flags stay in `theme_tables`.** `fonts`, `layout` and `text` read them from below the theme modules, so moving them into a spec means an upward import or import-time registration into low-level tables. Neither was worth co-locating a theme's colours with its painter.
+- **`render` still paints every border twice.** Measured while designing this: dropping the first paint changes pixels for ten themes (blueprint, cartograph, circuit, dispatch, firmament, herbarium, nightvision, roman, scholar, synoptic), whose painters do not reproduce their own output. Making them idempotent and dropping the first paint is a visual change, so it is a separate issue, not part of the split.
+- Adding a theme is one module with its `SPEC`, one line in `THEME_MODULES`, and its data rows (`theme_tables`, `THEME_SATURATION`, `run_clock`'s choices), all of which tests check, plus the golden and the docs.
+
+The original plan for this PR:
 - Each theme module exports a `SPEC = ThemeSpec(name, palette, fonts, kind, renderer|border, ragged_right, debug_label_inset, clear_rect_pad, bold_stroke, rigid_match_spacing, no_ornament_marks)`.
 - `registry.py` derives `THEMES`, `THEME_FONTS`, `_BORDER_PAINTERS`, `_FRAME_RENDERERS` and the frozensets from the ordered list in `themes/__init__.py`. `THEME_ORDER` stays explicit there.
 - `render()` dispatches every border through `spec` with the knockout rect, which removes the by-name calls. The border fence then patches one place.

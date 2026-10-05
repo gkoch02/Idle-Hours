@@ -13,6 +13,7 @@ from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES, SPACEMONO_
 from ..fonts import load_font
 from ..furniture import _place_quote, _row_digest, fallback_title
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
 # ---------------------------------------------------------------------------
@@ -334,3 +335,6 @@ def render_cardcatalog_frame(time_str: str, quote_row: dict, width: int, height:
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("cardcatalog",), render=render_cardcatalog_frame)

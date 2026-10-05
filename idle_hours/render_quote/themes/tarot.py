@@ -15,6 +15,7 @@ from ..furniture import _clock_hour12, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
 from ..primitives import _white_noise
+from ..spec import FrameSpec
 from ..text import draw_text_dithered
 from ._shared import _TAROT_ROMAN_NUMERALS
 
@@ -1221,3 +1222,6 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("tarot",), render=render_tarot_frame)

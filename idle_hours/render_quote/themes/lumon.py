@@ -25,6 +25,7 @@ from ..fonts import _font_ascent, load_font
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, _row_digest, fallback_title
 from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, paint_neon_mask
+from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._shared import _crt_paint_scanlines, _lumon_hover_boxes
 
@@ -261,3 +262,6 @@ def render_lumon_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("lumon",), render=render_lumon_frame)

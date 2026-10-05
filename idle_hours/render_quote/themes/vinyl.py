@@ -26,6 +26,7 @@ from ..furniture import _clock_hh_mm, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import position_noise
+from ..spec import FrameSpec
 from ..text import draw_text_dithered
 from ._shared import _astrarium_paint_cream_wash
 
@@ -602,3 +603,6 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("vinyl",), render=render_vinyl_frame)

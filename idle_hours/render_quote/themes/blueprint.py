@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_CANDIDATES
 from ..fonts import load_font
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 
 def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
@@ -141,3 +142,28 @@ def draw_blueprint_border(image: Image.Image, colors: dict, clear_rect: tuple[in
         else:
             draw.rectangle((x0, bar_y, x0 + cell_w, bar_y + 6), outline=border_color, width=1)
     draw.text((bar_x, bar_y - 16), "SCALE 1:1", font=callout_font, fill=border_color)
+
+
+def _paint_blueprint_knockout(image: Image.Image, colors: dict, clear_rect: tuple[int, int, int, int] | None = None) -> None:
+    """``render``'s knockout pass for blueprint: three steps, not one call.
+
+    The sheet is painted whole again, the body rect is wiped to ``page_bg``,
+    and the sheet is painted once more with ``clear_rect`` so the grid redraws
+    inside the wiped rect while the frame, crosshairs and dimension lines stay
+    outside it. With no usable rect only the first paint happens.
+    """
+    draw_blueprint_border(image, colors)
+    if clear_rect is not None:
+        ImageDraw.Draw(image).rectangle(clear_rect, fill=colors["page_bg"])
+        draw_blueprint_border(image, colors, clear_rect=clear_rect)
+
+
+SPEC = BorderSpec(
+    themes=("blueprint",),
+    paint=draw_blueprint_border,
+    # The grid repaints inside the rect, so the pad only guards a 1 px stroke.
+    clear_rect_pad=(2, 2, 2),
+    knockout=_paint_blueprint_knockout,
+    # past the TR crosshair arm (frame at 16 + 8px arm)
+    debug_label_inset=34,
+)

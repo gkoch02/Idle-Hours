@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from .._paths import IMFELLENGLISH_ITALIC, IMFELLENGLISH_REGULAR, META_FONT_CANDIDATES
 from ..fonts import load_font
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 # Seeds for ``draw_cartograph_border``'s deterministic placement. A fixed
 # chart keeps renders byte-identical and keeps the map silhouette stable
@@ -791,3 +792,13 @@ def draw_cartograph_border(
     ):
         draw.line((tcx - tick_arm, tcy, tcx + tick_arm, tcy), fill=black_ink, width=1)
         draw.line((tcx, tcy - tick_arm, tcx, tcy + tick_arm), fill=black_ink, width=1)
+
+
+SPEC = BorderSpec(
+    themes=("cartograph",),
+    paint=draw_cartograph_border,
+    # Wide enough to clear the doubled rule and corner ticks. The painter
+    # lays all eight map layers in one pass, then knocks the body rect out
+    # to a clean cream-washed rounded cartouche.
+    clear_rect_pad=(22, 12, 12),
+)

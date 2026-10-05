@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..layout import SIDE_MARGIN
+from ..spec import BorderSpec
 
 
 def draw_swiss_border(image: Image.Image, colors: dict) -> None:
@@ -39,3 +40,9 @@ def draw_swiss_border(image: Image.Image, colors: dict) -> None:
         (square_x, square_y, square_x + square_size, square_y + square_size),
         fill=accent,
     )
+
+
+SPEC = BorderSpec(
+    themes=("swiss",),
+    paint=draw_swiss_border,
+)

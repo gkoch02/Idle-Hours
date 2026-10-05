@@ -16,6 +16,7 @@ from ..furniture import draw_centred_styled_lines, draw_truncated_centred_byline
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import paint_craquelure, paint_neon_mask, position_noise
+from ..spec import FrameSpec
 
 # ---------------------------------------------------------------------------
 # bosch — Hieronymus Bosch, *The Garden of Earthly Delights* (c. 1490-1510)
@@ -807,3 +808,6 @@ def render_bosch_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("bosch",), render=render_bosch_frame)

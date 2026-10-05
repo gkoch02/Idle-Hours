@@ -15,6 +15,7 @@ from ..furniture import _clock_hh_mm, _row_digest, draw_centred_styled_lines, dr
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..primitives import _white_noise
+from ..spec import FrameSpec
 from ._shared import _codex_script, _vitrail_fill_polygon, _vitrail_pane_ink
 
 # ---------------------------------------------------------------------------
@@ -460,3 +461,6 @@ def render_codex_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("codex",), render=render_codex_frame)

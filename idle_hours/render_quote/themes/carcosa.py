@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
 from ..primitives import position_noise
+from ..spec import BorderSpec
 
 # The King in Yellow — Robert W. Chambers, 1895.
 #
@@ -334,3 +335,12 @@ def draw_carcosa_border(image: Image.Image, colors: dict) -> None:
     _carcosa_paint_lake(image, draw, scale)
     for side in (-1, 1):
         _carcosa_paint_drape(image, draw, side, scale)
+
+
+SPEC = BorderSpec(
+    themes=("carcosa",),
+    paint=draw_carcosa_border,
+    # carcosa: the right-hand curtain hangs from the rail at x=width-35..width-1
+    # straight through the y=14-29 banner band; 46 clears its torn inner edge.
+    debug_label_inset=46,
+)

@@ -14,6 +14,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..spec import FrameSpec
 from ..text import draw_text_dithered
 
 # ── outrun (synthwave) ──────────────────────────────────────────────────────
@@ -297,3 +298,6 @@ def render_outrun_frame(time_str: str, quote_row: dict, width: int, height: int)
     _outrun_paint_quote(image, draw, quote_row)
     _outrun_paint_credits(image, draw, quote_row)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("outrun",), render=render_outrun_frame)

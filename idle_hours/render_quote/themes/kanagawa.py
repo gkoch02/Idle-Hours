@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 _KANAGAWA_BIRD_ANCHORS: tuple[tuple[float, float, int, int, int], ...] = (
     # (cx_frac, cy_frac, wingspan, left_droop, right_droop): distant
@@ -266,3 +267,13 @@ def draw_kanagawa_border(
                 x8 = px & 7
                 if pixels[px, py] == white_ink and (x8, y8) in cream_anchors:
                     pixels[px, py] = yellow_ink
+
+
+SPEC = BorderSpec(
+    themes=("kanagawa",),
+    paint=draw_kanagawa_border,
+    # Wide enough to clear the seigaiha crescents. One knockout call: the
+    # painter resets the body rect to page_bg at the end, with no grid to
+    # re-add inside it (unlike blueprint).
+    clear_rect_pad=(14, 6, 6),
+)

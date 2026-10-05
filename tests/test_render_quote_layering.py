@@ -34,8 +34,10 @@ LAYERS = (
     "text",
     "primitives",
     "furniture",
+    "spec",
     "themes._shared",
     "themes._culture_common",
+    "registry",
     "_monolith",
 )
 
@@ -111,12 +113,22 @@ def _is_theme(name: str) -> bool:
     return name.startswith(THEME_PACKAGE + ".") and name not in LAYERS and name not in PLUMBING
 
 
-def _rank() -> dict[str, int]:
-    """Layer rank of every module. Theme modules all share the rank just below ``_monolith``."""
-    rank = {name: i for i, name in enumerate(LAYERS)}
+def _theme_slot() -> int:
+    """Index in ``LAYERS`` of the last shared ``themes.*`` layer; theme modules sit just above it."""
+    return max(i for i, name in enumerate(LAYERS) if name.startswith(THEME_PACKAGE + "."))
+
+
+def _rank() -> dict[str, float]:
+    """Layer rank of every module. Theme modules all share one rank, above the
+    shared ``themes.*`` layers and below ``registry``. The ``themes`` package
+    itself imports every theme module, so it takes the same rank: ``registry``
+    may import it, a theme module may not."""
+    rank: dict[str, float] = {name: i for i, name in enumerate(LAYERS)}
+    theme_rank = _theme_slot() + 0.5
     for name in _modules():
         if _is_theme(name):
-            rank[name] = rank["_monolith"] - 0.5
+            rank[name] = theme_rank
+    rank["themes.__init__"] = theme_rank
     return rank
 
 
@@ -130,7 +142,7 @@ def test_imports_only_point_downward():
     violations = []
     for name, tree in _modules().items():
         for target in sorted(_package_imports(name, tree)):
-            if target in PLUMBING or target not in rank:
+            if (target in PLUMBING and target != "themes.__init__") or target not in rank:
                 violations.append(f"{name} imports {target}, which is not a render layer")
             elif _is_theme(name) and _is_theme(target):
                 violations.append(f"{name} imports {target}: themes never import each other; share via themes._shared")
@@ -177,11 +189,12 @@ def _theme_modules_on_disk() -> list[str]:
 def test_facade_resolves_lowest_layer_first():
     """``__init__`` installs the facade in layer order, so a name bound in
     several modules reads from where it is defined, not from an importer.
-    Every theme module sits between ``themes._shared`` and ``_monolith``; one
-    missing from ``themes.THEME_MODULES`` would be invisible to
-    ``render_quote.X`` reads and patches."""
+    Every theme module sits after the shared ``themes.*`` layers and before
+    ``registry``; one missing from ``themes.THEME_MODULES`` would be invisible
+    to ``render_quote.X`` reads and patches."""
     installed = [module.__name__.removeprefix(rq.__name__ + ".") for module in vars(rq)["__facade_submodules__"]]
-    assert installed == [*LAYERS[:-1], *_theme_modules_on_disk(), LAYERS[-1]]
+    slot = _theme_slot() + 1
+    assert installed == [*LAYERS[:slot], *_theme_modules_on_disk(), *LAYERS[slot:]]
 
 
 def test_type_checkers_see_every_layer():
@@ -198,3 +211,17 @@ def test_type_checkers_see_every_layer():
     shown = {node.module for node in blocks[0].body if isinstance(node, ast.ImportFrom) and node.level == 1}
     expected = set(LAYERS) | set(_theme_modules_on_disk())
     assert shown == expected, f"modules missing from the TYPE_CHECKING re-export: {sorted(expected - shown)}"
+
+
+@pytest.mark.parametrize("source", ["from .. import registry\n", "from .. import themes\n", "from ..registry import BORDER_SPECS\n"])
+def test_a_theme_cannot_reach_the_registry(monkeypatch, source):
+    """``registry`` imports every theme module, so a theme importing it (or the
+    ``themes`` package that lists them) would be a cycle."""
+    monkeypatch.setattr(sys.modules[__name__], "_modules", lambda: {"themes.tarot": ast.parse(source)})
+    with pytest.raises(AssertionError, match="themes.tarot"):
+        test_imports_only_point_downward()
+
+
+def test_the_registry_may_import_the_themes_package():
+    tree = ast.parse("from .themes import THEME_MODULES\n")
+    assert _package_imports("registry", tree) == {"themes.__init__"}

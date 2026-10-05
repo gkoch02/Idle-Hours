@@ -23,6 +23,7 @@ from .._paths import (
 from ..fonts import load_font
 from ..palette import SPECTRA6, BAYER_8x8
 from ..primitives import position_noise
+from ..spec import BorderSpec
 
 # ---------------------------------------------------------------------------
 # betweenus / betweenus_dark — the *Between Us* app's card UI, light and dark.
@@ -386,3 +387,19 @@ def draw_betweenus_border(image: Image.Image, colors: dict, clear_rect=None, tim
     _betweenus_paint_brand_row(image, draw, colors, dark, _betweenus_daypart_label(time_str))
     _betweenus_paint_progress(image, draw, dark, _betweenus_day_fraction(time_str))
     _betweenus_paint_legend(image, draw, colors, dark)
+
+
+SPEC = BorderSpec(
+    themes=("betweenus", "betweenus_dark"),
+    paint=draw_betweenus_border,
+    # The painter lays the paper and floats the body out to a rounded card
+    # (radius 18) on a soft shadow; the pad is the app's card padding
+    # scaled up, wide enough that the corner arcs never cut into a first
+    # or last line. It takes the time for the day-progress bar and the
+    # daypart pill.
+    clear_rect_pad=(28, 18, 24),
+    wants_time=True,
+    # betweenus: the daypart pill at y=14..38; the widest label makes a
+    # ~100 px pill, so 144 clears it for both variants.
+    debug_label_inset=144,
+)

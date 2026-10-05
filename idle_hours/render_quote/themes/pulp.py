@@ -13,6 +13,7 @@ from .._paths import ALFA_SLAB_ONE, META_FONT_BOLD_CANDIDATES, QUOTE_FONT_BOLD_C
 from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..spec import FrameSpec
 from ._shared import _TAROT_ROMAN_NUMERALS
 
 # ---------------------------------------------------------------------------
@@ -249,3 +250,6 @@ def render_pulp_frame(time_str: str, quote_row: dict, width: int, height: int) -
     _pulp_paint_corner_banner(image, draw, width, height)
     _pulp_paint_price_flash(image, draw, width, height)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("pulp",), render=render_pulp_frame)

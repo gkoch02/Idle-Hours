@@ -10,6 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def _draw_grimoire_sun(draw: ImageDraw.ImageDraw, cx: int, cy: int, accent: tuple[int, int, int]) -> None:
@@ -209,3 +210,12 @@ def draw_grimoire_border(image: Image.Image, colors: dict) -> None:
             base_r = (cx + triad_spread, cy - vy * triad_spread // 2)
             for dx, dy in (apex, base_l, base_r):
                 draw.ellipse((dx - triad_r, dy - triad_r, dx + triad_r, dy + triad_r), fill=accent)
+
+
+SPEC = BorderSpec(
+    themes=("grimoire",),
+    paint=draw_grimoire_border,
+    # past the TR pentagram ring (leftmost x=width-46) plus
+    # a 4 px gap; the ring's top is inside the label band
+    debug_label_inset=50,
+)

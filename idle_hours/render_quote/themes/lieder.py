@@ -14,6 +14,7 @@ from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _row_digest, fallback_title
 from ..layout import strip_underscore_emphasis, tokenize_quote
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..spec import FrameSpec
 from ._shared import _astrarium_paint_cream_wash
 
 # ─── lieder (engraved art-song manuscript) ───────────────────────────────────
@@ -841,3 +842,6 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
         _lieder_paint_system(draw, ctx, index, line)
     _lieder_paint_plate_line(draw, quote_row, width, height)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("lieder",), render=render_lieder_frame)

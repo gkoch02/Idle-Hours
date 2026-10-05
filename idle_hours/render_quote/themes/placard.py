@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 
 def draw_placard_border(image: Image.Image, colors: dict) -> None:
@@ -134,3 +135,9 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
             for x in range(cx - 7, cx + 8):
                 if 0 <= x < width and 0 <= y < height and (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = SPECTRA6["white"]
+
+
+SPEC = BorderSpec(
+    themes=("placard",),
+    paint=draw_placard_border,
+)

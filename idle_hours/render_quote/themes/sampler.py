@@ -11,6 +11,7 @@ from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
 from ..layout import strip_underscore_emphasis, tokenize_quote, wrap_styled_text
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..spec import FrameSpec
 
 # ── sampler: counted cross-stitch embroidery ──────────────────────────────────
 # Every glyph is cross-stitch "X" marks: text is drawn to a small Silkscreen
@@ -298,3 +299,6 @@ def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int
     block_bottom = _sampler_paint_quote(image, draw, quote_row)
     _sampler_paint_credits(image, draw, quote_row, block_bottom)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("sampler",), render=render_sampler_frame)

@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_BOLD_CANDIDATES, SPACEMONO_BOLD
 from ..fonts import load_font
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 # ---------------------------------------------------------------------------
 # synoptic — a meteorological surface analysis (issue #215).
@@ -242,10 +243,10 @@ def _synoptic_paint_stamp(draw: ImageDraw.ImageDraw, width: int, height: int, ti
 def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time_str: str | None = None) -> None:
     """Surface analysis behind the quote (see the section comment above).
 
-    ``time_str`` is optional because the ``_BORDER_PAINTERS`` contract passes
-    only ``(image, colors, clear_rect)``: ``render`` calls this painter by name
-    with the clock, while the registry path (the button-C source card) gets a
-    chart with no validity stamp, which is correct for a source card.
+    ``time_str`` is optional because only ``render``'s knockout pass passes it
+    (the spec sets ``wants_time``). The plain pass, which is all the button-C
+    source card makes, gets a chart with no validity stamp, which is correct
+    for a source card.
     """
     width, height = image.size
     draw = ImageDraw.Draw(image)
@@ -268,3 +269,16 @@ def draw_synoptic_border(image: Image.Image, colors: dict, clear_rect=None, time
             draw.rectangle((x0, y0, x1, y1), outline=SPECTRA6["black"], width=2)
             draw.line((x0 + 8, y0 + 8, x1 - 8, y0 + 8), fill=SPECTRA6["blue"], width=1)
             draw.line((x0 + 8, y1 - 8, x1 - 8, y1 - 8), fill=SPECTRA6["blue"], width=1)
+
+
+SPEC = BorderSpec(
+    themes=("synoptic",),
+    paint=draw_synoptic_border,
+    # The analysis paints graticule, isobars, fronts and station plots in
+    # one pass, then boxes the quote as a chart legend: a 2 px black frame
+    # with blue rules inset 8 px, so the pad has to clear both. It takes
+    # the time for the validity stamp; the source card's plain paint gets
+    # no stamp, which is right, since a card is not an analysis.
+    clear_rect_pad=(20, 14, 14),
+    wants_time=True,
+)

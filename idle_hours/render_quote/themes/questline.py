@@ -14,6 +14,7 @@ from ..furniture import _fit_from_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple
+from ..spec import FrameSpec
 
 # ─── questline (pixel RPG dialogue) ──────────────────────────────────────────
 #
@@ -233,3 +234,6 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
     _questline_paint_arrow(draw)
     _questline_paint_footer(image, draw, quote_row)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("questline",), render=render_questline_frame)
