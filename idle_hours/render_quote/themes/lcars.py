@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_BOLD_CANDIDATES
 from ..fonts import load_font, theme_font_candidates
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 # R+B+W 3-way Bayer cuts on ``BAYER_4x4`` (cells below the first → red, below
 # the second → blue, the rest → white). Lavender is 5/5/6; lilac 4/4/8 is
@@ -349,3 +350,9 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
         font=stardate_font,
         fill=label_ink_on_block,
     )
+
+
+SPEC = BorderSpec(
+    themes=("lcars",),
+    paint=draw_lcars_border,
+)

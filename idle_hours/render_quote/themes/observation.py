@@ -23,6 +23,7 @@ from ..fonts import load_font
 from ..furniture import _clock_hour12, _row_digest, fallback_title
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import paint_neon_mask, position_noise, wrap_quote_into_masks
+from ..spec import FrameSpec
 from ..text import fit_text_to_width
 
 # ---------------------------------------------------------------------------
@@ -471,3 +472,6 @@ def render_observation_frame(time_str: str, quote_row: dict, width: int, height:
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("observation",), render=render_observation_frame)

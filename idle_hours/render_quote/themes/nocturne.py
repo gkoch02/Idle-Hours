@@ -13,6 +13,7 @@ from ..fonts import load_font, theme_font_candidates
 from ..furniture import fallback_title
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import _flow_stroke_hash, paint_flow_strokes, paint_neon_mask, wrap_quote_into_masks
+from ..spec import FrameSpec
 
 # ---------------------------------------------------------------------------
 # nocturne — Whistler, Nocturne in Blue and Gold
@@ -289,3 +290,6 @@ def render_nocturne_frame(time_str: str, quote_row: dict, width: int, height: in
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("nocturne",), render=render_nocturne_frame)

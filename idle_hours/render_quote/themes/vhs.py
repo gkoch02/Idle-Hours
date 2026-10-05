@@ -14,6 +14,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..spec import FrameSpec
 from ..text import draw_text_chroma_shift
 
 # ---------------------------------------------------------------------------
@@ -275,3 +276,6 @@ def render_vhs_frame(time_str: str, quote_row: dict, width: int, height: int) ->
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("vhs",), render=render_vhs_frame)

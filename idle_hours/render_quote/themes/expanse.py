@@ -27,6 +27,7 @@ from ..furniture import _clock_hour12, _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, paint_neon_mask
+from ..spec import FrameSpec
 from ..text import draw_text_dithered, draw_tracked, fit_text_to_width, tracked_width
 
 # ---------------------------------------------------------------------------
@@ -662,3 +663,6 @@ def render_expanse_frame(time_str: str, quote_row: dict, width: int, height: int
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("expanse",), render=render_expanse_frame)

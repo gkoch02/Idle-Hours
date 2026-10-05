@@ -25,6 +25,7 @@ instead of re-tuning a pixel count here.
 """
 from __future__ import annotations
 
+import dataclasses
 import re
 
 import pytest
@@ -194,16 +195,16 @@ class TestBorderPainterActuallyPaints:
         painter = rq._BORDER_PAINTERS[theme]
         with_border = _render(theme)
 
-        # Both dispatch paths must be neutered. Most themes reach their
-        # painter through ``_paint_theme_border``'s registry lookup, but the
-        # eight ``_CLEAR_RECT_PADS`` themes (blueprint, kanagawa, cartograph,
-        # circuit, synoptic, letter, betweenus, betweenus_dark) are called by
-        # name from ``render`` so the body-text
-        # knockout rect can be threaded through. Patching only the registry
-        # made kanagawa and letter register a 0-pixel delta while their
-        # painters were in fact still running.
-        _neuter(monkeypatch, painter.__name__)
-        monkeypatch.setitem(rq._BORDER_PAINTERS, theme, _noop)
+        # ``render`` paints a border twice, the plain pass and the knockout
+        # pass, and reaches both through the theme's spec. Replacing the spec
+        # neuters both, blueprint's three-step knockout included. (Before the
+        # registry, eight themes were also called by name from ``render``, and
+        # patching only the table left kanagawa and letter painting with a
+        # 0-pixel delta.)
+        spec = rq.BORDER_SPECS[theme]
+        monkeypatch.setitem(rq.BORDER_SPECS, theme, dataclasses.replace(
+            spec, paint=_noop, knockout=_noop if spec.knockout is not None else None,
+        ))
         without_border = _render(theme)
 
         total, margin = _changed_pixel_counts(with_border, without_border)

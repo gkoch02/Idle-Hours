@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from .._paths import IMFELLENGLISH_ITALIC, IMFELLENGLISH_REGULAR, META_FONT_CANDIDATES
 from ..fonts import load_font
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
@@ -153,3 +154,11 @@ def draw_herbarium_border(image: Image.Image, colors: dict) -> None:
             fill=SPECTRA6["white"],
             outline=ink,
         )
+
+
+SPEC = BorderSpec(
+    themes=("herbarium",),
+    paint=draw_herbarium_border,
+    # past the TR pinhole dot (x=width-19) plus a 4 px gap
+    debug_label_inset=24,
+)

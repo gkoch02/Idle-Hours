@@ -12,6 +12,7 @@ from ..fonts import load_font, theme_font_candidates
 from ..layout import choose_layout
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple, _fill_swatch_stipple_3way
+from ..spec import FrameSpec
 from ..theme_tables import THEMES
 
 # Two-ink stipple recipes from spectra6_color_recipes.md, as (display name,
@@ -323,3 +324,6 @@ def render_diags_frame(time_str: str, quote_row: dict, width: int, height: int) 
     _paint_synth_row(sw3_top + sw2_row_h + sw2_row_gap, sw3_row2, _three_ink_painter)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("diags",), render=render_diags_frame)

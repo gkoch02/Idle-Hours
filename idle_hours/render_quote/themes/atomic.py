@@ -10,6 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_atomic_border(image: Image.Image, colors: dict) -> None:
@@ -147,3 +148,9 @@ def draw_atomic_border(image: Image.Image, colors: dict) -> None:
         for x in range(bx0, bx1 + 1):
             if BAYER_4x4[y & 3][x & 3] < 6 and pixels[x, y] == sentinel_red:
                 pixels[x, y] = flip_yellow
+
+
+SPEC = BorderSpec(
+    themes=("atomic",),
+    paint=draw_atomic_border,
+)

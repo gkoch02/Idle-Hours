@@ -10,6 +10,7 @@ import random
 from PIL import Image, ImageDraw
 
 from ..palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6
+from ..spec import BorderSpec
 
 
 # Deterministic foxing-speckle layout for ``draw_saloon_border``, computed
@@ -304,3 +305,11 @@ def draw_saloon_border(image: Image.Image, colors: dict) -> None:
 
     # ``bg`` is unused.
     del bg
+
+
+SPEC = BorderSpec(
+    themes=("saloon",),
+    paint=draw_saloon_border,
+    # past the TR fleuron's wing tip (x=width-38) plus a gap
+    debug_label_inset=44,
+)

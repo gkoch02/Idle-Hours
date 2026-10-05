@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
 from ..palette import SPECTRA6, _load_dithered_plate
+from ..spec import BorderSpec
 from ._shared import _GUNMETAL_PALETTE
 
 
@@ -297,3 +298,9 @@ def draw_grimdark_border(image: Image.Image, colors: dict) -> None:
 # Grimdark's gunmetal plate is greyscale, so it dithers to white+black only,
 # keeping chroma out of the void.
 GRIMDARK_PLATE = BASE_DIR / "assets" / "grimdark_gunmetal.png"
+
+
+SPEC = BorderSpec(
+    themes=("grimdark",),
+    paint=draw_grimdark_border,
+)

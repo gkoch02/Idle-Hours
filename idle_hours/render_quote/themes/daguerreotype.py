@@ -15,6 +15,7 @@ from ..furniture import draw_centred_styled_lines, draw_truncated_centred_byline
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, _load_dithered_plate, snap_image_to_palette
 from ..primitives import _flow_stroke_hash, paint_relief_mask
+from ..spec import FrameSpec
 
 # The daguerreotype landscape (scripts/generate_daguerreotype_plate.py) dithers
 # against white+black ONLY, with Atkinson diffusion — the plate is the silver
@@ -189,3 +190,6 @@ def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, heigh
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("daguerreotype",), render=render_daguerreotype_frame)

@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_glacier_border(image: Image.Image, colors: dict) -> None:
@@ -154,3 +155,11 @@ def draw_glacier_border(image: Image.Image, colors: dict) -> None:
             for x in range(x0, x1 + 1):
                 if (x + y) & 1 == 0 and pixels[x, y] == accent_color:
                     pixels[x, y] = SPECTRA6["white"]
+
+
+SPEC = BorderSpec(
+    themes=("glacier",),
+    paint=draw_glacier_border,
+    # past the TR frost crystal (~x=width-32) plus a ~4 px gap
+    debug_label_inset=37,
+)

@@ -16,6 +16,7 @@ from ..furniture import _row_digest, fallback_title
 from ..layout import _trim_line, choose_layout, fit_quote_balanced, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import _bayer_threshold_field, _shift_no_wrap
+from ..spec import FrameSpec
 from ._shared import _codex_script, _metro_ellipsize
 
 # ---------------------------------------------------------------------------
@@ -556,3 +557,6 @@ def render_escritoire_frame(time_str: str, quote_row: dict, width: int, height: 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("escritoire",), render=render_escritoire_frame)

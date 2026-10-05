@@ -14,6 +14,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candid
 from ..furniture import _clock_hour12, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
+from ..spec import FrameSpec
 from ..text import draw_text_dithered
 from ._shared import _TAROT_ROMAN_NUMERALS, _vitrail_fill_polygon
 
@@ -497,3 +498,6 @@ def render_vitrail_frame(time_str: str, quote_row: dict, width: int, height: int
     _vitrail_paint_quote_body(image, draw, quote_row, (cart[0], cart[1], cart[2], cart[3] - round(24 * sy)))
     _vitrail_paint_attribution(image, draw, quote_row, (cart[0] + cart[2]) // 2, cart[3] - round(20 * sy))
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("vitrail",), render=render_vitrail_frame)

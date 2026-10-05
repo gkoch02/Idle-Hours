@@ -15,6 +15,7 @@ from ..fonts import load_font
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, _row_digest, fallback_title
 from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
 from ..primitives import _shade_silhouette, _smooth_noise, _soft_ellipse_mask, paint_neon_mask, shade_height_field
+from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width
 
 # ---------------------------------------------------------------------------
@@ -386,3 +387,6 @@ def render_oblivion_frame(time_str: str, quote_row: dict, width: int, height: in
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("oblivion",), render=render_oblivion_frame)

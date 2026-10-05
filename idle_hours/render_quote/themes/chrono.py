@@ -14,6 +14,7 @@ from ..furniture import _fit_from_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, snap_image_to_palette
 from ..primitives import _fill_swatch_stipple
+from ..spec import FrameSpec
 
 # ─── chrono (16-bit SNES JRPG dialogue) ──────────────────────────────────────
 #
@@ -364,3 +365,6 @@ def render_chrono_frame(time_str: str, quote_row: dict, width: int, height: int)
     _chrono_paint_arrow(draw)
     _chrono_paint_footer(image, draw, quote_row)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("chrono",), render=render_chrono_frame)

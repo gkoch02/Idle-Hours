@@ -14,6 +14,7 @@ from .._paths import META_FONT_CANDIDATES, OLDSTANDARD_REGULAR
 from ..furniture import _clock_hour12, _paint_placed, _place_quote, fallback_title
 from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
 from ..primitives import _lerp_stops, _smooth_noise, paint_craquelure
+from ..spec import FrameSpec
 from ..text import fit_text_to_width
 
 # ---------------------------------------------------------------------------
@@ -329,3 +330,6 @@ def render_beksinski_frame(time_str: str, quote_row: dict, width: int, height: i
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("beksinski",), render=render_beksinski_frame)

@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_CANDIDATES
 from ..fonts import load_font
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 from ..text import draw_text
 
 
@@ -102,3 +103,9 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
                 fill=body,
                 width=1,
             )
+
+
+SPEC = BorderSpec(
+    themes=("nightvision",),
+    paint=draw_nightvision_border,
+)

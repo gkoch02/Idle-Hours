@@ -11,6 +11,7 @@ import random
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def _build_fillmore_blob(cx: int, cy: int, scale: float, seed: int) -> list[tuple[int, int]]:
@@ -100,3 +101,9 @@ def draw_fillmore_border(image: Image.Image, colors: dict) -> None:
         (br_cx - inner_r, br_cy - inner_r, br_cx + inner_r, br_cy + inner_r),
         fill=yellow_ink,
     )
+
+
+SPEC = BorderSpec(
+    themes=("fillmore",),
+    paint=draw_fillmore_border,
+)

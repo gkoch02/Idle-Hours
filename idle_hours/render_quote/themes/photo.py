@@ -20,6 +20,7 @@ from ..fonts import load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _row_digest, draw_centred_styled_lines, draw_truncated_centred_byline, paint_mount_card
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, _load_dithered_plate, dither_image_to_palette, snap_image_to_palette
+from ..spec import FrameSpec
 from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_garden_fallback
 
 # ---------------------------------------------------------------------------
@@ -431,3 +432,6 @@ def render_photo_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("photo",), render=render_photo_frame)

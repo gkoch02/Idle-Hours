@@ -11,6 +11,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candid
 from ..furniture import _clock_hh_mm, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..spec import FrameSpec
 from ._shared import _metro_ellipsize
 
 _METRO_ROUTES: tuple[tuple[tuple[int, int, int], tuple[tuple[int, int], ...]], ...] = (
@@ -153,3 +154,6 @@ def render_metro_frame(time_str: str, quote_row: dict, width: int, height: int) 
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("metro",), render=render_metro_frame)

@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 from ..fonts import load_font, theme_font_candidates
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
@@ -157,3 +158,9 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
     # The accent slot is unused: the stamp and perforations use sentinels.
     accent = colors["accent"]
     del accent
+
+
+SPEC = BorderSpec(
+    themes=("dispatch",),
+    paint=draw_dispatch_border,
+)

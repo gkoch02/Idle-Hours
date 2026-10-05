@@ -21,6 +21,7 @@ from ..fonts import load_font
 from ..furniture import _place_quote, fallback_title
 from ..palette import _PANEL_INKS, SPECTRA6, SPECTRA6_PALETTE, _dither_calibrated, snap_image_to_palette
 from ..primitives import _catmull_rom, _lerp_stops, _shade_silhouette, _smooth_noise, _soft_ellipse_mask, paint_craquelure
+from ..spec import FrameSpec
 from ..text import fit_text_to_width
 
 # ---------------------------------------------------------------------------
@@ -283,3 +284,6 @@ def render_goya_frame(time_str: str, quote_row: dict, width: int, height: int) -
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("goya",), render=render_goya_frame)

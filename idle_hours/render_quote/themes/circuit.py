@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from .._paths import META_FONT_CANDIDATES, SPACEMONO_REGULAR
 from ..fonts import load_font
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 # Copper-trace routes for ``draw_circuit_border``: polylines of (x_frac,
 # y_frac) waypoints, stroked in gold with ``joint="curve"`` corners (the
@@ -170,3 +171,18 @@ def draw_circuit_border(
     # Silkscreen "component outline" framing the populated area + pin-1 dot.
     draw.rounded_rectangle((cx0, cy0, cx1, cy1), radius=6, outline=silk, width=1)
     draw.rectangle((cx0 - 1, cy0 - 1, cx0 + 3, cy0 + 3), fill=silk)
+
+
+SPEC = BorderSpec(
+    themes=("circuit",),
+    paint=draw_circuit_border,
+    # The painter routes copper, pads and silkscreen across the board, then
+    # knocks the body region back to clean forest soldermask and frames it
+    # with a 1 px white silkscreen outline and a pin-1 corner dot; the pad
+    # keeps that outline (and the dot just outside the top-left corner)
+    # clear of the first and last text lines.
+    clear_rect_pad=(16, 10, 10),
+    # past the TR mounting hole's keep-out ring (leftmost
+    # x=width-42) plus a 4 px gap
+    debug_label_inset=46,
+)

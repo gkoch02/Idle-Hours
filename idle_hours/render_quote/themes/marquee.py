@@ -12,6 +12,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candid
 from ..furniture import fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
+from ..spec import FrameSpec
 
 # ─── marquee (1930s movie-palace facade) ─────────────────────────────────────
 # A black theatre facade at night: a yellow/red bulb-light border, the book
@@ -320,3 +321,6 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
     _marquee_paint_label_band(image, draw, width, y_top=448, text="—  ONE NIGHT ONLY  —", size=12)
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
+
+
+SPEC = FrameSpec(themes=("marquee",), render=render_marquee_frame)

@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 from .._paths import BASE_DIR, DANCINGSCRIPT_VARIABLE, ORNAMENT_FONT_CANDIDATES, PINYONSCRIPT_REGULAR
 from ..fonts import load_font
 from ..palette import SPECTRA6, BAYER_4x4, _load_dithered_plate
+from ..spec import BorderSpec
 
 
 def _anna_atkins_fern(draw: ImageDraw.ImageDraw, x0: float, y0: float, length: float,
@@ -160,3 +161,13 @@ ANNA_ATKINS_PLATE = BASE_DIR / "assets" / "anna_atkins_cyanotype.png"
 # over all six inks scatters stray red/green specks into the deep blues. A
 # strict subset of SPECTRA6, so the final ``snap_image_to_palette`` is a no-op.
 _CYANOTYPE_PALETTE = [SPECTRA6["white"], SPECTRA6["black"], SPECTRA6["blue"]]
+
+
+SPEC = BorderSpec(
+    themes=("anna_atkins",),
+    paint=draw_anna_atkins_border,
+    # No clear_rect_pad, deliberately: the white / sky-blue text is drawn
+    # straight onto the cyanotype plate with a subtle per-glyph black halo
+    # (see ``_draw_text_body``) instead of a knockout panel, so the whole
+    # photogram stays visible behind the quote.
+)

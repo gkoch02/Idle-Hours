@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 _COMIC_STRIPE_PALETTE = (
     SPECTRA6["blue"],
@@ -129,3 +130,9 @@ def draw_comic_corner_stripes(image: Image.Image, colors: dict) -> None:
         outline=colors.get("text", SPECTRA6["black"]),
         width=4,
     )
+
+
+SPEC = BorderSpec(
+    themes=("comic",),
+    paint=draw_comic_corner_stripes,
+)

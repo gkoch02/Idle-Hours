@@ -16,6 +16,7 @@ from ..fonts import load_font
 from ..furniture import fallback_title
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, snap_image_to_palette
 from ..primitives import _white_noise, paint_neon_mask, position_noise, wrap_quote_into_masks
+from ..spec import FrameSpec
 from ..text import fit_text_to_width
 from ._culture_common import _culture_clock, _culture_face_ink, _culture_signal, _marain_code, _marain_draw_glyph
 
@@ -354,3 +355,6 @@ def render_orbital_frame(time_str: str, quote_row: dict, width: int, height: int
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("orbital",), render=render_orbital_frame)

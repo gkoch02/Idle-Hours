@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6
+from ..spec import BorderSpec
 
 
 def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
@@ -119,3 +120,11 @@ def draw_bauhaus_border(image: Image.Image, colors: dict) -> None:
     draw.rectangle((lx - sq // 2, ly - sq // 2, lx + sq // 2, ly + sq // 2), fill=ornament_color)
     rcx, rcy = width - 32, int(height * 0.66)
     draw.ellipse((rcx - 6, rcy - 6, rcx + 6, rcy + 6), fill=accent_color)
+
+
+SPEC = BorderSpec(
+    themes=("bauhaus",),
+    paint=draw_bauhaus_border,
+    # past the 6+22px TR filled square
+    debug_label_inset=38,
+)

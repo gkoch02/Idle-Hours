@@ -8,6 +8,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..palette import SPECTRA6, BAYER_4x4
+from ..spec import BorderSpec
 
 
 def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
@@ -96,3 +97,9 @@ def draw_newsprint_border(image: Image.Image, colors: dict) -> None:
     # Printer's dingbat: a small black diamond on the masthead and folio rules.
     for dcx, dy in ((width // 2, mast_y + 5), (folio_cx, folio_y)):
         draw.polygon([(dcx, dy - 4), (dcx + 4, dy), (dcx, dy + 4), (dcx - 4, dy)], fill=ink)
+
+
+SPEC = BorderSpec(
+    themes=("newsprint",),
+    paint=draw_newsprint_border,
+)

@@ -42,98 +42,14 @@ from .palette import (
     SPECTRA6_PALETTE,
     snap_image_to_palette,
 )
+from .registry import _DEBUG_LABEL_RIGHT_INSET, BORDER_SPECS, FRAME_SPECS
 from .text import (
     _draw_text_body,
     _paint_ornament_mark,
     draw_text,
 )
-from .theme_tables import _DEBUG_LABEL_RIGHT_INSET, _THEMES_RIGID_MATCH_SPACING, THEMES
-from .themes.abyssal import render_abyssal_frame
-from .themes.alchemy import draw_alchemy_border
-from .themes.anna_atkins import draw_anna_atkins_border
-from .themes.astrarium import render_astrarium_frame
-from .themes.atomic import draw_atomic_border
-from .themes.atropos import render_atropos_frame
-from .themes.autochrome import render_autochrome_frame
-from .themes.bakelite import render_bakelite_frame
-from .themes.bauhaus import draw_bauhaus_border
-from .themes.beksinski import render_beksinski_frame
-from .themes.betweenus import _BETWEENUS_THEMES, draw_betweenus_border
-from .themes.biomech import render_biomech_frame
-from .themes.blueprint import draw_blueprint_border
-from .themes.bosch import render_bosch_frame
-from .themes.carcosa import draw_carcosa_border
-from .themes.cardcatalog import render_cardcatalog_frame
-from .themes.cartograph import draw_cartograph_border
-from .themes.chalkboard import draw_chalkboard_border
-from .themes.chanbara import draw_chanbara_border
-from .themes.chrono import render_chrono_frame
-from .themes.circuit import draw_circuit_border
-from .themes.codex import render_codex_frame
-from .themes.comic import draw_comic_corner_stripes
-from .themes.control import render_control_frame
-from .themes.culture import render_culture_frame
-from .themes.daguerreotype import render_daguerreotype_frame
-from .themes.deco import draw_deco_border
-from .themes.diags import render_diags_frame
-from .themes.dispatch import draw_dispatch_border
-from .themes.dsky import render_dsky_frame
-from .themes.escritoire import render_escritoire_frame
-from .themes.expanse import render_expanse_frame
-from .themes.expedition import render_expedition_frame
-from .themes.fillmore import draw_fillmore_border
-from .themes.firmament import draw_firmament_border
-from .themes.furies import render_furies_frame
-from .themes.glacier import draw_glacier_border
-from .themes.gothic import draw_gothic_border
-from .themes.goya import render_goya_frame
-from .themes.grimdark import draw_grimdark_border
-from .themes.grimoire import draw_grimoire_border
-from .themes.hades import render_hades_frame
-from .themes.hal import render_hal_frame
-from .themes.herbarium import draw_herbarium_border
-from .themes.hitchhiker import render_hitchhiker_frame
-from .themes.illuminated import draw_illuminated_border
-from .themes.intaglio import render_intaglio_frame
-from .themes.izakaya import render_izakaya_frame
-from .themes.kanagawa import draw_kanagawa_border
-from .themes.lcars import draw_lcars_border
-from .themes.letter import draw_letter_border
-from .themes.lieder import render_lieder_frame
-from .themes.lumon import render_lumon_frame
-from .themes.marker import draw_marker_border
-from .themes.marquee import render_marquee_frame
-from .themes.metro import render_metro_frame
-from .themes.mucha import draw_mucha_border
-from .themes.newsprint import draw_newsprint_border
-from .themes.nightvision import draw_nightvision_border
-from .themes.nocturne import render_nocturne_frame
-from .themes.oblivion import render_oblivion_frame
-from .themes.observation import render_observation_frame
-from .themes.orbital import render_orbital_frame
-from .themes.outrun import render_outrun_frame
-from .themes.photo import _PHOTO_CACHE, _PHOTO_WARNED, render_photo_frame
-from .themes.placard import draw_placard_border
-from .themes.plaque import render_plaque_frame
-from .themes.pride import render_pride_frame
-from .themes.pulp import render_pulp_frame
-from .themes.questline import render_questline_frame
-from .themes.risograph import draw_risograph_border
-from .themes.roman import draw_roman_border
-from .themes.saloon import draw_saloon_border
-from .themes.sampler import render_sampler_frame
-from .themes.saros import render_saros_frame
-from .themes.scholar import draw_scholar_border
-from .themes.semiotic import render_semiotic_frame
-from .themes.swiss import draw_swiss_border
-from .themes.synoptic import draw_synoptic_border
-from .themes.tarot import render_tarot_frame
-from .themes.trisolaris import render_trisolaris_frame
-from .themes.vhs import render_vhs_frame
-from .themes.vinyl import render_vinyl_frame
-from .themes.vitrail import render_vitrail_frame
-from .themes.witcher import render_witcher_frame
-from .themes.yorha import render_yorha_frame
+from .theme_tables import _THEMES_RIGID_MATCH_SPACING, THEMES
+from .themes.photo import _PHOTO_CACHE, _PHOTO_WARNED
 
 
 def parse_args() -> argparse.Namespace:
@@ -314,59 +230,17 @@ def parse_pin_quote(value: str | None, matched_text: str | None = None) -> tuple
 
 
 def _paint_theme_border(image: Image.Image, theme: str, colors: dict) -> None:
-    """Dispatch to the decorative-border helper registered for ``theme``.
+    """Paint ``theme``'s border, if it has one: the plain first pass.
 
-    The single seam ``render`` and ``render_source_card`` share: a new
-    border registers in ``_BORDER_PAINTERS`` (and, if it paints in the
-    top-right, ``_DEBUG_LABEL_RIGHT_INSET``).
+    The seam ``render``, ``render_source_card`` and ``render_static_message``
+    share. ``render`` follows it with the spec's knockout pass once the quote
+    is laid out; see ``spec.BorderSpec``.
     """
-    painter = _BORDER_PAINTERS.get(theme)
-    if painter is not None:
-        painter(image, colors)
+    spec = BORDER_SPECS.get(theme)
+    if spec is not None:
+        spec.paint(image, colors)
 
 
-# Registry consumed by ``_paint_theme_border``. Themes without an entry paint
-# no border. Update ``_DEBUG_LABEL_RIGHT_INSET`` if a new graphic touches the
-# top-right corner.
-_BORDER_PAINTERS = {
-    "synoptic": draw_synoptic_border,
-    "betweenus": draw_betweenus_border,
-    "betweenus_dark": draw_betweenus_border,
-    "bauhaus": draw_bauhaus_border,
-    "blueprint": draw_blueprint_border,
-    "comic": draw_comic_corner_stripes,
-    "scholar": draw_scholar_border,
-    "illuminated": draw_illuminated_border,
-    "gothic": draw_gothic_border,
-    "dispatch": draw_dispatch_border,
-    "atomic": draw_atomic_border,
-    "marker": draw_marker_border,
-    "saloon": draw_saloon_border,
-    "roman": draw_roman_border,
-    "alchemy": draw_alchemy_border,
-    "newsprint": draw_newsprint_border,
-    "nightvision": draw_nightvision_border,
-    "risograph": draw_risograph_border,
-    "grimoire": draw_grimoire_border,
-    "deco": draw_deco_border,
-    "glacier": draw_glacier_border,
-    "chalkboard": draw_chalkboard_border,
-    "placard": draw_placard_border,
-    "chanbara": draw_chanbara_border,
-    "lcars": draw_lcars_border,
-    "swiss": draw_swiss_border,
-    "herbarium": draw_herbarium_border,
-    "mucha": draw_mucha_border,
-    "fillmore": draw_fillmore_border,
-    "firmament": draw_firmament_border,
-    "kanagawa": draw_kanagawa_border,
-    "cartograph": draw_cartograph_border,
-    "circuit": draw_circuit_border,
-    "letter": draw_letter_border,
-    "grimdark": draw_grimdark_border,
-    "carcosa": draw_carcosa_border,
-    "anna_atkins": draw_anna_atkins_border,
-}
 
 
 def debug_quote_id(quote_row: dict) -> str | None:
@@ -551,61 +425,6 @@ def clear_photo_cache() -> None:
     _PHOTO_WARNED.clear()
 
 
-# Themes that compose their whole frame instead of painting a border round
-# the shared quote layout. ``render`` dispatches through this table; it sits
-# here because every frame function above must exist before it is built.
-_FRAME_RENDERERS = {
-    "diags": render_diags_frame,
-    "astrarium": render_astrarium_frame,
-    "marquee": render_marquee_frame,
-    "tarot": render_tarot_frame,
-    "vinyl": render_vinyl_frame,
-    "vitrail": render_vitrail_frame,
-    "questline": render_questline_frame,
-    "chrono": render_chrono_frame,
-    "outrun": render_outrun_frame,
-    "sampler": render_sampler_frame,
-    "lieder": render_lieder_frame,
-    "izakaya": render_izakaya_frame,
-    "abyssal": render_abyssal_frame,
-    "pride": render_pride_frame,
-    "pulp": render_pulp_frame,
-    "vhs": render_vhs_frame,
-    "cardcatalog": render_cardcatalog_frame,
-    "metro": render_metro_frame,
-    "bakelite": render_bakelite_frame,
-    "intaglio": render_intaglio_frame,
-    "nocturne": render_nocturne_frame,
-    "plaque": render_plaque_frame,
-    "daguerreotype": render_daguerreotype_frame,
-    "autochrome": render_autochrome_frame,
-    "photo": render_photo_frame,
-    "control": render_control_frame,
-    "observation": render_observation_frame,
-    "trisolaris": render_trisolaris_frame,
-    "biomech": render_biomech_frame,
-    "codex": render_codex_frame,
-    "culture": render_culture_frame,
-    "orbital": render_orbital_frame,
-    "furies": render_furies_frame,
-    "bosch": render_bosch_frame,
-    "semiotic": render_semiotic_frame,
-    "atropos": render_atropos_frame,
-    "saros": render_saros_frame,
-    "expedition": render_expedition_frame,
-    "witcher": render_witcher_frame,
-    "hades": render_hades_frame,
-    "expanse": render_expanse_frame,
-    "beksinski": render_beksinski_frame,
-    "goya": render_goya_frame,
-    "hal": render_hal_frame,
-    "lumon": render_lumon_frame,
-    "dsky": render_dsky_frame,
-    "oblivion": render_oblivion_frame,
-    "yorha": render_yorha_frame,
-    "hitchhiker": render_hitchhiker_frame,
-    "escritoire": render_escritoire_frame,
-}
 
 
 def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = "debug", theme: str = "default") -> Image.Image:
@@ -614,9 +433,9 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     quote_row = apply_theme_glyph_fallbacks(quote_row, theme)
     if mode == "card":
         return render_source_card(quote_row, width, height, theme=theme)
-    frame_renderer = _FRAME_RENDERERS.get(theme)
-    if frame_renderer is not None:
-        return frame_renderer(time_str, quote_row, width, height)
+    frame = FRAME_SPECS.get(theme)
+    if frame is not None:
+        return frame.render(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
     _paint_theme_border(image, theme, colors)
@@ -740,43 +559,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         quote_right_edge = max(quote_right_edge, attribution_left + bbox[2] - bbox[0])
 
     clear_rect = None
-    # Per-theme clear-rect padding (x, top, bottom), wide enough that each
-    # theme's framing decoration clears the body text (kanagawa's seigaiha
-    # crescents, cartograph's doubled rule and corner ticks). blueprint's grid
-    # repaints inside the rect, so its 2/2/2 only guards a 1 px stroke.
-    _CLEAR_RECT_PADS = {
-        "blueprint": (2, 2, 2),
-        "kanagawa": (14, 6, 6),
-        "cartograph": (22, 12, 12),
-        # circuit knocks the body region back to clean forest soldermask and
-        # frames it with a 1 px white silkscreen outline + a pin-1 corner dot;
-        # the 16/10/10 pad keeps that outline (and the dot just outside the
-        # top-left corner) clear of the first / last text lines.
-        "circuit": (16, 10, 10),
-        # synoptic boxes the quote as a chart legend: a 2 px black frame with
-        # blue rules inset 8 px, so the pad has to clear both.
-        "synoptic": (20, 14, 14),
-        # anna_atkins deliberately omits a body-text knockout — the white /
-        # sky-blue text is rendered directly on the cyanotype plate with a
-        # subtle per-glyph black halo (see ``_draw_text_body``) instead of a
-        # panel, so the full photogram stays visible behind the quote.
-        # letter knocks the writing area back to clean cream (no foxing) so the
-        # thin Dancing Script body doesn't blur against the plate's foxing
-        # speckle; a generous 26/18/18 pad leaves clean margin around the text
-        # even after the 16 px feathered edge, with no drawn frame.
-        "letter": (26, 18, 18),
-        # betweenus knocks the body out to a rounded card (radius 18) floated
-        # on a soft shadow; the pad is the app's card padding scaled up, and
-        # wide enough that the corner arcs never cut into a first / last line.
-        "betweenus": (28, 18, 24),
-        "betweenus_dark": (28, 18, 24),
-        # risograph knocks the body rect back to paper and frames it with a
-        # misregistered double rule (2 px red + 2 px blue offset by 5/3);
-        # 20/14/14 keeps both rules outside the text's own bounds.
-        "risograph": (20, 14, 14),
-    }
-    if theme in _CLEAR_RECT_PADS and quote_line_boxes:
-        clear_pad_x, clear_pad_top, clear_pad_bottom = _CLEAR_RECT_PADS[theme]
+    border = BORDER_SPECS.get(theme)
+    # The knockout rect: the quote and attribution block, grown by the
+    # theme's ``clear_rect_pad`` so its framing decoration clears the text.
+    if border is not None and border.clear_rect_pad is not None and quote_line_boxes:
+        clear_pad_x, clear_pad_top, clear_pad_bottom = border.clear_rect_pad
         clear_top = max(0, quote_line_boxes[0][1] - clear_pad_top)
         clear_bottom = min(height - 1, block_bottom + clear_pad_bottom)
         clear_rect = (
@@ -788,58 +575,14 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         # Drop a degenerate rect (x1 < x0 or y1 < y0): on a small preview
         # canvas the layout can land partly off-screen and invert the box,
         # which would raise in the knockout / border painters. None means "no
-        # body-region knockout", which the branches below handle.
+        # body-region knockout", which every knockout painter accepts.
         if clear_rect[2] < clear_rect[0] or clear_rect[3] < clear_rect[1]:
             clear_rect = None
 
-    if theme == "blueprint":
-        _paint_theme_border(image, theme, colors)
-        if clear_rect is not None:
-            clear_draw = ImageDraw.Draw(image)
-            clear_draw.rectangle(clear_rect, fill=colors["page_bg"])
-            draw_blueprint_border(image, colors, clear_rect=clear_rect)
-    elif theme == "kanagawa":
-        # One call with ``clear_rect`` threaded through: the painter resets
-        # the body rect to page_bg at the end, with no grid to re-add inside
-        # it (unlike blueprint).
-        draw_kanagawa_border(image, colors, clear_rect=clear_rect)
-    elif theme == "cartograph":
-        # Same single-call dispatch as kanagawa — cartograph paints all
-        # eight map layers in one pass, knocking out the body-text rect
-        # to a clean cream-washed rounded cartouche at the end.
-        draw_cartograph_border(image, colors, clear_rect=clear_rect)
-    elif theme == "circuit":
-        # Same single-call dispatch as kanagawa / cartograph — the PCB
-        # painter routes copper / pads / silkscreen across the board, then
-        # knocks the body-text rect back to clean forest soldermask and
-        # frames it with a white silkscreen component outline.
-        draw_circuit_border(image, colors, clear_rect=clear_rect)
-    elif theme == "synoptic":
-        # Same single-call dispatch as kanagawa / cartograph / circuit — the
-        # analysis paints graticule, isobars, fronts and station plots in one
-        # pass, then wipes the body-text rect and boxes it as a chart legend.
-        draw_synoptic_border(image, colors, clear_rect=clear_rect, time_str=time_str)
-    elif theme == "risograph":
-        # Same single-call dispatch — the print-test shapes paint across the
-        # sheet, then the body rect is knocked back to paper and framed as a
-        # misregistered pasted-up label.
-        draw_risograph_border(image, colors, clear_rect=clear_rect)
-    elif theme == "letter":
-        # Same single-call dispatch — the letter painter pastes the dithered
-        # aged-paper plate, knocks the writing area back to clean cream so the
-        # thin script reads without foxing speckle, then paints creases + the
-        # wax seal on top.
-        draw_letter_border(image, colors, clear_rect=clear_rect)
-    elif theme in _BETWEENUS_THEMES:
-        # Same single-call dispatch — the painter lays the paper, floats the
-        # quote card over it, and needs ``time_str`` for the day-progress bar
-        # and the daypart pill (the registry contract carries no clock).
-        draw_betweenus_border(image, colors, clear_rect=clear_rect, time_str=time_str)
-    else:
-        # anna_atkins falls through here too: it paints the dithered photogram +
-        # ferns + labels via _paint_theme_border with no body-rect knockout, and
-        # the quote text is drawn directly over the plate with a per-glyph halo.
-        _paint_theme_border(image, theme, colors)
+    # The knockout pass: every border theme is painted again now the quote is
+    # laid out, with the knockout rect (and the time) when its spec asks.
+    if border is not None:
+        border.paint_knockout(image, colors, clear_rect, time_str)
 
     draw = ImageDraw.Draw(image)
     show_debug = mode == "debug"

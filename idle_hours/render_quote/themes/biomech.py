@@ -23,6 +23,7 @@ from ..primitives import (
     shade_height_field,
     wrap_quote_into_masks,
 )
+from ..spec import FrameSpec
 from ._shared import _TAROT_ROMAN_NUMERALS
 
 # ---------------------------------------------------------------------------
@@ -466,3 +467,6 @@ def render_biomech_frame(time_str: str, quote_row: dict, width: int, height: int
     if (width, height) != (800, 480):
         image = image.resize((width, height), Image.Resampling.NEAREST)
     return image
+
+
+SPEC = FrameSpec(themes=("biomech",), render=render_biomech_frame)
