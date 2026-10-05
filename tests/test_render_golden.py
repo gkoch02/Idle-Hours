@@ -47,10 +47,10 @@ colour, or the quote block shifts by half a line).
 """
 from __future__ import annotations
 
+import ast
 import contextlib
 import datetime
 import os
-import types
 from pathlib import Path
 
 import pytest
@@ -677,42 +677,15 @@ GOLDEN_NOW = datetime.datetime(2026, 4, 19, 14, 30, 0)
 CLOCK_DEPENDENT_THEMES = frozenset({"astrarium", "vinyl"})
 
 
-def _frozen_datetime_module() -> types.SimpleNamespace:
-    """A stand-in for the stdlib ``datetime`` module pinned to ``GOLDEN_NOW``.
-
-    The frozen classes subclass the real ones so ``isinstance`` checks and
-    ordinary construction keep working; only ``now()`` / ``today()`` are
-    overridden. ``render_quote`` does ``import datetime`` and touches just
-    ``datetime.datetime`` and ``datetime.date``, so swapping the module
-    reference on the module object is enough.
-    """
-
-    class _FrozenDatetime(datetime.datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return GOLDEN_NOW if tz is None else GOLDEN_NOW.replace(tzinfo=tz)
-
-    class _FrozenDate(datetime.date):
-        @classmethod
-        def today(cls):
-            return GOLDEN_NOW.date()
-
-    return types.SimpleNamespace(
-        datetime=_FrozenDatetime,
-        date=_FrozenDate,
-        timedelta=datetime.timedelta,
-        timezone=datetime.timezone,
-    )
-
-
 @contextlib.contextmanager
 def _frozen_clock():
-    original = rq.datetime
-    rq.datetime = _frozen_datetime_module()
+    """Pin ``render_quote._now`` (the renderer's single clock read) to ``GOLDEN_NOW``."""
+    original = rq._now
+    rq._now = lambda: GOLDEN_NOW
     try:
         yield
     finally:
-        rq.datetime = original
+        rq._now = original
 
 
 def _render_scenario(scenario: dict) -> Image.Image:
@@ -844,7 +817,7 @@ class TestGoldenStructure:
         see which frames move.
 
         The sysinfo strip is pinned because it is the one live input the
-        datetime freeze does not cover: ``diags`` renders ``/proc/uptime`` at
+        clock freeze does not cover: ``diags`` renders ``/proc/uptime`` at
         minute granularity, and when the machine's uptime minute ticks between
         a theme's two back-to-back renders the strip moves a few pixels and
         this fence flags ``diags`` as clock-dependent — a real CI flake
@@ -859,15 +832,12 @@ class TestGoldenStructure:
         far_future = datetime.datetime(2031, 11, 3, 9, 5, 0)
         row = _row(THEME_SWEEP_QUOTE, THEME_SWEEP_MATCH)
         drifted = set()
-        original = rq.datetime
+        original = rq._now
         try:
             for theme in sorted(rq.THEMES):
                 frames = []
                 for instant in (GOLDEN_NOW, far_future):
-                    module = _frozen_datetime_module()
-                    module.datetime.now = classmethod(lambda cls, tz=None, _i=instant: _i)
-                    module.date.today = classmethod(lambda cls, _i=instant: _i.date())
-                    rq.datetime = module
+                    rq._now = lambda _i=instant: _i
                     frames.append(
                         rq.render(THEME_SWEEP_TIME, dict(row), 800, 480,
                                   mode="production", theme=theme).convert("RGB")
@@ -875,11 +845,62 @@ class TestGoldenStructure:
                 if ImageChops.difference(*frames).getbbox() is not None:
                     drifted.add(theme)
         finally:
-            rq.datetime = original
+            rq._now = original
         assert drifted == CLOCK_DEPENDENT_THEMES, (
             "CLOCK_DEPENDENT_THEMES is stale: themes that read the wall clock "
             f"but aren't frozen={sorted(drifted - CLOCK_DEPENDENT_THEMES)}, "
             f"themes frozen unnecessarily={sorted(CLOCK_DEPENDENT_THEMES - drifted)}"
+        )
+
+    def test_renderer_reads_the_clock_only_through_now(self):
+        """Every wall-clock read in ``render_quote`` must go through ``_now``.
+
+        The freeze above patches that one function. A painter that called
+        ``datetime.datetime.now()``, ``datetime.date.today()``, ``time.time()``
+        or ``datetime.fromtimestamp(...)`` directly would slip past it: its
+        golden would expire overnight, and
+        ``test_clock_dependent_theme_list_is_accurate`` would report the theme
+        as clock-dependent with no way to freeze it.
+
+        The seam must also stay one name in one module. A module that imported
+        it by name (``from .clock import _now``) would hold its own binding,
+        which a patch on the defining module never reaches. Callers reach it
+        through the module object (issue #335 splits the renderer into
+        several).
+        """
+        # Every module in the package, not just the one that defines the
+        # seam: the split moves painters into submodules.
+        package_dir = Path(rq.__file__).parent
+        trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(package_dir.rglob("*.py"))}
+        seams = [
+            node for tree in trees.values() for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_now"
+        ]
+        assert len(seams) == 1, f"expected exactly one _now() seam in render_quote, found {len(seams)}"
+        inside_seam = {id(node) for node in ast.walk(seams[0])}
+        clock_reads = {"now", "today", "utcnow", "time", "localtime", "gmtime", "fromtimestamp"}
+        offenders = [
+            f"{path.relative_to(package_dir)}:{node.lineno}"
+            for path, tree in trees.items()
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in clock_reads
+            and id(node) not in inside_seam
+        ]
+        assert offenders == [], (
+            f"render_quote reads the wall clock directly at {offenders}; "
+            "call _now() instead so the golden freeze covers it"
+        )
+        rebound = [
+            f"{path.relative_to(package_dir)}:{node.lineno}"
+            for path, tree in trees.items()
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and any(alias.name in {"_now", "now"} for alias in node.names)
+        ]
+        assert rebound == [], (
+            f"render_quote imports the clock seam by name at {rebound}; reach it through its "
+            "module instead, or a patch on the seam no longer reaches that caller"
         )
 
     def test_themes_produce_distinct_goldens(self):

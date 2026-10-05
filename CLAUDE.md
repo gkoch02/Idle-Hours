@@ -276,11 +276,19 @@ After the v2.x package restructure, three resolution rules apply:
   sets `output` to an absolute path under `/var/lib/idle-hours/`; the
   systemd unit's `WorkingDirectory=` is the same directory, but it is
   there for `lgpio` (see "Appliance / Pi Setup"), not to anchor outputs.
+- **The bundled renderer is a module, not a path.** `--render-script` defaults
+  to `"auto"`, which runs `python -m idle_hours.render_quote` (issue #335).
+  `run_clock._render_command` is the one place that decides. The legacy value
+  `"render_quote.py"`, which every pre-#335 appliance config carries, still
+  means the bundled renderer unless a `./render_quote.py` exists in the working
+  directory, and `main()` logs a one-line deprecation note for it. Any other
+  value is a custom renderer and resolves as an input path (below). Preflight
+  checks `"auto"` with `importlib.util.find_spec`, not a file test.
 - **Operator-supplied input paths** (`--render-script`, `--display-script`,
   `--quiet-image`, `--startup-image`) go through `path_resolution.resolve_input_path`,
   which tries CWD-relative first and falls back to `BASE_DIR`-relative when
-  the CWD candidate doesn't exist. This lets `config.toml.defaults` keep
-  relative strings like `render_script = "render_quote.py"` (resolves to
+  the CWD candidate doesn't exist. This lets `config.toml.example` keep
+  relative strings like `display_script = "display_inky.py"` (resolves to
   the bundled script regardless of CWD), while an operator who drops
   `./my_renderer.py` in their working tree and points the config at it
   still gets *their* file. Absolute paths pass through unchanged. The
@@ -584,7 +592,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 **Adding a theme — checklist.**
 1. `THEMES`, `THEME_ORDER`, `THEME_FONTS`, `display_inky.THEME_SATURATION` (`0.5` light ground, `0.7` dark / coloured / bloom-heavy), and `run_clock`'s `--theme` choices (a test pins the sync).
 2. A border painter, or a `render_<theme>_frame` registered in `_FRAME_RENDERERS` plus a `CUSTOM_FRAME_THEMES` entry. Frame helpers are named `_<theme>_paint_*` (the decoration fence neuters them by name). Anything painted in the y=14-29 top-right band needs a `_DEBUG_LABEL_RIGHT_INSET` entry.
-3. Golden fixture: `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py`. If the theme reads the wall clock, add it to `CLOCK_DEPENDENT_THEMES`.
+3. Golden fixture: `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py`. If the theme reads the wall clock, read it through `_now()` and add the theme to `CLOCK_DEPENDENT_THEMES`.
 4. README row + preview (`python scripts/generate_theme_previews.py --theme NAME`), the README contact-sheet loop, and the spelled-out theme counts / rosters fenced by `tests/test_docs_theme_counts.py` and `tests/test_docs_theme_registry.py` (in README, `docs/CONTRIBUTING.md`, `docs/themes.md`, `docs/runtime.md`, `docs/web_ui.md`, `docs/testing.md`, `config.toml.defaults`).
 5. A paragraph in `docs/themes.md` (theme + font), and a row in its colour table for any recipe you use.
 
@@ -595,7 +603,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 - **Glow / relief / shading primitives:** `paint_neon_mask` (falling-density bloom, always pass `ground=` so later halos can't eat earlier cores; `glow_minor` for two-ink glows), `paint_relief_mask`, `paint_hatched_tone`, `paint_flow_strokes`, `paint_craquelure`, `shade_height_field`, `wrap_quote_into_masks`, `paint_mount_card`.
 - **Shared small helpers — reuse, don't re-type** (issue #336 folded about fifty theme-prefixed copies into these): `_clock_hour12` (hour-only time surfaces), `_clock_hh_mm` (hour and minute; falls back to midnight on a malformed time, never raises), `_row_digest` (quote seeds), `_white_noise` / `_smooth_noise`, `_bayer_threshold_field`, `_lerp_stops`, `_halo_paste`, `_soft_ellipse_mask`, `_PANEL_INKS` + `_dither_calibrated` (Floyd–Steinberg in the measured ink space), `_shade_silhouette` / `_catmull_rom`, `_place_quote` + `_paint_placed` (fit, position and draw a ragged-right quote), `_fit_dotted_byline` / `_fit_from_title` / `draw_truncated_centred_byline` (bylines). A new `_<theme>_hour` or `_<theme>_seed` is a smell.
 - **Committed raster plates** go through `dither_image_to_palette` / `_load_dithered_plate`, restricted to the theme's sub-palette, with a synthesised fallback when the asset is missing. Generators live in `scripts/generate_*_plate.py`.
-- **Determinism.** Frames must be byte-identical across processes: never `hash()`; seed from `_row_digest` or a fixed seed. Don't read the wall clock unless listed in `CLOCK_DEPENDENT_THEMES`.
+- **Determinism.** Frames must be byte-identical across processes: never `hash()`; seed from `_row_digest` or a fixed seed. Don't read the wall clock unless listed in `CLOCK_DEPENDENT_THEMES`, and then only through `_now()`, the renderer's single clock seam. Reach it through its module, never `from … import _now`: a name import is a second binding that a patch on the seam cannot reach. A golden-suite AST fence rejects both a direct clock read (`now()`, `today()`, `time.time()`, `fromtimestamp()` …) and a name import of the seam. For a pure code move, `scripts/render_fingerprint.py` hashes every theme's frames, so a run on `main` and a run on the branch must match exactly. That is stricter than the golden suite's 0.1% tolerance.
 - **Time surfaces.** The matched phrase carries the time. Never print HH:MM digits unless the object genuinely is a clock (`vhs` OSD). Hour-only carriers (Roman numerals, camera number, due stamp…) are pinned byte-identical across the minutes of an hour; otherwise `del time_str` at frame entry.
 - **Fixed-geometry frames** compose at the canonical 800×480 and NEAREST-downsample for other sizes (`metro` convention; `TestFixedGeometryFramesDownscale`). Per-pixel writes must be bounds-clipped for `/api/preview` thumbnails.
 - **Small text** in hairline serifs or two-ink stipples shreds after palette snapping — use a sturdier face or a solid ink for bylines and chrome.
@@ -604,7 +612,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 
 **Full reference: [`docs/runtime.md`](docs/runtime.md)**: config precedence, quiet hours and the sleep frame, auto/random themes, buttons, persisted state, telemetry and health gates, backoff, the watchdog, shutdown, and the per-module ownership / lock / thread tables. Read it before changing any `runtime_*` module.
 
-**Tick.** Every `--interval-seconds` (60) the loop computes the fuzzy bucket. On a bucket or theme change it calls `peek_quote_id` in-process, skips the redraw if the `(source_id, line_number, display_quote, matched_text)` identity is unchanged, and otherwise spawns `render_quote.py` pinned to that exact row (`--pin-quote … --pin-matched-text …`) plus the optional `--display-script`. It appends to the anti-repeat ledger only after a successful render. `--once` renders one frame strictly; the loop logs and survives failures.
+**Tick.** Every `--interval-seconds` (60) the loop computes the fuzzy bucket. On a bucket or theme change it calls `peek_quote_id` in-process, skips the redraw if the `(source_id, line_number, display_quote, matched_text)` identity is unchanged, and otherwise spawns the renderer (`python -m idle_hours.render_quote`, or a custom `--render-script`) pinned to that exact row (`--pin-quote … --pin-matched-text …`) plus the optional `--display-script`. It appends to the anti-repeat ledger only after a successful render. `--once` renders one frame strictly; the loop logs and survives failures.
 
 **Config.** `--config PATH` loads TOML whose keys mirror the argparse `dest` names; precedence is **CLI > config > argparse default** via `parser.set_defaults`. Malformed content fails open with a warning. A missing `--config` file, or a missing input path at pre-flight, exits **42** (`EXIT_CONFIG_ERROR`, paired with `RestartPreventExitStatus=42`). A new flag must be wired into `CONFIG_SCHEMA` (or `TRANSIENT_KEYS`), `config.toml.defaults`, and `config.toml.example`; four sync tests enforce it.
 
@@ -672,6 +680,7 @@ server-side check of the same tag/package invariant.
 - One `tests/test_<module>.py` per module, class-based. `tests/conftest.py` isolates `$HOME` per test and unsets `IDLE_HOURS_PHOTO_PATH`.
 - **Golden renders:** `tests/golden/renderer/*.png`, one per theme plus layout/mode scenarios, compared at ≤0.1% differing pixels. Regenerate with `UPDATE_RENDER_GOLDEN=1 pytest tests/test_render_golden.py`. README previews must stay current: `scripts/generate_theme_previews.py --check` runs in CI.
 - **Structural fences** fail on *absence*, not just on change: `test_theme_decoration.py` (each painter/frame must actually paint), `test_docs_theme_counts.py` / `test_docs_theme_registry.py` (doc counts and rosters vs. the registries; a regex that matches nothing fails loudly), `test_ci_required_checks.py` (every CI job is required or explicitly advisory), `test_packaging.py` (wheel contents, no hardware imports).
+- **Patch where a name is read.** `render_quote` is a package (issue #335). `monkeypatch.setattr(rq, X, …)` reaches the one submodule that binds `X` and raises when several do; patch that submodule directly (`tests/test_render_quote_facade.py`).
 - **Pixel assertions** use `tests/pixel_helpers.py` (`distinct_inks`, `ink_counts`, `pixel_bytes`), never `Image.getdata()`. Pillow removal notices are errors via `filterwarnings`.
 - **Curator JS:** `node --test tests/js/*.test.mjs` loads the real `web/main.js` in a `node:vm` sandbox. The pytest bridge skips without node, so CI runs it directly.
 - **CI** (`.github/workflows/ci.yml`): `lint`, `test (3.11)`, `test (3.12)`, `golden-render`, `web-ui-js`, `package-build` are required (`.github/rulesets/main-branch.json`). `coverage` (95% branch floor) and the tag-only `release-version` are advisory.
@@ -706,7 +715,7 @@ idle_hours/                             single-package home for every Python mod
 ├─ apply_content_overrides.py           layer assets/content_overrides.json onto candidates-attributed.jsonl
 ├─ bake_quote_database.py               final pipeline stage — bake the display-ready runtime DB (pre-scored, per-bucket sorted; pick_quote reads by default)
 ├─ pick_quote.py                        rank candidates, honor overrides, fall back to neighbors (exposes select_quote(); baked DB by default with raw-corpus fallback)
-├─ render_quote.py                      Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process; also hosts dither_image_to_palette — render-time Floyd–Steinberg / ordered / Atkinson dithering of committed raster art to the inks, used by the anna_atkins cyanotype, grimdark gunmetal, letter aged-paper, daguerreotype silver, autochrome colour and control concrete plates; biomech instead dithers two *render-time* paintings — a lit height field to K+W and a dusk to K/R/Y/W — through the same FS path, and hosts `shade_height_field`, the Blinn-Phong height-field renderer)
+├─ render_quote/                        package (issue #335). `_monolith.py` still holds the code below while it moves out a stage at a time (docs/render_quote_split.md); `_facade.py` makes `render_quote.X` read from the submodule that binds X and forwards a patch there, or raises when no submodule or several bind it; `__main__.py` is what `python -m idle_hours.render_quote` (run_clock's renderer) runs. Pillow layout → 800×480 Spectra-6 PNG (imports pick_quote in-process; also hosts dither_image_to_palette — render-time Floyd–Steinberg / ordered / Atkinson dithering of committed raster art to the inks, used by the anna_atkins cyanotype, grimdark gunmetal, letter aged-paper, daguerreotype silver, autochrome colour and control concrete plates; biomech instead dithers two *render-time* paintings — a lit height field to K+W and a dusk to K/R/Y/W — through the same FS path, and hosts `shade_height_field`, the Blinn-Phong height-field renderer)
 ├─ contact_sheet.py                     12×12 grid of all 144 bucket frames, for offline QA
 ├─ run_clock.py                         runtime loop (bucket-change-triggered, error-tolerant, quiet-hours-aware, button + auto-theme + telemetry; atomic state writes, date-rotated telemetry with retention sweep, SIGTERM/SIGINT graceful shutdown, button liveness check). Thin orchestrator — delegates state/telemetry/theme/quiet/action helpers to the runtime_* siblings below and re-exports them so existing `run_clock.X` imports and test patches keep resolving.
 ├─ runtime_log.py                       shared timestamped stderr/stdout logger (_log)
@@ -765,6 +774,7 @@ scripts/                                bash drivers + the curated ID lists they
 ├─ generate_letter_plate.py             one-time art generator for assets/letter_aged_paper.png (the continuous-tone aged-paper plate the letter theme dithers at render time); deterministic (seeded)
 ├─ generate_control_plate.py            one-time art generator for assets/control_concrete.png (the board-formed concrete plate the control theme's plinth dithers at render time); deterministic (seeded)
 ├─ generate_autochrome_plate.py         one-time art generator for assets/autochrome_garden.png (the continuous-tone colour photograph the autochrome theme dithers against all six inks); deterministic (seeded)
+├─ render_fingerprint.py               sha256 of every theme's frames (3 quote lengths × 2 times × 2 modes + thumbnail + sleep frame) with the clock pinned. --output on main, --compare on a branch: a pure refactor must be byte-identical (issue #335)
 ├─ generate_theme_previews.py           regenerates idle_hours/assets/previews/*.png — the README theme table's
 │                                      thumbnails. Every preview is one pinned passage at one pinned time
 │                                      (H. G. Wells, The Time Machine, at 10:00), so the table compares palette

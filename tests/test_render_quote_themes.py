@@ -1691,30 +1691,16 @@ class TestVhsTapeDate:
             "date is barely varying with the row"
         )
 
-    def test_frame_ignores_the_system_date(self):
+    def test_frame_ignores_the_system_date(self, monkeypatch):
         """The regression this class exists for."""
         import datetime as _dt
 
         row = self._row()
         before = pixel_bytes(rq.render("14:30", row, 800, 480,
                                        mode="production", theme="vhs"))
-
-        class FrozenFuture(_dt.datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return cls(2031, 12, 25, 3, 4, 5)
-
-            @classmethod
-            def today(cls):
-                return cls(2031, 12, 25)
-
-        original = rq.datetime
-        try:
-            rq.datetime = FrozenFuture
-            after = pixel_bytes(rq.render("14:30", row, 800, 480,
-                                          mode="production", theme="vhs"))
-        finally:
-            rq.datetime = original
+        monkeypatch.setattr(rq, "_now", lambda: _dt.datetime(2031, 12, 25, 3, 4, 5))
+        after = pixel_bytes(rq.render("14:30", row, 800, 480,
+                                      mode="production", theme="vhs"))
         assert before == after, (
             "the vhs frame changed when the system date moved — something in it "
             "is reading the machine clock, which would expire its golden fixture "

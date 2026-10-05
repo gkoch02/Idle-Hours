@@ -23,8 +23,24 @@ from idle_hours.buckets import DEFAULT_BUCKET_MINUTES, bucket_for_time
 from idle_hours.gutenberg_time_miner import daypart_for_hour
 from idle_hours.path_resolution import PHOTO_PATH_ENV, resolve_input_path
 
-BASE_DIR = Path(__file__).resolve().parent
+# The idle_hours/ package directory (fonts/, assets/), one level above this
+# file now that render_quote is a package (issue #335).
+BASE_DIR = Path(__file__).resolve().parent.parent
 _FONT_FALLBACK_WARNED = False
+
+
+def _now() -> datetime.datetime:
+    """The renderer's one read of the wall clock.
+
+    Every clock-dependent surface (the sleep frame's fallback time, astrarium's
+    dashboard, vinyl's year and wear seed) goes through here, so the golden
+    suite and the preview generator freeze time by patching this single
+    function rather than swapping the ``datetime`` module. A seam that names its
+    readers survives the module being split; a module swap only reaches the
+    namespace it is applied to. ``tests/test_render_golden.py`` fails if any other
+    line here reads the clock directly.
+    """
+    return datetime.datetime.now()
 
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 480
@@ -13418,7 +13434,7 @@ def render_sleep_frame(
     bare ``render_quote.py --mode goodnight`` still renders.
     """
     if time_str is None:
-        time_str = datetime.datetime.now().strftime("%H:%M")
+        time_str = _now().strftime("%H:%M")
     # Hand out a copy: this module-level row is shared across every render
     # in a process (contact sheet, ``/api/preview``), so a painter that ever
     # mutated its row would corrupt later renders.
@@ -14573,7 +14589,7 @@ def render_astrarium_frame(time_str: str, quote_row: dict, width: int, height: i
     # Capture the wall clock once and share it across the header / dial /
     # datum strip, so a render straddling midnight can't show two dates
     # (which would persist until the next bucket change).
-    now = datetime.datetime.now()
+    now = _now()
 
     # Top-strip dashboard chrome.
     _astrarium_paint_header(image, draw, width, time_str, now)
@@ -16285,7 +16301,7 @@ def _vinyl_paint_label(
     draw.text((cx - w // 2 - bbox[0], cy + 28 - bbox[1]), cat_text, font=cat_font, fill=WHITE)
     # Current year at the bottom arc of the label.
     year_font = load_font([(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=9)
-    year_text = f"© {datetime.date.today().year}"
+    year_text = f"© {_now().year}"
     bbox = draw.textbbox((0, 0), year_text, font=year_font)
     w = bbox[2] - bbox[0]
     draw.text((cx - w // 2 - bbox[0], cy + 50 - bbox[1]), year_text, font=year_font, fill=WHITE)
@@ -16514,7 +16530,7 @@ def _vinyl_paint_catalog_bar(
     band. The catalog number repeats the label's, as real records do.
     """
     BLACK = SPECTRA6["black"]
-    year = datetime.date.today().year
+    year = _now().year
     cat = _vinyl_catalog_number(bucket)
     right_text = f"CAT NO. {cat}  ·  © {year}"
     # The catalog number carries the information, so the brand gives way:
@@ -16650,7 +16666,7 @@ def render_vinyl_frame(time_str: str, quote_row: dict, width: int, height: int) 
     # Sleeve cream wash full-canvas — the disk will overpaint the left half.
     _astrarium_paint_cream_wash(image)
     # Daily-seeded wear marks on the sleeve (right half only).
-    today = datetime.date.today()
+    today = _now().date()
     speckle_seed = int(today.strftime("%Y%m%d"))
     _vinyl_paint_wear_speckle(image, speckle_seed)
 
