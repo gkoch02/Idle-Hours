@@ -3,13 +3,12 @@
 ``append_telemetry`` writes one JSON line per render/error event to a
 date-suffixed sibling of the configured base path so long-running appliances
 don't accumulate an unbounded file. ``prune_telemetry`` drops date-suffixed
-siblings older than the retention window. Extracted from :mod:`run_clock`;
-``run_clock`` re-exports these names.
+siblings older than the retention window. Extracted from :mod:`run_clock`.
 
-Note: ``_maybe_prune_telemetry`` (the loop-glue "prune once per local-date
-rollover" wrapper that consults ``RuntimeState.last_pruned_date``) stays in
-:mod:`run_clock` so test monkeypatching of ``run_clock.prune_telemetry``
-flows through the re-exported name.
+``_maybe_prune_telemetry`` (the loop glue that prunes once per local-date
+rollover, gated on ``RuntimeState.last_pruned_date``) stays in :mod:`run_clock`.
+Callers read these names through this module, so a test patches
+``runtime_telemetry.prune_telemetry`` or ``runtime_telemetry.append_telemetry``.
 """
 from __future__ import annotations
 

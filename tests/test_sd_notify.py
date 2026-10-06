@@ -178,10 +178,10 @@ class TestMainLoopReadyNotification:
             raise KeyboardInterrupt
 
         with patch("sys.argv", argv), \
-             patch("idle_hours.run_clock.render_now"), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=("src", 1, "q", "m")), \
-             patch("idle_hours.run_clock.current_bucket", return_value="h3_exact"), \
-             patch("idle_hours.run_clock.current_time_str", return_value="12:00"), \
+             patch("idle_hours.runtime_render.render_now"), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("src", 1, "q", "m")), \
+             patch("idle_hours.runtime_render.current_bucket", return_value="h3_exact"), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="12:00"), \
              patch("idle_hours.run_clock._loop_sleep", side_effect=stop_immediately), \
              patch("idle_hours.sd_notify.notify_ready") as mock_ready:
             with pytest.raises(KeyboardInterrupt):

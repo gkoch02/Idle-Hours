@@ -24,7 +24,7 @@ import pytest
 from PIL import Image, ImageChops
 
 from idle_hours import render_quote as rq
-from idle_hours import run_clock
+from idle_hours import run_clock, runtime_actions
 from idle_hours.runtime_quiet import enter_quiet, exit_quiet, render_quiet_frame
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import QUIET_THEME_INHERIT, resolve_quiet_theme
@@ -273,8 +273,8 @@ class TestQuietFrameDispatch:
     def test_auto_renders_in_the_quiet_theme(self, tmp_path):
         args = _quiet_args(tmp_path, theme="scholar", quiet_theme="nightvision")
         state = RuntimeState("scholar")
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock._display_quiet_image") as mock_copy:
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_quiet._display_quiet_image") as mock_copy:
             render_quiet_frame(args, state, "22:00")
         assert mock_copy.called is False
         mode, theme = mock_render.call_args.args[5], mock_render.call_args.args[6]
@@ -285,14 +285,14 @@ class TestQuietFrameDispatch:
         png = tmp_path / "custom.png"
         png.write_bytes(b"\x89PNG")
         args = _quiet_args(tmp_path, quiet_image=str(png), quiet_theme="nightvision")
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock._display_quiet_image") as mock_copy:
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_quiet._display_quiet_image") as mock_copy:
             render_quiet_frame(args, RuntimeState("default"), "22:00")
         assert mock_copy.called and mock_render.called is False
 
     def test_empty_renders_the_quiet_start_quote_in_the_quiet_theme(self, tmp_path):
         args = _quiet_args(tmp_path, quiet_image="", quiet_theme="marker")
-        with patch("idle_hours.run_clock.render_now") as mock_render:
+        with patch("idle_hours.runtime_render.render_now") as mock_render:
             render_quiet_frame(args, RuntimeState("default"), "23:17")
         call = mock_render.call_args
         assert call.args[6] == "marker"
@@ -301,7 +301,7 @@ class TestQuietFrameDispatch:
 
     def test_manual_entry_renders_the_current_time(self, tmp_path):
         args = _quiet_args(tmp_path, quiet_image="")
-        with patch("idle_hours.run_clock.render_now") as mock_render:
+        with patch("idle_hours.runtime_render.render_now") as mock_render:
             render_quiet_frame(args, RuntimeState("default"), "14:03", manual_only=True)
         assert mock_render.call_args.kwargs["time_str"] == "14:03"
 
@@ -311,9 +311,9 @@ class TestQuietFrameDispatch:
         args = _quiet_args(tmp_path)
         state = RuntimeState("default")
         held = []
-        with patch("idle_hours.run_clock.render_now",
+        with patch("idle_hours.runtime_render.render_now",
                    side_effect=lambda *a, **k: held.append(state.render_lock.locked())), \
-             patch("idle_hours.run_clock.append_telemetry"):
+             patch("idle_hours.runtime_telemetry.append_telemetry"):
             enter_quiet(args, state, "22:00")
         assert held == [True]
 
@@ -333,10 +333,10 @@ class TestAutoSentinelReachesEveryQuietPath:
         args = _quiet_args(tmp_path, state_path=str(tmp_path / "state.json"))
         state = RuntimeState("default")
         state.manual_quiet = False
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.current_time_str", return_value="14:03"), \
-             patch("idle_hours.run_clock.append_telemetry"):
-            result = run_clock.action_quiet(args, state, label="button D")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="14:03"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"):
+            result = runtime_actions.action_quiet(args, state, label="button D")
         assert result["ok"] is True and state.manual_quiet is True
         assert mock_render.call_args.args[5] == "goodnight"
 
@@ -354,9 +354,9 @@ class TestAutoSentinelReachesEveryQuietPath:
             shutdown_command="true", buttons_off=False,
         )
         state = RuntimeState("default")
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.current_time_str", return_value="22:00"), \
-             patch("idle_hours.run_clock.append_telemetry"), \
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="22:00"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"), \
              patch("idle_hours.run_clock.subprocess.run"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -369,10 +369,10 @@ class TestAutoSentinelReachesEveryQuietPath:
             tmp_path, quiet_image="", state_path=str(tmp_path / "state.json"),
         )
         state = RuntimeState("default")
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.current_time_str", return_value="14:03"), \
-             patch("idle_hours.run_clock.append_telemetry"):
-            run_clock.action_quiet(args, state, label="button D")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="14:03"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"):
+            runtime_actions.action_quiet(args, state, label="button D")
         assert mock_render.called
         assert mock_render.call_args.kwargs["time_str"] == "14:03"
 
@@ -382,9 +382,9 @@ class TestAutoSentinelReachesEveryQuietPath:
             shutdown_command="true", buttons_off=False,
         )
         state = RuntimeState("default")
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.current_time_str", return_value="22:00"), \
-             patch("idle_hours.run_clock.append_telemetry"), \
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="22:00"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"), \
              patch("idle_hours.run_clock.subprocess.run"):
             _short, hold = run_clock._build_button_handlers(args, state)
             hold["D"]()
@@ -408,11 +408,11 @@ class TestThemeChangeWhileAsleep:
     def test_press_during_quiet_repaints_the_sleep_frame(self, tmp_path):
         args = _quiet_args(tmp_path, state_path=str(tmp_path / "state.json"))
         state = self._state()
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock._render_unlocked") as mock_quote, \
-             patch("idle_hours.run_clock.current_time_str", return_value="23:30"), \
-             patch("idle_hours.run_clock.append_telemetry"):
-            result = run_clock.action_theme(args, state, label="button B", target="comic")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render._render_unlocked") as mock_quote, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="23:30"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"):
+            result = runtime_actions.action_theme(args, state, label="button B", target="comic")
         assert result["ok"] is True
         assert mock_quote.called is False, "painted a corpus quote onto a sleeping panel"
         mode, theme = mock_render.call_args.args[5], mock_render.call_args.args[6]
@@ -421,10 +421,10 @@ class TestThemeChangeWhileAsleep:
     def test_press_outside_quiet_still_repaints_a_quote(self, tmp_path):
         args = _quiet_args(tmp_path, state_path=str(tmp_path / "state.json"))
         state = self._state()
-        with patch("idle_hours.run_clock._render_unlocked") as mock_quote, \
-             patch("idle_hours.run_clock.current_time_str", return_value="14:00"), \
-             patch("idle_hours.run_clock.append_telemetry"):
-            assert run_clock.action_theme(args, state, label="button B", target="comic")["ok"]
+        with patch("idle_hours.runtime_render._render_unlocked") as mock_quote, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="14:00"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"):
+            assert runtime_actions.action_theme(args, state, label="button B", target="comic")["ok"]
         assert mock_quote.called
 
     def test_manual_quiet_counts_as_asleep(self, tmp_path):
@@ -432,11 +432,11 @@ class TestThemeChangeWhileAsleep:
         args = _quiet_args(tmp_path, state_path=str(tmp_path / "state.json"))
         state = self._state()
         state.manual_quiet = True
-        with patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock._render_unlocked") as mock_quote, \
-             patch("idle_hours.run_clock.current_time_str", return_value="14:00"), \
-             patch("idle_hours.run_clock.append_telemetry"):
-            run_clock.action_theme(args, state, label="button B", target="comic")
+        with patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render._render_unlocked") as mock_quote, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="14:00"), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"):
+            runtime_actions.action_theme(args, state, label="button B", target="comic")
         assert mock_quote.called is False
         assert mock_render.call_args.args[5] == "goodnight"
 
@@ -468,12 +468,12 @@ class TestThemeCurrentIsWhatIsDisplayed:
     def _apply(self, tmp_path, target, time_str, *, manual_theme=None):
         """Returns (result, theme painted onto a SLEEP frame, quote repainted?)."""
         state = self._state(manual_theme)
-        with patch("idle_hours.run_clock.render_now") as sleep_render, \
-             patch("idle_hours.run_clock._render_unlocked") as quote_render, \
-             patch("idle_hours.run_clock.current_time_str", return_value=time_str), \
-             patch("idle_hours.run_clock.append_telemetry"), \
-             patch("idle_hours.run_clock.save_runtime_state"):
-            result = run_clock.action_theme(self._args(tmp_path), state, label="t", target=target)
+        with patch("idle_hours.runtime_render.render_now") as sleep_render, \
+             patch("idle_hours.runtime_render._render_unlocked") as quote_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value=time_str), \
+             patch("idle_hours.runtime_telemetry.append_telemetry"), \
+             patch("idle_hours.runtime_store.save_runtime_state"):
+            result = runtime_actions.action_theme(self._args(tmp_path), state, label="t", target=target)
         painted = sleep_render.call_args.args[6] if sleep_render.called else None
         return result, painted, quote_render.called
 

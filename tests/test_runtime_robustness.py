@@ -7,7 +7,7 @@ import errno
 import threading
 from unittest.mock import patch
 
-from idle_hours import run_clock, runtime_config, runtime_telemetry, runtime_webhook
+from idle_hours import run_clock, runtime_config, runtime_store, runtime_telemetry, runtime_theme, runtime_webhook
 
 
 class TestMidnightResetPersistFailure:
@@ -21,8 +21,8 @@ class TestMidnightResetPersistFailure:
         def boom(_path, _payload):
             raise OSError("disk full")
 
-        monkeypatch.setattr(run_clock, "save_runtime_state", boom)
-        run_clock._maybe_reset_manual_theme_at_midnight(args, state)
+        monkeypatch.setattr(runtime_store, "save_runtime_state", boom)
+        runtime_theme._maybe_reset_manual_theme_at_midnight(args, state)
         assert state.manual_theme is None
         assert state.last_seen_date == dt.date.today()
         assert "persist failed" in capsys.readouterr().err
@@ -43,9 +43,9 @@ class TestShutdownPersistFailure:
 
     def test_command_still_runs_when_persist_fails(self, tmp_path, capsys):
         state = run_clock.RuntimeState("default")
-        with patch("idle_hours.run_clock.save_runtime_state", side_effect=OSError("ro fs")), \
+        with patch("idle_hours.runtime_store.save_runtime_state", side_effect=OSError("ro fs")), \
              patch("idle_hours.run_clock.subprocess.run") as mock_run, \
-             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+             patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(self._args(tmp_path), state)
             hold["D"]()
         assert mock_run.called
@@ -54,9 +54,9 @@ class TestShutdownPersistFailure:
 
     def test_failed_command_rolls_back_even_when_persist_fails(self, tmp_path):
         state = run_clock.RuntimeState("default")
-        with patch("idle_hours.run_clock.save_runtime_state", side_effect=OSError("ro fs")), \
+        with patch("idle_hours.runtime_store.save_runtime_state", side_effect=OSError("ro fs")), \
              patch("idle_hours.run_clock.subprocess.run", side_effect=OSError("no sudo")), \
-             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+             patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             _short, hold = run_clock._build_button_handlers(self._args(tmp_path), state)
             hold["D"]()
         assert state.manual_quiet is False
@@ -135,9 +135,9 @@ class TestOncePinsQuote:
         ]
         qid = ("141", 482, "a quote", "half past two")
         with patch("sys.argv", argv), \
-             patch("idle_hours.run_clock.render_now") as mock_render, \
-             patch("idle_hours.run_clock.current_time_str", return_value="14:30"), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=qid), \
+             patch("idle_hours.runtime_render.render_now") as mock_render, \
+             patch("idle_hours.runtime_render.current_time_str", return_value="14:30"), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=qid), \
              patch("idle_hours.run_clock.pick_quote_module.append_history"):
             assert run_clock.main() == 0
         assert mock_render.call_args.kwargs["pin_quote"] == ("141", 482, "half past two")
@@ -155,7 +155,7 @@ class TestPidfileOSError:
         ]
         with patch("sys.argv", argv), \
              patch("idle_hours.run_clock.pidfile.acquire_pidfile", side_effect=PermissionError(13, "denied")), \
-             patch("idle_hours.run_clock.render_now") as mock_render:
+             patch("idle_hours.runtime_render.render_now") as mock_render:
             rc = run_clock.main()
         assert rc == runtime_config.EXIT_CONFIG_ERROR
         assert not mock_render.called
@@ -171,7 +171,7 @@ class TestPidfileOSError:
             "--state-path", "", "--quiet-off", "--skip-preflight",
             "--pidfile", str(blocker / "run_clock.pid"),
         ]
-        with patch("sys.argv", argv), patch("idle_hours.run_clock.render_now"):
+        with patch("sys.argv", argv), patch("idle_hours.runtime_render.render_now"):
             assert run_clock.main() == runtime_config.EXIT_CONFIG_ERROR
 
 
@@ -190,7 +190,7 @@ class TestPidfileTransientOSError:
         for code in (errno.ENOSPC, errno.EIO, errno.ENOLCK):
             with patch("sys.argv", self._argv(tmp_path)), \
                  patch("idle_hours.run_clock.pidfile.acquire_pidfile", side_effect=OSError(code, "x")), \
-                 patch("idle_hours.run_clock.render_now"):
+                 patch("idle_hours.runtime_render.render_now"):
                 assert run_clock.main() == 1, errno.errorcode[code]
 
 
@@ -221,5 +221,5 @@ def test_read_only_pidfile_mount_is_a_config_error(tmp_path):
     ]
     with patch("sys.argv", argv), \
          patch("idle_hours.run_clock.pidfile.acquire_pidfile", side_effect=OSError(errno.EROFS, "ro")), \
-         patch("idle_hours.run_clock.render_now"):
+         patch("idle_hours.runtime_render.render_now"):
         assert run_clock.main() == runtime_config.EXIT_CONFIG_ERROR
