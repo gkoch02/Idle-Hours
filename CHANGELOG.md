@@ -9,6 +9,18 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `bladerunner` theme: *Blade Runner 2049*'s systems — an LAPD records
+  terminal on black glass. The quote is a record in white Barlow Condensed
+  with the matched phrase in yellow, beside a dithered X-ray of the box's
+  pelvis with the serial boxed in red and magnified, and the twins' DNA, born
+  06.10.21, identical base for base. Along the foot the baseline test's
+  twelve prompts; the hour's is lit and the trace spikes above it.
+- New `lasvegas` theme: *Blade Runner 2049*, K in the dead Las Vegas. The
+  orange haze, dithered from red, yellow, black and white, swallows a skyline
+  of broken casino towers; K stands among the beehives under the spinner's
+  scanner tags. The quote sits in a black LAPD archive pane, white Barlow
+  with the matched phrase in yellow, over a DNA strip seeded from the quote
+  and twelve archive drawers whose lit cell is the hour.
 - The `photo` theme no longer washes out dark photographs. A dark picture was
   brightened by adding a flat amount to every pixel, which turned its blacks to
   mid-grey and the whole frame to fog on the panel. It is now lifted with a

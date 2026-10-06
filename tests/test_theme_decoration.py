@@ -113,6 +113,8 @@ CUSTOM_FRAME_THEMES = (
     "yorha",
     "hitchhiker",
     "escritoire",
+    "lasvegas",
+    "bladerunner",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its
