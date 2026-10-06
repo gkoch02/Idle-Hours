@@ -249,9 +249,10 @@ def _photo_condition(image: Image.Image) -> Image.Image:
     chroma is re-capped after each lift; the re-cap costs a little luminance
     back, hence the short loop. Levels runs last and is stable:
     ``v * scale + offset`` with ``scale <= 1`` leaves ``max - min`` unchanged
-    or lower, so chroma never rises back above target. It only ever darkens
-    or compresses; it never lifts, because an offset lift raises the black
-    point and turns a dark scene to fog.
+    or lower, so chroma never rises back above target. It never adds a
+    positive offset, because that raises the black point and turns a dark
+    scene to fog: when compressing contrast would need one, it scales toward
+    black and restores the mean with the gamma lift instead.
 
     Chroma and contrast are clamped to only reduce, so a photograph already in
     the band comes through untouched.
@@ -276,7 +277,15 @@ def _photo_condition(image: Image.Image) -> Image.Image:
     dest = target if mean > target + _PHOTO_MEAN_TOLERANCE / 2 else mean
     if scale < 1.0 or dest != mean:
         offset = (dest - mean * scale) * 255.0
-        out = out.point(lambda v, s=scale, o=offset: max(0, min(255, int(round(v * s + o)))))
+        if offset > 0:
+            # Compressing contrast around the mean would add ``offset`` to
+            # black too, undoing the lift's one guarantee on a high-contrast
+            # night scene. Scale toward black instead and win the mean back
+            # with the black-pinned gamma lift.
+            out = out.point(lambda v, s=scale: int(round(v * s)))
+            out = _photo_cap_chroma(_photo_lift(out, dest))
+        else:
+            out = out.point(lambda v, s=scale, o=offset: max(0, min(255, int(round(v * s + o)))))
     return out.filter(ImageFilter.GaussianBlur(_PHOTO_SOFT_FOCUS))
 
 
