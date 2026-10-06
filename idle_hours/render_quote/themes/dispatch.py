@@ -163,4 +163,6 @@ def draw_dispatch_border(image: Image.Image, colors: dict) -> None:
 SPEC = BorderSpec(
     themes=("dispatch",),
     paint=draw_dispatch_border,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )
