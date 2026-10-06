@@ -58,6 +58,7 @@ THEME_SATURATION: dict[str, float] = {
     "photo": 0.5,
     "placard": 0.5,
     "pride": 0.5,
+    "redacted": 0.5,
     "roman": 0.5,
     "saloon": 0.5,
     "sampler": 0.5,

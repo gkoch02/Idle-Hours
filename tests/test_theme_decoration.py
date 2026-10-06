@@ -116,6 +116,7 @@ CUSTOM_FRAME_THEMES = (
     "lasvegas",
     "bladerunner",
     "traumateam",
+    "redacted",
 )
 
 # ``diags`` is the developer swatch panel, not a literary theme: it paints its

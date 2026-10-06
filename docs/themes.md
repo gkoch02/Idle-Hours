@@ -20,7 +20,7 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `alfa-slab-one/` | OFL.txt | `pulp` | — |
 | `almendra/` | OFL.txt | `carcosa` | — |
 | `antonio/` | OFL.txt | `lcars`, `marquee`, `vinyl`, `outrun`, `vhs` | `expedition` |
-| `archivo/` | OFL.txt | `blueprint`, `control` | `witcher` |
+| `archivo/` | OFL.txt | `blueprint`, `control`, `redacted` | `witcher` |
 | `archivo-narrow/` | OFL.txt | `witcher` | — |
 | `atomic-age/` | OFL.txt | `atomic` | `fillmore` |
 | `bangers/` | OFL.txt | `comic` | `fillmore` |
@@ -75,8 +75,8 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `share-tech-mono/` | OFL.txt | `culture`, `orbital`, `expanse`, `lasvegas`, `bladerunner` | — |
 | `shojumaru/` | OFL.txt | `chanbara` | — |
 | `silkscreen/` | OFL.txt | `sampler` | — |
-| `space-mono/` | OFL.txt | `nightvision`, `vinyl`, `circuit`, `pulp`, `synoptic`, `bakelite`, `cardcatalog`, `metro`, `intaglio`, `trisolaris` | `dispatch`, `observation`, `culture`, `orbital`, `expanse` |
-| `special-elite/` | LICENSE.txt | `dispatch`, `cardcatalog`, `dsky` | — |
+| `space-mono/` | OFL.txt | `nightvision`, `vinyl`, `circuit`, `pulp`, `synoptic`, `bakelite`, `cardcatalog`, `metro`, `intaglio`, `trisolaris` | `dispatch`, `observation`, `culture`, `orbital`, `expanse`, `redacted` |
+| `special-elite/` | LICENSE.txt | `dispatch`, `cardcatalog`, `dsky`, `redacted` | — |
 | `spectral/` | OFL.txt | `biomech`, `hades` | — |
 | `spectral-sc/` | OFL.txt | `hades` | — |
 | `titillium-web/` | OFL.txt | `trisolaris` | — |
@@ -1430,6 +1430,16 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
 
     **Plumbing.** Solid flats, no dither beyond the tabs, so nothing is cached. Composed at the canonical 800×480 and NEAREST-downsampled (the `metro` convention). Saturation tier `0.7` (dark ground).
 
+  - `redacted` (white page / the Bureau's letterhead and black seal / red DECLASSIFIED stamp / typed Special Elite body / matched phrase in red / seeded black marker bars over other words — ***Control*: a declassified Federal Bureau of Control document**). A custom-render frame (`render_redacted_frame`); `control` is the game's title card, this is its paperwork.
+
+    **The censor never touches the time.** Bars land only on words outside the matched phrase with four letters or more that are not function words or time words (`_REDACTED_SPARED`: "would", "morning", "seven", "clock" …), and a word glued to the phrase with no space (`seven)`'s `)` side) is skipped, so the phrase and anything that reads as part of a time stay legible. Edge punctuation is trimmed off a bar, so a trailing comma survives beside it, as on a real document. About a third of the eligible words go (`_REDACTED_RATE`), capped at `_REDACTED_CAP` of them so a short quote is never blacked out whole, and at least one goes whenever any qualify.
+
+    **Bars are a felt marker, not a rectangle tool.** Each row of a bar's ends wanders a pixel either way, and two redactions side by side on a line join into one stroke across the gap, unless a spared word sat between them. The AUTHORIZED signature in the foot is a bar too.
+
+    **Seeded, never clocked.** Which words go, the bars' edges, the document type, file number, clearance level and the stamp's tilt all come from the quote (`_row_digest`); nothing reads the time, so a frame is byte-identical across every minute and an unchanged quote never redraws differently.
+
+    **Plumbing.** Solid black and red on white, no dither; the stamp's wear is a positional-hash scatter of pinholes (`position_noise`), clipped to the panel. Composed at the canonical 800×480 and NEAREST-downsampled (the `metro` convention). Saturation tier `0.5` (light ground).
+
   - `saros` (black sky / diffusion-dithered red-and-gold corona / white Saira body / ember matched phrase, Orbitron wordmark and Michroma chrome — **Housemarque's *Saros* (2026)**, the eclipse that hangs over the colony of Carcosa). A custom-render frame (`render_saros_frame`).
 
     **The corona is painted in continuous tone and dithered, not stippled.** `_saros_corona_field` evaluates a radial profile per pixel at a quarter of panel resolution (`_SAROS_SKY_STEP`; a glow has no finer detail) and bicubic-upsamples it: a chromospheric rim decaying over 0.06 radii, a mid corona over 0.36, an outer haze over 1.1, and eight **streamers** (`_SAROS_STREAMERS` — angular Gaussian lobes that brighten the mid and outer terms along their axes, asymmetric on purpose, a few long plumes and short brushes rather than a halo). A **sunset band** rings the horizon (`_saros_dusk`, an exponential up from the ground line, strongest under the sun and a third as bright at the edges — what a total eclipse's horizon actually does, and what cuts every silhouette out of the sky), and a cold **blue haze** pools low on the left, away from the sun (`_saros_haze`). The photosphere disc and the moon are then painted sharp at full resolution, because the exposed sliver is the one hard edge in the sky, and the field is Floyd–Steinberg-dithered to K/R/Y/W + blue (`_SAROS_SKY_PALETTE`) — the `biomech` dusk recipe.
@@ -1692,6 +1702,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
   - `bladerunner` uses **Barlow Condensed** (Jeremy Tribby, OFL), already bundled, Medium for the white body, Bold for the matched phrase, SemiBold for every tracked label and the baseline's prompts (stepped down to 10 px where a word would touch its cell), and **Share Tech Mono** for the base pairs and the magnified serial. The film's interface type is custom; a narrow, low-contrast grotesque in tracked capitals is the register it reads in.
   - `lasvegas` uses **Barlow** (Jeremy Tribby, OFL), already bundled for `expanse`, Medium for the white body on the black pane (a Regular stem thins once the panel's white bleeds into the black) and Bold for the matched phrase; **Barlow Condensed** for the tracked chrome, tags and byline; and **Share Tech Mono** for the base pairs. Territory Studio set the film's interfaces in plain, low-contrast grotesques, and Barlow's slightly squared curves sit between that and a highway sign.
   - `traumateam` uses **Oxanium** (Sev Meyer, OFL), already bundled for `outrun`, pinned Regular for the body, Bold for the matched phrase and SemiBold / Medium for the band, the byline and the vitals label. The game's interface faces are commercial; Oxanium's squared bowls sit in the same register and stay sturdy in white on black at the byline's size.
+  - `redacted` uses **Special Elite** (Astigmatic, Apache 2.0), already bundled for `dispatch`, for the typed body, the form values and the source line. It ships one weight, so the matched phrase differs by colour alone, the bichrome-ribbon shift `dispatch` uses. The letterhead, the form labels and the stamp are **Archivo** Bold, the Akzidenz-Grotesk stand-in `control`'s sign already uses, so the two *Control* themes share a house face.
   - `saros` uses **Saira** (Omnibus-Type, OFL) for the body, **Orbitron** (Matt McInerney, OFL) for the wordmark and **Michroma** (Vernon Adams, OFL) for the status chrome.
 
     **The game's faces.** The Game Font Library lists *Saros*'s faces as **Arame** (dmtr.org) as the main display face, **Tamba Sans** (Dharma Type) for text and **Korataki** (Typodermic) as the tertiary face; none is open, so each register gets the nearest open face.

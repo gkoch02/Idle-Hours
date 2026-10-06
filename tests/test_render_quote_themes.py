@@ -7878,3 +7878,90 @@ class TestTraumateamFrame(_CustomFrameCase):
         points = rq._traumateam_vitals_points(make_row(**self.ROW))
         assert all(x0 <= x <= x1 and y0 <= y <= y1 for x, y in points)
         assert ink_counts(a.crop(rq._TRAUMATEAM_VITALS)).get(rq.SPECTRA6["white"], 0) > 800
+
+
+class TestRedactedFrame:
+    """``redacted`` — *Control*: a declassified Bureau document, the quote
+    typed under the letterhead with seeded black bars over words the censor
+    took, and never over the time."""
+
+    THEME = "redacted"
+    ROW = dict(
+        display_quote="They had left the farmhouse that morning a little after three o'clock, having "
+                      "packed their surveying equipment the day before, and crossed the pasture.",
+        matched_text="a little after three",
+        author="Willa Cather",
+        title="The Song of the Lark",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="14:30", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    @staticmethod
+    def _placed(row):
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        return draw, rq._place_quote(draw, make_row(**row), rq._REDACTED_QUOTE_RECT, theme="redacted",
+                                     font_max=34, font_min=16, line_height_mult=1.45)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert self.THEME not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.5
+        assert rq.theme_font_candidates(self.THEME, "quote_regular")[0] == rq.SPECIALELITE_REGULAR
+
+    def test_inks_are_black_white_and_red_and_deterministic(self):
+        image = self._render()
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("black", "white", "red")}
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_clock(self):
+        a = self._render(time_str="09:00")
+        for time_str in ("09:33", "21:17", "00:00", "bogus"):
+            assert pixel_bytes(self._render(time_str=time_str)) == pixel_bytes(a)
+
+    def test_downscales_the_canonical_frame(self):
+        small = self._render(size=(320, 192))
+        assert pixel_bytes(small) == pixel_bytes(self._render().resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_censor_spares_the_phrase_and_time_words(self):
+        draw, placed = self._placed(self.ROW)
+        phrase = [(x, x + w, y) for x, y, _c, _f, is_bold, w, _lh in placed if is_bold]
+        assert phrase
+        candidates = rq._redacted_candidates(draw, placed)
+        assert candidates
+        for _line, x0, x1, y in candidates:
+            assert not any(py == y and x0 < px1 and px0 < x1 for px0, px1, py in phrase)
+        words = {c.strip(rq._REDACTED_EDGE_PUNCT).lower() for _x, _y, c, *_ in placed}
+        assert {"that", "morning", "before"} <= words & rq._REDACTED_SPARED
+        assert len(candidates) < len([w for w in words if w])
+
+    def test_at_least_one_bar_and_never_too_many(self):
+        draw, placed = self._placed(self.ROW)
+        candidates = rq._redacted_candidates(draw, placed)
+        chosen = rq._redacted_choose(candidates, make_row(**self.ROW))
+        assert 1 <= len(chosen) <= max(1, int(len(candidates) * rq._REDACTED_CAP))
+        assert rq._redacted_choose([], make_row(**self.ROW)) == []
+
+    def test_bars_are_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        rect = rq._REDACTED_QUOTE_RECT
+        assert pixel_bytes(a.crop(rect)) != pixel_bytes(b.crop(rect))
+        assert rq._redacted_doc_fields(make_row(**self.ROW))[0] in rq._REDACTED_DOC_TYPES
+
+    def test_phrase_is_red_and_only_the_phrase(self):
+        rect = rq._REDACTED_QUOTE_RECT
+        assert ink_counts(self._render().crop(rect)).get(rq.SPECTRA6["red"], 0) > 300
+        plain = dict(self.ROW, matched_text="")
+        assert rq.SPECTRA6["red"] not in ink_counts(self._render(plain).crop(rect))
+
+    def test_stamp_stays_on_the_panel_and_clear_of_the_body(self):
+        for seed in range(8):
+            row = dict(self.ROW, line_number=seed)
+            image = self._render(row)
+            top = ink_counts(image.crop((0, 0, 800, 1)))
+            assert rq.SPECTRA6["red"] not in top, seed
+            plain = self._render(dict(row, matched_text=""))
+            assert rq.SPECTRA6["red"] not in ink_counts(plain.crop((0, rq._REDACTED_FIELDS_Y + 24, 800, 480))), seed
