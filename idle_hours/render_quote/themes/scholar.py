@@ -115,4 +115,6 @@ def draw_scholar_border(image: Image.Image, colors: dict) -> None:
 SPEC = BorderSpec(
     themes=("scholar",),
     paint=draw_scholar_border,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

@@ -2,8 +2,6 @@
 
 Extracted from :mod:`run_clock` so telemetry, state, theme, quiet-hours, and
 action helpers can emit log lines without pulling the whole orchestrator in.
-``run_clock._log`` is preserved as a re-export for backwards compatibility
-(tests and ``web_server`` reference that spelling).
 """
 from __future__ import annotations
 

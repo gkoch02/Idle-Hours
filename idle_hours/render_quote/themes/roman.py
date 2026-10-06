@@ -295,4 +295,6 @@ SPEC = BorderSpec(
     paint=draw_roman_border,
     # past the tabula's right rule (x=width-33..width-31) plus a gap
     debug_label_inset=38,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

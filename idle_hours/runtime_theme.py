@@ -4,14 +4,14 @@
 (for ``auto``), and the user's button-B manual override into the theme actually
 passed to the renderer. ``_maybe_reset_manual_theme_at_midnight`` clears the
 manual override on day rollover so ``auto`` resumes. Extracted from
-:mod:`run_clock`; the original names are re-exported from ``run_clock`` so
-existing call sites and test patches keep resolving.
+:mod:`run_clock` (issue #353).
 """
 from __future__ import annotations
 
 import datetime as dt
 import random
 
+from idle_hours import runtime_store
 from idle_hours.runtime_log import _log
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.theme_names import known_theme_names as _registered_themes
@@ -259,7 +259,6 @@ def resolve_quiet_theme(
 
 def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
     """Clear the manual theme override at the day boundary so 'auto' resumes."""
-    from idle_hours import run_clock
     today = dt.date.today()
     with state.lock:
         if state.last_seen_date is None:
@@ -271,7 +270,7 @@ def _maybe_reset_manual_theme_at_midnight(args, state: RuntimeState) -> None:
             # Best-effort (issue #279): this runs at tick-top, outside the
             # loop's error handling, so a persist error would crash main().
             try:
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
             except Exception as exc:
                 _log(f"midnight rollover: runtime state persist failed: {exc!r}", err=True)
         state.last_seen_date = today

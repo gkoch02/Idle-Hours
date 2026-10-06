@@ -102,10 +102,12 @@ The helper deliberately does not upload to PyPI or create a GitHub Release.
 
 ### Runtime code (`run_clock.py`, `runtime_*.py`, `render_quote/`, `pick_quote.py`, `web_server.py`, `idle_hours_cli.py`, …)
 
-The runtime is a thin orchestrator (`run_clock.py`) that delegates to eight
+The runtime is a thin orchestrator (`run_clock.py`) that delegates to nine
 `runtime_*` siblings (`runtime_state` / `runtime_store` / `runtime_telemetry`
-/ `runtime_webhook` / `runtime_quiet` / `runtime_theme` / `runtime_actions` /
-`runtime_log`). The module boundary, lock discipline, and thread ownership
+/ `runtime_webhook` / `runtime_render` / `runtime_quiet` / `runtime_theme` /
+`runtime_actions` / `runtime_log`). Nothing imports `run_clock` back: callers
+read a helper through the module that defines it (`runtime_render.render_now(...)`),
+and tests patch it there. The module boundary, lock discipline, and thread ownership
 rules are documented in the "Runtime Module Architecture" section of
 [`docs/runtime.md`](runtime.md) — please read that section before restructuring any of those
 modules. Highlights:

@@ -12,36 +12,20 @@ handlers ignore the return value and rely on internal logging. Every action:
 - catches ``Exception`` so a failure in one caller can't kill the listener
   thread or the HTTP server thread.
 
-Extracted from :mod:`run_clock`; the original names are re-exported from
-``run_clock`` for backwards compat (``web_server`` and tests reach them as
-``run_clock.action_*``). Implementation detail: each action does a local
-``import run_clock`` and routes calls to helpers like ``peek_quote_id``,
-``_render_unlocked``, ``current_time_str``, ``current_bucket``,
-``save_runtime_state``, ``append_telemetry``, ``_append_history_after_render``,
-and ``pick_quote_module`` through ``run_clock.X`` so tests that patch those
-names on ``run_clock`` affect the action's call path (same pattern
-``web_server`` uses to dodge circular imports at module load).
-``render_quiet_frame`` is imported *directly* from :mod:`runtime_quiet` —
-the through-``run_clock`` indirection earned no coupling benefit for a leaf
-helper, and the direct import makes the ownership obvious. (It still reaches
-``run_clock.render_now`` / ``run_clock._display_quiet_image`` internally, so
-those patches keep working.)
+Extracted from :mod:`run_clock`. Helpers from sibling modules are read through
+their module (``runtime_render.render_now(...)``, ``runtime_quiet.compute_quiet(...)``),
+so a test patches a name where it is defined and every caller sees the patch
+(issue #353). Nothing here imports ``run_clock``.
 """
 from __future__ import annotations
 
 import argparse
 import contextlib
 
+from idle_hours import pick_quote as pick_quote_module
+from idle_hours import runtime_quiet, runtime_render, runtime_store, runtime_telemetry, runtime_theme
 from idle_hours.runtime_log import _log
-from idle_hours.runtime_quiet import (
-    claim_quiet_edge,
-    compute_quiet,
-    exit_quiet,
-    render_quiet_frame,
-    scheduled_quiet,
-)
 from idle_hours.runtime_state import RuntimeState
-from idle_hours.runtime_theme import _auto_theme_kwargs, resolve_effective_theme, resolve_quiet_theme
 from idle_hours.theme_names import theme_cycle as _theme_cycle
 
 
@@ -90,8 +74,7 @@ def _button_render_gate(
         # Structured drop marker so operators can see "I mashed during a 20 s
         # refresh and nothing happened" in the telemetry sidecar — the log
         # line alone is easy to miss in journald under load.
-        from idle_hours import run_clock  # lazy import matches the action-body pattern below
-        run_clock.append_telemetry(
+        runtime_telemetry.append_telemetry(
             telemetry_path,
             {"mode": "press_dropped", "label": label, "action": action, "reason": "render_in_flight"},
         )
@@ -110,11 +93,10 @@ def _emit_action(telemetry_path: str | None, action: str, label: str, *, ok: boo
     failure emission (the busy-drop case is handled by ``_button_render_gate``
     and records ``mode="press_dropped"`` instead, so the two never double-count).
     """
-    from idle_hours import run_clock  # lazy: keeps test patches on run_clock.append_telemetry effective
     payload: dict = {"mode": "action", "action": action, "label": label, "ok": ok}
     if error is not None:
         payload["error"] = error
-    run_clock.append_telemetry(telemetry_path, payload)
+    runtime_telemetry.append_telemetry(telemetry_path, payload)
 
 
 def _quiet_active(args: argparse.Namespace, state: RuntimeState, time_str: str) -> bool:
@@ -124,7 +106,7 @@ def _quiet_active(args: argparse.Namespace, state: RuntimeState, time_str: str) 
     first element — action handlers care whether the panel is showing a sleep
     frame, not whether the cause was the schedule or a manual toggle.
     """
-    now_quiet, _manual_only = compute_quiet(args, state, time_str)
+    now_quiet, _manual_only = runtime_quiet.compute_quiet(args, state, time_str)
     return now_quiet
 
 
@@ -141,8 +123,7 @@ def _refuse_while_asleep(
     busy render is, and the operator wakes the panel first (button D / web
     wake) if they want the clock back. The web layer maps the error to 409.
     """
-    from idle_hours import run_clock
-    if not _quiet_active(args, state, run_clock.current_time_str()):
+    if not _quiet_active(args, state, runtime_render.current_time_str()):
         return None
     _log(f"{label}: {action} ignored, panel is asleep (wake it first)")
     _emit_action(telemetry_path, action, label, ok=False, error="asleep")
@@ -158,7 +139,6 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
     frame (see :func:`_refuse_while_asleep`), or
     ``{"ok": False, "error": "<repr>"}`` on exception.
     """
-    from idle_hours import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     with _button_render_gate(state, label, "skip", telemetry_path=telemetry_path) as acquired:
@@ -173,23 +153,23 @@ def action_skip(args: argparse.Namespace, state: RuntimeState, *, label: str = "
                 previous = state.last_quote_id
             if previous is not None:
                 # Ban the currently-shown quote so the next pick filters it out for the week.
-                run_clock._append_history_after_render(state, history_path, previous)
+                runtime_render._append_history_after_render(state, history_path, previous)
                 with state.lock:
                     # Remember what we just banned so A long-press / web unskip can reverse it.
                     state.last_skipped = previous
-            time_str = run_clock.current_time_str()
-            quote_id = run_clock.peek_quote_id(
+            time_str = runtime_render.current_time_str()
+            quote_id = runtime_render.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
-                **run_clock._corpus_kwargs(args),
+                **runtime_render._corpus_kwargs(args),
             )
-            run_clock._maybe_pick_random_theme(state, quote_id)
-            run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            runtime_render._maybe_pick_random_theme(state, quote_id)
+            runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             # Record the freshly-shown quote — unless it's the same row we just
             # banned (a sparse bucket can fall back to the only candidate).
             # Un-skip removes every matching entry now, but skipping the
             # duplicate keeps the ledger an honest one-entry-per-display log.
             if quote_id is not None and (previous is None or quote_id[:2] != previous[:2]):
-                run_clock._append_history_after_render(state, history_path, quote_id)
+                runtime_render._append_history_after_render(state, history_path, quote_id)
             _emit_action(telemetry_path, "skip", label, ok=True)
             return {"ok": True, "new_quote_id": list(quote_id) if quote_id else None}
         except Exception as exc:
@@ -205,7 +185,6 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
     against the main loop's ``append_history`` via ``state.ledger_lock`` so a
     concurrent append cannot be silently lost.
     """
-    from idle_hours import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     with _button_render_gate(state, label, "unskip", telemetry_path=telemetry_path) as acquired:
@@ -227,19 +206,19 @@ def action_unskip(args: argparse.Namespace, state: RuntimeState, *, label: str =
                 # Remove EVERY entry for the key: the skip left both the
                 # original render append and the ban append, and a single
                 # removal would leave the quote history-filtered (#183).
-                removed = run_clock.pick_quote_module.remove_history_entries(
+                removed = pick_quote_module.remove_history_entries(
                     history_path, target[0], target[1],
                 )
             _log(f"un-skip: removed {removed} ledger entries for source={target[0]} line={target[1]}")
-            time_str = run_clock.current_time_str()
-            quote_id = run_clock.peek_quote_id(
+            time_str = runtime_render.current_time_str()
+            quote_id = runtime_render.peek_quote_id(
                 time_str, history_path=history_path, history_days=args.history_days,
-                **run_clock._corpus_kwargs(args),
+                **runtime_render._corpus_kwargs(args),
             )
-            run_clock._maybe_pick_random_theme(state, quote_id)
-            run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+            runtime_render._maybe_pick_random_theme(state, quote_id)
+            runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
             if quote_id is not None:
-                run_clock._append_history_after_render(state, history_path, quote_id)
+                runtime_render._append_history_after_render(state, history_path, quote_id)
             _emit_action(telemetry_path, "unskip", label, ok=True)
             return {"ok": True, "restored": list(target)}
         except Exception as exc:
@@ -278,7 +257,6 @@ def action_theme(
     loop); the in-memory theme will be re-persisted on the next successful
     render commit.
     """
-    from idle_hours import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     # Validate ``target`` BEFORE the render-gate so a typo'd POST doesn't
@@ -291,7 +269,7 @@ def action_theme(
     with _button_render_gate(state, label, "theme", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
-        time_str = run_clock.current_time_str()
+        time_str = runtime_render.current_time_str()
         # Both of these take ``state.lock`` internally, so they must run
         # BEFORE the ``with state.lock`` block below — it is not reentrant.
         quiet_now = _quiet_active(args, state, time_str)
@@ -314,13 +292,13 @@ def action_theme(
         # has already populated by the time the panel is asleep, and in the
         # narrow window before the loop's first quiet tick the pick it rolls
         # is the very one the frame will use.
-        displayed = resolve_quiet_theme(args, state, time_str) if quiet_now else None
+        displayed = runtime_theme.resolve_quiet_theme(args, state, time_str) if quiet_now else None
         with state.lock:
             previous_theme = state.manual_theme
-            current = displayed or state.last_effective_theme or resolve_effective_theme(
+            current = displayed or state.last_effective_theme or runtime_theme.resolve_effective_theme(
                 state.theme_arg, time_str, previous_theme,
                 current_random_theme=state.current_random_theme,
-                **_auto_theme_kwargs(args),
+                **runtime_theme._auto_theme_kwargs(args),
             )
             new_theme = target if target is not None else _next_theme(current)
             # Guard against "Apply" on an unchanged dropdown selection. The
@@ -352,9 +330,9 @@ def action_theme(
                 # frame back until the following night. Latent before
                 # ``--quiet-theme``; unmissable once the sleep frame has a
                 # theme worth changing.
-                render_quiet_frame(args, state, time_str, manual_only=True)
+                runtime_quiet.render_quiet_frame(args, state, time_str, manual_only=True)
             else:
-                run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+                runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
         except Exception as exc:
             with state.lock:
                 state.manual_theme = previous_theme
@@ -366,7 +344,7 @@ def action_theme(
         # the operator sees.
         try:
             with state.lock:
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
         except Exception as exc:
             _log(f"{label} theme change: persist after render failed: {exc!r} (keeping in-memory flip)", err=True)
         _emit_action(telemetry_path, "theme", label, ok=True)
@@ -400,16 +378,15 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
     reverting ``manual_quiet`` would let the next loop tick immediately
     counteract the user action.
     """
-    from idle_hours import run_clock
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     with _button_render_gate(state, label, "quiet", telemetry_path=telemetry_path) as acquired:
         if not acquired:
             return {"ok": False, "error": "busy"}
-        time_str = run_clock.current_time_str()
+        time_str = runtime_render.current_time_str()
         # Both take ``state.lock`` internally, so they run before the block below.
         asleep_now = _quiet_active(args, state, time_str)
-        scheduled = scheduled_quiet(args, time_str)
+        scheduled = runtime_quiet.scheduled_quiet(args, time_str)
         with state.lock:
             previous = (state.manual_quiet, state.manual_awake)
             if asleep_now:
@@ -423,7 +400,7 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
         # Shared with the main loop's scheduled-exit path: clear render-dedup
         # state before painting. The frame painted below commits its own
         # identity (a wake) or is a sleep frame the loop ignores while asleep.
-        exit_quiet(state)
+        runtime_quiet.exit_quiet(state)
         _log(f"{label}: {'sleep' if quiet_now else 'wake'} ({flags})")
         try:
             if quiet_now:
@@ -434,14 +411,14 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
                 # ``manual_only=True`` so the frame claims the time the
                 # operator actually pressed the button, not --quiet-start.
                 # The gate above already holds render_lock.
-                render_quiet_frame(args, state, time_str, manual_only=True)
+                runtime_quiet.render_quiet_frame(args, state, time_str, manual_only=True)
             else:
                 # Wake to the current time so the user sees something immediately.
-                quote_id = run_clock.peek_quote_id(
+                quote_id = runtime_render.peek_quote_id(
                     time_str, history_path=history_path, history_days=args.history_days,
-                    **run_clock._corpus_kwargs(args),
+                    **runtime_render._corpus_kwargs(args),
                 )
-                run_clock._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
+                runtime_render._render_unlocked(args, state, time_str, history_path, quote_id=quote_id)
         except Exception as exc:
             with state.lock:
                 state.manual_quiet, state.manual_awake = previous
@@ -454,13 +431,13 @@ def action_quiet(args: argparse.Namespace, state: RuntimeState, *, label: str = 
         # 10–20 s refresh on every toggle. The claim also emits the
         # ``quiet_enter`` / ``quiet_exit`` marker the loop used to.
         from idle_hours.buckets import bucket_for_time
-        claim_quiet_edge(
+        runtime_quiet.claim_quiet_edge(
             state, quiet_now, telemetry_path, manual=not scheduled, bucket=bucket_for_time(time_str),
         )
         # Display/render succeeded; persist best-effort (see docstring).
         try:
             with state.lock:
-                run_clock.save_runtime_state(args.state_path, state.snapshot_for_persistence())
+                runtime_store.save_runtime_state(args.state_path, state.snapshot_for_persistence())
         except Exception as exc:
             _log(f"{label} quiet toggle: persist after display failed: {exc!r} (keeping in-memory flip)", err=True)
         _emit_action(telemetry_path, "quiet", label, ok=True)
@@ -484,7 +461,6 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
     is what gets repainted (issue #278) — the same routing ``action_theme``
     uses; a quote painted here would stay frozen until the window ended.
     """
-    from idle_hours import run_clock
     from idle_hours.buckets import bucket_for_time
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
@@ -492,25 +468,25 @@ def action_rerender(args: argparse.Namespace, state: RuntimeState, *, label: str
         if not acquired:
             return {"ok": False, "error": "busy"}
         try:
-            time_str = run_clock.current_time_str()
-            quiet_now, manual_only = compute_quiet(args, state, time_str)
+            time_str = runtime_render.current_time_str()
+            quiet_now, manual_only = runtime_quiet.compute_quiet(args, state, time_str)
             if quiet_now:
                 # The gate above already holds render_lock.
-                render_quiet_frame(args, state, time_str, manual_only=manual_only)
+                runtime_quiet.render_quiet_frame(args, state, time_str, manual_only=manual_only)
                 _log(f"{label}: rerender (sleep frame)")
                 _emit_action(telemetry_path, "rerender", label, ok=True)
                 return {"ok": True, "asleep": True, "bucket": None, "quote_id": None}
-            bucket, quote_id = run_clock.displayed_quote(state)
+            bucket, quote_id = runtime_render.displayed_quote(state)
             fresh_pick = quote_id is None
             if fresh_pick:
                 bucket = bucket_for_time(time_str)
-                quote_id = run_clock.peek_quote_id(
+                quote_id = runtime_render.peek_quote_id(
                     time_str, history_path=history_path, history_days=args.history_days,
-                    **run_clock._corpus_kwargs(args),
+                    **runtime_render._corpus_kwargs(args),
                 )
-            run_clock._render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
+            runtime_render._render_unlocked(args, state, time_str, history_path, bucket=bucket, quote_id=quote_id)
             if fresh_pick and quote_id is not None:
-                run_clock._append_history_after_render(state, history_path, quote_id)
+                runtime_render._append_history_after_render(state, history_path, quote_id)
             _log(f"{label}: rerender bucket={bucket}")
             _emit_action(telemetry_path, "rerender", label, ok=True)
             return {"ok": True, "bucket": bucket, "quote_id": list(quote_id) if quote_id else None}

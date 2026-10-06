@@ -3,8 +3,7 @@
 Loads ``~/.idle-hours/state.json`` at loop startup so the user's last button-B /
 button-D choices survive a restart, and writes atomically (tmp-sibling →
 ``fsync`` → ``os.replace`` → dir-``fsync`` via :mod:`atomic_io`) so a crash
-mid-write never leaves the file truncated. Extracted from :mod:`run_clock`;
-the original names are re-exported from ``run_clock`` for backwards compat.
+mid-write never leaves the file truncated. Extracted from :mod:`run_clock`.
 """
 from __future__ import annotations
 

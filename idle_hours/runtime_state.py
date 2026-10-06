@@ -2,8 +2,7 @@
 
 Extracted from :mod:`run_clock` as part of the orchestrator slim-down. The class
 itself has no logic — it's the synchronisation vocabulary that the loop, GPIO
-listener thread, and curator web server all agree on. ``run_clock.RuntimeState``
-is preserved as a re-export so existing call sites keep resolving.
+listener thread, and curator web server all agree on.
 """
 from __future__ import annotations
 

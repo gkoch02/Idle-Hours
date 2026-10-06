@@ -59,7 +59,7 @@ Full rules in [`docs/runtime.md`](docs/runtime.md) ("Default paths"). The invari
 - **Bundled package assets** (`idle_hours/assets/`, `fonts/`, `web/`) and per-stage default JSONL paths anchor on `BASE_DIR`, which is *inside* the installed package.
 - **Runtime artefacts** (`output/current.png`, `data/gutenberg/`, history / state / telemetry) anchor on **CWD**, never `BASE_DIR`: writing into site-packages is never what an operator wants. The appliance preset uses absolute `/var/lib/idle-hours/` paths.
 - **Operator-supplied inputs** (`--render-script`, `--display-script`, `--quiet-image`, `--startup-image`) go through `path_resolution.resolve_input_path`: CWD first, bundled fallback. Absolute paths pass through.
-- **The bundled renderer is a module, not a path.** `--render-script "auto"` runs `python -m idle_hours.render_quote`; `run_clock._render_command` is the one place that decides, including the legacy `"render_quote.py"` spellings (issues #335, #364).
+- **The bundled renderer is a module, not a path.** `--render-script "auto"` runs `python -m idle_hours.render_quote`; `runtime_render._render_command` is the one place that decides, including the legacy `"render_quote.py"` spellings (issues #335, #364).
 
 ## Corpus & selection
 
@@ -84,7 +84,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 
 **Core layout path (literary themes).** Three layouts in `LAYOUTS` (`hero` ≤90 chars, `standard` ≤170, `dense` otherwise). `fit_quote` shrinks the font in 2 pt steps until the wrapped lines fit; `fit_quote_balanced` wraps it and re-wraps on a narrower measure (then at up to 20% smaller sizes) when the last line would be a widow — one word, or under 30% of the measure — without adding a line or opening a half-empty middle line. Justification is decided per block by `justify_flags`: non-last lines ≥75% full are justified only if every one of them has ≥3 gaps and stretches each gap ≤0.45 em, otherwise the whole block is ragged; `_THEMES_RAGGED_RIGHT` (monospace, typewriter and handwriting faces) is always ragged. The hanging opening mark sits at a fixed x and may run under the first word on the standard and dense measures: a deliberate style choice, not a bug (a gutter-fitting mark was tried and reverted). The byline floors are 18 / 16 px. `resolve_display_match` + `tokenize_quote` + `wrap_styled_text` render the matched time phrase in bold + accent; wrapping breaks **only at whitespace** (no dangling `)` / `seven` split). `apply_theme_glyph_fallbacks` swaps characters a theme's face lacks for ASCII stand-ins. `--mode debug` (default) draws the `DEBUG MODE` banner + footer strip; `production` hides them. Output is written atomically to `output/current.png`. `_FONT_CACHE` memoises fonts (the bitmap fallback is deliberately not cached).
 
-**Theme architecture.** `THEMES` (colours), `THEME_ORDER` (cycle order), `THEME_FONTS` (per-role candidate chains; variable fonts use `(path, "Instance")` tuples and **must** pin an instance — several defaults are Thin or Black). A theme is exactly one of: border-painted (a `BorderSpec`: `render` paints the border, lays the quote out, then paints it again in a knockout pass that hands themes with a `clear_rect_pad` the body rect, and the time when `wants_time` is set), a custom-render frame (a `FrameSpec` naming `render_<theme>_frame`, also listed in `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`), or deliberately plain (`default`, `dark`; `registry.PLAIN_THEMES`). `registry` builds the dispatch tables from every module's `SPEC` and fails at import if a theme is unclaimed, claimed twice or unknown; `_BORDER_PAINTERS`, `_FRAME_RENDERERS` and `_DEBUG_LABEL_RIGHT_INSET` are read-only views of it. `diags` is a swatch panel, excluded from `--theme random`; `vinyl` is excluded from the button-B cycle.
+**Theme architecture.** `THEMES` (colours), `THEME_ORDER` (cycle order), `THEME_FONTS` (per-role candidate chains; variable fonts use `(path, "Instance")` tuples and **must** pin an instance — several defaults are Thin or Black). A theme is exactly one of: border-painted (a `BorderSpec`: `render` lays the quote out, then paints the border once in a knockout pass that hands themes with a `clear_rect_pad` the body rect, and the time when `wants_time` is set; the specs with `paints_twice` also get a first paint on the bare page, because their look is the composite of two paints — issue #361, fenced by `TestPaintsTwice`), a custom-render frame (a `FrameSpec` naming `render_<theme>_frame`, also listed in `CUSTOM_FRAME_THEMES` in `tests/test_theme_decoration.py`), or deliberately plain (`default`, `dark`; `registry.PLAIN_THEMES`). `registry` builds the dispatch tables from every module's `SPEC` and fails at import if a theme is unclaimed, claimed twice or unknown; `_BORDER_PAINTERS`, `_FRAME_RENDERERS` and `_DEBUG_LABEL_RIGHT_INSET` are read-only views of it. `diags` is a swatch panel, excluded from `--theme random`; `vinyl` is excluded from the button-B cycle.
 
 **Adding a theme — checklist.**
 1. `THEMES`, `THEME_ORDER`, `THEME_FONTS` (all in `render_quote/theme_tables.py`), `display_inky.THEME_SATURATION` (`0.5` light ground, `0.7` dark / coloured / bloom-heavy), and `run_clock`'s `--theme` choices (a test pins the sync).
@@ -120,7 +120,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 - **Identity triple** `(last_bucket, last_quote_id, last_effective_theme)` is committed after a successful render through `commit_render_result` and persisted, so a restart doesn't redraw. Transient modes (`card`) never commit. A few paths write fields directly on purpose: quiet exit, a failed shutdown and a pushed `--startup-image` clear `last_bucket` / `last_quote_id` so the next tick repaints, the main loop advances `last_bucket` when a peek finds the quote unchanged, and it seeds `last_effective_theme` on the first tick.
 - **Three locks:** `render_lock` (coarse; buttons/web take it non-blocking via `_button_render_gate` and drop on busy), `state.lock` (fields; may nest inside `render_lock`), `ledger_lock` (history file; never nested). Never hold `state.lock` or `ledger_lock` across a subprocess.
 - **All actions converge:** GPIO buttons and web POSTs both call `runtime_actions.action_*` → `_button_render_gate` → `_render_unlocked` → `commit_render_result`. There is no separate web path.
-- **Lazy `import run_clock`** inside function bodies in `runtime_actions` / `runtime_quiet` / `runtime_theme` / `web_server`. It keeps the import graph acyclic and lets tests patch `run_clock.X`. The re-export block in `run_clock.py` exists for this.
+- **Read helpers through their module, patch them where defined** (issue #353). Callers write `runtime_render.render_now(...)`, never `from runtime_render import render_now`, so a test patches `runtime_render.render_now` once and every caller sees it. No module under `idle_hours/` except `idle_hours_cli` imports `run_clock`, and `run_clock` re-exports nothing; `tests/test_runtime_layering.py` fences both.
 - **Durability:** state, overrides, corpus and PNG writes all go through `atomic_io`, which stages through a unique temp file and reaps stale ones. A single-instance `fcntl` pidfile guards the loop.
 - **Supervision:** subprocesses run under timeouts (render 45 s, display 60 s). Failures back off exponentially. Heartbeats are telemetry entries stamped with quiet state, and systemd `WATCHDOG=1` is pinged at every subprocess boundary as well as from the heartbeat. SIGTERM drains the in-flight render.
 - **Telemetry:** date-rotated JSONL sibling files, fsync'd except heartbeats, pruned after `--telemetry-retain-days`. `idle-hours health` summarises it, and its render-age gates stand down while quiet hours are active.
@@ -132,7 +132,7 @@ Imports `pick_quote` in-process and lays out an 800×480 RGB PNG snapped to the 
 
 Minimal Pillow → Pimoroni `inky.auto` bridge. Loads the PNG, resizes to the panel's native size if needed, and calls `inky.set_image(..., saturation=...).show()`. Designed to be called once per render from `run_clock.py`. Only needed on the Pi. Up to `MAX_ATTEMPTS` (3) calls are retried with `RETRY_BACKOFF_SECONDS = (1, 4)` between attempts so a momentary I/O hiccup doesn't crash the caller; if all attempts fail the script raises `SystemExit` so the loop in `run_clock.py` logs and moves on.
 
-**Per-theme saturation.** `THEME_SATURATION` gives every registered theme one of two values. A light page ground takes `0.5`, which keeps accents from blowing out on white. A dark or coloured ground, or one dominated by falling-density blooms, takes `0.7`, which stops accents going muddy against it. The four themes that break that rule carry a one-line reason in the table, and `test_tier_follows_page_ground_except_listed_themes` keeps the rule and the list honest. The values are starting points, not panel measurements. `test_every_render_theme_has_saturation` fails if a new `THEMES` entry has no row. `run_clock.render_now` forwards `--theme` to `display_inky.py`, which calls `resolve_saturation(theme, override)`; an explicit `--saturation` always wins.
+**Per-theme saturation.** `THEME_SATURATION` gives every registered theme one of two values. A light page ground takes `0.5`, which keeps accents from blowing out on white. A dark or coloured ground, or one dominated by falling-density blooms, takes `0.7`, which stops accents going muddy against it. The four themes that break that rule carry a one-line reason in the table, and `test_tier_follows_page_ground_except_listed_themes` keeps the rule and the list honest. The values are starting points, not panel measurements. `test_every_render_theme_has_saturation` fails if a new `THEMES` entry has no row. `runtime_render.render_now` forwards `--theme` to `display_inky.py`, which calls `resolve_saturation(theme, override)`; an explicit `--saturation` always wins.
 
 ### Curator Web UI (`web_server.py`, `idle_hours/web/`)
 
@@ -174,7 +174,7 @@ Every Python module and bundled runtime asset lives under the single `idle_hours
 
 ```
 idle_hours/
-├─ __init__.py              empty on purpose: no re-exports, which keeps the run_clock ↔ runtime_* lazy-import contract clean
+├─ __init__.py              empty package marker (no re-exports)
 ├─ idle_hours_cli.py        `idle-hours <subcommand>`: lazy-imports each module's main() and rewrites sys.argv
 ├─ buckets.py               the bucket table and rounding rule (single source of truth)
 ├─ atomic_io.py             tmp-sibling → fsync → os.replace → dir-fsync; every file the next tick reads is written through it
@@ -194,13 +194,16 @@ idle_hours/
 │                           holds render(), the source card, the sleep frame and the CLI; _facade.py makes
 │                           render_quote.X read live and refuses writes; __main__.py is what run_clock runs.
 ├─ contact_sheet.py         12×12 grid of every bucket's pick, for offline QA
-├─ run_clock.py             thin orchestrator for the loop; re-exports runtime_* names so `run_clock.X` patches resolve
+├─ run_clock.py             thin orchestrator for the loop; reads runtime_* helpers through their modules, re-exports
+│                           nothing, and nothing imports it back (issue #353)
 ├─ runtime_config.py        TOML config loader + validate_hhmm
 ├─ runtime_state.py         RuntimeState: locks and the shared mutable state
 ├─ runtime_store.py         persisted state.json (manual overrides + render-identity triple)
 ├─ runtime_telemetry.py     date-rotated telemetry + retention; fans alert-worthy entries out to runtime_webhook.py
 ├─ runtime_theme.py         auto / manual / random theme resolution
 ├─ runtime_quiet.py         quiet-hours state machine and render_quiet_frame (the one sleep-frame path)
+├─ runtime_render.py        the render path: render_now (renderer + display subprocesses, timeouts), peek_quote_id,
+│                           displayed_quote, _pin_key_for, ledger append, render backoff, renderer selection
 ├─ runtime_actions.py       action_* shared by GPIO buttons and the web UI, plus _button_render_gate
 ├─ runtime_log.py           timestamped logger
 ├─ path_resolution.py       resolve_input_path (CWD, then bundled) and PHOTO_PATH_ENV

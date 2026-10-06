@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from idle_hours import pick_quote, run_clock
+from idle_hours import pick_quote, run_clock, runtime_actions
 
 
 def _args(tmp_path: Path, **overrides) -> argparse.Namespace:
@@ -62,13 +62,13 @@ class TestRenderGateDropsConcurrentPresses:
         observed = []
 
         def slow_first():
-            with run_clock._button_render_gate(state, "test", "first") as acquired:
+            with runtime_actions._button_render_gate(state, "test", "first") as acquired:
                 observed.append(("first", acquired))
                 first_entered.set()
                 release_first.wait(timeout=2)
 
         def immediate_second():
-            with run_clock._button_render_gate(state, "test", "second") as acquired:
+            with runtime_actions._button_render_gate(state, "test", "second") as acquired:
                 observed.append(("second", acquired))
 
         t1 = threading.Thread(target=slow_first)
@@ -170,14 +170,14 @@ class TestRenderGateFairness:
         count_lock = threading.Lock()
 
         def slow_holder():
-            with run_clock._button_render_gate(state, "test", "holder") as acquired:
+            with runtime_actions._button_render_gate(state, "test", "holder") as acquired:
                 assert acquired
                 running.set()
                 release.wait(timeout=5)
 
         def taps():
             nonlocal acquired_count, dropped_count
-            with run_clock._button_render_gate(state, "test", "tap") as acquired:
+            with runtime_actions._button_render_gate(state, "test", "tap") as acquired:
                 with count_lock:
                     if acquired:
                         acquired_count += 1
@@ -215,7 +215,7 @@ class TestActionBusyBehavior:
 
         # Hold the render lock so the gate rejects.
         with state.render_lock:
-            result = run_clock.action_theme(args, state, label="test")
+            result = runtime_actions.action_theme(args, state, label="test")
         assert result == {"ok": False, "error": "busy"}
         assert state.manual_theme is None, "theme must NOT have been mutated while busy"
 
@@ -237,7 +237,7 @@ class TestActionBusyBehavior:
                 holder_release.wait(timeout=2)
 
         def tap():
-            results.append(run_clock.action_theme(args, state, label="tap"))
+            results.append(runtime_actions.action_theme(args, state, label="tap"))
 
         h = threading.Thread(target=holder)
         h.start()
@@ -268,11 +268,11 @@ class TestActionThemeToggleArithmetic:
         state = run_clock.RuntimeState("default")
         state.last_effective_theme = cycle[0]
 
-        with patch("idle_hours.run_clock.render_now"), \
-             patch("idle_hours.run_clock.current_time_str", return_value="10:00"), \
-             patch("idle_hours.run_clock.current_bucket", return_value="h10_exact"):
+        with patch("idle_hours.runtime_render.render_now"), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="10:00"), \
+             patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
             for _ in range(len(cycle)):
-                result = run_clock.action_theme(args, state, label="test")
+                result = runtime_actions.action_theme(args, state, label="test")
                 assert result["ok"] is True
 
         # After exactly len(cycle) presses the cycle completes one loop and

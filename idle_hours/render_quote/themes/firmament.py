@@ -488,4 +488,6 @@ def draw_firmament_border(image: Image.Image, colors: dict) -> None:
 SPEC = BorderSpec(
     themes=("firmament",),
     paint=draw_firmament_border,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

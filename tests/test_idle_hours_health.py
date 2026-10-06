@@ -188,7 +188,7 @@ class TestJsonOutput:
 
 class TestRotatedTelemetry:
     """Verify that idle_hours_health reads across date-rotated telemetry files
-    written by run_clock.append_telemetry, and falls back to the legacy
+    written by runtime_telemetry.append_telemetry, and falls back to the legacy
     unsuffixed file when older installations wrote directly to it.
     """
 
@@ -531,7 +531,7 @@ class TestHeartbeatStaleness:
 class TestBackoffNotCountedAsRender:
     """Regression for the P1 surfaced in code review:
 
-    ``run_clock._record_render_failure`` writes ``mode="backoff"`` telemetry
+    ``runtime_render._record_render_failure`` writes ``mode="backoff"`` telemetry
     entries that have neither an ``error`` field nor a ``type="heartbeat"``
     marker. Defining renders as "non-heartbeat without error" miscounted
     them as successful renders, which could make ``evaluate_health`` return

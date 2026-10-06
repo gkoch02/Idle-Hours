@@ -161,4 +161,6 @@ SPEC = BorderSpec(
     paint=draw_herbarium_border,
     # past the TR pinhole dot (x=width-19) plus a 4 px gap
     debug_label_inset=24,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

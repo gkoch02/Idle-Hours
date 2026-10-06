@@ -9,6 +9,7 @@ the migration in #360 and was retired with the facade's forwarding.)
 
 from __future__ import annotations
 
+import dataclasses
 import types
 
 import pytest
@@ -88,3 +89,35 @@ class TestBorderSpec:
         spec = BorderSpec(themes=("a",), paint=recorder("paint"), **spec_kwargs)
         spec.paint_knockout("IMAGE", {}, "RECT", "08:55")
         assert calls == [expected]
+
+
+_PAINTS_TWICE_ROW = {
+    "display_quote": "At five minutes to nine the bell rang, and the whole house went quiet at once.",
+    "matched_text": "five minutes to nine",
+    "author": "A. Writer",
+    "title": "A Book",
+}
+
+
+class TestPaintsTwice:
+    """``paints_twice`` must match what each painter actually does (issue #361).
+
+    ``render`` paints a border once unless its spec sets ``paints_twice``. A
+    missing flag changes a theme's pixels; a stale one costs a whole paint per
+    frame for nothing. Each case renders the theme with the flag flipped.
+    """
+
+    @pytest.mark.parametrize("theme", sorted(rq.BORDER_SPECS))
+    def test_flag_matches_the_painter(self, monkeypatch, theme):
+        spec = rq.BORDER_SPECS[theme]
+
+        def frame() -> bytes:
+            return rq.render("08:55", dict(_PAINTS_TWICE_ROW), 800, 480, mode="production", theme=theme).tobytes()
+
+        shipped = frame()
+        monkeypatch.setitem(rq.BORDER_SPECS, theme, dataclasses.replace(spec, paints_twice=not spec.paints_twice))
+        flipped = frame()
+        if spec.paints_twice:
+            assert flipped != shipped, f"{theme}: a single paint now matches; drop paints_twice from its spec"
+        else:
+            assert flipped == shipped, f"{theme}: the first paint changes its pixels; set paints_twice=True on its spec"

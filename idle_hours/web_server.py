@@ -76,7 +76,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from idle_hours import apply_content_overrides, atomic_io
+from idle_hours import (
+    apply_content_overrides,
+    atomic_io,
+    runtime_actions,
+    runtime_quiet,
+    runtime_render,
+    runtime_telemetry,
+    runtime_theme,
+)
 from idle_hours import pick_quote as pick_quote_module
 from idle_hours.buckets import bucket_for_time, rederive_buckets
 from idle_hours.runtime_log import _log
@@ -923,18 +931,15 @@ class CuratorHandler(BaseHTTPRequestHandler):
         )
 
     def _emit_web_telemetry(self, payload: dict) -> None:
-        """Emit one structured web-activity entry via the run_clock telemetry sink.
+        """Emit one structured web-activity entry via the runtime telemetry sink.
 
-        Lazy import keeps the module-import graph acyclic (``run_clock``
-        imports from ``web_server``-adjacent runtime modules, not vice
-        versa at load time) and routes through ``run_clock.append_telemetry``
-        so tests can patch the sink in one place.
+        Reads ``runtime_telemetry.append_telemetry`` through its module, so a
+        test that patches the sink there sees web entries too.
         """
         ctx = self._ctx()
         if not ctx.telemetry_path:
             return
-        from idle_hours import run_clock
-        run_clock.append_telemetry(ctx.telemetry_path, payload)
+        runtime_telemetry.append_telemetry(ctx.telemetry_path, payload)
 
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or 0)
@@ -1116,10 +1121,9 @@ class CuratorHandler(BaseHTTPRequestHandler):
     # -- GET endpoints --------------------------------------------------------
 
     def _api_current(self) -> None:
-        from idle_hours import run_clock
         ctx = self._ctx()
         state = ctx.state
-        now = run_clock.current_time_str()
+        now = runtime_render.current_time_str()
         # Snapshot under the lock, resolve after releasing it (#291) — the
         # same discipline ``_api_themes`` documents: resolve_effective_theme
         # lazily imports render_quote, and a module import has no business
@@ -1133,12 +1137,12 @@ class CuratorHandler(BaseHTTPRequestHandler):
             manual_quiet = state.manual_quiet
             manual_awake = state.manual_awake
             manual_theme = state.manual_theme
-        theme = last_effective or run_clock.resolve_effective_theme(
+        theme = last_effective or runtime_theme.resolve_effective_theme(
             theme_arg, now, manual_theme,
             current_random_theme=current_random,
-            **run_clock._auto_theme_kwargs(ctx.args),
+            **runtime_theme._auto_theme_kwargs(ctx.args),
         )
-        asleep, _manual_only = run_clock.compute_quiet(ctx.args, state, now)
+        asleep, _manual_only = runtime_quiet.compute_quiet(ctx.args, state, now)
         payload = {
             "time": now,
             "bucket": bucket,
@@ -1450,7 +1454,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
     def _api_setup_post(self) -> None:
         """Mark the first-run wizard complete, optionally applying ``{"theme": name}``.
 
-        The theme goes through ``run_clock.action_theme``, as the web dropdown does.
+        The theme goes through ``runtime_actions.action_theme``, as the web dropdown does.
         An unknown theme returns 400, a render in flight 409, and any other theme
         failure 500; in each case ``setup_complete`` stays False so the wizard
         reappears with the old theme still on the panel. A failed state.json write is
@@ -1460,7 +1464,6 @@ class CuratorHandler(BaseHTTPRequestHandler):
         ``runtime_actions``, so a concurrent button snapshot cannot persist False over
         True. Returns the ``GET /api/setup`` shape so the UI needs no follow-up fetch.
         """
-        from idle_hours import run_clock
         ctx = self._ctx()
         body = self._read_json_body()
         target_theme = body.get("theme") if isinstance(body, dict) else None
@@ -1470,7 +1473,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
             )
         applied_theme: dict | None = None
         if target_theme:
-            applied_theme = run_clock.action_theme(
+            applied_theme = runtime_actions.action_theme(
                 ctx.args, ctx.state, label="web", target=target_theme,
             )
             if applied_theme.get("error") == "unknown_theme":
@@ -1538,17 +1541,16 @@ class CuratorHandler(BaseHTTPRequestHandler):
         from idle_hours.theme_names import theme_cycle
         ctx = self._ctx()
         order = list(theme_cycle())
-        from idle_hours import run_clock
         now = dt.datetime.now().strftime("%H:%M")
         with ctx.state.lock:
             manual = ctx.state.manual_theme
             theme_arg = ctx.state.theme_arg
             last_effective = ctx.state.last_effective_theme
             current_random = ctx.state.current_random_theme
-        effective = last_effective or run_clock.resolve_effective_theme(
+        effective = last_effective or runtime_theme.resolve_effective_theme(
             theme_arg, now, manual,
             current_random_theme=current_random,
-            **run_clock._auto_theme_kwargs(ctx.args),
+            **runtime_theme._auto_theme_kwargs(ctx.args),
         )
         from idle_hours.runtime_theme import random_theme_pool
         self._json(HTTPStatus.OK, {
@@ -2119,13 +2121,11 @@ class CuratorHandler(BaseHTTPRequestHandler):
         })
 
     def _action_skip(self) -> None:
-        from idle_hours import run_clock
-        result = run_clock.action_skip(self._ctx().args, self._ctx().state, label="web")
+        result = runtime_actions.action_skip(self._ctx().args, self._ctx().state, label="web")
         self._json(_status_from_result(result), result)
 
     def _action_unskip(self) -> None:
-        from idle_hours import run_clock
-        result = run_clock.action_unskip(self._ctx().args, self._ctx().state, label="web")
+        result = runtime_actions.action_unskip(self._ctx().args, self._ctx().state, label="web")
         self._json(_status_from_result(result), result)
 
     def _action_theme(self) -> None:
@@ -2144,26 +2144,23 @@ class CuratorHandler(BaseHTTPRequestHandler):
         # chatgpt-codex-connector flagged on PR #72. ``_read_json_body``
         # already returns ``{}`` for length=0, so the "no body" cycle
         # path is unaffected.
-        from idle_hours import run_clock
         body = self._read_json_body()
         target = body.get("theme") if isinstance(body, dict) else None
         if target is not None and not isinstance(target, str):
             self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "theme must be a string"})
             return
-        result = run_clock.action_theme(
+        result = runtime_actions.action_theme(
             self._ctx().args, self._ctx().state, label="web", target=target,
         )
         status = HTTPStatus.BAD_REQUEST if result.get("error") == "unknown_theme" else _status_from_result(result)
         self._json(status, result)
 
     def _action_quiet(self) -> None:
-        from idle_hours import run_clock
-        result = run_clock.action_quiet(self._ctx().args, self._ctx().state, label="web")
+        result = runtime_actions.action_quiet(self._ctx().args, self._ctx().state, label="web")
         self._json(_status_from_result(result), result)
 
     def _action_rerender(self) -> None:
-        from idle_hours import run_clock
-        result = run_clock.action_rerender(self._ctx().args, self._ctx().state, label="web")
+        result = runtime_actions.action_rerender(self._ctx().args, self._ctx().state, label="web")
         self._json(_status_from_result(result), result)
 
 
