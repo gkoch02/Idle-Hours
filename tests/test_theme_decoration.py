@@ -113,6 +113,8 @@ CUSTOM_FRAME_THEMES = (
     "yorha",
     "hitchhiker",
     "escritoire",
+    "lasvegas",
+    "bladerunner",
     "traumateam",
 )
 

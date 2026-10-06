@@ -22,6 +22,7 @@ from ._paths import (
     ATOMICAGE_REGULAR,
     BANGERS_REGULAR,
     BARLOW_BOLD,
+    BARLOW_MEDIUM,
     BARLOW_REGULAR,
     BARLOW_SEMIBOLD,
     BARLOWCOND_BOLD,
@@ -206,6 +207,8 @@ THEME_ORDER: tuple[str, ...] = (
     "yorha",
     "hitchhiker",
     "escritoire",
+    "lasvegas",
+    "bladerunner",
     "traumateam",
     "diags",
 )
@@ -1163,7 +1166,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    "hal": {        "page_bg": SPECTRA6["black"],
+    "hal": {
+        "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
         "subtle": SPECTRA6["white"],
         "faint": SPECTRA6["blue"],
@@ -1256,6 +1260,34 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
+    },
+    # *Blade Runner 2049* (2017) — a custom frame (``render_lasvegas_frame``):
+    # the orange haze of the dead Las Vegas, a colossal statue, K, and an
+    # LAPD archive pane with white Barlow prose and the phrase in yellow.
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
+    "lasvegas": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["red"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
+    },
+    # *Blade Runner 2049* (2017), the systems — a custom frame
+    # (``render_bladerunner_frame``): black glass, white hairlines and
+    # Barlow Condensed, the phrase and the hour's prompt in yellow, the
+    # X-ray in blue and white. Palette serves the palette-only paths.
+    "bladerunner": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
     },
     # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
     # (``render_saros_frame``): a black sun in a dithered corona whose phase
@@ -3043,6 +3075,26 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_bold": _HAND_SCRIPT_BOLD,
         "ornament": [(DANCINGSCRIPT_VARIABLE, "Bold"), *ORNAMENT_FONT_CANDIDATES],
     },
+    "lasvegas": {
+        # Barlow — the film's interfaces (Territory Studio) are set in plain,
+        # low-contrast grotesques, and Barlow's slightly squared curves sit
+        # between that and a highway sign. Medium for the white body on the
+        # black pane (a Regular stem thins once the panel's white bleeds into
+        # the black), Bold for the matched phrase in yellow, Barlow
+        # Condensed for the tracked chrome.
+        "quote_regular": [BARLOW_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [BARLOW_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BARLOWCOND_MEDIUM, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "bladerunner": {
+        # Barlow Condensed — the film's interfaces (Territory Studio) set
+        # their text in narrow, low-contrast grotesques in tracked capitals
+        # and a plain mixed case. Medium for the white body on black, Bold
+        # for the matched phrase in yellow, SemiBold for the chrome.
+        "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
     "traumateam": {
         # Oxanium — a squared techno sans in the register of the game's
         # interface faces. Regular for the white body, Bold for the matched
@@ -3051,7 +3103,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_bold": [(OXANIUM_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(OXANIUM_VARIABLE, "SemiBold"), *ORNAMENT_FONT_CANDIDATES],
     },
-    "saros": {        # Saros's text face Tamba Sans, display Arame and chrome Korataki are
+    "saros": {
+        # Saros's text face Tamba Sans, display Arame and chrome Korataki are
         # all commercial. Saira is the nearest open face to Tamba Sans:
         # Regular body, SemiBold rather than Bold for the matched phrase (its
         # bloom would close a Bold's counters, as in trisolaris), Italic

@@ -77,6 +77,7 @@ THEME_SATURATION: dict[str, float] = {
     "bakelite": 0.7,
     "betweenus_dark": 0.7,
     "biomech": 0.7,
+    "bladerunner": 0.7,
     "blueprint": 0.7,
     "carcosa": 0.7,
     "chalkboard": 0.7,
@@ -100,6 +101,7 @@ THEME_SATURATION: dict[str, float] = {
     "hal": 0.7,
     "hitchhiker": 0.7,
     "izakaya": 0.7,
+    "lasvegas": 0.7,
     "lcars": 0.7,
     "lumon": 0.7,
     "marker": 0.7,  # white ground, but the border uses every chromatic ink and green reads mint at 0.5

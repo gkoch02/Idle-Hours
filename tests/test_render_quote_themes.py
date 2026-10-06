@@ -1868,7 +1868,7 @@ class TestFixedGeometryFramesDownscale:
                              "control", "observation", "trisolaris", "biomech", "codex",
                              "culture", "orbital", "furies", "bosch", "saros", "goya",
                              "hal", "lumon", "dsky", "oblivion", "yorha", "hitchhiker",
-                             "escritoire")
+                             "escritoire", "lasvegas", "bladerunner")
 
     @pytest.mark.parametrize("theme", FIXED_GEOMETRY_FRAMES)
     @pytest.mark.parametrize("size", [(320, 192), (240, 144), (400, 240)])
@@ -7702,6 +7702,128 @@ class TestEscritoireFrame:
         lc = ink_counts(letter.crop((400, 140, 700, 200)))
         letter_paper = lc.get(rq.SPECTRA6["white"], 0) + lc.get(rq.SPECTRA6["yellow"], 0)
         assert counts.get(rq.SPECTRA6["yellow"], 0) / paper > lc.get(rq.SPECTRA6["yellow"], 0) / max(1, letter_paper)
+
+
+class TestLasvegasFrame(_CustomFrameCase):
+    """``lasvegas`` — *Blade Runner 2049*: the dithered orange haze of the
+    dead Las Vegas, K among the hives, and the LAPD archive pane whose lit
+    drawer is the hour."""
+
+    THEME = "lasvegas"
+    SATURATION = 0.7
+
+    def test_quote_is_white_barlow_with_a_yellow_phrase_on_black(self):
+        assert rq.theme_font_candidates("lasvegas", "quote_regular")[0] == rq.BARLOW_MEDIUM
+        assert rq.theme_font_candidates("lasvegas", "quote_bold")[0] == rq.BARLOW_BOLD
+        image = self._render()
+        counts = ink_counts(image.crop(rq._LASVEGAS_QUOTE_RECT))
+        assert set(counts) <= {rq.SPECTRA6["black"], rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 300
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("red", "yellow", "black", "white")}
+
+    def test_haze_is_a_red_heavy_dither_and_cached(self):
+        scene = rq._lasvegas_scene()
+        assert scene is rq._lasvegas_scene()
+        # Open haze between the pane and the statue, above the towers.
+        counts = ink_counts(scene.crop((440, 150, 530, 250)))
+        red, yellow = counts.get(rq.SPECTRA6["red"], 0), counts.get(rq.SPECTRA6["yellow"], 0)
+        assert red > yellow > 0.2 * 90 * 100
+        # The sun's core is the palest passage in the sky.
+        sx, sy, sr = rq._LASVEGAS_SUN
+        core = ink_counts(scene.crop((sx - sr // 2, sy - sr // 2, sx + sr // 2, sy + sr // 2)))
+        assert core.get(rq.SPECTRA6["white"], 0) > core.get(rq.SPECTRA6["red"], 0)
+
+    def test_hour_is_the_lit_archive_drawer(self):
+        rects = rq._lasvegas_cell_rects()
+        assert len(rects) == 12
+        for hour in (1, 7, 12):
+            image = self._render(time_str=f"{hour:02d}:20")
+            for i, (x0, y0, x1, y1) in enumerate(rects):
+                cell = ink_counts(image.crop((x0, y0, x1 + 1, y1 + 1)))
+                area = (x1 - x0 + 1) * (y1 - y0 + 1)
+                assert (cell.get(rq.SPECTRA6["yellow"], 0) > area * 0.6) == (i + 1 == hour), (hour, i)
+
+    def test_k_and_the_hives_stand_in_the_scanner_brackets(self):
+        image = self._render()
+        fx, gy = rq._LASVEGAS_K_FOOT
+        assert ink_counts(image.crop((fx - 8, gy - 50, fx + 8, gy))).get(rq.SPECTRA6["black"], 0) > 300
+        assert ink_counts(image.crop(rq._LASVEGAS_HIVES)).get(rq.SPECTRA6["black"], 0) > 400
+        x0, y0, x1, y1 = rq._LASVEGAS_SCAN_RECT
+        assert x0 < fx < x1 and y0 < gy < y1
+        assert image.getpixel((x0 + 4, y0)) == rq.SPECTRA6["white"]      # a bracket's arm
+
+    def test_dna_and_radiation_are_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        assert pixel_bytes(a.crop(rq._LASVEGAS_DNA_RECT)) != pixel_bytes(b.crop(rq._LASVEGAS_DNA_RECT))
+        assert pixel_bytes(a.crop(rq._LASVEGAS_DNA_RECT)) == pixel_bytes(self._render().crop(rq._LASVEGAS_DNA_RECT))
+
+
+class TestBladerunnerFrame(_CustomFrameCase):
+    """``bladerunner`` — *Blade Runner 2049*'s systems: an LAPD records
+    terminal with the quote as a record, the dithered bone scan, the twins'
+    identical DNA, and the baseline test whose lit prompt is the hour."""
+
+    THEME = "bladerunner"
+    SATURATION = 0.7
+
+    def test_quote_is_white_condensed_with_a_yellow_phrase_on_black(self):
+        assert rq.theme_font_candidates("bladerunner", "quote_regular")[0] == rq.BARLOWCOND_MEDIUM
+        assert rq.theme_font_candidates("bladerunner", "quote_bold")[0] == rq.BARLOWCOND_BOLD
+        image = self._render()
+        counts = ink_counts(image.crop(rq._BLADERUNNER_QUOTE_RECT))
+        assert set(counts) <= {rq.SPECTRA6["black"], rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        assert counts.get(rq.SPECTRA6["white"], 0) > 2000
+        assert counts.get(rq.SPECTRA6["yellow"], 0) > 300
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("black", "white", "yellow", "blue", "red")}
+
+    def test_xray_is_dithered_blue_and_white_on_black_and_cached(self):
+        scene = rq._bladerunner_scene()
+        assert scene is rq._bladerunner_scene()
+        x0, y0, x1, y1 = rq._BLADERUNNER_SCAN_RECT
+        plate = ink_counts(scene.crop((x0 + 1, y0 + 18, x1, y1)))
+        assert set(plate) == {rq.SPECTRA6["black"], rq.SPECTRA6["blue"], rq.SPECTRA6["white"]}
+        assert plate[rq.SPECTRA6["blue"]] > plate[rq.SPECTRA6["white"]] > 1000
+        # Off the plate the glass is plain black.
+        assert set(ink_counts(scene.crop((0, 0, x0, 480)))) == {rq.SPECTRA6["black"]}
+        # The bone sits where the mask says: denser inside it than beside it.
+        mask = rq._bladerunner_bone_mask((x1 - x0 - 1, y1 - y0 - 19))
+        assert mask.getpixel((mask.width // 2, 50)) == 255          # the sacrum
+        assert mask.getpixel((mask.width // 2, 8)) == 0              # clear above it
+
+    def test_serial_is_boxed_and_magnified_in_red(self):
+        image = self._render()
+        x0, y0, x1, y1 = rq._BLADERUNNER_SCAN_RECT
+        inset = ink_counts(image.crop((x1 - 118, y1 - 40, x1 - 7, y1 - 9)))
+        assert inset.get(rq.SPECTRA6["red"], 0) > 300 and inset.get(rq.SPECTRA6["white"], 0) > 150
+
+    def test_twins_dna_is_identical_and_seeded_from_the_quote(self):
+        row = make_row(**self.ROW)
+        assert rq._bladerunner_sequence(row, 40) == rq._bladerunner_sequence(row, 40)
+        other = make_row(**dict(self.ROW, source_id="1727", line_number=9))
+        assert rq._bladerunner_sequence(row, 40) != rq._bladerunner_sequence(other, 40)
+        image = self._render()
+        x0, y0, x1, _ = rq._BLADERUNNER_DNA_RECT
+        first = pixel_bytes(image.crop((x0 + 8, y0 + 39, x1 - 4, y0 + 65)))
+        second = pixel_bytes(image.crop((x0 + 8, y0 + 89, x1 - 4, y0 + 115)))
+        assert first == second                                       # base for base
+
+    def test_hour_is_the_lit_baseline_prompt(self):
+        rects = rq._bladerunner_word_rects()
+        assert len(rects) == 12 == len(rq._BLADERUNNER_WORDS)
+        for hour in (1, 9, 12):
+            image = self._render(time_str=f"{hour:02d}:40")
+            for i, (x0, y0, x1, y1) in enumerate(rects):
+                cell = ink_counts(image.crop((x0, y0, x1 + 1, y1 + 1)))
+                area = (x1 - x0 + 1) * (y1 - y0 + 1)
+                assert (cell.get(rq.SPECTRA6["yellow"], 0) > area * 0.6) == (i + 1 == hour), (hour, i)
+            # The trace marker stands over the hour's prompt, and only there.
+            tx0, ty0, tx1, ty1 = rq._BLADERUNNER_TRACE_BAND
+            band = image.crop((tx0, ty0 - 2, tx1, ty1 + 3))
+            reds = [x for x in range(band.width) for y in range(band.height) if band.getpixel((x, y)) == rq.SPECTRA6["red"]]
+            x0, _, x1, _ = rects[hour - 1]
+            assert reds and all(x0 <= tx0 + x <= x1 for x in reds), hour
 
 
 class TestTraumateamFrame(_CustomFrameCase):
