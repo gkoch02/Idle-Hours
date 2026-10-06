@@ -58,7 +58,37 @@ def test_promote_changelog_moves_unreleased_entries():
 """
     result = release.promote_changelog(source, "2.6.0", "2026-09-25")
     assert "## [Unreleased]\n\n## [2.6.0] - 2026-09-25" in result
-    assert "### Added\n\n- Safer releases.\n## [2.5.0]" in result
+    assert "### Added\n\n- Safer releases.\n\n## [2.5.0]" in result
+
+
+def test_promote_changelog_keeps_the_unreleased_preamble():
+    source = """# Changelog
+
+## [Unreleased]
+
+Add release notes here as changes merge.
+
+- Safer releases.
+
+## [2.5.0] - 2026-09-24
+
+- Previous release.
+"""
+    result = release.promote_changelog(source, "2.6.0", "2026-09-25")
+    assert result == """# Changelog
+
+## [Unreleased]
+
+Add release notes here as changes merge.
+
+## [2.6.0] - 2026-09-25
+
+- Safer releases.
+
+## [2.5.0] - 2026-09-24
+
+- Previous release.
+"""
 
 
 def test_promote_changelog_rejects_empty_unreleased_section():

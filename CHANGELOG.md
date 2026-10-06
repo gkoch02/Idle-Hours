@@ -6,11 +6,21 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 
 ## [Unreleased]
 
-## [3.0.0] - 2026-10-06
-
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+## [3.0.0] - 2026-10-06
+
+- **3.0 is a major release for code that imports Idle Hours, not for the
+  appliance.** A config, a panel and a curator UI that ran 2.6 run 3.0
+  unchanged. What moved is the Python surface: `idle_hours.render_quote` is
+  now a package (#335) whose top-level names read live but refuse writes
+  (patch the submodule that reads a name instead), the per-theme helpers were
+  folded into shared ones (#336), and `idle_hours.run_clock` re-exports
+  nothing from the `runtime_*` modules (#353), so `from idle_hours.run_clock
+  import render_now` and the like must import from the defining module. A
+  custom `--render-script` pointing at the old bundled `render_quote.py` file
+  keeps working (see below).
 - New `bladerunner` theme: *Blade Runner 2049*'s systems — an LAPD records
   terminal on black glass. The quote is a record in white Barlow Condensed
   with the matched phrase in yellow, beside a dithered X-ray of the box's
@@ -213,6 +223,7 @@ these entries under the new dated version heading.
   where the hour hand would point; totality at twelve), the colony
   silhouetted against the sunset band beneath it, the quote in Exo 2
   with the matched phrase as an ember. Bundles Exo 2 and Michroma (OFL).
+
 ## [2.6.0] - 2026-09-26
 
 - `idle-hours run --once` now pins its render to the quote it picked, and so
