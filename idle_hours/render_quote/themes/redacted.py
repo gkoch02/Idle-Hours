@@ -91,6 +91,14 @@ _REDACTED_EDGE_PUNCT = "\"'“”‘’.,;:!?()[]—–-…*"
 _WORD_RE = re.compile(r"\S+")
 
 
+def _redacted_is_spared(core: str) -> bool:
+    """Whether the censor leaves ``core`` alone: the word itself or any part
+    of a compound is spared, so ``FORTY-SEVEN`` and ``half-past`` read as the
+    times they are."""
+    lower = core.lower()
+    return lower in _REDACTED_SPARED or any(part in _REDACTED_SPARED for part in re.split(r"[-–—/]", lower))
+
+
 def _redacted_doc_fields(quote_row: dict) -> tuple[str, str, str]:
     """``(document type, file number, clearance level)`` seeded from the quote."""
     digest = _row_digest(quote_row)
@@ -120,7 +128,7 @@ def _redacted_candidates(draw: ImageDraw.ImageDraw, placed) -> list[tuple[int, i
             word = m.group(0)
             core = word.strip(_REDACTED_EDGE_PUNCT)
             letters = sum(c.isalpha() for c in core)
-            if letters < _REDACTED_MIN_LETTERS or core.lower() in _REDACTED_SPARED:
+            if letters < _REDACTED_MIN_LETTERS or _redacted_is_spared(core):
                 continue
             touches_left = m.start() == 0 and i > 0 and placed[i - 1][4] and placed[i - 1][1] == y
             touches_right = (m.end() == len(chunk) and i + 1 < len(placed)

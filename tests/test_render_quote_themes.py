@@ -7937,6 +7937,16 @@ class TestRedactedFrame:
         assert {"that", "morning", "before"} <= words & rq._REDACTED_SPARED
         assert len(candidates) < len([w for w in words if w])
 
+    def test_censor_spares_compound_time_words(self):
+        # A second time outside matched_text (corpus row 83:5162) must stay legible.
+        for word in ("FORTY-SEVEN", "twenty-five", "half-past", "Quarter–Hour"):
+            assert rq._redacted_is_spared(word), word
+        assert not rq._redacted_is_spared("farm-house")
+        row = dict(self.ROW, display_quote="TWENTY MINUTES PAST TEN TO FORTY-SEVEN MINUTES PAST TEN P. M.",
+                   matched_text="TWENTY MINUTES PAST TEN")
+        draw, placed = self._placed(row)
+        assert rq._redacted_candidates(draw, placed) == []
+
     def test_at_least_one_bar_and_never_too_many(self):
         draw, placed = self._placed(self.ROW)
         candidates = rq._redacted_candidates(draw, placed)
