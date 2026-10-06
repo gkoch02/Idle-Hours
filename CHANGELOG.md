@@ -15,6 +15,11 @@ these entries under the new dated version heading.
   `render_script = "render_quote.py"`, as every appliance built from
   `config.toml.example` does, keeps working and logs a one-line note at startup
   asking for `"auto"`. A custom renderer path is unaffected.
+- A hand-written `render_script` naming the old bundled file by absolute path
+  (`/home/pi/IdleHours/idle_hours/render_quote.py`) also keeps meaning the bundled
+  renderer after the package split, with the same startup note (#364). Only the
+  file at this install's own location counts; any other `render_quote.py` is still
+  a custom renderer.
 - `idle-hours render --time` now rejects a malformed or out-of-range time
   (`25:99`, `garbage`) with a usage error, as `idle-hours pick` already did,
   instead of a `KeyError` traceback. A render with a malformed or missing time

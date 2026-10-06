@@ -867,7 +867,29 @@ def _uses_bundled_renderer(render_script: str) -> bool:
     """
     if render_script == BUNDLED_RENDER_SCRIPT:
         return True
-    return render_script == _LEGACY_BUNDLED_RENDER_SCRIPT and not Path(render_script).exists()
+    if render_script == _LEGACY_BUNDLED_RENDER_SCRIPT:
+        return not Path(render_script).exists()
+    return _is_former_bundled_renderer_path(render_script)
+
+
+def _is_former_bundled_renderer_path(render_script: str) -> bool:
+    """True for a path to where the single-file renderer used to live (issue #364).
+
+    Hand-written appliance configs named it by absolute path
+    (``/home/pi/IdleHours/idle_hours/render_quote.py``), which stopped existing
+    in #335. Only that exact file counts, and only while it is missing: a
+    ``render_quote.py`` anywhere else is an operator's own renderer, and an old
+    path from a checkout that has since moved still fails preflight with a hint.
+    """
+    if not render_script or Path(render_script).name != _LEGACY_BUNDLED_RENDER_SCRIPT:
+        return False
+    path = Path(render_script).expanduser()
+    if path.exists():
+        return False
+    try:
+        return path.resolve() == BASE_DIR / _LEGACY_BUNDLED_RENDER_SCRIPT
+    except (OSError, RuntimeError):
+        return False
 
 
 def _render_command(render_script: str) -> list[str]:
@@ -1956,9 +1978,9 @@ def _warn_legacy_render_script(args: argparse.Namespace) -> None:
     checks, not advice.
     """
     value = getattr(args, "render_script", None)
-    if value == _LEGACY_BUNDLED_RENDER_SCRIPT and _uses_bundled_renderer(value):
+    if value and value != BUNDLED_RENDER_SCRIPT and _uses_bundled_renderer(value):
         _log(
-            f'render_script = "{_LEGACY_BUNDLED_RENDER_SCRIPT}" names the bundled renderer by file, '
+            f'render_script = "{value}" names the bundled renderer by file, '
             "which is being replaced by a package (#335); it still works, but set "
             f'render_script = "{BUNDLED_RENDER_SCRIPT}".',
             err=True,
