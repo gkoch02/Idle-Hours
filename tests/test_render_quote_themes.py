@@ -7824,3 +7824,57 @@ class TestBladerunnerFrame(_CustomFrameCase):
             reds = [x for x in range(band.width) for y in range(band.height) if band.getpixel((x, y)) == rq.SPECTRA6["red"]]
             x0, _, x1, _ = rects[hour - 1]
             assert reds and all(x0 <= tx0 + x <= x1 for x in reds), hour
+
+
+class TestTraumateamFrame(_CustomFrameCase):
+    """``traumateam`` — *Cyberpunk*: a Trauma Team dispatch screen, the drawn
+    wordmark over a red band naming the hour's unit, and a vitals trace."""
+
+    THEME = "traumateam"
+
+    def test_inks_are_black_white_red_and_the_cyan_tabs(self):
+        image = self._render()
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("black", "white", "red", "green", "blue")}
+        assert rq.theme_font_candidates("traumateam", "quote_regular")[0] == (rq.OXANIUM_VARIABLE, "Regular")
+        assert rq.theme_font_candidates("traumateam", "quote_bold")[0] == (rq.OXANIUM_VARIABLE, "Bold")
+
+    def test_lockup_is_white_and_centred(self):
+        image = self._render()
+        lockup = image.crop((0, 0, 800, rq._TRAUMATEAM_BAND[1] - 4))
+        assert set(ink_counts(lockup)) == {rq.SPECTRA6["black"], rq.SPECTRA6["white"]}
+        bbox = lockup.convert("L").point(lambda v: 255 if v > 128 else 0).getbbox()
+        assert bbox is not None
+        assert abs((bbox[0] + bbox[2]) / 2 - 400) <= 2
+        assert bbox[1] >= 4
+
+    def test_every_wordmark_glyph_stays_on_its_grid(self):
+        for ch, (width, polys) in rq._TRAUMATEAM_GLYPHS.items():
+            for poly in polys:
+                assert all(0 <= x <= width and 0 <= y <= 9 for x, y in poly), ch
+        assert set("TRAUMATEAM") <= set(rq._TRAUMATEAM_GLYPHS)
+
+    def test_band_is_red_and_carries_the_hours_unit(self):
+        assert rq._traumateam_unit_code(1) == "AV-01"
+        assert rq._traumateam_unit_code(12) == "AV-12"
+        assert rq._traumateam_status(make_row(**self.ROW)) in rq._TRAUMATEAM_STATUSES
+        a, b = self._render(time_str="03:30"), self._render(time_str="04:30")
+        band = ink_counts(a.crop(rq._TRAUMATEAM_BAND))
+        assert band.get(rq.SPECTRA6["red"], 0) > 10000 and band.get(rq.SPECTRA6["white"], 0) > 400
+        assert pixel_bytes(a.crop(rq._TRAUMATEAM_BAND)) != pixel_bytes(b.crop(rq._TRAUMATEAM_BAND))
+        assert pixel_bytes(a.crop(rq._TRAUMATEAM_QUOTE_RECT)) == pixel_bytes(b.crop(rq._TRAUMATEAM_QUOTE_RECT))
+
+    def test_phrase_is_white_on_a_red_block(self):
+        image = self._render()
+        counts = ink_counts(image.crop(rq._TRAUMATEAM_QUOTE_RECT))
+        assert counts.get(rq.SPECTRA6["red"], 0) > 1000 and counts.get(rq.SPECTRA6["white"], 0) > 3000
+        plain = dict(self.ROW, matched_text="")
+        assert rq.SPECTRA6["red"] not in ink_counts(self._render(plain).crop(rq._TRAUMATEAM_QUOTE_RECT))
+
+    def test_vitals_trace_is_seeded_from_the_quote(self):
+        a = self._render()
+        b = self._render(dict(self.ROW, source_id="1727", line_number=9))
+        assert pixel_bytes(a.crop(rq._TRAUMATEAM_VITALS)) != pixel_bytes(b.crop(rq._TRAUMATEAM_VITALS))
+        x0, y0, x1, y1 = rq._TRAUMATEAM_VITALS
+        points = rq._traumateam_vitals_points(make_row(**self.ROW))
+        assert all(x0 <= x <= x1 and y0 <= y <= y1 for x, y in points)
+        assert ink_counts(a.crop(rq._TRAUMATEAM_VITALS)).get(rq.SPECTRA6["white"], 0) > 800

@@ -21,6 +21,10 @@ these entries under the new dated version heading.
   scanner tags. The quote sits in a black LAPD archive pane, white Barlow
   with the matched phrase in yellow, over a DNA strip seeded from the quote
   and twelve archive drawers whose lit cell is the hour.
+- New `traumateam` theme: a *Cyberpunk* Trauma Team dispatch screen. A drawn
+  white wordmark and six-armed mark over a red dispatch band that names the
+  hour's responding unit (`AV-01` to `AV-12`), the quote in white Oxanium
+  with the matched phrase on a red block, and a heart trace along the foot.
 - The `photo` theme no longer washes out dark photographs. A dark picture was
   brightened by adding a flat amount to every pixel, which turned its blacks to
   mid-grey and the whole frame to fog on the panel. It is now lifted with a

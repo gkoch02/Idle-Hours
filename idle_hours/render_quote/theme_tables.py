@@ -209,6 +209,7 @@ THEME_ORDER: tuple[str, ...] = (
     "escritoire",
     "lasvegas",
     "bladerunner",
+    "traumateam",
     "diags",
 )
 # Themes registered in THEMES but excluded from every rotation (button B, web
@@ -1149,6 +1150,22 @@ THEMES = {
     # mnemonic tiles along the foot in the film's flat colours with the
     # hour's tile white, and HAL's red lens in its white bezel at the right.
     # Palette serves the palette-only paths (see the note above ``THEMES``).
+    # *Cyberpunk* — a Trauma Team International dispatch screen. A custom
+    # frame (``render_traumateam_frame``): black screen, the drawn wordmark
+    # and mark in white, a red dispatch band with the hour's unit, white
+    # Oxanium body with the matched phrase Bold on a red block, and a vitals
+    # trace along the foot. Palette serves the palette-only paths (see the
+    # note above ``THEMES``).
+    "traumateam": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["white"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["white"],
+    },
     "hal": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -3077,6 +3094,14 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "traumateam": {
+        # Oxanium — a squared techno sans in the register of the game's
+        # interface faces. Regular for the white body, Bold for the matched
+        # phrase on its red block, SemiBold for the band and the chrome.
+        "quote_regular": [(OXANIUM_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(OXANIUM_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [(OXANIUM_VARIABLE, "SemiBold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
         # Saros's text face Tamba Sans, display Arame and chrome Korataki are
