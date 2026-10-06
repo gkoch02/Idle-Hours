@@ -282,4 +282,6 @@ SPEC = BorderSpec(
     # no stamp, which is right, since a card is not an analysis.
     clear_rect_pad=(20, 14, 14),
     wants_time=True,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

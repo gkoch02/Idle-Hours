@@ -801,4 +801,6 @@ SPEC = BorderSpec(
     # lays all eight map layers in one pass, then knocks the body rect out
     # to a clean cream-washed rounded cartouche.
     clear_rect_pad=(22, 12, 12),
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

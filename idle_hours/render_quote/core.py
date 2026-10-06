@@ -237,11 +237,10 @@ def parse_pin_quote(value: str | None, matched_text: str | None = None) -> tuple
 
 
 def _paint_theme_border(image: Image.Image, theme: str, colors: dict) -> None:
-    """Paint ``theme``'s border, if it has one: the plain first pass.
+    """Paint ``theme``'s border, if it has one, on the bare page.
 
-    The seam ``render``, ``render_source_card`` and ``render_static_message``
-    share. ``render`` follows it with the spec's knockout pass once the quote
-    is laid out; see ``spec.BorderSpec``.
+    The seam ``render_source_card`` and ``render_static_message`` share.
+    ``render`` paints in its knockout pass instead; see ``spec.BorderSpec``.
     """
     spec = BORDER_SPECS.get(theme)
     if spec is not None:
@@ -445,7 +444,11 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         return frame.render(time_str, quote_row, width, height)
     colors = THEMES[theme]
     image = Image.new("RGB", (width, height), color=colors["page_bg"])
-    _paint_theme_border(image, theme, colors)
+    border = BORDER_SPECS.get(theme)
+    # The border is painted in the knockout pass below. Only a theme whose
+    # look depends on a paint before it gets one here (issue #361).
+    if border is not None and border.paints_twice:
+        border.paint(image, colors)
     draw = ImageDraw.Draw(image)
 
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row["display_quote"]))
@@ -566,7 +569,6 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         quote_right_edge = max(quote_right_edge, attribution_left + int(bbox[2] - bbox[0]))
 
     clear_rect = None
-    border = BORDER_SPECS.get(theme)
     # The knockout rect: the quote and attribution block, grown by the
     # theme's ``clear_rect_pad`` so its framing decoration clears the text.
     if border is not None and border.clear_rect_pad is not None and quote_line_boxes:
@@ -586,8 +588,8 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
         if clear_rect[2] < clear_rect[0] or clear_rect[3] < clear_rect[1]:
             clear_rect = None
 
-    # The knockout pass: every border theme is painted again now the quote is
-    # laid out, with the knockout rect (and the time) when its spec asks.
+    # The knockout pass: every border theme is painted now the quote is laid
+    # out, with the knockout rect (and the time) when its spec asks.
     if border is not None:
         border.paint_knockout(image, colors, clear_rect, time_str)
 

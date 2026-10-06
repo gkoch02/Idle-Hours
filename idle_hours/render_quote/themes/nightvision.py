@@ -108,4 +108,6 @@ def draw_nightvision_border(image: Image.Image, colors: dict) -> None:
 SPEC = BorderSpec(
     themes=("nightvision",),
     paint=draw_nightvision_border,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

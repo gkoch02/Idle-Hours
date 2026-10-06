@@ -25,11 +25,17 @@ if TYPE_CHECKING:
 class BorderSpec:
     """A theme that paints a border, then lays the shared quote out over it.
 
-    ``render`` paints a border twice: once on the bare page, and once more
-    after the quote is laid out (the *knockout pass*). The source card and the
-    static message make only the first call. Ten painters do not reproduce
-    their own output when run again, so the first paint is part of how those
-    themes look, not dead code.
+    ``render`` paints a border once, after the quote is laid out (the
+    *knockout pass*); layout only measures text, so nothing is lost by
+    waiting. The source card and the static message paint it once on the bare
+    page with ``paint``.
+
+    ``paints_twice`` keeps the old first paint on the bare page ahead of the
+    knockout pass, for a painter that does not reproduce its own output when
+    run again over a painted page: that theme's look is the composite of the
+    two paints, so dropping the first would change it (issue #361). It is a
+    recorded quirk, not a feature to opt into; ``TestPaintsTwice`` fails if a
+    flag is missing or no longer changes anything.
 
     ``clear_rect_pad`` is ``(x, top, bottom)``: how far the knockout rect
     reaches past the quote and attribution block, wide enough that the
@@ -55,6 +61,7 @@ class BorderSpec:
     wants_time: bool = False
     knockout: Callable[..., None] | None = None
     debug_label_inset: int | None = None
+    paints_twice: bool = False
 
     def __post_init__(self) -> None:
         if not self.themes:
@@ -63,7 +70,7 @@ class BorderSpec:
             raise ValueError(f"{self.themes}: wants_time and knockout only apply to the knockout pass, which needs a clear_rect_pad")
 
     def paint_knockout(self, image, colors: dict, clear_rect, time_str: str) -> None:
-        """The second paint ``render`` makes, once the quote is laid out."""
+        """The paint ``render`` makes once the quote is laid out."""
         if self.clear_rect_pad is None:
             self.paint(image, colors)
             return

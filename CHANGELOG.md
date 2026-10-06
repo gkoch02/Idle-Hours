@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `render` paints a border theme's border once instead of twice for the 27
+  border themes whose painters reproduce their own output, with byte-identical
+  frames. Up to ~1.2 s saved per render on a Pi (`alchemy`). The ten that do
+  not are marked `paints_twice` on their spec and keep both paints (#361).
 - `run_clock` now launches the bundled renderer as `python -m idle_hours.render_quote`
   instead of by file path, ahead of `render_quote.py` becoming a package (#335).
   `--render-script` / `render_script` defaults to `"auto"`. A config that still says

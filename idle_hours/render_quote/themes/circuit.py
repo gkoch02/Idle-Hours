@@ -185,4 +185,6 @@ SPEC = BorderSpec(
     # past the TR mounting hole's keep-out ring (leftmost
     # x=width-42) plus a 4 px gap
     debug_label_inset=46,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )

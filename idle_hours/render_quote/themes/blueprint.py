@@ -167,4 +167,6 @@ SPEC = BorderSpec(
     knockout=_paint_blueprint_knockout,
     # past the TR crosshair arm (frame at 16 + 8px arm)
     debug_label_inset=34,
+    # The look is the composite of two paints (issue #361).
+    paints_twice=True,
 )
