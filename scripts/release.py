@@ -74,7 +74,13 @@ def promote_changelog(text: str, version: str, release_date: str) -> str:
         raise ReleaseError("the Unreleased changelog section has no bullet entries")
     if f"## [{version}]" in text:
         raise ReleaseError(f"CHANGELOG.md already contains a {version} release")
-    replacement = f"{marker}\n\n## [{version}] - {release_date}\n\n{body}"
+    # Prose ahead of the first entry or subheading is the section's standing
+    # note to contributors; it stays under Unreleased for the next release.
+    first_entry = re.search(r"(?m)^(?:###? |[ \t]*[-*] )", body)
+    preamble = body[: first_entry.start()].strip() if first_entry else ""
+    entries = body[first_entry.start():].strip() if first_entry else body
+    head = f"{marker}\n\n{preamble}\n\n" if preamble else f"{marker}\n\n"
+    replacement = f"{head}## [{version}] - {release_date}\n\n{entries}\n"
     return text[: text.index(marker)] + replacement + text[next_heading:]
 
 
