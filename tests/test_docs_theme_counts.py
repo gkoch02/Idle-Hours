@@ -91,7 +91,7 @@ def _roster_diff(found: list[str], expected: list[str]) -> str:
     if dupes:
         lines.append(f"  listed more than once:                  {dupes}")
     if not lines:
-        i = next(i for i, (a, b) in enumerate(zip(found, expected, strict=True)) if a != b)
+        i = next(i for i, (a, b) in enumerate(zip(found, expected, strict=False)) if a != b)
         lines.append(
             f"  same names, wrong order — first divergence at index {i}: "
             f"the doc has {found[i]!r}, code has {expected[i]!r}"

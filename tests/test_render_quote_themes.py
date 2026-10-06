@@ -472,7 +472,7 @@ class TestTarotFrame:
     def test_roman_numeral_table_is_complete(self):
         """Every hour 1..12 maps to a Roman numeral string."""
         assert set(rq._TAROT_ROMAN_NUMERALS.keys()) == set(range(1, 13))
-        for hour, numeral in rq._TAROT_ROMAN_NUMERALS.items():
+        for _hour, numeral in rq._TAROT_ROMAN_NUMERALS.items():
             assert numeral and isinstance(numeral, str)
 
     def test_trump_name_tables_are_complete(self):
@@ -1301,7 +1301,7 @@ class TestPrideChevronBands:
 
     def test_band_inks_and_order(self):
         buckets = self._bands()
-        for index, (base, minority, share) in enumerate(self.EXPECTED):
+        for index, (base, minority, _share) in enumerate(self.EXPECTED):
             counts = dict(buckets[index])
             total = sum(counts.values())
             assert total > 500, f"band {index} too small to measure ({total} px)"

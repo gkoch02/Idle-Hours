@@ -121,7 +121,7 @@ def draw_placard_border(image: Image.Image, colors: dict) -> None:
     # width-inner_inset-10, clear of the body (dense layout starts x≥60).
     side_tag_centres = []
     cy_mid = height // 2
-    for edge_x, hdir in ((inner_inset + 10, 1), (width - 1 - inner_inset - 10, -1)):
+    for edge_x, _hdir in ((inner_inset + 10, 1), (width - 1 - inner_inset - 10, -1)):
         # Short vertical rule from above the diamond down to it.
         draw.line([(edge_x, cy_mid - 20), (edge_x, cy_mid - 5)], fill=ink, width=1)
         draw.polygon(

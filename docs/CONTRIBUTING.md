@@ -53,7 +53,7 @@ workflow files — they'll drift.
 
 - **Run the tests.** `pytest` should pass locally. Use `pytest -n auto` —
   the suite is ~4k cases, about 50s in parallel and ~3 minutes single-threaded.
-- **Run the linter.** `ruff check .` — rules `E`, `W`, `F`, `I`; line length
+- **Run the linter.** `ruff check .` — rules `E`, `W`, `F`, `I`, `B`; line length
   130; `E501` ignored. `ruff check --fix .` handles import ordering.
 - **Run the type checker.** `mypy` — settings and the pinned version live in
   `pyproject.toml`. Fix what it reports rather than adding `# type: ignore`.

@@ -165,7 +165,7 @@ def _intaglio_paint_lathework_band(image: Image.Image, draw: ImageDraw.ImageDraw
     amp = 9.0
     freq = 0.22
     for sign in (1.0, -1.0):
-        for mid, horizontal in ((mid_top, True), (mid_bottom, True)):
+        for mid, _horizontal in ((mid_top, True), (mid_bottom, True)):
             pts: list[tuple[float, float]] = [(x, mid + sign * amp * math.sin(x * freq)) for x in range(bx0 + 2, bx1 - 1)]
             draw.line(pts, fill=green, width=1)
         for mid in (mid_left, mid_right):

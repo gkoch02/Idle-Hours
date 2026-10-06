@@ -298,7 +298,7 @@ def draw_lcars_border(image: Image.Image, colors: dict) -> None:
     # ===========================================================
     block_label_font = load_font(META_FONT_BOLD_CANDIDATES, max(6, int(round(10 * scale))))
     label_pad_right = 4   # inset from the block's right edge
-    for left, top, right, bot, label in blocks:
+    for _left, top, right, bot, label in blocks:
         baseline_bbox = draw.textbbox((0, 0), label, font=block_label_font)
         label_w = baseline_bbox[2] - baseline_bbox[0]
         label_h = baseline_bbox[3] - baseline_bbox[1]

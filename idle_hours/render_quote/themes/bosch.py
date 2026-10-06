@@ -305,7 +305,7 @@ def _bosch_rose_tower(tile, cx: int, base: int, top: int, half: int, light: floa
         return _bosch_pick(rank, ((black, k), (red, r), (white, 1)))
     _bosch_paint(tile, mask, shade)
     draw = ImageDraw.Draw(tile)
-    for i, y in enumerate(range(top + 34, base - 16, 22)):           # lancets
+    for _i, y in enumerate(range(top + 34, base - 16, 22)):           # lancets
         draw.ellipse((cx - 2, y, cx + 2, y + 10), fill=black)
         for s in (-1, 1):                                              # crockets
             draw.polygon([(cx + s * (half - 1), y + 4), (cx + s * (half + 5), y - 2),

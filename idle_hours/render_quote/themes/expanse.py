@@ -638,7 +638,7 @@ def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote
     mono = _expanse_mono_font(10)
     d = _row_digest(quote_row)
     bx, by = _EXPANSE_SYSTEXT_X, y0 + 46
-    for k, text in enumerate((f"{d % 10_000_000:07d}", f"SY{(d >> 8) % 100_000:05d}")):
+    for _k, text in enumerate((f"{d % 10_000_000:07d}", f"SY{(d >> 8) % 100_000:05d}")):
         w = int(draw.textlength(text, font=mono)) + 10
         draw.rectangle((bx, by, bx + w, by + 15), outline=SPECTRA6["blue"], width=1)
         draw.text((bx + 5, by + 2), text, font=mono, fill=SPECTRA6["white"])
