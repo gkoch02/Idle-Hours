@@ -76,7 +76,7 @@ def promote_changelog(text: str, version: str, release_date: str) -> str:
         raise ReleaseError(f"CHANGELOG.md already contains a {version} release")
     # Prose ahead of the first entry or subheading is the section's standing
     # note to contributors; it stays under Unreleased for the next release.
-    first_entry = re.search(r"(?m)^(?:###? |[-*] )", body)
+    first_entry = re.search(r"(?m)^(?:###? |[ \t]*[-*] )", body)
     preamble = body[: first_entry.start()].strip() if first_entry else ""
     entries = body[first_entry.start():].strip() if first_entry else body
     head = f"{marker}\n\n{preamble}\n\n" if preamble else f"{marker}\n\n"

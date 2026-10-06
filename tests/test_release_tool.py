@@ -91,6 +91,12 @@ Add release notes here as changes merge.
 """
 
 
+def test_promote_changelog_keeps_the_preamble_before_an_indented_entry():
+    source = "# Changelog\n\n## [Unreleased]\n\nStanding note.\n\n  - Indented entry.\n\n## [2.5.0] - 2026-09-24\n"
+    result = release.promote_changelog(source, "2.6.0", "2026-09-25")
+    assert "## [Unreleased]\n\nStanding note.\n\n## [2.6.0] - 2026-09-25\n\n- Indented entry.\n\n## [2.5.0]" in result
+
+
 def test_promote_changelog_rejects_empty_unreleased_section():
     source = "# Changelog\n\n## [Unreleased]\n\nSome prose.\n\n## [2.5.0] - 2026-09-24\n"
     with pytest.raises(release.ReleaseError, match="no bullet"):
