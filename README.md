@@ -6,19 +6,52 @@
 
 [![CI](https://github.com/gkoch02/Idle-Hours/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoch02/Idle-Hours/actions/workflows/ci.yml)
 
-Idle Hours is a literary clock built from public-domain text. It picks a quote that matches the current fuzzy time bucket, renders it into an 800×480 image, and can push that image to an eInk display such as the Pimoroni Inky Impression 7.3.
+Idle Hours is a literary clock: every few minutes it shows a sentence from a public-domain novel that names the current time, with the time phrase picked out in bold. Behind it is a pipeline that mines Project Gutenberg for phrases like "a quarter past seven", cleans and scores them, and bakes over two thousand quotes into a database ranked for each five-minute slot of the twelve-hour clock. A Raspberry Pi renders the pick for a six-colour eInk panel and runs unattended as a systemd appliance, with a small web UI for curating the corpus.
+
+<!-- TODO(#354): photo of the physical Inky Impression panel goes here. preview.png below is a render, not the device. -->
 
 ![Idle Hours rendered in saloon, gothic, astrarium, and deco themes](idle_hours/assets/preview.png)
 
-> **Upgrading from LitClock?** This project was previously named LitClock.
-> The rename is hard (new package name, new CLI command, new filesystem
-> paths, new HTTP token header, new Prometheus metric names, new systemd
-> unit). See [`docs/UPGRADE.md`](docs/UPGRADE.md) for the one-time migration steps.
+The mining pipeline and the appliance runtime are the product. The themes ([full table](#themes), design notes in [`docs/themes.md`](docs/themes.md)) are a deliberately open-ended creative layer built on a shared, golden-tested rendering toolkit.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Gutenberg texts] -->|mine| B[raw candidates]
+    B -->|clean + score| C[attributed corpus]
+    C -->|bake| D[quote database]
+    D -->|pick| E[quote for HH:MM]
+    E -->|render| F[800×480 PNG]
+    F -->|display| G[eInk panel]
+```
+
+1. **Mine.** Regexes find time phrases ("ten minutes to midnight", "the clock struck three") in Gutenberg books; overlapping matches resolve longest-first so "nearly one o'clock" is not also filed at 01:00.
+2. **Clean and score.** Each hit becomes a displayable excerpt, gets a 0–100 quality score with named penalty flags, and picks up title and author. Hand fixes live in a sidecar, [`content_overrides.json`](idle_hours/assets/content_overrides.json), applied on top.
+3. **Bake.** Ten of the twelve score components do not depend on the requested time. The baker computes them once and stores them on each row, so the runtime only adds the other two.
+4. **Pick.** The runtime maps the time to one of 144 fuzzy buckets, ranks candidates, skips anything shown in the last week, and falls back to the nearest neighbouring bucket when one is empty.
+5. **Render and display.** Pillow lays out the quote, snaps it to the panel's six inks, and pushes it to the Inky Impression. The loop repaints only when the bucket changes.
+
+## Engineering highlights
+
+- **Bake/raw pick equivalence.** The baked database must pick the same row as scoring the raw corpus live, for every one of the 144 buckets ([`TestPickEquivalenceShippedCorpus`](tests/test_bake_equivalence.py)).
+- **Pin fidelity against the shipped corpus.** The runtime peeks a quote, then tells the render subprocess to draw exactly that row. A sweep over every clock time against the real database ([`TestPinFidelityAgainstShippedCorpus`](tests/test_pick_quote.py)) found that `(source_id, line_number)` is not unique, which had put the wrong phrase on the panel for about 8% of times. Every synthetic test had passed.
+- **Durability.** Every file the next tick reads is written through [`atomic_io`](idle_hours/atomic_io.py) (temp file, fsync, rename, fsync the directory). A [`pidfile`](idle_hours/pidfile.py) keeps one instance running. Configuration errors exit 42, which the [systemd unit](ops/idle-hours.service.example) lists under `RestartPreventExitStatus` so it halts instead of flapping; a read-only mount (`EROFS`) counts as configuration, while `ENOSPC` or `EIO` exits 1 and is retried. A pure-stdlib [`sd_notify`](idle_hours/sd_notify.py) client feeds the systemd watchdog.
+- **Curator UI security.** Off-loopback binds require a token, checked in constant time with `hmac.compare_digest`. On every bind, POSTs must be `application/json`, `Origin` must match `Host`, and `Host` must be one the bind expects, which blocks DNS rebinding ([`web_server.py`](idle_hours/web_server.py), [`docs/web_ui.md`](docs/web_ui.md)).
+- **Tests that fail on absence.** Structural tests fail when something is missing, not only when it changes: a theme that stops painting ([`test_theme_decoration.py`](tests/test_theme_decoration.py)), a doc whose theme count or roster drifts from the registry, a CI job that is not a required check. Each theme also has a golden render compared at 0.1% pixel tolerance ([`test_render_golden.py`](tests/test_render_golden.py)).
+
+## How it was built
+
+<!-- TODO(#354): owner-written. Say plainly that most commits are authored by Claude Code, describe the human role (issue specs, review, hardware integration, release process), and link two or three issues where the spec or review changed the outcome. -->
+
+What the project deliberately does not do, and why, is in [`docs/decisions.md`](docs/decisions.md).
 
 ## Table of contents
 
+- [How it works](#how-it-works)
+- [Engineering highlights](#engineering-highlights)
+- [How it was built](#how-it-was-built)
 - [What this repo is](#what-this-repo-is)
-- [How Idle Hours was built](#how-idle-hours-was-built)
 - [Repo map](#repo-map)
   - [Runtime](#runtime)
   - [Runtime assets](#runtime-assets)
@@ -56,19 +89,6 @@ This repo contains both:
 - the **corpus/build tooling** used to mine, clean, enrich, and improve the quote dataset
 
 If you are deploying or operating the clock, you mostly care about the runtime and the prebuilt assets in `idle_hours/assets/`.
-
-## How Idle Hours was built
-
-At a high level, the project came together in stages:
-
-1. mine public-domain books for phrases like "quarter past seven" or "ten minutes to midnight"
-2. clean raw matches into displayable quotes
-3. enrich, attribute, and score the candidates
-4. organize them into fuzzy time buckets
-5. pick the best quote for the current bucket at runtime, with nearby fallback when needed
-6. render the result into an image tuned for the target eInk display
-
-That build pipeline is how the runtime quote set came to exist. The clock itself then uses the prebuilt dataset and render loop to turn that corpus work into a live display.
 
 ## Repo map
 
@@ -146,6 +166,11 @@ Read it as: `candidates-attributed.jsonl` + `content_overrides.json` are the **s
 If you are only updating the clock on a Pi, you should not need to rebuild the corpus on-device — the baked DB already ships in the repo.
 
 ## Quick start
+
+> **Upgrading from LitClock?** This project was previously named LitClock.
+> The rename is hard (new package name, new CLI command, new filesystem
+> paths, new HTTP token header, new Prometheus metric names, new systemd
+> unit). See [`docs/UPGRADE.md`](docs/UPGRADE.md) for the one-time migration steps.
 
 ### Local setup
 
