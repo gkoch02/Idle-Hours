@@ -663,7 +663,7 @@ for _theme in sorted(rq.THEMES):
 # prints the date in its header strip and derives its solar-elevation and
 # lunar-phase datums from the day of year; ``vinyl`` stamps a copyright year on
 # the label and seeds its sleeve wear-speckle from ``YYYYMMDD`` so the pattern
-# drifts day to day (by design — see the theme's note in CLAUDE.md).
+# drifts day to day (by design — see the theme's note in docs/themes.md).
 #
 # Both are legitimate behaviours and both make an un-frozen golden expire
 # overnight, which is why neither theme had a fixture before. Freezing the

@@ -2,8 +2,9 @@
 
 Claude Code warns once the file passes 150k characters. It reached ~559k by
 accreting full design write-ups for every theme; those now live in
-``docs/themes.md``, ``docs/runtime.md``, ``docs/web_ui.md`` and
-``docs/testing.md``, with CLAUDE.md keeping summaries and pointers. This
+``docs/themes.md``, ``docs/runtime.md``, ``docs/web_ui.md``,
+``docs/testing.md`` and ``docs/pipeline.md``, with CLAUDE.md keeping
+invariants and pointers (issue #352). This
 fence keeps it that way: when it fails, move detail into ``docs/`` rather
 than raising the limit.
 """
@@ -27,6 +28,6 @@ def test_claude_md_stays_under_budget():
 
 def test_split_docs_are_linked_from_claude_md():
     text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    for doc in ("docs/themes.md", "docs/runtime.md", "docs/web_ui.md", "docs/testing.md"):
+    for doc in ("docs/pipeline.md", "docs/themes.md", "docs/runtime.md", "docs/web_ui.md", "docs/testing.md"):
         assert (REPO_ROOT / doc).exists(), f"{doc} is missing"
         assert doc in text, f"CLAUDE.md no longer points at {doc}"

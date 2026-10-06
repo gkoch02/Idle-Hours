@@ -2,8 +2,53 @@
 
 Full reference for the appliance runtime: config loading, quiet hours, themes,
 buttons, persisted state, telemetry, supervision, and the `runtime_*` module
-split. Moved out of `CLAUDE.md` (which keeps a summary); section names
-mentioned below refer to `CLAUDE.md` or to the sibling files in `docs/`.
+split, plus how default paths resolve. `CLAUDE.md` keeps the invariants and
+links here; corpus and picker sections named below ("Baked Quote Database",
+"Anti-Repeat History Ledger", …) are in [`pipeline.md`](pipeline.md).
+
+## Default paths
+
+After the v2.x package restructure, three resolution rules apply:
+
+- **Bundled package assets** (`idle_hours/assets/`, `idle_hours/fonts/`,
+  `idle_hours/web/`) and the per-stage default JSONL paths anchor on
+  `BASE_DIR = Path(__file__).resolve().parent` — which now points *inside*
+  the installed package. The wheel ships these as `package-data`, so a
+  bare `pip install idle-hours` resolves them correctly.
+- **Runtime artefacts** (`output/current.png`, the Gutenberg download cache
+  under `data/gutenberg/`, history / state / telemetry sidecars) anchor
+  on **CWD**, not `BASE_DIR`. A `BASE_DIR`-relative output would write
+  inside the installed package directory, which is not what an operator
+  wants. The shipped appliance preset (`config.toml.example`) therefore
+  sets `output` to an absolute path under `/var/lib/idle-hours/`; the
+  systemd unit's `WorkingDirectory=` is the same directory, but it is
+  there for `lgpio` (see "Appliance / Pi Setup"), not to anchor outputs.
+- **The bundled renderer is a module, not a path.** `--render-script` defaults
+  to `"auto"`, which runs `python -m idle_hours.render_quote` (issue #335).
+  `runtime_render._render_command` is the one place that decides. The legacy value
+  `"render_quote.py"`, which every pre-#335 appliance config carries, still
+  means the bundled renderer unless a `./render_quote.py` exists in the working
+  directory, and `main()` logs a one-line deprecation note for it. So does an
+  absolute path to the removed file at this install's own location
+  (`BASE_DIR / "render_quote.py"`, issue #364), but only while it is missing;
+  the same name anywhere else stays a custom renderer. Any other
+  value is a custom renderer and resolves as an input path (below). Preflight
+  checks `"auto"` with `importlib.util.find_spec`, not a file test.
+- **Operator-supplied input paths** (`--render-script`, `--display-script`,
+  `--quiet-image`, `--startup-image`) go through `path_resolution.resolve_input_path`,
+  which tries CWD-relative first and falls back to `BASE_DIR`-relative when
+  the CWD candidate doesn't exist. This lets `config.toml.example` keep
+  relative strings like `display_script = "display_inky.py"` (resolves to
+  the bundled script regardless of CWD), while an operator who drops
+  `./my_renderer.py` in their working tree and points the config at it
+  still gets *their* file. Absolute paths pass through unchanged. The
+  asymmetry vs. outputs is deliberate — outputs MUST go to CWD (writing
+  into site-packages is never what an operator wants), inputs prefer CWD
+  but accept the bundled fallback for portability.
+
+`scripts/run_batch2.sh` reads its Gutenberg IDs from
+`scripts/gutenberg_batch_ids.txt`; the script resolves to the repo root and writes to `output/` regardless of the
+caller's CWD.
 
 ## Runtime Loop (`run_clock.py`)
 

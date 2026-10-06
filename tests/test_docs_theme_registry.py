@@ -1,139 +1,28 @@
-"""The documentation's theme claims must agree with the theme registry.
+"""The documentation's theme rosters must agree with the theme registry.
 
-Adding a theme touches a lot of prose, and none of it was checked. The count
-alone is spelled out **as a word** in seven places across four files, and every
-one of them silently went stale when the ``abyssal`` and ``pride`` branches
-were merged: both had independently changed "Forty-seven themes" to
-"Forty-eight", so git merged the sentences *cleanly* and the result claimed
-forty-eight against a registry of forty-nine. Nothing failed. A reviewer had no
-way to see it.
+A roster is real content: the README's per-theme table, its contact-sheet loop
+and docs/runtime.md's button-B chain each enumerate themes because a reader
+needs the list there. Each is checked against the registry it mirrors, so
+adding a theme without its row, preview or loop entry fails here.
 
-That is the whole class this module fences — a fact stated in prose that is
-derivable from code, with nothing tying the two together:
+Counts are deliberately *not* fenced (issue #352). A spelled-out "eighty-nine
+themes" is a cache of ``len(THEME_ORDER)``, and it used to be restated in seven
+places and checked by a number speller. The docs now say "every theme in
+``THEME_ORDER``" instead, so there is no count to drift and nothing here
+parses prose for a number. Do not reintroduce one: point at the registry.
 
-* the spelled-out counts (``TestThemeCountWords``)
-* the README's per-theme table and its preview images (``TestReadmeThemeTable``)
-* the README's contact-sheet loop (``TestContactSheetLoop``)
-* docs/runtime.md's button-B cycle chain (``TestButtonBCycleChain``)
-
-Every expectation is *derived* from ``render_quote``, so adding theme fifty
-means updating the docs and nothing here. Each scan also asserts a floor on how
-much it found: a regex that quietly stops matching would otherwise turn these
-into vacuous passes, which is the failure mode the tests exist to prevent.
+Each scan asserts that it found something, because a regex that quietly stops
+matching would otherwise turn these into vacuous passes.
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-import pytest
-
 from idle_hours import render_quote as rq
 from idle_hours import theme_names
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-# Every file that makes a claim about the theme registry in prose.
-DOC_FILES = (
-    REPO_ROOT / "README.md",
-    REPO_ROOT / "CLAUDE.md",
-    *sorted((REPO_ROOT / "docs").glob("*.md")),
-    REPO_ROOT / "idle_hours/assets/config.toml.example",
-    REPO_ROOT / "idle_hours/assets/config.toml.defaults",
-)
-
-_UNITS = (
-    "zero one two three four five six seven eight nine ten eleven twelve "
-    "thirteen fourteen fifteen sixteen seventeen eighteen nineteen"
-).split()
-_TENS = {20: "twenty", 30: "thirty", 40: "forty", 50: "fifty",
-         60: "sixty", 70: "seventy", 80: "eighty", 90: "ninety"}
-
-
-def _word_for(n: int) -> str:
-    """Spell ``n`` (0..99) the way the docs do — "forty-nine", "twenty"."""
-    assert 0 <= n < 100, n
-    if n < 20:
-        return _UNITS[n]
-    tens, unit = divmod(n, 10)
-    return _TENS[tens * 10] + (f"-{_UNITS[unit]}" if unit else "")
-
-
-_NUMBER_WORDS = {_word_for(n): n for n in range(1, 100)}
-
-# Claim sites are listed explicitly rather than discovered by scanning for
-# "<number> themes", and that is a deliberate reversal. A scan was tried first
-# and cannot work: the docs legitimately count *subsets* in the same shape —
-# "`marquee`, `tarot`, and `vinyl` are three more custom-render themes",
-# "… — one per theme" — and no amount of grammar tightening separates those
-# from a claim about the registry, because the difference is semantic. An
-# allowlist of exceptions to a scan would be strictly worse than this list: the
-# same maintenance burden, plus the risk of silently excusing a real claim.
-#
-# Each entry anchors on distinctive surrounding words so it cannot drift onto a
-# subset sentence, and ``offsets`` gives each capture group's expected value as
-# a subtraction from the registry size — 0 for a total, 1 for a count that
-# excludes ``diags``. The expected values are computed, so adding a theme means
-# updating the prose and nothing here; rewording a sentence means updating the
-# pattern, which is the point at which someone is looking at the claim anyway.
-CLAIM_SITES = (
-    ("README.md", "intro paragraph",
-     re.compile(r"\b([\w-]+) themes ship built-in, all constrained"), (0,)),
-    ("README.md", "curator UI thumbnail grid",
-     re.compile(r"previews of all ([\w-]+) registered themes"), (0,)),
-    ("README.md", "feature list",
-     re.compile(r"- ([\w-]+) themes ship built-in \(full table"), (0,)),
-    ("docs/themes.md", "THEMES dict description",
-     re.compile(r"The `THEMES` dict defines ([\w-]+) colou?r sets"), (0,)),
-    ("docs/web_ui.md", "theme preview endpoint",
-     re.compile(r"compare all ([\w-]+) operator-choice themes \(([\w-]+) themes including"), (1, 0)),
-    ("docs/CONTRIBUTING.md", "theme section",
-     re.compile(r"([\w-]+) themes ship today"), (0,)),
-    ("idle_hours/assets/config.toml.defaults", "theme key comment",
-     re.compile(r"\(([\w-]+) themes ship today;"), (0,)),
-)
-
-
-class TestThemeCountWords:
-    """Every spelled-out theme count must equal the size of the registry."""
-
-    @pytest.mark.parametrize(
-        "relative, description, pattern, offsets",
-        CLAIM_SITES,
-        ids=[f"{p}:{d}" for p, d, _, _ in CLAIM_SITES],
-    )
-    def test_claim_matches_the_registry(self, relative, description, pattern, offsets):
-        path = REPO_ROOT / relative
-        match = pattern.search(path.read_text(encoding="utf-8"))
-        assert match, (
-            f"the {description} claim in {relative} no longer matches its pattern — "
-            "the sentence was reworded, so update CLAIM_SITES (and check the count "
-            "while you are there)"
-        )
-        for index, offset in enumerate(offsets, start=1):
-            word = match.group(index)
-            expected = len(rq.THEMES) - offset
-            assert _NUMBER_WORDS.get(word.lower()) == expected, (
-                f'{relative} ({description}) says "{word}" where there are {expected} '
-                f'{"themes" if not offset else "operator-choice themes (all but `diags`)"} '
-                f'— spell it "{_word_for(expected)}"'
-            )
-
-    def test_every_doc_file_is_covered(self):
-        """Each file that states a count must appear in CLAIM_SITES."""
-        covered = {relative for relative, _, _, _ in CLAIM_SITES}
-        assert covered == {
-            "README.md", "docs/themes.md", "docs/web_ui.md", "docs/CONTRIBUTING.md",
-            "idle_hours/assets/config.toml.defaults",
-        }, f"CLAIM_SITES covers {sorted(covered)} — a file was added or dropped"
-
-    def test_word_speller_round_trips(self):
-        """The speller is load-bearing for the failure message, so pin it."""
-        assert _word_for(48) == "forty-eight"
-        assert _word_for(49) == "forty-nine"
-        assert _word_for(50) == "fifty"
-        assert _word_for(7) == "seven"
-        assert all(_word_for(n) in _NUMBER_WORDS for n in range(1, 100))
 
 
 class TestReadmeThemeTable:
@@ -153,6 +42,17 @@ class TestReadmeThemeTable:
         extra = set(rows) - set(rq.THEMES)
         assert not missing, f"README theme table is missing rows for: {sorted(missing)}"
         assert not extra, f"README theme table has rows for unregistered themes: {sorted(extra)}"
+
+    def test_rows_follow_theme_order(self):
+        rows = list(self._rows())
+        assert rows == list(rq.THEME_ORDER), (
+            "README theme table rows are not in THEME_ORDER order — first divergence: "
+            + next(
+                (f"row {i} is `{a}`, THEME_ORDER has `{b}`"
+                 for i, (a, b) in enumerate(zip(rows, rq.THEME_ORDER, strict=False)) if a != b),
+                "lengths differ",
+            )
+        )
 
     def test_row_image_matches_its_theme(self):
         for name, image in self._rows().items():
@@ -224,9 +124,3 @@ class TestButtonBCycleChain:
                 f"`{excluded}` is in CYCLE_EXCLUDED_THEMES but the documented "
                 "button-B chain still lists it"
             )
-
-
-@pytest.mark.parametrize("path", [p for p in DOC_FILES])
-def test_doc_files_exist(path):
-    """A renamed doc would otherwise silently drop out of every scan above."""
-    assert path.exists(), f"{path} is in DOC_FILES but does not exist"
