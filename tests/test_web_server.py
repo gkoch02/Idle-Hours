@@ -3,7 +3,7 @@
 Every test binds an ephemeral-port ``_IdleHoursHTTPServer`` on 127.0.0.1, drives
 it via ``http.client`` in the same process, and tears it down in teardown.
 Real GPIO, real Inky hardware, and real subprocesses are never touched — the
-rendering action endpoints stub ``run_clock._render_unlocked`` and the picker.
+rendering action endpoints stub ``runtime_render._render_unlocked`` and the picker.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from idle_hours import atomic_io, pick_quote, run_clock, web_server
+from idle_hours import atomic_io, pick_quote, run_clock, runtime_actions, runtime_render, runtime_theme, web_server
 from tests.conftest import make_row
 
 
@@ -512,7 +512,7 @@ class TestReadEndpoints:
             state.last_quote_id = ("141", 482, "hello world", "three o'clock")
             state.last_bucket = "h3_exact"
             state.last_effective_theme = "default"
-        with patch("idle_hours.run_clock.current_time_str", return_value="03:00"):
+        with patch("idle_hours.runtime_render.current_time_str", return_value="03:00"):
             status, body = _get(server, "/api/current")
         assert status == 200
         data = _json_body(body)
@@ -526,7 +526,7 @@ class TestReadEndpoints:
 
     def test_api_current_handles_no_quote(self, live_server):
         server, _state, _args = live_server
-        with patch("idle_hours.run_clock.current_time_str", return_value="12:00"):
+        with patch("idle_hours.runtime_render.current_time_str", return_value="12:00"):
             status, body = _get(server, "/api/current")
         assert status == 200
         data = _json_body(body)
@@ -941,7 +941,7 @@ class TestActionEndpointsLocking:
     def _patch_render(self):
         """Context that stubs _render_unlocked + pick so actions don't shell out."""
         return patch.multiple(
-            "idle_hours.run_clock",
+            "idle_hours.runtime_render",
             _render_unlocked=lambda args, state, time_str, history_path, **kw: None,
             peek_quote_id=lambda ts, **kw: ("141", 1, "hello", "three o'clock"),
         )
@@ -1108,8 +1108,8 @@ class TestActionEndpointsLocking:
         def fake_render(*a, **kw):
             rendered["count"] += 1
 
-        with patch("idle_hours.run_clock._render_unlocked", side_effect=fake_render), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.runtime_render._render_unlocked", side_effect=fake_render), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, body = _post(server, "/api/action/quiet")
         assert status == 200
         assert _json_body(body)["manual_quiet"] is False
@@ -1122,9 +1122,9 @@ class TestActionEndpointsLocking:
         def fake_render(_args, _state, time_str, _hp, bucket=None, quote_id=None, **_kw):
             calls.append((time_str, bucket, quote_id))
 
-        with patch("idle_hours.run_clock._render_unlocked", side_effect=fake_render), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")), \
-             patch("idle_hours.run_clock.current_time_str", return_value="03:15"):
+        with patch("idle_hours.runtime_render._render_unlocked", side_effect=fake_render), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")), \
+             patch("idle_hours.runtime_render.current_time_str", return_value="03:15"):
             status, body = _post(server, "/api/action/rerender")
         assert status == 200
         data = _json_body(body)
@@ -1157,7 +1157,7 @@ class TestActionEndpointsLocking:
 
     def test_action_exception_returns_500(self, live_server):
         server, _state, _args = live_server
-        with patch("idle_hours.run_clock._render_unlocked", side_effect=RuntimeError("boom")):
+        with patch("idle_hours.runtime_render._render_unlocked", side_effect=RuntimeError("boom")):
             status, body = _post(server, "/api/action/theme")
         assert status == 500
         assert "boom" in _json_body(body)["error"]
@@ -1292,8 +1292,8 @@ class TestOverrideValidation:
 class TestAuth:
     def test_localhost_bind_allows_post_without_token(self, live_server):
         server, _, _ = live_server
-        with patch("idle_hours.run_clock._render_unlocked"), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.runtime_render._render_unlocked"), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, _ = _post(server, "/api/action/theme")
         assert status == 200
 
@@ -1323,8 +1323,8 @@ class TestAuth:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            with patch("idle_hours.run_clock._render_unlocked"), \
-                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.runtime_render._render_unlocked"), \
+                 patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/theme",
                     headers={"X-Idle-Hours-Token": "secret"},
@@ -1518,8 +1518,7 @@ class TestErrorBranches:
     def test_get_handler_exception_returns_500(self, tmp_path, live_server, monkeypatch):
         """Force _api_current to blow up and assert we return 500 (not crash the server)."""
         server, _, _ = live_server
-        from idle_hours import run_clock as rc
-        monkeypatch.setattr(rc, "current_time_str", lambda: (_ for _ in ()).throw(RuntimeError("clock fail")))
+        monkeypatch.setattr(runtime_render, "current_time_str", lambda: (_ for _ in ()).throw(RuntimeError("clock fail")))
         status, body = _get(server, "/api/current")
         assert status == 500
         # The exception text stays in the journal, never in the body (#291).
@@ -1530,7 +1529,7 @@ class TestErrorBranches:
         """A non-ValueError in a POST handler surfaces as 500, not as a bare 200."""
         server, _, _ = live_server
         monkeypatch.setattr(
-            run_clock, "action_rerender",
+            runtime_actions, "action_rerender",
             lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("explode")),
         )
         status, body = _post(server, "/api/action/rerender", {})
@@ -1636,8 +1635,8 @@ class TestWebAuthFailTelemetry:
         state = run_clock.RuntimeState(args.theme)
         server, thread = web_server.start_web_server(args, state, token="secret")
         try:
-            with patch("idle_hours.run_clock._render_unlocked"), \
-                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.runtime_render._render_unlocked"), \
+                 patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/theme",
                     headers={"X-Idle-Hours-Token": "secret"},
@@ -1665,7 +1664,7 @@ class TestWebErrorTelemetry:
     def test_exception_in_handler_emits_web_error_500(self, live_server, monkeypatch):
         server, _, args = live_server
         monkeypatch.setattr(
-            run_clock, "action_rerender",
+            runtime_actions, "action_rerender",
             lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("explode")),
         )
         status, body = _post(server, "/api/action/rerender", {})
@@ -1749,8 +1748,8 @@ class TestRenderLockContention:
         try:
             state.render_lock.acquire()
             state.render_lock.release()
-            with patch("idle_hours.run_clock._render_unlocked"), \
-                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.runtime_render._render_unlocked"), \
+                 patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, body = _post(server, "/api/action/rerender", {})
             assert status == 200, f"expected 200 after release, got {status}: {body!r}"
         finally:
@@ -1812,8 +1811,8 @@ class TestTokenComparison:
         try:
             # What a correct client puts on the wire, as http.server presents it.
             supplied = token.encode("utf-8").decode("latin-1")
-            with patch("idle_hours.run_clock._render_unlocked"), \
-                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.runtime_render._render_unlocked"), \
+                 patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(
                     server, "/api/action/rerender",
                     headers={"X-Idle-Hours-Token": supplied},
@@ -1840,8 +1839,8 @@ class TestTokenComparison:
         suddenly requires a token would break every existing local install."""
         server, thread, _state, _args = _start(tmp_path, token="")
         try:
-            with patch("idle_hours.run_clock._render_unlocked"), \
-                 patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+            with patch("idle_hours.runtime_render._render_unlocked"), \
+                 patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
                 status, _ = _post(server, "/api/action/rerender", {})
             assert status == 200
         finally:
@@ -2748,10 +2747,10 @@ class TestApiSetup:
     def test_post_with_theme_applies_and_completes(self, live_server):
         server, state, args = live_server
         # action_theme returns ok=True only if it can render — patch the
-        # render path (run_clock._render_unlocked) so we don't actually
+        # render path (runtime_render._render_unlocked) so we don't actually
         # invoke pillow / pick_quote here.
-        with patch("idle_hours.run_clock._render_unlocked"), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.runtime_render._render_unlocked"), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, body = _post(server, "/api/setup", {"theme": "scholar"})
         assert status == 200, _json_body(body)
         data = _json_body(body)
@@ -2762,8 +2761,8 @@ class TestApiSetup:
 
     def test_post_rejects_unknown_theme(self, live_server):
         server, _state, _args = live_server
-        with patch("idle_hours.run_clock._render_unlocked"), \
-             patch("idle_hours.run_clock.peek_quote_id", return_value=("141", 1, "q", "m")):
+        with patch("idle_hours.runtime_render._render_unlocked"), \
+             patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
             status, body = _post(server, "/api/setup", {"theme": "imaginary-theme"})
         assert status == 400
         assert "unknown theme" in _json_body(body)["error"]
@@ -2789,7 +2788,7 @@ class TestApiSetup:
         ``setup_complete`` — closing the wizard while the panel still shows
         the old theme is confusing UX. Operator's next click retries."""
         server, state, args = live_server
-        with patch("idle_hours.run_clock.action_theme", return_value={"ok": False, "error": "busy"}):
+        with patch("idle_hours.runtime_actions.action_theme", return_value={"ok": False, "error": "busy"}):
             status, body = _post(server, "/api/setup", {"theme": "scholar"})
         assert status == 409, _json_body(body)
         data = _json_body(body)
@@ -2808,7 +2807,7 @@ class TestApiSetup:
     def test_post_does_not_complete_when_theme_apply_5xx(self, live_server):
         """Generic theme-handler exception → 500 + setup stays incomplete."""
         server, state, _args = live_server
-        with patch("idle_hours.run_clock.action_theme",
+        with patch("idle_hours.runtime_actions.action_theme",
                    return_value={"ok": False, "error": "RuntimeError('boom')"}):
             status, body = _post(server, "/api/setup", {"theme": "scholar"})
         assert status == 500
@@ -2986,13 +2985,13 @@ class TestSandboxedDeploymentWritePaths:
 
     def test_runtime_and_curator_resolve_the_same_relocated_files(self, tmp_path):
         """Acceptance criterion: the picker the panel uses and the sidecar the
-        UI writes must be the same file. ``run_clock._corpus_kwargs`` and
+        UI writes must be the same file. ``runtime_render._corpus_kwargs`` and
         ``web_server.WebContext`` read the same four Namespace attributes."""
         _package, state = self._layout(tmp_path)
         args = self._args_for(tmp_path, state)
 
         ctx_paths = web_server.WebContext(args, run_clock.RuntimeState(args.theme))
-        runtime = run_clock._corpus_kwargs(args)
+        runtime = runtime_render._corpus_kwargs(args)
 
         assert str(ctx_paths.overrides_path) == runtime["overrides_path"]
         assert str(ctx_paths.baked_db_path) == runtime["database_path"]
@@ -4056,7 +4055,7 @@ class TestGetErrorTelemetry:
     def test_get_500_emits_web_error_without_repr(self, live_server, monkeypatch):
         server, _, args = live_server
         monkeypatch.setattr(
-            run_clock, "current_time_str",
+            runtime_render, "current_time_str",
             lambda: (_ for _ in ()).throw(RuntimeError("/secret/path/leak")),
         )
         status, body = _get(server, "/api/current")
@@ -4149,7 +4148,7 @@ class TestApiCurrentLockDiscipline:
                 state.lock.release()
             return "default"
 
-        monkeypatch.setattr(run_clock, "resolve_effective_theme", fake_resolve)
+        monkeypatch.setattr(runtime_theme, "resolve_effective_theme", fake_resolve)
         status, body = _get(server, "/api/current")
         assert status == 200
         assert _json_body(body)["theme"] == "default"
@@ -4391,7 +4390,7 @@ class TestClientDisconnectAndDoubleResponse:
     def test_post_client_gone_is_not_a_web_error(self, live_server, monkeypatch):
         server, _, args = live_server
         monkeypatch.setattr(
-            run_clock, "action_rerender",
+            runtime_actions, "action_rerender",
             lambda *a, **kw: (_ for _ in ()).throw(ConnectionResetError("gone")),
         )
         raw = _raw_exchange(

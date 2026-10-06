@@ -279,7 +279,7 @@ jobs:
               "jsonl_io", "merge_candidates", "pick_quote",
               "pidfile", "probe_buttons", "quality_filter", "render_quote",
               "run_clock", "runtime_actions", "runtime_config", "runtime_log",
-              "runtime_quiet", "runtime_state", "runtime_store",
+              "runtime_quiet", "runtime_render", "runtime_state", "runtime_store",
               "runtime_telemetry", "runtime_theme", "runtime_webhook",
               "sd_notify", "target_sparse_buckets", "theme_names",
               "web_server",

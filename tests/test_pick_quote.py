@@ -1676,7 +1676,7 @@ class TestPinFidelityAgainstShippedCorpus:
     that rendered the wrong phrase for ~8% of clock times."""
 
     def test_pinned_render_reproduces_the_peek_for_every_bucket(self):
-        from idle_hours import run_clock
+        from idle_hours import runtime_render
 
         kwargs = dict(
             database_path=str(pq.DEFAULT_DATABASE_PATH),
@@ -1694,7 +1694,7 @@ class TestPinFidelityAgainstShippedCorpus:
                     peeked["display_quote"], peeked["matched_text"],
                 )
                 pinned = pq.select_quote(
-                    time_str=time_str, pin_key=run_clock._pin_key_for(quote_id), **kwargs,
+                    time_str=time_str, pin_key=runtime_render._pin_key_for(quote_id), **kwargs,
                 )
                 for field in ("source_id", "line_number", "display_quote",
                               "matched_text", "resolved_bucket", "used_fallback"):

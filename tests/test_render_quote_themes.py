@@ -1488,7 +1488,7 @@ class TestPrideLayoutFitsEveryCanvas:
 class TestSynopticValidityStamp:
     """The chart's validity stamp must not claim a timezone it does not have.
 
-    ``run_clock.current_time_str`` is ``datetime.now().strftime("%H:%M")`` —
+    ``runtime_render.current_time_str`` is ``datetime.now().strftime("%H:%M")`` —
     naive local wall time — and that value reaches the painter unchanged. An
     earlier revision stamped it ``VALID HHMM UTC`` because that is what a real
     surface analysis carries, which made the label *false* on every appliance

@@ -12,14 +12,11 @@ machine the main loop drives each tick. They were extracted out of the
 clear in ``runtime_actions.action_quiet``) so both code paths share one
 definition of "what it means to enter / leave quiet hours".
 
-``enter_quiet`` routes its ``_display_quiet_image`` and ``render_now`` calls
-through ``run_clock.X`` (lazy ``import run_clock``) so the main-loop tests
-that patch ``run_clock._display_quiet_image`` / ``run_clock.render_now``
-continue to intercept the calls — same pattern ``runtime_actions`` uses.
-
-Extracted from :mod:`run_clock`; the original names (``in_quiet_hours``,
-``_display_quiet_image``) are re-exported from ``run_clock`` so existing tests
-and callers keep resolving.
+Helpers from sibling modules are read through their module
+(``runtime_render.render_now(...)``), so a test that patches
+``runtime_render.render_now`` or ``runtime_quiet._display_quiet_image``
+reaches every caller. Extracted from :mod:`run_clock` (issue #353); nothing
+here imports ``run_clock``.
 """
 from __future__ import annotations
 
@@ -30,22 +27,16 @@ import sys
 import traceback
 from pathlib import Path
 
-from idle_hours import sd_notify
+from idle_hours import runtime_render, runtime_telemetry, runtime_theme, sd_notify
 from idle_hours.buckets import bucket_for_time
 from idle_hours.path_resolution import resolve_input_path
 from idle_hours.runtime_log import _log
+from idle_hours.runtime_render import DISPLAY_TIMEOUT_SECONDS
 from idle_hours.runtime_state import RuntimeState
-from idle_hours.runtime_theme import resolve_quiet_theme
 
-# Resolves to the repo root (same directory as run_clock.py) since all runtime
-# modules live alongside each other. Matches run_clock.BASE_DIR exactly.
+# The package directory, the fallback for relative input paths. Same value as
+# ``run_clock.BASE_DIR`` and ``runtime_render.BASE_DIR``.
 BASE_DIR = Path(__file__).resolve().parent
-
-# Safety net on the Inky display push, mirroring ``run_clock.DISPLAY_TIMEOUT_SECONDS``.
-# Kept local instead of imported because ``run_clock`` imports this module, so
-# the dependency has to flow one way. If you change one, change the other —
-# both bound the same external command (``display_inky.py``).
-DISPLAY_TIMEOUT_SECONDS = 60
 
 
 def in_quiet_hours(time_str: str, start: str | None, end: str | None) -> bool:
@@ -81,7 +72,7 @@ def _display_quiet_image(
 
     ``telemetry_path``, when provided, is used to record a ``mode="display_timeout"``
     entry if the display subprocess exceeds ``DISPLAY_TIMEOUT_SECONDS`` — matches the
-    contract the render/display paths in ``run_clock.render_now`` follow so operators
+    contract the render/display paths in ``runtime_render.render_now`` follow so operators
     can see quiet-image wedges in ``idle_hours_health.py`` summaries.
     """
     # ``quiet_image`` / ``display_script`` are INPUT paths — try CWD first
@@ -112,10 +103,7 @@ def _display_quiet_image(
             # entry, startup frame, shutdown pre-frame) logs and moves on so
             # a wedged display doesn't prevent the rest of those flows.
             _log(f"{reason}: display push timed out after {DISPLAY_TIMEOUT_SECONDS}s: {exc!r}", err=True)
-            # Lazy import so the telemetry helper stays a run_clock-visible
-            # name for tests that patch run_clock.append_telemetry.
-            from idle_hours import run_clock
-            run_clock.append_telemetry(
+            runtime_telemetry.append_telemetry(
                 telemetry_path,
                 {
                     "error": repr(exc),
@@ -126,7 +114,7 @@ def _display_quiet_image(
             )
             return
         # Watchdog ping at the subprocess boundary, mirroring
-        # ``run_clock.render_now`` (#236). ``enter_quiet`` holds
+        # ``runtime_render.render_now`` (#236). ``enter_quiet`` holds
         # ``state.render_lock`` across this call, so the main loop can be
         # blocked behind it — without a ping here that wait is a silent gap in
         # the ``WatchdogSec`` budget.
@@ -218,8 +206,6 @@ def render_quiet_frame(
     one renders the current time. ``or time_str`` covers ``--quiet-off`` installs,
     where ``--quiet-start`` is unset.
     """
-    from idle_hours import run_clock  # lazy: circular import, and keeps test patches on
-                      # run_clock._display_quiet_image / run_clock.render_now working.
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
     render_time = time_str if manual_only else (getattr(args, "quiet_start", None) or time_str)
@@ -237,27 +223,27 @@ def render_quiet_frame(
         # theme, and its ``random`` mode rerolls per quiet window rather than
         # per quote change. Falls through to ``resolve_effective_theme`` on
         # the default ``inherit``.
-        effective_theme = resolve_quiet_theme(args, state, time_str)
-        run_clock.render_now(
+        effective_theme = runtime_theme.resolve_quiet_theme(args, state, time_str)
+        runtime_render.render_now(
             args.render_script, args.output, args.width, args.height, args.display_script,
             "goodnight", effective_theme, time_str=render_time,
             history_path=history_path, history_days=args.history_days,
             telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
-            **run_clock._corpus_kwargs(args),
+            **runtime_render._corpus_kwargs(args),
         )
     elif args.quiet_image:
-        run_clock._display_quiet_image(
+        _display_quiet_image(
             args.quiet_image, args.output, args.display_script,
             reason=reason, telemetry_path=telemetry_path,
         )
     else:
-        effective_theme = resolve_quiet_theme(args, state, time_str)
-        run_clock.render_now(
+        effective_theme = runtime_theme.resolve_quiet_theme(args, state, time_str)
+        runtime_render.render_now(
             args.render_script, args.output, args.width, args.height, args.display_script,
             args.mode, effective_theme, time_str=render_time,
             history_path=history_path, history_days=args.history_days,
             telemetry_path=telemetry_path, bucket=render_bucket, quote_id=None,
-            **run_clock._corpus_kwargs(args),
+            **runtime_render._corpus_kwargs(args),
         )
 
 
@@ -282,7 +268,6 @@ def claim_quiet_edge(
     ``quiet_enter`` / ``quiet_exit`` marker exactly once per edge. Returns
     whether this call moved the flag.
     """
-    from idle_hours import run_clock  # lazy: see render_quiet_frame.
     with state.lock:
         if state.was_quiet == quiet:
             return False
@@ -293,7 +278,7 @@ def claim_quiet_edge(
             entry["bucket"] = bucket
     else:
         entry = {"mode": "quiet_exit"}
-    run_clock.append_telemetry(telemetry_path, entry)
+    runtime_telemetry.append_telemetry(telemetry_path, entry)
     return True
 
 
@@ -313,7 +298,7 @@ def enter_quiet(
     frame is on the panel, and the edge is only claimed
     (:func:`claim_quiet_edge`) on success, so the next tick retries rather
     than leaving the previous quote, with its stale time, on the panel all
-    night after one transient failure (issue #277). Repeated failures go through ``run_clock._record_render_failure`` so a
+    night after one transient failure (issue #277). Repeated failures go through ``runtime_render._record_render_failure`` so a
     hard fault backs off exactly as a failed clock render does rather than
     retrying every tick; a success resets that counter like any render.
 
@@ -328,7 +313,6 @@ def enter_quiet(
     marker records; the frame's own time is decided inside
     :func:`render_quiet_frame`.
     """
-    from idle_hours import run_clock  # lazy: see render_quiet_frame.
     telemetry_path = args.telemetry_path or None
     # bucket_for_time(time_str) rather than current_bucket() so tests that
     # only patch current_time_str don't also have to patch the wall clock.
@@ -345,10 +329,10 @@ def enter_quiet(
     except Exception as exc:
         _log(f"quiet-hours display failed: {exc!r}", err=True)
         traceback.print_exc(file=sys.stderr)
-        run_clock.append_telemetry(
+        runtime_telemetry.append_telemetry(
             telemetry_path, {"bucket": quiet_bucket, "error": repr(exc), "mode": "quiet"},
         )
-        run_clock._record_render_failure(state, telemetry_path, quiet_bucket)
+        runtime_render._record_render_failure(state, telemetry_path, quiet_bucket)
         return False
     with state.lock:
         state.consecutive_render_failures = 0
