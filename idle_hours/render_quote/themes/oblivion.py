@@ -62,7 +62,7 @@ _OBLIVION_BLACK = _PANEL_INKS["black"]
 
 def _oblivion_tone(t: float) -> tuple[int, int, int]:
     """A grey ``t`` of the way from the white ink to the black ink."""
-    r, g, b = (round(w + (k - w) * t) for w, k in zip(_OBLIVION_WHITE, _OBLIVION_BLACK))
+    r, g, b = (round(w + (k - w) * t) for w, k in zip(_OBLIVION_WHITE, _OBLIVION_BLACK, strict=True))
     return r, g, b
 
 

@@ -45,7 +45,7 @@ def _ridge(rng: random.Random, width: int, base: float, roughness: float) -> lis
     amps = [roughness * f for f in (1.0, 0.55, 0.3)]
     waves = [width / d for d in (2.3, 4.7, 9.1)]
     return [
-        base + sum(a * math.sin(x / wl + p) for a, wl, p in zip(amps, waves, phases))
+        base + sum(a * math.sin(x / wl + p) for a, wl, p in zip(amps, waves, phases, strict=True))
         for x in range(width)
     ]
 

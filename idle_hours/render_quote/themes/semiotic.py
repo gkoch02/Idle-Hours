@@ -308,7 +308,7 @@ def _semiotic_paint_signs(image: Image.Image, draw: ImageDraw.ImageDraw, hour: i
         draw_tracked(draw, (x, ly), line, font, SPECTRA6["white"], tracking=1)
         ly += font.size + 2
     cw, ch = _SEMIOTIC_COMPANION_SIZE
-    for cx, code in zip(_SEMIOTIC_COMPANION_XS, _semiotic_companions(quote_row, featured)):
+    for cx, code in zip(_SEMIOTIC_COMPANION_XS, _semiotic_companions(quote_row, featured), strict=True):
         _semiotic_paint_sign(image, code, (cx, _SEMIOTIC_COMPANION_Y, cw, ch))
 
 

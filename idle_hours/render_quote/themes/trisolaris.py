@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageDraw
 
@@ -310,7 +311,7 @@ def _trisolaris_stipple_line(px, points, *, salt: int, keep: float = 1.0, width:
     """
     cx0, cy0, cx1, cy1 = clip
     warm_share = hot + (1.0 - hot) * 0.375
-    for (ax, ay), (bx, by) in zip(points, points[1:]):
+    for (ax, ay), (bx, by) in pairwise(points):
         steps = int(max(abs(bx - ax), abs(by - ay))) + 1
         for k in range(steps + 1):
             t = k / steps
@@ -360,7 +361,7 @@ def _trisolaris_paint_bodies(image: Image.Image, index: int) -> None:
     sample = _trisolaris_ephemeris()[index]
     mask = Image.new("L", image.size, 0)
     mdraw = ImageDraw.Draw(mask)
-    for (sx, sy), radius in zip((_trisolaris_project(s) for s in sample[0]), _TRISOLARIS_SUN_RADII):
+    for (sx, sy), radius in zip((_trisolaris_project(s) for s in sample[0]), _TRISOLARIS_SUN_RADII, strict=True):
         mdraw.ellipse((sx - radius, sy - radius, sx + radius, sy + radius), fill=255)
     paint_neon_mask(
         image, mask, SPECTRA6["yellow"], SPECTRA6["red"],

@@ -238,7 +238,7 @@ def apply_overrides(
                 continue
             writes[field] = value
         if "normalized_time" in writes:
-            parts = dict(zip(("hour", "minute"), (int(p) for p in writes["normalized_time"].split(":"))))
+            parts = dict(zip(("hour", "minute"), (int(p) for p in writes["normalized_time"].split(":")), strict=True))
             for field in ("hour", "minute"):
                 if field in writes and writes[field] != parts[field]:
                     _warn(

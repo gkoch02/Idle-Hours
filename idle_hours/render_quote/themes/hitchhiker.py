@@ -177,7 +177,7 @@ def _hitchhiker_paint_fish(image: Image.Image) -> None:
     font = _hitchhiker_font(9)
     rule_y = y1 - 42
     draw.line((x0 + 8, rule_y, x1 - 8, rule_y), fill=blue, width=1)
-    for i, ((n, label), (ax, ay)) in enumerate(zip(_HITCHHIKER_CALLOUTS, anchors)):
+    for i, ((n, label), (ax, ay)) in enumerate(zip(_HITCHHIKER_CALLOUTS, anchors, strict=True)):
         tx = x0 + 8 + (0 if i < 3 else 150)
         ty = rule_y + 5 + (i % 3) * 12
         draw.ellipse((ax - 5, ay - 5, ax + 5, ay + 5), fill=black, outline=white, width=1)

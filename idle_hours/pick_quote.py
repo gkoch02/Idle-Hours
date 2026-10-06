@@ -1101,7 +1101,7 @@ def select_candidates(
     for entry in ranked[: max(0, top_n)]:
         row = entry["row"]
         score_tuple = entry["score"]
-        score_map = dict(zip(SCORE_COMPONENTS, score_tuple))
+        score_map = dict(zip(SCORE_COMPONENTS, score_tuple, strict=True))
         result.append({
             "row": row,
             "score": score_map,

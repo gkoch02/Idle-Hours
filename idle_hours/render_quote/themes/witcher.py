@@ -261,7 +261,7 @@ def _witcher_crescent(cx: float, cy: float, r: float, bite, br: float) -> list:
     inner = [p for p in inner if math.hypot(p[0] - cx, p[1] - cy) <= r]
     inner.sort(key=lambda p: (math.atan2(p[1] - by, p[0] - bx) - d - math.pi) % (2 * math.pi))
     def area(pts):
-        return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1])))
+        return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1], strict=True)))
     a, b = outer + inner, outer + inner[::-1]
     return a if area(a) >= area(b) else b
 

@@ -45,7 +45,7 @@ pytest --cov
 # Run a specific test module
 pytest tests/test_pick_quote.py
 
-# Run ruff linter (checks E, W, F, I; line-length 130)
+# Run ruff linter (checks E, W, F, I, B minus B007; line-length 130)
 ruff check .
 
 # Fix auto-fixable lint issues (mainly import ordering)

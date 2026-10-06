@@ -58,7 +58,7 @@ _YORHA_SCENE: dict = {}
 def _yorha_cream(y: float, k: float = 0.0) -> tuple[int, int, int]:
     """A calibrated mix: white with ``y`` of yellow and ``k`` of black."""
     w, yel, blk = (_PANEL_INKS[n] for n in ("white", "yellow", "black"))
-    r, g, bl = (round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk))
+    r, g, bl = (round(a * (1 - y - k) + b * y + c * k) for a, b, c in zip(w, yel, blk, strict=True))
     return r, g, bl
 
 

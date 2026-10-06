@@ -6,6 +6,7 @@ Design notes: ``docs/themes.md``.
 from __future__ import annotations
 
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageDraw
 
@@ -184,7 +185,7 @@ def _lieder_syllables(word: str) -> list[str]:
         return [word]
 
     cuts = []
-    for (_, end_a), (start_b, _) in zip(groups, groups[1:]):
+    for (_, end_a), (start_b, _) in pairwise(groups):
         between = low[end_a:start_b]
         n = len(between)
         if le_ending and start_b == len(low) - 1 and n >= 2:
@@ -704,7 +705,7 @@ def _lieder_paint_system(draw, ctx: dict, index: int, line: list[dict]) -> None:
     xs: list[float] = []
     ys: list[float] = []
     cursor = x
-    for note, slot in zip(line, slots):
+    for note, slot in zip(line, slots, strict=True):
         xs.append(cursor + slot / 2.0)
         ys.append(_lieder_pitch_y(staff_top, note["pitch"], gap))
         cursor += slot
@@ -725,7 +726,7 @@ def _lieder_paint_system(draw, ctx: dict, index: int, line: list[dict]) -> None:
     matched_xs: list[float] = []
     matched_ys: list[float] = []
     cursor = x
-    for position, (note, slot) in enumerate(zip(line, slots)):
+    for position, (note, slot) in enumerate(zip(line, slots, strict=True)):
         cx, note_y = xs[position], ys[position]
 
         if note.get("bar"):

@@ -291,7 +291,7 @@ def _expedition_paint_promenade(scene: Image.Image) -> None:
 
     def lit(x: int, base, amount: float):
         glow = math.exp(-((x - lamp_x) / 150.0) ** 2) * amount
-        return tuple(round(b + (g - b) * glow) for b, g in zip(base, (132, 104, 58)))
+        return tuple(round(b + (g - b) * glow) for b, g in zip(base, (132, 104, 58), strict=True))
 
     # Rail and plinth, lit toward the lamp.
     for x in range(width):

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -393,7 +394,7 @@ def shade_height_field(
     gx = height.filter(_SOBEL_X).tobytes()
     gy = height.filter(_SOBEL_Y).tobytes()
     lut = _height_field_lut(tuple(light), relief, ambient, diffuse, specular, shininess)
-    tone = bytes(lut[a << 8 | b] for a, b in zip(gx, gy))
+    tone = bytes(lut[a << 8 | b] for a, b in zip(gx, gy, strict=True))
     return Image.frombytes("L", height.size, tone)
 
 
@@ -607,10 +608,10 @@ def _lerp_stops(stops, y: float):
     """The colour at ``y`` on a ``[(y, rgb), ...]`` gradient sorted on ``y``,
     linearly interpolated; before the first stop it holds the first colour,
     past the last it holds the last."""
-    for (y0, c0), (y1, c1) in zip(stops, stops[1:]):
+    for (y0, c0), (y1, c1) in pairwise(stops):
         if y <= y1:
             t = 0.0 if y1 == y0 else max(0.0, (y - y0) / (y1 - y0))
-            return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1))
+            return tuple(round(a + (b - a) * t) for a, b in zip(c0, c1, strict=True))
     return stops[-1][1]
 
 

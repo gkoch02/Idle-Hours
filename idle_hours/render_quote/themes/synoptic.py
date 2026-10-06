@@ -6,6 +6,7 @@ Design notes: ``docs/themes.md``.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 from PIL import Image, ImageDraw
 
@@ -118,7 +119,7 @@ def _synoptic_front_pips(points, spacing):
     """
     pips = []
     carry = spacing / 2.0
-    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+    for (x0, y0), (x1, y1) in pairwise(points):
         seg = math.hypot(x1 - x0, y1 - y0)
         if seg < 1e-6:
             continue

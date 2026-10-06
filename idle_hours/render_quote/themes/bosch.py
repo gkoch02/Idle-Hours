@@ -780,7 +780,7 @@ def _bosch_paint_panels(image: Image.Image) -> None:
         size = (x1 - x0, y1 - y0)
         ground = SPECTRA6["black"] if kind == "hell" else SPECTRA6["white"]
         tile = Image.new("RGB", size, ground)
-        setattr(tile, "_bosch_origin", (x0, y0))  # read back with getattr in _bosch_paint
+        setattr(tile, "_bosch_origin", (x0, y0))  # noqa: B010 - not an Image attribute, so mypy rejects the plain assignment; read back with getattr in _bosch_paint
         _BOSCH_PAINTERS[kind](tile)
         image.paste(tile, (x0, y0), _bosch_panel_mask(kind, size))
         tile.close()

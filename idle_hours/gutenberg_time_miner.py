@@ -645,4 +645,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(130) from None

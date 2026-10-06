@@ -74,7 +74,7 @@ _DSKY_SEGMENTS = {
 
 def _dsky_tone(t: float) -> tuple[int, int, int]:
     """A grey ``t`` of the way from the white ink to the black ink."""
-    r, g, b = (round(w + (k - w) * t) for w, k in zip(_PANEL_INKS["white"], _PANEL_INKS["black"]))
+    r, g, b = (round(w + (k - w) * t) for w, k in zip(_PANEL_INKS["white"], _PANEL_INKS["black"], strict=True))
     return r, g, b
 
 

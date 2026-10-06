@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -140,7 +141,7 @@ def _beksinski_tower_mask(size: tuple[int, int]) -> Image.Image:
         for i in range(9):
             t = i / 8
             pts.append((sx + (ex - sx) * t * t, sy + (ey - sy) * (1 - (1 - t) ** 2), w * (0.5 + t)))
-        for (ax, ay, aw), (bx, by, _) in zip(pts, pts[1:]):
+        for (ax, ay, aw), (bx, by, _) in pairwise(pts):
             md.line([(ax, ay), (bx, by)], fill=255, width=int(aw))
     # Windows: pointed arches through each spire, the haze showing through.
     for cx, h, w, lean in spires:
@@ -189,7 +190,7 @@ def _beksinski_paint_sky(scene: Image.Image) -> None:
     rng = random.Random(_BEKSINSKI_SEED + 9)
     ruin = Image.new("L", scene.size, 0)
     rd = ImageDraw.Draw(ruin)
-    for rx, h, w in zip(_BEKSINSKI_RUIN_X, (34, 58, 42), (14, 20, 16)):
+    for rx, h, w in zip(_BEKSINSKI_RUIN_X, (34, 58, 42), (14, 20, 16), strict=True):
         rd.polygon(_beksinski_spindle(rng, rx, hz + 1, h, w), fill=255)
     scene.paste(Image.new("RGB", scene.size, _BEKSINSKI_RUIN_TONE), (0, 0), ruin)
     # The road: a pale ash track across the plain, wider as it nears.
@@ -225,7 +226,7 @@ def _beksinski_paint_tower(scene: Image.Image, mask: Image.Image) -> None:
         for i in range(1, 6):
             x += rng.uniform(-9, 9)
             pts.append((x, _BEKSINSKI_HORIZON + length * i / 5))
-        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        for (ax, ay), (bx, by) in pairwise(pts):
             width = max(1, int(5 - 4 * (ay - _BEKSINSKI_HORIZON) / length))
             draw.line([(ax, ay), (bx, by)], fill=_BEKSINSKI_ROOT, width=width)
 

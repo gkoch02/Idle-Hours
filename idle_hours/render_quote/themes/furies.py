@@ -392,7 +392,7 @@ def _furies_triptych() -> list:
 
 
 def _furies_paint_triptych(image: Image.Image) -> None:
-    for x, panel in zip(_FURIES_PANEL_XS, _furies_triptych()):
+    for x, panel in zip(_FURIES_PANEL_XS, _furies_triptych(), strict=True):
         image.paste(panel, (x, _FURIES_PANEL_Y))
 
 

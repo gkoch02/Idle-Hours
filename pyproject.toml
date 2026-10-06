@@ -112,8 +112,14 @@ line-length = 130
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I"]
-ignore = ["E501"]  # Line too long (handled separately if needed)
+select = ["E", "W", "F", "I", "B"]
+ignore = [
+    "E501",  # Line too long (handled separately if needed)
+    # Unused loop variables (issue #351). Every site names a field of a
+    # tuple it unpacks, and one (observation's band lookup) reads the
+    # variables after a `break`, so renaming them to `_` buys nothing.
+    "B007",
+]
 
 [tool.mypy]
 # The ``typecheck`` CI job runs plain ``mypy`` from the repo root (issue #350).

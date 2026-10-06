@@ -366,7 +366,7 @@ def _pride_paint_text(image: Image.Image, draw: ImageDraw.ImageDraw, layout: dic
     ascent = _font_ascent(layout["quote_font"])
     for drawable, widths, line_w in layout["lines"]:
         x = x0 + (inner_w - line_w) // 2
-        for (chunk, is_bold), chunk_w in zip(drawable, widths):
+        for (chunk, is_bold), chunk_w in zip(drawable, widths, strict=True):
             font = layout["quote_font_bold"] if is_bold else layout["quote_font"]
             chunk_y = y + (ascent - _font_ascent(font))
             if is_bold and chunk.strip():
