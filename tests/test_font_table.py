@@ -42,3 +42,15 @@ class TestFontTable:
     def test_fallback_faces_are_not_attributed(self):
         # Playfair backs nearly every chain; only the themes that set it count.
         assert "swiss" not in _load().font_usage()["(top level)"]
+
+    def test_a_face_only_listed_after_another_is_fallback_only(self):
+        # control and semiotic set Jost / Archivo / Barlow Condensed and name
+        # Oswald second in each chain, in THEME_FONTS and in their own modules.
+        sets, falls_back = _load().font_usage_by_role()
+        assert not sets.get("oswald")
+        assert {"control", "semiotic"} <= falls_back["oswald"]
+
+    def test_a_theme_that_sets_a_face_is_not_also_its_fallback(self):
+        sets, falls_back = _load().font_usage_by_role()
+        for family, themes in falls_back.items():
+            assert not themes & sets.get(family, set()), family

@@ -6,14 +6,21 @@ paragraph naming every directory under ``idle_hours/fonts/`` and the themes
 that set type in it. Nobody could read it, and nothing kept it true (issue
 #352). The table this script writes is derived instead, from two sources:
 
-* ``THEME_FONTS``: every bundled file in any of a theme's role chains
-  (``quote_regular`` / ``quote_bold`` / ``ornament`` …), fallbacks included.
-* each theme module's own globals: a frame theme can load a face directly
-  from a ``render_quote._paths`` constant (``lieder``'s Noto Music,
-  ``expedition``'s Bebas Neue) without it ever appearing in ``THEME_FONTS``.
+* ``THEME_FONTS``: in each of a theme's role chains (``quote_regular`` /
+  ``quote_bold`` / ``ornament`` …) the first bundled face is the one the theme
+  sets, and any later bundled face is its fallback.
+* each theme module's source: a frame theme can load a face directly from a
+  ``render_quote._paths`` constant (``lieder``'s Noto Music, ``expedition``'s
+  Bebas Neue) without it ever appearing in ``THEME_FONTS``. A constant at
+  position 0 of a list literal, or used outside one, is a face the theme sets;
+  at any later position it is a fallback.
 
-A bundled font directory that neither source reaches is reported as unused,
-and ``--check`` fails on it, so a face cannot ship in the wheel unnoticed.
+A theme that sets a face is never also listed as falling back to it. The
+top-level Playfair files are the last bundled fallback of nearly every chain,
+so they are listed only where a theme sets them.
+
+A bundled font directory that no theme loads is reported as unused, and
+``--check`` fails on it, so a face cannot ship in the wheel unnoticed.
 
 Usage::
 
@@ -27,6 +34,8 @@ The table sits between the ``FONT_TABLE`` markers in ``docs/themes.md``;
 from __future__ import annotations
 
 import argparse
+import ast
+import inspect
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -58,25 +67,71 @@ def _font_dir(candidate: object) -> str | None:
     return rel.parts[0] if len(rel.parts) > 1 else ROOT_LABEL
 
 
-def font_usage() -> dict[str, set[str]]:
-    """Map every bundled font directory to the themes that load from it."""
-    usage: dict[str, set[str]] = defaultdict(set)
+def _module_fonts(module) -> tuple[set[str], set[str]]:
+    """Font directories a theme module sets, and those it only falls back to."""
+    namespace = vars(module)
+
+    def family_of(node: ast.AST) -> str | None:
+        if isinstance(node, ast.Tuple) and node.elts:
+            node = node.elts[0]  # (VARIABLE_FONT, "Instance")
+        if isinstance(node, ast.Name):
+            return _font_dir(namespace.get(node.id))
+        if isinstance(node, ast.Attribute):
+            return _font_dir(getattr(_paths, node.attr, None))
+        return None
+
+    tree = ast.parse(inspect.getsource(module))
+    fallback_nodes: set[int] = set()
+    sets: set[str] = set()
+    falls_back: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.List):
+            for position, element in enumerate(node.elts):
+                family = family_of(element)
+                if family is None:
+                    continue
+                (sets if position == 0 else falls_back).add(family)
+                if position:
+                    fallback_nodes.add(id(element))
+                    if isinstance(element, ast.Tuple) and element.elts:
+                        fallback_nodes.add(id(element.elts[0]))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Name, ast.Attribute)) and id(node) not in fallback_nodes:
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                continue
+            family = family_of(node)
+            if family:
+                sets.add(family)
+    return sets, falls_back
+
+
+def font_usage_by_role() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Map every bundled font directory to the themes that set it, and to those that fall back to it."""
+    sets: dict[str, set[str]] = defaultdict(set)
+    falls_back: dict[str, set[str]] = defaultdict(set)
     for theme, roles in THEME_FONTS.items():
         for chain in roles.values():
-            # The first bundled candidate is the face the theme sets; the rest
-            # of the chain is fallback (Playfair backs almost every theme).
-            family = next(filter(None, map(_font_dir, chain)), None)
-            if family:
-                usage[family].add(theme)
+            families = [f for f in map(_font_dir, chain) if f]
+            if families:
+                sets[families[0]].add(theme)
+                for family in families[1:]:
+                    falls_back[family].add(theme)
     for module in themes.THEME_MODULES:
-        for value in vars(module).values():
-            # A single face, or a (variable font, "Instance") pair. Candidate
-            # *lists* imported from _paths are fallback chains, so skip them.
-            if isinstance(value, str) or (isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], str)):
-                family = _font_dir(value)
-                if family:
-                    usage[family].update(module.SPEC.themes)
-    return usage
+        module_sets, module_falls_back = _module_fonts(module)
+        for family in module_sets:
+            sets[family].update(module.SPEC.themes)
+        for family in module_falls_back:
+            falls_back[family].update(module.SPEC.themes)
+    for family in list(falls_back):
+        falls_back[family] -= sets.get(family, set())
+    falls_back.pop(ROOT_LABEL, None)
+    return sets, falls_back
+
+
+def font_usage() -> dict[str, set[str]]:
+    """Map every bundled font directory to every theme that loads from it."""
+    sets, falls_back = font_usage_by_role()
+    return {family: sets.get(family, set()) | falls_back.get(family, set()) for family in sets.keys() | falls_back.keys()}
 
 
 def bundled_dirs() -> list[str]:
@@ -93,17 +148,25 @@ def _licence(family: str) -> str:
 
 
 def render_table() -> str:
-    usage = font_usage()
+    sets, falls_back = font_usage_by_role()
     order = {name: i for i, name in enumerate(THEME_ORDER)}
+
+    def listed(users: set[str]) -> str:
+        return ", ".join(f"`{t}`" for t in sorted(users, key=lambda t: order.get(t, len(order))))
+
     rows = [
-        "| Font directory | Licence | Themes that load it (in `THEME_ORDER` order) |",
-        "|---|---|---|",
+        "| Font directory | Licence | Sets it | Fallback only |",
+        "|---|---|---|---|",
     ]
     for family in bundled_dirs():
-        users = sorted(usage.get(family, ()), key=lambda t: order.get(t, len(order)))
-        listed = ", ".join(f"`{t}`" for t in users) if users else "**unused**"
+        primary = sets.get(family, set())
+        fallback = falls_back.get(family, set())
+        if not primary and not fallback:
+            primary_cell, fallback_cell = "**unused**", ""
+        else:
+            primary_cell, fallback_cell = listed(primary) or "—", listed(fallback) or "—"
         label = "`fonts/*.ttf`" if family == ROOT_LABEL else f"`{family}/`"
-        rows.append(f"| {label} | {_licence(family)} | {listed} |")
+        rows.append(f"| {label} | {_licence(family)} | {primary_cell} | {fallback_cell} |")
     return "\n".join([BEGIN, *rows, END])
 
 
