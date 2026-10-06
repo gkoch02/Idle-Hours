@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `redacted` theme: a declassified Federal Bureau of Control document
+  from *Control*. The quote is typed under the Bureau's letterhead with a red
+  DECLASSIFIED stamp, the matched phrase in red, and black marker bars over
+  words the censor took. Which words go is seeded from the quote, and the
+  censor never touches the time phrase or any word that reads as a time.
+
 ## [3.0.0] - 2026-10-06
 
 - **3.0 is a major release for code that imports Idle Hours, not for the

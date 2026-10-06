@@ -256,6 +256,7 @@ def parse_args() -> argparse.Namespace:
         "lasvegas",
         "bladerunner",
         "traumateam",
+        "redacted",
         "diags",
     ]
     parser.add_argument(

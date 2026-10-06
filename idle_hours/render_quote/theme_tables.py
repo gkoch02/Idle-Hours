@@ -210,6 +210,7 @@ THEME_ORDER: tuple[str, ...] = (
     "lasvegas",
     "bladerunner",
     "traumateam",
+    "redacted",
     "diags",
 )
 # Themes registered in THEMES but excluded from every rotation (button B, web
@@ -1165,6 +1166,21 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
+    },
+    # *Control* — a declassified Federal Bureau of Control document. A custom
+    # frame (``render_redacted_frame``): the Bureau's letterhead, a red
+    # DECLASSIFIED stamp, the quote typed in Special Elite with the matched
+    # phrase in red and seeded black bars over other words. Palette serves the
+    # palette-only paths (see the note above ``THEMES``).
+    "redacted": {
+        "page_bg": SPECTRA6["white"],
+        "text": SPECTRA6["black"],
+        "subtle": SPECTRA6["black"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["red"],
+        "ornament_dark": SPECTRA6["black"],
+        "ornament_light": SPECTRA6["white"],
+        "source": SPECTRA6["black"],
     },
     "hal": {
         "page_bg": SPECTRA6["black"],
@@ -3094,6 +3110,24 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "redacted": {
+        # Special Elite, as ``dispatch``: the Bureau's documents are typed.
+        # One weight, so the matched phrase differs by colour alone. The
+        # letterhead and form labels set their own Archivo Bold.
+        "quote_regular": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_REGULAR,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
+        ],
+        "quote_bold": [
+            SPECIALELITE_REGULAR,
+            SPACEMONO_BOLD,
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            *QUOTE_FONT_BOLD_CANDIDATES,
+        ],
+        "ornament": [ARCHIVO_BOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "traumateam": {
         # Oxanium — a squared techno sans in the register of the game's
