@@ -9,6 +9,12 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- The `photo` theme no longer washes out dark photographs. A dark picture was
+  brightened by adding a flat amount to every pixel, which turned its blacks to
+  mid-grey and the whole frame to fog on the panel. It is now lifted with a
+  gamma curve that keeps the blacks, and only part way (to a mean of 0.50
+  rather than the bright autochrome reference), so a moody scene stays moody.
+  A photograph between the two keeps its own exposure.
 - `render` paints a border theme's border once instead of twice for the 27
   border themes whose painters reproduce their own output, with byte-identical
   frames. Up to ~1.2 s saved per render on a Pi (`alchemy`). The ten that do

@@ -48,6 +48,7 @@ from ._shared import _AUTOCHROME_PALETTE, AUTOCHROME_PLATE, _autochrome_paint_ga
 # quantises to chunky colour bars. ``_photo_condition`` pulls saturation and
 # contrast into the band that survives, adaptively — factors computed from the
 # source and clamped so they only ever reduce, leaving a gentle photo alone.
+# A dark photograph is lifted by gamma, part way, so it keeps its blacks.
 #
 # **The card cannot sit in a fixed place**, because that place might be the
 # face. ``_photo_card_rect`` scores candidate positions by the detail and
@@ -92,6 +93,13 @@ _PHOTO_TARGET_MEAN = 0.63
 _PHOTO_SPREAD_CEILING = 0.22     # only compress contrast well above the reference
 _PHOTO_MIN_CONTRAST = 0.75       # ...and never flatten it
 _PHOTO_MEAN_TOLERANCE = 0.06
+# A dark photograph is lifted only this far, and by a gamma curve rather than
+# an offset. 0.63 is a high-key autochrome's brightness; forcing a deliberately
+# dark scene up to it erases the scene, and doing it with an offset raises the
+# black point so nothing in the frame stays dark (a forest at ~0.26 came out
+# with its deepest shadow at 36% grey). Gamma pins 0 and 255 and moves the
+# mid-tones, so shadows keep their structure.
+_PHOTO_LIFT_TARGET = 0.50
 _PHOTO_SOFT_FOCUS = 0.6
 
 # How much a tonally-unusual region costs relative to a detailed one. At 0.5
@@ -189,27 +197,85 @@ def _photo_measure(image: Image.Image) -> tuple[float, float, float]:
     return chroma, mean, math.sqrt(variance)
 
 
+def _photo_lift(image: Image.Image, target: float) -> Image.Image:
+    """Raise a dark photograph's mean to ``target`` with a gamma curve.
+
+    The exponent is solved on the lightest-channel histogram, the same
+    quantity ``_photo_measure`` reports, so it lands rather than undershooting
+    the way ``log(target) / log(mean)`` does on a spread of tones. The same
+    curve on every channel maps each pixel's lightest channel through it too,
+    which is what makes the histogram the right thing to solve on.
+    """
+    small = image.resize((64, 40), Image.Resampling.BILINEAR)
+    bands = small.split()
+    hist = ImageChops.lighter(ImageChops.lighter(bands[0], bands[1]), bands[2]).histogram()
+    pixels = small.width * small.height
+
+    def mean_at(gamma: float) -> float:
+        return sum(n * (i / 255.0) ** gamma for i, n in enumerate(hist) if n) / pixels
+
+    low, high = 0.1, 1.0   # mean_at falls as gamma rises
+    for _ in range(24):
+        mid = (low + high) / 2
+        if mean_at(mid) > target:
+            low = mid
+        else:
+            high = mid
+    gamma = (low + high) / 2
+    lut = [round(255 * (v / 255.0) ** gamma) for v in range(256)]
+    return image.point(lut * 3)
+
+
+def _photo_cap_chroma(image: Image.Image) -> Image.Image:
+    chroma, _, _ = _photo_measure(image)
+    if chroma > _PHOTO_TARGET_CHROMA:
+        return ImageEnhance.Color(image).enhance(_PHOTO_TARGET_CHROMA / chroma)
+    return image
+
+
 def _photo_condition(image: Image.Image) -> Image.Image:
     """Pull an arbitrary photograph into the band that dithers to grain.
 
-    **Chroma first, levels last.** Blending toward grey lowers the lightest
-    channel of a saturated pixel, so a chroma correction drags luminance
-    down; levels applied first would be knocked off target. The reverse order
-    is stable: levels is ``v * scale + offset`` with ``scale <= 1``, which
-    leaves ``max - min`` unchanged or lower, so chroma never rises back above
-    target. Both corrections are computed from the source and clamped to only
-    reduce, so a photograph already in the band comes through untouched.
+    **The brightness target is decided from the source, before anything moves
+    it.** A bright photograph is pulled down to ``_PHOTO_TARGET_MEAN`` (the
+    autochrome reference); a dark one is lifted only to
+    ``_PHOTO_LIFT_TARGET``; anything between keeps its own mean. Deciding
+    after the chroma correction would misread a saturated photo as dark,
+    because blending toward grey lowers the lightest channel of a saturated
+    pixel.
+
+    **Chroma, then lift, then levels.** The lift is a gamma curve so the black
+    point stays put, but gamma widens the channel spread in the shadows, so
+    chroma is re-capped after each lift; the re-cap costs a little luminance
+    back, hence the short loop. Levels runs last and is stable:
+    ``v * scale + offset`` with ``scale <= 1`` leaves ``max - min`` unchanged
+    or lower, so chroma never rises back above target. It only ever darkens
+    or compresses; it never lifts, because an offset lift raises the black
+    point and turns a dark scene to fog.
+
+    Chroma and contrast are clamped to only reduce, so a photograph already in
+    the band comes through untouched.
     """
-    chroma, _, _ = _photo_measure(image)
-    out = image
-    if chroma > _PHOTO_TARGET_CHROMA:
-        out = ImageEnhance.Color(out).enhance(_PHOTO_TARGET_CHROMA / chroma)
+    _, source_mean, _ = _photo_measure(image)
+    if source_mean > _PHOTO_TARGET_MEAN + _PHOTO_MEAN_TOLERANCE:
+        target = _PHOTO_TARGET_MEAN
+    elif source_mean < _PHOTO_LIFT_TARGET - _PHOTO_MEAN_TOLERANCE:
+        target = _PHOTO_LIFT_TARGET
+    else:
+        target = source_mean
+    out = _photo_cap_chroma(image)
+    for _ in range(3):
+        _, mean, _ = _photo_measure(out)
+        if mean >= target - _PHOTO_MEAN_TOLERANCE / 2:
+            break
+        out = _photo_cap_chroma(_photo_lift(out, target))
     _, mean, spread = _photo_measure(out)
     scale = 1.0
     if spread > _PHOTO_SPREAD_CEILING:
         scale = max(_PHOTO_MIN_CONTRAST, _PHOTO_SPREAD_CEILING / spread)
-    if scale < 1.0 or abs(mean - _PHOTO_TARGET_MEAN) > _PHOTO_MEAN_TOLERANCE:
-        offset = (_PHOTO_TARGET_MEAN - mean * scale) * 255.0
+    dest = target if mean > target + _PHOTO_MEAN_TOLERANCE / 2 else mean
+    if scale < 1.0 or dest != mean:
+        offset = (dest - mean * scale) * 255.0
         out = out.point(lambda v, s=scale, o=offset: max(0, min(255, int(round(v * s + o)))))
     return out.filter(ImageFilter.GaussianBlur(_PHOTO_SOFT_FOCUS))
 

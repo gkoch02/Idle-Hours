@@ -3454,6 +3454,40 @@ class TestPhotoTheme:
         assert rq._photo_measure(source)[1] < 0.25
         assert rq._photo_measure(rq._photo_condition(source))[1] > 0.45
 
+    def test_a_dark_photograph_keeps_its_blacks(self):
+        """The lift is a gamma curve, not an offset. An offset raised a dark
+        forest scene's black point to ~36% grey, so nothing on the panel stayed
+        dark and the whole frame read as fog. The fixture is a ramp from black,
+        so its darkest tones are what an offset would move first."""
+        source = Image.new("RGB", (800, 480))
+        px = source.load()
+        for x in range(800):
+            v = int(160 * (x / 799) ** 2)
+            for y in range(480):
+                px[x, y] = (v, v, v)
+        assert rq._photo_measure(source)[1] < rq._PHOTO_LIFT_TARGET - rq._PHOTO_MEAN_TOLERANCE, (
+            "fixture is not dark enough to be lifted")
+        conditioned = rq._photo_condition(source).convert("L")
+        hist = conditioned.histogram()
+        darkest_2pct = next(i for i, _ in enumerate(hist) if sum(hist[:i + 1]) >= 0.02 * 800 * 480)
+        assert darkest_2pct < 30, (
+            f"the darkest 2% of a lifted photograph sits at {darkest_2pct}/255 — "
+            "the lift is raising the black point instead of the mid-tones")
+        mean = rq._photo_measure(rq._photo_condition(source))[1]
+        assert abs(mean - rq._PHOTO_LIFT_TARGET) <= rq._PHOTO_MEAN_TOLERANCE, (
+            f"lifted to {mean:.2f} against a {rq._PHOTO_LIFT_TARGET} target")
+
+    def test_a_moderately_dark_photograph_is_not_forced_high_key(self, tmp_path):
+        """The autochrome mean is a ceiling for bright photographs, not a
+        target for every one. A scene already inside the lift band keeps its
+        exposure."""
+        path = self._photo(tmp_path / "dusk.png", chroma_boost=0.25, mean=0.50)
+        with Image.open(path) as raw:
+            source = rq._photo_cover_crop(raw.convert("RGB"), 800, 480)
+        before = rq._photo_measure(source)[1]
+        after = rq._photo_measure(rq._photo_condition(source))[1]
+        assert abs(after - before) < 0.03, f"an in-band dusk photograph moved {before:.2f} -> {after:.2f}"
+
     # -- card placement ------------------------------------------------------
 
     def _card_side(self, path, monkeypatch):
