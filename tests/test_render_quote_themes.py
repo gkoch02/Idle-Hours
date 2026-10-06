@@ -22,6 +22,7 @@ import json
 import math
 import pathlib
 import threading
+from itertools import pairwise
 
 import pytest
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
@@ -471,7 +472,7 @@ class TestTarotFrame:
     def test_roman_numeral_table_is_complete(self):
         """Every hour 1..12 maps to a Roman numeral string."""
         assert set(rq._TAROT_ROMAN_NUMERALS.keys()) == set(range(1, 13))
-        for hour, numeral in rq._TAROT_ROMAN_NUMERALS.items():
+        for _hour, numeral in rq._TAROT_ROMAN_NUMERALS.items():
             assert numeral and isinstance(numeral, str)
 
     def test_trump_name_tables_are_complete(self):
@@ -628,7 +629,7 @@ class TestVinylFrame:
         # Strictly decreasing, not merely non-increasing: a stylus pinned
         # to the rim gives a constant radius, which "sorted(reverse=True)"
         # accepts — and a rim-pinned stylus is precisely the bug here.
-        assert all(b < a for a, b in zip(radii, radii[1:])), f"stylus did not track inward: {radii}"
+        assert all(b < a for a, b in pairwise(radii)), f"stylus did not track inward: {radii}"
         assert radii[0] - radii[-1] > 20, "stylus barely moved across the hour"
 
     def test_stylus_stays_on_the_programme_band(self):
@@ -1092,7 +1093,7 @@ class TestAbyssalSeafoamMix:
     def test_band_fades_to_plain_blue_with_depth(self):
         """The mix is animated by depth: both light inks recede, blue takes over."""
         samples = [self._measure(y) for y in (0, 24, 48, 72, 92)]
-        for earlier, later in zip(samples, samples[1:]):
+        for earlier, later in pairwise(samples):
             assert later["B"] >= earlier["B"], f"blue share did not rise with depth: {samples}"
             assert later["G"] <= earlier["G"], f"green share did not fall with depth: {samples}"
             assert later["W"] <= earlier["W"], f"white share did not fall with depth: {samples}"
@@ -1300,7 +1301,7 @@ class TestPrideChevronBands:
 
     def test_band_inks_and_order(self):
         buckets = self._bands()
-        for index, (base, minority, share) in enumerate(self.EXPECTED):
+        for index, (base, minority, _share) in enumerate(self.EXPECTED):
             counts = dict(buckets[index])
             total = sum(counts.values())
             assert total > 500, f"band {index} too small to measure ({total} px)"
@@ -2074,7 +2075,7 @@ class TestBakeliteTube:
         lit = sorted(y for y in range(200, 260)
                      if any(pixels[x, y] != rq.SPECTRA6["black"] for x in range(360, 440)))
         assert lit, "no scanlines at all in the middle of the tube"
-        assert set(y - x for x, y in zip(lit, lit[1:])) == {3}, (
+        assert set(y - x for x, y in pairwise(lit)) == {3}, (
             f"lit rows {lit} are not on a 3-row pitch — the tube is washed, not scanned"
         )
 
@@ -2238,7 +2239,7 @@ class TestIntaglioEngraving:
         )
         reach = (34 - 10) + 8.0 + 0.01
         assert all(x * x + y * y <= reach * reach for x, y in pts), "curve escaped its bound"
-        worst = max(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+        worst = max(math.dist(a, b) for a, b in pairwise(pts))
         assert worst <= 1.6, (
             f"max polyline segment is {worst:.2f} px — a coarse roulette leaves dotted "
             "gaps on shallow arcs at width 1"
@@ -4341,8 +4342,8 @@ class TestTrisolarisFrame:
         masses = rq._TRISOLARIS_MASSES
         total = sum(masses)
         for sample in rq._trisolaris_ephemeris():
-            cx = sum(m * s[0] for m, s in zip(masses, sample[0])) / total
-            cy = sum(m * s[1] for m, s in zip(masses, sample[0])) / total
+            cx = sum(m * s[0] for m, s in zip(masses, sample[0], strict=True)) / total
+            cy = sum(m * s[1] for m, s in zip(masses, sample[0], strict=True)) / total
             assert abs(cx) < 1e-9 and abs(cy) < 1e-9
 
     def test_both_eras_occur_and_neither_dominates(self):
@@ -4351,7 +4352,7 @@ class TestTrisolarisFrame:
         stable = [rq._trisolaris_era(f"{h:02d}:{m:02d}")[0] for h in range(12) for m in range(0, 60, 5)]
         share = sum(stable) / len(stable)
         assert 0.3 <= share <= 0.8, share
-        switches = sum(1 for a, b in zip(stable, stable[1:]) if a != b)
+        switches = sum(1 for a, b in pairwise(stable) if a != b)
         assert switches >= 6
 
     def test_civilizations_are_lost_across_the_day(self):
@@ -4779,7 +4780,7 @@ class TestCodexFrame:
             [(b, xh) for b in rq._CODEX_LOWER_LINES],
         ]
         for stack in stacks:
-            for (upper, uxh), (lower, lxh) in zip(stack, stack[1:]):
+            for (upper, uxh), (lower, lxh) in pairwise(stack):
                 assert lower - upper >= below * uxh + above * lxh, (upper, lower)
         # And the text blocks clear the quote rect above and below.
         top, bottom = rq._CODEX_QUOTE_RECT[1], rq._CODEX_QUOTE_RECT[3]
@@ -5513,7 +5514,7 @@ class TestBoschFrame:
         hell = rq._bosch_arch_tops("hell", 158)
         assert paradise[0] < 1 and paradise[-1] > rq._BOSCH_ARCH_RISE - 2
         assert hell[-1] < 1 and hell[0] > rq._BOSCH_ARCH_RISE - 2
-        assert all(a >= b for a, b in zip(paradise[1:], paradise)), "paradise should fall toward its hinge"
+        assert all(a >= b for b, a in pairwise(paradise)), "paradise should fall toward its hinge"
 
     def test_banderole_is_sized_to_its_text_and_stays_on_the_centre_panel(self):
         draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
@@ -5969,7 +5970,7 @@ class TestExpeditionFrame:
         measured_red = rq._PANEL_INKS["red"]
         flat = Image.new("RGB", (64, 64), measured_red)
         assert distinct_inks(rq._dither_calibrated(flat, rq._EXPEDITION_SKY_INKS)) == {rq.SPECTRA6["red"]}
-        pink = tuple((a + b) // 2 for a, b in zip(measured_red, rq._PANEL_INKS["white"]))
+        pink = tuple((a + b) // 2 for a, b in zip(measured_red, rq._PANEL_INKS["white"], strict=True))
         counts = ink_counts(rq._dither_calibrated(Image.new("RGB", (64, 64), pink), rq._EXPEDITION_SKY_INKS))
         assert counts.get(rq.SPECTRA6["red"], 0) > 64 * 64 * 0.3
         assert counts.get(rq.SPECTRA6["white"], 0) > 64 * 64 * 0.3
@@ -6492,7 +6493,7 @@ class TestBeksinskiFrame:
             crop = self._render(time_str=f"{hour:02d}:00").crop(box)
             added.append(ink_counts(crop).get(rq.SPECTRA6["black"], 0) - baseline)
         assert added[0] > 60                                   # one walker at one
-        assert all(b > a for a, b in zip(added, added[1:]))   # each hour adds a figure
+        assert all(b > a for a, b in pairwise(added))   # each hour adds a figure
         assert pixel_bytes(self._render(time_str="00:00")) == pixel_bytes(road)
 
     def test_the_leader_stands_at_the_cathedrals_foot_from_one_oclock(self):

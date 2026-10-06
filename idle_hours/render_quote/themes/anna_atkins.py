@@ -22,7 +22,7 @@ def _anna_atkins_fern(draw: ImageDraw.ImageDraw, x0: float, y0: float, length: f
     pts = []
     x, y, a = x0, y0, angle
     n = max(4, int(length))
-    for i in range(n):
+    for _i in range(n):
         a += curl
         x += math.cos(a)
         y += math.sin(a)

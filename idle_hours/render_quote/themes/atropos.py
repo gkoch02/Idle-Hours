@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 
@@ -90,7 +91,7 @@ def _atropos_font(size: int):
 def _atropos_haze(colour, amount: float):
     """``_ATROPOS_DARK`` pushed ``amount`` of the way toward ``colour`` — how far
     a silhouette has dissolved into the fog in front of it."""
-    return tuple(round(d + (c - d) * amount) for d, c in zip(_ATROPOS_DARK, colour))
+    return tuple(round(d + (c - d) * amount) for d, c in zip(_ATROPOS_DARK, colour, strict=True))
 
 
 def _atropos_paint_sky(image: Image.Image) -> None:
@@ -305,7 +306,7 @@ def _atropos_paint_tendrils(image: Image.Image) -> None:
     for points, base, nodules in _atropos_tendril_paths():
         n = len(points) - 1
         for pass_colour, extra in ((_ATROPOS_RIM, 2), (_ATROPOS_DARK, 0)):
-            for i, ((x0, y0), (x1, y1)) in enumerate(zip(points, points[1:])):
+            for i, ((x0, y0), (x1, y1)) in enumerate(pairwise(points)):
                 w = max(1, round(base * (1 - i / n) ** 0.8 + 1)) + extra
                 draw.line([(x0, y0), (x1, y1)], fill=pass_colour, width=w)
                 if extra == 0 and i % 6 == 3 and i < n - 4:              # a side shoot

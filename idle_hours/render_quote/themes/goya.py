@@ -222,7 +222,7 @@ def _goya_paint_quote(draw: ImageDraw.ImageDraw, placed) -> None:
     """The quote written into the void: black Libre Baskerville, ragged
     right, the matched phrase Bold in the Black Paintings' one red."""
     black, red = SPECTRA6["black"], SPECTRA6["red"]
-    for x, y, chunk, font, is_bold, w, lh in placed:
+    for x, y, chunk, font, is_bold, _w, _lh in placed:
         draw.text((x, y), chunk, font=font, fill=red if is_bold else black)
 
 

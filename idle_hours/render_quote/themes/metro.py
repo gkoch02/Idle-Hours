@@ -123,7 +123,7 @@ def _metro_paint_quote_card(image: Image.Image, quote_row: dict) -> None:
             widths.append(box[2] - box[0])
         x = 400 - sum(widths) // 2
         body_ascent = _font_ascent(regular)
-        for (chunk, is_bold), chunk_w in zip(line, widths):
+        for (chunk, is_bold), chunk_w in zip(line, widths, strict=True):
             font = bold if is_bold else regular
             fill = SPECTRA6["red"] if is_bold else SPECTRA6["black"]
             draw.text((x, y + body_ascent - _font_ascent(font)), chunk, font=font, fill=fill)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
@@ -247,7 +248,7 @@ def _biomech_resample(points, step: float):
     normal there — where a corrugated hose's grooves go."""
     out = []
     carry = 0.0
-    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+    for (x0, y0), (x1, y1) in pairwise(points):
         seg = math.hypot(x1 - x0, y1 - y0)
         if seg == 0:
             continue

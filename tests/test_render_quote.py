@@ -1,6 +1,7 @@
 """Tests for render_quote.py — layout selection, text helpers, color quantization."""
 from __future__ import annotations
 
+from itertools import pairwise
 from pathlib import Path
 from unittest.mock import patch
 
@@ -3434,7 +3435,7 @@ class TestFillSwatchStipple3way:
         total = sum(counts.values())
         assert total == 32 * 32, "primitive failed to cover the rect"
         ratios = (counts["a"] / total, counts["b"] / total, counts["c"] / total)
-        for got, want in zip(ratios, expected_ratios):
+        for got, want in zip(ratios, expected_ratios, strict=True):
             assert abs(got - want) <= 0.02, f"ratio {got:.3f} drifted from {want:.3f}"
 
     def test_clips_rect_to_image_bounds(self):
@@ -4483,7 +4484,7 @@ class TestJustifyFlags:
             for line in wrapped
         ]
         flags = rq.justify_flags("default", metrics, wrap_width, size)
-        for (ink, gaps), flagged in zip(metrics, flags):
+        for (ink, gaps), flagged in zip(metrics, flags, strict=True):
             if flagged:
                 assert gaps >= rq._JUSTIFY_MIN_GAPS
                 assert (wrap_width - ink) / gaps <= size * rq._JUSTIFY_MAX_STRETCH_EM
@@ -4664,7 +4665,7 @@ class TestAlchemyFaintFigure:
         assert any(column), "ring not painted where expected"
         for px in (x, x + 1):
             col = [img.getpixel((px, y)) == blue for y in range(220, 260)]
-            assert not any(a and b for a, b in zip(col, col[1:])), "solid blue run on the ring"
+            assert not any(a and b for a, b in pairwise(col)), "solid blue run on the ring"
 
 
 class TestSharedPainterHelpers:

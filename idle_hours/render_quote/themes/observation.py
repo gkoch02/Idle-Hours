@@ -174,7 +174,7 @@ def _observation_paint_saturn(image: Image.Image) -> None:
             # sin(latitude): north is -v, and the pole leans toward us by k.
             lat = (-v * cos_phi + z * k) / r
             lat += 0.018 * math.sin(u * 0.11 + lat * 9.0)       # band turbulence
-            for upper, major, minor, share in _OBSERVATION_BANDS:
+            for upper, major, minor, share in _OBSERVATION_BANDS:  # noqa: B007 - read after the break below
                 if lat >= upper:
                     break
             lit = (dx * lx + dy * ly + z * lz) / r

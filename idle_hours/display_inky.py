@@ -200,7 +200,7 @@ def main() -> int:
         raise SystemExit(
             "Could not import Pimoroni Inky library. Install it on the Pi first. "
             f"Original error: {exc}"
-        )
+        ) from exc
 
     saturation = resolve_saturation(args.theme, args.saturation)
     last_error: Exception | None = None

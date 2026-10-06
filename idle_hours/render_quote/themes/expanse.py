@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageDraw
 
@@ -153,7 +154,7 @@ def _expanse_paint_brackets(draw: ImageDraw.ImageDraw, rect, ink, length: int = 
 def _expanse_dashed(draw: ImageDraw.ImageDraw, points: list, ink, on: int = 6, off: int = 5, width: int = 1) -> None:
     """A polyline drawn as dashes, the dash phase carried across vertices."""
     run, lit = 0.0, True
-    for (ax, ay), (bx, by) in zip(points, points[1:]):
+    for (ax, ay), (bx, by) in pairwise(points):
         seg = math.hypot(bx - ax, by - ay)
         t = 0.0
         while t < seg:
@@ -341,7 +342,7 @@ def _expanse_paint_plot(image: Image.Image) -> None:
     r = _EXPANSE_ARC_GAUGE_R
     _expanse_dotted_rule(px, x0 + 10, x1 - 10, _EXPANSE_ARC_GAUGE_Y - r - 10, blue)
     label = _expanse_label_font(9)
-    for gx, name in zip(_EXPANSE_ARC_GAUGE_XS, _EXPANSE_ARC_GAUGES):
+    for gx, name in zip(_EXPANSE_ARC_GAUGE_XS, _EXPANSE_ARC_GAUGES, strict=True):
         gy = _EXPANSE_ARC_GAUGE_Y
         draw.arc((gx - r, gy - r, gx + r, gy + r), 135, 405, fill=blue, width=1)
         draw.arc((gx - r + 9, gy - r + 9, gx + r - 9, gy + r - 9), 135, 405, fill=blue, width=1)
@@ -582,7 +583,7 @@ def _expanse_paint_arc_gauges(image: Image.Image, draw: ImageDraw.ImageDraw, quo
     """The four arc gauges' sweeps: a cyan arc over the outer ring and an
     orange arc on the inner, each sweeping the quote's value of 270°."""
     r = _EXPANSE_ARC_GAUGE_R
-    for gx, sweep in zip(_EXPANSE_ARC_GAUGE_XS, _expanse_gauges(quote_row)):
+    for gx, sweep in zip(_EXPANSE_ARC_GAUGE_XS, _expanse_gauges(quote_row), strict=True):
         gy = _EXPANSE_ARC_GAUGE_Y
         end = 135 + 270 * sweep / 12
         mask = Image.new("L", image.size, 0)
@@ -637,7 +638,7 @@ def _expanse_paint_readouts(image: Image.Image, draw: ImageDraw.ImageDraw, quote
     mono = _expanse_mono_font(10)
     d = _row_digest(quote_row)
     bx, by = _EXPANSE_SYSTEXT_X, y0 + 46
-    for k, text in enumerate((f"{d % 10_000_000:07d}", f"SY{(d >> 8) % 100_000:05d}")):
+    for _k, text in enumerate((f"{d % 10_000_000:07d}", f"SY{(d >> 8) % 100_000:05d}")):
         w = int(draw.textlength(text, font=mono)) + 10
         draw.rectangle((bx, by, bx + w, by + 15), outline=SPECTRA6["blue"], width=1)
         draw.text((bx + 5, by + 2), text, font=mono, fill=SPECTRA6["white"])

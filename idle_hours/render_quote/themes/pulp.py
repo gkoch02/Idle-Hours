@@ -180,7 +180,7 @@ def _pulp_paint_blurb(image, draw, quote_row, rect):
             box = draw.textbbox((0, 0), chunk, font=font)
             widths.append(box[2] - box[0])
         x = inner[0] + max(0, ((inner[2] - inner[0]) - sum(widths)) // 2)
-        for (chunk, is_bold), chunk_w in zip(drawable, widths):
+        for (chunk, is_bold), chunk_w in zip(drawable, widths, strict=True):
             font = quote_font_bold if is_bold else quote_font
             chunk_y = y + (ascent - _font_ascent(font))
             draw.text((x, chunk_y), chunk, font=font, fill=red if is_bold else black)

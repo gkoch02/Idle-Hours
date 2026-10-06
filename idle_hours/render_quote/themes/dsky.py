@@ -74,7 +74,7 @@ _DSKY_SEGMENTS = {
 
 def _dsky_tone(t: float) -> tuple[int, int, int]:
     """A grey ``t`` of the way from the white ink to the black ink."""
-    r, g, b = (round(w + (k - w) * t) for w, k in zip(_PANEL_INKS["white"], _PANEL_INKS["black"]))
+    r, g, b = (round(w + (k - w) * t) for w, k in zip(_PANEL_INKS["white"], _PANEL_INKS["black"], strict=True))
     return r, g, b
 
 
@@ -174,7 +174,7 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
         draw.rectangle((wx0, wy0, wx1, wy0 + 2), fill=_dsky_tone(0.70))
         draw.rectangle((wx0, wy0, wx0 + 2, wy1), fill=_dsky_tone(0.78))
     # The unlit lamps: smoked glass a shade above the window.
-    for lx0, ly0, lx1, ly1, label in _dsky_lamp_rects():
+    for lx0, ly0, lx1, ly1, _label in _dsky_lamp_rects():
         draw.rectangle((lx0, ly0, lx1, ly1), fill=_dsky_tone(0.92))
     # A reflection across the display glass.
     reflection = Image.new("L", size, 0)
@@ -194,7 +194,7 @@ def _dsky_paint_unit(scene: Image.Image) -> None:
     draw.rectangle((tx0, ty0, tx1, ty0 + 2), fill=_dsky_tone(0.80))
     keys = Image.new("L", size, 0)
     kd = ImageDraw.Draw(keys)
-    for kx0, ky0, kx1, ky1, label in rects:
+    for kx0, ky0, kx1, ky1, _label in rects:
         kd.rounded_rectangle((kx0, ky0, kx1, ky1), radius=6, fill=255)
     caps = _shade_silhouette(keys, _dsky_tone(0.90), _dsky_tone(0.40), _dsky_tone(0.99), offset=4, blur=3)
     scene.paste(caps, (0, 0), keys)
@@ -259,7 +259,7 @@ def _dsky_paint_legends(draw: ImageDraw.ImageDraw) -> None:
             tw = draw.textlength(label, font=font)
             draw.text((lx0 + (lx1 - lx0 - tw) / 2, ly0 + 5), label, font=font, fill=white,
                       stroke_width=1, stroke_fill=black)
-    for kx0, ky0, kx1, ky1, label in _dsky_key_rects():
+    for kx0, ky0, _kx1, _ky1, label in _dsky_key_rects():
         lines = label.split("\n")
         ty = ky0 + (_DSKY_KEY - 12 * len(lines)) / 2
         for line in lines:

@@ -372,7 +372,7 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
             break
 
     y = max(40, (height - block_h) // 2)
-    for line, h in zip(lines, line_heights):
+    for line, h in zip(lines, line_heights, strict=True):
         bbox = draw.textbbox((0, 0), line, font=font)
         w = bbox[2] - bbox[0]
         _draw_text_body(image, draw, ((width - w) // 2, y), line, font=font, fill=colors["text"], theme=theme)

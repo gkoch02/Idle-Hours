@@ -199,7 +199,7 @@ def _vhs_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: d
         # cannot catch it since it lists the white core too.
         for pass_core in (False, True):
             x = start_x
-            for (chunk, is_bold), chunk_w in zip(drawable, widths):
+            for (chunk, is_bold), chunk_w in zip(drawable, widths, strict=True):
                 font = quote_font_bold if is_bold else quote_font
                 chunk_y = y + (ascent - _font_ascent(font))
                 draw_text_chroma_shift(

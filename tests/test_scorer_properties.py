@@ -35,6 +35,7 @@ enumeration over a small bounded space, no Hypothesis dependency.
 from __future__ import annotations
 
 from collections import Counter
+from itertools import pairwise
 
 import pytest
 
@@ -190,7 +191,7 @@ class TestMonotonicityInQuality:
         # quality is stored as ``-quality_score`` so the slot series must be
         # strictly *decreasing* as q increases. Equal adjacent values mean two
         # quality points collapsed — a mutation.
-        for prev, curr in zip(slots, slots[1:]):
+        for prev, curr in pairwise(slots):
             assert curr < prev, f"quality slot not strictly monotonic: {slots}"
 
 
@@ -363,7 +364,7 @@ class TestRequestTimeRecomputation:
         ]
         scores = [_score(row, overrides=ov) for ov, _ in variants]
         base = scores[0]
-        for score, (_, expected_bonus) in zip(scores, variants):
+        for score, (_, expected_bonus) in zip(scores, variants, strict=True):
             assert score[OVERRIDE_POSITION] == expected_bonus
             for pos in range(len(base)):
                 if pos == OVERRIDE_POSITION:

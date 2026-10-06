@@ -255,7 +255,7 @@ class TestQuietThemeCli:
                 try:
                     ns = run_clock.parse_args()
                 except SystemExit:
-                    raise AssertionError(f"--quiet-theme {name} was rejected by argparse")
+                    raise AssertionError(f"--quiet-theme {name} was rejected by argparse") from None
                 assert ns.quiet_theme == name
 
     def test_default_is_inherit(self):

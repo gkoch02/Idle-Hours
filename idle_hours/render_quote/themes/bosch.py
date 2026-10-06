@@ -305,7 +305,7 @@ def _bosch_rose_tower(tile, cx: int, base: int, top: int, half: int, light: floa
         return _bosch_pick(rank, ((black, k), (red, r), (white, 1)))
     _bosch_paint(tile, mask, shade)
     draw = ImageDraw.Draw(tile)
-    for i, y in enumerate(range(top + 34, base - 16, 22)):           # lancets
+    for _i, y in enumerate(range(top + 34, base - 16, 22)):           # lancets
         draw.ellipse((cx - 2, y, cx + 2, y + 10), fill=black)
         for s in (-1, 1):                                              # crockets
             draw.polygon([(cx + s * (half - 1), y + 4), (cx + s * (half + 5), y - 2),
@@ -780,7 +780,7 @@ def _bosch_paint_panels(image: Image.Image) -> None:
         size = (x1 - x0, y1 - y0)
         ground = SPECTRA6["black"] if kind == "hell" else SPECTRA6["white"]
         tile = Image.new("RGB", size, ground)
-        setattr(tile, "_bosch_origin", (x0, y0))  # read back with getattr in _bosch_paint
+        setattr(tile, "_bosch_origin", (x0, y0))  # noqa: B010 - not an Image attribute, so mypy rejects the plain assignment; read back with getattr in _bosch_paint
         _BOSCH_PAINTERS[kind](tile)
         image.paste(tile, (x0, y0), _bosch_panel_mask(kind, size))
         tile.close()

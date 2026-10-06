@@ -112,7 +112,7 @@ line-length = 130
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I"]
+select = ["E", "W", "F", "I", "B"]
 ignore = ["E501"]  # Line too long (handled separately if needed)
 
 [tool.mypy]

@@ -76,7 +76,7 @@ class TestTemplatesForBucket:
 
     def test_implied_state_in_tuple(self):
         templates = templates_for_bucket("h3_quarter_to")
-        for phrase, implied_state in templates:
+        for _phrase, implied_state in templates:
             assert implied_state == "quarter_to"
 
     def test_all_valid_states_return_templates(self):

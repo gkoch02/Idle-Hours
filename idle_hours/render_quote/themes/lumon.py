@@ -113,7 +113,7 @@ def _lumon_paint_screen(image: Image.Image) -> None:
     for y in range(small.size[1]):
         for x in range(small.size[0]):
             t = min(1.0, (math.hypot(x + 0.5 - cx, y + 0.5 - cy) / rmax) ** 2.8 * 0.85)
-            sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK))
+            sp[x, y] = tuple(round(b * (1 - t) + k * t) for b, k in zip(_LUMON_BLUE, _LUMON_BLACK, strict=True))
     field = _dither_calibrated(small.resize((width, height), Image.Resampling.BICUBIC), _LUMON_INKS)
     # The housing: the beige of the show's terminals, white with a yellow
     # quarter, with the glass opening cut out of it.

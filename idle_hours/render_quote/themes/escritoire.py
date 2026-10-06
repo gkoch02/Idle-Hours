@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import math
 import random
+from itertools import pairwise
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -133,7 +134,7 @@ def _escritoire_coeffs(scale: int = 1) -> tuple:
     sw, sh = _ESCRITOIRE_SHEET
     sheet = ((0, 0), (sw, 0), (sw, sh), (0, sh))
     a, b = [], []
-    for (x, y), (u, v) in zip(_ESCRITOIRE_QUAD, sheet):
+    for (x, y), (u, v) in zip(_ESCRITOIRE_QUAD, sheet, strict=True):
         x, y, u, v = x * scale, y * scale, u * scale, v * scale
         a.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
         a.append([0, 0, 0, x, y, 1, -v * x, -v * y])
@@ -220,7 +221,7 @@ def _escritoire_lathe(lp, ap, cx: float, knots, *, gain: float = 1.0, mirror_at:
     steps = {round(ys[i]) for i in range(1, len(ys) - 1) if ys[i + 1] - ys[i] <= 6 or ys[i] - ys[i - 1] <= 6}
 
     def half_width(y):
-        for (y0, w0), (y1, w1) in zip(knots, knots[1:]):
+        for (y0, w0), (y1, w1) in pairwise(knots):
             if y0 <= y <= y1:
                 return w0 + (w1 - w0) * (y - y0) / max(1e-6, y1 - y0)
         return 0.0
@@ -254,6 +255,17 @@ def _escritoire_lathe(lp, ap, cx: float, knots, *, gain: float = 1.0, mirror_at:
                 ap[x, out_y] = a
 
 
+def _escritoire_pen_quad(nx: float, ny: float, ux: float, uy: float,
+                         t0: float, t1: float, w0: float, w1: float) -> list[tuple[float, float]]:
+    """A band of a pen lying from (nx, ny) along the unit vector (ux, uy): from
+    t0 to t1 along the shaft, half-width w0 at one end and w1 at the other."""
+    px_, py_ = -uy, ux
+    return [(nx + ux * t0 + px_ * w0, ny + uy * t0 + py_ * w0),
+            (nx + ux * t1 + px_ * w1, ny + uy * t1 + py_ * w1),
+            (nx + ux * t1 - px_ * w1, ny + uy * t1 - py_ * w1),
+            (nx + ux * t0 - px_ * w0, ny + uy * t0 - py_ * w0)]
+
+
 def _escritoire_paint_brass(image: Image.Image) -> None:
     """The out-of-focus things on the far side of the desk: three turned brass
     pieces with their tops on the panel, lamp glints that the blur turns into
@@ -277,14 +289,7 @@ def _escritoire_paint_brass(image: Image.Image) -> None:
     for (nx, ny), (ex, ey), r in _ESCRITOIRE_BACK_PENS:
         length = math.hypot(ex - nx, ey - ny)
         ux, uy = (ex - nx) / length, (ey - ny) / length
-        px_, py_ = -uy, ux
-
-        def quad(t0, t1, w0, w1):
-            return [(nx + ux * t0 + px_ * w0, ny + uy * t0 + py_ * w0),
-                    (nx + ux * t1 + px_ * w1, ny + uy * t1 + py_ * w1),
-                    (nx + ux * t1 - px_ * w1, ny + uy * t1 - py_ * w1),
-                    (nx + ux * t0 - px_ * w0, ny + uy * t0 - py_ * w0)]
-
+        quad = functools.partial(_escritoire_pen_quad, nx, ny, ux, uy)
         draw_a.polygon(quad(0, length, 1, r), fill=255)
         draw_l.polygon(quad(30, length, r * 0.8, r), fill=8)
         draw_l.polygon(quad(0, 34, 1, r * 0.75), fill=150)                  # nib + section

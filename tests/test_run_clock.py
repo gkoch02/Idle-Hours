@@ -3802,7 +3802,7 @@ class TestActionThemeCycle:
                 try:
                     ns = run_clock.parse_args()
                 except SystemExit:
-                    raise AssertionError(f"--theme {name} was rejected by argparse")
+                    raise AssertionError(f"--theme {name} was rejected by argparse") from None
                 assert ns.theme == name
 
     def test_theme_help_carries_no_per_theme_prose(self):
@@ -3869,7 +3869,7 @@ class TestActionThemeCycle:
                     try:
                         ns = run_clock.parse_args()
                     except SystemExit:
-                        raise AssertionError(f"{flag} {name} was rejected by argparse")
+                        raise AssertionError(f"{flag} {name} was rejected by argparse") from None
                     if flag == "--auto-day-theme":
                         assert ns.auto_day_theme == name
                     else:
@@ -3914,7 +3914,7 @@ class TestRandomThemeMode:
             try:
                 ns = run_clock.parse_args()
             except SystemExit:
-                raise AssertionError("--theme random was rejected by argparse")
+                raise AssertionError("--theme random was rejected by argparse") from None
             assert ns.theme == "random"
 
     def test_once_mode_with_random_theme_picks_and_renders(self, tmp_path):
