@@ -6,6 +6,8 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-06
+
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
@@ -211,7 +213,6 @@ these entries under the new dated version heading.
   where the hour hand would point; totality at twelve), the colony
   silhouetted against the sunset band beneath it, the quote in Exo 2
   with the matched phrase as an ember. Bundles Exo 2 and Michroma (OFL).
-
 ## [2.6.0] - 2026-09-26
 
 - `idle-hours run --once` now pins its render to the quote it picked, and so
