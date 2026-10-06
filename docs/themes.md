@@ -60,7 +60,7 @@ Every face the renderer sets ships under `idle_hours/fonts/` as package data, on
 | `old-standard-tt/` | OFL.txt | `newsprint`, `intaglio`, `beksinski` | — |
 | `orbitron/` | OFL.txt | `saros` | — |
 | `oswald/` | OFL.txt | — | `control`, `semiotic` |
-| `oxanium/` | OFL.txt | `outrun` | `atropos` |
+| `oxanium/` | OFL.txt | `outrun`, `traumateam` | `atropos` |
 | `patrick-hand-sc/` | OFL.txt | `placard` | — |
 | `permanent-marker/` | LICENSE.txt | `marker` | — |
 | `pinyon-script/` | OFL.txt | `letter`, `anna_atkins`, `intaglio` | — |
@@ -1402,6 +1402,16 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
     - *Red stippled over black for the desk* — read as plum on the panel.
     - *Three cylinders cut off by the top edge for the brass* — read as lit columns.
     - *Pills for the back pens* — read as lights.
+  - `traumateam` (black screen / drawn white wordmark and six-armed mark / red dispatch band with cyan end tabs / white Oxanium body / matched phrase Bold white on a red block / vitals trace — ***Cyberpunk*: a Trauma Team International dispatch screen**). A custom-render frame (`render_traumateam_frame`).
+
+    **The wordmark is drawn, not set.** No open face has the brand's stencilled block capitals, so `TRAUMA` and `TEAM` are polygons on a 3 × 9 stroke grid (`_TRAUMATEAM_GLYPHS`, 6 px a unit, the `M` five units wide), with the counters of `A` and `R` cut back out in black. The letters and the mark are inspired by the logo, not traced from it. The mark (`_traumateam_mark_polygons`) is a vertical bar crossed by two broad diagonal bands with square-cut ends, and a thin black cut from the bar's upper left to the centre. The lockup is centred on the frame as a whole, so the mark sits right of centre, as it does in the logo.
+
+    **Red is only ever a ground.** The panel's red (`#62201E`) is nearly as dark as its black, so red type on the black screen would vanish across a room. The band is solid red under white SemiBold chrome, and the matched phrase is Bold white on a red block, one block per line it occupies (`_lumon_hover_boxes`, shared with `lumon`), which ties the phrase to the band. The logo's third colourway puts the band on cyan; here cyan is only the band's two end tabs, a G+B 50/50 stipple. A cyan field cannot hold text on six inks.
+
+    **The hour is the responding unit**, `AV-01` to `AV-12` on the band's right (`_traumateam_unit_code`), byte-identical across the minutes of an hour. The call's status beside it (`EN ROUTE`, `ON SCENE` …) and the vitals trace's rate and phase are seeded from the quote (`_row_digest`), so a new quote changes the call and an unchanged one never redraws differently.
+
+    **Plumbing.** Solid flats, no dither beyond the tabs, so nothing is cached. Composed at the canonical 800×480 and NEAREST-downsampled (the `metro` convention). Saturation tier `0.7` (dark ground).
+
   - `saros` (black sky / diffusion-dithered red-and-gold corona / white Saira body / ember matched phrase, Orbitron wordmark and Michroma chrome — **Housemarque's *Saros* (2026)**, the eclipse that hangs over the colony of Carcosa). A custom-render frame (`render_saros_frame`).
 
     **The corona is painted in continuous tone and dithered, not stippled.** `_saros_corona_field` evaluates a radial profile per pixel at a quarter of panel resolution (`_SAROS_SKY_STEP`; a glow has no finer detail) and bicubic-upsamples it: a chromospheric rim decaying over 0.06 radii, a mid corona over 0.36, an outer haze over 1.1, and eight **streamers** (`_SAROS_STREAMERS` — angular Gaussian lobes that brighten the mid and outer terms along their axes, asymmetric on purpose, a few long plumes and short brushes rather than a halo). A **sunset band** rings the horizon (`_saros_dusk`, an exponential up from the ground line, strongest under the sun and a third as bright at the edges — what a total eclipse's horizon actually does, and what cuts every silhouette out of the sky), and a cold **blue haze** pools low on the left, away from the sun (`_saros_haze`). The photosphere disc and the moon are then painted sharp at full resolution, because the exposed sliver is the one hard edge in the sky, and the field is Floyd–Steinberg-dithered to K/R/Y/W + blue (`_SAROS_SKY_PALETTE`) — the `biomech` dusk recipe.
@@ -1661,6 +1671,7 @@ Imports `pick_quote` in-process (`pick_quote_module.select_quote`) and lays out 
   - `yorha` uses **EB Garamond** (Georg Duffner / Octavio Pardo, OFL), already bundled for `illuminated` and `gothic`. Automata's interface is set in a refined classical serif — the game's most imitated typographic feature — that has never been identified under a commercial name (custom or unreleased); the free faces usually offered as its nearest matches are EB Garamond and Cormorant, and of the two EB Garamond's larger x-height and sturdier hairlines are what let a 16 px menu row hold on the panel. Regular for the body at up to 34 px, the menu rows, the counter and the author; Bold for the matched phrase (white on its black box), the header and the book's title.
   - `hitchhiker` uses **Michroma** (Vernon Adams, OFL), already bundled, for every register: the series' lettering was drawn by hand in the square-shouldered monoline manner of Microgramma, which Michroma is the open descendant of. One static weight, so the matched phrase is yellow rather than bold; the body sets at up to 26 px with a generous 1.5 leading, because a wide face at a narrow leading reads as a block.
   - `escritoire` uses **Dancing Script** (Pablo Impallari, OFL), already bundled for `letter`, pinned Regular for the body and Bold for the matched phrase and the signature. Pinyon Script's copperplate is closer to a real letter, but its hairlines shred once the warp has shrunk the far lines; Dancing Script's even, rounded stroke survives the threshold.
+  - `traumateam` uses **Oxanium** (Sev Meyer, OFL), already bundled for `outrun`, pinned Regular for the body, Bold for the matched phrase and SemiBold / Medium for the band, the byline and the vitals label. The game's interface faces are commercial; Oxanium's squared bowls sit in the same register and stay sturdy in white on black at the byline's size.
   - `saros` uses **Saira** (Omnibus-Type, OFL) for the body, **Orbitron** (Matt McInerney, OFL) for the wordmark and **Michroma** (Vernon Adams, OFL) for the status chrome.
 
     **The game's faces.** The Game Font Library lists *Saros*'s faces as **Arame** (dmtr.org) as the main display face, **Tamba Sans** (Dharma Type) for text and **Korataki** (Typodermic) as the tertiary face; none is open, so each register gets the nearest open face.
