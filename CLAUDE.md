@@ -284,7 +284,10 @@ After the v2.x package restructure, three resolution rules apply:
   `run_clock._render_command` is the one place that decides. The legacy value
   `"render_quote.py"`, which every pre-#335 appliance config carries, still
   means the bundled renderer unless a `./render_quote.py` exists in the working
-  directory, and `main()` logs a one-line deprecation note for it. Any other
+  directory, and `main()` logs a one-line deprecation note for it. So does an
+  absolute path to the removed file at this install's own location
+  (`BASE_DIR / "render_quote.py"`, issue #364), but only while it is missing;
+  the same name anywhere else stays a custom renderer. Any other
   value is a custom renderer and resolves as an input path (below). Preflight
   checks `"auto"` with `importlib.util.find_spec`, not a file test.
 - **Operator-supplied input paths** (`--render-script`, `--display-script`,

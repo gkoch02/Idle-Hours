@@ -5374,6 +5374,61 @@ class TestRenderCommand:
         assert out.exists() and out.stat().st_size > 0
 
 
+class TestFormerBundledRendererPath:
+    """Issue #364: a hand-written config naming the old single-file renderer by
+    absolute path keeps working after #335 made it a package. Only that exact
+    file counts; every other ``render_quote.py`` is an operator's own renderer."""
+
+    MODULE_COMMAND = TestRenderCommand.MODULE_COMMAND
+
+    @pytest.fixture
+    def install(self, tmp_path, monkeypatch):
+        """A stand-in for the Pi's editable install, with the file already gone."""
+        base = tmp_path / "IdleHours" / "idle_hours"
+        base.mkdir(parents=True)
+        monkeypatch.setattr(run_clock, "BASE_DIR", base)
+        monkeypatch.chdir(tmp_path)
+        return base
+
+    def test_absolute_path_to_the_removed_file_is_the_bundled_module(self, install, tmp_path):
+        old = str(install / "render_quote.py")
+        assert run_clock._uses_bundled_renderer(old)
+        assert TestRenderCommand()._argv(old, tmp_path)[:4] == self.MODULE_COMMAND
+
+    def test_preflight_accepts_it(self, install):
+        args = argparse.Namespace(
+            render_script=str(install / "render_quote.py"),
+            display_script=None, quiet_image=None, startup_image=None,
+        )
+        assert not any("render-script" in e for e in run_clock._preflight_paths(args))
+
+    def test_it_logs_the_migration_note(self, install, capsys):
+        old = str(install / "render_quote.py")
+        run_clock._warn_legacy_render_script(argparse.Namespace(render_script=old))
+        err = capsys.readouterr().err
+        assert old in err and 'render_script = "auto"' in err
+
+    def test_same_name_elsewhere_is_still_a_custom_path(self, install, tmp_path):
+        """An old path from a checkout that has since moved is not this install's
+        file: it keeps failing preflight with the hint instead of rendering."""
+        elsewhere = str(tmp_path / "moved" / "idle_hours" / "render_quote.py")
+        assert not run_clock._uses_bundled_renderer(elsewhere)
+        args = argparse.Namespace(render_script=elsewhere, display_script=None, quiet_image=None, startup_image=None)
+        errors = run_clock._preflight_paths(args)
+        assert any('render_script = "auto"' in e for e in errors)
+
+    def test_an_existing_file_at_that_path_still_wins(self, install, tmp_path):
+        own = install / "render_quote.py"
+        own.write_text("")
+        assert not run_clock._uses_bundled_renderer(str(own))
+        assert TestRenderCommand()._argv(str(own), tmp_path)[:2] == [sys.executable, str(own)]
+
+    def test_custom_renderer_is_untouched(self, install, tmp_path):
+        custom = tmp_path / "my_renderer.py"
+        custom.write_text("")
+        assert not run_clock._uses_bundled_renderer(str(custom))
+
+
 class TestLegacyRenderScriptNote:
     """A config naming ``render_quote.py`` works, and says once that it should say ``auto``."""
 
