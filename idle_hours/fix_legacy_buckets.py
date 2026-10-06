@@ -35,7 +35,7 @@ def canonical_bucket(hour: int, minute: int) -> str:
     """Canonical ``h{hour}_{state}`` bucket for a 24-hour ``(hour, minute)`` pair.
 
     Delegates to :func:`buckets.bucket_for_time` so the rounding rule lives in
-    exactly one place (see the CLAUDE.md note about killing state-table drift).
+    exactly one place (see the "Fuzzy Bucket System" history note in docs/pipeline.md).
     """
     return bucket_for_time(f"{hour:02d}:{minute:02d}")
 

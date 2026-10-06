@@ -5,9 +5,12 @@ process is deliberately light — the goal is to make it easy for someone who
 just wants to fix a typo, improve a quote, or add a pipeline stage.
 
 This doc covers the dev environment, how the pipeline fits together, and what
-to do when contributing each kind of change. The deep architecture reference
-lives in [`CLAUDE.md`](../CLAUDE.md) — if you're modifying the runtime or
-pipeline, skim that first.
+to do when contributing each kind of change. The references live
+beside it in `docs/`: [`pipeline.md`](pipeline.md) (corpus pipeline and quote
+selection), [`runtime.md`](runtime.md), [`themes.md`](themes.md),
+[`web_ui.md`](web_ui.md) and [`testing.md`](testing.md).
+[`CLAUDE.md`](../CLAUDE.md) is the short list of invariants that links to them;
+skim it before modifying the runtime or pipeline.
 
 By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 Security issues go through the reporting process in [`SECURITY.md`](SECURITY.md),
@@ -187,7 +190,8 @@ together. Safe to re-run (downloads cache, merge dedupes).
 
 ### Pipeline stages
 
-If you're touching a pipeline script, the flow (also in `CLAUDE.md`) is:
+If you're touching a pipeline script, the flow (stage by stage in
+[`pipeline.md`](pipeline.md)) is:
 
 ```
 gutenberg_time_miner → merge_candidates → clean_display_quotes →
@@ -209,9 +213,9 @@ gutenberg_time_miner → merge_candidates → clean_display_quotes →
 `render_quote.py` is designed around the Inky Impression 7.3 Spectra 6 (800×480,
 6-colour palette). Any colour change goes through `snap_image_to_palette`.
 
-Eighty-nine themes ship today — see the `THEME_ORDER` tuple for the
-canonical list, the README theme table for previews, and
-[`docs/themes.md`](themes.md) for the design notes behind each one. Some are palette + font
+The `THEME_ORDER` tuple is the canonical list of themes; see the README theme
+table for previews and [`docs/themes.md`](themes.md) for the design notes
+behind each one. Some are palette + font
 swaps on the shared literary layout, some add a border painter, and the
 custom-render frames (`tarot`, `vitrail`, `questline`, `pride`, `bosch`, …)
 own their whole composition. Adding another means wiring it into all of

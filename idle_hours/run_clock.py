@@ -311,7 +311,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Render theme passed through to render_quote.py; see the choices list above "
             "for every registered theme. The README theme table shows a preview of each, "
-            "and CLAUDE.md documents the design intent. "
+            "and docs/themes.md documents the design intent. "
             "'auto' picks --auto-day-theme between 06:00 and 18:00 and --auto-night-theme "
             "otherwise (defaults 'default' / 'dark'). "
             "'random' picks a fresh theme each time the displayed quote changes. "

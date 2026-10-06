@@ -37,8 +37,8 @@ a systemd unit change, a migration step. Say "None" if it is invisible. -->
 
 ## Docs
 
-- [ ] `CLAUDE.md` (or `docs/themes.md` / `runtime.md` / `web_ui.md` / `testing.md`)
-      updated if this touches architecture, invariants, a theme, or anything
-      they already document. Keep `CLAUDE.md` itself under 150k characters —
-      long design notes belong in `docs/`.
+- [ ] The one doc that owns the fact updated (`docs/pipeline.md` / `runtime.md` /
+      `themes.md` / `web_ui.md` / `testing.md`), and `CLAUDE.md` only if an
+      invariant changed. Link rather than restate, and don't write registry
+      counts ("N themes") into prose.
 - [ ] `README.md` updated if this changes a user-facing command or the theme table

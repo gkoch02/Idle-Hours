@@ -33,6 +33,7 @@ DOCS = [
     REPO_ROOT / "docs" / "runtime.md",
     REPO_ROOT / "docs" / "web_ui.md",
     REPO_ROOT / "docs" / "testing.md",
+    REPO_ROOT / "docs" / "pipeline.md",
     REPO_ROOT / "idle_hours" / "assets" / "config.toml.example",
     REPO_ROOT / "idle_hours" / "assets" / "config.toml.defaults",
     REPO_ROOT / "ops" / "idle-hours.service.example",
