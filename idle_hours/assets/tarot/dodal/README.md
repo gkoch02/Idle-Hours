@@ -11,10 +11,9 @@ can consume them without mixing raw scans with generated runtime assets.
 - Rights: public domain
 - Commons credit: [tarot-history.com/Jean-Dodal](http://www.tarot-history.com/Jean-Dodal/)
 
-`trump_01.jpg` to `trump_12.jpg` are the original-resolution files served by
-Wikimedia Commons. `trump_18.jpg` was supplied directly by the maintainer at
-213×395, smaller than the Commons originals (257×474), and is believed to be
-the same deck's XVIII. If the Commons original-resolution file is added in its
-place, regenerate the plate with
-`python3 scripts/ingest_tarot_plates.py --single --input idle_hours/assets/tarot/dodal/trump_18.jpg --output idle_hours/assets/tarot_moon.png`;
-`tests/test_ingest_tarot_plates.py` fails until the plate matches its scan.
+The images are the original-resolution files served by Wikimedia Commons.
+`trump_18.jpg` is [File:Jean_Dodal_Tarot_trump_18.jpg](https://commons.wikimedia.org/wiki/File:Jean_Dodal_Tarot_trump_18.jpg)
+from the same category, at 213×395, inside the deck's own 205–258 px range of
+scan widths. If any scan is replaced, regenerate its plate with the ingest
+script (`--single` for XVIII); `tests/test_ingest_tarot_plates.py` fails until
+each committed plate matches its scan.
