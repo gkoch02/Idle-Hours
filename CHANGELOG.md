@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `tarot` draws its own sleep frame: XVIII, La Lune, dealt in place of the
+  hour's trump, with "To sleep, perchance to dream." as its reading. The
+  plate is a new Dodal scan, separated by `ingest_tarot_plates.py`, which
+  gains a `--single` mode for one card.
 - Five more themes draw their own sleep frame: `marquee` (the letter board
   reads CLOSED / SEE YOU TOMORROW, every bulb still lit), `witcher` (the
   meditation screen, resting until dawn), `questline` (an inn after dark:

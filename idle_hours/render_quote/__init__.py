@@ -76,7 +76,6 @@ if TYPE_CHECKING:
     # cannot see; this shows them the public API.
     from ._paths import BASE_DIR, META_FONT_CANDIDATES
     from .core import (
-        SLEEP_QUOTE_ROW,
         clear_photo_cache,
         main,
         parse_args,
@@ -87,6 +86,7 @@ if TYPE_CHECKING:
         render_static_message,
     )
     from .fonts import load_font, theme_font_candidates
+    from .furniture import SLEEP_QUOTE_ROW
     from .palette import DEFAULT_HEIGHT, DEFAULT_WIDTH, SPECTRA6, SPECTRA6_PALETTE, dither_image_to_palette, snap_image_to_palette
     from .registry import BORDER_SPECS, FRAME_SPECS, PLAIN_THEMES
     from .spec import BorderSpec, FrameSpec

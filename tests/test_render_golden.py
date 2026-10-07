@@ -621,6 +621,11 @@ SCENARIOS: list[dict] = [
         "theme": "redacted",
     },
     {
+        "name": "sleep_tarot",
+        "mode": "sleep",
+        "theme": "tarot",
+    },
+    {
         "name": "sleep_marquee",
         "mode": "sleep",
         "theme": "marquee",

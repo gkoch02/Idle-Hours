@@ -28,6 +28,7 @@ from ._paths import (
 )
 from .fonts import _font_ascent, apply_theme_glyph_fallbacks, load_font, normalize_dashes, theme_font_candidates
 from .furniture import (
+    SLEEP_QUOTE_ROW,
     fallback_title,
 )
 from .layout import (
@@ -378,25 +379,6 @@ def render_static_message(message: str, width: int, height: int, theme: str = "d
         y += h + line_gap
 
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
-
-
-# The quote the panel sleeps under, shaped as a corpus row so it goes through
-# the entire literary layout — every border painter, custom frame and the
-# accent-coloured matched phrase — in whichever theme is active.
-#
-# ``matched_text`` need not be a time phrase: ``resolve_display_match`` tries
-# a literal search first, so "sleep" is bolded in the accent like a real hour.
-# In ``dark`` this reproduces the bundled ``assets/goodnight.png``.
-#
-# Deliberately no ``source_id`` / ``line_number``: this row never enters the
-# picker or the anti-repeat ledger and must not be confusable with a corpus
-# row by anything keyed on that pair.
-SLEEP_QUOTE_ROW: dict[str, str] = {
-    "display_quote": "To sleep, perchance to dream.",
-    "matched_text": "sleep",
-    "author": "William Shakespeare",
-    "title": "Hamlet",
-}
 
 
 def render_sleep_frame(
