@@ -845,4 +845,129 @@ def render_lieder_frame(time_str: str, quote_row: dict, width: int, height: int)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-SPEC = FrameSpec(themes=("lieder",), render=render_lieder_frame)
+# ─── lieder sleep frame: Brahms, Wiegenlied, Op. 49 No. 4 ───────────────────
+#
+# The opening phrase of the Lullaby, engraved with the quote frame's own
+# painters, in C major (no key signature; Brahms wrote it in E♭). Each entry is
+# (syllable, pitch, beats, word continues). The 3/4 phrase opens on a two-quaver
+# upbeat: E E | G. E E | G — and a quarter rest stands in for the next
+# phrase's upbeat ("mit Ro-"), so the second bar closes full.
+_LIEDER_SLEEP_MELODY: tuple[tuple[str, str, float, bool], ...] = (
+    ("Gu", "E4", 0.5, True),
+    ("ten", "E4", 0.5, False),
+    ("A", "G4", 1.5, True),
+    ("bend,", "E4", 0.5, False),
+    ("gut'", "E4", 1.0, False),
+    ("Nacht,", "G4", 2.0, False),
+)
+_LIEDER_SLEEP_REST = 1.0                 # completes bar 2
+_LIEDER_SLEEP_BARS = (2, 5)              # melody indices that open a bar
+_LIEDER_SLEEP_RED = ("gut'", "Nacht,")   # "good night", sung in the theme's red
+# Staff positions (0 = bottom line) for the pitches the phrase uses.
+_LIEDER_SLEEP_POSITIONS = {"E4": 0, "G4": 2}
+_LIEDER_SLEEP_GAP = 12                   # larger stave than the quote frame's: one system only
+_LIEDER_SLEEP_STAFF_TOP = 152
+_LIEDER_SLEEP_LYRIC_SIZE = 28
+_LIEDER_SLEEP_STANZA = (
+    "Guten Abend, gut' Nacht, mit Rosen bedacht,",
+    "mit Näglein besteckt, schlupf' unter die Deck':",
+    "Morgen früh, wenn Gott will, wirst du wieder geweckt.",
+)
+_LIEDER_SLEEP_STANZA_TOP = 338
+_LIEDER_SLEEP_STANZA_LEADING = 29
+
+
+def _lieder_sleep_notes() -> list[dict]:
+    """The melody constant as note dicts ``_lieder_paint_system`` understands."""
+    notes: list[dict] = []
+    for index, (text, pitch, beats, hyphen) in enumerate(_LIEDER_SLEEP_MELODY):
+        notes.append({
+            "text": text, "matched": text in _LIEDER_SLEEP_RED, "hyphen": hyphen, "breath": False,
+            "stress": 0, "word": index, "beats": beats, "dotted": _lieder_is_dotted(beats),
+            "bar": index in _LIEDER_SLEEP_BARS, "pitch": _LIEDER_SLEEP_POSITIONS[pitch],
+        })
+    notes.append({
+        "text": "", "matched": False, "hyphen": False, "breath": False, "stress": 0,
+        "word": len(notes), "beats": _LIEDER_SLEEP_REST, "dotted": False, "bar": False,
+        "rest": True, "pitch": 4,
+    })
+    return notes
+
+
+def _lieder_sleep_base(notes: list[dict], min_gap: int, avail: float) -> float:
+    """Duration-spacing base that lets the one system fill the stave.
+
+    ``_lieder_paint_system`` stretches a last system by at most 2.4×, which a
+    six-note phrase cannot reach; widening the base instead keeps duration
+    spacing proportional across the whole line.
+    """
+    base = float(min_gap)
+    while base < avail and sum(_lieder_slot(n, min_gap, base) for n in notes) < avail:
+        base += 1.0
+    return base
+
+
+def _lieder_paint_sleep_header(draw) -> None:
+    """Title centred, poet credit left and composer right, as a song is headed."""
+    black = SPECTRA6["black"]
+    title = load_font(theme_font_candidates("lieder", "card_quote_bold"), size=34)
+    draw.text((400, 52), "Wiegenlied", font=title, fill=black, anchor="ms")
+    italic = load_font(theme_font_candidates("lieder", "ornament"), size=17)
+    draw.text((_LIEDER_MARGIN_L, 96), "Aus Des Knaben Wunderhorn", font=italic, fill=black, anchor="ls")
+    draw.text((_LIEDER_MARGIN_R, 96), "Johannes Brahms, Op. 49 No. 4", font=italic, fill=black, anchor="rs")
+
+
+def _lieder_paint_sleep_stanza(draw) -> None:
+    """The rest of the first verse, set as text beneath the music."""
+    italic = load_font(theme_font_candidates("lieder", "ornament"), size=21)
+    for i, line in enumerate(_LIEDER_SLEEP_STANZA):
+        y = _LIEDER_SLEEP_STANZA_TOP + i * _LIEDER_SLEEP_STANZA_LEADING
+        draw.text((400, y), line, font=italic, fill=SPECTRA6["black"], anchor="ms")
+
+
+def render_lieder_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the opening of Brahms's *Wiegenlied* engraved as
+    the song's first system, "gut' Nacht" sung in red under its slur.
+
+    Same cream wash, clef, noteheads, beams, lyric face and plate line as the
+    quote frame, so it is the same manuscript put to bed. Composed at the
+    canonical 800×480 and NEAREST-downsampled. ``time_str`` is unused: the
+    meter is the song's 3/4, not the hour.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _astrarium_paint_cream_wash(image)
+    draw = ImageDraw.Draw(image)
+
+    gap = _LIEDER_SLEEP_GAP
+    regular = load_font(theme_font_candidates("lieder", "quote_regular"), size=_LIEDER_SLEEP_LYRIC_SIZE)
+    bold = load_font(theme_font_candidates("lieder", "quote_bold"), size=_LIEDER_SLEEP_LYRIC_SIZE)
+    notes = _lieder_sleep_notes()
+    for note in notes:
+        note["width"] = int(draw.textlength(note["text"], font=bold if note["matched"] else regular))
+    min_gap = max(7, int(_LIEDER_SLEEP_LYRIC_SIZE * 0.38))
+
+    # Where the notes may start, as _lieder_paint_system will compute it.
+    clef_font = load_font([NOTOMUSIC_REGULAR], size=gap * 4)
+    cx0, _, cx1, _ = clef_font.getbbox(_MUSIC_G_CLEF, anchor="ls")
+    meter_font = load_font(theme_font_candidates("lieder", "card_quote_bold"), size=int(gap * 3.0))
+    meter_w = max(draw.textlength("3", font=meter_font), draw.textlength("4", font=meter_font))
+    start = _LIEDER_MARGIN_L + 5 + (cx1 - cx0) + gap + meter_w + gap * 1.6
+    avail = _LIEDER_MARGIN_R - start - gap * 2
+
+    ctx = {
+        "gap": gap, "regular": regular, "bold": bold, "min_gap": min_gap,
+        "base": _lieder_sleep_base(notes, min_gap, avail), "size": _LIEDER_SLEEP_LYRIC_SIZE,
+        "numerator": 3, "staff_tops": [_LIEDER_SLEEP_STAFF_TOP], "expression": "",
+    }
+    _lieder_paint_sleep_header(draw)
+    _lieder_paint_system(draw, ctx, 0, notes)
+    _lieder_paint_sleep_stanza(draw)
+    _lieder_paint_plate_line(draw, {}, 800, 480)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("lieder",), render=render_lieder_frame, sleep=render_lieder_sleep)

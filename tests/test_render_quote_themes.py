@@ -8567,3 +8567,69 @@ class TestTrisolarisSleepFrame:
         for time_str in ("22:00", "02:30"):
             quote = rq.render(time_str, row, 800, 480, mode="production", theme="trisolaris")
             assert pixel_bytes(quote) != pixel_bytes(image)
+
+
+class TestLiederSleepFrame:
+    """``lieder``'s own sleep frame: the opening phrase of Brahms's
+    *Wiegenlied*, Op. 49 No. 4, engraved with the quote frame's painters,
+    "gut' Nacht" sung in red."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="lieder")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["lieder"].sleep is rq.render_lieder_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_lieder_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "red")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "03:00", "12:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_melody_is_brahms(self):
+        """C major (Brahms wrote E-flat): E E | G. E E | G, upbeat of two quavers."""
+        assert [(pitch, beats) for _text, pitch, beats, _hyphen in rq._LIEDER_SLEEP_MELODY] == [
+            ("E4", 0.5), ("E4", 0.5), ("G4", 1.5), ("E4", 0.5), ("E4", 1.0), ("G4", 2.0),
+        ]
+        lyric = "".join(text + ("-" if hyphen else " ") for text, _p, _b, hyphen in rq._LIEDER_SLEEP_MELODY)
+        assert lyric.strip() == "Gu-ten A-bend, gut' Nacht,"
+
+    def test_bars_are_full_three_four(self):
+        """The upbeat is one beat; every bar after it holds exactly three."""
+        notes = rq._lieder_sleep_notes()
+        bars, current = [], 0.0
+        for note in notes:
+            if note["bar"]:
+                bars.append(current)
+                current = 0.0
+            current += note["beats"]
+        bars.append(current)
+        assert bars == [1.0, 3.0, 3.0]
+        assert notes[-1].get("rest") and notes[-1]["beats"] == 1.0
+        assert [n["pitch"] for n in notes if not n.get("rest")] == [0, 0, 2, 0, 0, 2]
+
+    def test_red_is_good_night_on_the_stave(self):
+        """Red appears only in the system (the sung "gut' Nacht" and its slur),
+        in its right half; the header, stanza and plate line are black."""
+        image = rq.render_lieder_sleep("22:00", 800, 480)
+        red = rq.SPECTRA6["red"]
+        top = rq._LIEDER_SLEEP_STAFF_TOP - 4 * rq._LIEDER_SLEEP_GAP
+        bottom = rq._LIEDER_SLEEP_STANZA_TOP - 30
+        assert red not in ink_counts(image.crop((0, 0, 800, top)))
+        assert red not in ink_counts(image.crop((0, bottom, 800, 480)))
+        assert red not in ink_counts(image.crop((0, top, 400, bottom)))
+        assert ink_counts(image.crop((400, top, 800, bottom))).get(red, 0) > 300
+        # The five staff lines run the width of the page.
+        staff = image.crop((100, rq._LIEDER_SLEEP_STAFF_TOP, 700, rq._LIEDER_SLEEP_STAFF_TOP + 1))
+        assert ink_counts(staff).get(rq.SPECTRA6["black"], 0) > 500
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        frame = rq.render("14:30", make_row(), 800, 480, mode="production", theme="lieder")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_lieder_sleep("14:30", 800, 480))
