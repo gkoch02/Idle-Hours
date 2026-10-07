@@ -8327,3 +8327,74 @@ class TestMetroSleepFrame:
     def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
         frame = rq.render("14:30", make_row(), 800, 480, mode="production", theme="metro")
         assert pixel_bytes(frame) != pixel_bytes(rq.render_metro_sleep("14:30", 800, 480))
+
+
+class TestChronoSleepFrame:
+    """``chrono``'s own sleep frame: the End of Time, a lamppost burning on a
+    platform in the void, the portrait hourglass run out, and the narrator's
+    promise that the gates open again at dawn."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="chrono")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["chrono"].sleep is rq.render_chrono_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_chrono_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "blue", "yellow", "red")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_hourglass_has_run_out(self):
+        """The upper bulb holds no sand; the lower one more than the quote
+        frame's, which drains from above."""
+        run_out = rq._chrono_build_hourglass(run_out=True)
+        running = rq._chrono_build_hourglass()
+        sand = {5, 6, 7}
+
+        def sand_rows(img, y0, y1):
+            return sum(1 for y in range(y0, y1) for x in range(img.width) if img.getpixel((x, y)) in sand)
+
+        assert sand_rows(run_out, 9, 37) == 0 and sand_rows(running, 9, 37) > 0
+        assert sand_rows(run_out, 38, 63) > sand_rows(running, 38, 63)
+        assert pixel_bytes(running) == pixel_bytes(rq._chrono_build_hourglass(run_out=False))
+
+    def test_the_lamp_is_lit_and_glows_into_the_void(self):
+        image = self._render()
+        x0, y0, x1, y1 = rq._CHRONO_LAMP_HEAD
+        lantern = ink_counts(image.crop((x0 + 3, y0 + 3, x1 - 3, y1 - 3)))
+        assert lantern.get(rq.SPECTRA6["yellow"], 0) > 0.5 * sum(lantern.values())
+        halo = ink_counts(image.crop((x1 + 10, y0, x1 + 40, y1)))
+        assert rq.SPECTRA6["yellow"] in halo and rq.SPECTRA6["black"] in halo
+
+    def test_lamplight_pools_on_the_platform_not_round_it(self):
+        """The pool is filled under the lamp and stops at the platform's rim.
+
+        A core-less ``paint_neon_mask`` painted only a halo round its mask: a
+        hollow ring with no light inside, spilling past the rim (PR #378).
+        """
+        image = self._render()
+        yellow = rq.SPECTRA6["yellow"]
+        x0, y0, x1, y1 = rq._CHRONO_PLATFORM
+        cx = rq._CHRONO_LAMP_X
+
+        def share(box):
+            counts = ink_counts(image.crop(box))
+            return counts.get(yellow, 0) / sum(counts.values())
+
+        assert share((cx - 50, y0 + 12, cx - 12, y0 + 20)) > 0.2
+        assert share((x0 + 60, y1 + 3, x1 - 60, y1 + 14)) == 0
+        assert share((cx - 90, y0 - 12, cx - 20, y0 - 3)) == 0
+
+    def test_quote_frame_still_shows_a_running_hourglass(self):
+        row = make_row(display_quote="It was half past two.", matched_text="half past two")
+        quote = rq.render("14:30", row, 800, 480, mode="production", theme="chrono")
+        assert pixel_bytes(quote) != pixel_bytes(self._render())
