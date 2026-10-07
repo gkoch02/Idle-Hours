@@ -620,6 +620,31 @@ SCENARIOS: list[dict] = [
         "mode": "sleep",
         "theme": "redacted",
     },
+    {
+        "name": "sleep_marquee",
+        "mode": "sleep",
+        "theme": "marquee",
+    },
+    {
+        "name": "sleep_metro",
+        "mode": "sleep",
+        "theme": "metro",
+    },
+    {
+        "name": "sleep_questline",
+        "mode": "sleep",
+        "theme": "questline",
+    },
+    {
+        "name": "sleep_witcher",
+        "mode": "sleep",
+        "theme": "witcher",
+    },
+    {
+        "name": "sleep_yorha",
+        "mode": "sleep",
+        "theme": "yorha",
+    },
 ]
 
 

@@ -8263,3 +8263,67 @@ class TestYorhaSleepFrame:
         row = make_row(author="Test Author", title="Test Title")
         frame = rq.render("03:00", row, 800, 480, mode="production", theme="yorha")
         assert pixel_bytes(frame) != pixel_bytes(rq.render_yorha_sleep("03:00", 800, 480))
+
+
+class TestMetroSleepFrame:
+    """``metro``'s own sleep frame: the same map on its night timetable. Day
+    routes are hollow (two rails of their ink, white between), the night
+    route runs dotted on top, and a service notice replaces the quote card."""
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["metro"].sleep is rq.render_metro_sleep
+
+    def test_full_palette_and_dispatch(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="metro")
+        assert pixel_bytes(image) == pixel_bytes(rq.render_metro_sleep("22:00", 800, 480))
+        assert distinct_inks(image) == set(rq.SPECTRA6.values())
+
+    def test_day_lines_are_hollow_where_the_day_map_is_solid(self):
+        # The red route's last run (y=74, x 686..800) is clear of the card in
+        # both frames: solid red by day, red rails around a white core at night.
+        red, white = rq.SPECTRA6["red"], rq.SPECTRA6["white"]
+        day = rq.render("22:00", make_row(), 800, 480, mode="production", theme="metro")
+        night = rq.render_metro_sleep("22:00", 800, 480)
+        assert day.getpixel((750, 74)) == red
+        assert night.getpixel((750, 74)) == white
+        column = [night.getpixel((750, y)) for y in range(64, 85)]
+        assert column.count(red) >= 4, "the suspended line keeps its rails"
+        assert ink_counts(night.crop((690, 60, 800, 90)))[red] < ink_counts(day.crop((690, 60, 800, 90)))[red]
+
+    def test_night_line_runs_dotted(self):
+        # The night route's first leg is x=84 from the masthead down to y=118:
+        # a broken run of blue dots, not one solid stroke.
+        blue = rq.SPECTRA6["blue"]
+        night = rq.render_metro_sleep("22:00", 800, 480)
+        column = [night.getpixel((84, y)) == blue for y in range(50, 112)]
+        runs = sum(1 for prev, cur in pairwise([False, *column]) if cur and not prev)
+        assert runs >= 3
+        assert not all(column)
+        # Its horizontal run under the interchanges is visible above the card.
+        assert ink_counts(night.crop((200, 214, 600, 231))).get(blue, 0) > 500
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_metro_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "06:00", "00:00", "bogus"):
+            assert pixel_bytes(rq.render_metro_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        assert pixel_bytes(rq.render_metro_sleep("22:00", 800, 480)) == pixel_bytes(a)
+        small = rq.render_metro_sleep("22:00", 320, 192)
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_prints_no_digits(self, monkeypatch):
+        drawn: list[str] = []
+        original = ImageDraw.ImageDraw.text
+
+        def spy(self, xy, text, *args, **kwargs):
+            drawn.append(str(text))
+            return original(self, xy, text, *args, **kwargs)
+
+        monkeypatch.setattr(ImageDraw.ImageDraw, "text", spy)
+        rq.render_metro_sleep("07:45", 800, 480)
+        assert drawn, "the spy must see the frame's text"
+        assert not any(ch.isdigit() for text in drawn for ch in text), drawn
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        frame = rq.render("14:30", make_row(), 800, 480, mode="production", theme="metro")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_metro_sleep("14:30", 800, 480))
