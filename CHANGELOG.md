@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `vhs` draws its own sleep frame: the tape has run on into the station
+  sign-off, colour bars over "THIS CONCLUDES OUR BROADCAST DAY" / GOOD NIGHT,
+  under the quote frame's tape wear, with the deck's PLAY in place of the
+  camcorder's REC and no clock burnt in. Its quote frame is unchanged.
 - `dsky` draws its own sleep frame: the Apollo computer put into standby for
   the crew's rest period, with the STBY lamp lit, P06's VERB 50 NOUN 25
   "please perform" on the display, and the presleep checklist typed on the
