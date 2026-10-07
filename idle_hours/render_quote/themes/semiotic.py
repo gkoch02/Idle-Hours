@@ -221,20 +221,25 @@ def _semiotic_classify(tile: Image.Image, origin: tuple[int, int], values) -> Im
     return base
 
 
+def _semiotic_paint_blank_sign(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+    """A blank red-framed panel: the missing-sheet stand-in for a sign."""
+    x0, y0, w, h = box
+    r = max(4, w // 7)
+    draw.rounded_rectangle((x0, y0, x0 + w - 1, y0 + h - 1), radius=r, fill=SPECTRA6["white"])
+    inset = max(2, w // 40)
+    draw.rounded_rectangle((x0 + inset, y0 + inset, x0 + w - 1 - inset, y0 + h - 1 - inset),
+                           radius=r - inset, fill=SPECTRA6["red"])
+    band = max(4, w // 10)
+    draw.rounded_rectangle((x0 + band, y0 + band, x0 + w - 1 - band, y0 + h - 1 - band),
+                           radius=max(2, r - band), fill=SPECTRA6["white"])
+
+
 def _semiotic_paint_sign(image: Image.Image, code: str, box: tuple[int, int, int, int]) -> None:
     """Paint one Standard sign at ``box`` (x, y, w, h) onto the black ground."""
     x0, y0, w, h = box
     sheet = _semiotic_sheet()
     if sheet is None:
-        draw = ImageDraw.Draw(image)
-        r = max(4, w // 7)
-        draw.rounded_rectangle((x0, y0, x0 + w - 1, y0 + h - 1), radius=r, fill=SPECTRA6["white"])
-        inset = max(2, w // 40)
-        draw.rounded_rectangle((x0 + inset, y0 + inset, x0 + w - 1 - inset, y0 + h - 1 - inset),
-                               radius=r - inset, fill=SPECTRA6["red"])
-        band = max(4, w // 10)
-        draw.rounded_rectangle((x0 + band, y0 + band, x0 + w - 1 - band, y0 + h - 1 - band),
-                               radius=max(2, r - band), fill=SPECTRA6["white"])
+        _semiotic_paint_blank_sign(ImageDraw.Draw(image), box)
         return
     i = _SEMIOTIC_INDEX[code]
     tw, th = _SEMIOTIC_TILE
@@ -264,16 +269,25 @@ def _semiotic_paint_hazard(image: Image.Image) -> None:
 
 def _semiotic_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, hour: int) -> None:
     """Standard name left; status lamps and the hour's section right."""
+    _semiotic_paint_header_bar(image, draw, "SECTION", f"{hour:02d}", _SEMIOTIC_LAMPS)
+
+
+def _semiotic_paint_header_bar(image: Image.Image, draw: ImageDraw.ImageDraw, label: str, value: str,
+                               lit: tuple[str, ...]) -> None:
+    """Standard name left; status lamps, a white label and a yellow value right.
+
+    Lamps not in ``lit`` are drawn dark (black, white rim).
+    """
     white, yellow = SPECTRA6["white"], SPECTRA6["yellow"]
     font = _semiotic_font("SemiBold", 17)
     draw_tracked(draw, (24, 25), "SEMIOTIC STANDARD", font, white, tracking=3)
     right = image.width - 24
-    draw_tracked(draw, (right, 25), f"{hour:02d}", _semiotic_font("Bold", 17), yellow, tracking=2, anchor_right=True)
-    num_w = tracked_width(draw, f"{hour:02d}", _semiotic_font("Bold", 17), tracking=2)
-    label_w = draw_tracked(draw, (right - num_w - 8, 25), "SECTION", font, white, tracking=3, anchor_right=True)
+    draw_tracked(draw, (right, 25), value, _semiotic_font("Bold", 17), yellow, tracking=2, anchor_right=True)
+    num_w = tracked_width(draw, value, _semiotic_font("Bold", 17), tracking=2)
+    label_w = draw_tracked(draw, (right - num_w - 8, 25), label, font, white, tracking=3, anchor_right=True)
     x = right - num_w - 8 - label_w - 22
     for name in reversed(_SEMIOTIC_LAMPS):
-        draw.ellipse((x - 5, 31, x + 5, 41), fill=SPECTRA6[name], outline=white)
+        draw.ellipse((x - 5, 31, x + 5, 41), fill=SPECTRA6[name if name in lit else "black"], outline=white)
         x -= 18
 
 
@@ -312,9 +326,9 @@ def _semiotic_paint_signs(image: Image.Image, draw: ImageDraw.ImageDraw, hour: i
         _semiotic_paint_sign(image, code, (cx, _SEMIOTIC_COMPANION_Y, cw, ch))
 
 
-def _semiotic_paint_placard(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """The crew notice, framed as Cobb framed a sign: white edge, red band
-    broken where the header and footer rules cross it, white panel."""
+def _semiotic_paint_placard_frame(draw: ImageDraw.ImageDraw) -> None:
+    """The placard's Cobb frame — white edge, red band, white panel — with the
+    band broken where the header and footer rules cross it."""
     x0, y0, x1, y1 = _SEMIOTIC_PLACARD
     white, red, black = SPECTRA6["white"], SPECTRA6["red"], SPECTRA6["black"]
     draw.rounded_rectangle((x0, y0, x1, y1), radius=24, fill=white)
@@ -324,6 +338,14 @@ def _semiotic_paint_placard(image: Image.Image, draw: ImageDraw.ImageDraw, quote
         draw.rectangle((x0 + 6, ry - 4, x0 + 19, ry + 4), fill=white)
         draw.rectangle((x1 - 19, ry - 4, x1 - 6, ry + 4), fill=white)
         draw.rectangle((x0 + 19, ry - 1, x1 - 19, ry + 1), fill=black)
+
+
+def _semiotic_paint_placard(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+    """The crew notice, framed as Cobb framed a sign: white edge, red band
+    broken where the header and footer rules cross it, white panel."""
+    x0, y0, x1, y1 = _SEMIOTIC_PLACARD
+    red, black = SPECTRA6["red"], SPECTRA6["black"]
+    _semiotic_paint_placard_frame(draw)
 
     head = _semiotic_font("Bold", 22)
     draw_tracked(draw, (x0 + 34, 86), "CREW NOTICE", head, black, tracking=3)
@@ -365,4 +387,120 @@ def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: in
     return image
 
 
-SPEC = FrameSpec(themes=("semiotic",), render=render_semiotic_frame)
+# ---------------------------------------------------------------------------
+# The sleep frame: HYPERSLEEP — the crew in stasis, the ship at rest
+# ---------------------------------------------------------------------------
+# *Alien* opens on the Nostromo's crew waking from hypersleep, so the quiet-
+# hours frame is the same bulkhead showing them still under: a status panel,
+# not an alarm. The featured sign is Cobb's own **004 CRYOGENIC VAULT**, from
+# the sheet like every other sign: it is what the Nostromo's hypersleep vault
+# actually carried. (A pod drawn in code stood here first; the real sign is
+# truer and keeps the provenance simple.) The companions are calm signs from
+# the sheet: 021 LIFE SUPPORT SYSTEM, 025 AUTODOC and 030 COMPUTER TERMINAL,
+# MOTHER flying the ship while the crew sleeps. The placard's seven small
+# pods, the Nostromo's crew of seven, are an illustration drawn in code, not
+# a sign.
+_SEMIOTIC_SLEEP_SIGN = "004"
+_SEMIOTIC_SLEEP_COMPANIONS = ("021", "025", "030")
+_SEMIOTIC_SLEEP_LAMPS = ("blue", "green")
+_SEMIOTIC_SLEEP_CREW = 7
+_SEMIOTIC_SLEEP_POD_Y = 146
+_SEMIOTIC_SLEEP_POD_W = 50
+
+
+def _semiotic_paint_pod(draw: ImageDraw.ImageDraw, x: int, y: int, w: int) -> int:
+    """The hypersleep pod pictogram, ``w`` wide with its top-left at (x, y);
+    returns its height.
+
+    Seen side-on: a blue glass lid domed over a black tub on a plinth, and
+    under the lid a white figure lying down, Cobb's bar and dot.
+    """
+    black, blue, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["white"]
+    dome_h = round(0.25 * w)
+    tub_h = round(0.2 * w)
+    inset = round(0.05 * w)
+    draw.rounded_rectangle((x + inset, y, x + w - 1 - inset, y + dome_h), radius=dome_h,
+                           fill=blue, corners=(True, True, False, False))
+    tub_y = y + dome_h
+    draw.rounded_rectangle((x, tub_y, x + w - 1, tub_y + tub_h - 1), radius=tub_h // 2, fill=black)
+    draw.rectangle((x, tub_y, x + w - 1, tub_y + tub_h // 2), fill=black)
+    bar = max(2, round(0.09 * w))
+    dot = max(3, round(0.15 * w))
+    cy = tub_y - max(1, round(0.03 * w)) - dot / 2
+    bx0, bx1 = x + round(0.2 * w), x + round(0.64 * w)
+    draw.rectangle((bx0, round(cy + dot / 2) - bar, bx1, round(cy + dot / 2) - 1), fill=white)
+    dx0 = bx1 + max(2, round(0.03 * w))
+    draw.ellipse((dx0, round(cy - dot / 2), dx0 + dot - 1, round(cy - dot / 2) + dot - 1), fill=white)
+    plinth_h = max(2, round(0.1 * w))
+    base_y = tub_y + tub_h
+    draw.rectangle((x + round(0.24 * w), base_y, x + w - 1 - round(0.24 * w), base_y + plinth_h - 1), fill=black)
+    return dome_h + tub_h + plinth_h
+
+
+def _semiotic_paint_sleep_signs(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """004 CRYOGENIC VAULT with its legend, as the quote frame features an
+    hour's sign, and three calm companions."""
+    x, y, w, h = _SEMIOTIC_FEATURE_BOX
+    _semiotic_paint_sign(image, _SEMIOTIC_SLEEP_SIGN, (x, y, w, h))
+    label_y = y + h + 8
+    draw_tracked(draw, (x, label_y), f"NO. {_SEMIOTIC_SLEEP_SIGN}", _semiotic_font("SemiBold", 14),
+                 SPECTRA6["yellow"], tracking=2)
+    lines, font = _semiotic_wrap_name(draw, _SEMIOTIC_NAMES[_SEMIOTIC_SLEEP_SIGN], w)
+    ly: float = label_y + 19
+    for line in lines:
+        draw_tracked(draw, (x, ly), line, font, SPECTRA6["white"], tracking=1)
+        ly += font.size + 2
+    cw, ch = _SEMIOTIC_COMPANION_SIZE
+    for cx, code in zip(_SEMIOTIC_COMPANION_XS, _SEMIOTIC_SLEEP_COMPANIONS, strict=True):
+        _semiotic_paint_sign(image, code, (cx, _SEMIOTIC_COMPANION_Y, cw, ch))
+
+
+def _semiotic_centred(draw: ImageDraw.ImageDraw, y: float, text: str, font, tracking: float) -> None:
+    """One tracked black line centred on the placard."""
+    x0, _, x1, _ = _SEMIOTIC_PLACARD
+    text_w = tracked_width(draw, text, font, tracking=tracking)
+    draw_tracked(draw, ((x0 + x1 - text_w) / 2, y), text, font, SPECTRA6["black"], tracking=tracking)
+
+
+def _semiotic_paint_sleep_placard(draw: ImageDraw.ImageDraw) -> None:
+    """The stasis notice: the crew's pods in a row, the status beneath."""
+    x0, _, x1, _ = _SEMIOTIC_PLACARD
+    black = SPECTRA6["black"]
+    _semiotic_paint_placard_frame(draw)
+    draw_tracked(draw, (x0 + 34, 86), "HYPERSLEEP", _semiotic_font("Bold", 22), black, tracking=3)
+    draw_tracked(draw, (x1 - 34, 91), "DO NOT DISTURB", _semiotic_font("SemiBold", 15), black,
+                 tracking=2, anchor_right=True)
+    n, pod_w = _SEMIOTIC_SLEEP_CREW, _SEMIOTIC_SLEEP_POD_W
+    qx0, _, qx1, _ = _SEMIOTIC_QUOTE_RECT
+    gap = ((qx1 - qx0) - n * pod_w) // (n - 1)
+    left = (x0 + x1 + 1 - (n * pod_w + (n - 1) * gap)) // 2
+    for i in range(n):
+        _semiotic_paint_pod(draw, left + i * (pod_w + gap), _SEMIOTIC_SLEEP_POD_Y, pod_w)
+    _semiotic_centred(draw, 214, "CREW IN STASIS", _semiotic_font("Bold", 50), tracking=3)
+    _semiotic_centred(draw, 288, "ALL SEVEN CREW ACCOUNTED FOR", _semiotic_font("Medium", 22), tracking=2)
+    _semiotic_centred(draw, 320, "LIFE SUPPORT NOMINAL  ·  SHIP AT REST", _semiotic_font("Medium", 22), tracking=2)
+    _semiotic_centred(draw, _SEMIOTIC_FOOTER_RULE_Y + 12, "AUTOPILOT ENGAGED  ·  WAKE ON ARRIVAL",
+                      _semiotic_font("SemiBold", 17), tracking=1)
+
+
+def render_semiotic_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the Nostromo's crew in hypersleep.
+
+    The same bulkhead, header, sign column and placard as the quote frame;
+    only the blue and green lamps are lit. ``time_str`` is unused: nothing on
+    the frame tells the time.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    _semiotic_paint_hazard(image)
+    _semiotic_paint_header_bar(image, draw, "STATUS", "STASIS", _SEMIOTIC_SLEEP_LAMPS)
+    _semiotic_paint_sleep_signs(image, draw)
+    _semiotic_paint_sleep_placard(draw)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("semiotic",), render=render_semiotic_frame, sleep=render_semiotic_sleep)

@@ -8633,3 +8633,65 @@ class TestLiederSleepFrame:
     def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
         frame = rq.render("14:30", make_row(), 800, 480, mode="production", theme="lieder")
         assert pixel_bytes(frame) != pixel_bytes(rq.render_lieder_sleep("14:30", 800, 480))
+
+
+class TestSemioticSleepFrame:
+    """``semiotic``'s own sleep frame: HYPERSLEEP — the same bulkhead with the
+    crew in stasis, Cobb's 004 CRYOGENIC VAULT in place of the hour's sign,
+    and the crew's seven pods on the placard."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="semiotic")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["semiotic"].sleep is rq.render_semiotic_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_semiotic_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "red", "yellow", "blue")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_featured_sign_is_cobbs_cryogenic_vault(self):
+        """The feature panel is 004 CRYOGENIC VAULT from the CC BY sheet: pixel
+        for pixel the panel the 04:00 quote frame features, since 004 is that
+        hour's sign."""
+        assert rq._SEMIOTIC_SLEEP_SIGN == "004" == rq._SEMIOTIC_HOUR_SIGNS[4]
+        assert rq._SEMIOTIC_NAMES["004"] == "CRYOGENIC VAULT"
+        x, y, w, h = rq._SEMIOTIC_FEATURE_BOX
+        box = (x, y, x + w, y + h)
+        sleep = rq.render_semiotic_sleep("22:00", 800, 480).crop(box)
+        row = make_row(display_quote="It was four o'clock.", matched_text="four o'clock")
+        vault = rq.render("04:00", row, 800, 480, mode="production", theme="semiotic").crop(box)
+        assert pixel_bytes(sleep) == pixel_bytes(vault)
+
+    def test_the_placard_shows_the_crews_pods(self):
+        """Seven blue lids in a row under the header rule; no red there, the
+        frame is a status panel, not an alarm."""
+        image = rq.render_semiotic_sleep("22:00", 800, 480)
+        x0, _, x1, _ = rq._SEMIOTIC_PLACARD
+        y = rq._SEMIOTIC_SLEEP_POD_Y + 1          # the lids, above the sleepers
+        strip = image.crop((x0 + 30, y, x1 - 30, y + 1))
+        blue = rq.SPECTRA6["blue"]
+        row = [strip.getpixel((i, 0)) == blue for i in range(strip.width)]
+        runs = sum(1 for i, v in enumerate(row) if v and (i == 0 or not row[i - 1]))
+        assert runs == rq._SEMIOTIC_SLEEP_CREW == 7
+        band = image.crop((x0 + 30, rq._SEMIOTIC_HEADER_RULE_Y + 4, x1 - 30, rq._SEMIOTIC_FOOTER_RULE_Y - 4))
+        assert rq.SPECTRA6["red"] not in ink_counts(band)
+
+    def test_companions_are_real_signs_from_the_sheet(self):
+        assert all(code in rq._SEMIOTIC_INDEX for code in rq._SEMIOTIC_SLEEP_COMPANIONS)
+        assert len(set(rq._SEMIOTIC_SLEEP_COMPANIONS)) == 3
+        assert rq._SEMIOTIC_SLEEP_SIGN not in rq._SEMIOTIC_SLEEP_COMPANIONS
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        row = make_row(display_quote="It was half past two.", matched_text="half past two")
+        quote = rq.render("14:30", row, 800, 480, mode="production", theme="semiotic")
+        assert pixel_bytes(quote) != pixel_bytes(self._render())
