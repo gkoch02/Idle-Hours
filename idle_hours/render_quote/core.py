@@ -49,7 +49,7 @@ from .palette import (
     SPECTRA6_PALETTE,
     snap_image_to_palette,
 )
-from .registry import _DEBUG_LABEL_RIGHT_INSET, BORDER_SPECS, FRAME_SPECS
+from .registry import _DEBUG_LABEL_RIGHT_INSET, BORDER_SPECS, FRAME_SPECS, sleep_renderer
 from .text import (
     _draw_text_body,
     _paint_ornament_mark,
@@ -402,8 +402,10 @@ SLEEP_QUOTE_ROW: dict[str, str] = {
 def render_sleep_frame(
     time_str: str | None, width: int, height: int, theme: str = "default"
 ) -> Image.Image:
-    """Render :data:`SLEEP_QUOTE_ROW` through the normal literary layout.
+    """Render the quiet-hours frame in ``theme``.
 
+    A theme whose spec carries ``sleep`` draws its own frame; every other
+    theme renders :data:`SLEEP_QUOTE_ROW` through the normal literary layout.
     The themed replacement for the static ``assets/goodnight.png``. Always
     ``mode="production"``.
 
@@ -415,6 +417,9 @@ def render_sleep_frame(
     """
     if time_str is None:
         time_str = clock.now().strftime("%H:%M")
+    own = sleep_renderer(theme)
+    if own is not None:
+        return own(time_str, width, height)
     # Hand out a copy: this module-level row is shared across every render
     # in a process (contact sheet, ``/api/preview``), so a painter that ever
     # mutated its row would corrupt later renders.

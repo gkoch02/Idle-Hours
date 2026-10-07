@@ -9,6 +9,13 @@ own module rather than by entries kept by hand elsewhere.
 A spec carries dispatch only. A theme's colours, fonts and text flags stay in
 ``theme_tables``, because ``fonts``, ``layout`` and ``text`` read them from
 below the theme modules.
+
+Either kind of spec may also carry ``sleep``: a renderer
+``sleep(time_str, width, height)`` for the theme's own quiet-hours frame.
+``render_sleep_frame`` calls it in place of the bundled sleep quote; a theme
+without one sleeps under that quote in its normal layout. It must return a
+finished, on-palette frame of the requested size, and like every frame it is
+byte-identical across processes.
 """
 
 from __future__ import annotations
@@ -62,6 +69,7 @@ class BorderSpec:
     knockout: Callable[..., None] | None = None
     debug_label_inset: int | None = None
     paints_twice: bool = False
+    sleep: Callable[..., Image.Image] | None = None
 
     def __post_init__(self) -> None:
         if not self.themes:
@@ -82,10 +90,14 @@ class BorderSpec:
 
 @dataclass(frozen=True)
 class FrameSpec:
-    """A theme that composes its whole frame: ``render(time_str, row, width, height)``."""
+    """A theme that composes its whole frame: ``render(time_str, row, width, height)``.
+
+    ``sleep`` is the theme's own sleep frame (see the module docstring).
+    """
 
     themes: tuple[str, ...]
     render: Callable[..., Image.Image]
+    sleep: Callable[..., Image.Image] | None = None
 
     def __post_init__(self) -> None:
         if not self.themes:

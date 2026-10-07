@@ -9,6 +9,11 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Themes can now draw their own sleep frame. A theme without one still
+  sleeps under "To sleep, perchance to dream." in its own layout, unchanged.
+  The first to have one is `redacted`: a SUSPENDED Standby Order with every
+  word blacked out but "lights", early in the first line, and "out", partway
+  along the last.
 - New `redacted` theme: a declassified Federal Bureau of Control document
   from *Control*. The quote is typed under the Bureau's letterhead with a red
   DECLASSIFIED stamp, the matched phrase in red, and black marker bars over

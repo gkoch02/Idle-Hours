@@ -16,6 +16,7 @@ appliance sees no change at all.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import subprocess
 import sys
 from unittest.mock import patch
@@ -25,6 +26,7 @@ from PIL import Image, ImageChops
 
 from idle_hours import render_quote as rq
 from idle_hours import run_clock, runtime_actions
+from idle_hours.render_quote import registry
 from idle_hours.runtime_quiet import enter_quiet, exit_quiet, render_quiet_frame
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import QUIET_THEME_INHERIT, resolve_quiet_theme
@@ -51,6 +53,60 @@ def _quiet_args(tmp_path, **overrides) -> argparse.Namespace:
 def _diff_pixels(a: Image.Image, b: Image.Image) -> int:
     return sum(ImageChops.difference(a.convert("RGB"), b.convert("RGB")).convert("L").histogram()[1:])
 
+
+
+class TestThemeOwnSleepFrame:
+    """A theme may draw its own sleep frame (``spec.sleep``); every other
+    theme sleeps under the bundled quote in its normal layout."""
+
+    OWN = sorted(t for t in rq.THEMES if registry.sleep_renderer(t) is not None)
+
+    def test_the_lookup_reads_both_spec_kinds(self):
+        assert "redacted" in self.OWN
+        assert registry.sleep_renderer("dark") is None       # plain theme: no spec at all
+        assert registry.sleep_renderer("control") is None    # frame theme without one
+        assert registry.sleep_renderer("dispatch") is None   # border theme without one
+
+    @pytest.mark.parametrize("table, theme", [("FRAME_SPECS", "control"), ("BORDER_SPECS", "dispatch")])
+    def test_own_renderer_replaces_the_bundled_quote(self, monkeypatch, table, theme):
+        """Either spec kind can carry ``sleep``; it gets the entry time and the
+        requested size, and its frame is what the panel shows."""
+        calls = []
+
+        def own(time_str, width, height):
+            calls.append((time_str, width, height))
+            return Image.new("RGB", (width, height), rq.SPECTRA6["green"])
+
+        specs = getattr(registry, table)
+        monkeypatch.setitem(specs, theme, dataclasses.replace(specs[theme], sleep=own))
+        frame = rq.render_sleep_frame("22:15", 400, 240, theme=theme)
+        assert calls == [("22:15", 400, 240)]
+        assert frame.getpixel((0, 0)) == rq.SPECTRA6["green"]
+
+    def test_own_renderer_gets_the_wall_clock_without_a_time(self, monkeypatch):
+        seen = []
+        spec = registry.FRAME_SPECS["control"]
+        monkeypatch.setitem(registry.FRAME_SPECS, "control",
+                            dataclasses.replace(spec, sleep=lambda t, w, h: seen.append(t) or Image.new("RGB", (w, h))))
+        rq.render_sleep_frame(None, 800, 480, theme="control")
+        assert len(seen) == 1 and len(seen[0]) == 5 and seen[0][2] == ":"
+
+    def test_a_theme_without_one_still_sleeps_under_the_quote(self):
+        for theme in ("control", "dispatch", "dark"):
+            expected = rq.render("22:00", dict(rq.SLEEP_QUOTE_ROW), 800, 480, mode="production", theme=theme)
+            assert _diff_pixels(rq.render_sleep_frame("22:00", 800, 480, theme=theme), expected) == 0, theme
+
+    @pytest.mark.parametrize("theme", OWN)
+    def test_own_frames_are_finished_frames(self, theme):
+        """On-palette, deterministic, the requested size, and not the bundled
+        quote in disguise."""
+        frame = rq.render_sleep_frame("22:00", 800, 480, theme=theme)
+        assert frame.size == (800, 480)
+        assert {c for _n, c in frame.convert("RGB").getcolors(maxcolors=1 << 20)} <= set(rq.SPECTRA6.values())
+        assert _diff_pixels(frame, rq.render_sleep_frame("22:00", 800, 480, theme=theme)) == 0
+        assert rq.render_sleep_frame("22:00", 320, 192, theme=theme).size == (320, 192)
+        quote = rq.render("22:00", dict(rq.SLEEP_QUOTE_ROW), 800, 480, mode="production", theme=theme)
+        assert _diff_pixels(frame, quote) > 0
 
 class TestSleepFrameContent:
     def test_row_carries_the_quote_and_its_attribution(self):
