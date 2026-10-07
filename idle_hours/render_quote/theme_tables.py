@@ -69,6 +69,7 @@ from ._paths import (
     LIBRECASLON_VARIABLE,
     LIBREFRANKLIN_ITALIC_VARIABLE,
     LIBREFRANKLIN_VARIABLE,
+    LUMEN_VARIABLE,
     MEDIEVALSHARP_REGULAR,
     META_FONT_BOLD_CANDIDATES,
     META_FONT_CANDIDATES,
@@ -211,6 +212,7 @@ THEME_ORDER: tuple[str, ...] = (
     "bladerunner",
     "traumateam",
     "redacted",
+    "gantry",
     "diags",
 )
 # Themes registered in THEMES but excluded from every rotation (button B, web
@@ -1181,6 +1183,20 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
+    },
+    # An overhead highway message sign at night. A custom frame
+    # (``render_gantry_frame``): amber LEDs, the matched phrase lit white,
+    # the source on a green guide sign. Palette serves the palette-only paths
+    # (see the note above ``THEMES``).
+    "gantry": {
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["white"],
+        "ornament_dark": SPECTRA6["red"],
+        "ornament_light": SPECTRA6["yellow"],
+        "source": SPECTRA6["white"],
     },
     "hal": {
         "page_bg": SPECTRA6["black"],
@@ -3109,6 +3125,16 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # for the matched phrase in yellow, SemiBold for the chrome.
         "quote_regular": [BARLOWCOND_MEDIUM, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
+        "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
+    },
+    "gantry": {
+        # Lumen, a 5x7 LED matrix. The frame reads it as dot bitmaps on the
+        # sign's own lattice (``_gantry_glyph``), so the instance only has to
+        # put a dot clearly over each grid centre: Bold. The matched phrase is
+        # emboldened the matrix way, by doubling columns, not by a heavier
+        # instance. The guide sign sets Barlow Condensed inline.
+        "quote_regular": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_REGULAR_CANDIDATES],
+        "quote_bold": [(LUMEN_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, *ORNAMENT_FONT_CANDIDATES],
     },
     "redacted": {

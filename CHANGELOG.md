@@ -9,6 +9,15 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- New `gantry` theme: an overhead motorway message sign at night. The quote
+  runs in amber LEDs on a full-matrix sign hung from a steel truss, the
+  matched phrase lit white and bold, with tail-light streaks running off
+  under it and the source posted on a green guide sign whose exit number is
+  the hour. The dot pitch is chosen per quote, so short quotes get big round
+  LEDs and the longest still fit whole. Its sleep frame empties the road and
+  sets the sign to TIRED? / REST AREA / NEXT EXIT. Bundles the Lumen LED
+  dot-matrix font (Font Studio, OFL).
+
 - `vhs` draws its own sleep frame: the tape has run on into the station
   sign-off, colour bars over "THIS CONCLUDES OUR BROADCAST DAY" / GOOD NIGHT,
   under the quote frame's tape wear, with the deck's PLAY in place of the

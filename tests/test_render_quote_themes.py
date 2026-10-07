@@ -8869,3 +8869,132 @@ class TestVhsSleepFrame:
     def test_quote_frame_keeps_its_camcorder_osd(self):
         quote = rq.render("14:30", make_row(), 800, 480, mode="production", theme="vhs")
         assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestGantryFrame:
+    """``gantry`` — an overhead motorway message sign at night: the quote in
+    amber LEDs on one lattice, the matched phrase lit white and bold, and the
+    source on a green guide sign whose exit number is the hour."""
+
+    THEME = "gantry"
+    ROW = dict(
+        display_quote="It was at ten o'clock today that the first of all Time Machines began its career.",
+        matched_text="ten o'clock",
+        author="H. G. Wells",
+        title="The Time Machine",
+    )
+
+    @classmethod
+    def _render(cls, row=None, time_str="10:00", size=(800, 480)):
+        return rq.render(time_str, make_row(**(row or cls.ROW)), *size, mode="production", theme=cls.THEME)
+
+    @staticmethod
+    def _fit(text, matched=""):
+        x0, y0, x1, y1 = rq._GANTRY_FACE
+        words = rq._gantry_words(make_row(display_quote=text, matched_text=matched))
+        return words, rq._gantry_fit(words, x1 - x0, y1 - y0)
+
+    def test_registered_everywhere(self):
+        from idle_hours import display_inky
+        assert self.THEME in rq.THEMES and self.THEME in rq.THEME_ORDER
+        assert self.THEME not in rq.CYCLE_EXCLUDED_THEMES
+        assert display_inky.THEME_SATURATION[self.THEME] == 0.7
+        assert rq.FRAME_SPECS[self.THEME].render is rq.render_gantry_frame
+
+    def test_the_font_is_read_as_a_five_by_seven_matrix(self):
+        """Lumen's dots sit a tenth of an em apart, so sampling the grid
+        centres gives the classic matrix: caps five columns by seven rows on
+        rows 2-8, descenders down to row 10, narrow glyphs trimmed to their ink."""
+        width, cells = rq._gantry_glyph("H")
+        assert width == 5
+        assert {r for _, r in cells} == set(range(2, 9))
+        assert {(0, r) for r in range(2, 9)} <= cells and {(4, r) for r in range(2, 9)} <= cells
+        assert max(r for _, r in rq._gantry_glyph("g")[1]) == 10
+        assert rq._gantry_glyph(".") == (1, frozenset({(0, 8)}))
+        assert rq._gantry_glyph(" ") == (0, frozenset())
+
+    def test_characters_the_face_lacks_get_stand_ins(self):
+        assert rq._gantry_chars("£") == "L"
+        assert rq._gantry_chars("œ") == "oe"
+        assert rq._gantry_chars("—") == "-"
+        assert rq._gantry_chars("é") == "é"     # the face carries it
+        for ch in "£œ—’":
+            assert all(rq._gantry_glyph(sub)[0] for sub in rq._gantry_chars(ch)), ch
+
+    def test_short_quotes_get_big_dots_and_long_ones_still_fit_whole(self):
+        _, (pitch, *_rest) = self._fit("It was a little after four now.")
+        assert pitch == rq._GANTRY_PITCHES[0]
+        longest = max((row["display_quote"] for row in iter_jsonl(pathlib.Path(pq.DEFAULT_DATABASE_PATH))), key=len)
+        words, (pitch, cols, _rows, _line_rows, lines) = self._fit(longest)
+        assert pitch >= 4, "the longest corpus quote should not need the 3 px fallback"
+        assert sum(len(line) for line in lines) == len(words), "a word was dropped"
+        assert all(rq._gantry_line_width(line) <= cols - 2 for line in lines)
+
+    def test_lines_are_balanced(self):
+        """The narrowest measure that keeps the line count: no line ends up a
+        stub under a full one."""
+        _, (_pitch, _cols, _rows, _line_rows, lines) = self._fit(self.ROW["display_quote"])
+        widths = [rq._gantry_line_width(line) for line in lines]
+        assert len(widths) > 1 and min(widths) > 0.6 * max(widths)
+
+    def test_matched_phrase_is_bold_and_the_only_white_on_the_face(self):
+        def white_on_face(image):
+            return ink_counts(image.crop(rq._GANTRY_FACE)).get(rq.SPECTRA6["white"], 0)
+        assert white_on_face(self._render()) > 500
+        assert white_on_face(self._render(row={**self.ROW, "matched_text": ""})) == 0
+        _, (_p, cols, rows, line_rows, lines) = self._fit(self.ROW["display_quote"], self.ROW["matched_text"])
+        body, lit = rq._gantry_lit_cells(lines, cols, rows, line_rows)
+        plain_cells = sum(len(rq._gantry_glyph(ch)[1]) for ch in "tenoclock")
+        assert len(lit) > 1.5 * plain_cells, "the phrase should be doubled-column bold"
+        assert not body & lit
+
+    def test_dead_leds_are_seeded_from_the_quote(self):
+        a, b = self._render(), self._render()
+        assert pixel_bytes(a) == pixel_bytes(b)
+        other = {**self.ROW, "display_quote": self.ROW["display_quote"].replace("career.", "career!")}
+        assert pixel_bytes(self._render(row=other)) != pixel_bytes(a)
+
+    def test_exit_number_is_the_hour_and_nothing_else_reads_the_time(self):
+        ten = self._render(time_str="10:05")
+        assert pixel_bytes(self._render(time_str="10:55")) == pixel_bytes(ten)
+        assert pixel_bytes(self._render(time_str="22:30")) == pixel_bytes(ten)
+        eleven = self._render(time_str="11:05")
+        diff = ImageChops.difference(ten, eleven).getbbox()
+        assert diff is not None
+        x0, y0, x1, _y1 = rq._GANTRY_GUIDE
+        assert x0 <= diff[0] and diff[2] <= x1 and y0 - 24 <= diff[1] and diff[3] <= y0 + 6
+
+    def test_on_palette_and_downscales(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        small = self._render(size=(320, 192))
+        assert pixel_bytes(small) == pixel_bytes(image.resize((320, 192), Image.Resampling.NEAREST))
+
+
+class TestGantrySleepFrame:
+    """``gantry``'s own sleep frame: the small hours on the same motorway, the
+    traffic gone, the beacons dark, TIRED? REST AREA NEXT EXIT on the sign."""
+
+    def test_is_the_spec_sleep_renderer(self):
+        assert rq.FRAME_SPECS["gantry"].sleep is rq.render_gantry_sleep
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_gantry_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "03:00", "bogus"):
+            assert pixel_bytes(rq.render_gantry_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_gantry_sleep("22:00", 320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_road_is_empty_and_the_question_is_lit(self):
+        sleep = rq.render_gantry_sleep("22:00", 800, 480)
+        quote = rq.render("22:00", make_row(**TestGantryFrame.ROW), 800, 480, mode="production", theme="gantry")
+        # The middle lane's tail-light pair, near the foot of the frame. The
+        # asphalt's dither carries a little red of its own, so compare, not zero.
+        lane = (380, 430, 480, 480)
+        red = rq.SPECTRA6["red"]
+        assert ink_counts(quote.crop(lane)).get(red, 0) > 6 * ink_counts(sleep.crop(lane)).get(red, 0)
+        # TIRED? is the white line: white LEDs sit only in the top third of the face.
+        x0, y0, x1, y1 = rq._GANTRY_FACE
+        top = ink_counts(sleep.crop((x0, y0, x1, y0 + (y1 - y0) // 3))).get(rq.SPECTRA6["white"], 0)
+        rest = ink_counts(sleep.crop((x0, y0 + (y1 - y0) // 3, x1, y1))).get(rq.SPECTRA6["white"], 0)
+        assert top > 500 and rest == 0
