@@ -419,8 +419,11 @@ def _semiotic_paint_pod(draw: ImageDraw.ImageDraw, x: int, y: int, w: int) -> in
     dome_h = round(0.25 * w)
     tub_h = round(0.2 * w)
     inset = round(0.05 * w)
-    draw.rounded_rectangle((x + inset, y, x + w - 1 - inset, y + dome_h), radius=dome_h,
-                           fill=blue, corners=(True, True, False, False))
+    # Rounded on top, square below: a fully rounded box with its lower half
+    # filled square again. Not ``rounded_rectangle(corners=...)``, which is
+    # Pillow 9.5+ and the floor is 9.3 (TestPillowFloorApis).
+    draw.rounded_rectangle((x + inset, y, x + w - 1 - inset, y + dome_h), radius=dome_h, fill=blue)
+    draw.rectangle((x + inset, y + dome_h // 2, x + w - 1 - inset, y + dome_h), fill=blue)
     tub_y = y + dome_h
     draw.rounded_rectangle((x, tub_y, x + w - 1, tub_y + tub_h - 1), radius=tub_h // 2, fill=black)
     draw.rectangle((x, tub_y, x + w - 1, tub_y + tub_h // 2), fill=black)

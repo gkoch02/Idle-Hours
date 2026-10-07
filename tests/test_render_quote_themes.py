@@ -8695,3 +8695,26 @@ class TestSemioticSleepFrame:
         row = make_row(display_quote="It was half past two.", matched_text="half past two")
         quote = rq.render("14:30", row, 800, 480, mode="production", theme="semiotic")
         assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestPillowFloorApis:
+    """The renderer must run on the declared Pillow floor (``Pillow>=9.3`` in
+    pyproject.toml; Raspberry Pi OS bookworm ships 9.4), but this suite runs
+    on a current Pillow, so an API added later never fails here. Fence the
+    ones that have slipped in: ``rounded_rectangle(corners=...)`` is Pillow
+    9.5+ and once crashed the ``semiotic`` sleep frame on the floor (PR #380).
+    """
+
+    POST_FLOOR_KWARGS = {"rounded_rectangle": {"corners"}}
+
+    def test_no_post_floor_keyword_arguments(self):
+        import ast
+        root = pathlib.Path(rq.__file__).parent
+        offenders = []
+        for path in sorted(root.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(), str(path))):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    banned = self.POST_FLOOR_KWARGS.get(node.func.attr, set())
+                    offenders += [f"{path.relative_to(root)}:{node.lineno} {node.func.attr}({kw.arg}=)"
+                                  for kw in node.keywords if kw.arg in banned]
+        assert not offenders, offenders
