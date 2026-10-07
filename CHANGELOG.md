@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `dsky` draws its own sleep frame: the Apollo computer put into standby for
+  the crew's rest period, with the STBY lamp lit, P06's VERB 50 NOUN 25
+  "please perform" on the display, and the presleep checklist typed on the
+  flight plan. Its quote frame is unchanged.
 - Four more themes draw their own sleep frame: `lieder` (the opening phrase of
   Brahms's *Wiegenlied*, "Guten Abend, gut' Nacht", engraved), `sampler`
   ("Now I lay me down to sleep, / I pray the Lord my soul to keep." in
