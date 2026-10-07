@@ -15,7 +15,7 @@ these entries under the new dated version heading.
   under it and the source posted on a green guide sign whose exit number is
   the hour. The dot pitch is chosen per quote, so short quotes get big round
   LEDs and the longest still fit whole. Its sleep frame empties the road and
-  sets the sign to TIRED? / REST AREA / NEXT EXIT. Bundles the Lumen LED
+  sets the sign to TIRED? / REST AREA / NEXT EXIT →. Bundles the Lumen LED
   dot-matrix font (Font Studio, OFL).
 
 - `vhs` draws its own sleep frame: the tape has run on into the station

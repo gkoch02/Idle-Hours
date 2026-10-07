@@ -65,6 +65,10 @@ _GANTRY_DEAD_LEDS = 2
 # replaced: a sign can only show what its font carries.
 _GANTRY_STANDINS = {**GLYPH_FALLBACKS, "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE",
                     "£": "L", "ß": "ss"}
+# Two-character sequences the face shapes into one glyph. Only the arrows: a
+# motorway sign points, and the face's other ligatures (a heart, a smiley,
+# maths operators) would turn the sign into a font demo.
+_GANTRY_LIGATURES = ("->", "<-", "=>")
 
 # The scene.
 _GANTRY_HORIZON = 380
@@ -82,17 +86,25 @@ def _gantry_font():
 
 @functools.lru_cache(maxsize=1024)
 def _gantry_glyph(ch: str) -> tuple[int, frozenset[tuple[int, int]]]:
-    """``(ink width, lit cells)`` of one character, cells as ``(col, row)``
-    with the leftmost ink column at 0. Blank glyphs come back as width 0."""
+    """``(ink width, lit cells)`` of one character or ligature, cells as
+    ``(col, row)`` with the leftmost ink column at 0. Blank glyphs come back
+    as width 0.
+
+    A ligature (``_GANTRY_LIGATURES``) is drawn as its two-character string,
+    which the face's ``liga`` feature shapes into one wide glyph; Pillow's
+    wheels carry the raqm shaper that applies it. Without raqm the pair is
+    read as its two characters, still legible.
+    """
     s = _GANTRY_SAMPLE
     font = _gantry_font()
-    canvas = Image.new("L", (s * 10, s * 12), 0)
+    span = 7 * len(ch) + 3
+    canvas = Image.new("L", (s * span, s * 12), 0)
     # One cell of slack on the left catches any negative side bearing.
     ImageDraw.Draw(canvas).text((s, 0), ch, font=font, fill=255)
     px = gray_pixel_access(canvas)
     cells = set()
     for row in range(12):
-        for col in range(10):
+        for col in range(span):
             if px[col * s + s // 2, row * s + s // 2] > 127:
                 cells.add((col, row))
     if not cells:
@@ -112,22 +124,44 @@ def _gantry_chars(ch: str) -> str:
     return base or "?"
 
 
-def _gantry_words(quote_row: dict) -> list[list[tuple[str, bool]]]:
-    """The quote as words of ``(char, is_matched)``."""
-    text = strip_underscore_emphasis(quote_row.get("display_quote") or "")
+def _gantry_tokens(text: str) -> list[str]:
+    """``text`` as the glyphs the sign draws: the arrow ligatures as one
+    token each, every other character as what the face can show."""
+    tokens: list[str] = []
+    i = 0
+    while i < len(text):
+        pair = text[i:i + 2]
+        if pair in _GANTRY_LIGATURES:
+            tokens.append(pair)
+            i += 2
+            continue
+        ch = text[i]
+        tokens.extend([ch] if ch.isspace() else list(_gantry_chars(ch)))
+        i += 1
+    return tokens
+
+
+def _gantry_segment_words(segments) -> list[list[tuple[str, bool]]]:
+    """``(text, is_matched)`` segments as words of ``(glyph, is_matched)``."""
     words: list[list[tuple[str, bool]]] = []
     current: list[tuple[str, bool]] = []
-    for segment, matched in tokenize_quote(text, quote_row.get("matched_text") or ""):
-        for ch in segment:
-            if ch.isspace():
+    for segment, matched in segments:
+        for token in _gantry_tokens(segment):
+            if token.isspace():
                 if current:
                     words.append(current)
                 current = []
                 continue
-            current.extend((sub, matched) for sub in _gantry_chars(ch))
+            current.append((token, matched))
     if current:
         words.append(current)
     return words
+
+
+def _gantry_words(quote_row: dict) -> list[list[tuple[str, bool]]]:
+    """The quote as words of ``(glyph, is_matched)``."""
+    text = strip_underscore_emphasis(quote_row.get("display_quote") or "")
+    return _gantry_segment_words(tokenize_quote(text, quote_row.get("matched_text") or ""))
 
 
 def _gantry_advance(ch: str, bold: bool) -> int:
@@ -542,7 +576,7 @@ def render_gantry_frame(time_str: str, quote_row: dict, width: int, height: int)
 # The sleep frame: the small hours on the same motorway. The traffic has
 # gone, the beacons are dark, and the sign has been set to the message every
 # highway authority runs at three in the morning.
-_GANTRY_SLEEP_MESSAGE = (("TIRED?", True), ("REST AREA", False), ("NEXT EXIT", False))
+_GANTRY_SLEEP_MESSAGE = (("TIRED?", True), ("REST AREA", False), ("NEXT EXIT ->", False))
 
 
 def render_gantry_sleep(time_str: str, width: int, height: int) -> Image.Image:
@@ -554,7 +588,7 @@ def render_gantry_sleep(time_str: str, width: int, height: int) -> Image.Image:
     _gantry_paint_road(image, traffic=False)
     _gantry_paint_steel(image)
     _gantry_paint_cabinet(image, beacons_lit=False)
-    lines = [[[(ch, lit) for ch in word] for word in text.split()] for text, lit in _GANTRY_SLEEP_MESSAGE]
+    lines = [_gantry_segment_words([(text, lit)]) for text, lit in _GANTRY_SLEEP_MESSAGE]
     _gantry_paint_face(image, fixed=lines)
     _gantry_paint_guide(image, "Rest Area", "Next Right", "EXIT")
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)

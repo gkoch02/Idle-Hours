@@ -633,7 +633,7 @@ your theme's borders, fonts, and accent colour like any other frame. A theme can
 also draw a sleep frame of its own instead: `redacted` puts up a SUSPENDED
 Standby Order with every word blacked out but "lights … out", `marquee` reads
 CLOSED, `questline`'s hero rests at the inn, and `gantry`'s motorway sign
-asks "TIRED? REST AREA NEXT EXIT" over an empty road.
+asks "TIRED? REST AREA NEXT EXIT →" over an empty road.
 
 ```bash
 # Shift or tighten the window

@@ -8921,6 +8921,15 @@ class TestGantryFrame:
         for ch in "£œ—’":
             assert all(rq._gantry_glyph(sub)[0] for sub in rq._gantry_chars(ch)), ch
 
+    def test_arrows_are_the_faces_own_ligatures(self):
+        """``->`` is one glyph: the face's 12-dot arrow, not a hyphen and a
+        chevron side by side. Only the arrows are tokenised."""
+        width, cells = rq._gantry_glyph("->")
+        assert width == 12
+        assert width > rq._gantry_glyph("-")[0] + 1 + rq._gantry_glyph(">")[0]
+        assert {r for _, r in cells} == set(range(3, 8))
+        assert rq._gantry_tokens("go -> now <3") == ["g", "o", " ", "->", " ", "n", "o", "w", " ", "<", "3"]
+
     def test_short_quotes_get_big_dots_and_long_ones_still_fit_whole(self):
         _, (pitch, *_rest) = self._fit("It was a little after four now.")
         assert pitch == rq._GANTRY_PITCHES[0]
@@ -8971,6 +8980,9 @@ class TestGantryFrame:
         assert pixel_bytes(small) == pixel_bytes(image.resize((320, 192), Image.Resampling.NEAREST))
 
 
+_GANTRY_ARROW = "->"
+
+
 class TestGantrySleepFrame:
     """``gantry``'s own sleep frame: the small hours on the same motorway, the
     traffic gone, the beacons dark, TIRED? REST AREA NEXT EXIT on the sign."""
@@ -8984,6 +8996,13 @@ class TestGantrySleepFrame:
             assert pixel_bytes(rq.render_gantry_sleep(time_str, 800, 480)) == pixel_bytes(a)
         small = rq.render_gantry_sleep("22:00", 320, 192)
         assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_sign_points_to_the_exit(self):
+        assert _GANTRY_ARROW in [w for line in self._lines() for word in line for w, _ in word]
+
+    @staticmethod
+    def _lines():
+        return [rq._gantry_segment_words([(text, lit)]) for text, lit in rq._GANTRY_SLEEP_MESSAGE]
 
     def test_the_road_is_empty_and_the_question_is_lit(self):
         sleep = rq.render_gantry_sleep("22:00", 800, 480)
