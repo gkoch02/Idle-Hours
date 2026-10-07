@@ -397,47 +397,15 @@ def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: in
 # actually carried. (A pod drawn in code stood here first; the real sign is
 # truer and keeps the provenance simple.) The companions are calm signs from
 # the sheet: 021 LIFE SUPPORT SYSTEM, 025 AUTODOC and 030 COMPUTER TERMINAL,
-# MOTHER flying the ship while the crew sleeps. The placard's seven small
-# pods, the Nostromo's crew of seven, are an illustration drawn in code, not
-# a sign.
+# MOTHER flying the ship while the crew sleeps. The placard is text only:
+# every pictogram on the frame is one of Cobb's, from the sheet. (A row of
+# seven drawn pods, one per crew member, was tried there and taken out.)
 _SEMIOTIC_SLEEP_SIGN = "004"
 _SEMIOTIC_SLEEP_COMPANIONS = ("021", "025", "030")
 _SEMIOTIC_SLEEP_LAMPS = ("blue", "green")
-_SEMIOTIC_SLEEP_CREW = 7
-_SEMIOTIC_SLEEP_POD_Y = 146
-_SEMIOTIC_SLEEP_POD_W = 50
-
-
-def _semiotic_paint_pod(draw: ImageDraw.ImageDraw, x: int, y: int, w: int) -> int:
-    """The hypersleep pod pictogram, ``w`` wide with its top-left at (x, y);
-    returns its height.
-
-    Seen side-on: a blue glass lid domed over a black tub on a plinth, and
-    under the lid a white figure lying down, Cobb's bar and dot.
-    """
-    black, blue, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["white"]
-    dome_h = round(0.25 * w)
-    tub_h = round(0.2 * w)
-    inset = round(0.05 * w)
-    # Rounded on top, square below: a fully rounded box with its lower half
-    # filled square again. Not ``rounded_rectangle(corners=...)``, which is
-    # Pillow 9.5+ and the floor is 9.3 (TestPillowFloorApis).
-    draw.rounded_rectangle((x + inset, y, x + w - 1 - inset, y + dome_h), radius=dome_h, fill=blue)
-    draw.rectangle((x + inset, y + dome_h // 2, x + w - 1 - inset, y + dome_h), fill=blue)
-    tub_y = y + dome_h
-    draw.rounded_rectangle((x, tub_y, x + w - 1, tub_y + tub_h - 1), radius=tub_h // 2, fill=black)
-    draw.rectangle((x, tub_y, x + w - 1, tub_y + tub_h // 2), fill=black)
-    bar = max(2, round(0.09 * w))
-    dot = max(3, round(0.15 * w))
-    cy = tub_y - max(1, round(0.03 * w)) - dot / 2
-    bx0, bx1 = x + round(0.2 * w), x + round(0.64 * w)
-    draw.rectangle((bx0, round(cy + dot / 2) - bar, bx1, round(cy + dot / 2) - 1), fill=white)
-    dx0 = bx1 + max(2, round(0.03 * w))
-    draw.ellipse((dx0, round(cy - dot / 2), dx0 + dot - 1, round(cy - dot / 2) + dot - 1), fill=white)
-    plinth_h = max(2, round(0.1 * w))
-    base_y = tub_y + tub_h
-    draw.rectangle((x + round(0.24 * w), base_y, x + w - 1 - round(0.24 * w), base_y + plinth_h - 1), fill=black)
-    return dome_h + tub_h + plinth_h
+# The status block's first line, set so the block sits centred between the
+# placard's header and footer rules.
+_SEMIOTIC_SLEEP_TEXT_Y = 181
 
 
 def _semiotic_paint_sleep_signs(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
@@ -466,22 +434,17 @@ def _semiotic_centred(draw: ImageDraw.ImageDraw, y: float, text: str, font, trac
 
 
 def _semiotic_paint_sleep_placard(draw: ImageDraw.ImageDraw) -> None:
-    """The stasis notice: the crew's pods in a row, the status beneath."""
+    """The stasis notice: the status, set in the placard's own type."""
     x0, _, x1, _ = _SEMIOTIC_PLACARD
     black = SPECTRA6["black"]
     _semiotic_paint_placard_frame(draw)
     draw_tracked(draw, (x0 + 34, 86), "HYPERSLEEP", _semiotic_font("Bold", 22), black, tracking=3)
     draw_tracked(draw, (x1 - 34, 91), "DO NOT DISTURB", _semiotic_font("SemiBold", 15), black,
                  tracking=2, anchor_right=True)
-    n, pod_w = _SEMIOTIC_SLEEP_CREW, _SEMIOTIC_SLEEP_POD_W
-    qx0, _, qx1, _ = _SEMIOTIC_QUOTE_RECT
-    gap = ((qx1 - qx0) - n * pod_w) // (n - 1)
-    left = (x0 + x1 + 1 - (n * pod_w + (n - 1) * gap)) // 2
-    for i in range(n):
-        _semiotic_paint_pod(draw, left + i * (pod_w + gap), _SEMIOTIC_SLEEP_POD_Y, pod_w)
-    _semiotic_centred(draw, 214, "CREW IN STASIS", _semiotic_font("Bold", 50), tracking=3)
-    _semiotic_centred(draw, 288, "ALL SEVEN CREW ACCOUNTED FOR", _semiotic_font("Medium", 22), tracking=2)
-    _semiotic_centred(draw, 320, "LIFE SUPPORT NOMINAL  ·  SHIP AT REST", _semiotic_font("Medium", 22), tracking=2)
+    y = _SEMIOTIC_SLEEP_TEXT_Y
+    _semiotic_centred(draw, y, "CREW IN STASIS", _semiotic_font("Bold", 50), tracking=3)
+    _semiotic_centred(draw, y + 74, "ALL SEVEN CREW ACCOUNTED FOR", _semiotic_font("Medium", 22), tracking=2)
+    _semiotic_centred(draw, y + 106, "LIFE SUPPORT NOMINAL  ·  SHIP AT REST", _semiotic_font("Medium", 22), tracking=2)
     _semiotic_centred(draw, _SEMIOTIC_FOOTER_RULE_Y + 12, "AUTOPILOT ENGAGED  ·  WAKE ON ARRIVAL",
                       _semiotic_font("SemiBold", 17), tracking=1)
 

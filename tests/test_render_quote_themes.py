@@ -8638,7 +8638,7 @@ class TestLiederSleepFrame:
 class TestSemioticSleepFrame:
     """``semiotic``'s own sleep frame: HYPERSLEEP — the same bulkhead with the
     crew in stasis, Cobb's 004 CRYOGENIC VAULT in place of the hour's sign,
-    and the crew's seven pods on the placard."""
+    and a text-only status placard."""
 
     def _render(self, time_str="22:00", size=(800, 480)):
         return rq.render_sleep_frame(time_str, *size, theme="semiotic")
@@ -8672,19 +8672,20 @@ class TestSemioticSleepFrame:
         vault = rq.render("04:00", row, 800, 480, mode="production", theme="semiotic").crop(box)
         assert pixel_bytes(sleep) == pixel_bytes(vault)
 
-    def test_the_placard_shows_the_crews_pods(self):
-        """Seven blue lids in a row under the header rule; no red there, the
-        frame is a status panel, not an alarm."""
+    def test_the_placard_is_text_only_and_centred(self):
+        """Between the header and footer rules the placard carries only black
+        status text on white: no pictograms (every sign on the frame is one of
+        Cobb's), and no red, since it is a status panel, not an alarm. The
+        text block sits centred between the two rules."""
         image = rq.render_semiotic_sleep("22:00", 800, 480)
         x0, _, x1, _ = rq._SEMIOTIC_PLACARD
-        y = rq._SEMIOTIC_SLEEP_POD_Y + 1          # the lids, above the sleepers
-        strip = image.crop((x0 + 30, y, x1 - 30, y + 1))
-        blue = rq.SPECTRA6["blue"]
-        row = [strip.getpixel((i, 0)) == blue for i in range(strip.width)]
-        runs = sum(1 for i, v in enumerate(row) if v and (i == 0 or not row[i - 1]))
-        assert runs == rq._SEMIOTIC_SLEEP_CREW == 7
-        band = image.crop((x0 + 30, rq._SEMIOTIC_HEADER_RULE_Y + 4, x1 - 30, rq._SEMIOTIC_FOOTER_RULE_Y - 4))
-        assert rq.SPECTRA6["red"] not in ink_counts(band)
+        top, bottom = rq._SEMIOTIC_HEADER_RULE_Y + 4, rq._SEMIOTIC_FOOTER_RULE_Y - 4
+        band = image.crop((x0 + 30, top, x1 - 30, bottom))
+        assert set(ink_counts(band)) == {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}
+        ink = band.convert("L").point(lambda v: 255 if v < 128 else 0).getbbox()
+        assert ink is not None
+        above, below = ink[1], band.height - ink[3]
+        assert abs(above - below) <= 8, (above, below)
 
     def test_companions_are_real_signs_from_the_sheet(self):
         assert all(code in rq._SEMIOTIC_INDEX for code in rq._SEMIOTIC_SLEEP_COMPANIONS)
