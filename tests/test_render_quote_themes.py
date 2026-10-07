@@ -8512,3 +8512,58 @@ class TestSamplerSleepFrame:
     def test_differs_from_the_quote_frame(self):
         quote = rq.render("22:00", make_row(), 800, 480, mode="production", theme="sampler")
         assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestTrisolarisSleepFrame:
+    """``trisolaris``'s own sleep frame: a chaotic era has begun and the order
+    is to dehydrate, with the dried rolls racked in their store under the
+    promise of rehydration when the stable era returns."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="trisolaris")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["trisolaris"].sleep is rq.render_trisolaris_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_trisolaris_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "blue", "yellow", "red")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("03:00", "12:59", "06:30", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_frozen_at_the_start_of_a_chaotic_era(self):
+        """The sky is the first sample after a stable era gives way, so the
+        header gives the order to dehydrate."""
+        from idle_hours.render_quote.themes import trisolaris
+        ephemeris = trisolaris._trisolaris_ephemeris()
+        index = trisolaris._TRISOLARIS_SLEEP_INDEX
+        dominance = trisolaris._TRISOLARIS_STABLE_DOMINANCE
+        assert ephemeris[index - 1][2] > dominance >= ephemeris[index][2]
+        # ... and the chaotic era it opens is a long one, not a flicker.
+        assert all(ephemeris[k][2] <= dominance for k in range(index, index + 60))
+
+    def test_the_header_shows_a_chaotic_era(self):
+        """All three discs of the era glyph are filled, as in a chaotic quote frame."""
+        image = self._render()
+        x1 = rq._TRISOLARIS_COLUMN[1]
+        yellow = rq.SPECTRA6["yellow"]
+        for k in range(3):
+            cx = x1 - 40 + 4 + k * 14
+            assert image.getpixel((cx, 100)) == yellow, k
+
+    def test_the_store_is_racked_and_the_quote_column_is_replaced(self):
+        image = self._render()
+        store = ink_counts(image.crop(rq._TRISOLARIS_SLEEP_STORE))
+        assert store.get(rq.SPECTRA6["white"], 0) > 1500
+        assert store.get(rq.SPECTRA6["yellow"], 0) > 100
+        row = make_row(display_quote="It was half past two.", matched_text="half past two")
+        for time_str in ("22:00", "02:30"):
+            quote = rq.render(time_str, row, 800, 480, mode="production", theme="trisolaris")
+            assert pixel_bytes(quote) != pixel_bytes(image)
