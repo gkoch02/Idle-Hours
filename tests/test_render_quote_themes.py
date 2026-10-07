@@ -8774,3 +8774,98 @@ class TestPillowFloorApis:
                     offenders += [f"{path.relative_to(root)}:{node.lineno} {node.func.attr}({kw.arg}=)"
                                   for kw in node.keywords if kw.arg in banned]
         assert not offenders, offenders
+
+
+class TestVhsSleepFrame:
+    """``vhs``'s own sleep frame: the late movie was taped off-air and the
+    tape ran on into the station sign-off, colour bars over the sign-off card,
+    under the quote frame's wear."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="vhs")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["vhs"].sleep is rq.render_vhs_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_vhs_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) == set(rq.SPECTRA6.values())
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_no_clock_and_the_deck_is_playing(self, monkeypatch):
+        """The quote frame's OSD burns in HH:MM; the sleep frame must print no
+        digit at all, and the deck's PLAY replaces the camcorder's REC."""
+        texts: list[str] = []
+        real_text = ImageDraw.ImageDraw.text
+        real_chroma = rq_themes.vhs.draw_text_chroma_shift
+
+        def spy_text(self, xy, text, *args, **kwargs):
+            texts.append(text)
+            return real_text(self, xy, text, *args, **kwargs)
+
+        def spy_chroma(image, xy, text, *args, **kwargs):
+            texts.append(text)
+            return real_chroma(image, xy, text, *args, **kwargs)
+
+        monkeypatch.setattr(ImageDraw.ImageDraw, "text", spy_text)
+        monkeypatch.setattr(rq_themes.vhs, "draw_text_chroma_shift", spy_chroma)
+        rq.render_vhs_sleep("14:30", 800, 480)
+        assert "PLAY" in texts and "GOOD NIGHT" in texts and "REC" not in texts
+        assert not any(ch.isdigit() for text in texts for ch in text)
+
+    def test_seven_bars_in_order(self):
+        """Each bar's middle holds the inks of its recipe: the six inks solid,
+        grey as W+K, cyan as G+B+W, magenta as R+B."""
+        image = self._render()
+        x0, y0, x1, y1 = rq._VHS_BARS_RECT
+        ink = rq.SPECTRA6
+        recipes = ({ink["white"], ink["black"]}, {ink["yellow"]}, {ink["green"], ink["blue"], ink["white"]},
+                   {ink["green"]}, {ink["red"], ink["blue"]}, {ink["red"]}, {ink["blue"]})
+        bar_w = (x1 - x0) // len(recipes)
+        for i, recipe in enumerate(recipes):
+            cx = x0 + i * bar_w + bar_w // 2
+            counts = ink_counts(image.crop((cx - 20, 60, cx + 20, 120)))
+            share = sum(counts.get(c, 0) for c in recipe) / sum(counts.values())
+            assert share > 0.9, (i, counts)
+            assert all(counts.get(c, 0) for c in recipe), (i, counts)
+
+    def test_the_bars_carry_the_tape_noise(self, monkeypatch):
+        """The bars are painted over the tape ground, so the noise is laid
+        again on top of them; without that the bars came out cleaner than the
+        card below them (PR #382 review). The yellow bar is solid ink, so with
+        the dropouts and tears off (both also put white or blue there) any
+        white or blue left in it is noise."""
+        monkeypatch.setattr(rq_themes.vhs, "_vhs_paint_dropouts", lambda image: None)
+        monkeypatch.setattr(rq_themes.vhs, "_vhs_apply_tears", lambda image: None)
+        image = self._render()
+        x0, y0, x1, y1 = rq._VHS_BARS_RECT
+        bar_w = (x1 - x0) // 7
+        counts = ink_counts(image.crop((x0 + bar_w + 4, y0 + 50, x0 + 2 * bar_w - 4, y1 - rq._VHS_CASTELLATION_H)))
+        assert counts.get(rq.SPECTRA6["white"], 0) + counts.get(rq.SPECTRA6["blue"], 0) > 20
+
+    def test_tears_spare_the_sign_off_card(self, monkeypatch):
+        """The card's lines sit outside every row the tears move. Through the
+        small type a tear read as strikethrough; through GOOD NIGHT it shredded
+        the words (the draft of this frame). Measured as the rows a render
+        without tears differs on, so a change to the tear seed or pool that
+        moves a tear onto the card fails here."""
+        torn = self._render()
+        monkeypatch.setattr(rq_themes.vhs, "_vhs_apply_tears", lambda image: None)
+        clean = self._render()
+        diff = ImageChops.difference(torn, clean)
+        moved = {y for y in range(480 - rq._VHS_HEAD_SWITCH_H)
+                 if diff.crop((0, y, 800, y + 1)).getbbox() is not None}
+        assert moved, "the tears no longer move any row"
+        for text, size, _bold, top in rq._VHS_SIGNOFF_LINES:
+            assert not moved & set(range(top, top + size)), text
+
+    def test_quote_frame_keeps_its_camcorder_osd(self):
+        quote = rq.render("14:30", make_row(), 800, 480, mode="production", theme="vhs")
+        assert pixel_bytes(quote) != pixel_bytes(self._render())

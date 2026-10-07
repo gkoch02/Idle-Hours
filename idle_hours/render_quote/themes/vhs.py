@@ -14,6 +14,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, pixel_access, snap_image_to_palette
+from ..primitives import _fill_swatch_stipple, _fill_swatch_stipple_3way
 from ..spec import FrameSpec
 from ..text import draw_text_chroma_shift
 
@@ -76,11 +77,19 @@ def _vhs_paint_tape(image: Image.Image) -> None:
     """Near-black ground, scanlines, and noise rising toward the head sweep."""
     width, height = image.size
     px = pixel_access(image)
-    black, blue, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["white"]
+    black, blue = SPECTRA6["black"], SPECTRA6["blue"]
     # Faint scanline modulation, softer than nightvision's.
     for y in range(0, height, _VHS_SCANLINE_STEP):
         for x in range(0, width, 2):
             px[x, y] = blue if (x + y) % 8 == 0 else black
+    _vhs_paint_noise(image)
+
+
+def _vhs_paint_noise(image: Image.Image) -> None:
+    """The video noise, seeded, so painting it twice is the same as once."""
+    width, height = image.size
+    px = pixel_access(image)
+    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
     rng = random.Random(_VHS_NOISE_SEED)
     for _ in range(_VHS_NOISE_COUNT):
         # Bias toward the foot: two samples, keep the lower. Uniform noise
@@ -278,4 +287,97 @@ def render_vhs_frame(time_str: str, quote_row: dict, width: int, height: int) ->
     return image
 
 
-SPEC = FrameSpec(themes=("vhs",), render=render_vhs_frame)
+# The sleep frame: the late movie was taped off-air and the tape ran on into
+# the station's sign-off. 75% colour bars over the reverse-castellation strip,
+# then the sign-off card, all under the same wear as the quote frame. The OSD
+# turns from the camcorder's REC to the deck's PLAY, and no clock is burnt in.
+_VHS_BARS_RECT = (0, 0, 800, 236)
+_VHS_CASTELLATION_H = 26
+# (text, size, bold, top). The tears the quote frame shares land on rows
+# 305-327, so the card leaves that band empty and the tears only slip the tape
+# noise: through the small line they read as strikethrough, and through GOOD
+# NIGHT they shredded it past reading.
+_VHS_SIGNOFF_LINES = (
+    ("THIS CONCLUDES OUR BROADCAST DAY", 30, False, 256),
+    ("GOOD NIGHT", 58, True, 338),
+    ("Programming resumes in the morning.", 20, False, 410),
+)
+
+
+def _vhs_paint_bar(image: Image.Image, rect: tuple[int, int, int, int], name: str) -> None:
+    """One colour bar in panel inks: the six inks solid, the three the panel
+    lacks stippled (75% grey W 3/4 + K 1/4, cyan as seafoam G+B+W, magenta as R+B)."""
+    ink = SPECTRA6
+    if name == "grey":
+        _fill_swatch_stipple(image, rect, ink["white"], ink["black"], 0.25)
+    elif name == "cyan":
+        _fill_swatch_stipple_3way(image, rect, ink["green"], ink["blue"], ink["white"], 0.4, 0.3)
+    elif name == "magenta":
+        _fill_swatch_stipple(image, rect, ink["red"], ink["blue"], 0.5)
+    else:
+        ImageDraw.Draw(image).rectangle((rect[0], rect[1], rect[2] - 1, rect[3] - 1), fill=ink[name])
+
+
+def _vhs_paint_bars(image: Image.Image) -> None:
+    """The seven bars, and under them the reverse strip that pairs each with
+    black, as on the broadcast test card."""
+    x0, y0, x1, y1 = _VHS_BARS_RECT
+    main = ("grey", "yellow", "cyan", "green", "magenta", "red", "blue")
+    strip = ("blue", "black", "magenta", "black", "cyan", "black", "grey")
+    edges = [x0 + (x1 - x0) * i // len(main) for i in range(len(main) + 1)]
+    for i, (top, bottom) in enumerate(zip(main, strip, strict=True)):
+        _vhs_paint_bar(image, (edges[i], y0, edges[i + 1], y1 - _VHS_CASTELLATION_H), top)
+        _vhs_paint_bar(image, (edges[i], y1 - _VHS_CASTELLATION_H, edges[i + 1], y1), bottom)
+
+
+def _vhs_paint_signoff(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The sign-off card, chroma-bled like the quote; GOOD NIGHT takes the
+    matched phrase's wider offset."""
+    white, red, blue = SPECTRA6["white"], SPECTRA6["red"], SPECTRA6["blue"]
+    ground = frozenset({SPECTRA6["black"], blue, white, red})
+    for text, size, bold, y in _VHS_SIGNOFF_LINES:
+        font = load_font([(ANTONIO_VARIABLE, "Bold" if bold else "Regular"),
+                          *(META_FONT_BOLD_CANDIDATES if bold else META_FONT_CANDIDATES)], size=size)
+        box = draw.textbbox((0, 0), text, font=font)
+        draw_text_chroma_shift(image, ((800 - (box[2] - box[0])) // 2 - box[0], y - box[1]), text, font,
+                               core=white, left=red, right=blue,
+                               offset=_VHS_CHROMA_OFFSET + (2 if bold else 0), ground=ground)
+
+
+def _vhs_paint_play_osd(draw: ImageDraw.ImageDraw) -> None:
+    """The deck's playback OSD: PLAY and its triangle, SP. White with a black
+    edge, as a character generator keys it over a bright picture."""
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    chrome = load_font([(PIXELIFYSANS_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=17)
+    draw.text((30, 26), "PLAY", font=chrome, fill=white, stroke_width=2, stroke_fill=black)
+    tx = 30 + draw.textlength("PLAY", font=chrome) + 10
+    draw.polygon([(tx - 2, 27), (tx + 13, 36), (tx - 2, 45)], fill=black)
+    draw.polygon([(tx, 30), (tx + 9, 36), (tx, 42)], fill=white)
+    draw.text((770, 26), "SP", font=chrome, fill=white, anchor="ra", stroke_width=2, stroke_fill=black)
+
+
+def render_vhs_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the tape has run on into the station sign-off
+    (see the comment above ``_VHS_BARS_RECT``). ``time_str`` is unused:
+    nothing on the frame tells the time."""
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    _vhs_paint_tape(image)
+    _vhs_paint_bars(image)
+    # The bars paint over the tape's noise; put it back over them so they are
+    # the same worn tape as the card. Below the bars this repaints the same
+    # pixels the same inks. The scanlines are left off the bars on purpose:
+    # faint on the black ground, they would rule dark lines across bright bars.
+    _vhs_paint_noise(image)
+    draw = ImageDraw.Draw(image)
+    _vhs_paint_signoff(image, draw)
+    _vhs_paint_play_osd(draw)
+    _vhs_paint_dropouts(image)
+    _vhs_apply_tears(image)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("vhs",), render=render_vhs_frame, sleep=render_vhs_sleep)
