@@ -14,7 +14,7 @@ from ..fonts import _font_ascent, load_font, normalize_dashes
 from ..furniture import _row_digest, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
-from ..primitives import _smooth_noise, _white_noise, paint_hatched_tone
+from ..primitives import _bayer_threshold_field, _smooth_noise, _white_noise, paint_hatched_tone
 from ..spec import FrameSpec
 from ..text import draw_text_dithered, draw_tracked, fit_text_to_width, tracked_width
 
@@ -189,10 +189,13 @@ def _witcher_claw(lean: float, scale: float, dx: float):
 def _witcher_paint_medallion(image: Image.Image) -> None:
     """The hub: three claw slashes in red, outlined in black so they hold on
     the cream, after the III of the title."""
-    draw = ImageDraw.Draw(image)
+    _witcher_paint_claws(ImageDraw.Draw(image), _WITCHER_DIAL_CENTRE, _WITCHER_MEDALLION_RADIUS)
+
+
+def _witcher_paint_claws(draw: ImageDraw.ImageDraw, centre: tuple[int, int], r: int) -> None:
+    """The three claw slashes in a ``2r`` box about ``centre``."""
     black, red = SPECTRA6["black"], SPECTRA6["red"]
-    cx, cy = _WITCHER_DIAL_CENTRE
-    r = _WITCHER_MEDALLION_RADIUS
+    cx, cy = centre
     scale = r * 2 / 100.0
     ox, oy = cx - 50 * scale, cy - 50 * scale
 
@@ -287,17 +290,20 @@ def _witcher_paint_header(image: Image.Image, draw: ImageDraw.ImageDraw, quote_r
     draw_tracked(draw, (x0, _WITCHER_HEADER_Y + 16), title, title_font, black, tracking=1)
 
 
-def _witcher_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
+def _witcher_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, *,
+                        rect: tuple[int, int, int, int] = _WITCHER_QUOTE_RECT, font_max: int = 32,
+                        centred: bool = False) -> None:
     """The entry's epigraph: Barlow Condensed in black ink, ragged right, the
-    matched phrase Bold in the interface's red-orange (R+Y tangerine)."""
-    x0, y0, x1, y1 = _WITCHER_QUOTE_RECT
+    matched phrase Bold in the interface's red-orange (R+Y tangerine).
+    ``centred`` sets the block mid-rect rather than hanging it from the top."""
+    x0, y0, x1, y1 = rect
     black, red, yellow = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["yellow"]
     display_quote = normalize_dashes(strip_underscore_emphasis(quote_row.get("display_quote") or ""))
     quote_font, quote_font_bold, wrapped, line_height, _ = fit_quote(
         draw, display_quote, quote_row.get("matched_text") or "",
-        x1 - x0, y1 - y0, font_max=32, font_min=14, line_height_mult=1.28, theme="witcher",
+        x1 - x0, y1 - y0, font_max=font_max, font_min=14, line_height_mult=1.28, theme="witcher",
     )
-    y = y0
+    y = y0 + (max(0, (y1 - y0 - len(wrapped) * line_height) // 2) if centred else 0)
     ascent = _font_ascent(quote_font)
     for line in wrapped:
         x = x0
@@ -397,4 +403,151 @@ def render_witcher_frame(time_str: str, quote_row: dict, width: int, height: int
     return image
 
 
-SPEC = FrameSpec(themes=("witcher",), render=render_witcher_frame)
+# ---------------------------------------------------------------------------
+# The sleep frame: the meditation screen. Geralt kneels, the player drags the
+# dial's hand round to the hour to wake, and the arc between now and then
+# lights up. Same page, rules and type as the bestiary entry; the dial grows
+# to a 24-hour plate (noon at the top, midnight at the foot, as in the game),
+# its hand set to dawn and the arc lit from the hour quiet hours began.
+# ---------------------------------------------------------------------------
+_WITCHER_SLEEP_DIAL_CENTRE = (196, 260)
+_WITCHER_SLEEP_DIAL_RADIUS = 126
+_WITCHER_SLEEP_BAND = 24                 # ring-to-ring width of the engraved band
+_WITCHER_SLEEP_WAKE_HOUR = 6             # the hand's hour: dawn
+_WITCHER_SLEEP_BODY_RECT = (348, 124, 742, 392)
+_WITCHER_SLEEP_ROW = {
+    "display_quote": "Geralt kneels by the embers and closes his eyes. The night passes unseen, "
+                     "and he will rise at first light.",
+    "matched_text": "first light",
+    "author": "",
+    "title": "Meditate until dawn",
+}
+
+
+def _witcher_sleep_angle(hour: float) -> float:
+    """Screen angle (radians, clockwise from 3 o'clock) of ``hour`` on the
+    24-hour plate: noon at the top, dusk right, midnight at the foot, dawn left."""
+    return math.radians((hour - 12) * 15 - 90)
+
+
+def _witcher_sleep_band_mask(size, start: float, end: float) -> Image.Image:
+    """The engraved band between ``start`` and ``end`` hours, clockwise, as an ``L`` mask."""
+    cx, cy = _WITCHER_SLEEP_DIAL_CENTRE
+    r = _WITCHER_SLEEP_DIAL_RADIUS
+    inner = r - _WITCHER_SLEEP_BAND
+    mask = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(mask)
+    a0, a1 = (math.degrees(_witcher_sleep_angle(h)) for h in (start, end))
+    draw.pieslice((cx - r + 3, cy - r + 3, cx + r - 3, cy + r - 3), a0, a1, fill=255)
+    draw.ellipse((cx - inner, cy - inner, cx + inner, cy + inner), fill=0)
+    return mask
+
+
+def _witcher_paint_sleep_dial(image: Image.Image, hour: int) -> None:
+    """The meditation plate: two rings, an engraved band (lighter by day,
+    heavier by night), the arc from ``hour`` to dawn lit in the interface's
+    red-orange, a tick per half hour, sun and moon, and the hand on dawn."""
+    draw = ImageDraw.Draw(image)
+    black, red, yellow, white = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["yellow"], SPECTRA6["white"]
+    cx, cy = _WITCHER_SLEEP_DIAL_CENTRE
+    r = _WITCHER_SLEEP_DIAL_RADIUS
+    inner = r - _WITCHER_SLEEP_BAND
+    ground = frozenset({white, yellow})
+    paint_hatched_tone(image, (cx - r, cy - r, cx + r, cy + r),
+                       lambda x, y: (0.62 if y > cy else 0.3) if inner < math.hypot(x - cx, y - cy) < r - 2 else 0.0,
+                       52.0, 3.0, black, ground=ground)
+    # The rest the player has chosen: R+Y tangerine, 3/8 yellow, over the band.
+    span = (_WITCHER_SLEEP_WAKE_HOUR - hour) % 24
+    if span:
+        lit = _witcher_sleep_band_mask(image.size, hour, hour + span)
+        image.paste(red, (0, 0), lit)
+        flip = _bayer_threshold_field(image.size).point(lambda v: 255 if v < 96 else 0)
+        image.paste(yellow, (0, 0), ImageChops.multiply(lit, flip))
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=black, width=3)
+    draw.ellipse((cx - inner, cy - inner, cx + inner, cy + inner), outline=black, width=2)
+    for k in range(48):
+        ang = _witcher_sleep_angle(k / 2)
+        rank = 2 if k % 12 == 0 else 1 if k % 2 == 0 else 0
+        r0 = inner - (14, 9, 5)[rank]
+        draw.line([(cx + math.cos(ang) * r0, cy + math.sin(ang) * r0),
+                   (cx + math.cos(ang) * (inner - 1), cy + math.sin(ang) * (inner - 1))],
+                  fill=black, width=(1, 2, 3)[rank])
+    # Sun at noon, crescent at midnight, inside the tick train.
+    sx, sy = cx, cy - inner + 34
+    for k in range(8):
+        a = math.radians(k * 45)
+        draw.line([(sx + math.cos(a) * 11, sy + math.sin(a) * 11), (sx + math.cos(a) * 16, sy + math.sin(a) * 16)],
+                  fill=black, width=2)
+    draw.ellipse((sx - 9, sy - 9, sx + 9, sy + 9), fill=yellow, outline=black, width=2)
+    draw.polygon(_witcher_crescent(cx, cy + inner - 34, 14, (6.5, -3.5), 11.5), fill=yellow, outline=black)
+    # The hand, set to dawn: a long blade from the hub to the tick train, and
+    # a pointer on the band's outer edge where quiet hours began.
+    ang = _witcher_sleep_angle(_WITCHER_SLEEP_WAKE_HOUR)
+    tip, base = inner - 4, _WITCHER_MEDALLION_RADIUS - 8
+    perp = ang + math.pi / 2
+    tx, ty = cx + math.cos(ang) * tip, cy + math.sin(ang) * tip
+    bx, by = cx + math.cos(ang) * base, cy + math.sin(ang) * base
+    mx, my = cx + math.cos(ang) * (tip - 22), cy + math.sin(ang) * (tip - 22)
+    blade = [(tx, ty), (mx + math.cos(perp) * 9, my + math.sin(perp) * 9), (bx, by),
+             (mx - math.cos(perp) * 9, my - math.sin(perp) * 9)]
+    draw.polygon(blade, fill=red, outline=black, width=2)
+    # Where quiet hours began: a black pointer standing outside the ring.
+    a = _witcher_sleep_angle(hour)
+    po, pi_ = r + 16, r + 2
+    draw.polygon([(cx + math.cos(a) * pi_, cy + math.sin(a) * pi_),
+                  (cx + math.cos(a + 0.1) * po, cy + math.sin(a + 0.1) * po),
+                  (cx + math.cos(a - 0.1) * po, cy + math.sin(a - 0.1) * po)], fill=black)
+    _witcher_paint_claws(draw, _WITCHER_SLEEP_DIAL_CENTRE, _WITCHER_MEDALLION_RADIUS - 6)
+
+
+def _witcher_paint_sleep_header(draw: ImageDraw.ImageDraw) -> None:
+    """``MEDITATION`` and Geralt's name over the title in condensed capitals."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    small = _witcher_label_font(13)
+    draw_tracked(draw, (56, _WITCHER_HEADER_Y - 2), "MEDITATION", small, red, tracking=4)
+    draw_tracked(draw, (744, _WITCHER_HEADER_Y - 2), "GERALT OF RIVIA", small, black, tracking=3, anchor_right=True)
+    title = load_font([BARLOWCOND_BOLD, (ARCHIVONARROW_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES], size=34)
+    draw_tracked(draw, (56, _WITCHER_HEADER_Y + 16), _WITCHER_SLEEP_ROW["title"].upper(), title, black, tracking=1)
+
+
+def _witcher_paint_sleep_foot(draw: ImageDraw.ImageDraw) -> None:
+    """The ``WILD HUNT`` mark, and what a night's meditation restores."""
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    y = _WITCHER_FOOT_Y
+    mark = _witcher_label_font(15)
+    draw_tracked(draw, (56, y + 2), "THE WITCHER", mark, black, tracking=3)
+    w = tracked_width(draw, "THE WITCHER", mark, tracking=3)
+    draw_tracked(draw, (56 + w + 12, y + 2), "WILD HUNT", mark, red, tracking=3)
+    label = _witcher_label_font(12, "Medium")
+    right = _WITCHER_SIGNS_RIGHT
+    w = draw_tracked(draw, (right, y + 4), "POTIONS REFILLED", label, black, tracking=3, anchor_right=True)
+    dx, dy = right - w - 14, y + 11
+    draw.polygon([(dx, dy - 4), (dx + 4, dy), (dx, dy + 4), (dx - 4, dy)], fill=red)
+    draw_tracked(draw, (dx - 14, y + 4), "VITALITY RESTORED", label, black, tracking=3, anchor_right=True)
+
+
+def render_witcher_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the meditation screen, set to rest until dawn.
+
+    The bestiary page's binding, parchment and rules, a 24-hour meditation
+    dial whose lit arc runs from the hour quiet hours began to dawn (hour-only,
+    through ``_witcher_hour``), and the entry's epigraph slot holding Geralt
+    at rest. Nothing prints a digit.
+    """
+    hour = _witcher_hour(time_str)
+    image = Image.new("RGB", (800, 480), SPECTRA6["black"])
+    _witcher_paint_binding(image)
+    _witcher_paint_parchment(image)
+    _witcher_paint_rules(image)
+    draw = ImageDraw.Draw(image)
+    _witcher_paint_sleep_dial(image, hour)
+    _witcher_paint_sleep_header(draw)
+    _witcher_paint_quote(image, draw, _WITCHER_SLEEP_ROW, rect=_WITCHER_SLEEP_BODY_RECT, font_max=40, centred=True)
+    _witcher_paint_sleep_foot(draw)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("witcher",), render=render_witcher_frame, sleep=render_witcher_sleep)

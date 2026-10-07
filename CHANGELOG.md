@@ -9,6 +9,13 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Five more themes draw their own sleep frame: `marquee` (the letter board
+  reads CLOSED / SEE YOU TOMORROW, every bulb still lit), `witcher` (the
+  meditation screen, resting until dawn), `questline` (an inn after dark:
+  "You rest at the inn. HP and MP are fully restored."), `yorha` (the archive
+  asks "Enter sleep mode?" with Yes chosen) and `metro` (night service: day
+  lines hollow, a dotted night line still running). Their quote frames are
+  unchanged.
 - Themes can now draw their own sleep frame. A theme without one still
   sleeps under "To sleep, perchance to dream." in its own layout, unchanged.
   The first to have one is `redacted`: a SUSPENDED Standby Order with every

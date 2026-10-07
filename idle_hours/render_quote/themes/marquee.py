@@ -323,4 +323,100 @@ def render_marquee_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-SPEC = FrameSpec(themes=("marquee",), render=render_marquee_frame)
+# ─── sleep frame: the house is closed for the night ─────────────────────────
+# The facade keeps its bulbs lit (a dark marquee reads as a dead panel) and the
+# changeable-letter board, backlit white, spells the closing notice in block
+# capitals, one letter per fixed-pitch tile on black track rails.
+
+_MARQUEE_SLEEP_BOARD = (64, 92, 736, 388)
+_MARQUEE_SLEEP_LINES = (
+    # (text, cap height px, colour key, row centre y)
+    ("CLOSED", 104, "red", 194),
+    ("SEE YOU TOMORROW", 48, "black", 320),
+)
+_MARQUEE_SLEEP_TOP = "—  GOOD NIGHT  —"
+_MARQUEE_SLEEP_FOOT = "—  THANK YOU FOR COMING  —"
+
+
+def _marquee_board_font(cap_height: int):
+    """Antonio Bold sized so its capitals stand ``cap_height`` px tall."""
+    chain = [(ANTONIO_VARIABLE, "Bold"), *META_FONT_BOLD_CANDIDATES]
+    size = cap_height
+    for _ in range(4):
+        font = load_font(chain, size=size)
+        bbox = font.getbbox("H")
+        measured = bbox[3] - bbox[1]
+        if measured <= 0:
+            return font
+        size = max(8, round(size * cap_height / measured))
+    return load_font(chain, size=size)
+
+
+def _marquee_paint_letter_board(draw: ImageDraw.ImageDraw) -> None:
+    """The backlit letter board: a yellow trim, a black reveal, a white face."""
+    x0, y0, x1, y1 = _MARQUEE_SLEEP_BOARD
+    draw.rectangle((x0, y0, x1, y1), fill=SPECTRA6["yellow"])
+    draw.rectangle((x0 + 6, y0 + 6, x1 - 6, y1 - 6), fill=SPECTRA6["black"])
+    draw.rectangle((x0 + 10, y0 + 10, x1 - 10, y1 - 10), fill=SPECTRA6["white"])
+
+
+def _marquee_paint_board_line(draw: ImageDraw.ImageDraw, text: str, cap: int, colour: tuple[int, int, int], cy: int) -> None:
+    """One row of changeable letters, centred on the board at ``cy``.
+
+    Letters are set one at a time with wide tracking, as loose marquee
+    letters slotted onto a track are, and the row's capitals shrink until
+    the line clears the board's face with a margin. The track rails run
+    just above and below the capitals across the whole face.
+    """
+    x0, _y0, x1, _y1 = _MARQUEE_SLEEP_BOARD
+    face_l, face_r = x0 + 10, x1 - 10
+    room = face_r - face_l - 48
+    while True:
+        font = _marquee_board_font(cap)
+        tracking = max(4, cap // 4)
+        space = cap // 2
+        advances = [space if ch == " " else int(draw.textlength(ch, font=font)) + tracking for ch in text]
+        total = sum(advances) - tracking
+        if total <= room or cap <= 16:
+            break
+        cap -= 2
+    x = (face_l + face_r) // 2 - total // 2
+    top = cy - cap // 2
+    black = SPECTRA6["black"]
+    rail = max(2, cap // 24)
+    gap = max(6, cap // 8)
+    for ry in (top - gap - rail, top + cap + gap):
+        draw.rectangle((face_l, ry, face_r, ry + rail - 1), fill=black)
+    cap_top = font.getbbox("H")[1]
+    for ch, adv in zip(text, advances, strict=True):
+        if ch != " ":
+            draw.text((x, top - cap_top), ch, font=font, fill=colour)
+        x += adv
+
+
+def render_marquee_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the house is closed for the night.
+
+    The quote frame's facade and lit bulb border around a backlit letter
+    board reading CLOSED (red) over SEE YOU TOMORROW (black), between a
+    GOOD NIGHT tagline and a THANK YOU FOR COMING one. Composed at 800×480
+    and NEAREST-downsampled for any other size. ``time_str`` is unused:
+    nothing on the frame tells the time.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    _marquee_paint_facade(image)
+    draw = ImageDraw.Draw(image)
+    _marquee_paint_bulb_border(image, draw, 800, 480)
+    _marquee_paint_label_band(image, draw, 800, y_top=48, text=_MARQUEE_SLEEP_TOP, size=22)
+    _marquee_paint_letter_board(draw)
+    for text, cap, colour, cy in _MARQUEE_SLEEP_LINES:
+        _marquee_paint_board_line(draw, text, cap, SPECTRA6[colour], cy)
+    _marquee_paint_label_band(image, draw, 800, y_top=408, text=_MARQUEE_SLEEP_FOOT, size=22)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("marquee",), render=render_marquee_frame, sleep=render_marquee_sleep)

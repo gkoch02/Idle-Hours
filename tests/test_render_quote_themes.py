@@ -8025,3 +8025,305 @@ class TestRedactedSleepFrame:
     def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
         frame = rq.render("14:30", make_row(**TestRedactedFrame.ROW), 800, 480, mode="production", theme="redacted")
         assert pixel_bytes(frame) != pixel_bytes(rq.render_redacted_sleep("14:30", 800, 480))
+
+
+class TestMarqueeSleepFrame:
+    """``marquee``'s own sleep frame: the house closed for the night, the
+    bulbs still lit around a backlit letter board reading CLOSED over SEE YOU
+    TOMORROW."""
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["marquee"].sleep is rq.render_marquee_sleep
+
+    def test_inks_are_the_quote_frames(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="marquee")
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("black", "white", "red", "yellow")}
+
+    def test_bulbs_stay_lit(self):
+        # A dark marquee would read as a dead panel: the border keeps both bulb inks.
+        image = rq.render_marquee_sleep("22:00", 800, 480)
+        top = ink_counts(image.crop((0, 0, 800, 30)))
+        assert top.get(rq.SPECTRA6["yellow"], 0) > 300
+        assert top.get(rq.SPECTRA6["red"], 0) > 300
+
+    def test_board_is_backlit_with_closed_in_red_above_black_letters(self):
+        image = rq.render_marquee_sleep("22:00", 800, 480)
+        x0, y0, x1, y1 = rq._MARQUEE_SLEEP_BOARD
+        face = image.crop((x0 + 10, y0 + 10, x1 - 10, y1 - 10))
+        counts = ink_counts(face)
+        assert max(counts, key=counts.get) == rq.SPECTRA6["white"]
+        assert set(counts) == {rq.SPECTRA6[k] for k in ("white", "black", "red")}
+        # Red (CLOSED) sits entirely in the upper row; the lower row is black type only.
+        (_, _, _, closed_cy), (_, _, _, second_cy) = rq._MARQUEE_SLEEP_LINES
+        mid = (closed_cy + second_cy) // 2
+        assert ink_counts(image.crop((x0 + 10, y0 + 10, x1 - 10, mid))).get(rq.SPECTRA6["red"], 0) > 5000
+        assert rq.SPECTRA6["red"] not in ink_counts(image.crop((x0 + 10, mid, x1 - 10, y1 - 10)))
+        # The trim is yellow, all the way round.
+        assert image.getpixel((x0 + 2, (y0 + y1) // 2)) == rq.SPECTRA6["yellow"]
+        assert image.getpixel(((x0 + x1) // 2, y1 - 2)) == rq.SPECTRA6["yellow"]
+
+    def test_lettering_clears_the_board_face(self):
+        # Long rows shrink rather than run off the board: the face margins stay white
+        # between the rails.
+        image = rq.render_marquee_sleep("22:00", 800, 480)
+        x0, y0, x1, y1 = rq._MARQUEE_SLEEP_BOARD
+        for _text, _cap, _colour, cy in rq._MARQUEE_SLEEP_LINES:
+            for x in (x0 + 12, x0 + 20, x1 - 20, x1 - 12):
+                assert image.getpixel((x, cy)) == rq.SPECTRA6["white"], (x, cy)
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_marquee_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(rq.render_marquee_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_marquee_sleep("22:00", 320, 192)
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        row = make_row(display_quote="It was ten o'clock.", matched_text="ten o'clock", author="A. Author", title="A Book")
+        frame = rq.render("14:30", row, 800, 480, mode="production", theme="marquee")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_marquee_sleep("14:30", 800, 480))
+        assert pixel_bytes(rq.render_sleep_frame("22:00", 800, 480, theme="marquee")) == pixel_bytes(
+            rq.render_marquee_sleep("22:00", 800, 480))
+
+
+class TestWitcherSleepFrame:
+    """``witcher``'s own sleep frame: the meditation screen, set to rest until dawn.
+
+    A 24-hour dial (noon at the top, midnight at the foot) whose band is lit
+    tangerine from the hour quiet hours began round to dawn, where the hand
+    stands. Hour-only; nothing prints a digit.
+    """
+
+    @staticmethod
+    def _sleep(time_str="22:00", size=(800, 480)):
+        return rq.render_witcher_sleep(time_str, *size)
+
+    @staticmethod
+    def _band_box(hour: float, half: int = 4):
+        """A small box on the middle of the dial's band at ``hour``."""
+        cx, cy = rq._WITCHER_SLEEP_DIAL_CENTRE
+        mid = rq._WITCHER_SLEEP_DIAL_RADIUS - rq._WITCHER_SLEEP_BAND / 2
+        a = rq._witcher_sleep_angle(hour)
+        x, y = round(cx + math.cos(a) * mid), round(cy + math.sin(a) * mid)
+        return (x - half, y - half, x + half + 1, y + half + 1)
+
+    def test_is_the_themes_sleep_renderer(self):
+        assert rq.FRAME_SPECS["witcher"].sleep is rq.render_witcher_sleep
+
+    def test_render_sleep_frame_dispatches_to_it(self):
+        assert pixel_bytes(rq.render_sleep_frame("22:00", 800, 480, theme="witcher")) == pixel_bytes(self._sleep())
+
+    def test_on_palette_with_the_expected_inks(self):
+        """Parchment (white + yellow), black line-work, red chrome and the
+        tangerine arc, plus the binding's foxing green; no blue on this page."""
+        inks = distinct_inks(self._sleep())
+        assert inks <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "yellow", "red", "green")} <= inks
+
+    def test_deterministic(self):
+        assert pixel_bytes(self._sleep()) == pixel_bytes(self._sleep())
+
+    def test_every_minute_of_an_hour_renders_identically(self):
+        first = pixel_bytes(self._sleep("23:00"))
+        for minute in (1, 17, 30, 59):
+            assert pixel_bytes(self._sleep(f"23:{minute:02d}")) == first
+
+    def test_a_different_hour_moves_the_arc(self):
+        assert pixel_bytes(self._sleep("22:00")) != pixel_bytes(self._sleep("23:00"))
+
+    @pytest.mark.parametrize("bad", ["", "bogus", "xx:yy", None])
+    def test_malformed_time_does_not_raise(self, bad):
+        assert pixel_bytes(self._sleep(bad)) == pixel_bytes(self._sleep("12:00"))
+
+    def test_downscale_is_a_nearest_resize_of_the_canonical_frame(self):
+        small = self._sleep(size=(320, 192))
+        assert small.size == (320, 192)
+        expected = self._sleep().resize((320, 192), Image.Resampling.NEAREST)
+        assert pixel_bytes(small) == pixel_bytes(expected)
+
+    def test_arc_is_lit_from_the_hour_to_dawn(self):
+        """At 22:00 the band at midnight is tangerine (red + yellow); the band
+        at mid-afternoon, outside the rest, carries no red."""
+        image = self._sleep("22:00")
+        lit = ink_counts(image.crop(self._band_box(0)))
+        assert lit.get(rq.SPECTRA6["red"], 0) and lit.get(rq.SPECTRA6["yellow"], 0)
+        assert not ink_counts(image.crop(self._band_box(15))).get(rq.SPECTRA6["red"], 0)
+
+    def test_arc_starts_at_the_quiet_hour(self):
+        """Quiet hours entered at five leave midnight's band unlit."""
+        image = self._sleep("05:00")
+        assert not ink_counts(image.crop(self._band_box(0))).get(rq.SPECTRA6["red"], 0)
+        assert ink_counts(image.crop(self._band_box(5.5))).get(rq.SPECTRA6["red"], 0)
+
+
+class TestQuestlineSleepFrame:
+    """``questline``'s own sleep frame: the same RPG scene after dark, an inn
+    on the hills with Z's drifting from its dark upstairs window, and the
+    innkeeper's "You rest at the inn" line in the dialogue box."""
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["questline"].sleep is rq.render_questline_sleep
+
+    def test_inks(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="questline")
+        assert pixel_bytes(image) == pixel_bytes(rq.render_questline_sleep("22:00", 800, 480))
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("black", "white", "red", "blue", "green", "yellow")}
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_questline_sleep("22:00", 800, 480)
+        assert pixel_bytes(rq.render_questline_sleep("22:00", 800, 480)) == pixel_bytes(a)
+        for time_str in ("23:59", "06:00", "00:00", "bogus"):
+            assert pixel_bytes(rq.render_questline_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_questline_sleep("22:00", 320, 192)
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_night_sky_has_a_moon_and_no_sun(self):
+        image = rq.render_questline_sleep("22:00", 800, 480)
+        sky = ink_counts(image.crop((0, 0, 800, rq._QUESTLINE_SKY_BOTTOM)))
+        # A navy (blue + black) night, not the quote frame's blue + white day.
+        assert sky.get(rq.SPECTRA6["white"], 0) < 0.05 * sum(sky.values())
+        assert sky.get(rq.SPECTRA6["black"], 0) > 0.3 * sum(sky.values())
+        cx, cy, r = rq._QUESTLINE_MOON
+        assert ink_counts(image.crop((cx - r, cy - r, cx + r, cy + r))).get(rq.SPECTRA6["yellow"], 0) > 400
+        # Where the daytime sun sits, the inn's roof and chimney stand instead.
+        sun = ink_counts(image.crop((656, 38, 724, 106)))
+        assert rq.SPECTRA6["yellow"] not in sun
+
+    def test_inn_and_innkeeper_dialogue(self):
+        image = rq.render_questline_sleep("22:00", 800, 480)
+        x0, y0 = rq._QUESTLINE_INN_ORIGIN
+        inn = ink_counts(image.crop((x0, y0, x0 + 22 * rq._QUESTLINE_INN_SCALE, y0 + 16 * rq._QUESTLINE_INN_SCALE)))
+        assert inn.get(rq.SPECTRA6["red"], 0) > 4000  # the roof
+        assert inn.get(rq.SPECTRA6["yellow"], 0) > 300  # lit window and door
+        bx0, by0, bx1, by1 = rq._QUESTLINE_BOX
+        body = ink_counts(image.crop((bx0 + 34, by0 + 28, bx1 - 34, by1 - 40)))
+        assert body.get(rq.SPECTRA6["yellow"], 0) > 1000  # "rest at the inn" highlighted
+        assert body.get(rq.SPECTRA6["white"], 0) > 3000
+        assert rq._QUESTLINE_SLEEP_ROW["matched_text"] in rq._QUESTLINE_SLEEP_ROW["display_quote"]
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        row = make_row(display_quote="It was half past three.", matched_text="half past three", author="A", title="B")
+        frame = rq.render("14:30", row, 800, 480, mode="production", theme="questline")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_questline_sleep("14:30", 800, 480))
+
+
+class TestYorhaSleepFrame:
+    """``yorha``'s own sleep frame: the System menu with SLEEP MODE selected
+    and the confirmation dialog "Enter sleep mode?" answered Yes, under Pod
+    042's proposal."""
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["yorha"].sleep is rq.render_yorha_sleep
+
+    def test_inks_are_the_themes_own(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="yorha")
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("white", "yellow", "black")}
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_yorha_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "06:00", "12:00", "bogus"):
+            assert pixel_bytes(rq.render_yorha_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        assert pixel_bytes(rq.render_yorha_sleep("22:00", 800, 480)) == pixel_bytes(a)
+        small = rq.render_yorha_sleep("22:00", 320, 192)
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_sleep_mode_row_and_yes_are_selected(self):
+        image = rq.render_yorha_sleep("22:00", 800, 480)
+        black = rq.SPECTRA6["black"]
+        rows = rq._yorha_menu_rows()
+        assert rq._YORHA_SLEEP_MENU[rq._YORHA_SLEEP_SELECTED] == "SLEEP MODE"
+
+        def black_share(rect):
+            counts = ink_counts(image.crop((rect[0] + 1, rect[1] + 1, rect[2], rect[3])))
+            return counts.get(black, 0) / sum(counts.values())
+
+        for i, row in enumerate(rows):
+            if i == rq._YORHA_SLEEP_SELECTED:
+                assert black_share(row) > 0.7
+            else:
+                assert black_share(row) < 0.4, rq._YORHA_SLEEP_MENU[i]
+        yes, no = rq._yorha_sleep_option_rows()
+        assert black_share(yes) > 0.7
+        assert black_share(no) < 0.3
+
+    def test_the_dialog_is_a_clean_panel_with_no_glitch(self):
+        # The dialog's face between the prompt and the options is the crisp
+        # W 7/8 : Y 1/8 panel stipple, untouched: a resting unit, not a broken one.
+        image = rq.render_yorha_sleep("22:00", 800, 480)
+        x0, y0, x1, _y1 = rq._YORHA_SLEEP_DIALOG_RECT
+        strip = image.crop((x0 + 20, y0 + 76, x1 - 20, rq._yorha_sleep_option_rows()[0][1] - 2))
+        counts = ink_counts(strip)
+        assert set(counts) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        assert 0.10 < counts[rq.SPECTRA6["yellow"]] / sum(counts.values()) < 0.15
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        row = make_row(author="Test Author", title="Test Title")
+        frame = rq.render("03:00", row, 800, 480, mode="production", theme="yorha")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_yorha_sleep("03:00", 800, 480))
+
+
+class TestMetroSleepFrame:
+    """``metro``'s own sleep frame: the same map on its night timetable. Day
+    routes are hollow (two rails of their ink, white between), the night
+    route runs dotted on top, and a service notice replaces the quote card."""
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["metro"].sleep is rq.render_metro_sleep
+
+    def test_full_palette_and_dispatch(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="metro")
+        assert pixel_bytes(image) == pixel_bytes(rq.render_metro_sleep("22:00", 800, 480))
+        assert distinct_inks(image) == set(rq.SPECTRA6.values())
+
+    def test_day_lines_are_hollow_where_the_day_map_is_solid(self):
+        # The red route's last run (y=74, x 686..800) is clear of the card in
+        # both frames: solid red by day, red rails around a white core at night.
+        red, white = rq.SPECTRA6["red"], rq.SPECTRA6["white"]
+        day = rq.render("22:00", make_row(), 800, 480, mode="production", theme="metro")
+        night = rq.render_metro_sleep("22:00", 800, 480)
+        assert day.getpixel((750, 74)) == red
+        assert night.getpixel((750, 74)) == white
+        column = [night.getpixel((750, y)) for y in range(64, 85)]
+        assert column.count(red) >= 4, "the suspended line keeps its rails"
+        assert ink_counts(night.crop((690, 60, 800, 90)))[red] < ink_counts(day.crop((690, 60, 800, 90)))[red]
+
+    def test_night_line_runs_dotted(self):
+        # The night route's first leg is x=84 from the masthead down to y=118:
+        # a broken run of blue dots, not one solid stroke.
+        blue = rq.SPECTRA6["blue"]
+        night = rq.render_metro_sleep("22:00", 800, 480)
+        column = [night.getpixel((84, y)) == blue for y in range(50, 112)]
+        runs = sum(1 for prev, cur in pairwise([False, *column]) if cur and not prev)
+        assert runs >= 3
+        assert not all(column)
+        # Its horizontal run under the interchanges is visible above the card.
+        assert ink_counts(night.crop((200, 214, 600, 231))).get(blue, 0) > 500
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_metro_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "06:00", "00:00", "bogus"):
+            assert pixel_bytes(rq.render_metro_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        assert pixel_bytes(rq.render_metro_sleep("22:00", 800, 480)) == pixel_bytes(a)
+        small = rq.render_metro_sleep("22:00", 320, 192)
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_prints_no_digits(self, monkeypatch):
+        drawn: list[str] = []
+        original = ImageDraw.ImageDraw.text
+
+        def spy(self, xy, text, *args, **kwargs):
+            drawn.append(str(text))
+            return original(self, xy, text, *args, **kwargs)
+
+        monkeypatch.setattr(ImageDraw.ImageDraw, "text", spy)
+        rq.render_metro_sleep("07:45", 800, 480)
+        assert drawn, "the spy must see the frame's text"
+        assert not any(ch.isdigit() for text in drawn for ch in text), drawn
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        frame = rq.render("14:30", make_row(), 800, 480, mode="production", theme="metro")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_metro_sleep("14:30", 800, 480))

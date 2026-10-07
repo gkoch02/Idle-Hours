@@ -6,6 +6,7 @@ Design notes: ``docs/themes.md``.
 from __future__ import annotations
 
 import math
+import random
 
 from PIL import Image, ImageDraw
 
@@ -236,4 +237,158 @@ def render_questline_frame(time_str: str, quote_row: dict, width: int, height: i
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-SPEC = FrameSpec(themes=("questline",), render=render_questline_frame)
+# ─── questline sleep frame (resting at the inn) ──────────────────────────────
+#
+# The same scene after dark: a navy night sky with a yellow crescent moon and
+# white pixel stars, the hills in forest green, and a pixel inn standing where
+# the hero stood. Its upstairs window is dark and white Z's drift up out of it;
+# a lantern-lit door and a hanging INN sign keep it welcoming. The innkeeper
+# speaks in the usual dialogue box. Nothing on the frame tells the time.
+
+_QUESTLINE_SLEEP_ROW = {
+    "display_quote": "You rest at the inn. HP and MP are fully restored. Sleep well, traveller!",
+    "matched_text": "rest at the inn",
+    "author": "Innkeeper",
+    "title": "The Wayside Inn",
+}
+_QUESTLINE_SLEEP_SEED = 0x1A7  # star field
+# 22-wide × 16-tall inn: red gabled roof with a chimney, white plaster walls,
+# a dark (sleeping) upstairs window, a lit yellow downstairs window and door.
+_QUESTLINE_INN = (
+    "................KK....",
+    "..........RR....KK....",
+    ".........RRRR...KK....",
+    "........RRRRRR..KK....",
+    ".......RRRRRRRR.KK....",
+    "......RRRRRRRRRRKK....",
+    ".....RRRRRRRRRRRRRR...",
+    "....RRRRRRRRRRRRRRRR..",
+    "...RRRRRRRRRRRRRRRRRR.",
+    "....WWWWWWWWWWWWWWWW..",
+    "....WWWKKKKWWWWWWWWW..",
+    "....WWWKKKKWWWWWWWWW..",
+    "....WWWWWWWWWWWWWWWW..",
+    "....WWYYYWWWWWKKKKWW..",
+    "....WWYYYWWWWWKYYKWW..",
+    "....WWWWWWWWWWKYYKWW..",
+)
+_QUESTLINE_INN_SCALE = 8
+_QUESTLINE_INN_ORIGIN = (588, _QUESTLINE_HILL_BOTTOM - 16 * _QUESTLINE_INN_SCALE - 6)
+_QUESTLINE_MOON = (96, 66, 32)  # cx, cy, r
+
+
+def _questline_paint_night(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Navy (B+K) night sky, forest-green hills, crescent moon and stars."""
+    width = image.size[0]
+    WHITE = SPECTRA6["white"]
+    YELLOW = SPECTRA6["yellow"]
+    GREEN = SPECTRA6["green"]
+    BLACK = SPECTRA6["black"]
+    BLUE = SPECTRA6["blue"]
+    _fill_swatch_stipple(image, (0, 0, width, _QUESTLINE_SKY_BOTTOM), dark=BLUE, light=BLACK, light_density=0.5)
+    draw.rectangle((0, _QUESTLINE_SKY_BOTTOM, width, _QUESTLINE_HILL_BOTTOM), fill=GREEN)
+    _fill_swatch_stipple(
+        image, (0, _QUESTLINE_HILL_BOTTOM - 22, width, _QUESTLINE_HILL_BOTTOM),
+        dark=GREEN, light=BLACK, light_density=0.5,
+    )
+    # Crescent: a yellow disc with an offset disc of night sky bitten out.
+    cx, cy, r = _QUESTLINE_MOON
+    moon = Image.new("1", image.size, 0)
+    mdraw = ImageDraw.Draw(moon)
+    mdraw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=1)
+    bite = 18
+    mdraw.ellipse((cx - r + bite, cy - r - 8, cx + r + bite, cy + r - 8), fill=0)
+    image.paste(YELLOW, (0, 0), moon)
+    # Stars: small white pixel crosses on a seeded field, clear of the moon,
+    # the drifting Z's and the inn.
+    rng = random.Random(_QUESTLINE_SLEEP_SEED)
+    placed = 0
+    while placed < 22:
+        sx = rng.randrange(12, width - 12)
+        sy = rng.randrange(10, _QUESTLINE_SKY_BOTTOM - 14)
+        if (sx - cx) ** 2 + (sy - cy) ** 2 < (r + 22) ** 2:
+            continue
+        if sx > 400 and sy < 120:  # the Z's
+            continue
+        if sx > _QUESTLINE_INN_ORIGIN[0] - 10:
+            continue
+        big = rng.random() < 0.3
+        arm = 4 if big else 2
+        draw.rectangle((sx - 1, sy - arm, sx + 1, sy + arm), fill=WHITE)
+        draw.rectangle((sx - arm, sy - 1, sx + arm, sy + 1), fill=WHITE)
+        placed += 1
+
+
+def _questline_paint_inn(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The inn pixmap on the hills, with a hanging yellow INN sign."""
+    del image
+    scale = _QUESTLINE_INN_SCALE
+    x0, y0 = _QUESTLINE_INN_ORIGIN
+    for ry, row in enumerate(_QUESTLINE_INN):
+        for rx, ch in enumerate(row):
+            color = _QUESTLINE_SPRITE_PALETTE.get(ch)
+            if color is None:
+                continue
+            px = x0 + rx * scale
+            py = y0 + ry * scale
+            draw.rectangle((px, py, px + scale - 1, py + scale - 1), fill=color)
+    # Hanging sign off the left wall: a black bracket and a yellow board.
+    BLACK = SPECTRA6["black"]
+    YELLOW = SPECTRA6["yellow"]
+    wall_x = x0 + 4 * scale
+    arm_y = y0 + 10 * scale
+    draw.rectangle((wall_x - 58, arm_y, wall_x - 1, arm_y + 3), fill=BLACK)
+    font = load_font(theme_font_candidates("questline", "quote_bold"), size=16)
+    bbox = draw.textbbox((0, 0), "INN", font=font)
+    tw, th = int(bbox[2] - bbox[0]), int(bbox[3] - bbox[1])
+    bx0 = wall_x - 54
+    by0 = arm_y + 10
+    board = (bx0, by0, bx0 + tw + 12, by0 + th + 12)
+    draw.line((board[0] + 4, arm_y + 3, board[0] + 4, by0), fill=BLACK, width=2)
+    draw.line((board[2] - 4, arm_y + 3, board[2] - 4, by0), fill=BLACK, width=2)
+    draw.rectangle(board, fill=YELLOW, outline=BLACK, width=2)
+    draw.text((board[0] + 6 - bbox[0], board[1] + 6 - bbox[1]), "INN", font=font, fill=BLACK)
+
+
+def _questline_paint_zzz(draw: ImageDraw.ImageDraw) -> None:
+    """White Z's rising up and to the left from the dark upstairs window."""
+    WHITE = SPECTRA6["white"]
+    scale = _QUESTLINE_INN_SCALE
+    wx = _QUESTLINE_INN_ORIGIN[0] + 7 * scale
+    wy = _QUESTLINE_INN_ORIGIN[1] + 10 * scale
+    # (dx, dy, size) relative to the window's top-left corner, growing as they rise.
+    for dx, dy, size in ((-26, -36, 20), (-82, -82, 28), (-154, -130, 38)):
+        font = load_font(theme_font_candidates("questline", "quote_bold"), size=size)
+        bbox = draw.textbbox((0, 0), "Z", font=font)
+        draw.text((wx + dx - bbox[0], wy + dy - bbox[1]), "Z", font=font, fill=WHITE)
+
+
+def render_questline_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the hero has turned in at the inn.
+
+    The night version of the quote frame's scene, with the innkeeper's
+    "You rest at the inn" line in the same dialogue box, nameplate, arrow
+    and footer. Composed at 800×480 and NEAREST-downsampled for any other
+    size, so a thumbnail shows the whole scene. ``time_str`` is unused:
+    nothing on the frame tells the time.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    row = _QUESTLINE_SLEEP_ROW
+    _questline_paint_night(image, draw)
+    _questline_paint_inn(image, draw)
+    _questline_paint_zzz(draw)
+    _questline_paint_box(image, draw)
+    _questline_paint_nameplate(image, draw, row)
+    bx0, by0, bx1, by1 = _QUESTLINE_BOX
+    _questline_paint_dialogue(image, draw, row, (bx0 + 34, by0 + 28, bx1 - 34, by1 - 40))
+    _questline_paint_arrow(draw)
+    _questline_paint_footer(image, draw, row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("questline",), render=render_questline_frame, sleep=render_questline_sleep)

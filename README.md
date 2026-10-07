@@ -630,7 +630,8 @@ picking corpus quotes and shows a **sleep frame** instead — "To sleep, perchan
 to dream." (Hamlet), rendered through the normal literary layout so it picks up
 your theme's borders, fonts, and accent colour like any other frame. A theme can
 also draw a sleep frame of its own instead: `redacted` puts up a SUSPENDED
-Standby Order with every word blacked out but "lights … out".
+Standby Order with every word blacked out but "lights … out", `marquee` reads
+CLOSED, and `questline`'s hero rests at the inn.
 
 ```bash
 # Shift or tighten the window
