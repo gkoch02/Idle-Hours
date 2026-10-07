@@ -651,6 +651,11 @@ SCENARIOS: list[dict] = [
         "theme": "chrono",
     },
     {
+        "name": "sleep_dsky",
+        "mode": "sleep",
+        "theme": "dsky",
+    },
+    {
         "name": "sleep_marquee",
         "mode": "sleep",
         "theme": "marquee",
