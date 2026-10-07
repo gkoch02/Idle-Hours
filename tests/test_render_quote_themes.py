@@ -8456,3 +8456,59 @@ class TestChronoSleepFrame:
         row = make_row(display_quote="It was half past two.", matched_text="half past two")
         quote = rq.render("14:30", row, 800, 480, mode="production", theme="chrono")
         assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestSamplerSleepFrame:
+    """``sampler``'s own sleep frame: the bedtime prayer stitched as a sampler,
+    under the alphabet row, with the maker's line, a moon and stars, and the
+    motif band's house with its windows dark."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="sampler")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["sampler"].sleep is rq.render_sampler_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_sampler_sleep("22:00", 800, 480))
+
+    def test_inks_determinism_and_no_time(self):
+        a = self._render()
+        assert distinct_inks(a) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "red", "blue", "green", "yellow")} <= distinct_inks(a)
+        for time_str in ("03:00", "12:59", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_prayer_is_the_first_couplet_only(self):
+        assert rq._SAMPLER_PRAYER == (
+            "Now I lay me down to sleep,",
+            "I pray the Lord my soul to keep.",
+        )
+        text = " ".join(rq._SAMPLER_PRAYER).lower()
+        assert "die" not in text and "wake" not in text
+
+    def test_the_rows_rejoin_into_the_prayer(self):
+        rows = rq._sampler_prayer_rows()
+        assert len(rows) == 4
+        assert [" ".join(rows[i:i + 2]) for i in (0, 2)] == list(rq._SAMPLER_PRAYER)
+        assert rq._SAMPLER_PRAYER_ACCENT in rows[1]
+
+    def test_sleep_is_stitched_in_red_and_the_prayer_in_black(self):
+        """The prayer band carries black floss and one red word; the red is
+        confined to the second row, where "sleep" falls."""
+        image = rq.render_sampler_sleep("22:00", 800, 480)
+        red, black = rq.SPECTRA6["red"], rq.SPECTRA6["black"]
+        line_h = rq._SAMPLER_LINE_ROWS * rq._SAMPLER_PRAYER_SIZE
+        top = 102
+        rows = [ink_counts(image.crop((60, top + i * line_h, 740, top + (i + 1) * line_h))) for i in range(4)]
+        assert all(r.get(black, 0) > 1000 for r in rows)
+        assert rows[1].get(red, 0) > 1000
+        assert all(rows[i].get(red, 0) == 0 for i in (0, 2, 3))
+
+    def test_the_houses_windows_are_dark(self):
+        assert rq._SAMPLER_HOUSE_DARK[:4] == rq._SAMPLER_HOUSE[:4]
+        assert all("Y" not in row for row in rq._SAMPLER_HOUSE_DARK[4:])
+        assert all("Y" in row for row in rq._SAMPLER_HOUSE[4:])
+
+    def test_differs_from_the_quote_frame(self):
+        quote = rq.render("22:00", make_row(), 800, 480, mode="production", theme="sampler")
+        assert pixel_bytes(quote) != pixel_bytes(self._render())

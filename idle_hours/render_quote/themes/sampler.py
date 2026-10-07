@@ -301,4 +301,125 @@ def render_sampler_frame(time_str: str, quote_row: dict, width: int, height: int
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-SPEC = FrameSpec(themes=("sampler",), render=render_sampler_frame)
+# ── sampler: the quiet-hours frame ────────────────────────────────────────────
+# The bedtime prayer from the New England Primer, a stock sampler verse, stitched
+# under the alphabet row with the maker's line beneath and the motif band at the
+# foot, the house's windows dark. Only the first couplet: the second ("If I
+# should die before I wake") is wrong for a bedroom clock.
+_SAMPLER_PRAYER = (
+    "Now I lay me down to sleep,",
+    "I pray the Lord my soul to keep.",
+)
+# Each verse line is stitched as two rows (break after these words) so the
+# prayer can take the chunky size-6 stitch the shortest quotes get.
+_SAMPLER_PRAYER_BREAKS = ("Now I lay me", "I pray the Lord")
+# The word stitched in red floss: the matched phrase's colour, given to the word
+# that says what the hour is for.
+_SAMPLER_PRAYER_ACCENT = "sleep"
+_SAMPLER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_SAMPLER_MAKER = "Wrought in the Idle Hours"
+_SAMPLER_PRAYER_SIZE = 6
+_SAMPLER_SMALL_SIZE = 3
+# Night motifs: a crescent moon outlined in blue, and blue-and-yellow stars.
+_SAMPLER_MOON = (
+    "   BBBB ",
+    "  BYYB  ",
+    " BYYB   ",
+    "BYYB    ",
+    "BYYB    ",
+    "BYYB    ",
+    "BYYB    ",
+    " BYYB   ",
+    "  BYYB  ",
+    "   BBBB ",
+)
+_SAMPLER_STAR = ("  B  ", " BYB ", "BYYYB", " BYB ", "  B  ")
+# The night band between the maker's line and the motif band: stars either
+# side of the moon, in stitch size 5 so the moon fits the gap.
+_SAMPLER_NIGHT_SIZE = 5
+_SAMPLER_NIGHT_Y = 332
+_SAMPLER_NIGHT_STARS = (150, 250, 525, 625)
+# The motif-band house with its windows dark: lights out.
+_SAMPLER_HOUSE_DARK = _SAMPLER_HOUSE[:4] + ("GKKBKKG", "GKKBKKG")
+
+
+def _sampler_prayer_rows() -> list[str]:
+    """Split each verse line of ``_SAMPLER_PRAYER`` at its break into two rows."""
+    rows = []
+    for line, head in zip(_SAMPLER_PRAYER, _SAMPLER_PRAYER_BREAKS, strict=True):
+        rows += [head, line[len(head):].strip()]
+    return rows
+
+
+def _sampler_stitch_centred(image, draw, chunks, y: int, size: int) -> None:
+    """Stitch one row of ``(text, font, color)`` chunks centred on the canvas."""
+    width, height = image.size
+    px = pixel_access(image)
+    line_w = sum(int(round(draw.textlength(text, font=font))) * size for text, font, _c in chunks)
+    x = (width - line_w) // 2
+    for text, font, color in chunks:
+        x += _sampler_stitch_chunk(image, draw, px, text, font, x, y, size, color, width, height)
+
+
+def _sampler_paint_sleep_motifs(image: Image.Image) -> None:
+    """The quote frame's motif band, the house's windows dark, under a night
+    band of a crescent moon between stars."""
+    width, height = image.size
+    px = pixel_access(image)
+    size = 6
+    band_y = height - 30 - size - 6 * size
+    cx = width // 2
+    _sampler_stamp_motif(px, _SAMPLER_HOUSE_DARK, cx - (len(_SAMPLER_HOUSE_DARK[0]) * size) // 2, band_y, size,
+                         width, height)
+    _sampler_stamp_motif(px, _SAMPLER_HEART, cx - 150, band_y + size, size, width, height)
+    _sampler_stamp_motif(px, _SAMPLER_BIRD, cx + 110, band_y + size, size, width, height)
+    _sampler_stamp_motif(px, _SAMPLER_TREE, cx - 230, band_y, size, width, height)
+    _sampler_stamp_motif(px, _SAMPLER_TREE, cx + 190, band_y, size, width, height)
+    night = _SAMPLER_NIGHT_SIZE
+    moon_w = len(_SAMPLER_MOON[0]) * night
+    _sampler_stamp_motif(px, _SAMPLER_MOON, cx - moon_w // 2 + night, _SAMPLER_NIGHT_Y, night, width, height)
+    star_y = _SAMPLER_NIGHT_Y + (len(_SAMPLER_MOON) - len(_SAMPLER_STAR)) * night // 2
+    for sx in _SAMPLER_NIGHT_STARS:
+        _sampler_stamp_motif(px, _SAMPLER_STAR, sx, star_y, night, width, height)
+
+
+def render_sampler_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the bedtime prayer stitched as a sampler.
+
+    Alphabet row, the first couplet of "Now I lay me down to sleep" in black
+    floss with "sleep" in red, "Wrought in the Idle Hours" as the maker's line,
+    a moon and stars, and the motif band with the house's windows dark.
+    Composed at 800×480 and NEAREST-downsampled. ``time_str`` is unused:
+    nothing on the frame tells the time.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    draw = ImageDraw.Draw(image)
+    _sampler_paint_aida(image)
+    _sampler_paint_border(image)
+    _sampler_paint_sleep_motifs(image)
+
+    regular = load_font(theme_font_candidates("sampler", "quote_regular"), 8)
+    bold = load_font(theme_font_candidates("sampler", "quote_bold"), 8)
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    small = _SAMPLER_SMALL_SIZE
+    _sampler_stitch_centred(image, draw, [(_SAMPLER_ALPHABET, regular, SPECTRA6["blue"])], 58, small)
+
+    size = _SAMPLER_PRAYER_SIZE
+    y = 102
+    for row in _sampler_prayer_rows():
+        head, sep, tail = row.partition(_SAMPLER_PRAYER_ACCENT)
+        chunks = [(head, regular, black)]
+        if sep:
+            chunks += [(sep, bold, red), (tail, regular, black)]
+        _sampler_stitch_centred(image, draw, [c for c in chunks if c[0]], y, size)
+        y += _SAMPLER_LINE_ROWS * size
+    _sampler_stitch_centred(image, draw, [(_SAMPLER_MAKER, regular, SPECTRA6["green"])], y + 8, small)
+
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("sampler",), render=render_sampler_frame, sleep=render_sampler_sleep)
