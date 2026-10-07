@@ -613,6 +613,13 @@ SCENARIOS: list[dict] = [
         "mode": "goodnight",
         "theme": "scholar",
     },
+    # A theme's own sleep frame (``spec.sleep``), drawn in place of the
+    # bundled sleep quote by ``render_sleep_frame``.
+    {
+        "name": "sleep_redacted",
+        "mode": "sleep",
+        "theme": "redacted",
+    },
 ]
 
 
@@ -696,6 +703,8 @@ def _render_scenario(scenario: dict) -> Image.Image:
 
 
 def _render_scenario_now(scenario: dict) -> Image.Image:
+    if scenario["mode"] == "sleep":
+        return rq.render_sleep_frame("22:00", 800, 480, theme=scenario["theme"])
     if scenario["mode"] == "goodnight":
         return rq.render_static_message(
             scenario["message"],

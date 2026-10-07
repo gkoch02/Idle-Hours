@@ -77,6 +77,19 @@ _REGISTRY = build_registry(THEME_MODULES, THEMES)
 BORDER_SPECS: dict[str, BorderSpec] = _REGISTRY.borders
 FRAME_SPECS: dict[str, FrameSpec] = _REGISTRY.frames
 
+
+
+def sleep_renderer(theme: str):
+    """The theme's own sleep-frame renderer, or ``None`` when it sleeps under
+    the bundled quote.
+
+    Read off the live spec tables on every call, so a test that swaps a spec
+    in ``BORDER_SPECS`` / ``FRAME_SPECS`` swaps its sleep frame with it.
+    """
+    spec = FRAME_SPECS.get(theme) or BORDER_SPECS.get(theme)
+    return spec.sleep if spec is not None else None
+
+
 _BORDER_PAINTERS: Mapping = MappingProxyType({theme: spec.paint for theme, spec in BORDER_SPECS.items()})
 _FRAME_RENDERERS: Mapping = MappingProxyType({theme: spec.render for theme, spec in FRAME_SPECS.items()})
 # Bordered themes with no ``debug_label_inset`` clear the banner's y=14-29 band

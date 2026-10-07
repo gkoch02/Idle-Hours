@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import random
 import re
+from typing import Any
 
 from PIL import Image, ImageDraw
 
@@ -72,6 +73,26 @@ _REDACTED_DOC_TYPES = (
     "FIELD RECORDING",
 )
 _REDACTED_CLEARANCE_LEVELS = 7
+# The sleep frame: a Standby Order from the Director's office with every word
+# blacked out but "lights", early in the first line, and "out", partway along
+# the last. Nobody reads the text under the bars, but its wording decides where
+# those two words land, and ``TestRedactedSleepFrame`` pins that placement.
+_REDACTED_SLEEP_ROW = {
+    "display_quote": "The lights of the Oldest House are dimmed floor by floor, the Hotline is left to ring, "
+                     "the Board falls silent, and the janitor walks each corridor until the last lamp is "
+                     "put out for the night.",
+    "matched_text": "",
+    "author": "Office of the Director",
+    "title": "Standby Order",
+}
+_REDACTED_SLEEP_FIELDS = ("STANDBY ORDER", "FBC-00000", "LEVEL 7")
+_REDACTED_SLEEP_STAMP = "SUSPENDED"
+_REDACTED_SLEEP_KEEP = ("lights", "out")
+# Share of word gaps a censor's stroke carries straight across, so the bars
+# read as hand-drawn runs rather than one block per word.
+_REDACTED_SLEEP_JOIN = 0.35
+_REDACTED_SLEEP_SEED = 0x5EE9
+
 # Words the censor leaves alone: function words (blacking out "would" reads as
 # a layout bug, not a secret) and anything that could be part of a time.
 _REDACTED_SPARED = frozenset("""
@@ -217,24 +238,23 @@ def _redacted_paint_letterhead(draw: ImageDraw.ImageDraw) -> None:
     draw.line([(24, _REDACTED_RULE_Y + 5), (776, _REDACTED_RULE_Y + 5)], fill=black, width=1)
 
 
-def _redacted_paint_fields(draw: ImageDraw.ImageDraw, quote_row: dict) -> None:
-    """The document's form fields: type, file number, clearance — labels in
-    the letterhead's grotesque, values typed."""
+def _redacted_paint_fields(draw: ImageDraw.ImageDraw, fields: tuple[str, str, str]) -> None:
+    """The document's form fields ``(type, file number, clearance)`` — labels
+    in the letterhead's grotesque, values typed."""
     black = SPECTRA6["black"]
     label_font = load_font([ARCHIVO_BOLD, *META_FONT_BOLD_CANDIDATES], size=_REDACTED_LABEL_SIZE)
     value_font = load_font(theme_font_candidates("redacted", "quote_regular"), size=_REDACTED_VALUE_SIZE)
-    doc_type, file_no, clearance = _redacted_doc_fields(quote_row)
+    doc_type, file_no, clearance = fields
     for x, label, value in ((40, "DOCUMENT TYPE", doc_type), (380, "FILE NO.", file_no),
                             (590, "CLEARANCE", clearance)):
         w = draw_tracked(draw, (x, _REDACTED_FIELDS_Y + 4), label, label_font, black, tracking=1)
         draw.text((x + w + 8, _REDACTED_FIELDS_Y), value, font=value_font, fill=black)
 
 
-def _redacted_paint_stamp(image: Image.Image, quote_row: dict) -> None:
-    """The red DECLASSIFIED stamp, double-bordered, tipped a few degrees and
-    worn: the rubber's ink misses in a seeded scatter of pinholes."""
+def _redacted_paint_stamp(image: Image.Image, quote_row: dict, text: str = "DECLASSIFIED") -> None:
+    """The red rubber stamp, double-bordered, tipped a few degrees and worn:
+    the rubber's ink misses in a seeded scatter of pinholes."""
     font = load_font([ARCHIVO_BOLD, *META_FONT_BOLD_CANDIDATES], size=28)
-    text = "DECLASSIFIED"
     probe = ImageDraw.Draw(image)
     tracking = 2
     tw = int(probe.textlength(text, font=font)) + tracking * (len(text) - 1)
@@ -309,7 +329,7 @@ def render_redacted_frame(time_str: str, quote_row: dict, width: int, height: in
     draw = ImageDraw.Draw(image)
     _redacted_paint_letterhead(draw)
     _redacted_paint_stamp(image, quote_row)
-    _redacted_paint_fields(draw, quote_row)
+    _redacted_paint_fields(draw, _redacted_doc_fields(quote_row))
     _redacted_paint_quote(image, draw, quote_row)
     _redacted_paint_foot(image, draw, quote_row)
     image = snap_image_to_palette(image, SPECTRA6_PALETTE)
@@ -318,4 +338,81 @@ def render_redacted_frame(time_str: str, quote_row: dict, width: int, height: in
     return image
 
 
-SPEC = FrameSpec(themes=("redacted",), render=render_redacted_frame)
+def _redacted_sleep_words(draw: ImageDraw.ImageDraw, placed) -> list[tuple[int, str, float, float, int, Any]]:
+    """Every word of a laid-out block as ``(line, word, x0, x1, y, font)``."""
+    line_ys = sorted({p[1] for p in placed})
+    words = []
+    for x, y, chunk, font, *_ in placed:
+        for m in _WORD_RE.finditer(chunk):
+            x0 = x + draw.textlength(chunk[:m.start()], font=font)
+            words.append((line_ys.index(y), m.group(0), x0, x0 + draw.textlength(m.group(0), font=font), y, font))
+    return words
+
+
+def _redacted_sleep_kept(words) -> tuple[int, int]:
+    """Indices of the two words the censor leaves: the first ``lights``, then
+    the first ``out`` after it."""
+    first, second = _REDACTED_SLEEP_KEEP
+    i = next(i for i, w in enumerate(words) if w[1].strip(_REDACTED_EDGE_PUNCT).lower() == first)
+    j = next(j for j, w in enumerate(words) if j > i and w[1].strip(_REDACTED_EDGE_PUNCT).lower() == second)
+    return i, j
+
+
+def _redacted_sleep_layout(draw: ImageDraw.ImageDraw):
+    """The Standby Order laid out in the body rect, centred vertically.
+
+    Fitted from a larger ceiling than a quote (40 against 34) and with more
+    leading, because only two words are ever read and the bars want air.
+    """
+    placed = _place_quote(draw, _REDACTED_SLEEP_ROW, _REDACTED_QUOTE_RECT, theme="redacted",
+                          font_max=40, font_min=16, line_height_mult=1.6)
+    x0, y0, x1, y1 = _REDACTED_QUOTE_RECT
+    block_h = (placed[-1][1] - placed[0][1]) + placed[0][6]
+    dy = max(0, (y1 - y0 - block_h) // 2)
+    return [(x, y + dy, *rest) for x, y, *rest in placed]
+
+
+def render_redacted_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: a Standby Order, SUSPENDED, with every word
+    blacked out but "lights … out" in red.
+
+    The same letterhead, stamp, fields and foot as the quote frame. Bars sit
+    just inside each word so the gaps between words survive, and a seeded
+    share of gaps is carried straight across. ``time_str`` is unused: nothing
+    on the frame tells the time.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    draw = ImageDraw.Draw(image)
+    row = _REDACTED_SLEEP_ROW
+    _redacted_paint_letterhead(draw)
+    _redacted_paint_stamp(image, row, text=_REDACTED_SLEEP_STAMP)
+    _redacted_paint_fields(draw, _REDACTED_SLEEP_FIELDS)
+
+    words = _redacted_sleep_words(draw, _redacted_sleep_layout(draw))
+    kept = _redacted_sleep_kept(words)
+    black, red = SPECTRA6["black"], SPECTRA6["red"]
+    for i, (_line, word, x0, _x1, y, font) in enumerate(words):
+        draw.text((x0, y), word, font=font, fill=red if i in kept else black)
+    rng = random.Random(_REDACTED_SLEEP_SEED)
+    runs: list[list] = []
+    for i, (line, _word, x0, x1, y, _font) in enumerate(words):
+        if i in kept:
+            continue
+        if runs and runs[-1][0] == line and runs[-1][4] == i - 1 and rng.random() < _REDACTED_SLEEP_JOIN:
+            runs[-1][2], runs[-1][4] = x1, i
+        else:
+            runs.append([line, x0, x1, y, i])
+    font = words[0][5]
+    top, bottom = font.getbbox("Hgjy|")[1], font.getbbox("Hgjy|")[3]
+    bars = [(int(x0) + 1, y + top - 1, int(x1) - 1, y + bottom) for _l, x0, x1, y, _i in runs]
+    _redacted_paint_bars(image, bars, row)
+
+    _redacted_paint_foot(image, draw, row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("redacted",), render=render_redacted_frame, sleep=render_redacted_sleep)

@@ -7975,3 +7975,53 @@ class TestRedactedFrame:
             assert rq.SPECTRA6["red"] not in top, seed
             plain = self._render(dict(row, matched_text=""))
             assert rq.SPECTRA6["red"] not in ink_counts(plain.crop((0, rq._REDACTED_FIELDS_Y + 24, 800, 480))), seed
+
+
+
+class TestRedactedSleepFrame:
+    """``redacted``'s own sleep frame: a SUSPENDED Standby Order, every word
+    blacked out but "lights" early in the first line and "out" partway along
+    the last."""
+
+    @staticmethod
+    def _words():
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        words = rq._redacted_sleep_words(draw, rq._redacted_sleep_layout(draw))
+        return words, rq._redacted_sleep_kept(words)
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["redacted"].sleep is rq.render_redacted_sleep
+
+    def test_lights_opens_the_page_and_out_hides_in_the_last_line(self):
+        words, (lights, out) = self._words()
+        last = words[-1][0]
+        assert words[lights][1] == "lights" and words[lights][0] == 0
+        assert words[out][1] == "out" and words[out][0] == last
+        line_start = min(i for i, w in enumerate(words) if w[0] == last)
+        line_end = max(i for i, w in enumerate(words) if w[0] == last)
+        assert line_start < out < line_end, "out must sit inside its line, not at an end"
+        assert 4 <= last + 1 <= 6
+
+    def test_inks_and_only_two_red_words(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="redacted")
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("black", "white", "red")}
+        words, kept = self._words()
+        body = image.crop(rq._REDACTED_QUOTE_RECT)
+        assert ink_counts(body).get(rq.SPECTRA6["red"], 0) > 200
+        x0, y0 = rq._REDACTED_QUOTE_RECT[:2]
+        for i, (_line, _word, wx0, wx1, y, font) in enumerate(words):
+            if i in kept:
+                continue
+            word = image.crop((int(wx0) + 2, y + 6, int(wx1) - 2, y + font.size - 4))
+            assert rq.SPECTRA6["red"] not in ink_counts(word), _word
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_redacted_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(rq.render_redacted_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        small = rq.render_redacted_sleep("22:00", 320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        frame = rq.render("14:30", make_row(**TestRedactedFrame.ROW), 800, 480, mode="production", theme="redacted")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_redacted_sleep("14:30", 800, 480))
