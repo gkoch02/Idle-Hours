@@ -8456,3 +8456,266 @@ class TestChronoSleepFrame:
         row = make_row(display_quote="It was half past two.", matched_text="half past two")
         quote = rq.render("14:30", row, 800, 480, mode="production", theme="chrono")
         assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestSamplerSleepFrame:
+    """``sampler``'s own sleep frame: the bedtime prayer stitched as a sampler,
+    under the alphabet row, with the maker's line, a moon and stars, and the
+    motif band's house with its windows dark."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="sampler")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["sampler"].sleep is rq.render_sampler_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_sampler_sleep("22:00", 800, 480))
+
+    def test_inks_determinism_and_no_time(self):
+        a = self._render()
+        assert distinct_inks(a) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "red", "blue", "green", "yellow")} <= distinct_inks(a)
+        for time_str in ("03:00", "12:59", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_prayer_is_the_first_couplet_only(self):
+        assert rq._SAMPLER_PRAYER == (
+            "Now I lay me down to sleep,",
+            "I pray the Lord my soul to keep.",
+        )
+        text = " ".join(rq._SAMPLER_PRAYER).lower()
+        assert "die" not in text and "wake" not in text
+
+    def test_the_rows_rejoin_into_the_prayer(self):
+        rows = rq._sampler_prayer_rows()
+        assert len(rows) == 4
+        assert [" ".join(rows[i:i + 2]) for i in (0, 2)] == list(rq._SAMPLER_PRAYER)
+        assert rq._SAMPLER_PRAYER_ACCENT in rows[1]
+
+    def test_sleep_is_stitched_in_red_and_the_prayer_in_black(self):
+        """The prayer band carries black floss and one red word; the red is
+        confined to the second row, where "sleep" falls."""
+        image = rq.render_sampler_sleep("22:00", 800, 480)
+        red, black = rq.SPECTRA6["red"], rq.SPECTRA6["black"]
+        line_h = rq._SAMPLER_LINE_ROWS * rq._SAMPLER_PRAYER_SIZE
+        top = 102
+        rows = [ink_counts(image.crop((60, top + i * line_h, 740, top + (i + 1) * line_h))) for i in range(4)]
+        assert all(r.get(black, 0) > 1000 for r in rows)
+        assert rows[1].get(red, 0) > 1000
+        assert all(rows[i].get(red, 0) == 0 for i in (0, 2, 3))
+
+    def test_the_houses_windows_are_dark(self):
+        assert rq._SAMPLER_HOUSE_DARK[:4] == rq._SAMPLER_HOUSE[:4]
+        assert all("Y" not in row for row in rq._SAMPLER_HOUSE_DARK[4:])
+        assert all("Y" in row for row in rq._SAMPLER_HOUSE[4:])
+
+    def test_differs_from_the_quote_frame(self):
+        quote = rq.render("22:00", make_row(), 800, 480, mode="production", theme="sampler")
+        assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestTrisolarisSleepFrame:
+    """``trisolaris``'s own sleep frame: a chaotic era has begun and the order
+    is to dehydrate, with the dried rolls racked in their store under the
+    promise of rehydration when the stable era returns."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="trisolaris")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["trisolaris"].sleep is rq.render_trisolaris_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_trisolaris_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "blue", "yellow", "red")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("03:00", "12:59", "06:30", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_frozen_at_the_start_of_a_chaotic_era(self):
+        """The sky is the first sample after a stable era gives way, so the
+        header gives the order to dehydrate."""
+        from idle_hours.render_quote.themes import trisolaris
+        ephemeris = trisolaris._trisolaris_ephemeris()
+        index = trisolaris._TRISOLARIS_SLEEP_INDEX
+        dominance = trisolaris._TRISOLARIS_STABLE_DOMINANCE
+        assert ephemeris[index - 1][2] > dominance >= ephemeris[index][2]
+        # ... and the chaotic era it opens is a long one, not a flicker.
+        assert all(ephemeris[k][2] <= dominance for k in range(index, index + 60))
+
+    def test_the_header_shows_a_chaotic_era(self):
+        """All three discs of the era glyph are filled, as in a chaotic quote frame."""
+        image = self._render()
+        x1 = rq._TRISOLARIS_COLUMN[1]
+        yellow = rq.SPECTRA6["yellow"]
+        for k in range(3):
+            cx = x1 - 40 + 4 + k * 14
+            assert image.getpixel((cx, 100)) == yellow, k
+
+    def test_the_store_is_racked_and_the_quote_column_is_replaced(self):
+        image = self._render()
+        store = ink_counts(image.crop(rq._TRISOLARIS_SLEEP_STORE))
+        assert store.get(rq.SPECTRA6["white"], 0) > 1500
+        assert store.get(rq.SPECTRA6["yellow"], 0) > 100
+        row = make_row(display_quote="It was half past two.", matched_text="half past two")
+        for time_str in ("22:00", "02:30"):
+            quote = rq.render(time_str, row, 800, 480, mode="production", theme="trisolaris")
+            assert pixel_bytes(quote) != pixel_bytes(image)
+
+
+class TestLiederSleepFrame:
+    """``lieder``'s own sleep frame: the opening phrase of Brahms's
+    *Wiegenlied*, Op. 49 No. 4, engraved with the quote frame's painters,
+    "gut' Nacht" sung in red."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="lieder")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["lieder"].sleep is rq.render_lieder_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_lieder_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "red")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "03:00", "12:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_melody_is_brahms(self):
+        """C major (Brahms wrote E-flat): E E | G. E E | G, upbeat of two quavers."""
+        assert [(pitch, beats) for _text, pitch, beats, _hyphen in rq._LIEDER_SLEEP_MELODY] == [
+            ("E4", 0.5), ("E4", 0.5), ("G4", 1.5), ("E4", 0.5), ("E4", 1.0), ("G4", 2.0),
+        ]
+        lyric = "".join(text + ("-" if hyphen else " ") for text, _p, _b, hyphen in rq._LIEDER_SLEEP_MELODY)
+        assert lyric.strip() == "Gu-ten A-bend, gut' Nacht,"
+
+    def test_bars_are_full_three_four(self):
+        """The upbeat is one beat; every bar after it holds exactly three."""
+        notes = rq._lieder_sleep_notes()
+        bars, current = [], 0.0
+        for note in notes:
+            if note["bar"]:
+                bars.append(current)
+                current = 0.0
+            current += note["beats"]
+        bars.append(current)
+        assert bars == [1.0, 3.0, 3.0]
+        assert notes[-1].get("rest") and notes[-1]["beats"] == 1.0
+        assert [n["pitch"] for n in notes if not n.get("rest")] == [0, 0, 2, 0, 0, 2]
+
+    def test_red_is_good_night_on_the_stave(self):
+        """Red appears only in the system (the sung "gut' Nacht" and its slur),
+        in its right half; the header, stanza and plate line are black."""
+        image = rq.render_lieder_sleep("22:00", 800, 480)
+        red = rq.SPECTRA6["red"]
+        top = rq._LIEDER_SLEEP_STAFF_TOP - 4 * rq._LIEDER_SLEEP_GAP
+        bottom = rq._LIEDER_SLEEP_STANZA_TOP - 30
+        assert red not in ink_counts(image.crop((0, 0, 800, top)))
+        assert red not in ink_counts(image.crop((0, bottom, 800, 480)))
+        assert red not in ink_counts(image.crop((0, top, 400, bottom)))
+        assert ink_counts(image.crop((400, top, 800, bottom))).get(red, 0) > 300
+        # The five staff lines run the width of the page.
+        staff = image.crop((100, rq._LIEDER_SLEEP_STAFF_TOP, 700, rq._LIEDER_SLEEP_STAFF_TOP + 1))
+        assert ink_counts(staff).get(rq.SPECTRA6["black"], 0) > 500
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        frame = rq.render("14:30", make_row(), 800, 480, mode="production", theme="lieder")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_lieder_sleep("14:30", 800, 480))
+
+
+class TestSemioticSleepFrame:
+    """``semiotic``'s own sleep frame: HYPERSLEEP — the same bulkhead with the
+    crew in stasis, Cobb's 004 CRYOGENIC VAULT in place of the hour's sign,
+    and a text-only status placard."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="semiotic")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["semiotic"].sleep is rq.render_semiotic_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_semiotic_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "red", "yellow", "blue")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_featured_sign_is_cobbs_cryogenic_vault(self):
+        """The feature panel is 004 CRYOGENIC VAULT from the CC BY sheet: pixel
+        for pixel the panel the 04:00 quote frame features, since 004 is that
+        hour's sign."""
+        assert rq._SEMIOTIC_SLEEP_SIGN == "004" == rq._SEMIOTIC_HOUR_SIGNS[4]
+        assert rq._SEMIOTIC_NAMES["004"] == "CRYOGENIC VAULT"
+        x, y, w, h = rq._SEMIOTIC_FEATURE_BOX
+        box = (x, y, x + w, y + h)
+        sleep = rq.render_semiotic_sleep("22:00", 800, 480).crop(box)
+        row = make_row(display_quote="It was four o'clock.", matched_text="four o'clock")
+        vault = rq.render("04:00", row, 800, 480, mode="production", theme="semiotic").crop(box)
+        assert pixel_bytes(sleep) == pixel_bytes(vault)
+
+    def test_the_placard_is_text_only_and_centred(self):
+        """Between the header and footer rules the placard carries only black
+        status text on white: no pictograms (every sign on the frame is one of
+        Cobb's), and no red, since it is a status panel, not an alarm. The
+        text block sits centred between the two rules."""
+        image = rq.render_semiotic_sleep("22:00", 800, 480)
+        x0, _, x1, _ = rq._SEMIOTIC_PLACARD
+        top, bottom = rq._SEMIOTIC_HEADER_RULE_Y + 4, rq._SEMIOTIC_FOOTER_RULE_Y - 4
+        band = image.crop((x0 + 30, top, x1 - 30, bottom))
+        assert set(ink_counts(band)) == {rq.SPECTRA6["white"], rq.SPECTRA6["black"]}
+        ink = band.convert("L").point(lambda v: 255 if v < 128 else 0).getbbox()
+        assert ink is not None
+        above, below = ink[1], band.height - ink[3]
+        assert abs(above - below) <= 8, (above, below)
+
+    def test_companions_are_real_signs_from_the_sheet(self):
+        assert all(code in rq._SEMIOTIC_INDEX for code in rq._SEMIOTIC_SLEEP_COMPANIONS)
+        assert len(set(rq._SEMIOTIC_SLEEP_COMPANIONS)) == 3
+        assert rq._SEMIOTIC_SLEEP_SIGN not in rq._SEMIOTIC_SLEEP_COMPANIONS
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        row = make_row(display_quote="It was half past two.", matched_text="half past two")
+        quote = rq.render("14:30", row, 800, 480, mode="production", theme="semiotic")
+        assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
+class TestPillowFloorApis:
+    """The renderer must run on the declared Pillow floor (``Pillow>=9.3`` in
+    pyproject.toml; Raspberry Pi OS bookworm ships 9.4), but this suite runs
+    on a current Pillow, so an API added later never fails here. Fence the
+    ones that have slipped in: ``rounded_rectangle(corners=...)`` is Pillow
+    9.5+ and once crashed the ``semiotic`` sleep frame on the floor (PR #380).
+    """
+
+    POST_FLOOR_KWARGS = {"rounded_rectangle": {"corners"}}
+
+    def test_no_post_floor_keyword_arguments(self):
+        import ast
+        root = pathlib.Path(rq.__file__).parent
+        offenders = []
+        for path in sorted(root.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(), str(path))):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    banned = self.POST_FLOOR_KWARGS.get(node.func.attr, set())
+                    offenders += [f"{path.relative_to(root)}:{node.lineno} {node.func.attr}({kw.arg}=)"
+                                  for kw in node.keywords if kw.arg in banned]
+        assert not offenders, offenders

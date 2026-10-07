@@ -457,13 +457,18 @@ def _trisolaris_paint_red_coast(image: Image.Image) -> None:
 
 
 def _trisolaris_paint_header(draw: ImageDraw.ImageDraw, time_str: str) -> None:
+    """``三体`` masthead, the title, the civilization number and the era at
+    ``time_str``."""
+    _trisolaris_paint_masthead(draw, *_trisolaris_era(time_str))
+
+
+def _trisolaris_paint_masthead(draw: ImageDraw.ImageDraw, stable: bool, civilization: int) -> None:
     """``三体`` masthead, the title, the civilization number and the era.
 
     The era carries its own glyph: three small discs for the three suns, one
     filled in a stable era (the planet has a sun of its own) and all three in
     a chaotic one.
     """
-    stable, civilization = _trisolaris_era(time_str)
     col_x0, col_x1 = _TRISOLARIS_COLUMN
     han = load_font([YUJI_BOKU_REGULAR, *META_FONT_BOLD_CANDIDATES], 46)
     draw.text((col_x0, 22), "三体", font=han, fill=SPECTRA6["white"])
@@ -485,7 +490,8 @@ def _trisolaris_paint_header(draw: ImageDraw.ImageDraw, time_str: str) -> None:
                      outline=SPECTRA6["yellow"])
 
 
-def _trisolaris_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> int:
+def _trisolaris_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict,
+                            rect: tuple[int, int, int, int] = _TRISOLARIS_QUOTE_RECT, font_max: int = 30) -> int:
     """The quote in the dark sky: solid white prose, the matched phrase lit as
     sunlight. Returns the block's bottom y.
 
@@ -493,8 +499,8 @@ def _trisolaris_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote
     outline round every letter.
     """
     prose, hot, bottom = wrap_quote_into_masks(
-        draw, image.size, quote_row, _TRISOLARIS_QUOTE_RECT, theme="trisolaris",
-        font_max=30, font_min=14, line_height_mult=1.32,
+        draw, image.size, quote_row, rect, theme="trisolaris",
+        font_max=font_max, font_min=14, line_height_mult=1.32,
     )
     image.paste(SPECTRA6["white"], (0, 0), prose.point(lambda v: 255 if v > 128 else 0))
     paint_neon_mask(
@@ -530,14 +536,20 @@ def _trisolaris_paint_warning(draw: ImageDraw.ImageDraw) -> None:
     draw.text(((col_x0 + col_x1 - width) / 2, _TRISOLARIS_WARNING_Y), text, font=font, fill=SPECTRA6["yellow"])
 
 
-def render_trisolaris_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """The Trisolaran sky (see the module section comment above)."""
-    index = _trisolaris_index(time_str)
+def _trisolaris_scene(index: int) -> Image.Image:
+    """The left of every frame at ephemeris sample ``index``: stars, the last
+    hour of orbits, Radar Peak and its dish, then the suns and the planet."""
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     _trisolaris_paint_sky(image)
     _trisolaris_paint_orbits(image, index)
     _trisolaris_paint_red_coast(image)
     _trisolaris_paint_bodies(image, index)
+    return image
+
+
+def render_trisolaris_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
+    """The Trisolaran sky (see the module section comment above)."""
+    image = _trisolaris_scene(_trisolaris_index(time_str))
     draw = ImageDraw.Draw(image)
     _trisolaris_paint_header(draw, time_str)
     bottom = _trisolaris_paint_quote(image, draw, quote_row)
@@ -549,4 +561,110 @@ def render_trisolaris_frame(time_str: str, quote_row: dict, width: int, height: 
     return image
 
 
-SPEC = FrameSpec(themes=("trisolaris",), render=render_trisolaris_frame)
+# ---------------------------------------------------------------------------
+# The sleep frame: "Chaotic era. Dehydrate."
+# ---------------------------------------------------------------------------
+# In the novel's game a chaotic era is survived by dehydrating: the people dry
+# out, are rolled up and stored, and are rehydrated when a stable era returns.
+# That is the Trisolaran version of sleep, so quiet hours freeze the sky at the
+# first sample of the day's longest chaotic era, the header gives the order,
+# and the column shows the dried rolls racked in their store under the promise
+# that the stable era will wake them. Rest, not catastrophe: the warning at
+# the foot gives way to the store's own notice.
+_TRISOLARIS_SLEEP_INDEX = 1123             # a stable era has just given way to the day's longest chaotic one
+_TRISOLARIS_SLEEP_ROW = {
+    "display_quote": "Dehydrate, and rest. You will be rehydrated when the stable era returns.",
+    "matched_text": "the stable era returns",
+}
+_TRISOLARIS_SLEEP_TEXT_RECT = (456, 112, 780, 262)
+_TRISOLARIS_SLEEP_STORE = (480, 276, 756, 396)  # the rack of dried rolls; shelves at its tier bottoms
+_TRISOLARIS_SLEEP_TIERS = (4, 3, 4)             # rolls per shelf, top to bottom
+_TRISOLARIS_SLEEP_FOOT = "STORED DRY · AWAITING THE STABLE ERA"
+
+
+def _trisolaris_paint_store(draw: ImageDraw.ImageDraw) -> None:
+    """The dry store: dehydrated citizens rolled up and racked on dotted
+    shelves, in the dish's white line-work.
+
+    Each roll lies side-on with its open end to the viewer, a spiral of nested
+    ellipses, so it reads as a rolled sheet rather than a pipe; a yellow cord
+    binds it. The middle shelf is offset half a roll, as stacked rolls sit.
+    """
+    x0, y0, x1, y1 = _TRISOLARIS_SLEEP_STORE
+    white, black = SPECTRA6["white"], SPECTRA6["black"]
+    pitch = (y1 - y0) // len(_TRISOLARIS_SLEEP_TIERS)
+    roll_h = pitch - 10
+    end_w = roll_h // 2
+    gap = 12
+    roll_w = (x1 - x0 - gap * (max(_TRISOLARIS_SLEEP_TIERS) - 1)) // max(_TRISOLARIS_SLEEP_TIERS)
+    for tier, count in enumerate(_TRISOLARIS_SLEEP_TIERS):
+        shelf_y = y0 + (tier + 1) * pitch
+        for xx in range(x0 - 10, x1 + 11, 4):
+            draw.point((xx, shelf_y), fill=white)
+        left = x0 + (x1 - x0 - count * roll_w - (count - 1) * gap) // 2
+        top = shelf_y - 2 - roll_h
+        for k in range(count):
+            rx0 = left + k * (roll_w + gap)
+            rx1 = rx0 + roll_w
+            near, far = rx0 + end_w // 2, rx1 - end_w // 2
+            draw.line([(near, top), (far, top)], fill=white)
+            draw.line([(near, top + roll_h), (far, top + roll_h)], fill=white)
+            draw.arc((rx1 - end_w, top, rx1, top + roll_h), -90, 90, fill=white)
+            for share in (0.3, 0.7):
+                cord_x = round(near + (far - near) * share)
+                draw.line([(cord_x, top + 1), (cord_x + 3, top + roll_h - 1)], fill=SPECTRA6["yellow"])
+            draw.ellipse((rx0, top, rx0 + end_w, top + roll_h), fill=black, outline=white, width=2)
+            _trisolaris_paint_spiral(draw, (rx0 + end_w / 2, top + roll_h / 2), end_w / 2 - 2, roll_h / 2 - 2)
+
+
+def _trisolaris_paint_spiral(draw: ImageDraw.ImageDraw, centre: tuple[float, float], rx: float, ry: float) -> None:
+    """A rolled sheet's open end: an elliptical Archimedean spiral, three turns
+    in from the rim to the core."""
+    turns, steps = 3, 120
+    cx, cy = centre
+    points = []
+    for k in range(steps + 1):
+        t = k / steps
+        angle = 2 * math.pi * turns * t
+        points.append((round(cx + rx * (1 - t) * math.cos(angle)), round(cy + ry * (1 - t) * math.sin(angle))))
+    draw.line(points, fill=SPECTRA6["white"])
+
+
+def _trisolaris_paint_sleep_foot(draw: ImageDraw.ImageDraw) -> None:
+    """The store's notice in the warning's slot and face: solid yellow, for
+    the warning's reason (red barely clears the panel's black at 11px)."""
+    col_x0, col_x1 = _TRISOLARIS_COLUMN
+    font = load_font([SPACEMONO_BOLD, *META_FONT_BOLD_CANDIDATES], 11)
+    text_w = draw.textlength(_TRISOLARIS_SLEEP_FOOT, font=font)
+    draw.text(((col_x0 + col_x1 - text_w) / 2, _TRISOLARIS_WARNING_Y), _TRISOLARIS_SLEEP_FOOT, font=font,
+              fill=SPECTRA6["yellow"])
+
+
+def render_trisolaris_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: a chaotic era has begun, so the order is to
+    dehydrate.
+
+    The sky is frozen at ``_TRISOLARIS_SLEEP_INDEX``, the first sample of the
+    day's longest chaotic era, so the header reads ``CHAOTIC ERA · DEHYDRATE``
+    with all three suns in its glyph, and the civilization number is that
+    sample's. In the quote's place: the promise of rehydration, the stable era
+    lit as sunlight, over the dry store's racked rolls. ``time_str`` is unused:
+    nothing on the frame tells the time. Composed at 800x480 and
+    NEAREST-downsampled, like the quote frame.
+    """
+    del time_str
+    image = _trisolaris_scene(_TRISOLARIS_SLEEP_INDEX)
+    draw = ImageDraw.Draw(image)
+    sample = _trisolaris_ephemeris()[_TRISOLARIS_SLEEP_INDEX]
+    _trisolaris_paint_masthead(draw, sample[2] > _TRISOLARIS_STABLE_DOMINANCE,
+                               _TRISOLARIS_FIRST_CIVILIZATION + sample[3])
+    _trisolaris_paint_quote(image, draw, dict(_TRISOLARIS_SLEEP_ROW), rect=_TRISOLARIS_SLEEP_TEXT_RECT, font_max=28)
+    _trisolaris_paint_store(draw)
+    _trisolaris_paint_sleep_foot(draw)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("trisolaris",), render=render_trisolaris_frame, sleep=render_trisolaris_sleep)
