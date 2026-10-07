@@ -8698,6 +8698,61 @@ class TestSemioticSleepFrame:
         assert pixel_bytes(quote) != pixel_bytes(self._render())
 
 
+class TestDskySleepFrame:
+    """``dsky``'s own sleep frame: the computer put to bed for the crew's rest
+    period, STBY lit and P06's VERB 50 NOUN 25 on the display, with the
+    presleep checklist typed on the flight plan."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="dsky")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["dsky"].sleep is rq.render_dsky_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_dsky_sleep("22:00", 800, 480))
+
+    def test_inks_and_determinism(self):
+        image = self._render()
+        assert distinct_inks(image) <= set(rq.SPECTRA6.values())
+        assert {rq.SPECTRA6[k] for k in ("black", "white", "green", "yellow", "red")} <= distinct_inks(image)
+        assert pixel_bytes(image) == pixel_bytes(self._render())
+
+    def test_never_reads_the_time_and_downscales(self):
+        a = self._render()
+        for time_str in ("23:59", "06:00", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_display_shows_the_standby_prompt_with_prog_blank(self, monkeypatch):
+        """Only VERB 50, NOUN 25 and R1's checklist code light. PROG stays dark:
+        in the quote frame that register is the hour, so any digit there
+        would read as a time."""
+        drawn: list[str] = []
+        real = rq_themes.dsky._dsky_draw_glyph
+
+        def spy(draw, x, y, ch, **kw):
+            drawn.append(ch)
+            return real(draw, x, y, ch, **kw)
+
+        monkeypatch.setattr(rq_themes.dsky, "_dsky_draw_glyph", spy)
+        rq.render_dsky_sleep("22:00", 800, 480)
+        assert drawn[:2] == [" ", " "]
+        assert "".join(drawn).replace(" ", "") == "502500062"
+
+    def test_stby_is_lit_and_comp_acty_is_dark(self):
+        image = self._render()
+        stby = next(r for r in rq._dsky_lamp_rects() if r[4] == "STBY")
+        lamp = ink_counts(image.crop((stby[0] + 2, stby[1] + 2, stby[2] - 2, stby[3] - 2)))
+        assert lamp.get(rq.SPECTRA6["white"], 0) > 0.6 * sum(lamp.values())
+        x0, y0 = rq._DSKY_DISPLAY_RECT[:2]
+        assert rq.SPECTRA6["green"] not in ink_counts(image.crop((x0 + 9, y0 + 9, x0 + 40, y0 + 36)))
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        quote = rq.render("14:30", make_row(), 800, 480, mode="production", theme="dsky")
+        x0, y0 = rq._DSKY_DISPLAY_RECT[:2]
+        assert rq.SPECTRA6["green"] in ink_counts(quote.crop((x0 + 9, y0 + 9, x0 + 40, y0 + 36)))
+        assert pixel_bytes(quote) != pixel_bytes(self._render())
+
+
 class TestPillowFloorApis:
     """The renderer must run on the declared Pillow floor (``Pillow>=9.3`` in
     pyproject.toml; Raspberry Pi OS bookworm ships 9.4), but this suite runs

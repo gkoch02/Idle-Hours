@@ -64,6 +64,25 @@ _DSKY_KEYS = (("VERB", "+", "7", "8", "9", "CLR", "ENTR"),
               ("", "0", "1", "2", "3", "KEY\nREL", ""))
 _DSKY_VERB, _DSKY_NOUN = "06", "62"
 _DSKY_SCENE: dict = {}
+# The sleep frame: the crew's last entry before their rest period. P06 (AGC
+# power down) asks, as VERB 50 NOUN 25 "please perform" with checklist code
+# 00062 in R1, for the switch to standby; the STBY lamp is lit. PROG is left
+# blank on purpose, because in the quote frame that register is the hour.
+_DSKY_SLEEP_VERB, _DSKY_SLEEP_NOUN = "50", "25"
+_DSKY_SLEEP_REGISTERS = [" 00062", "      ", "      "]
+_DSKY_SLEEP_CHECKLIST_Y = 104
+_DSKY_SLEEP_CHECKLIST = (
+    ("P06  AGC PWR DOWN", "V37E 06E"),
+    ("V50 N25  R1 00062", "PRO"),
+    ("STBY LT", "ON"),
+)
+_DSKY_SLEEP_QUOTE_RECT = (54, 238, 428, 384)
+_DSKY_SLEEP_ROW: dict[str, str] = {
+    "display_quote": "Crew to their couches. The computer sleeps in standby until the wake-up call from Houston.",
+    "matched_text": "sleeps in standby",
+    "author": "Flight Plan",
+    "title": "Rest Period",
+}
 # Seven-segment encodings: a top, b upper right, c lower right, d bottom,
 # e lower left, f upper left, g middle.
 _DSKY_SEGMENTS = {
@@ -248,12 +267,18 @@ def _dsky_paint_card(image: Image.Image) -> None:
         draw.point((hx, y0 + 18), fill=black)
 
 
-def _dsky_paint_legends(draw: ImageDraw.ImageDraw) -> None:
+def _dsky_paint_legends(draw: ImageDraw.ImageDraw, *, lit: tuple[str, ...] = ()) -> None:
     """After the dither: the lamp words, the key caps' legends, the window
-    labels and the nameplate."""
+    labels and the nameplate. A lamp named in ``lit`` is lit: a solid white
+    face with its word in black, as the real lamps were."""
     white, black = SPECTRA6["white"], SPECTRA6["black"]
     font = _dsky_label_font(10)
     for lx0, ly0, lx1, ly1, label in _dsky_lamp_rects():
+        if label in lit:
+            draw.rectangle((lx0, ly0, lx1, ly1), fill=white, outline=black, width=1)
+            tw = draw.textlength(label, font=font)
+            draw.text((lx0 + (lx1 - lx0 - tw) / 2, ly0 + 5), label, font=font, fill=black)
+            continue
         draw.rectangle((lx0, ly0, lx1, ly1), outline=black, width=1)
         if label:
             tw = draw.textlength(label, font=font)
@@ -274,30 +299,37 @@ def _dsky_paint_legends(draw: ImageDraw.ImageDraw) -> None:
     draw_tracked(draw, (lx, uy1 - 22), label, small, white, tracking=2)
 
 
-def _dsky_paint_display(image: Image.Image, hour: int, quote_row: dict) -> None:
-    """PROG / VERB / NOUN and the three registers as glowing segments; the
-    COMP ACTY lamp lit in green."""
+def _dsky_paint_display(image: Image.Image, prog: str, registers: list[str], *, verb: str = _DSKY_VERB,
+                        noun: str = _DSKY_NOUN, comp_acty: bool = True) -> None:
+    """PROG / VERB / NOUN and the three registers as glowing segments (a
+    space is an unlit position); the COMP ACTY lamp lit in green, or left as
+    dark glass with its word in white."""
     draw = ImageDraw.Draw(image)
     x0, y0, x1, y1 = _DSKY_DISPLAY_RECT
     white, green, black = SPECTRA6["white"], SPECTRA6["green"], SPECTRA6["black"]
     font = _dsky_label_font(10)
-    draw.rectangle((x0 + 8, y0 + 8, x0 + 40, y0 + 36), fill=green)
-    draw.text((x0 + 10, y0 + 11), "COMP", font=font, fill=black)
-    draw.text((x0 + 10, y0 + 22), "ACTY", font=font, fill=black)
+    if comp_acty:
+        draw.rectangle((x0 + 8, y0 + 8, x0 + 40, y0 + 36), fill=green)
+        draw.text((x0 + 10, y0 + 11), "COMP", font=font, fill=black)
+        draw.text((x0 + 10, y0 + 22), "ACTY", font=font, fill=black)
+    else:
+        draw.rectangle((x0 + 8, y0 + 8, x0 + 40, y0 + 36), outline=white, width=1)
+        draw.text((x0 + 10, y0 + 11), "COMP", font=font, fill=white)
+        draw.text((x0 + 10, y0 + 22), "ACTY", font=font, fill=white)
     mask = Image.new("L", image.size, 0)
     md = ImageDraw.Draw(mask)
     pair_x = x1 - 8 - 2 * 16
     draw.text((pair_x, y0 + 8), "PROG", font=font, fill=white)
-    for i, ch in enumerate(f"{hour:02d}"):
+    for i, ch in enumerate(prog):
         _dsky_draw_glyph(md, pair_x + i * 16, y0 + 22, ch, h=18, w=11)
     row_y = y0 + 52
-    for label, value, lx in (("VERB", _DSKY_VERB, x0 + 8), ("NOUN", _DSKY_NOUN, pair_x)):
+    for label, value, lx in (("VERB", verb, x0 + 8), ("NOUN", noun, pair_x)):
         draw.text((lx, row_y), label, font=font, fill=white)
         for i, ch in enumerate(value):
             _dsky_draw_glyph(md, lx + i * 16, row_y + 14, ch, h=18, w=11)
     draw.rectangle((x0 + 8, row_y + 40, x1 - 8, row_y + 40), fill=white)
     reg_y = row_y + 48
-    for r, value in enumerate(_dsky_registers(quote_row)):
+    for r, value in enumerate(registers):
         y = reg_y + r * 40
         for i, ch in enumerate(value):
             _dsky_draw_glyph(md, x0 + 10 + i * 19, y, ch, h=24, w=13)
@@ -337,7 +369,7 @@ def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -
     image = _dsky_scene().copy()
     draw = ImageDraw.Draw(image)
     _dsky_paint_legends(draw)
-    _dsky_paint_display(image, hour, quote_row)
+    _dsky_paint_display(image, f"{hour:02d}", _dsky_registers(quote_row))
     draw = ImageDraw.Draw(image)
     _dsky_paint_quote(draw, _dsky_layout(draw, quote_row))
     _dsky_paint_byline(draw, quote_row)
@@ -347,4 +379,48 @@ def render_dsky_frame(time_str: str, quote_row: dict, width: int, height: int) -
     return image
 
 
-SPEC = FrameSpec(themes=("dsky",), render=render_dsky_frame)
+def _dsky_paint_checklist(draw: ImageDraw.ImageDraw) -> None:
+    """The presleep checklist typed on the card: a heading, each step with its
+    keying on a dot leader, and a rule under the block."""
+    black = SPECTRA6["black"]
+    x0, _y0, x1, _y1 = _DSKY_QUOTE_RECT
+    font = load_font([SPECIALELITE_REGULAR, *META_FONT_CANDIDATES], size=16)
+    y = _DSKY_SLEEP_CHECKLIST_Y
+    draw.text((x0, y), "REST PERIOD  -  PRESLEEP CHECKLIST", font=font, fill=black)
+    y += 32
+    dot = draw.textlength(".", font=font)
+    for step, keying in _DSKY_SLEEP_CHECKLIST:
+        left = x0 + draw.textlength(step + " ", font=font)
+        right = x1 - draw.textlength(" " + keying, font=font)
+        draw.text((x0, y), step, font=font, fill=black)
+        draw.text((x1 - draw.textlength(keying, font=font), y), keying, font=font, fill=black)
+        draw.text((left, y), "." * int((right - left) // dot), font=font, fill=black)
+        y += 24
+    draw.line((x0, y + 6, x1, y + 6), fill=black, width=1)
+
+
+def render_dsky_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the computer put to bed for the crew's rest
+    period. STBY lit, COMP ACTY dark, P06's VERB 50 NOUN 25 "please perform"
+    on the display with PROG blank, and the presleep checklist typed on the
+    flight plan. ``time_str`` is unused: nothing on the frame tells the time.
+    """
+    del time_str
+    image = _dsky_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _dsky_paint_legends(draw, lit=("STBY",))
+    _dsky_paint_display(image, "  ", _DSKY_SLEEP_REGISTERS, verb=_DSKY_SLEEP_VERB, noun=_DSKY_SLEEP_NOUN,
+                        comp_acty=False)
+    draw = ImageDraw.Draw(image)
+    _dsky_paint_checklist(draw)
+    placed = _place_quote(draw, _DSKY_SLEEP_ROW, _DSKY_SLEEP_QUOTE_RECT, theme="dsky",
+                          font_max=26, font_min=15, line_height_mult=1.42)
+    _dsky_paint_quote(draw, placed)
+    _dsky_paint_byline(draw, _DSKY_SLEEP_ROW)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("dsky",), render=render_dsky_frame, sleep=render_dsky_sleep)
