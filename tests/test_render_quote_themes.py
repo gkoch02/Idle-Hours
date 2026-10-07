@@ -8836,6 +8836,20 @@ class TestVhsSleepFrame:
             assert share > 0.9, (i, counts)
             assert all(counts.get(c, 0) for c in recipe), (i, counts)
 
+    def test_the_bars_carry_the_tape_noise(self, monkeypatch):
+        """The bars are painted over the tape ground, so the noise is laid
+        again on top of them; without that the bars came out cleaner than the
+        card below them (PR #382 review). The yellow bar is solid ink, so with
+        the dropouts and tears off (both also put white or blue there) any
+        white or blue left in it is noise."""
+        monkeypatch.setattr(rq_themes.vhs, "_vhs_paint_dropouts", lambda image: None)
+        monkeypatch.setattr(rq_themes.vhs, "_vhs_apply_tears", lambda image: None)
+        image = self._render()
+        x0, y0, x1, y1 = rq._VHS_BARS_RECT
+        bar_w = (x1 - x0) // 7
+        counts = ink_counts(image.crop((x0 + bar_w + 4, y0 + 50, x0 + 2 * bar_w - 4, y1 - rq._VHS_CASTELLATION_H)))
+        assert counts.get(rq.SPECTRA6["white"], 0) + counts.get(rq.SPECTRA6["blue"], 0) > 20
+
     def test_tears_spare_the_sign_off_card(self, monkeypatch):
         """The card's lines sit outside every row the tears move. Through the
         small type a tear read as strikethrough; through GOOD NIGHT it shredded

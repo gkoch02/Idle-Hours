@@ -77,11 +77,19 @@ def _vhs_paint_tape(image: Image.Image) -> None:
     """Near-black ground, scanlines, and noise rising toward the head sweep."""
     width, height = image.size
     px = pixel_access(image)
-    black, blue, white = SPECTRA6["black"], SPECTRA6["blue"], SPECTRA6["white"]
+    black, blue = SPECTRA6["black"], SPECTRA6["blue"]
     # Faint scanline modulation, softer than nightvision's.
     for y in range(0, height, _VHS_SCANLINE_STEP):
         for x in range(0, width, 2):
             px[x, y] = blue if (x + y) % 8 == 0 else black
+    _vhs_paint_noise(image)
+
+
+def _vhs_paint_noise(image: Image.Image) -> None:
+    """The video noise, seeded, so painting it twice is the same as once."""
+    width, height = image.size
+    px = pixel_access(image)
+    blue, white = SPECTRA6["blue"], SPECTRA6["white"]
     rng = random.Random(_VHS_NOISE_SEED)
     for _ in range(_VHS_NOISE_COUNT):
         # Bias toward the foot: two samples, keep the lower. Uniform noise
@@ -356,6 +364,11 @@ def render_vhs_sleep(time_str: str, width: int, height: int) -> Image.Image:
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     _vhs_paint_tape(image)
     _vhs_paint_bars(image)
+    # The bars paint over the tape's noise; put it back over them so they are
+    # the same worn tape as the card. Below the bars this repaints the same
+    # pixels the same inks. The scanlines are left off the bars on purpose:
+    # faint on the black ground, they would rule dark lines across bright bars.
+    _vhs_paint_noise(image)
     draw = ImageDraw.Draw(image)
     _vhs_paint_signoff(image, draw)
     _vhs_paint_play_osd(draw)
