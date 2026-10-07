@@ -211,13 +211,30 @@ def _yorha_paint_rules(image: Image.Image) -> None:
         for (x, y), (dx, dy) in (((x0, y0), (1, 1)), ((x1, y0), (-1, 1)), ((x0, y1), (1, -1)), ((x1, y1), (-1, -1))):
             draw.line((x, y, x + 5 * dx, y), fill=black, width=2)
             draw.line((x, y, x, y + 5 * dy), fill=black, width=2)
-    # The tab bar, with INTEL open.
+    _yorha_paint_tab_bar(draw, "INTEL")
+    # The Pod's silhouette, lens, antenna and legend.
+    pxc, pyc = _YORHA_POD_CENTRE
+    draw.rounded_rectangle((pxc - 58, pyc - 20, pxc + 38, pyc + 20), radius=20, outline=black, width=1)
+    draw.polygon([(pxc - 40, pyc - 20), (pxc - 18, pyc - 40), (pxc, pyc - 20)], outline=black)
+    draw.polygon([(pxc - 48, pyc + 18), (pxc - 64, pyc + 34), (pxc - 26, pyc + 20)], outline=black)
+    draw.rounded_rectangle((pxc + 16, pyc - 15, pxc + 46, pyc + 15), radius=7, outline=black, width=1)
+    draw.ellipse((pxc + 24, pyc - 8, pxc + 40, pyc + 8), fill=black)
+    draw.ellipse((pxc + 28, pyc - 5, pxc + 32, pyc - 1), fill=white)
+    draw.line((pxc - 18, pyc - 40, pxc - 18, pyc - 54), fill=black, width=1)
+    draw.ellipse((pxc - 20, pyc - 58, pxc - 16, pyc - 54), fill=black)
+    draw.text((pxc + 56, pyc - 7), "POD 042", font=_yorha_font(13, "Bold"), fill=black, stroke_width=2,
+              stroke_fill=white)
+
+
+def _yorha_paint_tab_bar(draw: ImageDraw.ImageDraw, open_tab: str) -> None:
+    """The black tab bar with ``open_tab`` open, and the crest with the unit."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
     draw.rectangle(_YORHA_HEADER_RECT, fill=black)
     font = _yorha_font(15, "Regular")
     tab_x: float = 30
     for tab in _YORHA_TABS:
         tw = draw.textlength(tab, font=font)
-        if tab == "INTEL":
+        if tab == open_tab:
             draw.rectangle((tab_x - 8, _YORHA_HEADER_RECT[1] + 6, tab_x + tw + 8, _YORHA_HEADER_RECT[3] - 6), fill=white)
             draw.text((tab_x, _YORHA_HEADER_RECT[1] + 8), tab, font=font, fill=black)
         else:
@@ -232,18 +249,6 @@ def _yorha_paint_rules(image: Image.Image) -> None:
         draw.line((cx + 14 + i * 5, cy - 4 + i * 4, cx + 24 + i * 5, cy - 4 + i * 4), fill=white, width=1)
     small = _yorha_font(14, "Regular")
     draw_tracked(draw, (cx - 48, cy - 8), "UNIT 2B", small, white, tracking=2, anchor_right=True)
-    # The Pod's silhouette, lens, antenna and legend.
-    pxc, pyc = _YORHA_POD_CENTRE
-    draw.rounded_rectangle((pxc - 58, pyc - 20, pxc + 38, pyc + 20), radius=20, outline=black, width=1)
-    draw.polygon([(pxc - 40, pyc - 20), (pxc - 18, pyc - 40), (pxc, pyc - 20)], outline=black)
-    draw.polygon([(pxc - 48, pyc + 18), (pxc - 64, pyc + 34), (pxc - 26, pyc + 20)], outline=black)
-    draw.rounded_rectangle((pxc + 16, pyc - 15, pxc + 46, pyc + 15), radius=7, outline=black, width=1)
-    draw.ellipse((pxc + 24, pyc - 8, pxc + 40, pyc + 8), fill=black)
-    draw.ellipse((pxc + 28, pyc - 5, pxc + 32, pyc - 1), fill=white)
-    draw.line((pxc - 18, pyc - 40, pxc - 18, pyc - 54), fill=black, width=1)
-    draw.ellipse((pxc - 20, pyc - 58, pxc - 16, pyc - 54), fill=black)
-    draw.text((pxc + 56, pyc - 7), "POD 042", font=_yorha_font(13, "Bold"), fill=black, stroke_width=2,
-              stroke_fill=white)
 
 
 def _yorha_paint_menu(draw: ImageDraw.ImageDraw, hour: int) -> None:
@@ -326,4 +331,117 @@ def render_yorha_frame(time_str: str, quote_row: dict, width: int, height: int) 
     return image
 
 
-SPEC = FrameSpec(themes=("yorha",), render=render_yorha_frame)
+# ---------------------------------------------------------------------------
+# The sleep frame: the archive asks to sleep. The same sheet, panels and Pod,
+# the tab bar turned to SYSTEM, the menu's SLEEP MODE row selected, and the
+# pane holding the game's confirmation dialog with Yes chosen, under Pod 042's
+# proposal. No glitch sliver: a resting unit, not a damaged one.
+# ---------------------------------------------------------------------------
+_YORHA_SLEEP_MENU = ("SAVE", "LOAD", "SETTINGS", "CONTROLS", "SOUND", "SCREEN", "NETWORK",
+                     "UNIT DATA", "BACKUP", "SLEEP MODE", "TITLE SCREEN", "CREDITS")
+_YORHA_SLEEP_SELECTED = _YORHA_SLEEP_MENU.index("SLEEP MODE")
+_YORHA_SLEEP_DIALOG_RECT = (300, 146, 724, 326)
+_YORHA_SLEEP_PROMPT = "Enter sleep mode?"
+_YORHA_SLEEP_POD_LINES = ("Proposal: Unit 2B enter sleep mode.", "The archive will be kept until morning.")
+
+
+def _yorha_paint_sleep_menu(draw: ImageDraw.ImageDraw) -> None:
+    """The System menu's rows in the archive's style; SLEEP MODE inverted."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    font = _yorha_font(16, "Regular")
+    for i, (x0, y0, x1, y1) in enumerate(_yorha_menu_rows()):
+        active = i == _YORHA_SLEEP_SELECTED
+        if active:
+            draw.rectangle((x0, y0, x1, y1), fill=black)
+            draw.polygon([(x1 - 16, y0 + 7), (x1 - 8, (y0 + y1) / 2), (x1 - 16, y1 - 7)], fill=white)
+        else:
+            draw.rectangle((x0 + 8, (y0 + y1) / 2 - 3, x0 + 14, (y0 + y1) / 2 + 3), outline=black, width=1)
+        draw.text((x0 + 22, y0 + 3), _YORHA_SLEEP_MENU[i], font=font, fill=white if active else black)
+
+
+def _yorha_paint_sleep_head(draw: ImageDraw.ImageDraw) -> None:
+    """The pane's head: SYSTEM › SLEEP MODE over a rule, STANDBY at the right."""
+    black = SPECTRA6["black"]
+    x0, y0, x1, _y1 = _YORHA_PANE_RECT
+    draw.text((x0 + 18, y0 + 14), "System › Sleep Mode", font=_yorha_font(22, "Bold"), fill=black)
+    small = _yorha_font(15, "Regular")
+    draw_tracked(draw, (x1 - 18, y0 + 18), "STANDBY", small, black, tracking=2, anchor_right=True)
+    draw.line((x0 + 18, y0 + 46, x1 - 18, y0 + 46), fill=black, width=1)
+
+
+def _yorha_sleep_option_rows() -> list:
+    """The dialog's two option rows, Yes then No."""
+    x0, _y0, x1, y1 = _YORHA_SLEEP_DIALOG_RECT
+    return [(x0 + 40, y1 - 92, x1 - 40, y1 - 58), (x0 + 40, y1 - 48, x1 - 40, y1 - 14)]
+
+
+def _yorha_paint_sleep_dialog(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The confirmation dialog: a hard stippled shadow, the panel face, the
+    black bands top and foot, the prompt, and Yes selected over No."""
+    black, white = SPECTRA6["black"], SPECTRA6["white"]
+    x0, y0, x1, y1 = _YORHA_SLEEP_DIALOG_RECT
+    px = pixel_access(image)
+    for y in range(y0 + 7, y1 + 8):
+        row = BAYER_4x4[y % 4]
+        for x in range(x0 + 7, x1 + 8):
+            if (x > x1 or y > y1) and row[x % 4] < 8:
+                px[x, y] = black
+    _yorha_fill_panel(image, _YORHA_SLEEP_DIALOG_RECT)
+    draw.rectangle(_YORHA_SLEEP_DIALOG_RECT, outline=black, width=1)
+    draw.rectangle((x0, y0, x1, y0 + 5), fill=black)
+    draw.rectangle((x0, y1 - 3, x1, y1), fill=black)
+    for (x, y), (dx, dy) in (((x0, y0), (1, 1)), ((x1, y0), (-1, 1)), ((x0, y1), (1, -1)), ((x1, y1), (-1, -1))):
+        draw.line((x - 4 * dx, y, x + 10 * dx, y), fill=black, width=2)
+        draw.line((x, y - 4 * dy, x, y + 10 * dy), fill=black, width=2)
+    prompt = _yorha_font(30, "Regular")
+    tw = draw.textlength(_YORHA_SLEEP_PROMPT, font=prompt)
+    draw.text(((x0 + x1 - tw) / 2, y0 + 22), _YORHA_SLEEP_PROMPT, font=prompt, fill=black)
+    draw.line((x0 + 40, y0 + 70, x1 - 40, y0 + 70), fill=black, width=1)
+    option = _yorha_font(22, "Regular")
+    for label, (rx0, ry0, rx1, ry1), active in zip(("Yes", "No"), _yorha_sleep_option_rows(), (True, False),
+                                                   strict=True):
+        cy = (ry0 + ry1) / 2
+        if active:
+            draw.rectangle((rx0, ry0, rx1, ry1), fill=black)
+            draw.polygon([(rx0 + 12, ry0 + 9), (rx0 + 22, cy), (rx0 + 12, ry1 - 9)], fill=white)
+        else:
+            draw.rectangle((rx0, ry0, rx1, ry1), outline=black, width=1)
+            draw.rectangle((rx0 + 13, cy - 4, rx0 + 21, cy + 4), outline=black, width=1)
+        draw.text((rx0 + 40, cy), label, font=option, fill=white if active else black, anchor="lm")
+
+
+def _yorha_paint_sleep_pod_line(draw: ImageDraw.ImageDraw) -> None:
+    """Pod 042's proposal under the dialog, as the game sets its lines."""
+    black = SPECTRA6["black"]
+    x0, _y0, x1, _y1 = _YORHA_PANE_RECT
+    y = _YORHA_SLEEP_DIALOG_RECT[3] + 30
+    label = _yorha_font(15, "Bold")
+    draw_tracked(draw, (x0 + 18, y + 4), "POD 042", label, black, tracking=2)
+    draw.line((x0 + 18, y + 26, x0 + 110, y + 26), fill=black, width=1)
+    body = _yorha_font(21, "Regular")
+    for i, line in enumerate(_YORHA_SLEEP_POD_LINES):
+        draw.text((x0 + 128, y + i * 30), line, font=body, fill=black)
+
+
+def render_yorha_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The quiet-hours frame: the System menu with SLEEP MODE selected and
+    the confirmation dialog answered Yes, under Pod 042's proposal.
+
+    The quote frame's sheet, panels, Pod and crest, with the tab bar turned
+    to SYSTEM. ``time_str`` is unused: nothing on the frame tells the time.
+    """
+    del time_str
+    image = _yorha_scene().copy()
+    draw = ImageDraw.Draw(image)
+    _yorha_paint_tab_bar(draw, "SYSTEM")
+    _yorha_paint_sleep_menu(draw)
+    _yorha_paint_sleep_head(draw)
+    _yorha_paint_sleep_dialog(image, draw)
+    _yorha_paint_sleep_pod_line(draw)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("yorha",), render=render_yorha_frame, sleep=render_yorha_sleep)

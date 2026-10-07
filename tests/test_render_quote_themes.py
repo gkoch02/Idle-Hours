@@ -8207,3 +8207,59 @@ class TestQuestlineSleepFrame:
         row = make_row(display_quote="It was half past three.", matched_text="half past three", author="A", title="B")
         frame = rq.render("14:30", row, 800, 480, mode="production", theme="questline")
         assert pixel_bytes(frame) != pixel_bytes(rq.render_questline_sleep("14:30", 800, 480))
+
+
+class TestYorhaSleepFrame:
+    """``yorha``'s own sleep frame: the System menu with SLEEP MODE selected
+    and the confirmation dialog "Enter sleep mode?" answered Yes, under Pod
+    042's proposal."""
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["yorha"].sleep is rq.render_yorha_sleep
+
+    def test_inks_are_the_themes_own(self):
+        image = rq.render_sleep_frame("22:00", 800, 480, theme="yorha")
+        assert distinct_inks(image) == {rq.SPECTRA6[k] for k in ("white", "yellow", "black")}
+
+    def test_never_reads_the_clock_and_downscales(self):
+        a = rq.render_yorha_sleep("22:00", 800, 480)
+        for time_str in ("23:59", "06:00", "12:00", "bogus"):
+            assert pixel_bytes(rq.render_yorha_sleep(time_str, 800, 480)) == pixel_bytes(a)
+        assert pixel_bytes(rq.render_yorha_sleep("22:00", 800, 480)) == pixel_bytes(a)
+        small = rq.render_yorha_sleep("22:00", 320, 192)
+        assert small.size == (320, 192)
+        assert pixel_bytes(small) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_sleep_mode_row_and_yes_are_selected(self):
+        image = rq.render_yorha_sleep("22:00", 800, 480)
+        black = rq.SPECTRA6["black"]
+        rows = rq._yorha_menu_rows()
+        assert rq._YORHA_SLEEP_MENU[rq._YORHA_SLEEP_SELECTED] == "SLEEP MODE"
+
+        def black_share(rect):
+            counts = ink_counts(image.crop((rect[0] + 1, rect[1] + 1, rect[2], rect[3])))
+            return counts.get(black, 0) / sum(counts.values())
+
+        for i, row in enumerate(rows):
+            if i == rq._YORHA_SLEEP_SELECTED:
+                assert black_share(row) > 0.7
+            else:
+                assert black_share(row) < 0.4, rq._YORHA_SLEEP_MENU[i]
+        yes, no = rq._yorha_sleep_option_rows()
+        assert black_share(yes) > 0.7
+        assert black_share(no) < 0.3
+
+    def test_the_dialog_is_a_clean_panel_with_no_glitch(self):
+        # The dialog's face between the prompt and the options is the crisp
+        # W 7/8 : Y 1/8 panel stipple, untouched: a resting unit, not a broken one.
+        image = rq.render_yorha_sleep("22:00", 800, 480)
+        x0, y0, x1, _y1 = rq._YORHA_SLEEP_DIALOG_RECT
+        strip = image.crop((x0 + 20, y0 + 76, x1 - 20, rq._yorha_sleep_option_rows()[0][1] - 2))
+        counts = ink_counts(strip)
+        assert set(counts) == {rq.SPECTRA6["white"], rq.SPECTRA6["yellow"]}
+        assert 0.10 < counts[rq.SPECTRA6["yellow"]] / sum(counts.values()) < 0.15
+
+    def test_quote_frame_is_unchanged_by_the_sleep_frame(self):
+        row = make_row(author="Test Author", title="Test Title")
+        frame = rq.render("03:00", row, 800, 480, mode="production", theme="yorha")
+        assert pixel_bytes(frame) != pixel_bytes(rq.render_yorha_sleep("03:00", 800, 480))
