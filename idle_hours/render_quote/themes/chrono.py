@@ -5,6 +5,7 @@ Design notes: ``docs/themes.md``.
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
@@ -13,8 +14,8 @@ from PIL import Image, ImageDraw
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _fit_from_title
 from ..layout import fit_quote, strip_underscore_emphasis
-from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, gray_pixel_access, pixel_access, snap_image_to_palette
-from ..primitives import _fill_swatch_stipple
+from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access, snap_image_to_palette
+from ..primitives import _fill_swatch_stipple, paint_neon_mask
 from ..spec import FrameSpec
 
 # ─── chrono (16-bit SNES JRPG dialogue) ──────────────────────────────────────
@@ -68,8 +69,12 @@ def _chrono_tone_color(idx: int, x: int, y: int):
     return ink_a if cell < round(da * 16) else (ink_b if cell < round((da + db) * 16) else ink_c)
 
 
-def _chrono_build_hourglass() -> Image.Image:
+def _chrono_build_hourglass(run_out: bool = False) -> Image.Image:
     """Sculpt an ornate hourglass as a tone-indexed ('L') logical image.
+
+    ``run_out`` empties the upper bulb into a full mound below, for the sleep
+    frame: the glass is drawn as usual, then the sand is moved and the bulb
+    outlines restored, so the default sculpt is untouched.
 
     A brass frame (capped top/bottom with finials + two shaded side posts), two
     sky-tinted glass bulbs with specular streaks, and amber sand — draining from
@@ -116,16 +121,28 @@ def _chrono_build_hourglass() -> Image.Image:
         d.line((5, cy1 - 1, 51, cy1 - 1), fill=4, width=1)
     d.rectangle((25, 0, 31, 3), fill=3, outline=K)
     d.rectangle((25, 69, 31, 71), fill=3, outline=K)
+    if run_out:
+        # Empty glass above (keeping its specular streak), no stream through
+        # the neck, and every grain in a full mound below.
+        d.polygon([(20, 22), (36, 22), (31, 37), (25, 37)], fill=8)
+        d.line((20, 22, 36, 22), fill=8, width=1)
+        d.line((28, 37, 28, 48), fill=8, width=1)
+        d.polygon([(15, 62), (41, 62), (35, 50), (28, 43), (21, 50)], fill=6)
+        d.line((28, 43, 16, 61), fill=5, width=1)
+        d.line((29, 44, 40, 61), fill=7, width=1)
+        d.line((19, 13, 23, 21), fill=9, width=1)
+        d.polygon(top_bulb, outline=K)
+        d.polygon(bot_bulb, outline=K)
     return img
 
 
-def _chrono_paint_hourglass(image: Image.Image, ox: int, oy: int) -> None:
+def _chrono_paint_hourglass(image: Image.Image, ox: int, oy: int, run_out: bool = False) -> None:
     """Upscale the logical hourglass and paint it at (ox, oy), dither-mapping tones.
 
     The dither is sampled at absolute panel coordinates so the synthesised
     brass / sand / glass tones share a continuous Bayer phase with the frame.
     """
-    big = _chrono_build_hourglass().resize(
+    big = _chrono_build_hourglass(run_out).resize(
         (_CHRONO_ART_SIZE[0] * _CHRONO_ART_SCALE, _CHRONO_ART_SIZE[1] * _CHRONO_ART_SCALE),
         Image.Resampling.NEAREST,
     )
@@ -267,7 +284,7 @@ def _chrono_window_border(draw: ImageDraw.ImageDraw, rect: tuple[int, int, int, 
         draw.rectangle((cx, cy, cx + 2, cy + 2), fill=YELLOW)
 
 
-def _chrono_paint_portrait(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+def _chrono_paint_portrait(image: Image.Image, draw: ImageDraw.ImageDraw, run_out: bool = False) -> None:
     """Portrait sub-window (a smaller FF window) holding the shaded hourglass."""
     rect = _CHRONO_PORTRAIT
     _chrono_window_fill(image, rect, radius=14)
@@ -276,7 +293,7 @@ def _chrono_paint_portrait(image: Image.Image, draw: ImageDraw.ImageDraw) -> Non
     art_h = _CHRONO_ART_SIZE[1] * _CHRONO_ART_SCALE
     cx = (rect[0] + rect[2]) // 2
     cy = (rect[1] + rect[3]) // 2
-    _chrono_paint_hourglass(image, cx - art_w // 2, cy - art_h // 2)
+    _chrono_paint_hourglass(image, cx - art_w // 2, cy - art_h // 2, run_out)
 
 
 def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict, rect: tuple[int, int, int, int]) -> None:
@@ -369,4 +386,105 @@ def render_chrono_frame(time_str: str, quote_row: dict, width: int, height: int)
     return snap_image_to_palette(image, SPECTRA6_PALETTE)
 
 
-SPEC = FrameSpec(themes=("chrono",), render=render_chrono_frame)
+# ─── chrono sleep frame: the End of Time ─────────────────────────────────────
+#
+# Chrono Trigger's hub between eras: one lamppost burning on a stone platform
+# in a dark void. The portrait hourglass has run out, which is the frame's
+# whole joke for a clock that has stopped for the night; the narrator promises
+# the gates open again at dawn, so it reads as resting rather than ended.
+# No figure: the lamp alone carries the scene.
+_CHRONO_SLEEP_ROW = {
+    "author": "Narrator",
+    "display_quote": "You have reached the End of Time. Rest here, traveller; the gates open again at dawn.",
+    "matched_text": "dawn",
+    "title": "The End of Time",
+}
+_CHRONO_LAMP_X = 520
+_CHRONO_LAMP_HEAD = (_CHRONO_LAMP_X - 14, 62, _CHRONO_LAMP_X + 14, 90)
+_CHRONO_PLATFORM = (360, 188, 680, 232)
+_CHRONO_VOID_SEED = 0xE0D
+_CHRONO_VOID_HAZE = 0.2   # blue density at the platform's horizon
+
+
+def _chrono_paint_void(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """Black void with a faint blue haze rising toward the platform, and a
+    seeded scatter of drifting white motes."""
+    px = pixel_access(image)
+    width = image.size[0]
+    for y in range(min(_CHRONO_SKY_BOTTOM, image.size[1])):
+        # BAYER_8x8 for a smooth ramp: the 4x4 tile's 16 levels band visibly.
+        threshold = max(0.0, (y - 60) / (_CHRONO_SKY_BOTTOM - 60)) * _CHRONO_VOID_HAZE * 64
+        row = BAYER_8x8[y % 8]
+        for x in range(width):
+            if row[x % 8] < threshold:
+                px[x, y] = SPECTRA6["blue"]
+    rng = random.Random(_CHRONO_VOID_SEED)
+    for _ in range(40):
+        draw.point((rng.randint(5, width - 5), rng.randint(5, 180)), fill=SPECTRA6["white"])
+
+
+def _chrono_paint_platform(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The stone platform the lamp stands on: a navy-stippled disc, rimmed white,
+    with a pool of lamplight stippled across its far half."""
+    x0, y0, x1, y1 = _CHRONO_PLATFORM
+    cx, cy, rx, ry = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2
+    _chrono_fill_poly(image, [(cx + rx * math.cos(a), cy + ry * math.sin(a)) for a in
+                              (i * math.pi / 36 for i in range(72))],
+                      dark=SPECTRA6["blue"], light=SPECTRA6["black"], density=0.45)
+    pool = Image.new("L", image.size, 0)
+    ImageDraw.Draw(pool).ellipse((_CHRONO_LAMP_X - 70, y0 + 6, _CHRONO_LAMP_X + 70, y0 + 26), fill=255)
+    paint_neon_mask(image, pool, None, SPECTRA6["yellow"], radius=10, gamma=1.4, cap=0.45,
+                    ground=frozenset({SPECTRA6["blue"], SPECTRA6["black"]}))
+    pool.close()
+    draw.ellipse(_CHRONO_PLATFORM, outline=SPECTRA6["white"], width=2)
+
+
+def _chrono_paint_lamppost(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
+    """The lamppost: a yellow lantern blooming into the void, then the post,
+    cap and base drawn black with white keylines over the glow."""
+    black, white, yellow = SPECTRA6["black"], SPECTRA6["white"], SPECTRA6["yellow"]
+    lantern = Image.new("L", image.size, 0)
+    ImageDraw.Draw(lantern).rectangle(_CHRONO_LAMP_HEAD, fill=255)
+    paint_neon_mask(image, lantern, yellow, yellow, radius=46, gamma=1.1, cap=0.55,
+                    ground=frozenset({black, SPECTRA6["blue"]}))
+    lantern.close()
+    cx = _CHRONO_LAMP_X
+    hx0, hy0, hx1, hy1 = _CHRONO_LAMP_HEAD
+    base_y = (_CHRONO_PLATFORM[1] + _CHRONO_PLATFORM[3]) // 2
+    draw.rectangle((cx - 4, hy1 + 4, cx + 4, base_y - 4), fill=black, outline=white)
+    draw.rectangle((cx - 12, base_y - 6, cx + 12, base_y + 4), fill=black, outline=white)
+    draw.polygon([(hx0 - 6, hy0), (hx1 + 6, hy0), (hx1 - 2, hy0 - 18), (hx0 + 2, hy0 - 18)], fill=black, outline=white)
+    draw.rectangle(_CHRONO_LAMP_HEAD, outline=white)
+    draw.line((cx, hy0, cx, hy1), fill=black, width=2)
+    draw.line((hx0, (hy0 + hy1) // 2, hx1, (hy0 + hy1) // 2), fill=black, width=2)
+    draw.polygon([(hx0 - 4, hy1), (hx1 + 4, hy1), (hx1 - 4, hy1 + 8), (hx0 + 4, hy1 + 8)], fill=black, outline=white)
+
+
+def render_chrono_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The sleep frame: the End of Time (see the section comment above).
+
+    Composed at the canonical 800×480 and NEAREST-downsampled, so a preview
+    thumbnail shows the whole scene. ``time_str`` is unused: the run-out
+    hourglass is the only time surface, and it never changes.
+    """
+    del time_str
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
+    draw = ImageDraw.Draw(image)
+    _chrono_paint_void(image, draw)
+    _chrono_paint_platform(image, draw)
+    _chrono_paint_lamppost(image, draw)
+    _chrono_window_fill(image, _CHRONO_WINDOW, radius=18)
+    _chrono_window_border(draw, _CHRONO_WINDOW, radius=18)
+    _chrono_paint_portrait(image, draw, run_out=True)
+    row = dict(_CHRONO_SLEEP_ROW)
+    _chrono_paint_dialogue(image, draw, row, (_CHRONO_PORTRAIT[2] + 16, _CHRONO_WINDOW[1] + 14,
+                                              _CHRONO_WINDOW[2] - 24, _CHRONO_WINDOW[3] - 30))
+    _chrono_paint_arrow(draw)
+    _chrono_paint_footer(image, draw, row)
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
+SPEC = FrameSpec(themes=("chrono",), render=render_chrono_frame, sleep=render_chrono_sleep)

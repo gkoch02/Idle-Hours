@@ -9,6 +9,9 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `chrono` draws its own sleep frame: the End of Time, a lamppost burning
+  on a platform in the void, the portrait hourglass run out, and the
+  narrator's promise that the gates open again at dawn.
 - Five more themes draw their own sleep frame: `marquee` (the letter board
   reads CLOSED / SEE YOU TOMORROW, every bulb still lit), `witcher` (the
   meditation screen, resting until dawn), `questline` (an inn after dark:
