@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from .._paths import BASE_DIR
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import _clock_hour12, _fit_dotted_byline
+from ..furniture import SLEEP_QUOTE_ROW, _clock_hour12, _fit_dotted_byline
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..primitives import _white_noise
@@ -25,6 +25,9 @@ from ._shared import _TAROT_ROMAN_NUMERALS
 # flat colour, so the ingest separates it to white/black/red once. Absent, the
 # polygon painters still draw every hour.
 TAROT_PLATES = BASE_DIR / "assets" / "tarot_plates.png"
+# The sleep frame's trump, XVIII La Lune, separated the same way into a single
+# tile (``ingest_tarot_plates.py --single``). Absent, a polygon moon stands in.
+TAROT_MOON_PLATE = BASE_DIR / "assets" / "tarot_moon.png"
 _TAROT_PLATE_COLS, _TAROT_PLATE_ROWS = 3, 4
 _TAROT_PLATE_CACHE: dict = {}
 
@@ -84,6 +87,14 @@ _TAROT_TRUMP_NAMES = {
     11: "Strength",
     12: "The Hanged Man",
 }
+# The sleep frame's trump: XVIII, past every hour, so it can never be dealt
+# for a time of day.
+_TAROT_MOON_NUMERAL = "XVIII"
+_TAROT_MOON_NAME = "The Moon"
+# The sleep quote is one short line; set from the quote frame's 26 it is lost
+# in the cartouche. 34 is the largest size that keeps it on one line: every
+# size from 36 up wraps "dream." onto a line of its own.
+_TAROT_SLEEP_FONT_MAX = 34
 # Where the polygon painters disagree with the plates (see above).
 _TAROT_PAINTER_TRUMP_NAMES = {
     **_TAROT_TRUMP_NAMES,
@@ -152,12 +163,11 @@ def _tarot_paint_pentagram(
 
 
 def _tarot_paint_roman_numeral(
-    image: Image.Image, draw: ImageDraw.ImageDraw, hour_int: int, cx: int, y_top: int,
+    image: Image.Image, draw: ImageDraw.ImageDraw, numeral: str, cx: int, y_top: int,
 ) -> None:
-    """Roman numeral hour in Cinzel Decorative Black 36, solid black."""
+    """The trump's Roman numeral in Cinzel Decorative Black 36, solid black."""
     BLACK = SPECTRA6["black"]
     font = load_font(theme_font_candidates("tarot", "ornament"), size=36)
-    numeral = _TAROT_ROMAN_NUMERALS.get(hour_int, "—")
     bbox = draw.textbbox((0, 0), numeral, font=font)
     w = bbox[2] - bbox[0]
     draw.text((cx - w // 2 - bbox[0], y_top - bbox[1]), numeral, font=font, fill=BLACK)
@@ -1006,6 +1016,55 @@ def _tarot_paint_emblem(
     return _TAROT_PAINTER_TRUMP_NAMES.get(hour_int, "")
 
 
+def _tarot_moon_tile() -> Image.Image | None:
+    """The committed XVIII plate, memoised like the hour sheet, or ``None``."""
+    if not TAROT_MOON_PLATE.exists():
+        return None
+    tile = _TAROT_PLATE_CACHE.get("moon")
+    if tile is None:
+        try:
+            with Image.open(TAROT_MOON_PLATE) as raw:
+                tile = raw.convert("RGB")
+        except (OSError, ValueError):
+            return None
+        _TAROT_PLATE_CACHE["moon"] = tile
+    return tile
+
+
+def _tarot_emblem_moon(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
+    """Fallback XVIII when the plate is missing: a crescent shedding drops
+    over two towers, the card's composition reduced to its signs."""
+    BLACK, RED, WHITE = SPECTRA6["black"], SPECTRA6["red"], SPECTRA6["white"]
+    draw.ellipse((cx - 34, cy - 84, cx + 34, cy - 16), fill=BLACK)
+    draw.ellipse((cx - 18, cy - 90, cx + 46, cy - 22), fill=WHITE)
+    for i, (dx, dy) in enumerate(((-52, -20), (-30, -2), (0, 8), (30, -2), (52, -20), (-14, 22), (14, 22))):
+        draw.ellipse((cx + dx - 4, cy + dy - 7, cx + dx + 4, cy + dy + 7), fill=RED if i % 2 else BLACK)
+    for tx in (cx - 66, cx + 44):
+        draw.rectangle((tx, cy + 34, tx + 22, cy + 86), fill=BLACK)
+        for bx in range(tx, tx + 22, 8):
+            draw.rectangle((bx, cy + 28, bx + 4, cy + 34), fill=BLACK)
+
+
+def _tarot_paint_moon(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    clip: tuple[int, int, int, int] | None = None,
+) -> str:
+    """Stamp XVIII La Lune for the sleep frame, plate first, painter second,
+    returning the name to title the card with (as ``_tarot_paint_emblem``)."""
+    tile = _tarot_moon_tile()
+    if tile is None:
+        size = _TAROT_EMBLEM_TILE
+        tile = Image.new("RGB", (size, size), SPECTRA6["white"])
+        _tarot_emblem_moon(ImageDraw.Draw(tile), size // 2, size // 2)
+        scaled = round(size * _TAROT_EMBLEM_SCALE)
+        tile = snap_image_to_palette(tile.resize((scaled, scaled), Image.Resampling.LANCZOS), _TAROT_EMBLEM_INKS)
+    _tarot_stamp_tile(image, tile, cx, cy, clip)
+    return _TAROT_MOON_NAME
+
+
 def _tarot_paint_body_panel(
     image: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -1043,11 +1102,13 @@ def _tarot_paint_body(
     draw: ImageDraw.ImageDraw,
     quote_row: dict,
     rect: tuple[int, int, int, int],
+    font_max: int = 26,
 ) -> None:
     """Quote body fitted into ``rect`` with matched-phrase Tyrian purple.
 
     Expects ``_tarot_paint_body_panel`` to have knocked out a clean panel
-    under ``rect`` first.
+    under ``rect`` first. ``font_max`` is the size the fit starts from: 26
+    suits a corpus quote, and the sleep frame's single line asks for more.
     """
     BLACK = SPECTRA6["black"]
     RED = SPECTRA6["red"]
@@ -1070,7 +1131,7 @@ def _tarot_paint_body(
         matched,
         width,
         height,
-        font_max=26,
+        font_max=font_max,
         font_min=15,
         line_height_mult=1.24,
         theme="tarot",
@@ -1170,6 +1231,52 @@ def _tarot_paint_emblem_panel(
     draw.rectangle(rect, outline=SPECTRA6["black"], width=1)
 
 
+def _tarot_compose(numeral: str, stamp, quote_row: dict, width: int, height: int,
+                   body_font_max: int = 26) -> Image.Image:
+    """Lay one trump and its reading out: the shared body of the quote frame
+    and the sleep frame. ``stamp(image, draw, cx, cy, clip)`` paints the
+    illustration and returns the name the card is titled with."""
+    # Composed at the canonical 800x480 and NEAREST-downsampled otherwise
+    # (the ``metro`` convention): every rectangle is an absolute panel
+    # coordinate, and a direct small render would put the reading panel
+    # off-canvas.
+    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
+    _tarot_paint_vellum(image)
+    draw = ImageDraw.Draw(image)
+
+    # ── the card ──────────────────────────────────────────────────────
+    card_rect = _TAROT_CARD_RECT
+    x0, y0, x1, y1 = card_rect
+    card_cx = (x0 + x1) // 2
+    _tarot_paint_card_stock(image, draw, card_rect)
+    _tarot_paint_doubled_border(image, draw, card_rect)
+    _tarot_paint_corner_pips(draw, card_rect)
+    _tarot_paint_roman_numeral(image, draw, numeral, card_cx, y0 + 20)
+
+    # Illustration panel: the numeral and name bands are carved out of the
+    # card's height first, and the emblem gets what is left.
+    panel = (x0 + 20, y0 + 68, x1 - 20, y1 - 74)
+    _tarot_paint_emblem_panel(draw, panel)
+    trump = stamp(image, draw, card_cx, (panel[1] + panel[3]) // 2, panel)
+
+    # The trump's name along the foot, titled by the emblem call itself.
+    _tarot_paint_card_name(image, draw, trump, card_rect, y1 - 60)
+
+    # ── the reading ───────────────────────────────────────────────────
+    rx0, ry0, rx1, ry1 = _TAROT_READING_RECT
+    _tarot_paint_body_panel(image, draw, (rx0, ry0, rx1, ry1))
+    attribution_band = 30
+    _tarot_paint_body(image, draw, quote_row, (rx0, ry0, rx1, ry1 - attribution_band), body_font_max)
+    # The byline shares the body's inset from the panel rule, so it can
+    # never be wider than the text it attributes.
+    _tarot_paint_attribution(image, draw, quote_row, (rx0 + rx1) // 2, ry1 - 22, (rx1 - rx0) - 16)
+
+    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
+    if (width, height) != (800, 480):
+        image = image.resize((width, height), Image.Resampling.NEAREST)
+    return image
+
+
 def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
     """A single trump laid on a reading cloth, interpretation beside it.
 
@@ -1181,47 +1288,25 @@ def render_tarot_frame(time_str: str, quote_row: dict, width: int, height: int) 
     Right: the reading — a clean cream cartouche carrying the quote in EB
     Garamond with a Tyrian-purple matched phrase, attribution at its foot.
     """
-    # Composed at the canonical 800x480 and NEAREST-downsampled otherwise
-    # (the ``metro`` convention): every rectangle is an absolute panel
-    # coordinate, and a direct small render would put the reading panel
-    # off-canvas.
-    image = Image.new("RGB", (800, 480), color=SPECTRA6["white"])
-    _tarot_paint_vellum(image)
-    draw = ImageDraw.Draw(image)
-
     hour_int = _clock_hour12(time_str)
 
-    # ── the card ──────────────────────────────────────────────────────
-    card_rect = _TAROT_CARD_RECT
-    x0, y0, x1, y1 = card_rect
-    card_cx = (x0 + x1) // 2
-    _tarot_paint_card_stock(image, draw, card_rect)
-    _tarot_paint_doubled_border(image, draw, card_rect)
-    _tarot_paint_corner_pips(draw, card_rect)
-    _tarot_paint_roman_numeral(image, draw, hour_int, card_cx, y0 + 20)
+    def stamp(image, draw, cx, cy, clip):
+        return _tarot_paint_emblem(image, draw, hour_int, cx, cy, clip=clip)
 
-    # Illustration panel: the numeral and name bands are carved out of the
-    # card's height first, and the emblem gets what is left.
-    panel = (x0 + 20, y0 + 68, x1 - 20, y1 - 74)
-    _tarot_paint_emblem_panel(draw, panel)
-    trump = _tarot_paint_emblem(image, draw, hour_int, card_cx, (panel[1] + panel[3]) // 2, clip=panel)
-
-    # The trump's name along the foot, titled by the emblem call itself.
-    _tarot_paint_card_name(image, draw, trump, card_rect, y1 - 60)
-
-    # ── the reading ───────────────────────────────────────────────────
-    rx0, ry0, rx1, ry1 = _TAROT_READING_RECT
-    _tarot_paint_body_panel(image, draw, (rx0, ry0, rx1, ry1))
-    attribution_band = 30
-    _tarot_paint_body(image, draw, quote_row, (rx0, ry0, rx1, ry1 - attribution_band))
-    # The byline shares the body's inset from the panel rule, so it can
-    # never be wider than the text it attributes.
-    _tarot_paint_attribution(image, draw, quote_row, (rx0 + rx1) // 2, ry1 - 22, (rx1 - rx0) - 16)
-
-    image = snap_image_to_palette(image, SPECTRA6_PALETTE)
-    if (width, height) != (800, 480):
-        image = image.resize((width, height), Image.Resampling.NEAREST)
-    return image
+    return _tarot_compose(_TAROT_ROMAN_NUMERALS.get(hour_int, "—"), stamp, quote_row, width, height)
 
 
-SPEC = FrameSpec(themes=("tarot",), render=render_tarot_frame)
+def render_tarot_sleep(time_str: str, width: int, height: int) -> Image.Image:
+    """The sleep frame: XVIII La Lune dealt in place of the hour's trump.
+
+    The Moon is the arcana's card of night and of dreams, so the reading
+    beside it is the bundled sleep quote, "To sleep, perchance to dream.",
+    with "sleep" in the theme's Tyrian purple. No hour trump goes past XII,
+    so the numeral itself says the count has stopped. ``time_str`` is unused.
+    """
+    del time_str
+    return _tarot_compose(_TAROT_MOON_NUMERAL, _tarot_paint_moon, dict(SLEEP_QUOTE_ROW), width, height,
+                          body_font_max=_TAROT_SLEEP_FONT_MAX)
+
+
+SPEC = FrameSpec(themes=("tarot",), render=render_tarot_frame, sleep=render_tarot_sleep)

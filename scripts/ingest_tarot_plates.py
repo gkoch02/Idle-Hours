@@ -54,6 +54,11 @@ already-separated image blends inks and lands off-palette.
 Usage:
     python3 ingest_tarot_plates.py --input scans/ --output plates.png
     python3 ingest_tarot_plates.py --input scans/ --inks 5 --contact contact.png
+    python3 ingest_tarot_plates.py --single --input scans/trump_18.jpg --output moon.png
+
+``--single`` separates one card into one tile, with the same crop and
+separation as the sheet: it is how the sleep frame's Moon (XVIII), which is
+not an hour, gets its plate.
 """
 from __future__ import annotations
 
@@ -217,11 +222,39 @@ def fit_tile(img: Image.Image) -> Image.Image:
     return tile
 
 
+def ingest_card(path: Path, a) -> tuple[Image.Image, Image.Image, tuple[int, int, int, int], str]:
+    """One scan to ``(separated tile, pre-separation tile, crop rect, ink summary)``.
+
+    The single home of the per-card steps, so the sheet and ``--single``
+    cannot drift apart.
+    """
+    raw = Image.open(path).convert("RGB")
+    rect = illustration_rect(card_bbox(raw), a.top, a.bottom, a.side)
+    crop = raw.crop(rect)
+    if not a.no_despeckle:
+        # Before the resize, not after: sensor grain and JPEG ringing
+        # want removing while they are still single pixels.
+        crop = crop.filter(ImageFilter.MedianFilter(3))
+    if a.trim:
+        crop = trim_to_content(crop, sat_min=a.sat_min, edge_max=a.edge_max)
+    tile = fit_tile(crop)
+    flat, hist = separate(tile, inks=a.inks, sat_min=a.sat_min,
+                          ink_max=a.ink_max, edge_max=a.edge_max,
+                          red_light_max=a.red_light_max, line_mode=a.line_mode,
+                          line_k=a.line_k, line_blur=a.line_blur)
+    total = TILE_W * TILE_H
+    parts = " ".join(f"{n}={hist.get(c,0)/total:5.1%}" for n, c in
+                     (("K", BLACK), ("R", RED), ("W", WHITE)))
+    return flat, tile, rect, parts
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--input", type=Path, required=True,
-                   help="directory of trump_01..trump_12 scans (jpg/png)")
+                   help="directory of trump_01..trump_12 scans (jpg/png), or one scan with --single")
+    p.add_argument("--single", action="store_true",
+                   help="separate the one scan named by --input into a single tile")
     p.add_argument("--output", type=Path, default=Path("tarot_plates.png"))
     p.add_argument("--contact", type=Path, default=None,
                    help="also write a contact sheet for eyeballing all 12 crops")
@@ -255,6 +288,17 @@ def main(argv=None) -> int:
     p.add_argument("--red-light-max", type=int, default=190)
     a = p.parse_args(argv)
 
+    if a.single:
+        if not a.input.is_file():
+            print(f"--single needs a scan file, got {a.input}", file=sys.stderr)
+            return 1
+        flat, _tile, rect, parts = ingest_card(a.input, a)
+        a.output.parent.mkdir(parents=True, exist_ok=True)
+        flat.save(a.output)
+        print(f"  {a.input.name:<16} crop={rect}  {parts}")
+        print(f"wrote {a.output} ({TILE_W}x{TILE_H}, {a.inks}-ink)")
+        return 0
+
     sheet = Image.new("RGB", (COLS * TILE_W, ROWS * TILE_H), (255, 255, 255))
     contact = Image.new("RGB", (COLS * TILE_W, ROWS * TILE_H), (255, 255, 255)) if a.contact else None
     missing = []
@@ -264,25 +308,9 @@ def main(argv=None) -> int:
         if not hits:
             missing.append(hour)
             continue
-        raw = Image.open(hits[0]).convert("RGB")
-        rect = illustration_rect(card_bbox(raw), a.top, a.bottom, a.side)
-        crop = raw.crop(rect)
-        if not a.no_despeckle:
-            # Before the resize, not after: sensor grain and JPEG ringing
-            # want removing while they are still single pixels.
-            crop = crop.filter(ImageFilter.MedianFilter(3))
-        if a.trim:
-            crop = trim_to_content(crop, sat_min=a.sat_min, edge_max=a.edge_max)
-        tile = fit_tile(crop)
+        flat, tile, rect, parts = ingest_card(hits[0], a)
         if contact is not None:
             contact.paste(tile, ((hour - 1) % COLS * TILE_W, (hour - 1) // COLS * TILE_H))
-        flat, hist = separate(tile, inks=a.inks, sat_min=a.sat_min,
-                              ink_max=a.ink_max, edge_max=a.edge_max,
-                              red_light_max=a.red_light_max, line_mode=a.line_mode,
-                              line_k=a.line_k, line_blur=a.line_blur)
-        total = TILE_W * TILE_H
-        parts = " ".join(f"{n}={hist.get(c,0)/total:5.1%}" for n, c in
-                         (("K", BLACK), ("R", RED), ("W", WHITE)))
         print(f"  hour {hour:>2}  {hits[0].name:<16} crop={rect}  {parts}")
         sheet.paste(flat, ((hour - 1) % COLS * TILE_W, (hour - 1) // COLS * TILE_H))
 

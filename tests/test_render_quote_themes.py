@@ -8329,6 +8329,64 @@ class TestMetroSleepFrame:
         assert pixel_bytes(frame) != pixel_bytes(rq.render_metro_sleep("14:30", 800, 480))
 
 
+class TestTarotSleepFrame:
+    """``tarot``'s own sleep frame: XVIII La Lune dealt in place of the hour's
+    trump, with the bundled sleep quote as its reading."""
+
+    def _render(self, time_str="22:00", size=(800, 480)):
+        return rq.render_sleep_frame(time_str, *size, theme="tarot")
+
+    def test_is_the_themes_sleep_frame(self):
+        assert rq.FRAME_SPECS["tarot"].sleep is rq.render_tarot_sleep
+        assert pixel_bytes(self._render()) == pixel_bytes(rq.render_tarot_sleep("22:00", 800, 480))
+
+    def test_inks_determinism_and_no_time(self):
+        a = self._render()
+        assert distinct_inks(a) <= set(rq.SPECTRA6.values())
+        for time_str in ("03:00", "12:59", "bogus"):
+            assert pixel_bytes(self._render(time_str)) == pixel_bytes(a)
+        assert pixel_bytes(self._render(size=(320, 192))) == pixel_bytes(a.resize((320, 192), Image.Resampling.NEAREST))
+
+    def test_the_moon_is_past_every_hour(self):
+        assert rq._TAROT_MOON_NUMERAL == "XVIII"
+        assert rq._TAROT_MOON_NUMERAL not in rq._TAROT_ROMAN_NUMERALS.values()
+        assert rq._TAROT_MOON_NAME not in rq._TAROT_TRUMP_NAMES.values()
+
+    def test_the_card_carries_the_moon_plate(self):
+        """The illustration panel is the committed XVIII plate, not any hour's."""
+        image = rq.render_tarot_sleep("22:00", 800, 480)
+        x0, y0, x1, y1 = rq._TAROT_CARD_RECT
+        panel = (x0 + 21, y0 + 69, x1 - 20, y1 - 74)
+        sleep_panel = pixel_bytes(image.crop(panel))
+        for hour in range(1, 13):
+            quote = rq.render(f"{hour:02d}:00", make_row(), 800, 480, mode="production", theme="tarot")
+            assert pixel_bytes(quote.crop(panel)) != sleep_panel, hour
+        assert ink_counts(image.crop(panel)).get(rq.SPECTRA6["black"], 0) > 5000
+
+    def test_falls_back_to_a_painted_moon_without_the_plate(self, monkeypatch, tmp_path):
+        from idle_hours.render_quote.themes import tarot
+        monkeypatch.setattr(tarot, "TAROT_MOON_PLATE", tmp_path / "missing.png")
+        monkeypatch.setitem(tarot._TAROT_PLATE_CACHE, "moon", None)
+        fallback = rq.render_tarot_sleep("22:00", 800, 480)
+        assert distinct_inks(fallback) <= set(rq.SPECTRA6.values())
+        monkeypatch.undo()
+        assert pixel_bytes(fallback) != pixel_bytes(rq.render_tarot_sleep("22:00", 800, 480))
+
+    def test_the_reading_is_the_sleep_quote_on_one_line(self):
+        draw = ImageDraw.Draw(Image.new("RGB", (800, 480)))
+        x0, y0, x1, y1 = rq._TAROT_READING_RECT
+        row = rq.SLEEP_QUOTE_ROW
+        *_, wrapped, _lh, _size = rq.fit_quote(
+            draw, row["display_quote"], row["matched_text"], (x1 - x0) - 16, (y1 - 30 - y0) - 16,
+            font_max=rq._TAROT_SLEEP_FONT_MAX, font_min=15, line_height_mult=1.24, theme="tarot",
+        )
+        assert len(wrapped) == 1
+
+    def test_the_sleep_row_has_one_home(self):
+        from idle_hours.render_quote import core, furniture
+        assert core.SLEEP_QUOTE_ROW is furniture.SLEEP_QUOTE_ROW is rq.SLEEP_QUOTE_ROW
+
+
 class TestChronoSleepFrame:
     """``chrono``'s own sleep frame: the End of Time, a lamppost burning on a
     platform in the void, the portrait hourglass run out, and the narrator's

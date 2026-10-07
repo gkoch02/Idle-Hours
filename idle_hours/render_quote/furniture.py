@@ -47,6 +47,27 @@ def _paint_placed(draw: ImageDraw.ImageDraw, placed, ink, accent) -> None:
         draw.text((x, y), chunk, font=font, fill=accent if is_bold else ink)
 
 
+# The quote the panel sleeps under, shaped as a corpus row so it goes through
+# the entire literary layout — every border painter, custom frame and the
+# accent-coloured matched phrase — in whichever theme is active. It lives
+# here, below the theme modules, so a theme's own sleep frame can quote it
+# too; ``core`` binds the same object for ``render_sleep_frame``.
+#
+# ``matched_text`` need not be a time phrase: ``resolve_display_match`` tries
+# a literal search first, so "sleep" is bolded in the accent like a real hour.
+# In ``dark`` this reproduces the bundled ``assets/goodnight.png``.
+#
+# Deliberately no ``source_id`` / ``line_number``: this row never enters the
+# picker or the anti-repeat ledger and must not be confusable with a corpus
+# row by anything keyed on that pair.
+SLEEP_QUOTE_ROW: dict[str, str] = {
+    "display_quote": "To sleep, perchance to dream.",
+    "matched_text": "sleep",
+    "author": "William Shakespeare",
+    "title": "Hamlet",
+}
+
+
 def fallback_title(quote_row: dict) -> str | None:
     source_id = quote_row.get("source_id")
     if source_id:
