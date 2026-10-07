@@ -8375,6 +8375,25 @@ class TestChronoSleepFrame:
         halo = ink_counts(image.crop((x1 + 10, y0, x1 + 40, y1)))
         assert rq.SPECTRA6["yellow"] in halo and rq.SPECTRA6["black"] in halo
 
+    def test_lamplight_pools_on_the_platform_not_round_it(self):
+        """The pool is filled under the lamp and stops at the platform's rim.
+
+        A core-less ``paint_neon_mask`` painted only a halo round its mask: a
+        hollow ring with no light inside, spilling past the rim (PR #378).
+        """
+        image = self._render()
+        yellow = rq.SPECTRA6["yellow"]
+        x0, y0, x1, y1 = rq._CHRONO_PLATFORM
+        cx = rq._CHRONO_LAMP_X
+
+        def share(box):
+            counts = ink_counts(image.crop(box))
+            return counts.get(yellow, 0) / sum(counts.values())
+
+        assert share((cx - 50, y0 + 12, cx - 12, y0 + 20)) > 0.2
+        assert share((x0 + 60, y1 + 3, x1 - 60, y1 + 14)) == 0
+        assert share((cx - 90, y0 - 12, cx - 20, y0 - 3)) == 0
+
     def test_quote_frame_still_shows_a_running_hourglass(self):
         row = make_row(display_quote="It was half past two.", matched_text="half past two")
         quote = rq.render("14:30", row, 800, 480, mode="production", theme="chrono")

@@ -9,13 +9,13 @@ import math
 import random
 from typing import Any
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import _fit_from_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access, snap_image_to_palette
-from ..primitives import _fill_swatch_stipple, paint_neon_mask
+from ..primitives import _bayer_threshold_field, _fill_swatch_stipple, _soft_ellipse_mask, paint_neon_mask
 from ..spec import FrameSpec
 
 # ─── chrono (16-bit SNES JRPG dialogue) ──────────────────────────────────────
@@ -404,6 +404,7 @@ _CHRONO_LAMP_HEAD = (_CHRONO_LAMP_X - 14, 62, _CHRONO_LAMP_X + 14, 90)
 _CHRONO_PLATFORM = (360, 188, 680, 232)
 _CHRONO_VOID_SEED = 0xE0D
 _CHRONO_VOID_HAZE = 0.2   # blue density at the platform's horizon
+_CHRONO_POOL_CAP = 115    # peak lamplight density on the platform, out of 255 (~45%)
 
 
 def _chrono_paint_void(image: Image.Image, draw: ImageDraw.ImageDraw) -> None:
@@ -431,11 +432,18 @@ def _chrono_paint_platform(image: Image.Image, draw: ImageDraw.ImageDraw) -> Non
     _chrono_fill_poly(image, [(cx + rx * math.cos(a), cy + ry * math.sin(a)) for a in
                               (i * math.pi / 36 for i in range(72))],
                       dark=SPECTRA6["blue"], light=SPECTRA6["black"], density=0.45)
-    pool = Image.new("L", image.size, 0)
-    ImageDraw.Draw(pool).ellipse((_CHRONO_LAMP_X - 70, y0 + 6, _CHRONO_LAMP_X + 70, y0 + 26), fill=255)
-    paint_neon_mask(image, pool, None, SPECTRA6["yellow"], radius=10, gamma=1.4, cap=0.45,
-                    ground=frozenset({SPECTRA6["blue"], SPECTRA6["black"]}))
-    pool.close()
+    # The pool is a stippled density field, densest under the lamp, clipped to
+    # the platform. Not a core-less ``paint_neon_mask``: that paints only the
+    # halo *around* its mask, which left a hollow ring spilling into the void.
+    pool_box = (_CHRONO_LAMP_X - 80, y0 + 2, _CHRONO_LAMP_X + 80, y0 + 30)
+    density = _soft_ellipse_mask(image.size, pool_box, blur=8).point(lambda v: v * _CHRONO_POOL_CAP // 255)
+    lit = ImageChops.subtract(density, _bayer_threshold_field(image.size)).point(lambda v: 255 if v else 0)
+    platform = Image.new("L", image.size, 0)
+    ImageDraw.Draw(platform).ellipse(_CHRONO_PLATFORM, fill=255)
+    lit = ImageChops.multiply(lit, platform)
+    image.paste(SPECTRA6["yellow"], (0, 0), lit)
+    for mask in (density, lit, platform):
+        mask.close()
     draw.ellipse(_CHRONO_PLATFORM, outline=SPECTRA6["white"], width=2)
 
 
