@@ -34,30 +34,9 @@ _SILVER_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
 
 # ---------------------------------------------------------------------------
-# daguerreotype — a cased photograph, lying open
-#
-# An 1850s daguerreotype case opened flat like a book: black leather outside,
-# a hinge down the spine, the pressed-velvet pad of the lid on the left and
-# the plate on the right behind a brass mat with a portrait-oval window. Full
-# design notes: docs/themes.md (``daguerreotype``).
-#
-# The quote is gold-stamped on the velvet, where a studio stamped its name:
-# solid yellow on the red pad, the matched phrase in white. There is no card,
-# which is what sets this theme apart from ``autochrome`` and ``photo``.
-#
-# The plate is a committed continuous-tone landscape
-# (``scripts/generate_daguerreotype_plate.py``) cover-cropped to the oval and
-# Atkinson-dithered at render time against white+black only (Atkinson's
-# discarded error blows highlights to silver and crushes shadows, the
-# process's tonal signature), so no chroma scatters into the silver. All
-# colour belongs to the case: the brass mat (Y+R gold), the pewter preserver
-# (K+W 50/50), an R+G tarnish ring creeping in from the oval's rim that
-# doubles as the vignette, and the velvet. The mat's pressed double ring and
-# the pad's pressed border are both ``paint_relief_mask``. A missing plate
-# degrades to ``_daguerreotype_paint_plate_fallback``.
-#
-# A photograph carries no clock: ``time_str`` is del-asserted (pinned by
-# ``TestDaguerreotypePlate``).
+# daguerreotype — a cased 1850s photograph, lying open, the quote gold-stamped
+# on the lid's velvet. ``time_str`` is del-asserted. Design notes:
+# docs/themes.md § daguerreotype.
 _DAG_LID = (16, 16, 391, 463)                  # the velvet pad, inside the leather
 _DAG_BASE = (408, 16, 783, 463)                # the plate side, inside the leather
 _DAG_PRESERVER = 8                             # pewter band round the brass mat
@@ -244,13 +223,13 @@ def _daguerreotype_paint_stamp(draw: ImageDraw.ImageDraw, quote_row: dict) -> No
 
 
 def render_daguerreotype_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """A cased daguerreotype lying open (see the section comment).
+    """A cased daguerreotype lying open (``docs/themes.md`` § daguerreotype).
 
     Composed at 800x480 and NEAREST-downsampled otherwise (the ``metro``
     convention): the case geometry is absolute, and interpolation would
     average the silver stipple into greys the panel cannot print.
     """
-    del time_str  # see the section comment; deliberately unused.
+    del time_str  # see docs/themes.md § daguerreotype; deliberately unused.
     image = Image.new("RGB", (800, 480), color=SPECTRA6["black"])
     _daguerreotype_paint_case(image)
     _daguerreotype_paint_velvet(image)

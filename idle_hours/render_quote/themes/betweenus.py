@@ -26,38 +26,10 @@ from ..primitives import position_noise
 from ..spec import BorderSpec
 
 # ---------------------------------------------------------------------------
-# betweenus / betweenus_dark — the *Between Us* app's card UI, light and dark.
-#
-# Between Us (github.com/gkoch02/BetweenUs) is a two-person checklist app whose
-# signature gesture — a serif headline with its operative phrase in italic
-# terracotta — is exactly what this clock does with a quote, so the app's
-# typographic move is the layout's move and the rest of the frame is the app's
-# furniture. Full design notes: docs/themes.md (`betweenus`).
-#
-# Composition (both variants share ``draw_betweenus_border``):
-#
-# * **Paper** — the app's paper → paper2 gradient as a sparse wash thresholded
-#   on ``position_noise`` (light: yellow on white, ~3% → ~9% toward the foot;
-#   dark: red on black ~6% → ~2.5% plus a trace of white). Quote-independent,
-#   so it is cached per geometry in a bounded LRU.
-# * **The card** — the body knockout, a rounded card (radius 18) with a 1 px
-#   ``line`` edge, floated on a soft shadow read off a blurred offset
-#   silhouette (dark clears the warm specks instead of casting black). The
-#   card interior is flat: a speckled ground under body text is noise on eInk.
-# * **Brand row** — "Between *Us*" top-left and a daypart pill top-right.
-# * **Progress bar** — filled to the fraction of the day elapsed, gold →
-#   tangerine. No digits; the registry path (source card, ``--message``) has no
-#   time and draws an empty track. The sleep frame goes through ``render`` with
-#   a time, so it carries a real track and pill.
-# * **Legend** — the app's five answer tiers along the foot, each mapped onto a
-#   documented recipe (see ``_BETWEENUS_LEGEND``).
-#
-# Fraunces' default axis instance is **Black**, so every candidate pins an
-# instance by name. The matched phrase is italic, not bold: solid red in
-# light (a stipple would shred italic hairlines), the R+Y 1:1 amber reroute in
-# dark. The oversized quote marks are skipped (``_THEMES_WITHOUT_ORNAMENT_MARKS``):
-# they paint on the paper outside the card, where a ``page_bg`` glyph would
-# punch a hole in the wash.
+# betweenus / betweenus_dark — the *Between Us* app's card UI, light and dark,
+# both drawn by ``draw_betweenus_border``. Fraunces' default axis instance is
+# **Black**, so every candidate pins an instance by name. Design notes:
+# docs/themes.md § betweenus / betweenus_dark.
 
 # The app's 16 pt screen inset, scaled to the panel.
 _BETWEENUS_MARGIN = 28

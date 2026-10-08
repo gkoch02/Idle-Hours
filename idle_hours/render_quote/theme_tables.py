@@ -147,13 +147,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Between Us, light: the app's warm-paper card UI (see the section comment
-    # above ``draw_betweenus_border``). White ground carrying a cream gradient
-    # wash, black Fraunces body, the matched phrase in *italic* solid red —
-    # the panel's red is the app's ``love`` terracotta unmixed, and a solid
-    # ink keeps the italic's thin strokes whole. Both ornament slots take the
-    # page ground: the app has no quotation-mark ornaments and the marks are
-    # skipped outright in ``_paint_ornament_mark``.
+    # Between Us, light: italic matched phrase in solid red, which keeps the
+    # italic's thin strokes whole. Ornament slots take the page ground; the
+    # marks are skipped outright in ``_paint_ornament_mark``.
     "betweenus": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -164,14 +160,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Between Us, dark: the app's dark set is not an inversion of the light
-    # one — the same warm paper on a near-black ground, accents lightened so
-    # they stay readable. Black ground with a sparse red + white wash, white
-    # Fraunces body, and a yellow *sentinel* accent that ``_draw_text_body``
-    # reroutes to the R+Y 1:1 amber — the apricot the app's dark ``want``
-    # becomes on the panel. The sentinel only surfaces literally in the
-    # debug banner, where yellow-on-black is legible (the ``anna_atkins`` /
-    # ``firmament`` pattern). Ornaments skipped, as for the light variant.
+    # Between Us, dark: ``accent`` is a yellow sentinel ``_draw_text_body``
+    # reroutes to the R+Y 1:1 amber (literal only in the debug banner).
+    # Ornaments skipped, as for the light variant.
     "betweenus_dark": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -295,12 +286,9 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
-    # Printed circuit board. ``draw_circuit_border``'s Layer 0 flips half the
-    # green ground to black on the (x+y) checkerboard so the soldermask reads
-    # as FR-4 bottle-green (G+K 1:1) — the opposite of ``atomic``, which
-    # lightens the same green. White silkscreen body, gold (yellow) traces,
-    # pads and accent; Space Mono. Both ornament keys yellow so the quote
-    # marks read as solid copper rather than dithering pale.
+    # Printed circuit board: green ground darkened to G+K soldermask by the
+    # painter, white silkscreen body, gold (yellow) copper accent. Both
+    # ornament keys yellow so the marks read as solid copper, not pale dither.
     "circuit": {
         "page_bg": SPECTRA6["green"],
         "text": SPECTRA6["white"],
@@ -1160,13 +1148,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Wax-sealed letter. Cream ground from ``draw_letter_border``'s Layer 0
-    # (the shared Y+W cream recipe), black Dancing Script body, sealing-wax
-    # red matched phrase echoing the maroon seal stamped bottom-right. The
-    # oversized opening mark is Pinyon Script on the faux-gray path
-    # (black/white 50/50), so it reads as a pale pen stroke rather than a
-    # blot. Fold creases and seal separate it from ``default``; see
-    # THEME_FONTS for the font pairing.
+    # Wax-sealed letter: cream from the painter's Layer 0, black body, red
+    # sealing-wax matched phrase. Ornament keys black/white: the 50/50 faux-gray
+    # quote marks read as a pale pen stroke rather than a blot.
     "letter": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1177,15 +1161,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Anna Atkins 1843 botanical cyanotype. Prussian-blue ground carrying a
-    # Floyd–Steinberg-dithered cyanotype plate (``dither_image_to_palette``;
-    # see ``draw_anna_atkins_border``), white algae/fern silhouettes and
-    # copperplate Latin labels. White Libre Caslon drawn straight over the
-    # plate with a per-glyph black halo from ``_draw_text_body``. ``accent``
-    # is a yellow sentinel that ``_draw_text_body`` reroutes to a B+W 50/50
-    # sky-blue stipple; it shows literally only in the debug banner (the
-    # ``firmament`` pattern). Ornament keys blue/white give the quote marks
-    # the same sky-blue.
+    # Cyanotype. ``accent`` is a yellow sentinel ``_draw_text_body`` reroutes
+    # to a B+W sky-blue stipple (literal only in the debug banner); ornament
+    # keys blue/white give the quote marks the same sky-blue.
     "anna_atkins": {
         "page_bg": SPECTRA6["blue"],
         "text": SPECTRA6["white"],
@@ -1197,9 +1175,8 @@ THEMES = {
         "source": SPECTRA6["white"],
     },
     # Engraved art-song manuscript. A custom-render frame, so these colours
-    # serve only the palette-only paths (see the note above ``THEMES``); the frame
-    # itself hardcodes its three-tier ink hierarchy (black plate / maroon
-    # editorial / red voice — see the lieder section comment).
+    # serve only the palette-only paths (see the note above ``THEMES``); the
+    # frame hardcodes its own inks (roman black / italic black / red voice).
     "lieder": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1211,8 +1188,8 @@ THEMES = {
         "source": SPECTRA6["black"],
     },
     # Neon alley at night. A custom-render frame, so these colours serve only
-    # the palette-only paths (see the note above ``THEMES``); the frame itself paints
-    # its tube cores and blooms directly (see the izakaya section comment).
+    # the palette-only paths (see the note above ``THEMES``); the frame paints
+    # its tube cores and blooms directly.
     "izakaya": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1223,9 +1200,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Deep sea. A custom-render frame, so these colours serve only
-    # the palette-only paths (see the note above ``THEMES``); the frame paints its own
-    # depth gradient and blooms (see the abyssal section comment).
+    # Deep sea. A custom-render frame, so these colours serve only the
+    # palette-only paths (see the note above ``THEMES``); the frame paints its
+    # own depth gradient and blooms.
     "abyssal": {
         "page_bg": SPECTRA6["blue"],
         "text": SPECTRA6["white"],
@@ -1236,12 +1213,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # The Progress Pride flag, flying. Custom frame (``render_pride_frame``):
-    # the flag is full-bleed and the quote sits in a white cartouche. Palette
-    # serves the palette-only paths (see the note above ``THEMES``); stripe
-    # inks come from ``_PRIDE_STRIPE_INKS``. ``accent`` is blue because the
-    # frame's matched phrase is the R+B violet stipple and blue is the half
-    # that still reads on the white card.
+    # Progress Pride flag. Custom frame; palette serves the palette-only paths
+    # (see the note above ``THEMES``). ``accent`` is blue: the frame's violet is
+    # R+B, and blue is the half that still reads on the white card.
     "pride": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1265,11 +1239,9 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
-    # Bakelite console — an amber-phosphor CRT in a butterscotch slab (see the
-    # ``render_bakelite_frame`` section comment). Custom frame; palette serves
-    # the palette-only paths (see the note above ``THEMES``). ``text`` is the
-    # yellow phosphor core, ``accent`` the red halo, ``page_bg`` the black
-    # glass.
+    # Bakelite console. Custom frame; palette serves the palette-only paths
+    # (see the note above ``THEMES``). ``text`` is the yellow phosphor core,
+    # ``accent`` the red halo, ``page_bg`` the black glass.
     "bakelite": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["yellow"],
@@ -1280,10 +1252,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
-    # Whistler nocturne — blue-and-gold night river. Custom frame
-    # (``render_nocturne_frame``); palette serves the palette-only paths (see
-    # the note above ``THEMES``). The canvas is flow-field blue brushwork
-    # over black with synthesised-gold light.
+    # Whistler nocturne. Custom frame; palette serves the palette-only paths
+    # (see the note above ``THEMES``).
     "nocturne": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1294,10 +1264,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["blue"],
     },
-    # Patinated bronze memorial plaque. Custom frame (``render_plaque_frame``);
-    # palette serves the palette-only paths (see the note above ``THEMES``).
-    # The tablet is dark verdigris with relief-lit burnished-brass lettering
-    # (forest-teal with gold was too low-contrast to read).
+    # Bronze plaque. Custom frame; palette serves the palette-only paths (see
+    # the note above ``THEMES``): verdigris ground, brass lettering.
     "plaque": {
         "page_bg": SPECTRA6["green"],
         "text": SPECTRA6["yellow"],
@@ -1308,10 +1276,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["yellow"],
     },
-    # Cased 1850s daguerreotype, lying open. Custom frame
-    # (``render_daguerreotype_frame``); palette serves the palette-only paths
-    # (see the note above ``THEMES``): the lid's red velvet pad with the quote
-    # gold-stamped on it, the matched phrase in white.
+    # Cased daguerreotype. Custom frame; palette serves the palette-only paths
+    # (see the note above ``THEMES``): gold stamping on red velvet, white phrase.
     "daguerreotype": {
         "page_bg": SPECTRA6["red"],
         "text": SPECTRA6["yellow"],
@@ -1322,10 +1288,9 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["yellow"],
     },
-    # Autochrome Lumière colour plate as a lantern slide. Custom frame
-    # (``render_autochrome_frame``); palette serves the palette-only paths
-    # (see the note above ``THEMES``): the black paper mask, the caption
-    # lettered on it in white with the matched phrase in yellow.
+    # Autochrome lantern slide. Custom frame; palette serves the palette-only
+    # paths (see the note above ``THEMES``): white caption on the black mask,
+    # matched phrase in yellow.
     "autochrome": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1336,11 +1301,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # The operator's own photograph. Custom frame (``render_photo_frame``);
-    # palette serves the palette-only paths (see the note above ``THEMES``).
-    # The picture is whatever ``IDLE_HOURS_PHOTO_PATH`` names, dithered
-    # against all six inks, with the quote on a cream card over its quietest
-    # region.
+    # The operator's own photograph. Custom frame; palette serves the
+    # palette-only paths (see the note above ``THEMES``): the cream caption card.
     "photo": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1351,10 +1313,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Library catalogue card. Custom frame (``render_cardcatalog_frame``) —
-    # the stamp column needs a right margin the literary layout doesn't
-    # leave. Palette serves the palette-only paths (see the note above
-    # ``THEMES``); the card is manila (cream + sepia foxing) with violet ink.
+    # Library catalogue card. Custom frame; palette serves the palette-only
+    # paths (see the note above ``THEMES``). The frame's ink is R+B violet.
     "cardcatalog": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1365,10 +1325,8 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
-    # Worn VHS tape under a camcorder OSD. Custom frame (``render_vhs_frame``)
-    # that owns the canvas; palette serves the palette-only paths (see the
-    # note above ``THEMES``). Red and blue are the two chroma records that
-    # drift apart in ``draw_text_chroma_shift``; the body is white.
+    # Worn VHS tape. Custom frame; palette serves the palette-only paths (see
+    # the note above ``THEMES``). Red and blue are the two chroma records.
     "vhs": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1379,11 +1337,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Meteorological surface analysis. A literary-layout theme (NOT a custom
-    # frame): ``draw_synoptic_border`` paints the chart under the shared
-    # layout and knocks the body out to a boxed legend via ``clear_rect``.
-    # Blue and red are the cold- and warm-front inks; the matched phrase is
-    # warm-front red.
+    # Surface analysis (a border painter, not a frame). Blue and red are the
+    # cold- and warm-front inks; the matched phrase is warm-front red.
     "synoptic": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1397,10 +1352,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Metropolitan transit diagram. A custom-render frame
-    # (``render_metro_frame``): the full-palette route network owns the canvas
-    # and the quote sits in a central interchange card. The matched phrase is
-    # the red express route through the otherwise-black text block.
+    # Transit diagram. Custom frame; the matched phrase is the red express
+    # route through the otherwise-black text block.
     "metro": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1426,12 +1379,9 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Counted cross-stitch sampler. Custom frame (``render_sampler_frame``):
-    # every glyph is stitched as "X" marks from a Silkscreen mask onto cream
-    # Aida cloth (a Y+W stipple wash synthesised at render time), inside a
-    # full-palette floral border with house / heart / bird motifs. Black
-    # floss body, red floss matched phrase; no HH:MM. Palette serves the
-    # palette-only paths (see the note above ``THEMES``).
+    # Counted cross-stitch sampler. Custom frame; palette serves the
+    # palette-only paths (see the note above ``THEMES``). Black floss body,
+    # red floss matched phrase.
     "sampler": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -1455,11 +1405,9 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_bold": QUOTE_FONT_BOLD_CANDIDATES,
         "ornament": ORNAMENT_FONT_CANDIDATES,
     },
-    # Between Us — Fraunces. The matched phrase is the *italic* cut, not a
-    # bold ("say *what you want.*" is the app's own gesture). Light keeps it
-    # at Italic 400 because it paints solid; dark steps to SemiBold Italic so
-    # the amber stipple has stroke mass. Italic fallbacks keep a missing
-    # install slanted.
+    # Fraunces, every candidate pinned (the default instance is Black). The
+    # matched phrase is the italic cut: Italic 400 in light, SemiBold Italic in
+    # dark so the amber stipple has stroke mass.
     "betweenus": {
         "quote_regular": [
             (FRAUNCES_VARIABLE, "Regular"),
@@ -1500,11 +1448,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Jost's near-monoline strokes are what let this theme bloom:
-    # ``paint_neon_mask`` reads a blurred glyph mask as halo density, so a
-    # high-contrast face haloes unevenly (stems flare, hairlines vanish) and
-    # stops reading as a lit tube. Space Mono Bold carries the stencilled
-    # legend — the same chrome split ``metro`` uses.
+    # Jost: near-monoline strokes bloom evenly, where a high-contrast face
+    # haloes unevenly. Space Mono Bold carries the stencilled legend.
     "bakelite": {
         "quote_regular": [
             (JOST_VARIABLE, "Regular"),
@@ -1524,10 +1469,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Nocturne blooms its body text, and a high-contrast face haloes unevenly
-    # (see ``bakelite``). Cormorant Garamond is the right register, so the
-    # body pins **Medium**: enough stem weight to survive the halo where
-    # Regular's hairlines would shred.
+    # Cormorant Garamond, body pinned to **Medium**, not Regular: the body
+    # blooms, and Regular's hairlines shred in the halo.
     "nocturne": {
         "quote_regular": [
             (CORMORANT_VARIABLE, "Medium"),
@@ -1545,11 +1488,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Plaque: Cinzel Decorative, the Trajan capitalis of cast bronze
-    # tablets. The chain steps one weight heavier — Bold body, Black matched
-    # phrase — because a relief face needs stroke mass: Regular's 2 px
-    # hairlines leave nothing for the gold once the rim light claims the
-    # edges. Fallbacks stay heavy serifs for the same reason.
+    # Cinzel Decorative one weight heavier (Bold body, Black phrase): a relief
+    # face needs stroke mass. Fallbacks stay heavy serifs for the same reason.
     "plaque": {
         "quote_regular": [
             CINZELDECORATIVE_BOLD,
@@ -1566,9 +1506,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Daguerreotype's caption slip is Libre Caslon Text, shared with
-    # ``anna_atkins`` on purpose (the photographic themes share a face).
-    # Space Mono is loaded directly by the frame for the plate label.
+    # Libre Caslon Text, shared on purpose by the photographic themes.
     "daguerreotype": {
         "quote_regular": [
             (LIBRECASLON_VARIABLE, "Regular"),
@@ -1585,8 +1523,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Autochrome: Libre Caslon Text, like the other photographic themes. The
-    # sans mount chrome loads directly from the meta chain.
+    # Libre Caslon Text, like the other photographic themes. The sans mount
+    # chrome loads directly from the meta chain.
     "autochrome": {
         "quote_regular": [
             (LIBRECASLON_VARIABLE, "Regular"),
@@ -1603,8 +1541,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Photo: Libre Caslon, the photographic themes' caption face — a neutral
-    # book serif suits a caption over an unknown picture.
+    # Libre Caslon: a neutral book serif suits a caption over an unknown picture.
     "photo": {
         "quote_regular": [
             (LIBRECASLON_VARIABLE, "Regular"),
@@ -1621,8 +1558,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Metro: Jost, whose open counters survive route-map legend sizes; the
-    # true Bold gives the matched phrase an interchange label's weight.
+    # Jost: open counters survive route-map legend sizes.
     "metro": {
         "quote_regular": [
             (JOST_VARIABLE, "Regular"),
@@ -1671,8 +1607,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Circuit shares nightvision's Space Mono chain — the silkscreen register
-    # of a PCB legend — with the same DejaVu Sans Mono fallback.
+    # Space Mono, nightvision's chain: the silkscreen register of a PCB legend.
     "circuit": {
         "quote_regular": [
             SPACEMONO_REGULAR,
@@ -2759,12 +2694,9 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # Wax-sealed letter. Dancing Script carries the body and matched phrase
-    # (Bold instance for a real weight step); Pinyon Script only the quote
-    # marks, because its hairlines shatter at body sizes after palette snap
-    # (see the DANCINGSCRIPT_VARIABLE / PINYONSCRIPT_REGULAR comments). Body
-    # falls back through slanted sans; the ornament falls back to Dancing
-    # Script Bold so the marks stay a pen hand.
+    # Dancing Script (Bold instance pinned for the matched phrase); Pinyon
+    # Script only for the marks, whose hairlines shatter at body sizes. The
+    # ornament falls back to Dancing Script Bold so the marks stay a pen hand.
     "letter": {
         "quote_regular": _HAND_SCRIPT_REGULAR,
         "quote_bold": _HAND_SCRIPT_BOLD,
@@ -2775,9 +2707,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "anna_atkins": {
-        # Libre Caslon Text, the letterpress register of an 1843 English
-        # natural-history book. Regular body, Bold matched phrase, plus the
-        # sky-blue stipple reroute in ``_draw_text_body``.
+        # Libre Caslon Text, the letterpress register of Atkins's era.
         "quote_regular": [
             (LIBRECASLON_VARIABLE, "Regular"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
@@ -2801,10 +2731,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "lieder": {
-        # Alegreya: roman for the sung lyric, Bold for the matched phrase,
-        # Italic for every editorial mark (tempo, expression, composer, plate
-        # line) — an engraved score's roman/italic split. Falls back through
-        # EB Garamond and the system serifs.
+        # Alegreya: roman lyric, Bold matched phrase, Italic editorial marks.
         "quote_regular": [
             ALEGREYA_REGULAR,
             EBGARAMOND_REGULAR,
@@ -2830,10 +2757,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "izakaya": {
-        # Quicksand: the nearest open type to a bent glass tube. Regular body,
-        # Bold matched phrase. The ornament slot is Yuji Boku, for the shop
-        # signs and the lantern's hour numeral. Falls back through system sans
-        # — a high-contrast serif would read as anything but neon.
+        # Quicksand, the nearest open type to a bent glass tube; Yuji Boku in
+        # the ornament slot for the signs and the lantern numeral.
         "quote_regular": [
             QUICKSAND_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -2853,9 +2778,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "abyssal": {
-        # Lato: humanist sans that holds as white text over a dark gradient.
-        # Regular body, Bold matched phrase under the mint bloom; the italic
-        # (ornament slot) sets the attribution, the one unlit text.
+        # Lato: holds as white text over a dark gradient. The italic (ornament
+        # slot) sets the attribution, the one unlit text.
         "quote_regular": [
             LATO_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -2875,10 +2799,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # pride reuses ``bauhaus``'s Jost: geometric sans is the register of the
-    # 1970s poster and protest printing the flag came out of (a period serif
-    # would read as a book jacket). Regular body, Bold matched phrase under
-    # the violet accent.
+    # Jost, ``bauhaus``'s chain: the geometric sans of 1970s protest printing.
     "pride": {
         "quote_regular": [
             (JOST_VARIABLE, "Regular"),
@@ -2900,10 +2821,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # pulp uses Alfa Slab One, a heavy mid-century advertising slab. The
-    # misregistration effect needs a FAT face: on a hairline serif the
-    # off-register red fringe eats the letterform instead of haloing it.
-    # Space Mono carries the small serial chrome, where a slab at 14 px clogs.
+    # Alfa Slab One: the misregistration needs a FAT face (on a hairline
+    # serif the red fringe eats the letterform).
     "pulp": {
         "quote_regular": [
             (ALFA_SLAB_ONE, None),
@@ -2920,7 +2839,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # synoptic uses Space Mono: a mono reads as instrument printout.
+    # Space Mono: a mono reads as instrument printout.
     "synoptic": {
         "quote_regular": [
             SPACEMONO_REGULAR,
@@ -2937,10 +2856,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # cardcatalog reuses ``dispatch``'s Special Elite — real catalogue cards
-    # were typed — and the objects differ enough that sharing is fine (#210).
-    # Space Mono carries the call number and stamps, which came off a metal
-    # type wheel rather than a typewriter.
+    # Special Elite, ``dispatch``'s typewriter: real catalogue cards were
+    # typed. Space Mono (type-wheel call number and stamps) is the fallback.
     "cardcatalog": {
         "quote_regular": [
             SPECIALELITE_REGULAR,
@@ -2959,11 +2876,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # vhs uses Antonio for the body: a camcorder character generator draws in
-    # a tall narrow cell, and the condensed stems are what let the ±2 px
-    # chroma ghosts clear the stem and read (on a wide face they vanish into
-    # it). The matched phrase gets a real Bold step. The OSD chrome is loaded
-    # inline in ``_vhs_paint_osd`` from Pixelify Sans.
+    # Antonio: condensed stems let the ±2 px chroma ghosts clear the stem.
+    # The OSD chrome loads Pixelify Sans inline in ``_vhs_paint_osd``.
     "vhs": {
         "quote_regular": [
             (ANTONIO_VARIABLE, "Regular"),
@@ -2980,9 +2894,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # sampler stitches text from a Silkscreen pixel-font mask — Regular for the
-    # body floss, Bold for the matched-phrase / ornament floss. The fallbacks
-    # are a safety net only (non-grid glyphs read wrong as stitches).
+    # Silkscreen: the pixel grid is the stitch chart. Fallbacks are a safety
+    # net only (non-grid glyphs read wrong as stitches).
     "sampler": {
         "quote_regular": [
             SILKSCREEN_REGULAR,

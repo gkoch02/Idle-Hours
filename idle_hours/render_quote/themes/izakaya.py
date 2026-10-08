@@ -18,23 +18,9 @@ from ..spec import FrameSpec
 
 # ─── izakaya (neon alley at night) ───────────────────────────────────────────
 #
-# A Kabukichō / Golden Gai back alley after rain: vertical shop signs glowing
-# down both margins, paper lanterns above, the quote as neon tube lettering,
-# and wet asphalt throwing every sign back as a vertical smear. Every glow goes
-# through ``paint_neon_mask`` (one ink at a falling density).
-#
-# Ink use:
-#   black       the alley itself.
-#   blue        the night haze above the roofline, and the body text's bloom.
-#   white       the neon tube cores (the glass is the brightest thing in a sign).
-#   yellow      the matched phrase's tube core.
-#   red         the matched phrase's bloom, the paper lanterns, and two signs.
-#   green       two more sign columns.
-#
-# The hour rides the main lantern as a kanji numeral (一 … 十二), so
-# ``time_str`` is used; the matched phrase still carries the readable time.
-# Sign words are ordinary alley signage set in Yuji Boku. Deliberately
-# kanji-only: katakana would want ー rotated in vertical setting.
+# A Kabukichō back alley after rain, every glow through ``paint_neon_mask``.
+# The hour rides the main lantern as a kanji numeral, so ``time_str`` is used.
+# Design notes: docs/themes.md § izakaya.
 
 _IZAKAYA_SIGN_W = 58
 _IZAKAYA_SIGN_COLUMNS = (10, 732)     # left / right sign-board x origins
@@ -258,7 +244,7 @@ def _izakaya_paint_street(image: Image.Image, boxes) -> None:
 
 
 def render_izakaya_frame(time_str: str, quote_row: dict, width: int, height: int) -> Image.Image:
-    """Neon alley at night (see the module section comment above).
+    """Neon alley at night (``docs/themes.md`` § izakaya).
 
     Laid out against the canonical 800×480; smaller canvases (``/api/preview``
     thumbnails) crop rather than reflow. Raw pixel writes are bounds-clipped.

@@ -17,30 +17,9 @@ from ..spec import FrameSpec
 from ._shared import _TAROT_ROMAN_NUMERALS
 
 # ---------------------------------------------------------------------------
-# plaque — a patinated bronze memorial plaque
-#
-# A cast-bronze dedication tablet with relief-lit lettering
-# (``paint_relief_mask``): the blurred glyph mask is read as a height field
-# and lit from the upper left, so each letter takes a white highlight on its
-# lit bevels and a black core shadow opposite. Full design notes:
-# docs/themes.md (``plaque``).
-#
-# **The patina is dark verdigris**: G+B+K at ~33/17/50, see
-# ``_plaque_paint_patina`` for why it must be dark. Two incommensurate sine
-# fields swing the green/blue balance and a hash jitters the partition so the
-# tile never lattices; on an RGB preview it reads lime — judge on the panel's
-# muted inks.
-#
-# **One metal family, one light.** The bead and bolts are the Y+R gold; the
-# lettering is burnished brass (Y+W), because the gold is too dark to carry
-# text on any ground the panel can make. The matched phrase is the polished
-# passage: more white in its face and cut deeper. The dedication and
-# attribution are cast too, smaller, in the same brass (see
-# ``_plaque_paint_cast_line``).
-#
-# **The hour is the dedication year**, ``ERECTED · ANNO XI`` in Roman
-# numerals. Hour only: every minute of an hour renders byte-identically
-# (pinned by ``TestPlaqueRelief``); the minute stays with the matched phrase.
+# plaque — a patinated bronze memorial plaque with relief-lit lettering
+# (``paint_relief_mask``). The hour is the dedication year, ``ERECTED · ANNO
+# XI``; hour only. Design notes: docs/themes.md § plaque.
 _PLAQUE_RIM = (12, 12, 787, 467)               # outer edge of the cast bead
 _PLAQUE_RIM_WIDTH = 7
 _PLAQUE_QUOTE_RECT = (84, 96, 716, 330)
