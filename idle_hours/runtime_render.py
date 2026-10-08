@@ -76,18 +76,16 @@ def _corpus_kwargs(args) -> CorpusKwargs:
 
     Single seam so the many ``peek_quote_id`` / ``render_now`` call sites don't
     each reach into ``args`` for three attributes — same pattern (and same
-    rationale) as ``runtime_theme._auto_theme_kwargs``. The ``getattr``
-    defaults cover programmatically-built ``argparse.Namespace`` objects in
-    tests and any caller predating these flags, so the bundled-asset contract
-    is preserved when the attributes are absent.
+    rationale) as ``runtime_theme._auto_theme_kwargs``. An unset flag
+    (``None``) falls back to the bundled asset.
 
     Both the peek and the render subprocess MUST be given the same values, or
     they can disagree about which quote is current and break the dedup check.
     """
     return {
-        "database_path": getattr(args, "baked_db", None) or pick_quote_module.DEFAULT_DATABASE_PATH,
-        "input_path": getattr(args, "raw_corpus", None) or pick_quote_module.DEFAULT_INPUT_PATH,
-        "overrides_path": getattr(args, "overrides", None) or pick_quote_module.DEFAULT_OVERRIDES_PATH,
+        "database_path": args.baked_db or pick_quote_module.DEFAULT_DATABASE_PATH,
+        "input_path": args.raw_corpus or pick_quote_module.DEFAULT_INPUT_PATH,
+        "overrides_path": args.overrides or pick_quote_module.DEFAULT_OVERRIDES_PATH,
     }
 
 
@@ -188,7 +186,7 @@ def _persist_state_after_render(args: argparse.Namespace, state: RuntimeState) -
     exceptions so a disk hiccup can't bubble into the render path and
     trigger the outer-loop backoff.
     """
-    state_path = getattr(args, "state_path", None)
+    state_path = args.state_path
     if not state_path:
         return
     try:

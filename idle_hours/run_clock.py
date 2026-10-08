@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from idle_hours import (
@@ -103,7 +103,7 @@ class _ReplaceConfigDefaultAppend(argparse.Action):
         setattr(namespace, self.dest, items)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the literary clock render loop.")
     parser.add_argument(
         "--config",
@@ -493,7 +493,7 @@ def parse_args() -> argparse.Namespace:
     # precedence-ordering bugs.
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--config", default=None)
-    pre_args, _ = pre.parse_known_args()
+    pre_args, _ = pre.parse_known_args(argv)
     config_path = Path(pre_args.config) if pre_args.config else None
     # Mirror argparse's own ``choices=`` gate through ``load_config`` so a
     # typoed ``mode = "produciton"`` or ``theme = "drak"`` fails at
@@ -512,7 +512,7 @@ def parse_args() -> argparse.Namespace:
     if config_defaults:
         parser.set_defaults(**config_defaults)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if (args.quiet_start is None) != (args.quiet_end is None):
         parser.error("--quiet-start and --quiet-end must be specified together")
     return args
@@ -1148,7 +1148,7 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     """
     errors: list[str] = []
     for attr, required in _PREFLIGHT_PATH_FLAGS:
-        value = getattr(args, attr, None)
+        value = getattr(args, attr)
         if not value:
             if required:
                 errors.append(f"--{attr.replace('_', '-')} is required")
@@ -1188,8 +1188,8 @@ def _preflight_paths(args: argparse.Namespace) -> list[str]:
     # Checks the EFFECTIVE paths (``--baked-db`` / ``--raw-corpus``), not the
     # bundled ones, so an operator who relocated the corpus onto a writable
     # path gets a message about the file the picker will actually open.
-    baked_db = Path(getattr(args, "baked_db", None) or pick_quote_module.DEFAULT_DATABASE_PATH).expanduser()
-    raw_corpus = Path(getattr(args, "raw_corpus", None) or pick_quote_module.DEFAULT_INPUT_PATH).expanduser()
+    baked_db = Path(args.baked_db or pick_quote_module.DEFAULT_DATABASE_PATH).expanduser()
+    raw_corpus = Path(args.raw_corpus or pick_quote_module.DEFAULT_INPUT_PATH).expanduser()
     if not baked_db.exists() and not raw_corpus.exists():
         errors.append(
             f"corpus missing: neither {baked_db} nor {raw_corpus} exists. The wheel "
@@ -1231,7 +1231,7 @@ def _seed_writable_corpus_paths(args: argparse.Namespace) -> list[str]:
     """
     errors: list[str] = []
     for attr, bundled in _SEEDED_CORPUS_PATHS:
-        value = getattr(args, attr, None)
+        value = getattr(args, attr)
         if not value:
             continue
         dest = Path(value).expanduser()
@@ -1272,7 +1272,7 @@ def _warn_legacy_render_script(args: argparse.Namespace) -> None:
     error. It runs even under ``--skip-preflight``, because that flag skips path
     checks, not advice.
     """
-    value = getattr(args, "render_script", None)
+    value = args.render_script
     if value and value != runtime_render.BUNDLED_RENDER_SCRIPT and runtime_render._uses_bundled_renderer(value):
         _log(
             f'render_script = "{value}" names the bundled renderer by file, '
@@ -1293,7 +1293,7 @@ def _run_preflight(args: argparse.Namespace) -> None:
     sample unit so a typoed path halts the service instead of flapping
     against ``Restart=always``.
     """
-    if getattr(args, "skip_preflight", False):
+    if args.skip_preflight:
         return
     # Seed BEFORE validating: a relocated corpus path is legitimately absent on
     # first boot, and the seeding step is what makes it present.
@@ -1343,8 +1343,8 @@ def main() -> int:
     # picks up the destination without per-call plumbing. Empty URL =
     # disabled; runtime_webhook.configure handles that explicitly.
     runtime_webhook.configure(
-        getattr(args, "webhook_url", "") or None,
-        all_events=getattr(args, "webhook_all_events", False),
+        args.webhook_url or None,
+        all_events=args.webhook_all_events,
     )
 
     _warn_legacy_render_script(args)

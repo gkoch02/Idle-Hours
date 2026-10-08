@@ -267,21 +267,21 @@ class WebContext:
     ):
         self.args = args
         self.state = state
-        # Bind identity, used by the Host check (#233). A malformed or absent
-        # --web-bind can't happen on the run_clock path (start_web_server
+        # Bind identity, used by the Host check (#233). A malformed or empty
+        # --web-bind can't reach here on the run_clock path (start_web_server
         # parses it first and raises), but WebContext is also constructed
         # directly in tests, so degrade to "no bind known" rather than raise.
         try:
             self.bind_host, self.bind_port = _parse_bind(args.web_bind)
-        except (AttributeError, ValueError):
+        except ValueError:
             self.bind_host, self.bind_port = "", 0
         self.bind_is_loopback = not _is_non_localhost_host(self.bind_host)
         self.allowed_hosts = frozenset(
             _authority_hostname(h)
-            for h in (getattr(args, "web_allowed_hosts", None) or [])
+            for h in (args.web_allowed_hosts or [])
             if isinstance(h, str) and h.strip()
         )
-        self.require_metrics_token = bool(getattr(args, "web_metrics_token", False))
+        self.require_metrics_token = bool(args.web_metrics_token)
         self._inline_token = (token or "").strip()
         self._token_file: Path | None = Path(token_file).expanduser() if token_file else None
         self._cached_token: str = self._inline_token
@@ -294,20 +294,20 @@ class WebContext:
         self._token_lock = threading.Lock()
         self.history_path: str | None = args.history_path or None
         self.telemetry_path: str | None = args.telemetry_path or None
-        self.overrides_path = _resolve_path(args.overrides) if getattr(args, "overrides", None) else DEFAULT_OVERRIDES_PATH
+        self.overrides_path = _resolve_path(args.overrides) if args.overrides else DEFAULT_OVERRIDES_PATH
         self.content_overrides_path = (
             _resolve_path(args.content_overrides)
-            if getattr(args, "content_overrides", None)
+            if args.content_overrides
             else DEFAULT_CONTENT_OVERRIDES_PATH
         )
         self.raw_corpus_path = (
-            _resolve_path(args.raw_corpus) if getattr(args, "raw_corpus", None) else DEFAULT_RAW_CORPUS_PATH
+            _resolve_path(args.raw_corpus) if args.raw_corpus else DEFAULT_RAW_CORPUS_PATH
         )
         self.baked_db_path = (
-            _resolve_path(args.baked_db) if getattr(args, "baked_db", None) else DEFAULT_BAKED_DB_PATH
+            _resolve_path(args.baked_db) if args.baked_db else DEFAULT_BAKED_DB_PATH
         )
         self.coverage_path = DEFAULT_COVERAGE_PATH
-        self.output_path = _resolve_path(args.output) if getattr(args, "output", None) else DEFAULT_OUTPUT_PATH
+        self.output_path = _resolve_path(args.output) if args.output else DEFAULT_OUTPUT_PATH
         if self._token_file is not None:
             self._refresh_token_from_file(initial=True)
 

@@ -1,20 +1,20 @@
 """Regression tests for runtime robustness fixes (issues #279-#283)."""
 from __future__ import annotations
 
-import argparse
 import datetime as dt
 import errno
 import threading
 from unittest.mock import patch
 
 from idle_hours import run_clock, runtime_config, runtime_store, runtime_telemetry, runtime_theme, runtime_webhook
+from tests.conftest import make_args
 
 
 class TestMidnightResetPersistFailure:
     """#279 (1): a persist error at the midnight rollover must not escape."""
 
     def test_persist_error_is_logged_not_raised(self, tmp_path, capsys, monkeypatch):
-        args = argparse.Namespace(state_path=str(tmp_path / "state.json"))
+        args = make_args(tmp_path)
         state = run_clock.RuntimeState("auto", persisted={"manual_theme": "dark"})
         state.last_seen_date = dt.date.today() - dt.timedelta(days=1)
 
@@ -32,21 +32,12 @@ class TestShutdownPersistFailure:
     """#279 (2): a persist error in the button-D hold handler must not skip the
     shutdown command, and a failed command still rolls back manual_quiet."""
 
-    def _args(self, tmp_path):
-        return argparse.Namespace(
-            render_script="render_quote.py", output=str(tmp_path / "current.png"),
-            width=800, height=480, display_script=None, mode="debug", theme="default",
-            history_path="", history_days=7, telemetry_path="",
-            state_path=str(tmp_path / "state.json"), quiet_image="",
-            shutdown_command="sudo -n shutdown -h now",
-        )
-
     def test_command_still_runs_when_persist_fails(self, tmp_path, capsys):
         state = run_clock.RuntimeState("default")
         with patch("idle_hours.runtime_store.save_runtime_state", side_effect=OSError("ro fs")), \
              patch("idle_hours.run_clock.subprocess.run") as mock_run, \
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
-            _short, hold = run_clock._build_button_handlers(self._args(tmp_path), state)
+            _short, hold = run_clock._build_button_handlers(make_args(tmp_path, shutdown_command="sudo -n shutdown -h now"), state)
             hold["D"]()
         assert mock_run.called
         assert state.manual_quiet is True
@@ -57,7 +48,7 @@ class TestShutdownPersistFailure:
         with patch("idle_hours.runtime_store.save_runtime_state", side_effect=OSError("ro fs")), \
              patch("idle_hours.run_clock.subprocess.run", side_effect=OSError("no sudo")), \
              patch("idle_hours.runtime_render.current_bucket", return_value="h10_exact"):
-            _short, hold = run_clock._build_button_handlers(self._args(tmp_path), state)
+            _short, hold = run_clock._build_button_handlers(make_args(tmp_path, shutdown_command="sudo -n shutdown -h now"), state)
             hold["D"]()
         assert state.manual_quiet is False
 

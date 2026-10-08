@@ -125,20 +125,13 @@ def _display_quiet_image(
 def scheduled_quiet(args: argparse.Namespace, time_str: str) -> bool:
     """Is ``time_str`` inside the configured ``--quiet-start``/``--quiet-end`` window?
 
-    ``getattr`` defaults cover programmatic ``argparse.Namespace``
-    constructions (tests, the web server's synthesised args) that predate
-    or omit the quiet flags — the same accommodation
-    ``runtime_theme._auto_theme_kwargs`` documents. The defaults are
-    deliberately the *conservative* direction rather than argparse's:
-    a missing ``quiet_start`` yields ``None``, which ``in_quiet_hours``
-    reads as "quiet hours disabled", so an incomplete Namespace is never
-    spuriously reported as asleep. Real runs always carry all three.
+    ``--quiet-off`` wins over the window; a ``None`` start (passed through
+    when quiet hours are off) reads as "disabled" in ``in_quiet_hours``.
     """
-    quiet_off = getattr(args, "quiet_off", False)
     return in_quiet_hours(
         time_str,
-        None if quiet_off else getattr(args, "quiet_start", None),
-        getattr(args, "quiet_end", None),
+        None if args.quiet_off else args.quiet_start,
+        args.quiet_end,
     )
 
 
@@ -208,7 +201,7 @@ def render_quiet_frame(
     """
     history_path = args.history_path or None
     telemetry_path = args.telemetry_path or None
-    render_time = time_str if manual_only else (getattr(args, "quiet_start", None) or time_str)
+    render_time = time_str if manual_only else (args.quiet_start or time_str)
     # The render's telemetry entry must describe the frame we actually
     # painted, so it takes the bucket of ``render_time`` rather than the
     # entry-time bucket the ``quiet_enter`` marker carries. The two coincide

@@ -31,23 +31,14 @@ from idle_hours.runtime_quiet import enter_quiet, exit_quiet, render_quiet_frame
 from idle_hours.runtime_state import RuntimeState
 from idle_hours.runtime_theme import QUIET_THEME_INHERIT, resolve_quiet_theme
 from idle_hours.theme_names import theme_cycle
+from tests.conftest import make_args
 
 BUNDLED_GOODNIGHT = rq.BASE_DIR / "assets" / "goodnight.png"
 
 
 def _quiet_args(tmp_path, **overrides) -> argparse.Namespace:
-    defaults = dict(
-        render_script="render_quote.py",
-        output=str(tmp_path / "current.png"),
-        width=800, height=480, display_script=None,
-        mode="debug", theme="default",
-        auto_day_theme="default", auto_night_theme="dark",
-        history_path="", history_days=7, telemetry_path="",
-        state_path="", quiet_start="22:00", quiet_end="06:00",
-        quiet_off=False, quiet_image="auto", quiet_theme=QUIET_THEME_INHERIT,
-    )
-    defaults.update(overrides)
-    return argparse.Namespace(**defaults)
+    """``make_args`` with the parser's own 22:00-06:00 quiet window switched back on."""
+    return make_args(tmp_path, quiet_off=False, **overrides)
 
 
 def _diff_pixels(a: Image.Image, b: Image.Image) -> int:
@@ -253,10 +244,10 @@ class TestQuietThemeResolution:
         state.manual_theme = "comic"
         assert resolve_quiet_theme(args, state, "22:00") == "comic"
 
-    def test_missing_attr_falls_back_to_inherit(self, tmp_path):
-        """A Namespace predating the flag must behave as ``inherit``."""
+    def test_parser_default_is_inherit(self, tmp_path):
+        """With ``--quiet-theme`` unset, the sleep frame keeps the clock's theme."""
         args = _quiet_args(tmp_path, theme="saloon")
-        del args.quiet_theme
+        assert args.quiet_theme == QUIET_THEME_INHERIT
         assert resolve_quiet_theme(args, RuntimeState("saloon"), "22:00") == "saloon"
 
 
