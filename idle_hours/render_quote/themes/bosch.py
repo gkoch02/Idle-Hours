@@ -1,6 +1,7 @@
-"""The ``bosch`` theme's frame and the code only it uses.
+"""The ``bosch`` theme's frame: Hieronymus Bosch's *The Garden of Earthly Delights*
+(c. 1490-1510) standing open, the quote on a phylactery banderole, the panels crazed.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § bosch
 """
 
 from __future__ import annotations
@@ -18,45 +19,6 @@ from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_8x8, gray_pixel_access, 
 from ..primitives import paint_craquelure, paint_neon_mask, position_noise
 from ..spec import FrameSpec
 
-# ---------------------------------------------------------------------------
-# bosch — Hieronymus Bosch, *The Garden of Earthly Delights* (c. 1490-1510)
-# ---------------------------------------------------------------------------
-# A custom frame: the triptych standing open. Paradise on the left wing
-# (Fountain of Life, owl, dragon tree), the Garden across the centre (far lake
-# and fountains, the giant fruit, the lovers' bubble) and Hell on the right
-# (burning city, knife between two ears, Tree-Man, frozen lake). The quote is
-# lettered on a **phylactery banderole** across the centre panel, in black
-# textura with the matched phrase **rubricated**.
-#
-# **Craquelure** (``paint_craquelure``) is built as a graph, not a per-pixel
-# field: a jittered lattice whose edges are wobbled polylines, some dropped, a
-# few diagonals added. A crack net is a set of connected edges; thresholding
-# noise gives disconnected specks. Cells are wider than tall because oak-panel
-# cracks run across the vertical grain.
-#
-# **A crack changes polarity with the paint it crosses**: grime-filled and dark
-# on a light passage, open to the white ground on a dark one. Hence the
-# primitive's separate ``dark`` and ``light`` inks.
-#
-# **Cracks never cut a letter.** The banderole's text is drawn a second time
-# into a dilated ``keep_out`` mask so a fissure stops short of every stroke.
-# Fenced by ``TestBoschFrame``.
-#
-# **The wing tops are the centre arch, halved and mirrored**: closed, each wing
-# covers half the centre, so opened its free edge (the arch's apex) ends up
-# outermost. The wings are narrower than half the centre, so the half-arch is
-# compressed, but the direction is the physical one.
-#
-# Colour mixes use a *single* jittered ``BAYER_8x8`` read per pixel,
-# partitioned into as many inks as the passage needs (a second read is
-# correlated with the first and slides the hue; unjittered, broad fields
-# lattice). Flesh is light orange (W+R+Y) run white-major, ~68 : 16 : 16,
-# because Bosch's nudes are a cool pallor, not a peach.
-#
-# **No clock surface beyond the phrase**: ``time_str`` is ``del``-asserted.
-#
-# Composed at 800x480 and NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _BOSCH_PANELS = (
     ("paradise", (14, 14, 172, 466)),
     ("garden", (182, 14, 618, 466)),

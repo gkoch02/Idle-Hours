@@ -1,6 +1,7 @@
-"""The ``biomech`` theme's frame and the code only it uses.
+"""The ``biomech`` theme's frame: a pointed arch cut through H. R. Giger's
+biomechanical wall onto a Zdzisław Beksiński dusk, both painted and dithered at render time.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § biomech
 """
 
 from __future__ import annotations
@@ -27,46 +28,6 @@ from ..primitives import (
 from ..spec import FrameSpec
 from ._shared import _TAROT_ROMAN_NUMERALS
 
-# ---------------------------------------------------------------------------
-# biomech — H. R. Giger's biomechanical wall round a Beksiński dusk
-# ---------------------------------------------------------------------------
-# A pointed arch cut through a Giger wall (airbrushed bone-and-chrome
-# machinery: *surface*) and through it a Beksiński evening (burning dusk,
-# ruined cathedral, leaning crosses: *distance*).
-#
-# **Two render-time "plates", neither committed.** Unlike the themes that ship
-# a PNG, both plates are painted procedurally in continuous tone and dithered
-# in-process:
-#
-# * **The wall is a lit height field** (``shade_height_field``). Blurred shapes
-#   unioned with ``ImageChops.lighter`` give rounded profiles (a blurred line is
-#   a tube, a blurred ellipse a dome); ``ImageChops.subtract`` carves sockets
-#   and hose grooves. Shaded Blinn-Phong from the upper left, darkened by
-#   height and a cavity term, then Floyd-Steinberg-dithered to **white + black
-#   only**: a neutral grey is nearly equidistant from K, W *and* R in RGB, so a
-#   four-ink dither would scatter red specks through the bone.
-# * **The red is rim light, not pigment.** A second pass lights the wall from
-#   the portal and stipples red where that light rakes a surface (``BAYER_8x8``
-#   threshold), so the sky is reflected on the machinery and the two halves read
-#   as one space.
-# * **The dusk is painted, then dithered to K/R/Y/W**: a per-row gradient,
-#   streaked cloud noise, a half-set sun, silhouettes in atmospheric
-#   perspective and a low fog. Blue and green are left out so error diffusion
-#   cannot cool the fire.
-#
-# Both plates are quote-independent, so the background is built once per
-# process (``_BIOMECH_BACKGROUND``) and each render pastes text over a copy.
-#
-# **The quote** sits in the near-black upper sky: bone-white Spectral with a
-# 2 px black halo (not a panel, so the arch keeps its view), the matched phrase
-# an ember (yellow core, red bloom with ``ground`` pinned to black).
-#
-# **The time is the plate's title, hour only** (``BIOMECHANOID · XI`` on the
-# sill's cartouche, after Giger's numbered series); pinned byte-identical
-# across the minutes of an hour by ``TestBiomechFrame``.
-#
-# Composed at 800x480 and NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _BIOMECH_ARCH = (126, 674, 96, 12, 452)     # left x, right x, springline y, apex y, sill y
 _BIOMECH_QUOTE_RECT = (172, 58, 628, 262)
 _BIOMECH_HORIZON = 372

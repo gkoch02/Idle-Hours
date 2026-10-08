@@ -1,6 +1,7 @@
-"""The ``semiotic`` theme's frame and the code only it uses.
+"""The ``semiotic`` theme's frame and sleep frame: Ron Cobb's Semiotic Standard,
+the Nostromo signage from *Alien* (1979), with the quote on a crew-notice placard.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § semiotic
 """
 
 from __future__ import annotations
@@ -17,32 +18,9 @@ from ..primitives import wrap_quote_into_masks
 from ..spec import FrameSpec
 from ..text import draw_tracked, fit_text_to_width, tracked_width
 
-# ---------------------------------------------------------------------------
-# semiotic — Ron Cobb's Semiotic Standard, the Nostromo signage from *Alien*
-# ---------------------------------------------------------------------------
-# A custom frame: a black bulkhead between yellow/black hazard stripes, one
-# large sign for the hour with three smaller companions, and the quote on a
-# crew-notice placard framed the way Cobb framed his signs — white edge, red
-# band, white panel, the band broken at the rules.
-#
-# **The signs are the real set, not redrawn.** ``SEMIOTIC_SIGNS`` is a sprite
-# sheet built by ``scripts/ingest_semiotic_signs.py`` from LouH's CC BY 4.0
-# vector adaptation (attribution in ``assets/semiotic/README.md``). Its seven
-# flat colours each map to one native ink, except the "system" grey, which is
-# the K+W 50/50 stipple, so the signs need classification, not dithering.
-#
-# **Classify after resizing, never before.** Each antialiased tile is resized
-# to its painted size, composited onto the black ground, and only then snapped
-# by ``quantize`` to the seven source values; snapping first and resizing
-# blends inks off-palette. The grey's stipple is phased on absolute canvas
-# coordinates so adjacent grey fields share one checkerboard.
-#
-# **The hour is the section**: the featured sign is the hour's
-# (``_SEMIOTIC_HOUR_SIGNS``) and the header reads ``SECTION 07``. Hour only, so
-# every minute of an hour renders byte-identically. The three companions and
-# the notice's reference number come from ``_row_digest``.
-#
-# If the sheet is missing the signs degrade to blank red-framed panels.
+# Built by scripts/ingest_semiotic_signs.py from LouH's CC BY 4.0 adaptation
+# (attribution in assets/semiotic/README.md). Missing, the signs degrade to
+# blank red-framed panels.
 SEMIOTIC_SIGNS = BASE_DIR / "assets" / "semiotic_signs.png"
 _SEMIOTIC_SHEET_COLS = 6
 _SEMIOTIC_TILE = (250, 262)
@@ -390,16 +368,7 @@ def render_semiotic_frame(time_str: str, quote_row: dict, width: int, height: in
 # ---------------------------------------------------------------------------
 # The sleep frame: HYPERSLEEP — the crew in stasis, the ship at rest
 # ---------------------------------------------------------------------------
-# *Alien* opens on the Nostromo's crew waking from hypersleep, so the quiet-
-# hours frame is the same bulkhead showing them still under: a status panel,
-# not an alarm. The featured sign is Cobb's own **004 CRYOGENIC VAULT**, from
-# the sheet like every other sign: it is what the Nostromo's hypersleep vault
-# actually carried. (A pod drawn in code stood here first; the real sign is
-# truer and keeps the provenance simple.) The companions are calm signs from
-# the sheet: 021 LIFE SUPPORT SYSTEM, 025 AUTODOC and 030 COMPUTER TERMINAL,
-# MOTHER flying the ship while the crew sleeps. The placard is text only:
-# every pictogram on the frame is one of Cobb's, from the sheet. (A row of
-# seven drawn pods, one per crew member, was tried there and taken out.)
+# Design notes: docs/themes.md § semiotic ("Its own sleep frame").
 _SEMIOTIC_SLEEP_SIGN = "004"
 _SEMIOTIC_SLEEP_COMPANIONS = ("021", "025", "030")
 _SEMIOTIC_SLEEP_LAMPS = ("blue", "green")

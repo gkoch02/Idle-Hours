@@ -1,6 +1,7 @@
-"""The ``saros`` theme's frame and the code only it uses.
+"""The ``saros`` theme's frame: the eclipse over the colony of Carcosa, after
+Housemarque's *Saros* (2026); the eclipse's phase is the hour.
 
-Design notes: ``docs/themes.md``.
+Design notes: docs/themes.md § saros
 """
 
 from __future__ import annotations
@@ -25,46 +26,6 @@ from ..primitives import _bayer_threshold_field, _halo_paste, paint_neon_mask, w
 from ..spec import FrameSpec
 from ..text import draw_tracked
 
-# ---------------------------------------------------------------------------
-# saros — Housemarque's *Saros* (2026): the eclipse over Carcosa
-# ---------------------------------------------------------------------------
-# The colony of Carcosa under the eclipse that never ends: a black sun over a
-# dead colony, spores drifting through a red-and-black sky, the quote in the
-# one dark stretch of sky.
-#
-# **The corona is painted in continuous tone and dithered, not stippled**: a
-# chromospheric rim decaying over a few pixels, a mid corona over half a
-# radius, an outer haze over one and a half, and *streamers* (angular Gaussian
-# lobes brightening the mid and outer terms). The profile is sampled every
-# ``_SAROS_SKY_STEP`` px (a glow has no finer detail) and bicubic-upsampled;
-# the photosphere and moon are then painted sharp at full resolution, because
-# the exposed sliver is the one hard edge in the sky. The field is
-# Floyd-Steinberg-dithered to K/R/Y/W plus blue (``_SAROS_SKY_PALETTE``). Blue
-# is only for the horizon haze away from the sun; its channel is zero
-# elsewhere so error diffusion cannot scatter blue into the fire. No green.
-#
-# **The time is the eclipse's phase.** At twelve the moon is centred and the
-# eclipse total. At other hours the moon is offset ``_SAROS_HOUR_OFFSET`` radii
-# *away* from the hour's clock-face position, so the diamond ring sits where
-# the hour hand would point (the wordmark's O carries the same bead). Hour
-# only: every minute of an hour renders byte-identically. The status line's
-# occlusion figure comes from the same geometry.
-#
-# **The ground is silhouette plus rim light.** Spires, towers and a bone arch
-# are one black mask; the rim is the shape minus itself shifted two pixels
-# away from the sun, weighted by the sky's falloff and stippled yellow where
-# strong, red where weak. Everything lit on the frame is lit by the sun. The
-# sky is quote-independent and cached per hour (``_SAROS_SKY_CACHE``, keyed on
-# the painter so the decoration fence measures a painter, not a cache).
-#
-# **The quote** is Saira (ragged-left, a transmission rather than a verse)
-# pasted white over a black halo grown from its own mask, so no dithered
-# corona speck lands between strokes; the matched phrase is a yellow core in a
-# tangerine split-band bloom, ``ground`` pinned to black. Spore motes are
-# seeded from ``_row_digest``.
-#
-# Composed at 800x480 and NEAREST-downsampled (the ``metro`` convention).
-# ---------------------------------------------------------------------------
 _SAROS_SUN = (556, 186)                   # the sun's centre
 _SAROS_RADIUS = 108                       # the photosphere's radius, px
 _SAROS_MOON_SCALE = 1.03                  # the moon is a shade larger: totality is total

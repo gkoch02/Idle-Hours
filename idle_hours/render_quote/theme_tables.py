@@ -633,12 +633,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # The King in Yellow (Chambers, 1895). Black ground, pallid white body,
-    # the King's yellow for the matched phrase — solid, never stippled: the
-    # one thing this theme must not do is soften the yellow. Same inks as
-    # ``dark``; ``draw_carcosa_border`` (tattered curtains, the Yellow Sign,
-    # twin suns over Lake Hali) and Almendra separate them. Both ornament
-    # slots yellow so the quote marks paint solid.
+    # The King in Yellow: ``dark``'s inks, the King's yellow solid, never
+    # stippled; both ornament slots yellow so the quote marks paint solid.
     "carcosa": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -649,12 +645,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Codex Seraphinianus — Luigi Serafini's imaginary encyclopedia (1981). A
-    # custom frame (``render_codex_frame``): cream page, a chimerical plant
-    # plate in full-palette colour, columns of procedurally generated asemic
-    # script, the quote as the page's one deciphered passage, and the time as
-    # a base-21 page number in invented numerals. These slots are read only by
-    # the palette-only paths (see the note above ``THEMES``).
+    # Codex Seraphinianus, a custom frame (``render_codex_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "codex": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -665,11 +657,7 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["blue"],
     },
-    # Remedy's *Control* — the Astral Plane. A custom frame
-    # (``render_control_frame``): white void, floating isometric stone blocks
-    # in K+W stipple, the Board's inverted black pyramid, a concrete plinth
-    # carrying a black wayfinding sign. Black Jost Bold prose; the matched
-    # phrase is Hiss red with a coral bloom stippled into the white around it.
+    # Remedy's *Control*, a custom frame (``render_control_frame``).
     # Palette serves the palette-only paths (see the note above ``THEMES``).
     "control": {
         "page_bg": SPECTRA6["white"],
@@ -681,11 +669,7 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
     },
-    # Francis Bacon, *Three Studies for Figures at the Base of a Crucifixion*
-    # (1944). A custom frame (``render_furies_frame``): the triptych under glass
-    # in gilt frames on a black gallery wall — three smeared grey figures on a
-    # flat cadmium orange — and the quote as white wall text beneath, the
-    # matched phrase in the painting's orange with a red smear dragged off it.
+    # Bacon's *Three Studies*, a custom frame (``render_furies_frame``).
     # Palette serves the palette-only paths (see the note above ``THEMES``).
     "furies": {
         "page_bg": SPECTRA6["black"],
@@ -697,12 +681,9 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Hieronymus Bosch, *The Garden of Earthly Delights* (c. 1490-1510) — a
-    # custom frame (``render_bosch_frame``): the triptych open, Paradise /
-    # Garden / Hell, the quote lettered on a phylactery banderole across the
-    # centre panel, and the whole altarpiece crazed with craquelure. Black
-    # Grenze Gotisch, rubricated red matched phrase. Palette serves the
-    # palette-only paths (see the note above ``THEMES``).
+    # Bosch's *Garden of Earthly Delights*, a custom frame
+    # (``render_bosch_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "bosch": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -713,12 +694,8 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
-    # Ron Cobb's Semiotic Standard (the Nostromo signage in *Alien*, 1979) —
-    # a custom frame (``render_semiotic_frame``): a black bulkhead between
-    # yellow/black hazard stripes, the hour's pictogram as a featured sign
-    # with two companions, and the quote on a white crew-notice placard in
-    # Barlow Condensed with the matched phrase in red. These literary-layout
-    # slots serve only the palette-only paths (see the note above ``THEMES``).
+    # Cobb's Semiotic Standard, a custom frame (``render_semiotic_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "semiotic": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -729,13 +706,8 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["black"],
     },
-    # Housemarque's *Returnal* (2021) — night in the Overgrown Ruins of
-    # Atropos. A custom frame (``render_atropos_frame``): teal fog dithered to
-    # the cold inks over a black plain, rain, Sentient statues, the Helios
-    # wreck, ember-lit tendrils, bullet-hell orbs, a xenoglyph slab, the
-    # translation in Saira and the HUD in Michroma, the matched phrase in the
-    # HUD's tangerine. Palette serves the palette-only paths (see the note
-    # above ``THEMES``).
+    # *Returnal*'s Atropos, a custom frame (``render_atropos_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "atropos": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -746,13 +718,9 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Sandfall Interactive's *Clair Obscur: Expedition 33* (2025) — the
-    # Monolith from the Lumière promenade. A custom frame
-    # (``render_expedition_frame``): a dusk dithered against the calibrated
-    # inks, the Paintress seated beside the slab with the hour painted on it,
-    # a gust of petals, a gas lamp and balustrade, the journal in IM Fell
-    # Double Pica with the matched phrase in the number's paint. Palette
-    # serves the palette-only paths (see the note above ``THEMES``).
+    # *Clair Obscur: Expedition 33*, a custom frame
+    # (``render_expedition_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "expedition": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1051,11 +1019,8 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["white"],
     },
-    # Housemarque's *Saros* (2026) — the eclipse over Carcosa. A custom frame
-    # (``render_saros_frame``): a black sun in a dithered corona whose phase
-    # is the hour, a silhouetted colony rim-lit beneath it,
-    # white Saira prose with the matched phrase as an ember. Palette serves
-    # the palette-only paths (see the note above ``THEMES``).
+    # Housemarque's *Saros*, a custom frame (``render_saros_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "saros": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1066,11 +1031,7 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # *Observation* (No Code, 2019) — the station AI's camera feed. A custom
-    # frame (``render_observation_frame``): black space, a banded Saturn with
-    # its polar hexagon and lit rings, a glowing hexagonal anomaly under a
-    # tracking reticle, and the quote as an audio-log transcript in a S.A.M.
-    # HUD panel. White prose, yellow matched phrase with a tangerine halo.
+    # *Observation*, a custom frame (``render_observation_frame``).
     # Palette serves the palette-only paths (see the note above ``THEMES``).
     "observation": {
         "page_bg": SPECTRA6["black"],
@@ -1082,13 +1043,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Liu Cixin's *The Three-Body Problem* — the Trisolaran sky. A custom
-    # frame (``render_trisolaris_frame``): black space, three suns and a
-    # planet whose positions come from an actual gravitational integration
-    # driven by the clock, the Red Coast Base dish on a ridge at the foot.
-    # White prose; the matched phrase is sunlight — a yellow core in a
-    # tangerine bloom. Palette serves the palette-only paths (see the note
-    # above ``THEMES``).
+    # *The Three-Body Problem*, a custom frame (``render_trisolaris_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "trisolaris": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1099,13 +1055,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # H. R. Giger and Zdzisław Beksiński — a biomechanical portal onto a
-    # burning dusk. A custom frame (``render_biomech_frame``): an airbrushed
-    # K+W wall of vertebrae, ribbed hoses and skulls, lit as a procedural
-    # height field, framing a pointed arch through which a Beksiński ruin
-    # stands against a blood-red sky. Bone-white prose; the matched phrase is
-    # an ember — yellow core, red bloom. Palette serves the palette-only
-    # paths (see the note above ``THEMES``).
+    # Giger and Beksiński, a custom frame (``render_biomech_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "biomech": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1116,12 +1067,8 @@ THEMES = {
         "ornament_light": SPECTRA6["red"],
         "source": SPECTRA6["white"],
     },
-    # Iain M. Banks's Culture — a Mind's signal intercepted in deep space, beside
-    # the Orbital it concerns. A custom frame (``render_culture_frame``): black
-    # space, the signal's header and body in white, the matched phrase yellow in
-    # a green drone-aura bloom, a tilted Orbital whose current plate marks the
-    # time of day, and the phrase again in Marain-idiom glyphs. Palette
-    # serves the palette-only paths (see the note above ``THEMES``).
+    # The Culture's Mind signal, a custom frame (``render_culture_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``).
     "culture": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -1132,12 +1079,9 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["white"],
     },
-    # The Culture's Arch — the far side of an Orbital seen from one of its
-    # plates. A custom frame (``render_orbital_frame``) whose sky, sun and
-    # quote card all follow the hour, and whose Arch is lit plate by plate by
-    # each plate's own local time. Palette serves the palette-only paths (see
-    # the note above ``THEMES``): day inks — white card, dark type, blue
-    # phrase.
+    # The Culture's Arch, a custom frame (``render_orbital_frame``).
+    # Palette serves the palette-only paths (see the note above ``THEMES``):
+    # day inks, white card, dark type, blue phrase.
     "orbital": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -2235,10 +2179,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "carcosa": {
-        # Almendra for the body and matched phrase (a real Bold step under the
-        # yellow), Almendra Display for the quote marks. Each chain falls back
-        # through the bundled IM Fell English — the nearest period book face —
-        # before the system serifs and the Playfair chain.
+        # Almendra body / Bold phrase, Almendra Display quote marks; IM Fell
+        # English before the system serifs.
         "quote_regular": [
             ALMENDRA_REGULAR,
             IMFELLENGLISH_REGULAR,
@@ -2258,11 +2200,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "codex": {
-        # Fondamento — a calligraphic pen hand for Serafini's handwritten
-        # encyclopedia. Regular body, Italic matched phrase (no bold cut
-        # exists; the italic plus the red carries the step). Falls back
-        # through the bundled IM Fell English, the nearest period book hand,
-        # before the system serifs.
+        # Fondamento has no bold: the Italic carries the matched phrase.
         "quote_regular": [
             FONDAMENTO_REGULAR,
             IMFELLENGLISH_REGULAR,
@@ -2281,11 +2219,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "control": {
-        # Jost Bold — the game's title cards and logo are ITC Avant Garde
-        # Gothic Bold, and Jost is the bundle's geometric in that line. Bold
-        # for the body as well as the phrase: a title card is heavy, and the
-        # phrase steps out by its Hiss red and bloom, not weight. Oswald
-        # stays as the fallback so a stripped install lands on a heavy sans.
+        # Jost pinned Bold for the body as well as the phrase; Archivo for the sign.
         "quote_regular": [
             (JOST_VARIABLE, "Bold"),
             (OSWALD_VARIABLE, "Bold"),
@@ -2303,10 +2237,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "trisolaris": {
-        # Titillium Web — a cold, technical humanist sans. Regular for the
-        # body over the black sky; SemiBold for the matched phrase, which
-        # already carries a bloom, so a full Bold would clog its counters
-        # once the halo closes in around them.
+        # SemiBold, not Bold, for the phrase: its bloom would clog a Bold's counters.
         "quote_regular": [
             TITILLIUM_REGULAR,
             *META_FONT_CANDIDATES,
@@ -2324,11 +2255,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "furies": {
-        # Libre Franklin — Franklin Gothic, the grotesque of mid-century
-        # museum wall text. Medium for the body (white strokes on black want
-        # the extra stem to survive the palette snap), ExtraBold for the
-        # matched phrase so the orange stipple and its dragged smear have
-        # stroke mass to live in. Italic for the attribution / ornament.
+        # Libre Franklin, instances pinned: Medium body, ExtraBold phrase,
+        # Medium Italic attribution.
         "quote_regular": [
             (LIBREFRANKLIN_VARIABLE, "Medium"),
             (INTER_VARIABLE, "Medium"),
@@ -2345,12 +2273,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "bosch": {
-        # Grenze Gotisch — textura capitals over a legible lowercase, the
-        # nearest open face to the gothic book hand Bosch lettered his
-        # phylacteries in. Medium for the body (a scroll's ink must survive
-        # the palette snap on cream), Bold for the rubricated phrase — a real
-        # weight step under the red. IM Fell English, the nearest bundled
-        # period book face, is the fallback before the system serifs.
+        # Grenze Gotisch, instances pinned: Medium body, Bold phrase, Black ornament.
         "quote_regular": [
             (GRENZE_GOTISCH_VARIABLE, "Medium"),
             IMFELLENGLISH_REGULAR,
@@ -2368,31 +2291,20 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "semiotic": {
-        # Barlow Condensed — a DIN-descended condensed grotesque, the register
-        # of industrial wayfinding and of the stencilled legends on Cobb's
-        # Nostromo signage. Medium body (black on the white placard), Bold for
-        # the red matched phrase, SemiBold for chrome. Oswald, the bundle's
-        # other condensed grotesque, is the fallback before the system sans.
+        # Barlow Condensed: Medium body, Bold phrase, SemiBold chrome.
         "quote_regular": [BARLOWCOND_MEDIUM, (OSWALD_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [BARLOWCOND_BOLD, (OSWALD_VARIABLE, "Bold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [BARLOWCOND_SEMIBOLD, (OSWALD_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "atropos": {
-        # Returnal's running text is Erbaum and its titles Kellion; neither is
-        # open. Saira (nearest to Erbaum) carries the body (Regular) and the
-        # matched phrase (SemiBold, told apart mainly by its tangerine bloom);
-        # Michroma (nearest to Kellion) is the HUD chrome and the fallback.
+        # Saira's default instance is Thin, so every candidate pins one.
         "quote_regular": [(SAIRA_VARIABLE, "Regular"), MICHROMA_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(SAIRA_VARIABLE, "SemiBold"), MICHROMA_REGULAR, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [MICHROMA_REGULAR, (OXANIUM_VARIABLE, "Medium"), *ORNAMENT_FONT_CANDIDATES],
     },
     "expedition": {
-        # IM Fell Double Pica — the face Clair Obscur: Expedition 33 sets its
-        # UI text in. The roman carries the white body on the dusk; the face
-        # has no bold, so the matched phrase takes the italic and is painted
-        # in the number's recipe. IM Fell English, the bundle's sibling Fell,
-        # is the fallback before the system serifs. The ornament slot is
-        # Cinzel Decorative, the poster lettering, for the wordmark.
+        # IM Fell Double Pica has no bold: the italic carries the matched phrase.
+        # Cinzel Decorative is the wordmark.
         "quote_regular": [IMFELLDOUBLEPICA_REGULAR, IMFELLENGLISH_REGULAR, *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [IMFELLDOUBLEPICA_ITALIC, IMFELLENGLISH_ITALIC, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [CINZELDECORATIVE_BOLD, CINZELDECORATIVE_REGULAR, *ORNAMENT_FONT_CANDIDATES],
@@ -2597,23 +2509,15 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [(OXANIUM_VARIABLE, "SemiBold"), *ORNAMENT_FONT_CANDIDATES],
     },
     "saros": {
-        # Saros's text face Tamba Sans, display Arame and chrome Korataki are
-        # all commercial. Saira is the nearest open face to Tamba Sans:
-        # Regular body, SemiBold rather than Bold for the matched phrase (its
-        # bloom would close a Bold's counters, as in trisolaris), Italic
-        # byline. Default instance is Thin, so every candidate pins one. Exo 2
-        # is the fallback.
+        # Saira's default instance is Thin, so every candidate pins one; SemiBold,
+        # not Bold, for the bloomed phrase.
         "quote_regular": [(SAIRA_VARIABLE, "Regular"), (EXO2_VARIABLE, "Regular"), *QUOTE_FONT_REGULAR_CANDIDATES],
         "quote_bold": [(SAIRA_VARIABLE, "SemiBold"), (EXO2_VARIABLE, "SemiBold"), *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [(SAIRA_ITALIC_VARIABLE, "Italic"), (EXO2_ITALIC_VARIABLE, "Italic"), *ORNAMENT_FONT_CANDIDATES],
     },
     "observation": {
-        # IBM Plex Mono — the station's own terminal face: an engineered
-        # grotesque-derived mono with the 1970s-IBM-console register the game's
-        # analogue retro-future interiors are built from. Medium for the body
-        # (white strokes on black need the extra stem to survive the palette
-        # snap), Bold for the phrase under its tangerine halo. Space Mono is
-        # the next fallback so a stripped install stays monospaced.
+        # IBM Plex Mono: Medium body (white on black), Bold phrase; Space Mono
+        # next so a stripped install stays monospaced.
         "quote_regular": [
             PLEXMONO_MEDIUM,
             SPACEMONO_REGULAR,
@@ -2633,11 +2537,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "biomech": {
-        # Spectral — a cold, sharp book serif with sturdy stems: bone-white on
-        # black needs Medium to survive the palette snap, and the matched
-        # phrase steps to SemiBold under its ember bloom. Grenze Gotisch's
-        # thorned blackletter carries the ornament slot (the plate label and
-        # the fall-through quote marks). Falls back through the system serifs.
+        # Spectral Medium body, SemiBold phrase; Grenze Gotisch (pinned) ornament.
         "quote_regular": [
             SPECTRAL_MEDIUM,
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
@@ -2655,10 +2555,8 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "culture": {
-        # Jura — humanist technical sans. Medium for the body because white
-        # strokes on black need the extra stem to survive the palette snap,
-        # Bold for the matched phrase under its aura. Share Tech Mono carries the
-        # signal header and captions (loaded directly by the frame).
+        # Jura Medium body (white on black), Bold phrase; Share Tech Mono chrome
+        # is loaded by the frame.
         "quote_regular": [
             JURA_MEDIUM,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -2675,10 +2573,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
     },
     "orbital": {
-        # Jura again — the two Culture themes are one universe seen from two
-        # places. SemiBold rather than Medium for the body: this card is white
-        # by day, and dark type on a light ground wants the heavier stem to
-        # hold its hairline terminals through the snap. Bold for the phrase.
+        # Jura SemiBold body (dark type on the day card), Bold phrase.
         "quote_regular": [
             JURA_SEMIBOLD,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
