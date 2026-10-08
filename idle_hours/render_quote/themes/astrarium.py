@@ -15,7 +15,7 @@ from .. import clock
 from .._paths import META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
 from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
 from ..furniture import fallback_title
-from ..layout import fit_quote, strip_underscore_emphasis, wrap_text
+from ..layout import _trim_line, fit_quote, strip_underscore_emphasis, wrap_text
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
 from ..text import draw_text_dithered
@@ -392,14 +392,7 @@ def _astrarium_paint_quote_panel(
     )
 
     for line in wrapped_quote:
-        # Trim leading/trailing whitespace tokens (as ``render`` does).
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
+        drawable = _trim_line(line)  # as ``render`` does
         pen_x: float = panel_left + 8
         body_ascent = _font_ascent(quote_font)
         for chunk, is_bold in drawable:

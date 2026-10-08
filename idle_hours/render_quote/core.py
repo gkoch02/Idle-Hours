@@ -496,13 +496,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
     quote_right_edge = 0
     y_probe = quote_top
     for line_index, line in enumerate(wrapped_quote):
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
+        drawable = _trim_line(line)
 
         current_width = 0
         for chunk, is_bold in drawable:
@@ -606,13 +600,7 @@ def render(time_str: str, quote_row: dict, width: int, height: int, mode: str = 
 
     y = quote_top
     for line_index, line in enumerate(wrapped_quote):
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
+        drawable = _trim_line(line)
 
         current_width = 0
         for chunk, is_bold in drawable:

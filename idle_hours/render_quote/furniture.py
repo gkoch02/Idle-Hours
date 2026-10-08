@@ -8,8 +8,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from .fonts import _font_ascent, normalize_dashes
-from .layout import fit_quote, strip_underscore_emphasis
+from .layout import _trim_line, fit_quote, strip_underscore_emphasis
 from .palette import SPECTRA6, BAYER_4x4, pixel_access
+from .text import draw_text_dithered
 
 
 def _place_quote(draw: ImageDraw.ImageDraw, quote_row: dict, rect, *, theme: str,
@@ -41,10 +42,65 @@ def _place_quote(draw: ImageDraw.ImageDraw, quote_row: dict, rect, *, theme: str
     return placed
 
 
-def _paint_placed(draw: ImageDraw.ImageDraw, placed, ink, accent) -> None:
-    """Draw ``_place_quote`` chunks in solid ``ink``, the matched phrase in ``accent``."""
+def _place_lines(draw: ImageDraw.ImageDraw, wrapped, *, x0: int, width: int, top: float, line_height: int,
+                 regular, bold, align: str = "centre", clamp: bool = True) -> list[list[tuple]]:
+    """Position ``fit_quote``'s wrapped lines chunk by chunk, centred in
+    ``x0 .. x0 + width`` or flush left at ``x0`` (``align="left"``).
+
+    Unlike ``_place_quote`` this trims each line's edge spaces and advances by
+    ink width (``textbbox`` right minus left), the same measure the centring
+    uses, so a centred line's ink is centred exactly. A line wider than
+    ``width`` starts at ``x0``; with ``clamp=False`` it overhangs both sides
+    equally instead. Chunks sit on the body face's ascent.
+
+    Returns one list per line of ``_place_quote``'s ``(x, y, chunk, font,
+    is_bold, width, line_height)`` tuples, so ``_paint_placed`` draws a line,
+    and a theme that paints a line in several passes (``vhs``) walks its
+    chunks itself. ``draw_centred_styled_lines`` is a different centring
+    (measured to the advance edge, with a minimum inset); its frames are
+    pinned to that metric, so the two stay separate.
+    """
+    ascent = _font_ascent(regular)
+    lines = []
+    y = top
+    for line in wrapped:
+        drawable = _trim_line(line)
+        widths = []
+        for chunk, is_bold in drawable:
+            box = draw.textbbox((0, 0), chunk, font=bold if is_bold else regular)
+            widths.append(box[2] - box[0])
+        x: float  # textbbox is typed float
+        if align == "left":
+            x = x0
+        else:
+            offset = (width - sum(widths)) // 2
+            x = x0 + (max(0, offset) if clamp else offset)
+        placed = []
+        for (chunk, is_bold), w in zip(drawable, widths, strict=True):
+            font = bold if is_bold else regular
+            placed.append((x, y + (ascent - _font_ascent(font)), chunk, font, is_bold, w, line_height))
+            x += w
+        lines.append(placed)
+        y += line_height
+    return lines
+
+
+def _paint_placed(draw: ImageDraw.ImageDraw, placed, ink, accent, *, image: Image.Image | None = None,
+                  accent_light=None, light_density: float = 0.5) -> None:
+    """Draw placed chunks in solid ``ink``, the matched phrase in ``accent``.
+
+    With ``accent_light`` the matched phrase is instead an ``accent`` /
+    ``accent_light`` stipple (``draw_text_dithered`` at ``light_density``),
+    painted onto ``image``, which must then be the image ``draw`` draws on.
+    """
     for x, y, chunk, font, is_bold, *_ in placed:
-        draw.text((x, y), chunk, font=font, fill=accent if is_bold else ink)
+        if is_bold and accent_light is not None:
+            if image is None:
+                raise ValueError("a stippled accent needs the image to paint onto")
+            draw_text_dithered(image, (x, y), chunk, font=font, dark=accent, light=accent_light,
+                               light_density=light_density)
+        else:
+            draw.text((x, y), chunk, font=font, fill=accent if is_bold else ink)
 
 
 # The quote the panel sleeps under, shaped as a corpus row so it goes through
@@ -187,12 +243,7 @@ def draw_centred_styled_lines(draw: ImageDraw.ImageDraw, wrapped, *, x0: int, x1
     body_ascent = _font_ascent(regular)
     y = top
     for line in wrapped:
-        start, end = 0, len(line)
-        while start < end and line[start][0].strip() == "":
-            start += 1
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        segment = line[start:end]
+        segment = _trim_line(line)
         width_px = sum(draw.textbbox((0, 0), c, font=bold if b else regular)[2]
                        for c, b in segment)
         x = x0 + max(min_inset, ((x1 - x0) - width_px) // 2)

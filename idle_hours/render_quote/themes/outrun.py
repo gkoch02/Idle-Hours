@@ -10,8 +10,8 @@ import random
 from PIL import Image, ImageDraw
 
 from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES, META_FONT_CANDIDATES
-from ..fonts import _font_ascent, load_font, normalize_dashes
-from ..furniture import fallback_title
+from ..fonts import load_font, normalize_dashes
+from ..furniture import _paint_placed, _place_lines, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, pixel_access, snap_image_to_palette
 from ..spec import FrameSpec
@@ -222,31 +222,11 @@ def _outrun_paint_quote(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row
     )
     block_h = len(wrapped) * line_height
     y = y0 + max(0, ((y1 - y0) - block_h) // 2)
-    ascent = _font_ascent(quote_font)
-    for line in wrapped:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        line_w: float = 0
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            line_w += bbox[2] - bbox[0]
-        x: float = (width - line_w) // 2
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (ascent - _font_ascent(font))
-            if is_bold and chunk.strip():
-                draw_text_dithered(image, (x, chunk_y), chunk, font, dark=RED, light=BLUE, light_density=0.375)
-            else:
-                draw.text((x, chunk_y), chunk, font=font, fill=WHITE)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    # Centred across the whole panel, not just the quote rect; on a thumbnail
+    # narrower than the rect, a line overhangs both edges equally.
+    for line in _place_lines(draw, wrapped, x0=0, width=width, top=y, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold, clamp=False):
+        _paint_placed(draw, line, WHITE, RED, image=image, accent_light=BLUE, light_density=0.375)
 
 
 def _outrun_paint_credits(image: Image.Image, draw: ImageDraw.ImageDraw, quote_row: dict) -> None:

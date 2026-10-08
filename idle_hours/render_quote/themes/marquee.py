@@ -8,8 +8,8 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from .._paths import ANTONIO_VARIABLE, META_FONT_BOLD_CANDIDATES
-from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import fallback_title
+from ..fonts import load_font, normalize_dashes, theme_font_candidates
+from ..furniture import _paint_placed, _place_lines, fallback_title
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, snap_image_to_palette
 from ..spec import FrameSpec
@@ -220,30 +220,9 @@ def _marquee_paint_body(
     )
     quote_block_height = len(wrapped_quote) * line_height
     block_top = y0 + max(0, (height - quote_block_height) // 2)
-    body_ascent = _font_ascent(quote_font)
-    y = block_top
-    for line in wrapped_quote:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        drawable = line[start:end]
-        line_w: float = 0
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            line_w += bbox[2] - bbox[0]
-        x: float = x0 + max(0, (width - line_w) // 2)
-        for chunk, is_bold in drawable:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (body_ascent - _font_ascent(font))
-            fill = RED if is_bold else WHITE
-            draw.text((x, chunk_y), chunk, font=font, fill=fill)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    for line in _place_lines(draw, wrapped_quote, x0=x0, width=width, top=block_top, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold):
+        _paint_placed(draw, line, WHITE, RED)
 
 
 def _marquee_paint_credits(

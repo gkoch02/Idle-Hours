@@ -11,8 +11,8 @@ from typing import Any
 
 from PIL import Image, ImageChops, ImageDraw
 
-from ..fonts import _font_ascent, load_font, normalize_dashes, theme_font_candidates
-from ..furniture import _fit_from_title
+from ..fonts import load_font, normalize_dashes, theme_font_candidates
+from ..furniture import _fit_from_title, _paint_placed, _place_lines
 from ..layout import fit_quote, strip_underscore_emphasis
 from ..palette import SPECTRA6, SPECTRA6_PALETTE, BAYER_4x4, BAYER_8x8, gray_pixel_access, pixel_access, snap_image_to_palette
 from ..primitives import _bayer_threshold_field, _fill_swatch_stipple, _soft_ellipse_mask, paint_neon_mask
@@ -323,23 +323,9 @@ def _chrono_paint_dialogue(image: Image.Image, draw: ImageDraw.ImageDraw, quote_
         draw, display_quote, matched, box_w, y1 - body_top,
         font_max=54, font_min=14, line_height_mult=1.32, theme="chrono",
     )
-    body_ascent = _font_ascent(quote_font)
-    y = body_top
-    for line in wrapped_quote:
-        start = 0
-        while start < len(line) and line[start][0].strip() == "":
-            start += 1
-        end = len(line)
-        while end > start and line[end - 1][0].strip() == "":
-            end -= 1
-        x: float = x0
-        for chunk, is_bold in line[start:end]:
-            font = quote_font_bold if is_bold else quote_font
-            chunk_y = y + (body_ascent - _font_ascent(font))
-            draw.text((x, chunk_y), chunk, font=font, fill=YELLOW if is_bold else WHITE)
-            bbox = draw.textbbox((0, 0), chunk, font=font)
-            x += bbox[2] - bbox[0]
-        y += line_height
+    for line in _place_lines(draw, wrapped_quote, x0=x0, width=box_w, top=body_top, line_height=line_height,
+                             regular=quote_font, bold=quote_font_bold, align="left"):
+        _paint_placed(draw, line, WHITE, YELLOW)
 
 
 def _chrono_paint_arrow(draw: ImageDraw.ImageDraw) -> None:
