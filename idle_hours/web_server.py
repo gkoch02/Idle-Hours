@@ -2129,7 +2129,7 @@ class CuratorHandler(BaseHTTPRequestHandler):
         self._json(_status_from_result(result), result)
 
     def _action_theme(self) -> None:
-        # Optional ``{"theme": "scholar"}`` body lets the web dropdown jump
+        # Optional ``{"theme": "newsprint"}`` body lets the web dropdown jump
         # straight to a named theme; an empty body (or omitted field) matches
         # the physical button B behaviour and advances one step through the
         # cycle. ``action_theme`` validates the target name and returns

@@ -5,6 +5,9 @@
 # inside the container (the appliance ships the prebuilt baked DB instead).
 data/
 
+# Retired themes: an inert archive, never built or shipped.
+retired/
+
 # Per-render outputs and runtime state.
 output/
 *.pid

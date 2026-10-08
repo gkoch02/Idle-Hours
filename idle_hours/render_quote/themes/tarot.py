@@ -106,8 +106,7 @@ _TAROT_PAINTER_TRUMP_NAMES = {
 
 # Card and reading-column geometry: a portrait card (a real tarot card's
 # ratio is 0.58) laid on the cloth at the left, the interpretation written
-# beside it — the left-object / right-text composition of ``vinyl`` and
-# ``astrarium``. The emblem gets a tall panel, the quote a full column, and
+# beside it — the left-object / right-text composition of ``astrarium``. The emblem gets a tall panel, the quote a full column, and
 # the vellum shows on every side of the card.
 _TAROT_CARD_RECT = (34, 24, 294, 456)  # 260 x 432 — ratio 0.602
 _TAROT_CARD_SHADOW = 4

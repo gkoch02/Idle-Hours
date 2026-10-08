@@ -127,8 +127,7 @@ def tolerance_px(theme: str) -> int:
     return int(THEME_MAX_DIFF_RATIOS.get(theme, MAX_DIFF_RATIO) * WIDTH * HEIGHT)
 
 # A fixed instant for the renderer's wall-clock reads. `astrarium` prints the
-# date in its header and derives its solar/lunar datums from the day of year;
-# `vinyl` stamps a copyright year and seeds its sleeve wear from YYYYMMDD.
+# date in its header and derives its solar/lunar datums from the day of year.
 # Without a freeze their previews would differ on every run and re-render
 # noisily forever.
 #

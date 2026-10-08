@@ -23,7 +23,7 @@ idle_hours/render_quote/
   __init__.py      facade: the public API (__all__) + the patch guard (below)
   __main__.py      `python -m idle_hours.render_quote` → cli.main()
   _paths.py        PACKAGE_DIR (= idle_hours/), font and plate path constants; BASE_DIR kept as an alias of PACKAGE_DIR
-  clock.py         now(): the single wall-clock seam (sleep frame, astrarium, vinyl)
+  clock.py         now(): the single wall-clock seam (sleep frame, astrarium)
   palette.py       SPECTRA6, BAYER tables, snap_image_to_palette, _PANEL_INKS, _dither_calibrated
   fonts.py         _FONT_CACHE, load_font, glyph fallback, theme_font_candidates
   layout.py        LAYOUTS, choose_layout, tokenize/wrap/fit/fit_quote_balanced, justify_flags

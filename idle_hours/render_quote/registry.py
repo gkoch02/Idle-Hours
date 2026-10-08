@@ -94,16 +94,16 @@ _BORDER_PAINTERS: Mapping = MappingProxyType({theme: spec.paint for theme, spec 
 _FRAME_RENDERERS: Mapping = MappingProxyType({theme: spec.render for theme, spec in FRAME_SPECS.items()})
 # Bordered themes with no ``debug_label_inset`` clear the banner's y=14-29 band
 # by construction:
-#   - newsprint, grimdark: the right frame rule ends ~7 px outside the
+#   - newsprint: the right frame rule ends ~7 px outside the
 #     default label edge (x=width-SIDE_MARGIN).
 #   - nightvision: the TR bracket's vertical arm likewise; its horizontal
 #     arm sits at y=12-13, above the label.
 #   - dispatch: the stamp sits at y=40-70.
-#   - atomic, grimdark: the top ornament is centred horizontally.
+#   - atomic: the top ornament is centred horizontally.
 #   - kanagawa: the TR sun's top edge is at y=59.
 #   - deco: the stepped corner stays at x <= width-14; the fan is centred.
-#   - swiss (header square at y=42), mucha (TR left bare), fillmore (rings
-#     centred at y=110), firmament (moon at y=54, Milky Way at x <= width-100).
+#   - fillmore (rings centred at y=110), firmament (moon at y=54, Milky Way
+#     at x <= width-100).
 _DEBUG_LABEL_RIGHT_INSET: Mapping = MappingProxyType({
     theme: spec.debug_label_inset for theme, spec in BORDER_SPECS.items() if spec.debug_label_inset is not None
 })

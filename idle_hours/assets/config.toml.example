@@ -29,7 +29,7 @@ theme          = "auto"               # any registered theme name, or "auto" / "
 # When `theme = "auto"`, these pick the day-window (06:00–18:00) and
 # night-window (18:00–06:00) themes. Defaults match the historical binary
 # contract; broaden the rotation by setting one or both, e.g.
-#   auto_day_theme   = "scholar"
+#   auto_day_theme   = "newsprint"
 #   auto_night_theme = "nightvision"
 # 'auto' itself is rejected — that would be a config typo, not a recursion.
 auto_day_theme   = "default"

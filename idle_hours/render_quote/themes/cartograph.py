@@ -590,8 +590,7 @@ def draw_cartograph_border(
 
     # ------------------------------------------------------------------
     # Layer 0 — cream Y+W Bayer wash on page_bg pixels. Threshold < 1
-    # = ~6.25% yellow, half the density ``illuminated`` / ``dispatch``
-    # use, because the foxing layer (Layer 3) adds more warmth on top and
+    # = ~6.25% yellow, half the density ``dispatch`` uses, because the foxing layer (Layer 3) adds more warmth on top and
     # a denser ground would compete with the body text.
     if page_bg is not None:
         for y in range(height):

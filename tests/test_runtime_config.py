@@ -48,7 +48,7 @@ class TestLoadConfigHappyPath:
             'display_script = "display_inky.py"',
             'mode = "production"',
             'theme = "auto"',
-            'auto_day_theme = "scholar"',
+            'auto_day_theme = "roman"',
             'auto_night_theme = "nightvision"',
             "buttons_off = true",
             'shutdown_command = "systemctl poweroff"',
@@ -207,17 +207,17 @@ class TestLoadConfigSchemaValidation:
     def test_auto_day_theme_loads_from_config(self, tmp_path):
         p = tmp_path / "cfg.toml"
         p.write_text(
-            'auto_day_theme = "scholar"\nauto_night_theme = "nightvision"\n',
+            'auto_day_theme = "roman"\nauto_night_theme = "nightvision"\n',
             encoding="utf-8",
         )
         cfg = runtime_config.load_config(
             p, hhmm_validator=_hhmm,
             choices_map={
-                "auto_day_theme": ["default", "dark", "scholar", "nightvision"],
-                "auto_night_theme": ["default", "dark", "scholar", "nightvision"],
+                "auto_day_theme": ["default", "dark", "roman", "nightvision"],
+                "auto_night_theme": ["default", "dark", "roman", "nightvision"],
             },
         )
-        assert cfg == {"auto_day_theme": "scholar", "auto_night_theme": "nightvision"}
+        assert cfg == {"auto_day_theme": "roman", "auto_night_theme": "nightvision"}
 
     def test_auto_day_theme_rejects_auto_value(self, tmp_path, capsys):
         """``auto`` is not a valid day/night pick — it would be a config typo,
@@ -227,7 +227,7 @@ class TestLoadConfigSchemaValidation:
         p.write_text('auto_day_theme = "auto"\n', encoding="utf-8")
         cfg = runtime_config.load_config(
             p, hhmm_validator=_hhmm,
-            choices_map={"auto_day_theme": ["default", "dark", "scholar"]},
+            choices_map={"auto_day_theme": ["default", "dark", "roman"]},
         )
         assert cfg == {}
         assert "auto_day_theme" in capsys.readouterr().err

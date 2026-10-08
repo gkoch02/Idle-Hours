@@ -47,10 +47,7 @@ WIDTH, HEIGHT = 800, 480
 MARGIN_X, MARGIN_Y = 40, 60
 
 # Floors, chosen from the measured spread with an order of magnitude of head
-# room. The quietest border in the rotation is ``swiss``, whose entire
-# decoration is one 1 px hairline plus a 6x6 px square by design (austerity by
-# subtraction is its visual identity): it moves 783 px total, 90 of them in the
-# margin band. Every other border moves >4,000. A neutered painter moves 0.
+# room. A neutered painter moves 0.
 MIN_BORDER_PIXELS = 250
 MIN_MARGIN_PIXELS = 60
 
@@ -67,7 +64,6 @@ CUSTOM_FRAME_THEMES = (
     "astrarium",
     "marquee",
     "tarot",
-    "vinyl",
     "vitrail",
     "questline",
     "chrono",
@@ -82,7 +78,6 @@ CUSTOM_FRAME_THEMES = (
     "cardcatalog",
     "metro",
     "bakelite",
-    "intaglio",
     "nocturne",
     "plaque",
     "daguerreotype",
@@ -204,7 +199,7 @@ class TestBorderPainterActuallyPaints:
 
         # ``render`` paints a border twice, the plain pass and the knockout
         # pass, and reaches both through the theme's spec. Replacing the spec
-        # neuters both, blueprint's three-step knockout included. (Before the
+        # neuters both, a ``knockout`` callable included. (Before the
         # registry, eight themes were also called by name from ``render``, and
         # patching only the table left kanagawa and letter painting with a
         # 0-pixel delta.)

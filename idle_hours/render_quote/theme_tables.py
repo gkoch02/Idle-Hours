@@ -17,7 +17,6 @@ from ._paths import (
     ALMENDRA_REGULAR,
     ANTONIO_VARIABLE,
     ARCHIVO_BOLD,
-    ARCHIVO_REGULAR,
     ARCHIVONARROW_VARIABLE,
     ATOMICAGE_REGULAR,
     BANGERS_REGULAR,
@@ -30,8 +29,6 @@ from ._paths import (
     BARLOWCOND_REGULAR,
     BARLOWCOND_SEMIBOLD,
     BEBASNEUE_REGULAR,
-    BERKSHIRE_SWASH_REGULAR,
-    BITTER_VARIABLE,
     BUNGEE_SHADE_REGULAR,
     CAESARDRESSING_REGULAR,
     CARDO_BOLD,
@@ -42,7 +39,6 @@ from ._paths import (
     CINZELDECORATIVE_REGULAR,
     CORMORANT_VARIABLE,
     DANCINGSCRIPT_VARIABLE,
-    EAGLELAKE_REGULAR,
     EBGARAMOND_BOLD,
     EBGARAMOND_REGULAR,
     EXO2_ITALIC_VARIABLE,
@@ -52,7 +48,6 @@ from ._paths import (
     FRAUNCES_ITALIC_VARIABLE,
     FRAUNCES_VARIABLE,
     GRENZE_GOTISCH_VARIABLE,
-    ICELAND_REGULAR,
     IMFELLDOUBLEPICA_ITALIC,
     IMFELLDOUBLEPICA_REGULAR,
     IMFELLENGLISH_ITALIC,
@@ -95,7 +90,6 @@ from ._paths import (
     QUOTE_FONT_REGULAR_CANDIDATES,
     QUOTE_FONT_SEMIBOLD_CANDIDATES,
     RIGHTEOUS_REGULAR,
-    RUBIK_VARIABLE,
     RYE_REGULAR,
     SAIRA_ITALIC_VARIABLE,
     SAIRA_VARIABLE,
@@ -123,16 +117,10 @@ from .palette import SPECTRA6
 THEME_ORDER: tuple[str, ...] = (
     "default",
     "dark",
-    "swiss",
-    "scholar",
-    "herbarium",
     "newsprint",
     "nightvision",
-    "blueprint",
-    "illuminated",
     "gothic",
     "bauhaus",
-    "risograph",
     "comic",
     "dispatch",
     "atomic",
@@ -140,10 +128,7 @@ THEME_ORDER: tuple[str, ...] = (
     "saloon",
     "roman",
     "alchemy",
-    "grimoire",
     "deco",
-    "glacier",
-    "mucha",
     "chalkboard",
     "placard",
     "chanbara",
@@ -154,7 +139,6 @@ THEME_ORDER: tuple[str, ...] = (
     "kanagawa",
     "marquee",
     "tarot",
-    "vinyl",
     "vitrail",
     "cartograph",
     "questline",
@@ -162,7 +146,6 @@ THEME_ORDER: tuple[str, ...] = (
     "outrun",
     "circuit",
     "letter",
-    "grimdark",
     "sampler",
     "anna_atkins",
     "lieder",
@@ -175,7 +158,6 @@ THEME_ORDER: tuple[str, ...] = (
     "bakelite",
     "cardcatalog",
     "metro",
-    "intaglio",
     "nocturne",
     "plaque",
     "daguerreotype",
@@ -222,7 +204,7 @@ THEME_ORDER: tuple[str, ...] = (
 # dropdown, auto, random); reachable only via explicit `--theme NAME`.
 # RANDOM_EXCLUDED_THEMES filters only --theme random. Use this for themes worth
 # keeping as opt-in but not ready for unattended rotation.
-CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset({"vinyl"})
+CYCLE_EXCLUDED_THEMES: frozenset[str] = frozenset()
 # Who reads a custom-frame theme's palette. A theme with its own
 # ``render_<theme>_frame`` paints its own inks, but still needs a THEMES entry,
 # because three paths draw from the palette alone and never call the frame:
@@ -292,18 +274,6 @@ THEMES = {
         "ornament_light": SPECTRA6["black"],
         "source": SPECTRA6["white"],
     },
-    # Scholarly journal: blue body on cream-white, red accent for the matched
-    # phrase. Readable at a distance thanks to the strong blue/white contrast.
-    "scholar": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["blue"],
-        "subtle": SPECTRA6["blue"],
-        "faint": SPECTRA6["blue"],
-        "accent": SPECTRA6["red"],
-        "ornament_dark": SPECTRA6["blue"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["blue"],
-    },
     # Pure typography: no colour accent at all. Matched phrase differentiates by
     # bold weight against the same ink colour, like an old broadsheet. The
     # white ground is softened by a 12.5% black Bayer halftone painted in
@@ -336,45 +306,10 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["green"],
     },
-    # Cyanotype blueprint. Blue paper, white ink for body, frame and grid,
-    # with the registration crosshairs and matched phrase in red — the
-    # drafter's red-pencil callout. ``draw_blueprint_border``'s Layer 0 paints
-    # a 50/50 white/blue checkerboard so the ground reads as a paler cyanotype
-    # wash. Inverted polarity plus Archivo keep it distinct from ``scholar``.
-    "blueprint": {
-        "page_bg": SPECTRA6["blue"],
-        "text": SPECTRA6["white"],
-        "subtle": SPECTRA6["white"],
-        "faint": SPECTRA6["white"],
-        "accent": SPECTRA6["red"],
-        # Both ornament keys white: the quote marks render solid white rather
-        # than dithered (same trick as ``gothic`` / ``illuminated``).
-        "ornament_dark": SPECTRA6["white"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["white"],
-    },
-    # Medieval illuminated manuscript. White vellum, red body text
-    # (rubrication, the traditional mark of a liturgical or emphasised
-    # passage) and lapis-blue for the matched time phrase. EB Garamond
-    # handles the body at legible sizes; the blackletter
-    # UnifrakturMaguntia sits in the ornament slot for the big curly
-    # quotation marks, carrying the scriptorium texture without wrecking
-    # body legibility.
-    "illuminated": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["red"],
-        "subtle": SPECTRA6["red"],
-        "faint": SPECTRA6["red"],
-        "accent": SPECTRA6["blue"],
-        "ornament_dark": SPECTRA6["red"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["red"],
-    },
     # Cathedral chronicle. Black ground, white body, red rubric for the
     # matched phrase and the oversized blackletter quote marks.
     # UnifrakturMaguntia fills both the ornament and quote-bold slots; body
-    # stays in EB Garamond so dense layouts still read. Opposite polarity to
-    # ``illuminated``.
+    # stays in EB Garamond so dense layouts still read.
     "gothic": {
         "page_bg": SPECTRA6["black"],
         "text": SPECTRA6["white"],
@@ -393,8 +328,7 @@ THEMES = {
     # phrase, red for the oversized quotation marks — the three primaries
     # used simultaneously, as in the Bauhaus palette. Jost (a Futura-adjacent
     # geometric sans) carries the architectural-typography vibe and sits
-    # visually distinct from both blueprint's Archivo (grotesque) and the
-    # other serif-heavy themes.
+    # visually distinct from the serif-heavy themes.
     "bauhaus": {
         "page_bg": SPECTRA6["white"],
         "text": SPECTRA6["black"],
@@ -404,21 +338,6 @@ THEMES = {
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
-    },
-    # Risograph / zine two-colour print. Red body, blue "overprint" on the
-    # matched phrase, and no black ink anywhere — that constraint defines the
-    # theme and is pinned as a test invariant. ornament_dark is blue so the
-    # quote marks carry the second-colour texture. Rubik gives the zine
-    # register.
-    "risograph": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["red"],
-        "subtle": SPECTRA6["red"],
-        "faint": SPECTRA6["red"],
-        "accent": SPECTRA6["blue"],
-        "ornament_dark": SPECTRA6["blue"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["red"],
     },
     # Golden-age comic panel. Yellow ground, black body for speech-bubble
     # legibility, red matched phrase like a sound-effect callout. Bangers is
@@ -543,26 +462,6 @@ THEMES = {
         "ornament_light": SPECTRA6["blue"],
         "source": SPECTRA6["black"],
     },
-    # Faustian spellbook. Black leather ground, white IM Fell English body,
-    # Eagle Lake matched phrase; the red accent is a sentinel that
-    # ``_draw_text_body`` paints as B+W sky blue, matching the quote marks.
-    # Same palette shape as ``gothic`` but different iconography: inscribed
-    # pentagrams and the planetary sigils on the mid-edges (Sun ☉ top, Moon ☽
-    # bottom, Mars ♂ left, Venus ♀ right). ``alchemy`` is the daytime
-    # parchment counterpart.
-    "grimoire": {
-        "page_bg": SPECTRA6["black"],
-        "text": SPECTRA6["white"],
-        "subtle": SPECTRA6["white"],
-        "faint": SPECTRA6["white"],
-        "accent": SPECTRA6["red"],
-        # Quote marks render as a 50/50 blue/white checkerboard
-        # (``draw_faux_gray_text``) — the "sky" mix: a cool moon-silver
-        # counterpoint to the warm red iconography.
-        "ornament_dark": SPECTRA6["blue"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["white"],
-    },
     # Art-deco poster: white ground, black body, Righteous display sans and a
     # tangerine accent synthesised from red and yellow: 5/8 red : 3/8 yellow on
     # ``BAYER_4x4`` (threshold 6/16). Don't use 50/50 — yellow's higher
@@ -580,21 +479,6 @@ THEMES = {
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["black"],
-    },
-    # Icy / aurora: white ground, blue Iceland body, green accent.
-    # ``draw_glacier_border`` adds frost-crystal shards in the corners and
-    # star ticks at the mid-edges. ``_draw_text_body`` reroutes the green
-    # accent to a 5/8:3/8 G+B teal (Bayer threshold 6/16); a 50/50 cyan reads
-    # too close to the blue body.
-    "glacier": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["blue"],
-        "subtle": SPECTRA6["blue"],
-        "faint": SPECTRA6["blue"],
-        "accent": SPECTRA6["green"],
-        "ornament_dark": SPECTRA6["blue"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["blue"],
     },
     # Classroom chalkboard: black slate, white chalk body in Playwrite GB
     # Joined Guides (British school joined cursive), yellow chalk accent.
@@ -657,58 +541,8 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
-    # Swiss International style: the least ornamented frame — its border
-    # painter draws only a hairline rule near the top and a small red square.
-    # Inter body, Inter Bold + red for the matched phrase.
-    "swiss": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["black"],
-        "subtle": SPECTRA6["black"],
-        "faint": SPECTRA6["black"],
-        "accent": SPECTRA6["red"],
-        "ornament_dark": SPECTRA6["black"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["black"],
-    },
-    # Herbarium specimen sheet. Cream Y+W Layer 0, black IM Fell English
-    # body, matched phrase rerouted in ``_draw_text_body`` to forest green
-    # (G+K 1:1) — an olive (Y+G) accent would sink into the cream ground.
-    # The border adds an olive pressed leaf bottom-right and a "Tempus fugit"
-    # cartouche bottom-left: the theme's colour story is the green axis.
-    "herbarium": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["black"],
-        "subtle": SPECTRA6["black"],
-        "faint": SPECTRA6["black"],
-        # Green sentinel, rerouted by ``_draw_text_body`` to G+K forest green.
-        # The leaf uses a separate Y+G olive so text and decoration land on
-        # related but distinct greens.
-        "accent": SPECTRA6["green"],
-        "ornament_dark": SPECTRA6["black"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["black"],
-    },
-    # Art Nouveau poster (Mucha). Cream Layer 0 on white; the body is maroon
-    # (R+K 1:1) via a ``_draw_text_body`` reroute — the first theme with a
-    # synthesised body colour — and the matched phrase cyan (G+B 1:1).
-    # Border: Bézier S-vines top-left and bottom-right with olive trefoil
-    # leaves and a tangerine berry at each tip.
-    "mucha": {
-        # Body is the red sentinel; ``_draw_text_body`` stipples it R+K to
-        # maroon. THEMES values must be native inks
-        # (``test_theme_colors_stay_within_spectra6_palette``).
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["red"],
-        "subtle": SPECTRA6["red"],
-        "faint": SPECTRA6["red"],
-        # Green sentinel, rerouted G+B to cyan for the matched phrase.
-        "accent": SPECTRA6["green"],
-        "ornament_dark": SPECTRA6["red"],
-        "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["red"],
-    },
     # 1960s Fillmore concert poster. Yellow ground, red-sentinel body that
-    # ``_draw_text_body`` stipples R+K to maroon (as ``mucha``) to tame the
+    # ``_draw_text_body`` stipples R+K to maroon to tame the
     # red-on-yellow clash, saturated blue matched phrase, green and blue
     # corner blob panels. ``draw_fillmore_border``'s 1-in-8 white-on-yellow
     # Layer 0 makes the yellow read sun-faded. All six inks appear. Body in
@@ -770,7 +604,7 @@ THEMES = {
     # with a white 川 bottom-right whose base is post-passed to R+K maroon.
     #
     # The body sits in a cream rounded paper panel knocked out of the
-    # seigaiha (the blueprint clear-rect pattern) with a 1 px frame and a 2 px
+    # seigaiha (the clear-rect knockout) with a 1 px frame and a 2 px
     # drop shadow. The cream is a sparse off-grid yellow scatter (~6%) rather
     # than a Bayer pattern, which lattices visibly against the indigo.
     #
@@ -816,21 +650,6 @@ THEMES = {
         "accent": SPECTRA6["red"],
         "ornament_dark": SPECTRA6["red"],
         "ornament_light": SPECTRA6["blue"],
-        "source": SPECTRA6["black"],
-    },
-    # Spoken-word LP (Caedmon / Spoken Arts register). Custom frame
-    # (``render_vinyl_frame``): turntable, grooves, tonearm, label and sleeve,
-    # with the quote as the "reading passage" on the jacket back. The chrome
-    # text (SPOKEN WORD, READING, READ ALOUD, the catalog bar) frames it as an
-    # audiobook so it fits the literary corpus.
-    "vinyl": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["black"],
-        "subtle": SPECTRA6["black"],
-        "faint": SPECTRA6["black"],
-        "accent": SPECTRA6["red"],
-        "ornament_dark": SPECTRA6["black"],
-        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["black"],
     },
     # Gothic stained-glass lancet window. Custom frame
@@ -916,22 +735,6 @@ THEMES = {
         "accent": SPECTRA6["blue"],
         "ornament_dark": SPECTRA6["white"],
         "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["white"],
-    },
-    # Grimdark / Imperial Gothic. Black void, bone-white body, red accent
-    # rerouted to R+Y 5:3 forge-amber on the matched phrase.
-    # ``draw_grimdark_border`` adds a doubled gold + blood trim, an Aquila in
-    # the top margin, a skull in the bottom margin, rivets and studs. Both
-    # ornament slots gold so the blackletter quote marks paint solid gilt (a
-    # white half would wash it grey on black — cf. ``gothic``).
-    "grimdark": {
-        "page_bg": SPECTRA6["black"],
-        "text": SPECTRA6["white"],
-        "subtle": SPECTRA6["white"],
-        "faint": SPECTRA6["white"],
-        "accent": SPECTRA6["red"],
-        "ornament_dark": SPECTRA6["yellow"],
-        "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["white"],
     },
     # The King in Yellow (Chambers, 1895). Black ground, pallid white body,
@@ -1569,20 +1372,6 @@ THEMES = {
         "ornament_light": SPECTRA6["yellow"],
         "source": SPECTRA6["red"],
     },
-    # Banknote / security engraving. Custom frame (``render_intaglio_frame``);
-    # palette serves the palette-only paths (see the note above ``THEMES``).
-    # The face is a real note's three plates: black intaglio, green tint
-    # lathework, red numbering press, on white paper.
-    "intaglio": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["black"],
-        "subtle": SPECTRA6["black"],
-        "faint": SPECTRA6["green"],
-        "accent": SPECTRA6["green"],
-        "ornament_dark": SPECTRA6["black"],
-        "ornament_light": SPECTRA6["green"],
-        "source": SPECTRA6["black"],
-    },
     # Whistler nocturne — blue-and-gold night river. Custom frame
     # (``render_nocturne_frame``); palette serves the palette-only paths (see
     # the note above ``THEMES``). The canvas is flow-field blue brushwork
@@ -1758,32 +1547,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "quote_bold": QUOTE_FONT_BOLD_CANDIDATES,
         "ornament": ORNAMENT_FONT_CANDIDATES,
     },
-    "swiss": {
-        # Inter (grotesque). Every candidate pins its instance so the
-        # matched-phrase bold is unambiguous; falls back through sans faces
-        # before the Playfair chain so the theme stays sans.
-        "quote_regular": [
-            (INTER_VARIABLE, "Regular"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            (INTER_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            (INTER_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
     # Between Us — Fraunces. The matched phrase is the *italic* cut, not a
     # bold ("say *what you want.*" is the app's own gesture). Light keeps it
     # at Italic 400 because it paints solid; dark steps to SemiBold Italic so
@@ -1850,29 +1613,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             SPACEMONO_BOLD,
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    # Intaglio's legend is Old Standard TT, the Didone nearest engraved
-    # currency. Cinzel Decorative (ornament slot) carries the masthead and
-    # denominations; the frame loads Pinyon Script (promise line) and Space
-    # Mono (serial, microprint) directly, the bakelite pattern.
-    "intaglio": {
-        "quote_regular": [
-            OLDSTANDARD_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            OLDSTANDARD_BOLD,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            CINZELDECORATIVE_BOLD,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -1992,45 +1732,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    "scholar": {
-        # Bitter slab serif. The variable font defaults to Thin (axis
-        # minimum 100), so every candidate pins an instance — without it the
-        # panel shows near-invisible ghost strokes.
-        "quote_regular": [
-            (BITTER_VARIABLE, "Regular"),
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            (BITTER_VARIABLE, "Bold"),
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            (BITTER_VARIABLE, "Bold"),
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    "herbarium": {
-        # IM Fell English (shared with ``alchemy`` / ``grimoire``). The
-        # matched phrase is IM Fell *Italic* rather than a heavier weight —
-        # italic is the convention for Latin names on a specimen sheet — and
-        # the forest-green accent (``_draw_text_body``) carries the rest. The
-        # Regular fallback keeps a missing italic off the bitmap fallback.
-        "quote_regular": [
-            IMFELLENGLISH_REGULAR,
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            IMFELLENGLISH_ITALIC,
-            IMFELLENGLISH_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            IMFELLENGLISH_REGULAR,
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
     "newsprint": {
         "quote_regular": [
             OLDSTANDARD_REGULAR,
@@ -2081,52 +1782,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    "blueprint": {
-        # Archivo grotesque; falls back through common Linux/Pi sans installs
-        # before the Playfair chain.
-        "quote_regular": [
-            ARCHIVO_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            ARCHIVO_BOLD,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            ARCHIVO_BOLD,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    "illuminated": {
-        # EB Garamond body with a UnifrakturMaguntia ornament (quote marks
-        # only): a blackletter body would shred at dense-layout sizes on the
-        # panel.
-        "quote_regular": [
-            EBGARAMOND_REGULAR,
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            EBGARAMOND_BOLD,
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            UNIFRAKTUR_BOOK,
-            EBGARAMOND_BOLD,
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
     "gothic": {
         # UnifrakturMaguntia covers the matched-phrase bold as well as the
         # ornament, so short phrases sit in the body like a red blackletter
@@ -2149,8 +1804,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
     },
     "bauhaus": {
         # Jost variable, default 400; every candidate pins its instance so
-        # the bold phrase stays distinguishable. Same sans fallbacks as
-        # ``blueprint``.
+        # the bold phrase stays distinguishable.
         "quote_regular": [
             (JOST_VARIABLE, "Regular"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -2169,32 +1823,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         ],
         "ornament": [
             (JOST_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    "risograph": {
-        # Rubik's default instance is Light (300), NOT Regular, so a missing
-        # set_variation_by_name renders the body too thin. Pin Regular / Bold
-        # on every candidate.
-        "quote_regular": [
-            (RUBIK_VARIABLE, "Regular"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            (RUBIK_VARIABLE, "Bold"),
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            (RUBIK_VARIABLE, "Bold"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             *ORNAMENT_FONT_CANDIDATES,
         ],
@@ -2372,30 +2000,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    "grimoire": {
-        # IM Fell English body, shared with ``alchemy``; the two differ by
-        # ground and matched-phrase face. EB Garamond Regular is the second
-        # rank. Eagle Lake carries the matched phrase — the spiked "phantom
-        # scrawl" that defines the theme — with EB Garamond Bold behind it
-        # only as a missing-file fallback (Eagle Lake has the curly quotes and
-        # em-dash). The ornament stays IM Fell so the quote marks match the
-        # body's vintage-press character.
-        "quote_regular": [
-            IMFELLENGLISH_REGULAR,
-            EBGARAMOND_REGULAR,
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            EAGLELAKE_REGULAR,
-            EBGARAMOND_BOLD,
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            IMFELLENGLISH_REGULAR,
-            EBGARAMOND_BOLD,
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
     "deco": {
         # Righteous (OFL) — 1930s art-deco display sans, Regular only; the
         # matched phrase differs by its accent. Heavy-sans fallbacks.
@@ -2486,53 +2090,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             PLAYWRITE_GB_J_GUIDES_REGULAR,
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    "glacier": {
-        # Iceland (OFL) — single-weight techno display face. The matched
-        # phrase reuses Regular, and ``_draw_text_body`` adds a
-        # ``stroke_width=1`` faux bold over the teal G+B stipple: the teal
-        # alone sits too close in hue to the blue body. Heavy-sans fallbacks.
-        "quote_regular": [
-            ICELAND_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            ICELAND_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            ICELAND_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    "mucha": {
-        # Cormorant Garamond — high-contrast humanist serif in the Art Nouveau
-        # poster register. Variable, Regular / Bold pinned. Berkshire Swash
-        # takes the ornament slot (the ``illuminated`` body + period-ornament
-        # pairing); a missing Swash falls through to Cormorant Bold.
-        "quote_regular": [
-            (CORMORANT_VARIABLE, "Regular"),
-            EBGARAMOND_REGULAR,
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            (CORMORANT_VARIABLE, "Bold"),
-            EBGARAMOND_BOLD,
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            BERKSHIRE_SWASH_REGULAR,
-            (CORMORANT_VARIABLE, "Bold"),
-            EBGARAMOND_BOLD,
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -2706,23 +2263,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         "ornament": [
             CINZELDECORATIVE_BLACK,
             CINZELDECORATIVE_BOLD,
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
-    # Vinyl — Cormorant Garamond Regular / Bold: high-contrast forms that
-    # read at both label scale (12 pt) and sleeve scale (~32 pt). The
-    # ornament reuses Bold for the 33⅓ rpm badge.
-    "vinyl": {
-        "quote_regular": [
-            (CORMORANT_VARIABLE, "Regular"),
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            (CORMORANT_VARIABLE, "Bold"),
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            (CORMORANT_VARIABLE, "Bold"),
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
@@ -3050,8 +2590,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
         # Old Standard TT — the Didone of Central and Eastern European book
         # printing through the twentieth century, the letter a Polish novel
         # of Beksiński's time was set in: Regular for the black body in the
-        # haze, Bold for the matched phrase in red. Shared with ``newsprint``
-        # and ``intaglio``.
+        # haze, Bold for the matched phrase in red. Shared with ``newsprint``.
         "quote_regular": [OLDSTANDARD_REGULAR, *QUOTE_FONT_SEMIBOLD_CANDIDATES],
         "quote_bold": [OLDSTANDARD_BOLD, *QUOTE_FONT_BOLD_CANDIDATES],
         "ornament": [OLDSTANDARD_BOLD, *ORNAMENT_FONT_CANDIDATES],
@@ -3312,33 +2851,6 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    "grimdark": {
-        # Imperial Gothic = Roman + blackletter. Cinzel Decorative body (the
-        # stone-cut inscription register) with UnifrakturMaguntia quote marks
-        # — a pairing neither ``roman`` nor ``gothic`` uses. The matched phrase
-        # steps one Cinzel weight up (Regular → Bold) and is told apart by the
-        # forge-amber reroute in ``_draw_text_body``; switching face mid-line
-        # would break the inscription. Heavy-serif fallbacks before Playfair.
-        "quote_regular": [
-            CINZELDECORATIVE_REGULAR,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf",
-            *QUOTE_FONT_SEMIBOLD_CANDIDATES,
-        ],
-        "quote_bold": [
-            CINZELDECORATIVE_BOLD,
-            CINZELDECORATIVE_BLACK,
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
-            *QUOTE_FONT_BOLD_CANDIDATES,
-        ],
-        "ornament": [
-            UNIFRAKTUR_BOOK,
-            CINZELDECORATIVE_BLACK,
-            *ORNAMENT_FONT_CANDIDATES,
-        ],
-    },
     # Wax-sealed letter. Dancing Script carries the body and matched phrase
     # (Bold instance for a real weight step); Pinyon Script only the quote
     # marks, because its hairlines shatter at body sizes after palette snap
@@ -3500,9 +3012,7 @@ THEME_FONTS: dict[str, dict[str, list]] = {
             *ORNAMENT_FONT_CANDIDATES,
         ],
     },
-    # synoptic uses Space Mono rather than Archivo: ``blueprint`` owns Archivo
-    # and is the nearest neighbour in register, so a mono widens the gap and
-    # reads as instrument printout.
+    # synoptic uses Space Mono: a mono reads as instrument printout.
     "synoptic": {
         "quote_regular": [
             SPACEMONO_REGULAR,
@@ -3618,9 +3128,9 @@ _THEMES_WITHOUT_ORNAMENT_MARKS: frozenset[str] = frozenset({"betweenus", "betwee
 # Themes whose matched-phrase face has a silhouette that breaks if its
 # inter-word gaps are inflated by justification: these keep the
 # matched-phrase spaces *rigid* (the bold face's natural width) and only the
-# body's gaps absorb slack. Stretched, Eagle Lake's ``grimoire`` phrase reads
-# as disconnected syllables and ``gothic``'s blackletter as separate clauses.
-_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"grimoire", "gothic"})
+# body's gaps absorb slack. Stretched, ``gothic``'s blackletter phrase reads
+# as separate clauses.
+_THEMES_RIGID_MATCH_SPACING: frozenset[str] = frozenset({"gothic"})
 
 # Themes whose body text is set ragged-right instead of justified. A
 # typewriter, a terminal and a hand never justified a line: a monospace
@@ -3640,10 +3150,10 @@ _THEMES_RAGGED_RIGHT: frozenset[str] = frozenset({
 
 # Per-theme synthesised "faux bold" for the matched phrase: Pillow's
 # ``stroke_width=N`` thickens each glyph by ~N px per side, for faces that
-# ship a single weight. ``glacier``: Iceland ships only Regular, and its teal
-# accent is too close in hue to the blue body to carry the difference alone.
+# ship a single weight. No live theme sets one.
 #
 # The value must be threaded through measurement (``wrap_styled_text`` /
-# ``render``'s width loops) and drawing (``_draw_text_body``) in lock-step, or
-# lines overrun ``max_width`` / gaps don't match the painted silhouette.
-_BOLD_STROKE_BY_THEME: dict[str, int] = {"glacier": 1}
+# ``render``'s width loops) and drawing (``_draw_text_body``, which needs a
+# branch passing ``stroke_width=_bold_stroke_for_theme(theme)``) in lock-step,
+# or lines overrun ``max_width`` / gaps don't match the painted silhouette.
+_BOLD_STROKE_BY_THEME: dict[str, int] = {}

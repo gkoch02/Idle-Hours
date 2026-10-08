@@ -9,6 +9,15 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- Retired twelve themes: `swiss`, `scholar`, `herbarium`, `blueprint`,
+  `illuminated`, `risograph`, `grimoire`, `glacier`, `mucha`, `vinyl`,
+  `grimdark` and `intaglio`. They are gone from the rotation, `--theme`,
+  the curator UI and the docs, and kept whole under `retired/` (module,
+  registration, design notes, goldens, preview and tests per theme, plus the
+  five font families only they used) with steps to restore one. The other
+  themes render byte-for-byte as before. An appliance whose config names a
+  retired theme logs a warning and falls back to the default, and a saved
+  button-B choice of one is ignored; set a new theme to clear the warning.
 - `daguerreotype` and `autochrome` have new compositions, so the three
   photographic themes no longer look alike. `daguerreotype` is now a case
   lying open: the plate sits in a portrait oval behind the brass mat, and

@@ -2,8 +2,9 @@
 
 Each piece keeps the name it had in the theme that grew it: tarot's numerals,
 astrarium's cream wash, vitrail's glass fill, codex's asemic script, metro's
-ellipsis, lumon's phrase boxes, gantry's Lumen dot reader, the CRT raster, the autochrome plate photo falls
-back to, and the gunmetal ink pair grimdark and control share. Renaming would
+ellipsis, lumon's phrase boxes, gantry's Lumen dot reader, the CRT raster, the
+autochrome plate photo falls back to, and the gunmetal ink pair control's
+concrete dithers to. Renaming would
 churn the design notes and tests that cite them for no change in behaviour.
 """
 
@@ -28,8 +29,8 @@ from ..primitives import _flow_stroke_hash
 AUTOCHROME_PLATE = BASE_DIR / "assets" / "autochrome_garden.png"
 _AUTOCHROME_PALETTE = SPECTRA6_PALETTE
 
-# Grimdark's gunmetal plate is greyscale, so it dithers to white+black only.
-# Control's concrete plinth reuses the same pair (``_CONCRETE_PALETTE``).
+# A greyscale plate dithers to white+black only: control's concrete plinth
+# (``_CONCRETE_PALETTE``).
 _GUNMETAL_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 
 
@@ -46,8 +47,7 @@ _GUNMETAL_PALETTE = [SPECTRA6["white"], SPECTRA6["black"]]
 def _astrarium_paint_cream_wash(image: Image.Image) -> None:
     """Sparse 1-in-8 yellow Bayer wash over the white page background.
 
-    Same Layer 0 recipe as ``dispatch`` / ``illuminated`` / ``herbarium`` /
-    ``mucha``: ``BAYER_4x4 < 2`` flips ~12.5% of white to yellow so the page
+    Same Layer 0 recipe as ``dispatch``: ``BAYER_4x4 < 2`` flips ~12.5% of white to yellow so the page
     reads as faintly cream paper.
     """
     px = pixel_access(image)

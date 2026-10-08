@@ -232,19 +232,19 @@ class TestGoodnightCli:
 class TestQuietThemeResolution:
     def test_inherit_is_the_default_and_matches_the_clock(self, tmp_path):
         """The default must be a no-op against the pre-flag behaviour."""
-        args = _quiet_args(tmp_path, theme="scholar")
-        state = RuntimeState("scholar")
-        assert resolve_quiet_theme(args, state, "22:00") == "scholar"
+        args = _quiet_args(tmp_path, theme="roman")
+        state = RuntimeState("roman")
+        assert resolve_quiet_theme(args, state, "22:00") == "roman"
 
     def test_fixed_theme_overrides_the_clock_theme(self, tmp_path):
-        args = _quiet_args(tmp_path, theme="scholar", quiet_theme="nightvision")
-        state = RuntimeState("scholar")
+        args = _quiet_args(tmp_path, theme="roman", quiet_theme="nightvision")
+        state = RuntimeState("roman")
         assert resolve_quiet_theme(args, state, "22:00") == "nightvision"
 
     def test_auto_uses_the_configured_night_theme(self, tmp_path):
-        args = _quiet_args(tmp_path, quiet_theme="auto", auto_night_theme="grimdark")
+        args = _quiet_args(tmp_path, quiet_theme="auto", auto_night_theme="deco")
         state = RuntimeState("default")
-        assert resolve_quiet_theme(args, state, "22:00") == "grimdark"
+        assert resolve_quiet_theme(args, state, "22:00") == "deco"
 
     def test_manual_override_beats_the_quiet_theme(self, tmp_path):
         """Decision 1: button B wins everywhere, quiet hours included."""
@@ -327,8 +327,8 @@ class TestQuietFrameDispatch:
     """``render_quiet_frame`` is the one definition of "put the panel to sleep"."""
 
     def test_auto_renders_in_the_quiet_theme(self, tmp_path):
-        args = _quiet_args(tmp_path, theme="scholar", quiet_theme="nightvision")
-        state = RuntimeState("scholar")
+        args = _quiet_args(tmp_path, theme="roman", quiet_theme="nightvision")
+        state = RuntimeState("roman")
         with patch("idle_hours.runtime_render.render_now") as mock_render, \
              patch("idle_hours.runtime_quiet._display_quiet_image") as mock_copy:
             render_quiet_frame(args, state, "22:00")
@@ -511,13 +511,13 @@ class TestThemeCurrentIsWhatIsDisplayed:
 
     def _args(self, tmp_path):
         return _quiet_args(
-            tmp_path, theme="scholar", quiet_theme="nightvision",
+            tmp_path, theme="roman", quiet_theme="nightvision",
             state_path=str(tmp_path / "state.json"),
         )
 
     def _state(self, manual_theme=None):
-        state = RuntimeState("scholar")
-        state.last_effective_theme = "scholar"   # the pre-sleep clock frame
+        state = RuntimeState("roman")
+        state.last_effective_theme = "roman"   # the pre-sleep clock frame
         state.manual_theme = manual_theme
         return state
 
@@ -534,18 +534,18 @@ class TestThemeCurrentIsWhatIsDisplayed:
         return result, painted, quote_render.called
 
     def test_applying_the_clock_theme_while_asleep_is_not_a_noop(self, tmp_path):
-        """The bug: ``scholar`` matched the stale field and was dropped.
+        """The bug: ``roman`` matched the stale field and was dropped.
 
-        The operator saw ``nightvision`` on the panel, asked for ``scholar``,
+        The operator saw ``nightvision`` on the panel, asked for ``roman``,
         and got a 200 carrying ``noop: True`` with no repaint.
         """
-        result, painted, _quote = self._apply(tmp_path, "scholar", "23:30")
+        result, painted, _quote = self._apply(tmp_path, "roman", "23:30")
         assert not result.get("noop"), "apply of the clock theme was dropped while asleep"
         assert result["previous"] == "nightvision", "reported the stale clock theme as current"
-        assert painted == "scholar"
+        assert painted == "roman"
 
     def test_cycle_advances_from_the_displayed_theme_while_asleep(self, tmp_path):
-        """The other half: B advanced from ``scholar``, skipping the visible one."""
+        """The other half: B advanced from ``roman``, skipping the visible one."""
         result, painted, _quote = self._apply(tmp_path, None, "23:30")
         order = list(rq.THEME_ORDER)
         expected = order[(order.index("nightvision") + 1) % len(order)]
@@ -562,10 +562,10 @@ class TestThemeCurrentIsWhatIsDisplayed:
 
     def test_awake_behaviour_is_unchanged(self, tmp_path):
         """Outside quiet hours ``last_effective_theme`` is still the source."""
-        noop, _painted, _quote = self._apply(tmp_path, "scholar", "14:00")
+        noop, _painted, _quote = self._apply(tmp_path, "roman", "14:00")
         cycled, _p2, quote = self._apply(tmp_path, None, "14:00")
         assert noop.get("noop") is True
-        assert cycled["previous"] == "scholar"
+        assert cycled["previous"] == "roman"
         assert quote is True, "awake presses must still paint a quote"
 
     def test_a_manual_override_is_what_is_displayed_while_asleep(self, tmp_path):

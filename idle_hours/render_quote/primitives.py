@@ -173,8 +173,8 @@ def paint_hatched_tone(
     pixel stipple.
 
     Modulates the **weight** of a parallel line family under a tone field, at
-    constant pitch, so the grey reads as *drawing* — intaglio's tone
-    mechanism. Keep the pitch constant: tone-varying spacing reads as
+    constant pitch, so the grey reads as *drawing*, the way an engraver's
+    burin lays a tone. Keep the pitch constant: tone-varying spacing reads as
     scanlines with noise.
 
     ``tone`` is a callable ``(x, y) -> float`` in 0..1 in panel coordinates.

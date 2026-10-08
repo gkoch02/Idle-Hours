@@ -656,8 +656,8 @@ class TestReadEndpoints:
         from idle_hours.theme_names import theme_cycle
         server, state, _args = live_server
         with state.lock:
-            state.manual_theme = "scholar"
-            state.last_effective_theme = "scholar"
+            state.manual_theme = "roman"
+            state.last_effective_theme = "roman"
         status, body = _get(server, "/api/themes")
         assert status == 200
         data = _json_body(body)
@@ -665,8 +665,8 @@ class TestReadEndpoints:
         # not the raw registration tuple — opt-in-only themes are deliberately absent
         # from the dropdown.
         assert data["themes"] == list(theme_cycle())
-        assert data["manual_theme"] == "scholar"
-        assert data["effective"] == "scholar"
+        assert data["manual_theme"] == "roman"
+        assert data["effective"] == "roman"
         assert "theme_arg" in data
 
     def test_api_themes_reflects_auto_when_no_manual_override(self, live_server):
@@ -678,7 +678,7 @@ class TestReadEndpoints:
         assert status == 200
         data = _json_body(body)
         assert data["manual_theme"] is None
-        assert data["effective"] in ("default", "dark", "scholar", "newsprint", "nightvision")
+        assert data["effective"] in ("default", "dark", "roman", "newsprint", "nightvision")
 
     def test_api_bucket_returns_ranked_candidates_with_score_components(self, live_server):
         server, _, _ = live_server
@@ -2751,13 +2751,13 @@ class TestApiSetup:
         # invoke pillow / pick_quote here.
         with patch("idle_hours.runtime_render._render_unlocked"), \
              patch("idle_hours.runtime_render.peek_quote_id", return_value=("141", 1, "q", "m")):
-            status, body = _post(server, "/api/setup", {"theme": "scholar"})
+            status, body = _post(server, "/api/setup", {"theme": "roman"})
         assert status == 200, _json_body(body)
         data = _json_body(body)
         assert data["setup_complete"] is True
         assert data["applied_theme"] is not None
         with state.lock:
-            assert state.manual_theme == "scholar"
+            assert state.manual_theme == "roman"
 
     def test_post_rejects_unknown_theme(self, live_server):
         server, _state, _args = live_server
@@ -2789,7 +2789,7 @@ class TestApiSetup:
         the old theme is confusing UX. Operator's next click retries."""
         server, state, args = live_server
         with patch("idle_hours.runtime_actions.action_theme", return_value={"ok": False, "error": "busy"}):
-            status, body = _post(server, "/api/setup", {"theme": "scholar"})
+            status, body = _post(server, "/api/setup", {"theme": "roman"})
         assert status == 409, _json_body(body)
         data = _json_body(body)
         assert data["setup_complete"] is False
@@ -2809,7 +2809,7 @@ class TestApiSetup:
         server, state, _args = live_server
         with patch("idle_hours.runtime_actions.action_theme",
                    return_value={"ok": False, "error": "RuntimeError('boom')"}):
-            status, body = _post(server, "/api/setup", {"theme": "scholar"})
+            status, body = _post(server, "/api/setup", {"theme": "roman"})
         assert status == 500
         data = _json_body(body)
         assert data["setup_complete"] is False
