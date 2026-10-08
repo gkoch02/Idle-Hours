@@ -7292,6 +7292,28 @@ class TestEscritoireFrame:
         (tlx, _), (trx, _), (brx, _), (blx, _) = rq._ESCRITOIRE_QUAD
         assert 0.5 < (trx - tlx) / (brx - blx) < 0.7
 
+    @staticmethod
+    def _vanishing_point(p0, p1, q0, q1):
+        (x1, y1), (x2, y2), (x3, y3), (x4, y4) = p0, p1, q0, q1
+        den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        a, b = x1 * y2 - y1 * x2, x3 * y4 - y3 * x4
+        return ((a * (x3 - x4) - (x1 - x2) * b) / den, (a * (y3 - y4) - (y1 - y2) * b) / den)
+
+    def test_sheet_is_a_real_perspective_with_a_level_horizon(self):
+        # A sheet lying flat on the desk, seen by a level eye: the vanishing
+        # points of its rows and of its sides share one horizontal horizon.
+        # A quad drawn freehand can rise along its far edge while its sides
+        # lean as if it were turned the other way; the writing then follows
+        # neither and reads as climbing off the paper.
+        tl, tr, br, bl = rq._ESCRITOIRE_QUAD
+        rows = self._vanishing_point(tl, tr, bl, br)
+        sides = self._vanishing_point(tl, bl, tr, br)
+        assert sides[1] < 0, "the horizon sits above the panel"
+        tilt = math.degrees(math.atan2(rows[1] - sides[1], rows[0] - sides[0]))
+        assert abs(tilt) < 0.25, (rows, sides)
+        # Turned so the right side lies further away: every row rises to the right.
+        assert rows[0] > 800 and tr[1] < tl[1] and br[1] < bl[1]
+
     def test_quote_is_black_and_the_phrase_blue_on_the_paper(self):
         image = self._render()
         paper = rq._escritoire_sheet_mask(image.size)

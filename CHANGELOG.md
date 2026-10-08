@@ -9,6 +9,10 @@ canonical `vMAJOR.MINOR.PATCH` Git tags; the package version omits the leading
 Add release notes here as changes merge. The release preparation tool moves
 these entries under the new dated version heading.
 
+- `escritoire`'s letter now sits on its paper. The sheet was drawn with a
+  far edge rising to the right and sides leaning as if it were turned the
+  other way, so the writing fanned between them and seemed to climb off the
+  page. It is now a flat sheet turned slightly on the desk, seen straight on.
 - Retired twelve themes: `swiss`, `scholar`, `herbarium`, `blueprint`,
   `illuminated`, `risograph`, `grimoire`, `glacier`, `mucha`, `vinyl`,
   `grimdark` and `intaglio`. They are gone from the rotation, `--theme`,

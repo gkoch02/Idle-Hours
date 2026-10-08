@@ -60,7 +60,11 @@ _ESCRITOIRE_SS = 2                     # supersample for the sheet masks
 _ESCRITOIRE_SHEET = (900, 560)         # the upright sheet, in sheet units
 # The sheet's corners on the canvas (TL, TR, BR, BL). The near corners run off
 # the panel, as a sheet does when it is close enough to write on.
-_ESCRITOIRE_QUAD = ((168, 158), (706, 128), (860, 512), (-70, 470))
+# They are a flat sheet turned 2.5 degrees on the desk, projected through a
+# level camera, so the vanishing points of the rows and the sides share one
+# horizontal horizon; a freehand quad fans the writing off the paper's edges.
+# The page under it is the same sheet turned 2.2 degrees further.
+_ESCRITOIRE_QUAD = ((157, 150), (693, 136), (943, 481), (-12, 527))
 _ESCRITOIRE_LAMP = (560, 150)          # the light pool's centre on the desk
 _ESCRITOIRE_LEFT = 100                 # the writing's left margin, sheet units
 _ESCRITOIRE_MEASURE = 600              # the quote's measure, sheet units
@@ -83,7 +87,7 @@ _ESCRITOIRE_PEN = ((262.0, 212.0), (738.0, 102.0), 10.0)
 # A second sheet under the letter, turned a few degrees further, so a wedge of
 # it shows along the far edge and past the top-right corner: a page of the
 # same letter, and the cheapest cue that the sheet lies on a real desk.
-_ESCRITOIRE_UNDER_QUAD = ((182, 146), (726, 133), (842, 520), (-60, 482))
+_ESCRITOIRE_UNDER_QUAD = ((166, 153), (696, 126), (959, 451), (27, 534))
 # The brass beyond the sheet, each a turned piece given as a lathe profile:
 # its axis x and (y, half-width) knots down the silhouette, joined linearly.
 # A knot pair a few pixels apart is a step in the turning, where a moulding
