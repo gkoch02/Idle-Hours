@@ -1400,32 +1400,33 @@ THEMES = {
         "ornament_light": SPECTRA6["white"],
         "source": SPECTRA6["yellow"],
     },
-    # Cased 1850s daguerreotype. Custom frame (``render_daguerreotype_frame``);
-    # palette serves the palette-only paths (see the note above ``THEMES``).
-    # The case is a brass mat around an Atkinson-dithered monochrome plate.
+    # Cased 1850s daguerreotype, lying open. Custom frame
+    # (``render_daguerreotype_frame``); palette serves the palette-only paths
+    # (see the note above ``THEMES``): the lid's red velvet pad with the quote
+    # gold-stamped on it, the matched phrase in white.
     "daguerreotype": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["black"],
-        "subtle": SPECTRA6["black"],
-        "faint": SPECTRA6["yellow"],
-        "accent": SPECTRA6["red"],
+        "page_bg": SPECTRA6["red"],
+        "text": SPECTRA6["yellow"],
+        "subtle": SPECTRA6["yellow"],
+        "faint": SPECTRA6["black"],
+        "accent": SPECTRA6["white"],
         "ornament_dark": SPECTRA6["black"],
         "ornament_light": SPECTRA6["yellow"],
-        "source": SPECTRA6["black"],
+        "source": SPECTRA6["yellow"],
     },
-    # Autochrome Lumière colour plate in its passe-partout. Custom frame
+    # Autochrome Lumière colour plate as a lantern slide. Custom frame
     # (``render_autochrome_frame``); palette serves the palette-only paths
-    # (see the note above ``THEMES``). A six-ink-dithered photograph under
-    # black binding tape, quote on a cream card.
+    # (see the note above ``THEMES``): the black paper mask, the caption
+    # lettered on it in white with the matched phrase in yellow.
     "autochrome": {
-        "page_bg": SPECTRA6["white"],
-        "text": SPECTRA6["black"],
-        "subtle": SPECTRA6["black"],
-        "faint": SPECTRA6["green"],
-        "accent": SPECTRA6["red"],
+        "page_bg": SPECTRA6["black"],
+        "text": SPECTRA6["white"],
+        "subtle": SPECTRA6["white"],
+        "faint": SPECTRA6["blue"],
+        "accent": SPECTRA6["yellow"],
         "ornament_dark": SPECTRA6["blue"],
         "ornament_light": SPECTRA6["white"],
-        "source": SPECTRA6["black"],
+        "source": SPECTRA6["white"],
     },
     # The operator's own photograph. Custom frame (``render_photo_frame``);
     # palette serves the palette-only paths (see the note above ``THEMES``).

@@ -18,6 +18,17 @@ these entries under the new dated version heading.
   themes render byte-for-byte as before. An appliance whose config names a
   retired theme logs a warning and falls back to the default, and a saved
   button-B choice of one is ignored; set a new theme to clear the warning.
+- `daguerreotype` and `autochrome` have new compositions, so the three
+  photographic themes no longer look alike. `daguerreotype` is now a case
+  lying open: the plate sits in a portrait oval behind the brass mat, and
+  the quote is stamped in gold on the lid's red velvet. `autochrome` is now
+  a lantern slide: the plate sits in a wide window in a black mask, with the
+  caption lettered beneath in white, the matched phrase in yellow. `photo`
+  keeps its floating card and is now the only one with a card. Both themes
+  move to the 0.7 saturation tier for their darker grounds.
+- `photo` has its own default picture: a coast with a lighthouse, shown
+  when no `--photo-path` is set or the configured picture can't be read.
+  It used to borrow `autochrome`'s garden, so the two showed the same image.
 - New `splitflap` theme: a split-flap message board on a wall, in the manner
   of a Vestaboard. The quote is set in capitals on a fixed grid of flap
   tiles, each split by its hinge, with the matched phrase on yellow colour
