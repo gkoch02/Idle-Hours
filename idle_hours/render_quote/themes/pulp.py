@@ -1,4 +1,4 @@
-"""The ``pulp`` theme's frame and the code only it uses (issue #335).
+"""The ``pulp`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """
@@ -38,7 +38,6 @@ from ._shared import _TAROT_ROMAN_NUMERALS
 # ---------------------------------------------------------------------------
 _PULP_MASTHEAD_H = 46
 _PULP_TITLE_TOP = 58
-_PULP_TITLE_MAX = 132          # title block height before the byline
 _PULP_BLURB_RECT = (54, 176, 746, 380)
 _PULP_PLATE_OFFSET = (3, 2)    # how far the red plate missed the black one
 _PULP_IMPRINT = "IDLE HOURS"

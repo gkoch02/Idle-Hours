@@ -1,4 +1,4 @@
-"""The ``vitrail`` theme's frame and the code only it uses (issue #335).
+"""The ``vitrail`` theme's frame and the code only it uses.
 
 Design notes: ``docs/themes.md``.
 """

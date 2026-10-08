@@ -1,4 +1,4 @@
-"""Theme modules for ``render_quote`` (issue #335).
+"""Theme modules for ``render_quote``.
 
 One module per theme, each ending with its ``SPEC``. A theme module
 imports only from the shared layers and ``themes._shared``, never from another

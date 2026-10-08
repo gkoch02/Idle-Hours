@@ -7,25 +7,11 @@ import json
 from pathlib import Path
 
 from idle_hours import atomic_io
+from idle_hours.buckets import DEFAULT_BUCKET_MINUTES
 from idle_hours.jsonl_io import iter_jsonl
 
 BASE_DIR = Path(__file__).resolve().parent
 
-
-STATE_TO_MINUTE = {
-    "exact": 0,
-    "five_past": 5,
-    "ten_past": 10,
-    "quarter_past": 15,
-    "twenty_past": 20,
-    "twenty_five_past": 25,
-    "half_past": 30,
-    "twenty_five_to": 35,
-    "twenty_to": 40,
-    "quarter_to": 45,
-    "ten_to": 50,
-    "five_to": 55,
-}
 
 DAYPARTS = {
     0: "midnight",
@@ -58,7 +44,7 @@ def parse_args() -> argparse.Namespace:
 def minute_for_bucket(bucket: str) -> tuple[int, int, str]:
     hour_part, state = bucket.split("_", 1)
     hour12 = int(hour_part[1:])
-    minute = STATE_TO_MINUTE[state]
+    minute = DEFAULT_BUCKET_MINUTES[state]
     return hour12, minute, state
 
 

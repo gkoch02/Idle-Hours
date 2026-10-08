@@ -84,7 +84,6 @@ OLDSTANDARD_BOLD = str(BASE_DIR / "fonts/old-standard-tt/OldStandard-Bold.ttf")
 SPACEMONO_REGULAR = str(BASE_DIR / "fonts/space-mono/SpaceMono-Regular.ttf")
 SPACEMONO_BOLD = str(BASE_DIR / "fonts/space-mono/SpaceMono-Bold.ttf")
 ALFA_SLAB_ONE = str(BASE_DIR / "fonts/alfa-slab-one/AlfaSlabOne-Regular.ttf")
-ARCHIVO_REGULAR = str(BASE_DIR / "fonts/archivo/Archivo-Regular.ttf")
 ARCHIVO_BOLD = str(BASE_DIR / "fonts/archivo/Archivo-Bold.ttf")
 # Archivo Narrow (witcher labels + WILD HUNT mark) — variable on weight, the nearest open face
 # to Bell Gothic Bold.
