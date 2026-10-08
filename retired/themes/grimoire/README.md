@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `grimoire`    | <img src="idle_hours/assets/previews/grimoire.png" width="240" alt="grimoire theme preview">       | black       | white | sky-blue | IM Fell English + Eagle Lake   | Faustian spellbook       |
+| `grimoire`    | <img src="preview.png" width="240" alt="grimoire theme preview">       | black       | white | sky-blue | IM Fell English + Eagle Lake   | Faustian spellbook       |
 
 ## Design notes (from `docs/themes.md`)
 

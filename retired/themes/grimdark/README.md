@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `grimdark`    | <img src="idle_hours/assets/previews/grimdark.png" width="240" alt="grimdark theme preview">       | black       | white | forge-amber | Cinzel Decorative + UnifrakturMaguntia | Warhammer 40K Imperial Gothic |
+| `grimdark`    | <img src="preview.png" width="240" alt="grimdark theme preview">       | black       | white | forge-amber | Cinzel Decorative + UnifrakturMaguntia | Warhammer 40K Imperial Gothic |
 
 ## Design notes (from `docs/themes.md`)
 

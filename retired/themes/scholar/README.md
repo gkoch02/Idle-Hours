@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `scholar`     | <img src="idle_hours/assets/previews/scholar.png" width="240" alt="scholar theme preview">         | white       | blue  | red    | Bitter (slab)        | Academic textbook             |
+| `scholar`     | <img src="preview.png" width="240" alt="scholar theme preview">         | white       | blue  | red    | Bitter (slab)        | Academic textbook             |
 
 ## Design notes (from `docs/themes.md`)
 

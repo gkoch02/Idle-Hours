@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `glacier`     | <img src="idle_hours/assets/previews/glacier.png" width="240" alt="glacier theme preview">         | white       | blue  | green  | Iceland (techno display) | Icy / aurora panel        |
+| `glacier`     | <img src="preview.png" width="240" alt="glacier theme preview">         | white       | blue  | green  | Iceland (techno display) | Icy / aurora panel        |
 
 ## Design notes (from `docs/themes.md`)
 

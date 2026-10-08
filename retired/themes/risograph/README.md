@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `risograph`   | <img src="idle_hours/assets/previews/risograph.png" width="240" alt="risograph theme preview">     | white       | red   | blue   | Rubik (rounded sans) | Two-colour riso zine          |
+| `risograph`   | <img src="preview.png" width="240" alt="risograph theme preview">     | white       | red   | blue   | Rubik (rounded sans) | Two-colour riso zine          |
 
 ## Design notes (from `docs/themes.md`)
 

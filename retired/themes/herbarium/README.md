@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `herbarium`   | <img src="idle_hours/assets/previews/herbarium.png" width="240" alt="herbarium theme preview">     | cream/white | black | green  | IM Fell English (italic) | Pressed-plant specimen sheet |
+| `herbarium`   | <img src="preview.png" width="240" alt="herbarium theme preview">     | cream/white | black | green  | IM Fell English (italic) | Pressed-plant specimen sheet |
 
 ## Design notes (from `docs/themes.md`)
 

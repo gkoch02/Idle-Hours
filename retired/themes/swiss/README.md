@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `swiss`       | <img src="idle_hours/assets/previews/swiss.png" width="240" alt="swiss theme preview">             | white       | black | red    | Inter (grotesque sans) | Swiss International modernist |
+| `swiss`       | <img src="preview.png" width="240" alt="swiss theme preview">             | white       | black | red    | Inter (grotesque sans) | Swiss International modernist |
 
 ## Design notes (from `docs/themes.md`)
 

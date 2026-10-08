@@ -4,7 +4,7 @@ Retired from the rotation, the renderer and the live docs. Everything the theme 
 
 ## README row
 
-| `intaglio`    | <img src="idle_hours/assets/previews/intaglio.png" width="240" alt="intaglio theme preview">       | white       | black | green  | Old Standard TT + Cinzel Decorative | Banknote engraving |
+| `intaglio`    | <img src="preview.png" width="240" alt="intaglio theme preview">       | white       | black | green  | Old Standard TT + Cinzel Decorative | Banknote engraving |
 
 ## Design notes (from `docs/themes.md`)
 
